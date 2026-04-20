@@ -1,3 +1,7 @@
+// matrix-sdk has deeply nested async futures that overflow clippy's default
+// query depth limit. 512 is comfortable headroom.
+#![recursion_limit = "512"]
+
 use rhai::{AST, Engine};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
