@@ -1,0 +1,121 @@
+{
+  "human": {
+    "id": "human",
+    "name": "Human",
+    "description": "Versatile and adaptable, humans thrive in any environment.",
+    "stat_modifiers": {},
+    "granted_traits": [],
+    "resistances": {},
+    "passive_abilities": [
+      {
+        "id": "adaptable",
+        "name": "Adaptable",
+        "description": "Humans' versatility grants a small bonus to all stats.",
+        "effects": {"all_stats": 1}
+      }
+    ],
+    "active_abilities": [],
+    "available": true
+  },
+  "elf": {
+    "id": "elf",
+    "name": "Elf",
+    "description": "Graceful and long-lived, with an affinity for nature and magic.",
+    "stat_modifiers": {"dex": 2, "int": 1, "con": -2},
+    "granted_traits": ["night_vision"],
+    "resistances": {"fire": -25},
+    "passive_abilities": [],
+    "active_abilities": [],
+    "available": true
+  },
+  "dwarf": {
+    "id": "dwarf",
+    "name": "Dwarf",
+    "description": "Stout and sturdy, renowned for craftsmanship and resilience.",
+    "stat_modifiers": {"con": 2, "str": 1, "cha": -2},
+    "granted_traits": ["dark_adapted"],
+    "resistances": {"poison": 25},
+    "passive_abilities": [],
+    "active_abilities": [],
+    "available": true
+  },
+  "halfling": {
+    "id": "halfling",
+    "name": "Halfling",
+    "description": "Small and nimble, with a knack for stealth and good fortune.",
+    "stat_modifiers": {"dex": 2, "cha": 1, "str": -2},
+    "granted_traits": [],
+    "resistances": {},
+    "passive_abilities": [
+      {
+        "id": "lucky",
+        "name": "Lucky",
+        "description": "Halflings have an uncanny knack for avoiding danger.",
+        "effects": {"crit_bonus": 3}
+      }
+    ],
+    "active_abilities": [],
+    "available": true
+  },
+  "orc": {
+    "id": "orc",
+    "name": "Orc",
+    "description": "Powerful and fierce, with unmatched strength and endurance.",
+    "stat_modifiers": {"str": 2, "con": 1, "int": -2},
+    "granted_traits": [],
+    "resistances": {"cold": -15},
+    "passive_abilities": [
+      {
+        "id": "berserker_blood",
+        "name": "Berserker Blood",
+        "description": "Orcs gain bonus damage when badly wounded.",
+        "effects": {"low_hp_damage_bonus": 3}
+      }
+    ],
+    "active_abilities": [],
+    "available": true
+  },
+  "gnome": {
+    "id": "gnome",
+    "name": "Gnome",
+    "description": "Clever and curious, with an inventive spirit and sharp wit.",
+    "stat_modifiers": {"int": 2, "wis": 1, "str": -2},
+    "granted_traits": ["dark_adapted"],
+    "resistances": {},
+    "passive_abilities": [],
+    "active_abilities": [],
+    "available": true
+  },
+  "half-elf": {
+    "id": "half-elf",
+    "name": "Half-Elf",
+    "description": "Blending human adaptability with elven grace.",
+    "stat_modifiers": {"cha": 1, "dex": 1, "con": -1},
+    "granted_traits": [],
+    "resistances": {},
+    "passive_abilities": [],
+    "active_abilities": [],
+    "available": true
+  },
+  "dragonborn": {
+    "id": "dragonborn",
+    "name": "Dragonborn",
+    "description": "Proud and draconic, bearing the blood of ancient dragons.",
+    "stat_modifiers": {"str": 1, "cha": 1, "dex": -1},
+    "granted_traits": [],
+    "resistances": {"fire": 25},
+    "passive_abilities": [],
+    "active_abilities": [
+      {
+        "id": "breath_weapon",
+        "name": "Breath Weapon",
+        "description": "Unleash a cone of dragonfire on your enemy.",
+        "script_name": "breath_weapon",
+        "cooldown_secs": 300,
+        "mana_cost": 0,
+        "stamina_cost": 25
+      }
+    ],
+    "available": true
+  }
+}

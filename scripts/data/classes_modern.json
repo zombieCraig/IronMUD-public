@@ -1,0 +1,82 @@
+{
+  "unemployed": {
+    "id": "unemployed",
+    "name": "Unemployed",
+    "description": "No particular profession. You start with no special skills but can learn anything.",
+    "starting_skills": {},
+    "stat_bonuses": {},
+    "available": true
+  },
+  "chef": {
+    "id": "chef",
+    "name": "Chef",
+    "description": "Kitchen expertise grants knife skills and knowledge of ingredients.",
+    "starting_skills": {"cooking": 2, "short_blades": 1, "foraging": 1},
+    "stat_bonuses": {"con": 1, "wis": 1, "cha": 1},
+    "available": true
+  },
+  "paramedic": {
+    "id": "paramedic",
+    "name": "Paramedic",
+    "description": "Emergency medical training with field triage and self-defense.",
+    "starting_skills": {"medical": 2, "unarmed": 1, "foraging": 1},
+    "stat_bonuses": {"wis": 2, "dex": 1},
+    "available": true
+  },
+  "park_ranger": {
+    "id": "park_ranger",
+    "name": "Park Ranger",
+    "description": "Wilderness survival specialist with tracking and marksmanship.",
+    "starting_skills": {"foraging": 2, "ranged": 1, "fishing": 1},
+    "stat_bonuses": {"con": 1, "wis": 1, "dex": 1},
+    "available": true
+  },
+  "security_guard": {
+    "id": "security_guard",
+    "name": "Security Guard",
+    "description": "Trained in physical confrontation and basic firearm handling.",
+    "starting_skills": {"unarmed": 2, "short_blunt": 1, "ranged": 1},
+    "stat_bonuses": {"str": 1, "con": 2},
+    "available": true
+  },
+  "dock_worker": {
+    "id": "dock_worker",
+    "name": "Dock Worker",
+    "description": "Years on the waterfront built brute strength and fishing know-how.",
+    "starting_skills": {"fishing": 2, "long_blunt": 1, "crafting": 1},
+    "stat_bonuses": {"str": 2, "con": 1},
+    "available": true
+  },
+  "mechanic": {
+    "id": "mechanic",
+    "name": "Mechanic",
+    "description": "Hands-on technical skills with tools and improvised repairs.",
+    "starting_skills": {"crafting": 2, "short_blades": 1, "short_blunt": 1},
+    "stat_bonuses": {"int": 2, "dex": 1},
+    "available": true
+  },
+  "soldier": {
+    "id": "soldier",
+    "name": "Soldier",
+    "description": "Military training grants combat proficiency and tactical discipline.",
+    "starting_skills": {"ranged": 2, "long_blades": 1, "polearms": 1},
+    "stat_bonuses": {"str": 1, "dex": 1, "con": 1},
+    "available": true
+  },
+  "private_investigator": {
+    "id": "private_investigator",
+    "name": "Private Investigator",
+    "description": "A professional tracker and sleuth. You find what others want hidden.",
+    "starting_skills": {"tracking": 2, "stealth": 1, "thievery": 1},
+    "stat_bonuses": {"wis": 2, "int": 1},
+    "available": true
+  },
+  "criminal": {
+    "id": "criminal",
+    "name": "Criminal",
+    "description": "Street smarts and quick hands are your trade. The law is merely a suggestion.",
+    "starting_skills": {"thievery": 2, "stealth": 2, "short_blades": 1},
+    "stat_bonuses": {"dex": 2, "cha": 1},
+    "available": true
+  }
+}

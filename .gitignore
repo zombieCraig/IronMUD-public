@@ -1,0 +1,37 @@
+# Rust build artifacts
+/target/
+
+# Runtime data (sled DB is seeded on first startup)
+*.db/
+ironmud.db/
+test.db/
+
+# Environment files and MCP config (never commit — secrets + internal hostnames)
+.env
+.env.*
+.mcp.json
+.mcp.json.*
+
+# Wiki.js integration is private-only — do not re-introduce to the public tree
+scripts/wiki-sync.py
+scripts/wiki_sync/
+
+# Log files
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings (but keep .claude/skills/ which is tracked)
+.claude/settings.local.json
+.claude/settings.json
+
+# Backup files produced by upgrade scripts
+*.backup

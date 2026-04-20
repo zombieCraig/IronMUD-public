@@ -1,0 +1,47 @@
+[
+  {
+    "name": "merchant_8to20",
+    "description": "Standard merchant: works 8-20, sleeps at home overnight",
+    "entries": [
+      { "start_hour": 8, "activity": "working", "destination_key": "shop", "transition_message": "{name} opens up shop for the day.", "suppress_wander": true },
+      { "start_hour": 20, "activity": "off_duty", "destination_key": "home", "transition_message": "{name} closes up shop for the night.", "suppress_wander": true },
+      { "start_hour": 22, "activity": "sleeping", "destination_key": "home", "transition_message": "{name} settles in for the night.", "suppress_wander": true }
+    ]
+  },
+  {
+    "name": "guard_dayshift",
+    "description": "Day guard: patrols 6-18, off-duty and sleeps at barracks",
+    "entries": [
+      { "start_hour": 6, "activity": "patrolling", "destination_key": "post", "transition_message": "{name} begins the day watch.", "suppress_wander": false },
+      { "start_hour": 18, "activity": "off_duty", "destination_key": "barracks", "transition_message": "{name} heads off duty.", "suppress_wander": true },
+      { "start_hour": 22, "activity": "sleeping", "destination_key": "barracks", "transition_message": "{name} turns in for the night.", "suppress_wander": true }
+    ]
+  },
+  {
+    "name": "guard_nightshift",
+    "description": "Night guard: patrols 18-6, sleeps during the day",
+    "entries": [
+      { "start_hour": 6, "activity": "off_duty", "destination_key": "barracks", "transition_message": "{name} heads off duty.", "suppress_wander": true },
+      { "start_hour": 8, "activity": "sleeping", "destination_key": "barracks", "transition_message": "{name} turns in for the day.", "suppress_wander": true },
+      { "start_hour": 18, "activity": "patrolling", "destination_key": "post", "transition_message": "{name} begins the night watch.", "suppress_wander": false }
+    ]
+  },
+  {
+    "name": "tavern_keeper",
+    "description": "Tavern keeper: works 10-2am, sleeps upstairs",
+    "entries": [
+      { "start_hour": 2, "activity": "off_duty", "destination_key": "home", "transition_message": "{name} calls last orders.", "suppress_wander": true },
+      { "start_hour": 4, "activity": "sleeping", "destination_key": "home", "transition_message": "{name} heads to bed.", "suppress_wander": true },
+      { "start_hour": 10, "activity": "working", "destination_key": "tavern", "transition_message": "{name} opens the tavern.", "suppress_wander": true }
+    ]
+  },
+  {
+    "name": "wandering_merchant",
+    "description": "Traveling merchant: works in market by day, wanders to camp at night",
+    "entries": [
+      { "start_hour": 7, "activity": "working", "destination_key": "market", "transition_message": "{name} sets up the market stall.", "suppress_wander": true },
+      { "start_hour": 17, "activity": "off_duty", "destination_key": "camp", "transition_message": "{name} packs up for the day.", "suppress_wander": false },
+      { "start_hour": 21, "activity": "sleeping", "destination_key": "camp", "transition_message": "{name} makes camp for the night.", "suppress_wander": true }
+    ]
+  }
+]

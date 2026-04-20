@@ -1,0 +1,39 @@
+[package]
+name = "ironmud"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1.36", features = ["full"] }
+rhai = { version = "1.17", features = ["sync"] }
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sled = "0.34"
+uuid = { version = "1.8", features = ["v4", "v5", "serde"] }
+notify = "6.1"
+glob = "0.3"
+matrix-sdk = { version = "0.16", default-features = false, features = ["native-tls"] }
+serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "model", "native_tls_backend"] }
+socket2 = "0.5"
+argon2 = "0.5"
+rand_core = { version = "0.6", features = ["std"] }
+rand = "0.8"
+clap = { version = "4.4", features = ["derive", "env"] }
+rpassword = "7.3"
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+unicode-width = "0.2"
+mime = "0.3"
+axum = "0.7"
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors", "trace"] }
+time = ">=0.3.47"
+
+[dev-dependencies]
+regex = "1.10"
+
+[[bin]]
+name = "ironmud-admin"
+path = "src/bin/ironmud-admin.rs"

@@ -1,0 +1,106 @@
+# Sakura Garden - Example Builder Commands
+#
+# This shows the in-game commands to create a room with seasonal descriptions.
+# Copy/paste these commands or use them as a reference.
+
+# First, dig a new room (from an existing room)
+dig east Sakura Garden
+
+# Move to the new room
+east
+
+# Set the base description
+redit desc A serene Japanese garden surrounds you, centered around ancient sakura trees. Stone lanterns line a winding gravel path, and a small wooden bridge arches over a koi pond. The air is peaceful and still.
+
+# Set seasonal descriptions (these auto-display based on current game season)
+redit seasonal spring The sakura trees are in full bloom, their branches heavy with delicate pink blossoms. Petals drift lazily through the air like pink snow, carpeting the ground in soft color.
+
+redit seasonal summer Lush green leaves shade the garden from the warm sun. The sakura trees provide cool refuge, their dense canopy filtering dappled sunlight onto the path below.
+
+redit seasonal autumn The sakura leaves have turned brilliant shades of gold and crimson. They fall in gentle spirals, gathering in rustling drifts along the garden paths.
+
+redit seasonal winter Bare sakura branches reach toward the gray sky like dark calligraphy. A light frost clings to the wood, and the garden lies quiet beneath winter's hush.
+
+# Add extra descriptions for 'look <keyword>' interactions
+redit extra add sakura cherry trees tree blossoms
+The ancient sakura trees have stood in this garden for generations. Their gnarled trunks speak of age and wisdom, while their branches reach gracefully toward the sky.
+.
+
+redit extra add pond koi water fish
+Crystal clear water reveals colorful koi swimming lazily beneath the surface. Orange, white, and black fish glide between smooth stones and trailing water plants.
+.
+
+redit extra add bridge wooden
+A graceful wooden bridge arches over the narrowest part of the koi pond. Its red-painted rails have weathered to a soft vermillion.
+.
+
+redit extra add lanterns stone lantern
+Traditional stone lanterns are placed at intervals along the path. Their weathered gray surfaces are spotted with lichen.
+.
+
+redit extra add path gravel
+Fine white gravel has been carefully raked into flowing patterns that suggest water or clouds. The crunch underfoot is oddly satisfying.
+.
+
+# Set a memorable vnum
+redit vnum sakura_garden
+
+# Add atmosphere triggers for dynamic descriptions (combined time + weather)
+# Using garden_atmosphere for both ensures they don't overwrite each other
+redit trigger add on_weather_change garden_atmosphere
+redit trigger add on_time_change garden_atmosphere
+
+# Alternative: Use separate triggers if you only want one or the other
+# redit trigger add on_weather_change garden_weather
+# redit trigger add on_time_change garden_time
+
+# Verify the setup
+redit seasonal
+redit extra list
+look
+
+# Done! The room will now show different descriptions based on the season,
+# time of day, and weather conditions.
+#
+# Example output in spring, morning, clear:
+#
+#   Sakura Garden
+#   --------------------
+#   A serene Japanese garden surrounds you, centered around ancient sakura
+#   trees. Stone lanterns line a winding gravel path, and a small wooden
+#   bridge arches over a koi pond. The air is peaceful and still. The sakura
+#   trees are in full bloom, their branches heavy with delicate pink blossoms.
+#   Petals drift lazily through the air like pink snow, carpeting the ground
+#   in soft color. Warm morning sunlight bathes the garden in soft gold. The
+#   koi swim lazily near the surface.
+#
+#   Exits: west
+#
+# Example output in spring, evening, rain:
+#
+#   Sakura Garden
+#   --------------------
+#   A serene Japanese garden surrounds you, centered around ancient sakura
+#   trees. Stone lanterns line a winding gravel path, and a small wooden
+#   bridge arches over a koi pond. The air is peaceful and still. The sakura
+#   trees are in full bloom, their branches heavy with delicate pink blossoms.
+#   Petals drift lazily through the air like pink snow, carpeting the ground
+#   in soft color. The stone lanterns cast pools of warm light across the
+#   darkening garden. Fireflies drift above the pond. Rain patters softly on
+#   the leaves, the droplets catching the lantern light.
+#
+#   Exits: west
+#
+# Example output in winter, night, snow:
+#
+#   Sakura Garden
+#   --------------------
+#   A serene Japanese garden surrounds you... Bare sakura branches reach
+#   toward the gray sky like dark calligraphy. A light frost clings to the
+#   wood, and the garden lies quiet beneath winter's hush. Moonlight silvers
+#   the garden. The lanterns glow like earthbound stars amid the shadows.
+#   Snowflakes drift down like frozen starlight, dusting the garden in white.
+#
+#   Exits: west
+#
+# The display order is: base + seasonal + dynamic (time + weather)

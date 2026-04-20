@@ -1,0 +1,82 @@
+{
+  "unemployed": {
+    "id": "unemployed",
+    "name": "Peasant",
+    "description": "A humble commoner with no special training. What you lack in skill, you make up for in determination.",
+    "starting_skills": {},
+    "stat_bonuses": {},
+    "available": true
+  },
+  "warrior": {
+    "id": "warrior",
+    "name": "Warrior",
+    "description": "A seasoned fighter trained in the arts of war. Strong and tough, you excel in melee combat.",
+    "starting_skills": {"long_blades": 2, "polearms": 1, "unarmed": 1},
+    "stat_bonuses": {"str": 2, "con": 1},
+    "available": true
+  },
+  "mage": {
+    "id": "mage",
+    "name": "Mage",
+    "description": "A student of the arcane arts. Your intellect fuels powerful spells, though your body is frail.",
+    "starting_skills": {"magic": 1, "crafting": 1, "foraging": 1},
+    "stat_bonuses": {"int": 2, "wis": 1},
+    "available": true
+  },
+  "ranger": {
+    "id": "ranger",
+    "name": "Ranger",
+    "description": "A wilderness tracker and marksman. At home in the wild, you hunt with deadly precision.",
+    "starting_skills": {"ranged": 2, "foraging": 1, "fishing": 1},
+    "stat_bonuses": {"dex": 1, "wis": 1, "con": 1},
+    "available": true
+  },
+  "cleric": {
+    "id": "cleric",
+    "name": "Cleric",
+    "description": "A healer devoted to the divine. Your faith grants you the power to mend wounds and cure ailments.",
+    "starting_skills": {"medical": 2, "short_blunt": 1, "cooking": 1},
+    "stat_bonuses": {"wis": 2, "cha": 1},
+    "available": true
+  },
+  "rogue": {
+    "id": "rogue",
+    "name": "Rogue",
+    "description": "A cunning trickster who fights with guile rather than brute force. Quick hands and quicker wits.",
+    "starting_skills": {"short_blades": 2, "stealth": 2, "thievery": 1},
+    "stat_bonuses": {"dex": 2, "cha": 1},
+    "available": true
+  },
+  "assassin": {
+    "id": "assassin",
+    "name": "Assassin",
+    "description": "A deadly shadow who strikes from darkness. Specializes in eliminating targets before they know you are there.",
+    "starting_skills": {"stealth": 2, "short_blades": 2, "tracking": 1},
+    "stat_bonuses": {"dex": 2, "int": 1},
+    "available": true
+  },
+  "thief": {
+    "id": "thief",
+    "name": "Thief",
+    "description": "A master of acquisition and subterfuge. Locks, pockets, and traps are merely puzzles waiting to be solved.",
+    "starting_skills": {"thievery": 3, "stealth": 1, "short_blades": 1},
+    "stat_bonuses": {"dex": 2, "cha": 1},
+    "available": true
+  },
+  "bard": {
+    "id": "bard",
+    "name": "Bard",
+    "description": "A wandering storyteller and musician. Your silver tongue opens doors that swords cannot.",
+    "starting_skills": {"cooking": 1, "foraging": 1, "fishing": 1},
+    "stat_bonuses": {"cha": 2, "dex": 1},
+    "available": true
+  },
+  "alchemist": {
+    "id": "alchemist",
+    "name": "Alchemist",
+    "description": "A master of potions and herbal remedies. You transform common ingredients into wondrous concoctions.",
+    "starting_skills": {"cooking": 2, "crafting": 1, "foraging": 1},
+    "stat_bonuses": {"int": 1, "wis": 1, "con": 1},
+    "available": true
+  }
+}

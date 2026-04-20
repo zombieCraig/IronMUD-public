@@ -1,0 +1,45 @@
+{
+  "male_first": [
+    "Akio", "Akira", "Arata", "Atsushi", "Daichi", "Daiki", "Daisuke", "Eiji", "Fumio", "Goro",
+    "Hajime", "Haruki", "Haruto", "Hayato", "Hideaki", "Hideki", "Hideo", "Hiro", "Hiroaki", "Hiroshi",
+    "Hiroyuki", "Hisashi", "Ichiro", "Isamu", "Isao", "Itsuki", "Jiro", "Jun", "Junichi", "Kaito",
+    "Kazuki", "Kazuo", "Kazushi", "Keiji", "Keisuke", "Ken", "Kenichi", "Kenji", "Kenta", "Kenzo",
+    "Kiyoshi", "Koichi", "Koji", "Kota", "Kouki", "Kunio", "Mamoru", "Manabu", "Masaaki", "Masahiko",
+    "Masaki", "Masami", "Masao", "Masaru", "Masashi", "Masato", "Masayuki", "Michio", "Minoru", "Mitsuo",
+    "Naoki", "Naoto", "Noboru", "Nobuo", "Nobuyuki", "Norio", "Osamu", "Ren", "Riku", "Ryo",
+    "Ryota", "Ryuichi", "Ryuji", "Saburo", "Satoru", "Satoshi", "Seiji", "Shigeru", "Shin", "Shingo",
+    "Shinichi", "Shinji", "Sho", "Shota", "Shun", "Sora", "Susumu", "Tadao", "Tadashi", "Takashi",
+    "Takeshi", "Takumi", "Takuya", "Tamotsu", "Taro", "Tatsuya", "Tetsuo", "Tetsuya", "Toru", "Toshiaki",
+    "Toshio", "Yasuo", "Yoshio", "Yuki", "Yuto"
+  ],
+  "female_first": [
+    "Ai", "Aiko", "Aimi", "Airi", "Akane", "Akari", "Akemi", "Akiko", "Akira", "Asami",
+    "Asuka", "Atsuko", "Aya", "Ayaka", "Ayako", "Ayame", "Ayumi", "Chie", "Chieko", "Chika",
+    "Chinatsu", "Chiyo", "Eiko", "Emi", "Emiko", "Eri", "Etsuko", "Fujiko", "Fumiko", "Hana",
+    "Hanako", "Harumi", "Haruna", "Hideko", "Hikari", "Hiroko", "Hisako", "Hitomi", "Honoka", "Hotaru",
+    "Izumi", "Junko", "Kaede", "Kanako", "Kaori", "Kasumi", "Katsuko", "Kazue", "Kazuko", "Keiko",
+    "Kimie", "Kimiko", "Kiyoko", "Kotomi", "Kumiko", "Kyoko", "Mai", "Maiko", "Mako", "Mami",
+    "Manami", "Mari", "Marina", "Masako", "Masumi", "Mayumi", "Megumi", "Mei", "Michiko", "Midori",
+    "Mieko", "Miki", "Miko", "Mika", "Minako", "Misaki", "Mitsuko", "Miwa", "Miyako", "Miyu",
+    "Momoko", "Naoko", "Naomi", "Natsuki", "Natsumi", "Nobuko", "Noriko", "Reiko", "Rika", "Rina",
+    "Sachiko", "Saki", "Sakura", "Satomi", "Sayaka", "Setsuko", "Shiori", "Shizuka", "Sumiko", "Takako",
+    "Tamiko", "Tomoko", "Yui", "Yumi", "Yuriko"
+  ],
+  "last": [
+    "Abe", "Aoki", "Arai", "Chiba", "Endo", "Enomoto", "Fujii", "Fujimoto", "Fujita", "Fujiwara",
+    "Fukuda", "Furukawa", "Goto", "Hara", "Harada", "Hasegawa", "Hashimoto", "Hattori", "Hayashi", "Higashi",
+    "Hirai", "Hirano", "Hirose", "Hoshino", "Ichikawa", "Iida", "Iizuka", "Ikeda", "Imai", "Inoue",
+    "Ishida", "Ishii", "Ishikawa", "Ito", "Iwamoto", "Iwasaki", "Kaneko", "Kanzaki", "Kato", "Kawaguchi",
+    "Kawakami", "Kawamoto", "Kawamura", "Kawano", "Kikuchi", "Kimura", "Kitamura", "Kitano", "Kobayashi", "Koike",
+    "Kojima", "Komatsu", "Kondo", "Koyama", "Kubo", "Kudo", "Kuroda", "Maeda", "Maruyama", "Matsuda",
+    "Matsui", "Matsumoto", "Matsushita", "Miura", "Miyamoto", "Miyazaki", "Mori", "Morimoto", "Murakami", "Murata",
+    "Nagai", "Nakagawa", "Nakajima", "Nakamura", "Nakanishi", "Nakano", "Nakayama", "Nishida", "Nishimura", "Noguchi",
+    "Nomura", "Oda", "Ogawa", "Ogura", "Ohashi", "Ohta", "Okada", "Okamoto", "Okamura", "Okuda",
+    "Omori", "Ono", "Onodera", "Osawa", "Oshima", "Ota", "Otani", "Saito", "Sakaguchi", "Sakai",
+    "Sakamoto", "Sakurai", "Sano", "Sasaki", "Sato", "Sawada", "Shibata", "Shimada", "Shimizu", "Shinoda",
+    "Sugimoto", "Sugiyama", "Suzuki", "Tabata", "Tada", "Taguchi", "Takagi", "Takahashi", "Takano", "Takeda",
+    "Takeuchi", "Tamura", "Tanabe", "Tanaka", "Taniguchi", "Terada", "Tomita", "Tsuchiya", "Tsuji", "Uchida",
+    "Ueda", "Uehara", "Uemura", "Ueno", "Wada", "Watanabe", "Yamada", "Yamaguchi", "Yamamoto", "Yamanaka",
+    "Yamashita", "Yamazaki", "Yasuda", "Yokoyama", "Yoshida", "Yoshikawa", "Yoshimura"
+  ]
+}

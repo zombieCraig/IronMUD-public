@@ -1,0 +1,33 @@
+{
+  "hair_colors": ["black", "brown", "dark brown", "blonde", "sandy blonde", "red", "auburn", "white", "grey", "silver"],
+  "hair_styles": ["short", "long", "braided", "shaved", "messy", "neatly combed", "curly", "wavy", "tied back", "close-cropped"],
+  "eye_colors": ["brown", "dark brown", "blue", "pale blue", "green", "hazel", "grey", "amber"],
+  "skin_tones": ["pale", "fair", "tan", "olive", "bronze", "dark", "ruddy"],
+  "heights": ["short", "average", "tall"],
+  "builds": ["slim", "average", "stocky", "muscular", "wiry", "heavyset"],
+  "age_ranges": [
+    {"label": "baby", "min": 0, "max": 2},
+    {"label": "child", "min": 3, "max": 12},
+    {"label": "adolescent", "min": 13, "max": 17},
+    {"label": "young adult", "min": 18, "max": 29},
+    {"label": "adult", "min": 30, "max": 49},
+    {"label": "middle-aged", "min": 50, "max": 64},
+    {"label": "elderly", "min": 65, "max": 90}
+  ],
+  "marks": [
+    "a faded scar across one cheek",
+    "piercing eyes",
+    "a prominent nose",
+    "calloused hands",
+    "a quiet voice",
+    "a booming laugh",
+    "a slight limp",
+    "a small tattoo on the back of one hand",
+    "an easy smile",
+    "weathered, sun-darkened skin",
+    "a missing fingertip",
+    "a habit of looking sidelong",
+    "a nervous tendency to fidget"
+  ],
+  "mark_chance": 0.35
+}

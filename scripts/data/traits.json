@@ -1,0 +1,616 @@
+{
+  "_example_positive": {
+    "id": "_example_positive",
+    "name": "Example Positive Trait",
+    "description": "This is an example positive trait that costs points. Set available to true to enable.",
+    "cost": 3,
+    "category": "positive",
+    "effects": {},
+    "conflicts_with": ["_example_negative"],
+    "available": false
+  },
+  "_example_negative": {
+    "id": "_example_negative",
+    "name": "Example Negative Trait",
+    "description": "This is an example negative trait that grants points. Set available to true to enable.",
+    "cost": -2,
+    "category": "negative",
+    "effects": {},
+    "conflicts_with": ["_example_positive"],
+    "available": false
+  },
+
+  "camel": {
+    "id": "camel",
+    "name": "Camel",
+    "description": "Your body is remarkably efficient at retaining water. You get thirsty much slower than others.",
+    "cost": 3,
+    "category": "positive",
+    "effects": {"thirst_rate": -50},
+    "conflicts_with": ["parched"],
+    "available": true
+  },
+  "desert_born": {
+    "id": "desert_born",
+    "name": "Desert Born",
+    "description": "Having grown up in scorching climates, you are immune to the increased thirst caused by hot temperatures.",
+    "cost": 2,
+    "category": "positive",
+    "effects": {"heat_thirst_immune": 1},
+    "conflicts_with": [],
+    "available": true
+  },
+  "parched": {
+    "id": "parched",
+    "name": "Perpetually Parched",
+    "description": "Your body burns through water at an alarming rate. You become thirsty much faster than normal.",
+    "cost": -2,
+    "category": "negative",
+    "effects": {"thirst_rate": 50},
+    "conflicts_with": ["camel"],
+    "available": true
+  },
+
+  "cold_blooded": {
+    "id": "cold_blooded",
+    "name": "Cold Blooded",
+    "description": "You tolerate cold exceptionally well, taking reduced effects from frigid temperatures.",
+    "cost": 2,
+    "category": "positive",
+    "effects": {"cold_resistance": 50},
+    "conflicts_with": ["thin_blooded"],
+    "available": true
+  },
+  "thick_skinned": {
+    "id": "thick_skinned",
+    "name": "Thick Skinned",
+    "description": "Your hardy constitution resists temperature extremes of all kinds.",
+    "cost": 3,
+    "category": "positive",
+    "effects": {"temp_resistance": 30},
+    "conflicts_with": ["heat_sensitive"],
+    "available": true
+  },
+  "thin_blooded": {
+    "id": "thin_blooded",
+    "name": "Thin Blooded",
+    "description": "Cold temperatures affect you more severely than others. Bundle up!",
+    "cost": -2,
+    "category": "negative",
+    "effects": {"cold_vulnerability": 50},
+    "conflicts_with": ["cold_blooded"],
+    "available": true
+  },
+  "heat_sensitive": {
+    "id": "heat_sensitive",
+    "name": "Heat Sensitive",
+    "description": "You suffer more from hot temperatures than most people.",
+    "cost": -2,
+    "category": "negative",
+    "effects": {"heat_vulnerability": 50},
+    "conflicts_with": ["thick_skinned"],
+    "available": true
+  },
+
+  "night_vision": {
+    "id": "night_vision",
+    "name": "Night Vision",
+    "description": "Your eyes are adapted to darkness. You can see clearly even in unlit rooms.",
+    "cost": 3,
+    "category": "positive",
+    "effects": {"dark_vision": 1},
+    "conflicts_with": ["light_sensitive"],
+    "available": true
+  },
+  "dark_adapted": {
+    "id": "dark_adapted",
+    "name": "Dark Adapted",
+    "description": "You function better in dim lighting conditions than most.",
+    "cost": 2,
+    "category": "positive",
+    "effects": {"low_light_bonus": 30},
+    "conflicts_with": ["night_blind"],
+    "available": true
+  },
+  "light_sensitive": {
+    "id": "light_sensitive",
+    "name": "Light Sensitive",
+    "description": "Bright daylight is uncomfortable for you, impairing your abilities.",
+    "cost": -2,
+    "category": "negative",
+    "effects": {"bright_light_penalty": 30},
+    "conflicts_with": ["night_vision"],
+    "available": true
+  },
+  "night_blind": {
+    "id": "night_blind",
+    "name": "Night Blind",
+    "description": "You have difficulty seeing in darkness, suffering penalties in unlit areas.",
+    "cost": -1,
+    "category": "negative",
+    "effects": {"dark_penalty": 50},
+    "conflicts_with": ["dark_adapted"],
+    "available": true
+  },
+
+  "blindness": {
+    "id": "blindness",
+    "name": "Blindness",
+    "description": "You cannot see. Room descriptions and entity details are hidden from you.",
+    "cost": -5,
+    "category": "negative",
+    "effects": {"blind": 1},
+    "conflicts_with": ["night_vision", "dark_adapted"],
+    "available": true
+  },
+
+  "endurance": {
+    "id": "endurance",
+    "name": "Endurance",
+    "description": "Your body uses energy efficiently. Walking consumes less stamina than normal.",
+    "cost": 3,
+    "category": "positive",
+    "effects": {"stamina_use": -50},
+    "conflicts_with": ["exhaustion_prone"],
+    "available": true
+  },
+  "quick_recovery": {
+    "id": "quick_recovery",
+    "name": "Quick Recovery",
+    "description": "You recover stamina faster than others, bouncing back quickly from exertion.",
+    "cost": 3,
+    "category": "positive",
+    "effects": {"stamina_regen": 50},
+    "conflicts_with": ["slow_recovery"],
+    "available": true
+  },
+  "marathoner": {
+    "id": "marathoner",
+    "name": "Marathoner",
+    "description": "Years of training have given you exceptional stamina. You use less and recover more.",
+    "cost": 5,
+    "category": "positive",
+    "effects": {"stamina_use": -25, "stamina_regen": 25},
+    "conflicts_with": ["exhaustion_prone", "slow_recovery"],
+    "available": true
+  },
+  "light_footed": {
+    "id": "light_footed",
+    "name": "Light Footed",
+    "description": "You move with unusual grace. Difficult terrain is less taxing for you.",
+    "cost": 2,
+    "category": "positive",
+    "effects": {"difficult_terrain_reduction": 1},
+    "conflicts_with": ["clumsy"],
+    "available": true
+  },
+  "exhaustion_prone": {
+    "id": "exhaustion_prone",
+    "name": "Exhaustion Prone",
+    "description": "Physical activity tires you quickly. Walking consumes more stamina.",
+    "cost": -2,
+    "category": "negative",
+    "effects": {"stamina_use": 50},
+    "conflicts_with": ["endurance", "marathoner"],
+    "available": true
+  },
+  "slow_recovery": {
+    "id": "slow_recovery",
+    "name": "Slow Recovery",
+    "description": "Your body takes longer to recover from exertion. Stamina regenerates slowly.",
+    "cost": -2,
+    "category": "negative",
+    "effects": {"stamina_regen": -50},
+    "conflicts_with": ["quick_recovery", "marathoner"],
+    "available": true
+  },
+  "clumsy": {
+    "id": "clumsy",
+    "name": "Clumsy",
+    "description": "You struggle with rough terrain, expending extra effort to navigate obstacles.",
+    "cost": -1,
+    "category": "negative",
+    "effects": {"difficult_terrain_extra": 1},
+    "conflicts_with": ["light_footed"],
+    "available": true
+  },
+
+  "deep_lungs": {
+    "id": "deep_lungs",
+    "name": "Deep Lungs",
+    "description": "Your lungs hold far more air than normal, allowing you to stay underwater much longer before needing to breathe.",
+    "cost": 3,
+    "category": "positive",
+    "effects": {"breath_capacity": 50, "breath_drain": -30},
+    "conflicts_with": ["shallow_breather"],
+    "available": true
+  },
+  "aquatic_heritage": {
+    "id": "aquatic_heritage",
+    "name": "Aquatic Heritage",
+    "description": "Something in your bloodline grants an affinity for water. You recover breath rapidly after surfacing.",
+    "cost": 2,
+    "category": "positive",
+    "effects": {"breath_recovery": 50},
+    "conflicts_with": ["hydrophobic"],
+    "available": true
+  },
+  "iron_lungs": {
+    "id": "iron_lungs",
+    "name": "Iron Lungs",
+    "description": "Your extraordinary respiratory system resists the crushing pressure of deep water. You hold breath longer, drain slower, and take less drowning damage.",
+    "cost": 5,
+    "category": "positive",
+    "effects": {"breath_capacity": 30, "breath_drain": -20, "drowning_damage": -50},
+    "conflicts_with": ["shallow_breather", "hydrophobic"],
+    "available": true
+  },
+  "shallow_breather": {
+    "id": "shallow_breather",
+    "name": "Shallow Breather",
+    "description": "Your lungs are small and inefficient. You run out of breath faster than most when submerged.",
+    "cost": -3,
+    "category": "negative",
+    "effects": {"breath_drain": 30},
+    "conflicts_with": ["deep_lungs", "iron_lungs"],
+    "available": true
+  },
+  "hydrophobic": {
+    "id": "hydrophobic",
+    "name": "Hydrophobic",
+    "description": "Water terrifies you. Submersion causes you to panic, draining breath faster, recovering slower, and taking more drowning damage.",
+    "cost": -5,
+    "category": "negative",
+    "effects": {"breath_drain": 15, "breath_recovery": -25, "drowning_damage": 25},
+    "conflicts_with": ["aquatic_heritage", "iron_lungs"],
+    "available": true
+  },
+
+  "venom_ward": {
+    "id": "venom_ward",
+    "name": "Venom Ward",
+    "description": "Your body naturally neutralizes toxins. Poison effects are significantly reduced.",
+    "cost": 3,
+    "category": "positive",
+    "effects": {"poison_resistance": 50},
+    "conflicts_with": ["weak_constitution"],
+    "available": true
+  },
+  "toxin_tolerant": {
+    "id": "toxin_tolerant",
+    "name": "Toxin Tolerant",
+    "description": "Years of exposure have built up a moderate tolerance to poisons and venoms.",
+    "cost": 2,
+    "category": "positive",
+    "effects": {"poison_resistance": 30},
+    "conflicts_with": ["weak_constitution"],
+    "available": true
+  },
+  "weak_constitution": {
+    "id": "weak_constitution",
+    "name": "Weak Constitution",
+    "description": "Your body is particularly susceptible to toxins. Poisons hit you harder than most.",
+    "cost": -3,
+    "category": "negative",
+    "effects": {"poison_vulnerability": 50},
+    "conflicts_with": ["venom_ward", "toxin_tolerant"],
+    "available": true
+  },
+  "hemophiliac": {
+    "id": "hemophiliac",
+    "name": "Hemophiliac",
+    "description": "Your blood does not clot properly, making you bleed more freely and leaving you vulnerable to blood-borne toxins.",
+    "cost": -3,
+    "category": "negative",
+    "effects": {"bleed_vulnerability": 30, "poison_vulnerability": 20},
+    "conflicts_with": ["fast_healer"],
+    "available": true
+  },
+
+  "mana_well": {
+    "id": "mana_well",
+    "name": "Mana Well",
+    "description": "A deep reservoir of arcane energy resides within you, granting a larger mana pool.",
+    "cost": 3,
+    "category": "positive",
+    "effects": {"max_mana_bonus": 30},
+    "conflicts_with": ["mana_stunted"],
+    "available": true
+  },
+  "focused_mind": {
+    "id": "focused_mind",
+    "name": "Focused Mind",
+    "description": "Your mental discipline allows you to channel magical energy more efficiently, recovering mana faster.",
+    "cost": 2,
+    "category": "positive",
+    "effects": {"mana_regen_bonus": 50},
+    "conflicts_with": ["scattered_thoughts"],
+    "available": true
+  },
+  "spell_prodigy": {
+    "id": "spell_prodigy",
+    "name": "Spell Prodigy",
+    "description": "You have a natural gift for the arcane arts. Your spells strike with greater force.",
+    "cost": 3,
+    "category": "positive",
+    "effects": {"spell_damage_bonus": 25},
+    "conflicts_with": ["arcane_dampening"],
+    "available": true
+  },
+  "arcane_savant": {
+    "id": "arcane_savant",
+    "name": "Arcane Savant",
+    "description": "A lifetime of magical study has made you exceptionally efficient. Your spells cost less mana and recover faster.",
+    "cost": 5,
+    "category": "positive",
+    "effects": {"spell_cost_reduction": 20, "spell_cooldown_reduction": 20},
+    "conflicts_with": ["mana_stunted", "arcane_dampening"],
+    "available": true
+  },
+  "mana_stunted": {
+    "id": "mana_stunted",
+    "name": "Mana Stunted",
+    "description": "Your connection to arcane energy is weak. You have a noticeably smaller mana pool.",
+    "cost": -3,
+    "category": "negative",
+    "effects": {"max_mana_bonus": -25},
+    "conflicts_with": ["mana_well", "arcane_savant"],
+    "available": true
+  },
+  "scattered_thoughts": {
+    "id": "scattered_thoughts",
+    "name": "Scattered Thoughts",
+    "description": "Your mind wanders easily, making it difficult to focus on channeling magical energy. Mana regeneration is sluggish.",
+    "cost": -2,
+    "category": "negative",
+    "effects": {"mana_regen_bonus": -50},
+    "conflicts_with": ["focused_mind"],
+    "available": true
+  },
+  "arcane_dampening": {
+    "id": "arcane_dampening",
+    "name": "Arcane Dampening",
+    "description": "Something in your nature suppresses magical power. Your spells deal less damage and cost more to cast.",
+    "cost": -5,
+    "category": "negative",
+    "effects": {"spell_damage_bonus": -20, "spell_cost_increase": 15},
+    "conflicts_with": ["spell_prodigy", "arcane_savant"],
+    "available": true
+  },
+
+  "keen_edge": {
+    "id": "keen_edge",
+    "name": "Keen Edge",
+    "description": "You have a natural instinct for finding weak points. Your attacks land critical hits more often.",
+    "cost": 3,
+    "category": "positive",
+    "effects": {"crit_chance_bonus": 5},
+    "conflicts_with": ["dulled_reflexes"],
+    "available": true
+  },
+  "iron_hide": {
+    "id": "iron_hide",
+    "name": "Iron Hide",
+    "description": "Your skin is unusually tough, providing natural resistance to physical blows.",
+    "cost": 2,
+    "category": "positive",
+    "effects": {"physical_damage_reduction": 10},
+    "conflicts_with": ["glass_jaw"],
+    "available": true
+  },
+  "fast_healer": {
+    "id": "fast_healer",
+    "name": "Fast Healer",
+    "description": "Your body mends itself with remarkable speed. Wounds and injuries recover much faster.",
+    "cost": 3,
+    "category": "positive",
+    "effects": {"wound_recovery": 50},
+    "conflicts_with": ["hemophiliac", "glass_jaw"],
+    "available": true
+  },
+  "dulled_reflexes": {
+    "id": "dulled_reflexes",
+    "name": "Dulled Reflexes",
+    "description": "Your reactions are slower than average, making it harder to land precise, critical strikes.",
+    "cost": -3,
+    "category": "negative",
+    "effects": {"crit_chance_bonus": -5},
+    "conflicts_with": ["keen_edge"],
+    "available": true
+  },
+  "glass_jaw": {
+    "id": "glass_jaw",
+    "name": "Glass Jaw",
+    "description": "You bruise easily and your body is slow to recover from physical trauma. You take more damage and heal wounds slower.",
+    "cost": -5,
+    "category": "negative",
+    "effects": {"physical_damage_reduction": -15, "wound_recovery": -25},
+    "conflicts_with": ["iron_hide", "fast_healer"],
+    "available": true
+  },
+
+  "efficient_metabolism": {
+    "id": "efficient_metabolism",
+    "name": "Efficient Metabolism",
+    "description": "Your body extracts every bit of nutrition from food. You get hungry much slower than others.",
+    "cost": 3,
+    "category": "positive",
+    "effects": {"hunger_rate": -50},
+    "conflicts_with": ["ravenous"],
+    "available": true
+  },
+  "iron_stomach": {
+    "id": "iron_stomach",
+    "name": "Iron Stomach",
+    "description": "You can eat almost anything without ill effect. Spoiled or questionable food rarely makes you sick.",
+    "cost": 2,
+    "category": "positive",
+    "effects": {"food_sickness_resistance": 75},
+    "conflicts_with": ["ravenous"],
+    "available": true
+  },
+  "ravenous": {
+    "id": "ravenous",
+    "name": "Ravenous",
+    "description": "Your metabolism burns through food at an alarming rate. You are constantly hungry and more prone to food sickness.",
+    "cost": -5,
+    "category": "negative",
+    "effects": {"hunger_rate": 75, "food_sickness_resistance": -25},
+    "conflicts_with": ["efficient_metabolism", "iron_stomach"],
+    "available": true
+  },
+
+  "vigorous": {
+    "id": "vigorous",
+    "name": "Vigorous",
+    "description": "You are blessed with exceptional vitality. You have more health and recover from injuries faster.",
+    "cost": 3,
+    "category": "positive",
+    "effects": {"max_hp_bonus": 15, "hp_regen_bonus": 25},
+    "conflicts_with": ["frail", "sickly"],
+    "available": true
+  },
+  "tough": {
+    "id": "tough",
+    "name": "Tough",
+    "description": "Your body can absorb punishment that would fell others. You have a significantly larger health pool.",
+    "cost": 2,
+    "category": "positive",
+    "effects": {"max_hp_bonus": 20},
+    "conflicts_with": ["frail"],
+    "available": true
+  },
+  "frail": {
+    "id": "frail",
+    "name": "Frail",
+    "description": "Your body is weak and fragile. You have less health and recover from wounds more slowly.",
+    "cost": -3,
+    "category": "negative",
+    "effects": {"max_hp_bonus": -20, "hp_regen_bonus": -25},
+    "conflicts_with": ["vigorous", "tough"],
+    "available": true
+  },
+  "sickly": {
+    "id": "sickly",
+    "name": "Sickly",
+    "description": "You are prone to illness and have a naturally weaker constitution. Less health and more susceptible to disease.",
+    "cost": -2,
+    "category": "negative",
+    "effects": {"max_hp_bonus": -10, "illness_vulnerability": 50},
+    "conflicts_with": ["vigorous", "weatherproof"],
+    "available": true
+  },
+
+  "weatherproof": {
+    "id": "weatherproof",
+    "name": "Weatherproof",
+    "description": "Neither rain nor sleet nor snow can keep you down. You resist illness and recover from being drenched quickly.",
+    "cost": 3,
+    "category": "positive",
+    "effects": {"illness_resistance": 50, "wet_recovery": 50},
+    "conflicts_with": ["sickly", "exposure_prone", "delicate"],
+    "available": true
+  },
+  "hardy": {
+    "id": "hardy",
+    "name": "Hardy",
+    "description": "You endure harsh conditions better than most, shrugging off the effects of prolonged exposure.",
+    "cost": 2,
+    "category": "positive",
+    "effects": {"exposure_resistance": 25},
+    "conflicts_with": ["exposure_prone"],
+    "available": true
+  },
+  "exposure_prone": {
+    "id": "exposure_prone",
+    "name": "Exposure Prone",
+    "description": "Your body struggles to cope with environmental extremes. Prolonged exposure affects you more severely.",
+    "cost": -2,
+    "category": "negative",
+    "effects": {"exposure_resistance": -25},
+    "conflicts_with": ["weatherproof", "hardy"],
+    "available": true
+  },
+  "delicate": {
+    "id": "delicate",
+    "name": "Delicate",
+    "description": "Your immune system is fragile. You catch illness easily and take longer to dry off when soaked.",
+    "cost": -3,
+    "category": "negative",
+    "effects": {"illness_vulnerability": 50, "wet_recovery": -25},
+    "conflicts_with": ["weatherproof"],
+    "available": true
+  },
+
+  "quick_study": {
+    "id": "quick_study",
+    "name": "Quick Study",
+    "description": "You pick up new skills faster than most, gaining additional experience from practice and training.",
+    "cost": 3,
+    "category": "positive",
+    "effects": {"skill_xp_bonus": 25},
+    "conflicts_with": ["slow_learner"],
+    "available": true
+  },
+  "prodigy": {
+    "id": "prodigy",
+    "name": "Prodigy",
+    "description": "You are a natural talent with an extraordinary capacity for learning. Skill experience gains are greatly increased.",
+    "cost": 5,
+    "category": "positive",
+    "effects": {"skill_xp_bonus": 50},
+    "conflicts_with": ["slow_learner"],
+    "available": true
+  },
+  "slow_learner": {
+    "id": "slow_learner",
+    "name": "Slow Learner",
+    "description": "New concepts don't come easily to you. It takes significantly more practice to improve your skills.",
+    "cost": -5,
+    "category": "negative",
+    "effects": {"skill_xp_bonus": -35},
+    "conflicts_with": ["quick_study", "prodigy"],
+    "available": true
+  },
+
+  "shadow_born": {
+    "id": "shadow_born",
+    "name": "Shadow Born",
+    "description": "Darkness clings to you like a cloak. You are naturally adept at moving unseen and unheard.",
+    "cost": 3,
+    "category": "positive",
+    "effects": {"stealth_bonus": 15},
+    "conflicts_with": ["conspicuous"],
+    "available": true
+  },
+  "silent_step": {
+    "id": "silent_step",
+    "name": "Silent Step",
+    "description": "Your footfalls make barely a whisper. You move with a quiet grace that aids in staying hidden.",
+    "cost": 2,
+    "category": "positive",
+    "effects": {"stealth_bonus": 10},
+    "conflicts_with": ["heavy_footed"],
+    "available": true
+  },
+  "conspicuous": {
+    "id": "conspicuous",
+    "name": "Conspicuous",
+    "description": "Something about you draws attention. Whether it's your build, your manner, or just bad luck, stealth does not come naturally.",
+    "cost": -3,
+    "category": "negative",
+    "effects": {"stealth_bonus": -15},
+    "conflicts_with": ["shadow_born"],
+    "available": true
+  },
+  "heavy_footed": {
+    "id": "heavy_footed",
+    "name": "Heavy Footed",
+    "description": "You move with all the subtlety of a charging bull. Your footsteps echo and your presence is hard to conceal.",
+    "cost": -2,
+    "category": "negative",
+    "effects": {"stealth_bonus": -10},
+    "conflicts_with": ["silent_step"],
+    "available": true
+  }
+}

@@ -1,0 +1,750 @@
+{
+  "login": {
+    "access": "guest",
+    "description": "Log in to an existing character"
+  },
+  "create": {
+    "access": "guest",
+    "description": "Create a new character"
+  },
+  "quit": {
+    "access": "any",
+    "description": "Disconnect from the server"
+  },
+  "help": {
+    "access": "any",
+    "description": "List available commands"
+  },
+  "logout": {
+    "access": "user",
+    "description": "Log out and return to login screen"
+  },
+  "look": {
+    "access": "user",
+    "description": "Look at your surroundings or a direction"
+  },
+  "exits": {
+    "access": "user",
+    "description": "List all exits and their destinations"
+  },
+  "go": {
+    "access": "user",
+    "description": "Move in a direction (north, east, south, west, up, down)"
+  },
+  "say": {
+    "access": "user",
+    "description": "Say something to others in the room"
+  },
+  "who": {
+    "access": "any",
+    "description": "List all online players"
+  },
+  "weather": {
+    "access": "user",
+    "description": "Check the current time, weather, and temperature"
+  },
+  "alias": {
+    "access": "user",
+    "description": "Create or list command aliases"
+  },
+  "unalias": {
+    "access": "user",
+    "description": "Remove a command alias"
+  },
+  "emote": {
+    "access": "user",
+    "description": "Perform an action visible to others in the room"
+  },
+  "tell": {
+    "access": "user",
+    "description": "Send a private message to another player"
+  },
+  "time": {
+    "access": "user",
+    "description": "Check the time by looking at the sky"
+  },
+  "whisper": {
+    "access": "user",
+    "description": "Whisper to a player in the same room"
+  },
+  "shout": {
+    "access": "user",
+    "description": "Shout a message that carries to adjacent rooms"
+  },
+  "dig": {
+    "access": "builder",
+    "description": "Create a new room in a direction"
+  },
+  "link": {
+    "access": "builder",
+    "description": "Link an exit to an existing room"
+  },
+  "unlink": {
+    "access": "builder",
+    "description": "Remove an exit from the current room"
+  },
+  "redit": {
+    "access": "builder",
+    "description": "Edit room properties"
+  },
+  "rlist": {
+    "access": "builder",
+    "description": "List all rooms in the database"
+  },
+  "rgoto": {
+    "access": "builder",
+    "description": "Teleport to a room by ID"
+  },
+  "rdelete": {
+    "access": "builder",
+    "description": "Delete a room from the database"
+  },
+  "rfind": {
+    "access": "builder",
+    "description": "Search for rooms by keyword"
+  },
+  "roomflags": {
+    "access": "builder",
+    "description": "Toggle room flags and vnum display (see also: set roomflags)"
+  },
+  "alist": {
+    "access": "builder",
+    "description": "List all areas"
+  },
+  "acreate": {
+    "access": "builder",
+    "description": "Create a new area"
+  },
+  "aedit": {
+    "access": "builder",
+    "description": "Edit area properties"
+  },
+  "adelete": {
+    "access": "builder",
+    "description": "Delete an area"
+  },
+  "setbuilder": {
+    "access": "user",
+    "description": "Manage builder access (behavior depends on server settings)"
+  },
+  "setadmin": {
+    "access": "admin",
+    "description": "Grant or revoke admin access (admin only)"
+  },
+  "admin": {
+    "access": "admin",
+    "description": "Admin commands (kick, broadcast, shutdown, etc.)"
+  },
+  "mxp": {
+    "access": "any",
+    "description": "Toggle MXP (clickable links) support (see also: set mxp)"
+  },
+  "get": {
+    "access": "user",
+    "description": "Pick up an item or gold from the room or container"
+  },
+  "drop": {
+    "access": "user",
+    "description": "Drop an item or gold from your inventory/balance"
+  },
+  "give": {
+    "access": "user",
+    "description": "Give an item or gold to another player"
+  },
+  "gold": {
+    "access": "user",
+    "description": "Check your gold on hand and bank savings"
+  },
+  "inventory": {
+    "access": "user",
+    "description": "List items you are carrying"
+  },
+  "inv": {
+    "access": "user",
+    "description": "Alias for inventory"
+  },
+  "equipment": {
+    "access": "user",
+    "description": "Show what you are wearing"
+  },
+  "eq": {
+    "access": "user",
+    "description": "Alias for equipment"
+  },
+  "wear": {
+    "access": "user",
+    "description": "Equip an item from your inventory"
+  },
+  "remove": {
+    "access": "user",
+    "description": "Remove an equipped item"
+  },
+  "examine": {
+    "access": "user",
+    "description": "Examine an item in detail"
+  },
+  "oedit": {
+    "access": "builder",
+    "description": "Create or edit items (object editor)"
+  },
+  "ilist": {
+    "access": "builder",
+    "description": "List all items in the database"
+  },
+  "ifind": {
+    "access": "builder",
+    "description": "Search for items by keyword"
+  },
+  "idelete": {
+    "access": "builder",
+    "description": "Delete an item from the database"
+  },
+  "open": {
+    "access": "user",
+    "description": "Open a container"
+  },
+  "close": {
+    "access": "user",
+    "description": "Close a container"
+  },
+  "color": {
+    "access": "any",
+    "description": "Toggle ANSI color display (see also: set color)"
+  },
+  "lock": {
+    "access": "user",
+    "description": "Lock a container with a key"
+  },
+  "unlock": {
+    "access": "user",
+    "description": "Unlock a container with a key"
+  },
+  "put": {
+    "access": "user",
+    "description": "Put an item or gold into a container"
+  },
+  "drink": {
+    "access": "user",
+    "description": "Drink from a liquid container"
+  },
+  "fill": {
+    "access": "user",
+    "description": "Fill a liquid container"
+  },
+  "pour": {
+    "access": "user",
+    "description": "Pour out a liquid container"
+  },
+  "password": {
+    "access": "user",
+    "description": "Change your password"
+  },
+  "eat": {
+    "access": "user",
+    "description": "Eat a food item"
+  },
+  "medit": {
+    "access": "builder",
+    "description": "Create or edit mobiles/NPCs"
+  },
+  "mlist": {
+    "access": "builder",
+    "description": "List all mobiles in the database"
+  },
+  "mfind": {
+    "access": "builder",
+    "description": "Search for mobiles by keyword"
+  },
+  "mdelete": {
+    "access": "builder",
+    "description": "Delete a mobile from the database"
+  },
+  "mrefresh": {
+    "access": "builder",
+    "description": "Refresh mobile(s) from prototype"
+  },
+  "mspawn": {
+    "access": "builder",
+    "description": "Spawn a mobile from a prototype by vnum"
+  },
+  "ospawn": {
+    "access": "builder",
+    "description": "Spawn an item from a prototype by vnum"
+  },
+  "gspawn": {
+    "access": "builder",
+    "description": "Spawn gold in a room or container"
+  },
+  "spedit": {
+    "access": "builder",
+    "description": "Create and manage spawn points in an area"
+  },
+  "bpredit": {
+    "access": "builder",
+    "description": "Create and manage shop buy presets"
+  },
+  "areset": {
+    "access": "builder",
+    "description": "Manually reset all spawn points in an area"
+  },
+  "buildmode": {
+    "access": "builder",
+    "description": "Toggle build mode (bypass restrictions in your areas)"
+  },
+  "list": {
+    "access": "user",
+    "description": "Show items for sale at a shopkeeper"
+  },
+  "buy": {
+    "access": "user",
+    "description": "Buy an item from a shopkeeper"
+  },
+  "sell": {
+    "access": "user",
+    "description": "Sell an item to a shopkeeper"
+  },
+  "appraise": {
+    "access": "user",
+    "description": "Ask a shopkeeper what they'll pay for an item"
+  },
+  "compare": {
+    "access": "user",
+    "description": "Compare an item to your currently equipped item in the same slot"
+  },
+  "identify": {
+    "access": "user",
+    "description": "Ask a shopkeeper to fully identify an item (costs gold)"
+  },
+  "junk": {
+    "access": "user",
+    "description": "Permanently destroy an item from your inventory"
+  },
+  "describe": {
+    "access": "user",
+    "description": "Change your character's short description"
+  },
+  "status": {
+    "access": "user",
+    "description": "Show your character stats including gold balance"
+  },
+  "traits": {
+    "access": "user",
+    "description": "Spend remaining trait points or view your traits"
+  },
+  "racial": {
+    "access": "user",
+    "description": "Use racial active abilities"
+  },
+  "pray": {
+    "access": "user",
+    "description": "Send a message to online administrators"
+  },
+  "prompt": {
+    "access": "user",
+    "description": "Configure your command prompt display"
+  },
+  "set": {
+    "access": "any",
+    "description": "Manage personal settings (mxp, color, roomflags)"
+  },
+  "sit": {
+    "access": "user",
+    "description": "Sit down to rest (restores stamina faster)"
+  },
+  "rest": {
+    "access": "user",
+    "description": "Sit down to rest (alias for sit)"
+  },
+  "sleep": {
+    "access": "user",
+    "description": "Go to sleep (fastest stamina and HP regeneration)"
+  },
+  "stand": {
+    "access": "user",
+    "description": "Stand up from sitting or sleeping"
+  },
+  "wake": {
+    "access": "user",
+    "description": "Wake up from sleeping"
+  },
+  "skills": {
+    "access": "user",
+    "description": "View your skill levels and progress"
+  },
+  "cast": {
+    "access": "user",
+    "description": "Cast a spell on a target"
+  },
+  "spells": {
+    "access": "user",
+    "description": "View available spells"
+  },
+  "recipes": {
+    "access": "user",
+    "description": "List known recipes for a skill"
+  },
+  "cook": {
+    "access": "user",
+    "description": "Prepare food using the cooking skill"
+  },
+  "craft": {
+    "access": "user",
+    "description": "Create items using the crafting skill"
+  },
+  "read": {
+    "access": "user",
+    "description": "Read an item (may learn recipes from books)"
+  },
+  "fish": {
+    "access": "user",
+    "description": "Fish in water using a fishing rod"
+  },
+  "forage": {
+    "access": "user",
+    "description": "Search for items in the area"
+  },
+  "wield": {
+    "access": "user",
+    "description": "Wield a weapon in your main hand"
+  },
+  "rcopy": {
+    "access": "builder",
+    "description": "Copy room properties from another room"
+  },
+  "recedit": {
+    "access": "builder",
+    "description": "Create or edit recipes (recipe editor)"
+  },
+  "reclist": {
+    "access": "builder",
+    "description": "List all recipes in the database"
+  },
+  "recfind": {
+    "access": "builder",
+    "description": "Search for recipes by keyword"
+  },
+  "recdelete": {
+    "access": "builder",
+    "description": "Delete a recipe from the database"
+  },
+  "diagnose": {
+    "access": "user",
+    "description": "View medical status including wounds, conditions, and exposure"
+  },
+  "treat": {
+    "access": "user",
+    "description": "Treat wounds using medical supplies"
+  },
+  "stabilize": {
+    "access": "user",
+    "description": "Emergency stabilization to stop bleeding"
+  },
+  "revive": {
+    "access": "user",
+    "description": "Revive an unconscious player (requires medical skill 6+)"
+  },
+  "distress": {
+    "access": "user",
+    "description": "Send a distress call on the medical helpline"
+  },
+  "reel": {
+    "access": "user",
+    "description": "Reel in your fishing line when a fish bites"
+  },
+  "attack": {
+    "access": "user",
+    "description": "Attack a target to start combat"
+  },
+  "flee": {
+    "access": "user",
+    "description": "Flee from combat to a random exit"
+  },
+  "group": {
+    "access": "user",
+    "description": "Manage your adventuring group"
+  },
+  "ungroup": {
+    "access": "user",
+    "description": "Leave your current group"
+  },
+  "gtell": {
+    "access": "user",
+    "description": "Send a message to your group members"
+  },
+  "follow": {
+    "access": "user",
+    "description": "Follow another player"
+  },
+  "split": {
+    "access": "user",
+    "description": "Split gold evenly among group members"
+  },
+  "press": {
+    "access": "user",
+    "description": "Press buttons to call elevators or select floors"
+  },
+  "tedit": {
+    "access": "builder",
+    "description": "Create or edit transports (transport editor)"
+  },
+  "tlist": {
+    "access": "builder",
+    "description": "List all transports in the database"
+  },
+  "assist": {
+    "access": "user",
+    "description": "Join combat by attacking your ally's target"
+  },
+  "consider": {
+    "access": "user",
+    "description": "Gauge the difficulty of a mobile opponent"
+  },
+  "ask": {
+    "access": "user",
+    "description": "Ask a simulated NPC how they feel about someone: ask <mobile> about <other>"
+  },
+  "endlease": {
+    "access": "user",
+    "description": "Voluntarily end your property lease"
+  },
+  "enter": {
+    "access": "user",
+    "description": "Enter your rented property from the leasing office"
+  },
+  "escrow": {
+    "access": "user",
+    "description": "View and retrieve items from escrow storage"
+  },
+  "pdelete": {
+    "access": "builder",
+    "description": "Delete a property template and its rooms"
+  },
+  "pedit": {
+    "access": "builder",
+    "description": "Property template editor - create/edit rental property templates"
+  },
+  "pfind": {
+    "access": "builder",
+    "description": "Search property templates by vnum or name"
+  },
+  "plist": {
+    "access": "builder",
+    "description": "List all property templates"
+  },
+  "properties": {
+    "access": "user",
+    "description": "List available properties at a leasing agent"
+  },
+  "property": {
+    "access": "user",
+    "description": "View and manage your property settings"
+  },
+  "rent": {
+    "access": "user",
+    "description": "Rent a property from a leasing agent"
+  },
+  "tour": {
+    "access": "user",
+    "description": "Preview a property template before renting"
+  },
+  "upgrade": {
+    "access": "user",
+    "description": "Transfer to a new property in the same area"
+  },
+  "visit": {
+    "access": "user",
+    "description": "Visit a grouped player's property"
+  },
+  "mail": {
+    "access": "user",
+    "description": "Send and receive in-game mail"
+  },
+  "bank": {
+    "access": "user",
+    "description": "Banking - deposit, withdraw, check balance"
+  },
+  "shoot": {
+    "access": "user",
+    "description": "Fire a ranged weapon at a target"
+  },
+  "snipe": {
+    "access": "user",
+    "description": "Snipe a target in an adjacent room"
+  },
+  "ready": {
+    "access": "user",
+    "description": "Ready ammunition for ranged combat"
+  },
+  "reload": {
+    "access": "user",
+    "description": "Load ammunition into your ranged weapon"
+  },
+  "unload": {
+    "access": "user",
+    "description": "Eject loaded ammunition from your weapon"
+  },
+  "firemode": {
+    "access": "user",
+    "description": "Change fire mode (single/burst/auto)"
+  },
+  "attach": {
+    "access": "user",
+    "description": "Attach an item to a ranged weapon"
+  },
+  "detach": {
+    "access": "user",
+    "description": "Detach an item from a ranged weapon"
+  },
+  "schedule": {
+    "access": "user",
+    "description": "View an NPC's daily routine schedule"
+  },
+  "plant": {
+    "access": "user",
+    "description": "Plant a seed in the ground or a pot"
+  },
+  "water": {
+    "access": "user",
+    "description": "Water a plant"
+  },
+  "fertilize": {
+    "access": "user",
+    "description": "Apply fertilizer to a plant"
+  },
+  "planttreat": {
+    "access": "user",
+    "description": "Treat a plant infestation"
+  },
+  "harvest": {
+    "access": "user",
+    "description": "Harvest a mature plant"
+  },
+  "garden": {
+    "access": "user",
+    "description": "View status of plants in the room"
+  },
+  "uproot": {
+    "access": "user",
+    "description": "Remove a planted plant"
+  },
+  "plantedit": {
+    "access": "builder",
+    "description": "Plant prototype editor"
+  },
+  "sneak": {
+    "access": "user",
+    "description": "Toggle sneaking mode to move silently (stealth 1+)"
+  },
+  "hide": {
+    "access": "user",
+    "description": "Hide in the shadows of the current room (stealth 1+)"
+  },
+  "search": {
+    "access": "user",
+    "description": "Search the room for hidden characters and traps (tracking 1+)"
+  },
+  "steal": {
+    "access": "user",
+    "description": "Steal gold or items from a target (thievery 1+)"
+  },
+  "peek": {
+    "access": "user",
+    "description": "Peek at a target's inventory (thievery 1+)"
+  },
+  "pick": {
+    "access": "user",
+    "description": "Pick a lock on a door or container (thievery 2+)"
+  },
+  "track": {
+    "access": "user",
+    "description": "Search for tracks of a target in the current room (tracking 2+)"
+  },
+  "scout": {
+    "access": "user",
+    "description": "Scan adjacent rooms for occupants (stealth 2+)"
+  },
+  "covertracks": {
+    "access": "user",
+    "description": "Obscure your tracks in the current room (tracking 2+)"
+  },
+  "lore": {
+    "access": "user",
+    "description": "Study a creature's capabilities and weaknesses (tracking 2+)"
+  },
+  "camouflage": {
+    "access": "user",
+    "description": "Blend into wilderness terrain for enhanced concealment (tracking 3+)"
+  },
+  "backstab": {
+    "access": "user",
+    "description": "Attack from hiding with a devastating strike (stealth 3+)"
+  },
+  "circle": {
+    "access": "user",
+    "description": "Flank your opponent mid-combat for a bonus attack (stealth 4+)"
+  },
+  "envenom": {
+    "access": "user",
+    "description": "Apply poison from a vial to your wielded weapon (thievery 4+)"
+  },
+  "settrap": {
+    "access": "user",
+    "description": "Place a trap in the room using a trap kit (thievery 3+)"
+  },
+  "disarm": {
+    "access": "user",
+    "description": "Attempt to disarm a visible trap (thievery 3+)"
+  },
+  "hunt": {
+    "access": "user",
+    "description": "Automatically track and follow a target (tracking 4+)"
+  },
+  "butcher": {
+    "access": "user",
+    "description": "Butcher a corpse for meat, pelts, and bones (tracking 2+)"
+  },
+  "disguise": {
+    "access": "user",
+    "description": "Assume a false identity using a disguise kit (stealth 5+)"
+  },
+  "undisguise": {
+    "access": "user",
+    "description": "Remove your disguise and reveal your true identity"
+  },
+  "orefresh": {
+    "access": "builder",
+    "description": "Refresh item(s) from prototype"
+  },
+  "bind": {
+    "access": "user",
+    "description": "Bind your spawn point to the current room"
+  },
+  "recall": {
+    "access": "user",
+    "description": "Teleport back to your spawn point"
+  },
+  "retreat": {
+    "access": "user",
+    "description": "Retreat from combat to create distance"
+  },
+  "advance": {
+    "access": "user",
+    "description": "Advance toward combat target to close distance"
+  },
+  "motd": {
+    "access": "admin",
+    "description": "Manage the Message of the Day"
+  },
+  "bug": {
+    "access": "user",
+    "description": "Report a bug"
+  },
+  "bugs": {
+    "access": "admin",
+    "description": "Manage bug reports"
+  },
+  "summon": {
+    "access": "admin",
+    "description": "Summon a mobile or player to your location or a room"
+  }
+}

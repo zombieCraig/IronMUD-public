@@ -1,0 +1,12 @@
+{
+  "races": [
+    {"name": "Human", "description": "Versatile and adaptable, humans thrive in any environment."},
+    {"name": "Elf", "description": "Graceful and long-lived, with an affinity for nature and magic."},
+    {"name": "Dwarf", "description": "Stout and sturdy, renowned for craftsmanship and resilience."},
+    {"name": "Halfling", "description": "Small and nimble, with a knack for stealth and good fortune."},
+    {"name": "Orc", "description": "Powerful and fierce, with unmatched strength and endurance."},
+    {"name": "Gnome", "description": "Clever and curious, with an inventive spirit and sharp wit."},
+    {"name": "Half-Elf", "description": "Blending human adaptability with elven grace."},
+    {"name": "Dragonborn", "description": "Proud and draconic, bearing the blood of ancient dragons."}
+  ]
+}

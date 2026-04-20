@@ -1,0 +1,12 @@
+{
+  "races": [
+    {"name": "Human", "description": "Versatile and adaptable."},
+    {"name": "Android", "description": "Synthetic humanoid with enhanced processing."},
+    {"name": "Cyborg", "description": "Human-machine hybrid with cybernetic enhancements."},
+    {"name": "Mutant", "description": "Genetically altered with unique abilities."},
+    {"name": "Clone", "description": "Artificially created duplicate."},
+    {"name": "Alien", "description": "Extraterrestrial being of unknown origin."},
+    {"name": "AI Construct", "description": "Pure artificial intelligence in a physical form."},
+    {"name": "Hybrid", "description": "Mixed heritage of multiple species."}
+  ]
+}
