@@ -3,6 +3,8 @@
 //! Command-line tool for managing IronMUD users and settings without
 //! requiring the server to be running.
 
+#![recursion_limit = "512"]
+
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand};
 use ironmud::control::{ControlCommand, ControlResponse, default_socket_path};

@@ -1,3 +1,5 @@
+#![recursion_limit = "512"]
+
 use anyhow::Result;
 use ironmud::{World, load_command_metadata, load_game_data, load_scripts, run_server, script, watch_scripts};
 use rhai::Engine;
