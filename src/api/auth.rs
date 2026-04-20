@@ -1,14 +1,14 @@
 //! API authentication middleware and permission helpers
 
-use axum::{
-    extract::{State, Request},
-    middleware::Next,
-    response::Response,
-    http::header::AUTHORIZATION,
-};
-use std::sync::Arc;
 use super::{ApiState, error::ApiError};
 use crate::{ApiKey, AreaData, AreaPermission};
+use axum::{
+    extract::{Request, State},
+    http::header::AUTHORIZATION,
+    middleware::Next,
+    response::Response,
+};
+use std::sync::Arc;
 
 /// Authenticated user extracted from the API key
 #[derive(Clone)]
@@ -22,7 +22,8 @@ pub async fn auth_middleware(
     mut request: Request,
     next: Next,
 ) -> Result<Response, ApiError> {
-    let auth_header = request.headers()
+    let auth_header = request
+        .headers()
         .get(AUTHORIZATION)
         .and_then(|h| h.to_str().ok())
         .ok_or(ApiError::Unauthorized)?;
@@ -34,7 +35,9 @@ pub async fn auth_middleware(
     let token = &auth_header[7..];
 
     // Look up the API key by verifying against stored hashes
-    let api_key = state.db.find_api_key_by_raw_key(token)
+    let api_key = state
+        .db
+        .find_api_key_by_raw_key(token)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or(ApiError::Unauthorized)?;
 
@@ -77,13 +80,13 @@ pub fn can_edit_area(user: &AuthenticatedUser, area: &AreaData) -> bool {
 
     match area.permission_level {
         AreaPermission::AllBuilders => true,
-        AreaPermission::OwnerOnly => {
-            area.owner.as_ref() == Some(character_name)
-        }
+        AreaPermission::OwnerOnly => area.owner.as_ref() == Some(character_name),
         AreaPermission::Trusted => {
-            area.owner.as_ref() == Some(character_name) ||
-            area.trusted_builders.iter()
-                .any(|b| b.to_lowercase() == character_name.to_lowercase())
+            area.owner.as_ref() == Some(character_name)
+                || area
+                    .trusted_builders
+                    .iter()
+                    .any(|b| b.to_lowercase() == character_name.to_lowercase())
         }
     }
 }

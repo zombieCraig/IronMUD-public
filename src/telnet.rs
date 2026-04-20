@@ -8,48 +8,48 @@
 use unicode_width::UnicodeWidthStr;
 
 // Telnet protocol constants (RFC 854)
-pub const IAC: u8 = 255;   // Interpret As Command
-pub const DONT: u8 = 254;  // Refuse to perform option
-pub const DO: u8 = 253;    // Request to perform option
-pub const WONT: u8 = 252;  // Refuse to perform option
-pub const WILL: u8 = 251;  // Agree to perform option
-pub const SB: u8 = 250;    // Subnegotiation Begin
-pub const GA: u8 = 249;    // Go Ahead
-pub const EL: u8 = 248;    // Erase Line
-pub const EC: u8 = 247;    // Erase Character
-pub const AYT: u8 = 246;   // Are You There
-pub const AO: u8 = 245;    // Abort Output
-pub const IP: u8 = 244;    // Interrupt Process
-pub const BRK: u8 = 243;   // Break
-pub const DM: u8 = 242;    // Data Mark
-pub const NOP: u8 = 241;   // No Operation
-pub const SE: u8 = 240;    // Subnegotiation End
+pub const IAC: u8 = 255; // Interpret As Command
+pub const DONT: u8 = 254; // Refuse to perform option
+pub const DO: u8 = 253; // Request to perform option
+pub const WONT: u8 = 252; // Refuse to perform option
+pub const WILL: u8 = 251; // Agree to perform option
+pub const SB: u8 = 250; // Subnegotiation Begin
+pub const GA: u8 = 249; // Go Ahead
+pub const EL: u8 = 248; // Erase Line
+pub const EC: u8 = 247; // Erase Character
+pub const AYT: u8 = 246; // Are You There
+pub const AO: u8 = 245; // Abort Output
+pub const IP: u8 = 244; // Interrupt Process
+pub const BRK: u8 = 243; // Break
+pub const DM: u8 = 242; // Data Mark
+pub const NOP: u8 = 241; // No Operation
+pub const SE: u8 = 240; // Subnegotiation End
 
 // Telnet options
-pub const OPT_ECHO: u8 = 1;        // Echo (RFC 857)
-pub const OPT_SGA: u8 = 3;         // Suppress Go Ahead (RFC 858)
-pub const OPT_STATUS: u8 = 5;      // Status (RFC 859)
-pub const OPT_TIMING: u8 = 6;      // Timing Mark (RFC 860)
-pub const OPT_TTYPE: u8 = 24;      // Terminal Type (RFC 1091)
-pub const OPT_NAWS: u8 = 31;       // Window Size (RFC 1073)
-pub const OPT_LINEMODE: u8 = 34;   // Linemode (RFC 1184)
-pub const OPT_MXP: u8 = 91;        // MUD eXtension Protocol
+pub const OPT_ECHO: u8 = 1; // Echo (RFC 857)
+pub const OPT_SGA: u8 = 3; // Suppress Go Ahead (RFC 858)
+pub const OPT_STATUS: u8 = 5; // Status (RFC 859)
+pub const OPT_TIMING: u8 = 6; // Timing Mark (RFC 860)
+pub const OPT_TTYPE: u8 = 24; // Terminal Type (RFC 1091)
+pub const OPT_NAWS: u8 = 31; // Window Size (RFC 1073)
+pub const OPT_LINEMODE: u8 = 34; // Linemode (RFC 1184)
+pub const OPT_MXP: u8 = 91; // MUD eXtension Protocol
 
 // TTYPE subnegotiation commands (RFC 1091)
-pub const TTYPE_IS: u8 = 0;        // Client sending terminal type
-pub const TTYPE_SEND: u8 = 1;      // Server requesting terminal type
+pub const TTYPE_IS: u8 = 0; // Client sending terminal type
+pub const TTYPE_SEND: u8 = 1; // Server requesting terminal type
 
 // MTTS capability flags (Mud Terminal Type Standard)
 // See: https://tintin.mudhalla.net/protocols/mtts/
-pub const MTTS_ANSI: u32 = 1;              // Supports ANSI color codes
-pub const MTTS_VT100: u32 = 2;             // Supports VT100 interface
-pub const MTTS_UTF8: u32 = 4;              // Uses UTF-8 character encoding
-pub const MTTS_256_COLORS: u32 = 8;        // Supports 256 color palette
-pub const MTTS_MOUSE_TRACKING: u32 = 16;   // Supports xterm mouse tracking
+pub const MTTS_ANSI: u32 = 1; // Supports ANSI color codes
+pub const MTTS_VT100: u32 = 2; // Supports VT100 interface
+pub const MTTS_UTF8: u32 = 4; // Uses UTF-8 character encoding
+pub const MTTS_256_COLORS: u32 = 8; // Supports 256 color palette
+pub const MTTS_MOUSE_TRACKING: u32 = 16; // Supports xterm mouse tracking
 pub const MTTS_OSC_COLOR_PALETTE: u32 = 32; // Supports OSC color palette
-pub const MTTS_SCREEN_READER: u32 = 64;    // Screen reader in use
-pub const MTTS_PROXY: u32 = 128;           // Connection is via proxy
-pub const MTTS_TRUECOLOR: u32 = 256;       // Supports 24-bit truecolor
+pub const MTTS_SCREEN_READER: u32 = 64; // Screen reader in use
+pub const MTTS_PROXY: u32 = 128; // Connection is via proxy
+pub const MTTS_TRUECOLOR: u32 = 256; // Supports 24-bit truecolor
 
 // Special input bytes
 pub const CHAR_TAB: u8 = 0x09;
@@ -60,15 +60,15 @@ pub const CHAR_BACKSPACE: u8 = 0x08;
 pub const CHAR_DEL: u8 = 0x7F;
 
 // Control character constants for readline-like input
-pub const CTRL_A: u8 = 0x01;  // Beginning of line
-pub const CTRL_C: u8 = 0x03;  // Cancel/interrupt
-pub const CTRL_D: u8 = 0x04;  // EOF/logout
-pub const CTRL_E: u8 = 0x05;  // End of line
-pub const CTRL_K: u8 = 0x0B;  // Kill to end of line
-pub const CTRL_L: u8 = 0x0C;  // Clear screen
-pub const CTRL_U: u8 = 0x15;  // Kill to beginning of line
-pub const CTRL_T: u8 = 0x14;  // Transpose characters
-pub const CTRL_W: u8 = 0x17;  // Delete word backward
+pub const CTRL_A: u8 = 0x01; // Beginning of line
+pub const CTRL_C: u8 = 0x03; // Cancel/interrupt
+pub const CTRL_D: u8 = 0x04; // EOF/logout
+pub const CTRL_E: u8 = 0x05; // End of line
+pub const CTRL_K: u8 = 0x0B; // Kill to end of line
+pub const CTRL_L: u8 = 0x0C; // Clear screen
+pub const CTRL_U: u8 = 0x15; // Kill to beginning of line
+pub const CTRL_T: u8 = 0x14; // Transpose characters
+pub const CTRL_W: u8 = 0x17; // Delete word backward
 
 /// Maximum command history size per session
 pub const MAX_HISTORY_SIZE: usize = 100;
@@ -157,15 +157,15 @@ pub enum KeyEvent {
     /// End (end of line)
     End,
     /// Control key combinations
-    CtrlA,  // Beginning of line
-    CtrlC,  // Cancel/interrupt
-    CtrlD,  // EOF/logout
-    CtrlE,  // End of line
-    CtrlK,  // Kill to end of line
-    CtrlL,  // Clear screen/redraw
-    CtrlU,  // Kill to beginning of line
-    CtrlT,  // Transpose characters
-    CtrlW,  // Delete word backward
+    CtrlA, // Beginning of line
+    CtrlC, // Cancel/interrupt
+    CtrlD, // EOF/logout
+    CtrlE, // End of line
+    CtrlK, // Kill to end of line
+    CtrlL, // Clear screen/redraw
+    CtrlU, // Kill to beginning of line
+    CtrlT, // Transpose characters
+    CtrlW, // Delete word backward
     /// Unknown/ignored
     Unknown,
 }
@@ -372,12 +372,12 @@ pub enum TelnetEvent {
 enum ParserState {
     Normal,
     InIAC,
-    InOption(u8),  // Holds the WILL/WONT/DO/DONT byte
+    InOption(u8), // Holds the WILL/WONT/DO/DONT byte
     InSubnegotiation,
     #[allow(dead_code)]
-    InSubnegotiationOption(u8),  // Holds the option being negotiated (reserved for future use)
-    InSubnegotiationData(u8),    // Holds the option, collecting data
-    InSubnegotiationIAC(u8),     // Saw IAC during subneg, waiting for SE or escaped IAC
+    InSubnegotiationOption(u8), // Holds the option being negotiated (reserved for future use)
+    InSubnegotiationData(u8), // Holds the option, collecting data
+    InSubnegotiationIAC(u8),  // Saw IAC during subneg, waiting for SE or escaped IAC
 }
 
 /// Telnet protocol parser
@@ -659,10 +659,7 @@ pub fn supports_title_updates(state: &TelnetState) -> bool {
     // Check client name for MUD clients with OSC support
     if let Some(ref client) = state.client_name {
         let client_lower = client.to_lowercase();
-        if client_lower.contains("mudlet")
-            || client_lower.contains("tintin")
-            || client_lower.contains("blightmud")
-        {
+        if client_lower.contains("mudlet") || client_lower.contains("tintin") || client_lower.contains("blightmud") {
             return true;
         }
     }
@@ -765,7 +762,7 @@ mod tests {
 
     #[test]
     fn test_parse_naws() {
-        let data = &[0, 132, 0, 43];  // 132x43
+        let data = &[0, 132, 0, 43]; // 132x43
         let result = parse_naws(data);
         assert_eq!(result, Some((132, 43)));
     }
@@ -774,7 +771,7 @@ mod tests {
     fn test_build_initial_negotiations() {
         let negs = build_initial_negotiations();
         // Should contain WILL ECHO, WILL SGA, DO SGA, DO NAWS
-        assert!(negs.len() >= 12);  // At least 4 commands * 3 bytes
+        assert!(negs.len() >= 12); // At least 4 commands * 3 bytes
     }
 
     // Tests for escape sequence parsing
@@ -960,14 +957,22 @@ mod tests {
         let output = redraw_input_line("> ", "hello", 2);
         let output_str = String::from_utf8_lossy(&output);
         // Should move cursor left 3 positions (5-2)
-        assert!(output_str.ends_with("\x1b[3D"), "Expected cursor left at end: {:?}", output_str);
+        assert!(
+            output_str.ends_with("\x1b[3D"),
+            "Expected cursor left at end: {:?}",
+            output_str
+        );
 
         // Emoji test - cursor before emoji should account for 2-column width
         // "hi😀" = 4 chars but "😀" is 2 columns, so cursor at pos 2 needs to move 2 cols
         let output = redraw_input_line("> ", "hi😀", 2);
         let output_str = String::from_utf8_lossy(&output);
         // Emoji takes 2 display columns, so move cursor left 2
-        assert!(output_str.ends_with("\x1b[2D"), "Expected 2 cols for emoji: {:?}", output_str);
+        assert!(
+            output_str.ends_with("\x1b[2D"),
+            "Expected 2 cols for emoji: {:?}",
+            output_str
+        );
     }
 
     #[test]
@@ -1081,7 +1086,9 @@ mod tests {
         assert_eq!(parse_ttype_is(&data), Some("MUDLET".to_string()));
 
         // XTERM-256COLOR
-        let data = vec![TTYPE_IS, b'X', b'T', b'E', b'R', b'M', b'-', b'2', b'5', b'6', b'C', b'O', b'L', b'O', b'R'];
+        let data = vec![
+            TTYPE_IS, b'X', b'T', b'E', b'R', b'M', b'-', b'2', b'5', b'6', b'C', b'O', b'L', b'O', b'R',
+        ];
         assert_eq!(parse_ttype_is(&data), Some("XTERM-256COLOR".to_string()));
 
         // Invalid - wrong prefix byte

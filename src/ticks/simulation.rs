@@ -7,14 +7,13 @@
 
 use anyhow::Result;
 use rand::Rng;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::{debug, error, warn};
 
 use uuid::Uuid;
 
 use ironmud::{
-    db, ActivityState, ItemData, ItemType, MobileData, NeedsState, SimGoal, SimulationConfig,
-    SharedConnections,
+    ActivityState, ItemData, ItemType, MobileData, NeedsState, SharedConnections, SimGoal, SimulationConfig, db,
 };
 
 use super::broadcast::broadcast_to_room_awake;
@@ -42,9 +41,7 @@ pub async fn run_simulation_tick(db: db::Db, connections: SharedConnections) {
 fn process_simulation_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
     let game_time = db.get_game_time()?;
     let current_hour = game_time.hour;
-    let current_game_day = ironmud::migration::absolute_game_day(
-        game_time.year, game_time.month, game_time.day,
-    ) as i32;
+    let current_game_day = ironmud::migration::absolute_game_day(game_time.year, game_time.month, game_time.day) as i32;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -172,9 +169,21 @@ fn process_simulated_npc(
 // ---------------------------------------------------------------------------
 
 fn decay_needs(needs: &mut NeedsState, config: &SimulationConfig, _current_hour: u8) {
-    let hunger_rate = if config.hunger_decay_rate > 0 { config.hunger_decay_rate } else { 100 };
-    let energy_rate = if config.energy_decay_rate > 0 { config.energy_decay_rate } else { 100 };
-    let comfort_rate = if config.comfort_decay_rate > 0 { config.comfort_decay_rate } else { 100 };
+    let hunger_rate = if config.hunger_decay_rate > 0 {
+        config.hunger_decay_rate
+    } else {
+        100
+    };
+    let energy_rate = if config.energy_decay_rate > 0 {
+        config.energy_decay_rate
+    } else {
+        100
+    };
+    let comfort_rate = if config.comfort_decay_rate > 0 {
+        config.comfort_decay_rate
+    } else {
+        100
+    };
 
     // Base decay per tick
     let hunger_decay = (2 * hunger_rate / 100).max(1);
@@ -283,7 +292,10 @@ fn apply_consequences(mobile: &mut MobileData, needs: &NeedsState, connections: 
     // Starvation: hunger=0 and energy critically low
     if needs.hunger == 0 && needs.energy <= 20 {
         mobile.current_hp = (mobile.current_hp - 1).max(1);
-        debug!("Simulation: {} taking starvation damage (hp={})", mobile.name, mobile.current_hp);
+        debug!(
+            "Simulation: {} taking starvation damage (hp={})",
+            mobile.name, mobile.current_hp
+        );
 
         if let Some(room_id) = mobile.current_room_id {
             broadcast_to_room_awake(
@@ -361,7 +373,11 @@ fn decide_goal(
             return Ok(SimGoal::SeekFood);
         }
         let at_work = is_at_room(db, mobile, &config.work_room_vnum)?;
-        return Ok(if at_work { SimGoal::Working } else { SimGoal::GoingToWork });
+        return Ok(if at_work {
+            SimGoal::Working
+        } else {
+            SimGoal::GoingToWork
+        });
     }
 
     // --- Off-shift priorities below ---
@@ -414,10 +430,7 @@ fn execute_arrival_actions(
         SimGoal::SeekFood => {
             // Prefer eating food we already carry; otherwise (re)visit a shop.
             let inventory = db.get_items_in_mobile_inventory(&mobile.id)?;
-            let food = inventory
-                .iter()
-                .find(|i| i.item_type == ItemType::Food)
-                .cloned();
+            let food = inventory.iter().find(|i| i.item_type == ItemType::Food).cloned();
 
             if let Some(food_item) = food {
                 if let Some(room_id) = mobile.current_room_id {
@@ -448,7 +461,10 @@ fn execute_arrival_actions(
             if is_at_room(db, mobile, &config.home_room_vnum)? {
                 // Home comfort restoration
                 needs.comfort = (needs.comfort + 15).min(100);
-                debug!("Simulation: {} relaxing at home, comfort now {}", mobile.name, needs.comfort);
+                debug!(
+                    "Simulation: {} relaxing at home, comfort now {}",
+                    mobile.name, needs.comfort
+                );
             }
         }
         SimGoal::Idle => {
@@ -462,11 +478,7 @@ fn execute_arrival_actions(
             // carry food, eat it here rather than abandoning the shift.
             if needs.hunger <= 50 && is_at_room(db, mobile, &config.work_room_vnum)? {
                 let inventory = db.get_items_in_mobile_inventory(&mobile.id)?;
-                if let Some(food_item) = inventory
-                    .iter()
-                    .find(|i| i.item_type == ItemType::Food)
-                    .cloned()
-                {
+                if let Some(food_item) = inventory.iter().find(|i| i.item_type == ItemType::Food).cloned() {
                     if let Some(room_id) = mobile.current_room_id {
                         eat_food_item(db, connections, mobile, needs, config, &food_item, room_id)?;
                     }
@@ -481,11 +493,7 @@ fn execute_arrival_actions(
 /// Find another shopkeeper room in the mobile's current area that hasn't been
 /// tried this hunger cycle. Returns None if no such room exists or if the
 /// mobile's current room has no area.
-fn find_next_shop_room(
-    db: &db::Db,
-    mobile: &MobileData,
-    tried: &[Uuid],
-) -> Result<Option<Uuid>> {
+fn find_next_shop_room(db: &db::Db, mobile: &MobileData, tried: &[Uuid]) -> Result<Option<Uuid>> {
     let current_room_id = match mobile.current_room_id {
         Some(id) => id,
         None => return Ok(None),
@@ -527,8 +535,8 @@ fn eat_food_item(
     needs.hunger = (needs.hunger + nutrition).min(100);
     needs.tried_shops_this_cycle.clear();
 
-    let is_preferred = !config.preferred_food_vnum.is_empty()
-        && item.vnum.as_deref() == Some(config.preferred_food_vnum.as_str());
+    let is_preferred =
+        !config.preferred_food_vnum.is_empty() && item.vnum.as_deref() == Some(config.preferred_food_vnum.as_str());
     if is_preferred {
         needs.comfort = (needs.comfort + 12).min(100);
         broadcast_to_room_awake(
@@ -567,10 +575,7 @@ fn try_buy_food(
     // Find shopkeeper in this room and snapshot the data we need so we don't hold
     // a borrow into `mobiles_here` across later mutations of `mobile`.
     let mobiles_here = db.get_mobiles_in_room(&room_id)?;
-    let (sell_rate, stock) = match mobiles_here
-        .iter()
-        .find(|m| m.flags.shopkeeper && !m.is_prototype)
-    {
+    let (sell_rate, stock) = match mobiles_here.iter().find(|m| m.flags.shopkeeper && !m.is_prototype) {
         Some(sk) => (sk.shop_sell_rate, sk.shop_stock.clone()),
         None => return Ok(()),
     };
@@ -578,17 +583,15 @@ fn try_buy_food(
     // Choose what to buy:
     //   1. preferred food, if the shop actually stocks it and we can afford it
     //   2. otherwise the most-nutritious food we can afford from this shop
-    let preferred_affordable = if !config.preferred_food_vnum.is_empty()
-        && stock.iter().any(|v| v == &config.preferred_food_vnum)
-    {
-        match db.get_item_by_vnum(&config.preferred_food_vnum)? {
-            Some(p) if p.item_type == ItemType::Food
-                && mobile.gold >= food_price(p.value, sell_rate) => true,
-            _ => false,
-        }
-    } else {
-        false
-    };
+    let preferred_affordable =
+        if !config.preferred_food_vnum.is_empty() && stock.iter().any(|v| v == &config.preferred_food_vnum) {
+            match db.get_item_by_vnum(&config.preferred_food_vnum)? {
+                Some(p) if p.item_type == ItemType::Food && mobile.gold >= food_price(p.value, sell_rate) => true,
+                _ => false,
+            }
+        } else {
+            false
+        };
 
     let chosen_vnum: Option<String> = if preferred_affordable {
         Some(config.preferred_food_vnum.clone())
@@ -669,12 +672,7 @@ fn food_price(value: i32, sell_rate: i32) -> i32 {
 
 /// Pick the most-nutritious food in `stock` whose marked-up price fits the mobile's gold.
 /// Falls back to `effective_nutrition` so misconfigured 0-nutrition food still ranks.
-fn find_best_affordable_food(
-    db: &db::Db,
-    stock: &[String],
-    sell_rate: i32,
-    gold: i32,
-) -> Result<Option<String>> {
+fn find_best_affordable_food(db: &db::Db, stock: &[String], sell_rate: i32, gold: i32) -> Result<Option<String>> {
     let mut best: Option<(String, i32)> = None;
     for vnum in stock {
         let proto = match db.get_item_by_vnum(vnum)? {
@@ -704,12 +702,7 @@ fn find_best_affordable_food(
 /// the shape of the player regen in `src/ticks/character.rs`: base rate depends
 /// on what they're doing (sleeping > resting > idle), and the rate is scaled
 /// by hunger so starving NPCs heal slowly instead of not at all.
-fn regenerate_hp(
-    db: &db::Db,
-    mobile: &mut MobileData,
-    config: &SimulationConfig,
-    needs: &NeedsState,
-) -> Result<()> {
+fn regenerate_hp(db: &db::Db, mobile: &mut MobileData, config: &SimulationConfig, needs: &NeedsState) -> Result<()> {
     if mobile.current_hp <= 0 || mobile.max_hp <= 0 || mobile.current_hp >= mobile.max_hp {
         return Ok(());
     }
@@ -748,18 +741,12 @@ fn regenerate_hp(
 // Step 6: Set Destination
 // ---------------------------------------------------------------------------
 
-fn set_destination(
-    db: &db::Db,
-    mobile: &mut MobileData,
-    config: &SimulationConfig,
-    needs: &NeedsState,
-) -> Result<()> {
+fn set_destination(db: &db::Db, mobile: &mut MobileData, config: &SimulationConfig, needs: &NeedsState) -> Result<()> {
     let dest_vnum = match needs.current_goal {
-        SimGoal::SeekSleep | SimGoal::SeekComfort | SimGoal::GoingHome => {
-            &config.home_room_vnum
-        }
+        SimGoal::SeekSleep | SimGoal::SeekComfort | SimGoal::GoingHome => &config.home_room_vnum,
         SimGoal::SeekFood => {
-            let has_food = db.get_items_in_mobile_inventory(&mobile.id)?
+            let has_food = db
+                .get_items_in_mobile_inventory(&mobile.id)?
                 .iter()
                 .any(|i| i.item_type == ItemType::Food);
             if has_food {
@@ -781,9 +768,7 @@ fn set_destination(
                 &config.shop_room_vnum
             }
         }
-        SimGoal::GoingToWork | SimGoal::Working => {
-            &config.work_room_vnum
-        }
+        SimGoal::GoingToWork | SimGoal::Working => &config.work_room_vnum,
         SimGoal::Idle => {
             mobile.routine_destination_room = None;
             return Ok(());
@@ -837,11 +822,19 @@ fn update_activity_state(
 
     let new_activity = match needs.current_goal {
         SimGoal::Working => {
-            if at_work { ActivityState::Working } else { ActivityState::OffDuty }
+            if at_work {
+                ActivityState::Working
+            } else {
+                ActivityState::OffDuty
+            }
         }
         SimGoal::GoingToWork => ActivityState::OffDuty,
         SimGoal::SeekSleep => {
-            if at_home { ActivityState::Sleeping } else { ActivityState::OffDuty }
+            if at_home {
+                ActivityState::Sleeping
+            } else {
+                ActivityState::OffDuty
+            }
         }
         SimGoal::SeekFood => {
             // Only show "Eating" when actually at a food source (our shop or
@@ -880,11 +873,7 @@ fn update_activity_state(
 /// boundary in either direction. Returns None for transitions that don't
 /// involve sleep (e.g. Working -> OffDuty), since those don't need a visible
 /// announcement.
-pub(crate) fn sleep_transition_message(
-    name: &str,
-    old: &ActivityState,
-    new: &ActivityState,
-) -> Option<String> {
+pub(crate) fn sleep_transition_message(name: &str, old: &ActivityState, new: &ActivityState) -> Option<String> {
     let was_sleeping = matches!(old, ActivityState::Sleeping);
     let is_sleeping = matches!(new, ActivityState::Sleeping);
     if was_sleeping && !is_sleeping {
@@ -972,7 +961,10 @@ fn pick_emote(
     // generic "sighs heavily" doesn't.
     if is_bereaved {
         candidates.push(format!("{} gazes into the distance, lost in memory.", name));
-        candidates.push(format!("{} traces something unseen with a finger, tears welling.", name));
+        candidates.push(format!(
+            "{} traces something unseen with a finger, tears welling.",
+            name
+        ));
         candidates.push(format!("{} whispers a name only they can hear.", name));
     }
 
@@ -1173,15 +1165,24 @@ fn maybe_converse(
 
     let (base_dh_init, base_dh_part, base_da_init, base_da_part, msg) = match disposition {
         Disposition::Match => (
-            3, 3, 5, 5,
+            3,
+            3,
+            5,
+            5,
             format!("{} and {} trade stories about {}.", mobile.name, partner.name, topic),
         ),
         Disposition::Neutral => (
-            1, 1, 0, 0,
+            1,
+            1,
+            0,
+            0,
             format!("{} chats with {} about {}.", mobile.name, partner.name, topic),
         ),
         Disposition::Dislike => (
-            -3, -3, -5, -5,
+            -3,
+            -3,
+            -5,
+            -5,
             format!("{} scowls as {} brings up {}.", partner.name, mobile.name, topic),
         ),
     };
@@ -1235,13 +1236,7 @@ enum Disposition {
 /// demote a cohabiting pair back to Friend. The `topic` covered is pushed to
 /// the front of `recent_topics` so future conversations on the same subject
 /// trigger the fatigue penalty.
-fn upsert_relationship(
-    mobile: &mut MobileData,
-    other_id: Uuid,
-    affinity_delta: i32,
-    day: i32,
-    topic: &str,
-) {
+fn upsert_relationship(mobile: &mut MobileData, other_id: Uuid, affinity_delta: i32, day: i32, topic: &str) {
     use ironmud::{Relationship, RelationshipKind, TOPIC_FATIGUE_WINDOW};
     if let Some(rel) = mobile.relationships.iter_mut().find(|r| r.other_id == other_id) {
         // Family kinds (Partner/Parent/Child/Sibling) dampen negative deltas
@@ -1268,10 +1263,7 @@ fn upsert_relationship(
 /// Cohabitant dies (today + 14 game days) and tested here on every
 /// conversation/emote.
 fn is_bereaved(social: &ironmud::SocialState, current_game_day: i32) -> bool {
-    social
-        .bereaved_until_day
-        .map(|d| d > current_game_day)
-        .unwrap_or(false)
+    social.bereaved_until_day.map(|d| d > current_game_day).unwrap_or(false)
 }
 
 /// Nudge affinity toward `other_id` without touching `recent_topics`. Used
@@ -1414,7 +1406,12 @@ mod tests {
         mobile.current_room_id = Some(uuid::Uuid::new_v4());
         g.db.save_mobile_data(mobile.clone()).expect("save mob");
 
-        let needs = NeedsState { hunger: 12, energy: 60, comfort: 60, ..Default::default() };
+        let needs = NeedsState {
+            hunger: 12,
+            energy: 60,
+            comfort: 60,
+            ..Default::default()
+        };
         let goal = decide_goal(&g.db, &mobile, &make_config(), &needs, 10).expect("decide");
         assert_eq!(goal, SimGoal::GoingToWork, "broke + hungry + work hours -> GoingToWork");
 
@@ -1435,9 +1432,18 @@ mod tests {
         mobile.current_room_id = Some(uuid::Uuid::new_v4());
         g.db.save_mobile_data(mobile.clone()).expect("save mob");
 
-        let needs = NeedsState { hunger: 40, energy: 70, comfort: 60, ..Default::default() };
+        let needs = NeedsState {
+            hunger: 40,
+            energy: 70,
+            comfort: 60,
+            ..Default::default()
+        };
         let goal = decide_goal(&g.db, &mobile, &make_config(), &needs, 22).expect("decide");
-        assert_eq!(goal, SimGoal::Idle, "broke off-shift with stamina should idle, not sleep");
+        assert_eq!(
+            goal,
+            SimGoal::Idle,
+            "broke off-shift with stamina should idle, not sleep"
+        );
     }
 
     #[test]
@@ -1453,9 +1459,18 @@ mod tests {
         g.db.save_mobile_data(mobile.clone()).expect("save mob");
 
         // energy=25 used to trigger SeekSleep; new threshold (<=20) should let Idle through.
-        let needs = NeedsState { hunger: 80, energy: 25, comfort: 80, ..Default::default() };
+        let needs = NeedsState {
+            hunger: 80,
+            energy: 25,
+            comfort: 80,
+            ..Default::default()
+        };
         let goal = decide_goal(&g.db, &mobile, &make_config(), &needs, 22).expect("decide");
-        assert_ne!(goal, SimGoal::SeekSleep, "energy 25 should no longer trigger sleep off-shift");
+        assert_ne!(
+            goal,
+            SimGoal::SeekSleep,
+            "energy 25 should no longer trigger sleep off-shift"
+        );
     }
 
     #[test]
@@ -1489,9 +1504,15 @@ mod tests {
     #[test]
     fn is_bereaved_respects_until_day() {
         use ironmud::SocialState;
-        let never = SocialState { bereaved_until_day: None, ..SocialState::default() };
+        let never = SocialState {
+            bereaved_until_day: None,
+            ..SocialState::default()
+        };
         assert!(!is_bereaved(&never, 10));
-        let active = SocialState { bereaved_until_day: Some(20), ..SocialState::default() };
+        let active = SocialState {
+            bereaved_until_day: Some(20),
+            ..SocialState::default()
+        };
         assert!(is_bereaved(&active, 10));
         assert!(is_bereaved(&active, 19));
         assert!(!is_bereaved(&active, 20), "bereavement ends on the until_day itself");

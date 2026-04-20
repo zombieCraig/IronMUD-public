@@ -3,21 +3,21 @@
 //! Handles combat rounds, damage calculation, wounds, and death processing.
 
 use anyhow::Result;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::{debug, error};
 
 use ironmud::{
-    db, BodyPart, CharacterData, CharacterPosition, CombatDistance, CombatTarget, CombatTargetType,
-    DamageType, EffectType, ItemLocation, ItemType, MobileData, SharedConnections, SharedState,
-    SkillProgress, WeaponSkill, WearLocation, WoundLevel, WoundType, STARTING_ROOM_ID,
+    BodyPart, CharacterData, CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, DamageType, EffectType,
+    ItemLocation, ItemType, MobileData, STARTING_ROOM_ID, SharedConnections, SharedState, SkillProgress, WeaponSkill,
+    WearLocation, WoundLevel, WoundType, db,
 };
 
 use super::corpse::{CorpseBuilder, mobile_gold_with_variance};
 use super::wounds::{add_wound_bleeding, escalate_wound_to_severe};
 
 use crate::ticks::broadcast::{
-    broadcast_to_room_awake, broadcast_to_room_except, broadcast_to_room_except_awake,
-    send_message_to_character, sync_character_to_session,
+    broadcast_to_room_awake, broadcast_to_room_except, broadcast_to_room_except_awake, send_message_to_character,
+    sync_character_to_session,
 };
 use crate::ticks::mobile::{find_player_name_in_room, get_opposite_direction_rust, get_valid_wander_exits};
 
@@ -89,11 +89,7 @@ fn process_combat_round(db: &db::Db, connections: &SharedConnections, state: &Sh
 }
 
 /// Process a combat round for a single character
-fn process_character_combat_round(
-    db: &db::Db,
-    connections: &SharedConnections,
-    char_name: &str,
-) -> Result<()> {
+fn process_character_combat_round(db: &db::Db, connections: &SharedConnections, char_name: &str) -> Result<()> {
     debug!("Processing combat for character {}", char_name);
     let mut char = match db.get_character_data(char_name)? {
         Some(c) => c,
@@ -103,7 +99,12 @@ fn process_character_combat_round(
         }
     };
 
-    debug!("Character {} in_combat={}, targets={}", char_name, char.combat.in_combat, char.combat.targets.len());
+    debug!(
+        "Character {} in_combat={}, targets={}",
+        char_name,
+        char.combat.in_combat,
+        char.combat.targets.len()
+    );
 
     // Skip if not actually in combat
     if !char.combat.in_combat || char.combat.targets.is_empty() {
@@ -124,8 +125,14 @@ fn process_character_combat_round(
             return Ok(());
         }
 
-        send_message_to_character(connections, char_name,
-            &format!("You are unconscious and bleeding out! {} rounds remaining...", char.bleedout_rounds_remaining));
+        send_message_to_character(
+            connections,
+            char_name,
+            &format!(
+                "You are unconscious and bleeding out! {} rounds remaining...",
+                char.bleedout_rounds_remaining
+            ),
+        );
         db.save_character_data(char)?;
         return Ok(());
     }
@@ -149,19 +156,31 @@ fn process_character_combat_round(
         let has_hemophiliac_oe = char.traits.iter().any(|t| t == "hemophiliac");
 
         let mut poison_mod: i32 = 100;
-        if has_venom_ward { poison_mod -= 50; }
-        if has_toxin_tolerant { poison_mod -= 30; }
-        if has_weak_constitution { poison_mod += 50; }
-        if has_hemophiliac_oe { poison_mod += 20; }
-        poison_mod = poison_mod.max(10);  // minimum 10% damage
+        if has_venom_ward {
+            poison_mod -= 50;
+        }
+        if has_toxin_tolerant {
+            poison_mod -= 30;
+        }
+        if has_weak_constitution {
+            poison_mod += 50;
+        }
+        if has_hemophiliac_oe {
+            poison_mod += 20;
+        }
+        poison_mod = poison_mod.max(10); // minimum 10% damage
 
-        let ongoing_damage: i32 = char.ongoing_effects.iter().map(|e| {
-            if e.effect_type == "poison" {
-                (e.damage_per_round * poison_mod / 100).max(1)
-            } else {
-                e.damage_per_round
-            }
-        }).sum();
+        let ongoing_damage: i32 = char
+            .ongoing_effects
+            .iter()
+            .map(|e| {
+                if e.effect_type == "poison" {
+                    (e.damage_per_round * poison_mod / 100).max(1)
+                } else {
+                    e.damage_per_round
+                }
+            })
+            .sum();
         if ongoing_damage > 0 {
             char.hp -= ongoing_damage;
 
@@ -197,7 +216,12 @@ fn process_character_combat_round(
             sync_character_to_session(connections, &char);
 
             send_message_to_character(connections, char_name, "You collapse, unconscious!");
-            broadcast_to_room_except(connections, &room_id, &format!("{} collapses, unconscious!", char.name), char_name);
+            broadcast_to_room_except(
+                connections,
+                &room_id,
+                &format!("{} collapses, unconscious!", char.name),
+                char_name,
+            );
             return Ok(());
         }
     }
@@ -208,8 +232,12 @@ fn process_character_combat_round(
         let mut rng = rand::thread_rng();
         if rng.gen_range(0..100) < 25 {
             send_message_to_character(connections, char_name, "You double over, too sick to fight!");
-            broadcast_to_room_except(connections, &room_id,
-                &format!("{} doubles over, looking ill.", char.name), char_name);
+            broadcast_to_room_except(
+                connections,
+                &room_id,
+                &format!("{} doubles over, looking ill.", char.name),
+                char_name,
+            );
             db.save_character_data(char)?;
             return Ok(());
         }
@@ -221,8 +249,12 @@ fn process_character_combat_round(
         let mut rng = rand::thread_rng();
         if rng.gen_range(0..100) < 25 {
             send_message_to_character(connections, char_name, "You double over as poison racks your body!");
-            broadcast_to_room_except(connections, &room_id,
-                &format!("{} doubles over, wracked by poison.", char.name), char_name);
+            broadcast_to_room_except(
+                connections,
+                &room_id,
+                &format!("{} doubles over, wracked by poison.", char.name),
+                char_name,
+            );
             db.save_character_data(char)?;
             return Ok(());
         }
@@ -246,8 +278,11 @@ fn process_character_combat_round(
         char.stamina = MIN_STAMINA_RESTORE;
         db.save_character_data(char.clone())?;
         sync_character_to_session(connections, &char);
-        send_message_to_character(connections, char_name,
-            "You are too exhausted to attack! You catch your breath...");
+        send_message_to_character(
+            connections,
+            char_name,
+            "You are too exhausted to attack! You catch your breath...",
+        );
         return Ok(());
     }
 
@@ -326,15 +361,18 @@ fn process_character_attacks_mobile(
     let mut rng = rand::thread_rng();
 
     // Get weapon skill from equipped weapon
-    let (mut weapon_skill, mut dice_count, mut dice_sides, mut damage_bonus, weapon_damage_type) = get_character_weapon_info(db, char);
+    let (mut weapon_skill, mut dice_count, mut dice_sides, mut damage_bonus, weapon_damage_type) =
+        get_character_weapon_info(db, char);
 
     // Check arm/jaw wound restrictions for melee attacks
     let is_bite_attack = weapon_damage_type == DamageType::Bite;
 
     // Jaw disabled blocks bite attacks
     if is_bite_attack {
-        let jaw_disabled = char.wounds.iter().any(|w|
-            w.body_part == BodyPart::Jaw && w.level == WoundLevel::Disabled);
+        let jaw_disabled = char
+            .wounds
+            .iter()
+            .any(|w| w.body_part == BodyPart::Jaw && w.level == WoundLevel::Disabled);
         if jaw_disabled {
             send_message_to_character(connections, &char.name, "Your shattered jaw prevents you from biting!");
             return Ok(());
@@ -343,20 +381,26 @@ fn process_character_attacks_mobile(
 
     // Both arms disabled + non-bite = can't attack
     if !is_bite_attack {
-        let both_arms_disabled = char.wounds.iter().any(|w|
-            matches!(w.body_part, BodyPart::RightArm | BodyPart::RightHand)
-            && w.level == WoundLevel::Disabled)
-        && char.wounds.iter().any(|w|
-            matches!(w.body_part, BodyPart::LeftArm | BodyPart::LeftHand)
-            && w.level == WoundLevel::Disabled);
+        let both_arms_disabled = char.wounds.iter().any(|w| {
+            matches!(w.body_part, BodyPart::RightArm | BodyPart::RightHand) && w.level == WoundLevel::Disabled
+        }) && char
+            .wounds
+            .iter()
+            .any(|w| matches!(w.body_part, BodyPart::LeftArm | BodyPart::LeftHand) && w.level == WoundLevel::Disabled);
         if both_arms_disabled {
-            send_message_to_character(connections, &char.name, "Both your arms are disabled! You cannot attack!");
+            send_message_to_character(
+                connections,
+                &char.name,
+                "Both your arms are disabled! You cannot attack!",
+            );
             return Ok(());
         }
     }
 
     // Check distance - melee weapons require closing the gap
-    let current_distance = char.combat.distances
+    let current_distance = char
+        .combat
+        .distances
         .get(target_id)
         .copied()
         .unwrap_or(CombatDistance::Melee);
@@ -382,8 +426,7 @@ fn process_character_attacks_mobile(
             dice_count = 1;
             dice_sides = 2;
             damage_bonus = 0;
-            send_message_to_character(connections, &char.name,
-                "You resort to fighting with your fists!");
+            send_message_to_character(connections, &char.name, "You resort to fighting with your fists!");
         } else {
             // Ranged weapon at range - check ammo
             is_ranged_attack = true;
@@ -402,14 +445,20 @@ fn process_character_attacks_mobile(
                                     char.combat.ammo_depleted = 1;
                                     db.save_character_data(char.clone())?;
                                     sync_character_to_session(connections, char);
-                                    send_message_to_character(connections, &char.name,
-                                        "Your weapon is empty! Use `reload` to load ammunition.");
+                                    send_message_to_character(
+                                        connections,
+                                        &char.name,
+                                        "Your weapon is empty! Use `reload` to load ammunition.",
+                                    );
                                     return Ok(());
                                 }
                                 if char.combat.ammo_depleted == 1 {
                                     char.combat.ammo_depleted = 2;
-                                    send_message_to_character(connections, &char.name,
-                                        "Weapon empty, you resort to fighting with your fists!");
+                                    send_message_to_character(
+                                        connections,
+                                        &char.name,
+                                        "Weapon empty, you resort to fighting with your fists!",
+                                    );
                                 }
                                 weapon_skill = "unarmed".to_string();
                                 dice_count = 1;
@@ -464,10 +513,17 @@ fn process_character_attacks_mobile(
                                 }
                             }
                             AmmoSearchResult::Inventory(_item_id, _bonus) => {
-                                send_message_to_character(connections, &char.name,
-                                    "You fumble trying to load ammunition from your pack!");
-                                broadcast_to_room_except_awake(connections, &room_id,
-                                    &format!("{} fumbles with ammunition.", char.name), &char.name);
+                                send_message_to_character(
+                                    connections,
+                                    &char.name,
+                                    "You fumble trying to load ammunition from your pack!",
+                                );
+                                broadcast_to_room_except_awake(
+                                    connections,
+                                    &room_id,
+                                    &format!("{} fumbles with ammunition.", char.name),
+                                    &char.name,
+                                );
                                 return Ok(());
                             }
                             AmmoSearchResult::None => {
@@ -475,14 +531,16 @@ fn process_character_attacks_mobile(
                                     char.combat.ammo_depleted = 1;
                                     db.save_character_data(char.clone())?;
                                     sync_character_to_session(connections, char);
-                                    send_message_to_character(connections, &char.name,
-                                        "You're out of ammunition!");
+                                    send_message_to_character(connections, &char.name, "You're out of ammunition!");
                                     return Ok(());
                                 }
                                 if char.combat.ammo_depleted == 1 {
                                     char.combat.ammo_depleted = 2;
-                                    send_message_to_character(connections, &char.name,
-                                        "Out of ammunition, you resort to fighting with your fists!");
+                                    send_message_to_character(
+                                        connections,
+                                        &char.name,
+                                        "Out of ammunition, you resort to fighting with your fists!",
+                                    );
                                 }
                                 weapon_skill = "unarmed".to_string();
                                 dice_count = 1;
@@ -505,10 +563,17 @@ fn process_character_attacks_mobile(
                 (CombatDistance::Pole, CombatDistance::Melee) => "move to melee range",
                 _ => "advance",
             };
-            send_message_to_character(connections, &char.name,
-                &format!("You {} toward {}.", step_msg, mobile.name));
-            broadcast_to_room_except_awake(connections, &room_id,
-                &format!("{} closes in on {}.", char.name, mobile.name), &char.name);
+            send_message_to_character(
+                connections,
+                &char.name,
+                &format!("You {} toward {}.", step_msg, mobile.name),
+            );
+            broadcast_to_room_except_awake(
+                connections,
+                &room_id,
+                &format!("{} closes in on {}.", char.name, mobile.name),
+                &char.name,
+            );
 
             // If still not at melee range, skip attack this round
             if closer != CombatDistance::Melee {
@@ -529,7 +594,9 @@ fn process_character_attacks_mobile(
 
     // Arm wound hit penalty (melee attacks only, not bite)
     if !is_bite_attack && !is_ranged_attack {
-        let arm_penalty = char.wounds.iter()
+        let arm_penalty = char
+            .wounds
+            .iter()
             .filter(|w| matches!(w.body_part, BodyPart::RightArm | BodyPart::RightHand))
             .map(|w| w.level.penalty())
             .max()
@@ -551,7 +618,9 @@ fn process_character_attacks_mobile(
 
     // Head wound daze chance (concussion)
     {
-        let head_level = char.wounds.iter()
+        let head_level = char
+            .wounds
+            .iter()
             .filter(|w| w.body_part == BodyPart::Head)
             .map(|w| &w.level)
             .max();
@@ -563,8 +632,11 @@ fn process_character_attacks_mobile(
                 _ => 0,
             };
             if daze_chance > 0 && rng.gen_range(1..=100) <= daze_chance {
-                send_message_to_character(connections, &char.name,
-                    "Your vision swims \u{2014} you stumble, dazed from your head injury!");
+                send_message_to_character(
+                    connections,
+                    &char.name,
+                    "Your vision swims \u{2014} you stumble, dazed from your head injury!",
+                );
                 return Ok(());
             }
         }
@@ -579,11 +651,29 @@ fn process_character_attacks_mobile(
         if roll > hit_chance {
             // Miss
             if is_ranged_attack {
-                send_message_to_character(connections, &char.name, &format!("You fire at {} but miss!", mobile.name));
-                broadcast_to_room_except_awake(connections, &room_id, &format!("{} {} {} but misses!", char.name, ranged_miss_verb, mobile.name), &char.name);
+                send_message_to_character(
+                    connections,
+                    &char.name,
+                    &format!("You fire at {} but miss!", mobile.name),
+                );
+                broadcast_to_room_except_awake(
+                    connections,
+                    &room_id,
+                    &format!("{} {} {} but misses!", char.name, ranged_miss_verb, mobile.name),
+                    &char.name,
+                );
             } else {
-                send_message_to_character(connections, &char.name, &format!("You swing at {} but miss!", mobile.name));
-                broadcast_to_room_except_awake(connections, &room_id, &format!("{} swings at {} but misses!", char.name, mobile.name), &char.name);
+                send_message_to_character(
+                    connections,
+                    &char.name,
+                    &format!("You swing at {} but miss!", mobile.name),
+                );
+                broadcast_to_room_except_awake(
+                    connections,
+                    &room_id,
+                    &format!("{} swings at {} but misses!", char.name, mobile.name),
+                    &char.name,
+                );
             }
             // For single shot, return after miss
             if shots_to_fire == 1 {
@@ -596,11 +686,16 @@ fn process_character_attacks_mobile(
         let mut damage = roll_dice(dice_count, dice_sides) + damage_bonus + ammo_bonus;
 
         // Apply underwater damage type modifier
-        let (modified_damage, water_msg) = apply_underwater_modifier(db, &char.current_room_id, damage, weapon_damage_type);
+        let (modified_damage, water_msg) =
+            apply_underwater_modifier(db, &char.current_room_id, damage, weapon_damage_type);
         damage = modified_damage;
         if let Some(_msg) = water_msg {
             if damage == 0 {
-                send_message_to_character(connections, &char.name, "Your fire attack is extinguished by the water!");
+                send_message_to_character(
+                    connections,
+                    &char.name,
+                    "Your fire attack is extinguished by the water!",
+                );
                 continue;
             }
         }
@@ -609,8 +704,12 @@ fn process_character_attacks_mobile(
         let has_keen_edge = char.traits.iter().any(|t| t == "keen_edge");
         let has_dulled_reflexes = char.traits.iter().any(|t| t == "dulled_reflexes");
         let mut crit_bonus: i32 = 0;
-        if has_keen_edge { crit_bonus += 5; }
-        if has_dulled_reflexes { crit_bonus -= 5; }
+        if has_keen_edge {
+            crit_bonus += 5;
+        }
+        if has_dulled_reflexes {
+            crit_bonus -= 5;
+        }
         let crit_chance = (5 + skill + crit_bonus).max(1);
         let crit_roll = rng.gen_range(1..=100);
         let is_crit = crit_roll <= crit_chance;
@@ -641,7 +740,10 @@ fn process_character_attacks_mobile(
                     escalate_mobile_wound_to_severe(db, &mobile.id, &body_part)?;
 
                     // Drop mobile's weapon on arm/hand disable
-                    if matches!(body_part.as_str(), "right arm" | "right hand" | "left arm" | "left hand") {
+                    if matches!(
+                        body_part.as_str(),
+                        "right arm" | "right hand" | "left arm" | "left hand"
+                    ) {
                         if let Ok(equipped) = db.get_items_equipped_on_mobile(&mobile.id) {
                             for item in equipped {
                                 if item.item_type == ItemType::Weapon {
@@ -650,8 +752,11 @@ fn process_character_attacks_mobile(
                                     dropped.location = ItemLocation::Room(room_id);
                                     dropped.wear_locations.clear();
                                     let _ = db.save_item_data(dropped);
-                                    broadcast_to_room_awake(connections, &room_id,
-                                        &format!("{}'s {} clatters to the ground!", mobile.name, item_name));
+                                    broadcast_to_room_awake(
+                                        connections,
+                                        &room_id,
+                                        &format!("{}'s {} clatters to the ground!", mobile.name, item_name),
+                                    );
                                     break;
                                 }
                             }
@@ -689,19 +794,48 @@ fn process_character_attacks_mobile(
             let max_dmg = dice_count * dice_sides;
             let projectile = ranged_projectile_word(&weapon_ranged_type);
             let verb = ranged_hit_verb_contextual(&weapon_ranged_type, damage, max_dmg);
-            send_message_to_character(connections, &char.name,
-                &format!("Your {} {} {}'s {} for {} damage!{}", projectile, verb, mobile.name, body_part, damage, crit_text));
-            broadcast_to_room_except_awake(connections, &room_id,
-                &format!("{}'s {} {} {}'s {} for {} damage!", char.name, projectile, verb, mobile.name, body_part, damage), &char.name);
+            send_message_to_character(
+                connections,
+                &char.name,
+                &format!(
+                    "Your {} {} {}'s {} for {} damage!{}",
+                    projectile, verb, mobile.name, body_part, damage, crit_text
+                ),
+            );
+            broadcast_to_room_except_awake(
+                connections,
+                &room_id,
+                &format!(
+                    "{}'s {} {} {}'s {} for {} damage!",
+                    char.name, projectile, verb, mobile.name, body_part, damage
+                ),
+                &char.name,
+            );
         } else {
-            send_message_to_character(connections, &char.name, &format!("You hit {} for {} damage!{}", mobile.name, damage, crit_text));
-            broadcast_to_room_except_awake(connections, &room_id, &format!("{} hits {} for {} damage!", char.name, mobile.name, damage), &char.name);
+            send_message_to_character(
+                connections,
+                &char.name,
+                &format!("You hit {} for {} damage!{}", mobile.name, damage, crit_text),
+            );
+            broadcast_to_room_except_awake(
+                connections,
+                &room_id,
+                &format!("{} hits {} for {} damage!", char.name, mobile.name, damage),
+                &char.name,
+            );
         }
 
         // Award XP for successful hit (10 XP to weapon skill)
         let leveled = add_skill_experience_to_character(char, &weapon_skill, 10);
         if leveled {
-            send_message_to_character(connections, &char.name, &format!("\x1b[1;33mYour {} skill has improved!\x1b[0m", weapon_skill.replace('_', " ")));
+            send_message_to_character(
+                connections,
+                &char.name,
+                &format!(
+                    "\x1b[1;33mYour {} skill has improved!\x1b[0m",
+                    weapon_skill.replace('_', " ")
+                ),
+            );
         }
 
         // Check if target died
@@ -743,11 +877,7 @@ fn process_character_attacks_player(
 
 /// Attempt to have a mobile flee from combat
 /// Returns Some(true) if successfully fled, Some(false) if failed, None if couldn't attempt
-fn attempt_mobile_flee(
-    db: &db::Db,
-    connections: &SharedConnections,
-    mobile: &mut MobileData,
-) -> Option<bool> {
+fn attempt_mobile_flee(db: &db::Db, connections: &SharedConnections, mobile: &mut MobileData) -> Option<bool> {
     use rand::Rng;
     use rand::seq::SliceRandom;
 
@@ -758,8 +888,11 @@ fn attempt_mobile_flee(
     let exits = get_valid_wander_exits(db, &room).ok()?;
     if exits.is_empty() {
         // No escape - broadcast failure (sleeping players don't see combat)
-        broadcast_to_room_awake(connections, &room_id,
-            &format!("{} looks around frantically for an escape!\n", mobile.name));
+        broadcast_to_room_awake(
+            connections,
+            &room_id,
+            &format!("{} looks around frantically for an escape!\n", mobile.name),
+        );
         return Some(false);
     }
 
@@ -767,8 +900,11 @@ fn attempt_mobile_flee(
     let mut rng = rand::thread_rng();
     if rng.gen_range(0..100) >= 50 {
         // Failed flee attempt (sleeping players don't see combat)
-        broadcast_to_room_awake(connections, &room_id,
-            &format!("{} tries to flee but stumbles!\n", mobile.name));
+        broadcast_to_room_awake(
+            connections,
+            &room_id,
+            &format!("{} tries to flee but stumbles!\n", mobile.name),
+        );
         return Some(false);
     }
 
@@ -776,8 +912,11 @@ fn attempt_mobile_flee(
     let (direction, target_room_id) = exits.choose(&mut rng)?.clone();
 
     // Broadcast departure (sleeping players don't see combat)
-    broadcast_to_room_awake(connections, &room_id,
-        &format!("{} flees {}!\n", mobile.name, direction));
+    broadcast_to_room_awake(
+        connections,
+        &room_id,
+        &format!("{} flees {}!\n", mobile.name, direction),
+    );
 
     // Fire on_flee triggers before moving the mobile
     {
@@ -786,7 +925,12 @@ fn attempt_mobile_flee(
         flee_context.insert("source_room".to_string(), room_id.to_string());
         flee_context.insert("mobile_name".to_string(), mobile.name.clone());
         ironmud::script::fire_mobile_triggers_from_rust(
-            db, connections, &mobile.id.to_string(), "on_flee", "", &flee_context,
+            db,
+            connections,
+            &mobile.id.to_string(),
+            "on_flee",
+            "",
+            &flee_context,
         );
     }
 
@@ -800,7 +944,8 @@ fn attempt_mobile_flee(
             // Find the character by searching connections
             let player_names: Vec<String> = {
                 if let Ok(conns) = connections.lock() {
-                    conns.iter()
+                    conns
+                        .iter()
                         .filter_map(|(_, session)| {
                             if let Some(ref char) = session.character {
                                 // Check if this character is targeting the mobile
@@ -847,8 +992,11 @@ fn attempt_mobile_flee(
 
     // Broadcast arrival (sleeping players don't see)
     let arrival_dir = get_opposite_direction_rust(&direction);
-    broadcast_to_room_awake(connections, &target_room_id,
-        &format!("{} arrives from the {}, fleeing!\n", mobile.name, arrival_dir));
+    broadcast_to_room_awake(
+        connections,
+        &target_room_id,
+        &format!("{} arrives from the {}, fleeing!\n", mobile.name, arrival_dir),
+    );
 
     Some(true)
 }
@@ -870,8 +1018,13 @@ fn process_mobile_combat_round(
         }
     };
 
-    debug!("Processing combat for mobile {} ({}): in_combat={}, targets={}",
-           mobile.name, mobile_id, mobile.combat.in_combat, mobile.combat.targets.len());
+    debug!(
+        "Processing combat for mobile {} ({}): in_combat={}, targets={}",
+        mobile.name,
+        mobile_id,
+        mobile.combat.in_combat,
+        mobile.combat.targets.len()
+    );
 
     // Skip if not actually in combat
     if !mobile.combat.in_combat || mobile.combat.targets.is_empty() {
@@ -892,12 +1045,19 @@ fn process_mobile_combat_round(
 
     // Handle stun
     if mobile.combat.stun_rounds_remaining > 0 {
-        debug!("Mobile {} is stunned ({} rounds remaining)", mobile.name, mobile.combat.stun_rounds_remaining);
+        debug!(
+            "Mobile {} is stunned ({} rounds remaining)",
+            mobile.name, mobile.combat.stun_rounds_remaining
+        );
         mobile.combat.stun_rounds_remaining -= 1;
         let mobile_name = mobile.name.clone();
         db.save_mobile_data(mobile)?;
 
-        broadcast_to_room_awake(connections, &room_id, &format!("{} is stunned and cannot act!", mobile_name));
+        broadcast_to_room_awake(
+            connections,
+            &room_id,
+            &format!("{} is stunned and cannot act!", mobile_name),
+        );
         debug!("Mobile {} stun handling complete, returning", mobile_name);
         return Ok(());
     }
@@ -910,11 +1070,23 @@ fn process_mobile_combat_round(
 
             for effect in &mobile.ongoing_effects {
                 let msg = match effect.effect_type.as_str() {
-                    "fire" => format!("{} continues to burn! ({} damage)", mobile.name, effect.damage_per_round),
-                    "cold" => format!("Frostbite spreads across {}! ({} damage)", mobile.name, effect.damage_per_round),
-                    "poison" => format!("Poison courses through {}! ({} damage)", mobile.name, effect.damage_per_round),
+                    "fire" => format!(
+                        "{} continues to burn! ({} damage)",
+                        mobile.name, effect.damage_per_round
+                    ),
+                    "cold" => format!(
+                        "Frostbite spreads across {}! ({} damage)",
+                        mobile.name, effect.damage_per_round
+                    ),
+                    "poison" => format!(
+                        "Poison courses through {}! ({} damage)",
+                        mobile.name, effect.damage_per_round
+                    ),
                     "acid" => format!("Acid eats into {}! ({} damage)", mobile.name, effect.damage_per_round),
-                    _ => format!("{} suffers ongoing damage! ({} damage)", mobile.name, effect.damage_per_round),
+                    _ => format!(
+                        "{} suffers ongoing damage! ({} damage)",
+                        mobile.name, effect.damage_per_round
+                    ),
                 };
                 broadcast_to_room_awake(connections, &room_id, &msg);
             }
@@ -928,7 +1100,10 @@ fn process_mobile_combat_round(
         db.save_mobile_data(mobile.clone())?;
 
         if mobile.current_hp <= 0 {
-            debug!("Mobile {} died from ongoing effects, calling process_mobile_death", mobile.name);
+            debug!(
+                "Mobile {} died from ongoing effects, calling process_mobile_death",
+                mobile.name
+            );
             process_mobile_death(db, connections, &mut mobile, &room_id)?;
             return Ok(());
         }
@@ -939,8 +1114,11 @@ fn process_mobile_combat_round(
         use rand::Rng;
         let mut rng = rand::thread_rng();
         if rng.gen_range(0..100) < 25 {
-            broadcast_to_room_awake(connections, &room_id,
-                &format!("{} doubles over, wracked by poison.", mobile.name));
+            broadcast_to_room_awake(
+                connections,
+                &room_id,
+                &format!("{} doubles over, wracked by poison.", mobile.name),
+            );
             db.save_mobile_data(mobile)?;
             return Ok(());
         }
@@ -957,8 +1135,11 @@ fn process_mobile_combat_round(
         debug!("Mobile {} saving exhausted state", mobile.name);
         db.save_mobile_data(mobile.clone())?;
         debug!("Mobile {} broadcasting exhaustion message", mobile.name);
-        broadcast_to_room_awake(connections, &room_id,
-            &format!("{} pauses to catch their breath.", mobile.name));
+        broadcast_to_room_awake(
+            connections,
+            &room_id,
+            &format!("{} pauses to catch their breath.", mobile.name),
+        );
         debug!("Mobile {} exhaustion handling complete", mobile.name);
         return Ok(());
     }
@@ -1012,7 +1193,9 @@ fn process_mobile_combat_round(
 
             // For player targets, use nil UUID (consistent with enter_mobile_combat)
             let player_target_id = uuid::Uuid::nil();
-            let current_distance = mobile.combat.distances
+            let current_distance = mobile
+                .combat
+                .distances
                 .get(&player_target_id)
                 .copied()
                 .unwrap_or(CombatDistance::Melee);
@@ -1027,9 +1210,15 @@ fn process_mobile_combat_round(
                         (CombatDistance::Pole, CombatDistance::Melee) => "moves to melee range",
                         _ => "advances",
                     };
-                    broadcast_to_room_awake(connections, &room_id,
-                        &format!("{} {} toward {}!", mobile.name, step_msg, player_name));
-                    debug!("Mobile {} advanced from {:?} to {:?}", mobile.name, current_distance, closer);
+                    broadcast_to_room_awake(
+                        connections,
+                        &room_id,
+                        &format!("{} {} toward {}!", mobile.name, step_msg, player_name),
+                    );
+                    debug!(
+                        "Mobile {} advanced from {:?} to {:?}",
+                        mobile.name, current_distance, closer
+                    );
 
                     // If still not at melee range, skip attack this round (spent action closing)
                     if closer != CombatDistance::Melee {
@@ -1090,7 +1279,12 @@ fn process_mobile_attacks_player(
         db.save_character_data(char.clone())?;
         sync_character_to_session(connections, &char);
         send_message_to_character(connections, player_name, "You are jolted awake by an attack!");
-        broadcast_to_room_except_awake(connections, room_id, &format!("{} is jolted awake!", char.name), player_name);
+        broadcast_to_room_except_awake(
+            connections,
+            room_id,
+            &format!("{} is jolted awake!", char.name),
+            player_name,
+        );
     }
 
     // Ensure player is in combat with this mobile (reactive combat)
@@ -1115,8 +1309,10 @@ fn process_mobile_attacks_player(
 
     // Jaw disabled blocks bite attacks for mobiles
     if is_bite_attack {
-        let jaw_disabled = mobile.wounds.iter().any(|w|
-            w.body_part == BodyPart::Jaw && w.level == WoundLevel::Disabled);
+        let jaw_disabled = mobile
+            .wounds
+            .iter()
+            .any(|w| w.body_part == BodyPart::Jaw && w.level == WoundLevel::Disabled);
         if jaw_disabled {
             return Ok(());
         }
@@ -1124,12 +1320,12 @@ fn process_mobile_attacks_player(
 
     // Both arms disabled + non-bite = mobile can't attack
     if !is_bite_attack {
-        let both_arms_disabled = mobile.wounds.iter().any(|w|
-            matches!(w.body_part, BodyPart::RightArm | BodyPart::RightHand)
-            && w.level == WoundLevel::Disabled)
-        && mobile.wounds.iter().any(|w|
-            matches!(w.body_part, BodyPart::LeftArm | BodyPart::LeftHand)
-            && w.level == WoundLevel::Disabled);
+        let both_arms_disabled = mobile.wounds.iter().any(|w| {
+            matches!(w.body_part, BodyPart::RightArm | BodyPart::RightHand) && w.level == WoundLevel::Disabled
+        }) && mobile
+            .wounds
+            .iter()
+            .any(|w| matches!(w.body_part, BodyPart::LeftArm | BodyPart::LeftHand) && w.level == WoundLevel::Disabled);
         if both_arms_disabled {
             return Ok(());
         }
@@ -1139,7 +1335,9 @@ fn process_mobile_attacks_player(
     let attacker_dex_mod = (mobile.stat_dex as i32 - 10) / 2;
     let target_dex_mod = (char.stat_dex as i32 - 10) / 2;
     // Calculate player AC from armor + ArmorClassBoost buffs
-    let ac_buff_bonus: i32 = char.active_buffs.iter()
+    let ac_buff_bonus: i32 = char
+        .active_buffs
+        .iter()
         .filter(|b| b.effect_type == EffectType::ArmorClassBoost)
         .map(|b| b.magnitude)
         .sum();
@@ -1150,7 +1348,9 @@ fn process_mobile_attacks_player(
 
     // Mobile arm wound hit penalty (non-bite attacks)
     if !is_bite_attack {
-        let arm_penalty = mobile.wounds.iter()
+        let arm_penalty = mobile
+            .wounds
+            .iter()
             .filter(|w| matches!(w.body_part, BodyPart::RightArm | BodyPart::RightHand))
             .map(|w| w.level.penalty())
             .max()
@@ -1166,8 +1366,17 @@ fn process_mobile_attacks_player(
     if !was_sleeping && roll > hit_chance {
         // Miss
         let miss_verb = get_miss_verb(damage_type);
-        send_message_to_character(connections, player_name, &format!("{} {} you but misses!", mobile.name, miss_verb));
-        broadcast_to_room_except_awake(connections, room_id, &format!("{} {} {} but misses!", mobile.name, miss_verb, char.name), player_name);
+        send_message_to_character(
+            connections,
+            player_name,
+            &format!("{} {} you but misses!", mobile.name, miss_verb),
+        );
+        broadcast_to_room_except_awake(
+            connections,
+            room_id,
+            &format!("{} {} {} but misses!", mobile.name, miss_verb, char.name),
+            player_name,
+        );
         return Ok(());
     }
 
@@ -1179,7 +1388,11 @@ fn process_mobile_attacks_player(
     damage = modified_damage;
     if damage == 0 {
         // Fire attacks extinguished by water
-        broadcast_to_room_awake(connections, room_id, &format!("{}'s fire attack is extinguished by the water!", mobile.name));
+        broadcast_to_room_awake(
+            connections,
+            room_id,
+            &format!("{}'s fire attack is extinguished by the water!", mobile.name),
+        );
         return Ok(());
     }
 
@@ -1226,10 +1439,17 @@ fn process_mobile_attacks_player(
                                 dropped.location = ItemLocation::Room(*room_id);
                                 dropped.wear_locations.clear();
                                 let _ = db.save_item_data(dropped);
-                                send_message_to_character(connections, player_name,
-                                    &format!("Your {} slips from your disabled hand!", weapon_name));
-                                broadcast_to_room_except_awake(connections, room_id,
-                                    &format!("{}'s {} clatters to the ground!", char.name, weapon_name), player_name);
+                                send_message_to_character(
+                                    connections,
+                                    player_name,
+                                    &format!("Your {} slips from your disabled hand!", weapon_name),
+                                );
+                                broadcast_to_room_except_awake(
+                                    connections,
+                                    room_id,
+                                    &format!("{}'s {} clatters to the ground!", char.name, weapon_name),
+                                    player_name,
+                                );
                             }
                         }
                     }
@@ -1243,10 +1463,17 @@ fn process_mobile_attacks_player(
                                     dropped.location = ItemLocation::Room(*room_id);
                                     dropped.wear_locations.clear();
                                     let _ = db.save_item_data(dropped);
-                                    send_message_to_character(connections, player_name,
-                                        &format!("Your {} slips from your disabled hand!", item_name));
-                                    broadcast_to_room_except_awake(connections, room_id,
-                                        &format!("{}'s {} clatters to the ground!", char.name, item_name), player_name);
+                                    send_message_to_character(
+                                        connections,
+                                        player_name,
+                                        &format!("Your {} slips from your disabled hand!", item_name),
+                                    );
+                                    broadcast_to_room_except_awake(
+                                        connections,
+                                        room_id,
+                                        &format!("{}'s {} clatters to the ground!", char.name, item_name),
+                                        player_name,
+                                    );
                                     break;
                                 }
                             }
@@ -1284,13 +1511,20 @@ fn process_mobile_attacks_player(
     }
 
     // Physical damage reduction traits (bludgeoning, slashing, piercing)
-    let is_physical = matches!(damage_type, DamageType::Bludgeoning | DamageType::Slashing | DamageType::Piercing);
+    let is_physical = matches!(
+        damage_type,
+        DamageType::Bludgeoning | DamageType::Slashing | DamageType::Piercing
+    );
     if is_physical {
         let has_iron_hide = char.traits.iter().any(|t| t == "iron_hide");
         let has_glass_jaw = char.traits.iter().any(|t| t == "glass_jaw");
         let mut phys_mod: i32 = 0;
-        if has_iron_hide { phys_mod += 10; }  // 10% reduction
-        if has_glass_jaw { phys_mod -= 15; }  // 15% increase
+        if has_iron_hide {
+            phys_mod += 10;
+        } // 10% reduction
+        if has_glass_jaw {
+            phys_mod -= 15;
+        } // 15% increase
         if phys_mod != 0 {
             damage = (damage * (100 - phys_mod) / 100).max(1);
         }
@@ -1316,8 +1550,20 @@ fn process_mobile_attacks_player(
 
     // Send messages (red for damage taken) - sleeping bystanders don't see combat
     let hit_verb = get_hit_verb(damage_type);
-    send_message_to_character(connections, player_name, &format!("\x1b[1;31m{} {} you for {} damage!{}\x1b[0m", mobile.name, hit_verb, damage, crit_text));
-    broadcast_to_room_except_awake(connections, room_id, &format!("{} {} {} for {} damage!", mobile.name, hit_verb, char.name, damage), player_name);
+    send_message_to_character(
+        connections,
+        player_name,
+        &format!(
+            "\x1b[1;31m{} {} you for {} damage!{}\x1b[0m",
+            mobile.name, hit_verb, damage, crit_text
+        ),
+    );
+    broadcast_to_room_except_awake(
+        connections,
+        room_id,
+        &format!("{} {} {} for {} damage!", mobile.name, hit_verb, char.name, damage),
+        player_name,
+    );
 
     // Check if player died or went unconscious
     if char.hp <= 0 {
@@ -1326,7 +1572,10 @@ fn process_mobile_attacks_player(
             process_player_death(db, connections, &mut char, room_id)?;
 
             // Remove player from mobile's targets
-            mobile.combat.targets.retain(|t| t.target_type != CombatTargetType::Player);
+            mobile
+                .combat
+                .targets
+                .retain(|t| t.target_type != CombatTargetType::Player);
             if mobile.combat.targets.is_empty() {
                 mobile.combat.in_combat = false;
             }
@@ -1339,7 +1588,12 @@ fn process_mobile_attacks_player(
             sync_character_to_session(connections, &char);
 
             send_message_to_character(connections, player_name, "You collapse, unconscious!");
-            broadcast_to_room_except_awake(connections, room_id, &format!("{} collapses, unconscious!", char_name_for_msg), player_name);
+            broadcast_to_room_except_awake(
+                connections,
+                room_id,
+                &format!("{} collapses, unconscious!", char_name_for_msg),
+                player_name,
+            );
 
             // If mobile is aggressive, they will continue attacking and kill the player
             if mobile.flags.aggressive {
@@ -1348,7 +1602,10 @@ fn process_mobile_attacks_player(
                     process_player_death(db, connections, &mut char, room_id)?;
 
                     // Remove player from mobile's targets
-                    mobile.combat.targets.retain(|t| t.target_type != CombatTargetType::Player);
+                    mobile
+                        .combat
+                        .targets
+                        .retain(|t| t.target_type != CombatTargetType::Player);
                     if mobile.combat.targets.is_empty() {
                         mobile.combat.in_combat = false;
                     }
@@ -1424,10 +1681,18 @@ fn get_character_weapon_info(db: &db::Db, char: &CharacterData) -> (String, i32,
         // Check if wielded
         for loc in &item.wear_locations {
             if *loc == WearLocation::Wielded {
-                let skill = item.weapon_skill.as_ref()
+                let skill = item
+                    .weapon_skill
+                    .as_ref()
                     .map(|s| s.to_skill_key().to_string())
                     .unwrap_or_else(|| "unarmed".to_string());
-                return (skill, item.damage_dice_count, item.damage_dice_sides, 0, item.damage_type);
+                return (
+                    skill,
+                    item.damage_dice_count,
+                    item.damage_dice_sides,
+                    0,
+                    item.damage_type,
+                );
             }
         }
     }
@@ -1436,7 +1701,12 @@ fn get_character_weapon_info(db: &db::Db, char: &CharacterData) -> (String, i32,
 }
 
 /// Apply underwater damage type modifiers for combat in underwater rooms
-fn apply_underwater_modifier(db: &db::Db, room_id: &uuid::Uuid, damage: i32, damage_type: DamageType) -> (i32, Option<&'static str>) {
+fn apply_underwater_modifier(
+    db: &db::Db,
+    room_id: &uuid::Uuid,
+    damage: i32,
+    damage_type: DamageType,
+) -> (i32, Option<&'static str>) {
     let room = match db.get_room_data(room_id) {
         Ok(Some(r)) if r.flags.underwater => r,
         _ => return (damage, None),
@@ -1625,17 +1895,23 @@ fn ranged_hit_verb_contextual(ranged_type: &str, damage: i32, max_damage: i32) -
 
     match severity {
         0 => {
-            if ranged_type == "crossbow" { "nicks" } else { "grazes" }
-        }
-        1 => {
-            match ranged_type {
-                "bow" => "lodges in",
-                "crossbow" => "punches into",
-                _ => "rips into",
+            if ranged_type == "crossbow" {
+                "nicks"
+            } else {
+                "grazes"
             }
         }
+        1 => match ranged_type {
+            "bow" => "lodges in",
+            "crossbow" => "punches into",
+            _ => "rips into",
+        },
         _ => {
-            if ranged_type == "bow" { "punches through" } else { "tears through" }
+            if ranged_type == "bow" {
+                "punches through"
+            } else {
+                "tears through"
+            }
         }
     }
 }
@@ -1654,7 +1930,8 @@ fn get_effective_weapon_noise(db: &db::Db, weapon_id: &uuid::Uuid) -> String {
             Some("crossbow") => "quiet",
             Some("firearm") => "loud",
             _ => "normal",
-        }.to_string()
+        }
+        .to_string()
     } else {
         item.noise_level.clone()
     };
@@ -1680,11 +1957,7 @@ fn get_effective_weapon_noise(db: &db::Db, weapon_id: &uuid::Uuid) -> String {
 }
 
 /// Broadcast gunshot noise to rooms adjacent to the given room
-fn broadcast_gunshot_noise(
-    db: &db::Db,
-    connections: &SharedConnections,
-    room_id: &uuid::Uuid,
-) {
+fn broadcast_gunshot_noise(db: &db::Db, connections: &SharedConnections, room_id: &uuid::Uuid) {
     if let Ok(Some(room)) = db.get_room_data(room_id) {
         let directions: [(&str, Option<uuid::Uuid>); 6] = [
             ("north", room.exits.north),
@@ -1697,8 +1970,11 @@ fn broadcast_gunshot_noise(
         for (dir, exit_opt) in &directions {
             if let Some(target_room_id) = exit_opt {
                 let from_dir = get_opposite_direction_rust(dir);
-                broadcast_to_room_awake(connections, target_room_id,
-                    &format!("You hear gunfire from the {}!", from_dir));
+                broadcast_to_room_awake(
+                    connections,
+                    target_room_id,
+                    &format!("You hear gunfire from the {}!", from_dir),
+                );
             }
         }
     }
@@ -1717,8 +1993,16 @@ pub fn add_skill_experience_to_character(char: &mut CharacterData, skill_name: &
     // XP required per level - matches Rhai version in characters.rs
     fn xp_for_level(level: i32) -> i32 {
         match level {
-            0 => 100,   1 => 200,   2 => 350,   3 => 550,   4 => 800,
-            5 => 1100,  6 => 1500,  7 => 2000,  8 => 2600,  9 => 3300,
+            0 => 100,
+            1 => 200,
+            2 => 350,
+            3 => 550,
+            4 => 800,
+            5 => 1100,
+            6 => 1500,
+            7 => 2000,
+            8 => 2600,
+            9 => 3300,
             _ => 0,
         }
     }
@@ -1751,10 +2035,13 @@ pub fn add_skill_experience_to_character(char: &mut CharacterData, skill_name: &
     }
 
     // Skill not found, create it
-    char.skills.insert(skill_key, SkillProgress {
-        level: 0,
-        experience: amount,
-    });
+    char.skills.insert(
+        skill_key,
+        SkillProgress {
+            level: 0,
+            experience: amount,
+        },
+    );
     false
 }
 
@@ -1812,7 +2099,8 @@ fn roll_random_body_part<R: rand::Rng>(rng: &mut R) -> String {
         98..=98 => "right ear",
         99..=99 => "jaw",
         _ => "neck",
-    }.to_string()
+    }
+    .to_string()
 }
 
 /// Add bleeding to a mobile's wound on a body part
@@ -1897,12 +2185,15 @@ pub fn process_player_death(
     char.gold = 0;
 
     // Respawn character
-    let spawn_room = char.spawn_room_id
+    let spawn_room = char
+        .spawn_room_id
         .unwrap_or_else(|| uuid::Uuid::parse_str(STARTING_ROOM_ID).unwrap());
 
     char.current_room_id = spawn_room;
     char.hp = char.max_hp / 4;
-    if char.hp < 1 { char.hp = 1; }
+    if char.hp < 1 {
+        char.hp = 1;
+    }
     char.is_unconscious = false;
     char.bleedout_rounds_remaining = 0;
     char.wounds.clear();
@@ -1947,7 +2238,11 @@ pub fn process_mobile_death(
 
     // Send death message (red) - sleeping bystanders don't see combat
     debug!("process_mobile_death: broadcasting death message");
-    broadcast_to_room_awake(connections, room_id, &format!("\x1b[1;31m{} collapses to the ground, dead!\x1b[0m", mobile_name));
+    broadcast_to_room_awake(
+        connections,
+        room_id,
+        &format!("\x1b[1;31m{} collapses to the ground, dead!\x1b[0m", mobile_name),
+    );
     debug!("process_mobile_death: death message broadcast complete");
 
     // Create corpse using builder with random gold variance
@@ -2014,11 +2309,7 @@ pub fn process_mobile_death(
 /// - Special ammo (with ammo_effect_type) is excluded (consumed on impact)
 /// - 50% chance each projectile is recoverable
 /// - 25% of recovered projectiles spawn as broken
-fn process_arrow_recovery(
-    db: &db::Db,
-    mobile: &MobileData,
-    corpse_id: &uuid::Uuid,
-) {
+fn process_arrow_recovery(db: &db::Db, mobile: &MobileData, corpse_id: &uuid::Uuid) {
     use rand::Rng;
     let mut rng = rand::thread_rng();
     let bullet_calibers = ["9mm", "5.56mm", ".45", ".308", "12gauge"];

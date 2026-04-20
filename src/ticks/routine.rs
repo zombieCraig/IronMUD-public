@@ -4,10 +4,10 @@
 //! and setting destination rooms for step movement.
 
 use anyhow::Result;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::{debug, error, warn};
 
-use ironmud::{db, find_active_entry, SharedConnections};
+use ironmud::{SharedConnections, db, find_active_entry};
 
 use super::broadcast::broadcast_to_room_awake;
 use super::simulation::sleep_transition_message;
@@ -117,11 +117,7 @@ fn process_routine_tick(db: &db::Db, connections: &SharedConnections) -> Result<
             // Configured message wins; otherwise fall back to a sleep-transition
             // default so wake/sleep are visible without per-entry configuration.
             active_entry.transition_message.clone().or_else(|| {
-                sleep_transition_message(
-                    &current_mobile.name,
-                    &current_mobile.current_activity,
-                    &new_activity,
-                )
+                sleep_transition_message(&current_mobile.name, &current_mobile.current_activity, &new_activity)
             })
         } else {
             None

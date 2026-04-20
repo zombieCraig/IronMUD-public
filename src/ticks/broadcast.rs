@@ -49,7 +49,12 @@ pub fn broadcast_to_room_except(connections: &SharedConnections, room_id: &uuid:
 }
 
 /// Broadcast to non-sleeping characters in a room (excludes one character by name)
-pub fn broadcast_to_room_except_awake(connections: &SharedConnections, room_id: &uuid::Uuid, message: &str, exclude: &str) {
+pub fn broadcast_to_room_except_awake(
+    connections: &SharedConnections,
+    room_id: &uuid::Uuid,
+    message: &str,
+    exclude: &str,
+) {
     if let Ok(conns) = connections.lock() {
         for (_, session) in conns.iter() {
             if let Some(ref char) = session.character {
@@ -87,9 +92,7 @@ pub fn broadcast_to_room_awake(connections: &SharedConnections, room_id: &uuid::
     if let Ok(conns) = connections.lock() {
         for (_, session) in conns.iter() {
             if let Some(ref char) = session.character {
-                if char.current_room_id == *room_id
-                    && char.position != CharacterPosition::Sleeping
-                {
+                if char.current_room_id == *room_id && char.position != CharacterPosition::Sleeping {
                     let _ = session.sender.send(format!("{}\n", message));
                 }
             }
@@ -99,11 +102,7 @@ pub fn broadcast_to_room_awake(connections: &SharedConnections, room_id: &uuid::
 
 /// Broadcast a message to all awake players in a room (for mobile movement)
 /// Sleeping players don't notice mobiles coming and going
-pub fn broadcast_to_room_mobiles(
-    connections: &SharedConnections,
-    room_id: &uuid::Uuid,
-    message: &str,
-) {
+pub fn broadcast_to_room_mobiles(connections: &SharedConnections, room_id: &uuid::Uuid, message: &str) {
     if let Ok(conns) = connections.lock() {
         for (_, session) in conns.iter() {
             if let Some(ref char) = session.character {

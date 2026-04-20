@@ -119,7 +119,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Rusty Sword (1d4 slashing)
     let vnum = "oakvale:rusty_sword";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Rusty Sword",
         "A rusty sword lies here, its edge pitted with neglect.",
         "This old sword has seen better days. Rust blooms across its once-keen blade, and the leather grip is cracked and worn. It might still draw blood, but not much.",
@@ -137,7 +138,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Iron Sword (2d4 slashing)
     let vnum = "oakvale:iron_sword";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Iron Sword",
         "A sturdy iron sword rests here, its blade well-oiled.",
         "Forged from solid iron, this longsword bears the marks of a competent blacksmith. The blade holds a decent edge, and the crossguard is shaped like a pair of wings.",
@@ -155,7 +157,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Wooden Staff (1d6 bludgeoning, two-handed)
     let vnum = "oakvale:wooden_staff";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Wooden Staff",
         "A tall wooden staff leans against the wall here.",
         "Cut from a sturdy oak branch and smoothed by long use, this staff is both a walking aid and a formidable weapon. Iron bands reinforce each end.",
@@ -174,7 +177,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Hunting Bow (1d6 piercing, ranged, two-handed)
     let vnum = "oakvale:hunting_bow";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Hunting Bow",
         "A hunting bow rests here, its string taut.",
         "This short recurve bow is crafted from yew wood and strung with waxed sinew. Simple but reliable, it is the weapon of choice for hunters throughout the valley.",
@@ -193,7 +197,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Dagger (1d4 piercing)
     let vnum = "oakvale:dagger";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Dagger",
         "A small dagger gleams on the ground here.",
         "A slim-bladed dagger with a leather-wrapped grip. The double-edged blade comes to a needle-sharp point, ideal for quick thrusts in close combat.",
@@ -211,7 +216,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Iron Mace (2d3 bludgeoning)
     let vnum = "oakvale:iron_mace";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Iron Mace",
         "A heavy iron mace lies here.",
         "This brutal weapon features a flanged iron head mounted on a hardwood shaft. Each of the six flanges is designed to concentrate force through armor. The leather grip is stained dark with sweat.",
@@ -229,7 +235,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Shadow Blade (3d4 slashing, glow, +1 str)
     let vnum = "shadowfang:shadow_blade";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Shadow Blade",
         "A blade of living shadow writhes on the ground, casting an eerie glow.",
         "This longsword seems forged from solidified darkness. Tendrils of shadow curl lazily along its edge, and it pulses with a faint, malevolent light. The grip is wrapped in black dragonhide that molds itself to the wielder's hand.",
@@ -249,7 +256,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Pitchfork (1d4 piercing, polearm, two-handed)
     let vnum = "hilltop:pitchfork";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Pitchfork",
         "A farmer's pitchfork has been left here.",
         "A three-tined iron pitchfork mounted on a long ash handle. Intended for moving hay, it could serve as a makeshift weapon in desperate times.",
@@ -270,7 +278,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Leather Armor (AC 2, torso)
     let vnum = "oakvale:leather_armor";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Leather Armor",
         "A suit of leather armor lies in a heap here.",
         "Crafted from thick, boiled cowhide, this armor has been shaped to cover the torso. Bronze rivets reinforce the joints, and the interior is lined with soft linen for comfort.",
@@ -286,7 +295,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Iron Helm (AC 1, head)
     let vnum = "oakvale:iron_helm";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Iron Helm",
         "An iron helm sits here, its surface dull and scratched.",
         "A simple open-faced iron helmet with a nasal guard. The interior is padded with quilted wool. Functional rather than decorative, it offers solid protection for the head.",
@@ -302,7 +312,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Leather Boots (AC 1, feet)
     let vnum = "oakvale:leather_boots";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Leather Boots",
         "A pair of leather boots stands here.",
         "Sturdy boots made from thick, tanned leather with hardened soles. They lace up past the ankle and offer good footing on rough terrain.",
@@ -318,7 +329,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Chain Mail (AC 4, torso)
     let vnum = "ironkeep:chain_mail";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Chain Mail",
         "A shirt of interlocking chain mail lies here in a heavy heap.",
         "Thousands of riveted iron rings interlock to form this knee-length mail shirt. It rattles softly with every movement but provides excellent protection against slashing weapons.",
@@ -334,7 +346,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Iron Shield (AC 2, off-hand)
     let vnum = "ironkeep:iron_shield";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Iron Shield",
         "A round iron shield lies propped against the wall.",
         "A round shield faced with riveted iron plates over a wooden core. A leather strap and iron grip allow it to be strapped firmly to the forearm. Dents and scratches speak of battles survived.",
@@ -349,7 +362,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Dragon Scale Armor (AC 5, torso, +1 con)
     let vnum = "shadowfang:dragon_scale";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Dragon Scale Armor",
         "A suit of shimmering dragon scale armor lies here, each scale catching the light.",
         "This extraordinary armor is assembled from the scales of a black dragon, each one the size of a man's palm. The scales overlap like roof tiles, creating a surface that seems to drink in light. Despite the dragon's size, the armor is surprisingly light, and warmth radiates from within.",
@@ -368,7 +382,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Iron Gate Key
     let vnum = "oakvale:gate_key";
     let i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Iron Gate Key",
         "A large iron key lies here.",
         "A heavy iron key with a simple ward pattern. It looks like it might fit the lock on a large gate.",
@@ -379,7 +394,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Treasure Alcove Key
     let vnum = "shadowfang:treasure_key";
     let i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Treasure Alcove Key",
         "A small, ornate key lies here, glinting darkly.",
         "This small key is fashioned from black iron and set with a tiny garnet in its bow. Strange runes are etched along its shaft.",
@@ -392,7 +408,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Loaf of Bread
     let vnum = "oakvale:bread";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Loaf of Bread",
         "A crusty loaf of bread sits here.",
         "A round loaf of rustic bread with a golden-brown crust. The interior is soft and still faintly warm, filling the air with a yeasty aroma.",
@@ -406,7 +423,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Roast Chicken
     let vnum = "oakvale:roast_chicken";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Roast Chicken",
         "A roast chicken glistens with juices here.",
         "A whole chicken roasted to a perfect golden brown, its skin crispy and lacquered with drippings. The aroma of herbs and garlic wafts from the steaming bird.",
@@ -421,7 +439,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Mug of Ale
     let vnum = "oakvale:ale";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Mug of Ale",
         "A frothy mug of ale sits here.",
         "A thick ceramic mug brimming with dark amber ale. A generous head of foam crowns the brew, and the rich scent of hops and malt fills the air.",
@@ -443,7 +462,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Healing Potion
     let vnum = "oakvale:healing_potion";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Healing Potion",
         "A small vial of glowing red liquid sits here.",
         "A glass vial stoppered with wax, containing a luminous crimson liquid that swirls gently of its own accord. The potion radiates a faint warmth through the glass.",
@@ -465,7 +485,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Mana Potion
     let vnum = "oakvale:mana_potion";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Mana Potion",
         "A small vial of shimmering blue liquid sits here.",
         "A glass vial containing a deep azure liquid that sparkles with tiny motes of light, like stars reflected in a midnight pool. A faint hum emanates from within.",
@@ -487,7 +508,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Waterskin
     let vnum = "oakvale:waterskin";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Waterskin",
         "A leather waterskin lies here.",
         "A simple waterskin made from goat leather, sealed with pitch at the seams. A wooden stopper dangles from a leather cord. It sloshes when moved.",
@@ -503,7 +525,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Apple
     let vnum = "oakvale:apple";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Apple",
         "A crisp red apple sits here.",
         "A firm, round apple with a deep red skin streaked with gold. It smells sweet and fresh, clearly just picked from the tree.",
@@ -518,7 +541,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Hearty Stew
     let vnum = "oakvale:stew";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Hearty Stew",
         "A steaming bowl of hearty stew sits here.",
         "A thick, rich stew fills this wooden bowl, packed with chunks of root vegetables, tender meat, and fragrant herbs. Steam rises in lazy curls, carrying the mouthwatering aroma of a slow-cooked meal.",
@@ -535,7 +559,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Fresh Trout
     let vnum = "oakvale:trout";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Fresh Trout",
         "A fresh trout lies here, its scales glistening.",
         "A speckled brown trout with silvery flanks, freshly caught from the river. Its scales still glisten with moisture, and it smells of clean water.",
@@ -550,7 +575,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Largemouth Bass
     let vnum = "oakvale:bass";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Largemouth Bass",
         "A largemouth bass lies here.",
         "A plump largemouth bass with a distinctive dark lateral stripe along its olive-green body. This one is a decent size, enough for a solid meal.",
@@ -565,7 +591,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Crystal Fish
     let vnum = "shadowfang:crystal_fish";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Crystal Fish",
         "A translucent fish shimmers with an inner light here.",
         "This strange fish is almost entirely transparent, its crystalline flesh revealing delicate bones that glow with a soft blue luminescence. It is found only in the deep underground pools of Shadowfang Keep.",
@@ -588,7 +615,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Tomato Seeds
     let vnum = "oakvale:tomato_seeds";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Tomato Seeds",
         "A small packet of tomato seeds lies here.",
         "A handful of tiny, flat seeds wrapped in a scrap of cloth. Each seed is pale yellow and slightly fuzzy, ready to be planted in fertile soil.",
@@ -602,7 +630,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Herb Seeds
     let vnum = "oakvale:herb_seeds";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Herb Seeds",
         "A small packet of herb seeds lies here.",
         "An assortment of tiny seeds in various shapes and colors, bundled together in a twist of parchment. A faint herbal fragrance clings to the packet.",
@@ -616,7 +645,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Ripe Tomato
     let vnum = "oakvale:tomato";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Ripe Tomato",
         "A plump, ripe tomato sits here.",
         "A perfectly ripe tomato with smooth, deep red skin that yields slightly to the touch. The vine-fresh scent promises a burst of tangy sweetness.",
@@ -631,7 +661,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Fresh Herb
     let vnum = "oakvale:herb";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Fresh Herb",
         "A sprig of fresh herbs lies here, filling the air with fragrance.",
         "A bundle of aromatic green herbs tied with a bit of twine. The leaves are bright and pungent, useful in cooking or simple remedies.",
@@ -648,7 +679,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Bag of Flour
     let vnum = "oakvale:flour";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Bag of Flour",
         "A small cloth bag of flour sits here.",
         "A tightly-woven linen bag filled with finely ground wheat flour. A dusting of white powder clings to the outside of the bag.",
@@ -662,7 +694,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Piece of Leather
     let vnum = "oakvale:leather";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Piece of Leather",
         "A piece of tanned leather lies here.",
         "A square of thick, supple leather that has been properly tanned and cured. The surface is smooth on one side and slightly rough on the other, ready for crafting.",
@@ -676,7 +709,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Bundle of Wood
     let vnum = "oakvale:wood";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Bundle of Wood",
         "A bundle of wood is stacked here.",
         "Several straight branches and split logs bound together with rough cord. The wood is dry and well-seasoned, suitable for building or fuel.",
@@ -692,7 +726,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Torch
     let vnum = "oakvale:torch";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Torch",
         "A torch flickers with a warm, steady flame here.",
         "A sturdy wooden brand wrapped in oil-soaked rags at one end. The flame dances and crackles, casting warm light and long shadows.",
@@ -706,7 +741,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Leather Backpack
     let vnum = "oakvale:backpack";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Leather Backpack",
         "A worn leather backpack lies here.",
         "A spacious backpack crafted from thick brown leather, with adjustable shoulder straps and a sturdy brass buckle. Multiple compartments provide ample storage for the discerning adventurer.",
@@ -722,7 +758,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Coil of Rope
     let vnum = "oakvale:rope";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Coil of Rope",
         "A coil of sturdy rope lies here.",
         "A fifty-foot length of braided hemp rope, tightly coiled. It is thick and strong, useful for climbing, binding, or any number of practical tasks.",
@@ -735,7 +772,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Linen Bandage
     let vnum = "oakvale:bandage";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Linen Bandage",
         "A roll of clean linen bandage lies here.",
         "A tightly rolled strip of bleached linen, clean and ready for use. It can be applied to wounds to staunch bleeding and promote healing.",
@@ -753,7 +791,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Fishing Rod
     let vnum = "oakvale:fishing_rod";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Fishing Rod",
         "A fishing rod leans against a nearby surface.",
         "A simple fishing rod fashioned from a flexible bamboo pole. A length of catgut line is attached to the tip, ending in a small iron hook. Just add bait and patience.",
@@ -769,7 +808,8 @@ pub fn seed_items(db: &Db) -> Result<()> {
     // Glowing Mushroom
     let vnum = "shadowfang:mushroom";
     let mut i = item(
-        super::seed_uuid(vnum), vnum,
+        super::seed_uuid(vnum),
+        vnum,
         "Glowing Mushroom",
         "A softly glowing mushroom sprouts from the damp stone here.",
         "This pale, bulbous mushroom emits a faint bioluminescent glow from its cap. Found deep underground where no sunlight reaches, it has a slightly bitter taste but is safe to eat. Alchemists prize them as ingredients.",

@@ -1,10 +1,10 @@
 // src/script/healers.rs
 // NPC healer system functions
 
+use crate::SharedConnections;
+use crate::db::Db;
 use rhai::Engine;
 use std::sync::Arc;
-use crate::db::Db;
-use crate::SharedConnections;
 
 /// Register healer-related functions
 pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections) {
@@ -81,7 +81,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             match cloned_db.get_mobiles_in_room(&uuid) {
                 Ok(mobiles) => {
                     for mobile in mobiles {
-                        if mobile.flags.healer && !mobile.is_prototype
+                        if mobile.flags.healer
+                            && !mobile.is_prototype
                             && mobile.healer_type.to_lowercase() == healer_type.to_lowercase()
                         {
                             return rhai::Dynamic::from(mobile);
@@ -116,21 +117,35 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 return match healer_type.as_str() {
                     "medic" => matches!(
                         service_lower.as_str(),
-                        "minor_wound" | "moderate_wound" | "severe_wound" | "bleeding"
-                            | "broken_bone" | "concussion" | "severed_tendon" | "impaled"
-                            | "nerve_damage" | "punctured_organ"
+                        "minor_wound"
+                            | "moderate_wound"
+                            | "severe_wound"
+                            | "bleeding"
+                            | "broken_bone"
+                            | "concussion"
+                            | "severed_tendon"
+                            | "impaled"
+                            | "nerve_damage"
+                            | "punctured_organ"
                     ),
                     "herbalist" => matches!(
                         service_lower.as_str(),
-                        "minor_wound" | "moderate_wound" | "severe_wound"
-                            | "poison" | "illness" | "burn" | "frostbite"
-                            | "severe_burn" | "frozen_limb" | "venom_surge" | "acid_burn"
-                            | "frostbitten" | "charred" | "toxic_shock"
+                        "minor_wound"
+                            | "moderate_wound"
+                            | "severe_wound"
+                            | "poison"
+                            | "illness"
+                            | "burn"
+                            | "frostbite"
+                            | "severe_burn"
+                            | "frozen_limb"
+                            | "venom_surge"
+                            | "acid_burn"
+                            | "frostbitten"
+                            | "charred"
+                            | "toxic_shock"
                     ),
-                    "cleric" => matches!(
-                        service_lower.as_str(),
-                        "restore_hp" | "revive" | "full_heal"
-                    ),
+                    "cleric" => matches!(service_lower.as_str(), "restore_hp" | "revive" | "full_heal"),
                     _ => false,
                 };
             }
@@ -150,20 +165,39 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
                 let services: Vec<&str> = match mobile.healer_type.to_lowercase().as_str() {
                     "medic" => vec![
-                        "minor_wound", "moderate_wound", "severe_wound", "bleeding",
-                        "broken_bone", "concussion", "severed_tendon", "impaled",
-                        "nerve_damage", "punctured_organ",
+                        "minor_wound",
+                        "moderate_wound",
+                        "severe_wound",
+                        "bleeding",
+                        "broken_bone",
+                        "concussion",
+                        "severed_tendon",
+                        "impaled",
+                        "nerve_damage",
+                        "punctured_organ",
                     ],
                     "herbalist" => vec![
-                        "minor_wound", "moderate_wound", "severe_wound", "poison", "illness",
-                        "burn", "frostbite", "severe_burn", "frozen_limb", "venom_surge",
-                        "acid_burn", "frostbitten", "charred", "toxic_shock",
+                        "minor_wound",
+                        "moderate_wound",
+                        "severe_wound",
+                        "poison",
+                        "illness",
+                        "burn",
+                        "frostbite",
+                        "severe_burn",
+                        "frozen_limb",
+                        "venom_surge",
+                        "acid_burn",
+                        "frostbitten",
+                        "charred",
+                        "toxic_shock",
                     ],
                     "cleric" => vec!["restore_hp", "revive", "full_heal"],
                     _ => vec![],
                 };
 
-                return services.into_iter()
+                return services
+                    .into_iter()
                     .map(|s| rhai::Dynamic::from(s.to_string()))
                     .collect();
             }
@@ -185,7 +219,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             "illness" => 150,
             "burn" => 75,
             "frostbite" => 75,
-            "restore_hp" => 20,  // Per 10 HP
+            "restore_hp" => 20, // Per 10 HP
             "revive" => 500,
             "full_heal" => 300,
             // Physical trauma (medic)
@@ -257,103 +291,112 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // Has the healer treat a specific wound on the character
     let cloned_db = db.clone();
     let conns = connections.clone();
-    engine.register_fn("perform_wound_healing", move |mobile_id: String, connection_id: String, wound_index: i64| -> bool {
-        // Get the healer mobile
-        let _healer = if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
-            if let Ok(Some(mobile)) = cloned_db.get_mobile_data(&uuid) {
-                if !mobile.flags.healer {
+    engine.register_fn(
+        "perform_wound_healing",
+        move |mobile_id: String, connection_id: String, wound_index: i64| -> bool {
+            // Get the healer mobile
+            let _healer = if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+                if let Ok(Some(mobile)) = cloned_db.get_mobile_data(&uuid) {
+                    if !mobile.flags.healer {
+                        return false;
+                    }
+                    mobile
+                } else {
                     return false;
                 }
-                mobile
             } else {
                 return false;
-            }
-        } else {
-            return false;
-        };
+            };
 
-        // Get the character
-        if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
-            if let Some(session) = conns_lock.get_mut(&conn_id) {
-                if let Some(ref mut char) = session.character {
-                    let idx = wound_index as usize;
-                    if idx < char.wounds.len() {
-                        // Get the body part before removing the wound
-                        let body_part = char.wounds[idx].body_part.to_display_string().to_string();
-                        // Remove the wound
-                        char.wounds.remove(idx);
-                        // Also clear any ongoing effects on this body part
-                        char.ongoing_effects.retain(|e| e.body_part != body_part);
-                        // Add scar on healed body part
-                        let count = char.scars.entry(body_part).or_insert(0);
-                        *count += 1;
-                        let _ = cloned_db.save_character_data(char.clone());
-                        return true;
+            // Get the character
+            if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+                let mut conns_lock = conns.lock().unwrap();
+                if let Some(session) = conns_lock.get_mut(&conn_id) {
+                    if let Some(ref mut char) = session.character {
+                        let idx = wound_index as usize;
+                        if idx < char.wounds.len() {
+                            // Get the body part before removing the wound
+                            let body_part = char.wounds[idx].body_part.to_display_string().to_string();
+                            // Remove the wound
+                            char.wounds.remove(idx);
+                            // Also clear any ongoing effects on this body part
+                            char.ongoing_effects.retain(|e| e.body_part != body_part);
+                            // Add scar on healed body part
+                            let count = char.scars.entry(body_part).or_insert(0);
+                            *count += 1;
+                            let _ = cloned_db.save_character_data(char.clone());
+                            return true;
+                        }
                     }
                 }
             }
-        }
-        false
-    });
+            false
+        },
+    );
 
     // heal_character_wound_by_part(connection_id, body_part) -> bool
     // Heals a wound on a specific body part - updates session AND saves to DB
     let cloned_db = db.clone();
     let conns = connections.clone();
-    engine.register_fn("heal_character_wound_by_part", move |connection_id: String, body_part: String| -> bool {
-        let bp = match crate::BodyPart::from_str(&body_part) {
-            Some(p) => p,
-            None => return false,
-        };
+    engine.register_fn(
+        "heal_character_wound_by_part",
+        move |connection_id: String, body_part: String| -> bool {
+            let bp = match crate::BodyPart::from_str(&body_part) {
+                Some(p) => p,
+                None => return false,
+            };
 
-        if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
-            if let Some(session) = conns_lock.get_mut(&conn_id) {
-                if let Some(ref mut char) = session.character {
-                    let original_len = char.wounds.len();
-                    let bp_name = bp.to_display_string().to_string();
-                    char.wounds.retain(|w| w.body_part != bp);
-                    if char.wounds.len() != original_len {
-                        // Also clear any ongoing effects on this body part
-                        char.ongoing_effects.retain(|e| e.body_part != bp_name);
-                        // Add scar on healed body part
-                        let count = char.scars.entry(bp_name).or_insert(0);
-                        *count += 1;
-                        let _ = cloned_db.save_character_data(char.clone());
-                        return true;
+            if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+                let mut conns_lock = conns.lock().unwrap();
+                if let Some(session) = conns_lock.get_mut(&conn_id) {
+                    if let Some(ref mut char) = session.character {
+                        let original_len = char.wounds.len();
+                        let bp_name = bp.to_display_string().to_string();
+                        char.wounds.retain(|w| w.body_part != bp);
+                        if char.wounds.len() != original_len {
+                            // Also clear any ongoing effects on this body part
+                            char.ongoing_effects.retain(|e| e.body_part != bp_name);
+                            // Add scar on healed body part
+                            let count = char.scars.entry(bp_name).or_insert(0);
+                            *count += 1;
+                            let _ = cloned_db.save_character_data(char.clone());
+                            return true;
+                        }
                     }
                 }
             }
-        }
-        false
-    });
+            false
+        },
+    );
 
     // clear_frostbite_condition(connection_id, body_part) -> bool
     // Clears the frostbite condition for a specific body part
     let cloned_db = db.clone();
     let conns = connections.clone();
-    engine.register_fn("clear_frostbite_condition", move |connection_id: String, body_part: String| -> bool {
-        let bp = match crate::BodyPart::from_str(&body_part) {
-            Some(p) => p,
-            None => return false,
-        };
+    engine.register_fn(
+        "clear_frostbite_condition",
+        move |connection_id: String, body_part: String| -> bool {
+            let bp = match crate::BodyPart::from_str(&body_part) {
+                Some(p) => p,
+                None => return false,
+            };
 
-        if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
-            if let Some(session) = conns_lock.get_mut(&conn_id) {
-                if let Some(ref mut char) = session.character {
-                    let original_len = char.has_frostbite.len();
-                    char.has_frostbite.retain(|&p| p != bp);
-                    if char.has_frostbite.len() != original_len {
-                        let _ = cloned_db.save_character_data(char.clone());
-                        return true;
+            if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+                let mut conns_lock = conns.lock().unwrap();
+                if let Some(session) = conns_lock.get_mut(&conn_id) {
+                    if let Some(ref mut char) = session.character {
+                        let original_len = char.has_frostbite.len();
+                        char.has_frostbite.retain(|&p| p != bp);
+                        if char.has_frostbite.len() != original_len {
+                            let _ = cloned_db.save_character_data(char.clone());
+                            return true;
+                        }
                     }
                 }
             }
-        }
-        false
-    });
+            false
+        },
+    );
 
     // stop_character_bleeding(connection_id) -> bool
     // Stops all bleeding on a character
@@ -402,9 +445,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if let Some(session) = conns_lock.get_mut(&conn_id) {
                 if let Some(ref mut char) = session.character {
                     // Remove poisoned wounds
-                    char.wounds.retain(|w| {
-                        w.wound_type != crate::WoundType::Poisoned
-                    });
+                    char.wounds.retain(|w| w.wound_type != crate::WoundType::Poisoned);
                     let _ = cloned_db.save_character_data(char.clone());
                     return true;
                 }
@@ -504,21 +545,24 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // Restores HP to character, returns actual amount healed
     let cloned_db = db.clone();
     let conns = connections.clone();
-    engine.register_fn("restore_character_hp", move |connection_id: String, amount: i64| -> i64 {
-        if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
-            if let Some(session) = conns_lock.get_mut(&conn_id) {
-                if let Some(ref mut char) = session.character {
-                    let old_hp = char.hp;
-                    char.hp = (char.hp + amount as i32).min(char.max_hp);
-                    let healed = char.hp - old_hp;
-                    let _ = cloned_db.save_character_data(char.clone());
-                    return healed as i64;
+    engine.register_fn(
+        "restore_character_hp",
+        move |connection_id: String, amount: i64| -> i64 {
+            if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+                let mut conns_lock = conns.lock().unwrap();
+                if let Some(session) = conns_lock.get_mut(&conn_id) {
+                    if let Some(ref mut char) = session.character {
+                        let old_hp = char.hp;
+                        char.hp = (char.hp + amount as i32).min(char.max_hp);
+                        let healed = char.hp - old_hp;
+                        let _ = cloned_db.save_character_data(char.clone());
+                        return healed as i64;
+                    }
                 }
             }
-        }
-        0
-    });
+            0
+        },
+    );
 
     // full_heal_character(connection_id) -> bool
     // Fully restores character to max HP
@@ -563,15 +607,18 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // set_healer_type(mobile_id, healer_type) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("set_healer_type", move |mobile_id: String, healer_type: String| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
-            if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
-                mobile.healer_type = healer_type;
-                return cloned_db.save_mobile_data(mobile).is_ok();
+    engine.register_fn(
+        "set_healer_type",
+        move |mobile_id: String, healer_type: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+                if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
+                    mobile.healer_type = healer_type;
+                    return cloned_db.save_mobile_data(mobile).is_ok();
+                }
             }
-        }
-        false
-    });
+            false
+        },
+    );
 
     // set_healing_free(mobile_id, free) -> bool
     let cloned_db = db.clone();
@@ -587,15 +634,18 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // set_healing_cost_multiplier(mobile_id, multiplier) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("set_healing_cost_multiplier", move |mobile_id: String, multiplier: i64| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
-            if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
-                mobile.healing_cost_multiplier = multiplier as i32;
-                return cloned_db.save_mobile_data(mobile).is_ok();
+    engine.register_fn(
+        "set_healing_cost_multiplier",
+        move |mobile_id: String, multiplier: i64| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+                if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
+                    mobile.healing_cost_multiplier = multiplier as i32;
+                    return cloned_db.save_mobile_data(mobile).is_ok();
+                }
             }
-        }
-        false
-    });
+            false
+        },
+    );
 
     // ========== Dialogue Helper Functions ==========
 
@@ -631,7 +681,18 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             ),
             "herbalist" => matches!(
                 word_lower.as_str(),
-                "heal" | "cure" | "poison" | "antidote" | "illness" | "sick" | "cold" | "burn" | "frostbite" | "cost" | "price" | "help"
+                "heal"
+                    | "cure"
+                    | "poison"
+                    | "antidote"
+                    | "illness"
+                    | "sick"
+                    | "cold"
+                    | "burn"
+                    | "frostbite"
+                    | "cost"
+                    | "price"
+                    | "help"
             ),
             "cleric" => matches!(
                 word_lower.as_str(),

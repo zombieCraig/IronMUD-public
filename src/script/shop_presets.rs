@@ -1,15 +1,16 @@
 // src/script/shop_presets.rs
 // Shop buy preset system functions
 
+use crate::ShopPreset;
+use crate::db::Db;
 use rhai::Engine;
 use std::sync::Arc;
-use crate::db::Db;
-use crate::ShopPreset;
 
 /// Register shop preset functions
 pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // Register ShopPreset type with getters/setters
-    engine.register_type_with_name::<ShopPreset>("ShopPreset")
+    engine
+        .register_type_with_name::<ShopPreset>("ShopPreset")
         .register_get("id", |p: &mut ShopPreset| p.id.to_string())
         .register_get("vnum", |p: &mut ShopPreset| p.vnum.clone())
         .register_set("vnum", |p: &mut ShopPreset, val: String| p.vnum = val)
@@ -18,13 +19,19 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_get("description", |p: &mut ShopPreset| p.description.clone())
         .register_set("description", |p: &mut ShopPreset, val: String| p.description = val)
         .register_get("buy_types", |p: &mut ShopPreset| {
-            p.buy_types.iter().map(|s| rhai::Dynamic::from(s.clone())).collect::<Vec<_>>()
+            p.buy_types
+                .iter()
+                .map(|s| rhai::Dynamic::from(s.clone()))
+                .collect::<Vec<_>>()
         })
         .register_set("buy_types", |p: &mut ShopPreset, val: rhai::Array| {
             p.buy_types = val.into_iter().filter_map(|d| d.try_cast::<String>()).collect();
         })
         .register_get("buy_categories", |p: &mut ShopPreset| {
-            p.buy_categories.iter().map(|s| rhai::Dynamic::from(s.clone())).collect::<Vec<_>>()
+            p.buy_categories
+                .iter()
+                .map(|s| rhai::Dynamic::from(s.clone()))
+                .collect::<Vec<_>>()
         })
         .register_set("buy_categories", |p: &mut ShopPreset, val: rhai::Array| {
             p.buy_categories = val.into_iter().filter_map(|d| d.try_cast::<String>()).collect();
@@ -82,7 +89,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // list_shop_presets() -> Array of ShopPreset
     let cloned_db = db.clone();
     engine.register_fn("list_shop_presets", move || -> Vec<rhai::Dynamic> {
-        cloned_db.list_all_shop_presets()
+        cloned_db
+            .list_all_shop_presets()
             .unwrap_or_default()
             .into_iter()
             .map(rhai::Dynamic::from)

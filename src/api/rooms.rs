@@ -1,17 +1,24 @@
 //! Room CRUD endpoints
 
 use axum::{
-    routing::{get, post, put, delete},
-    extract::{State, Path, Query, Extension},
     Json, Router,
+    extract::{Extension, Path, Query, State},
+    routing::{delete, get, post, put},
 };
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
+use uuid::Uuid;
 
-use super::{ApiState, error::ApiError, auth::{AuthenticatedUser, can_read, can_write, can_edit_area}, notify_builders};
-use crate::{RoomData, RoomFlags, RoomExits, DoorState, ExtraDesc, RoomTrigger, TriggerType, WaterType, CombatZoneType};
+use super::{
+    ApiState,
+    auth::{AuthenticatedUser, can_edit_area, can_read, can_write},
+    error::ApiError,
+    notify_builders,
+};
+use crate::{
+    CombatZoneType, DoorState, ExtraDesc, RoomData, RoomExits, RoomFlags, RoomTrigger, TriggerType, WaterType,
+};
 
 pub fn routes() -> Router<Arc<ApiState>> {
     Router::new()
@@ -101,7 +108,9 @@ pub struct SetDoorRequest {
     pub keywords: Vec<String>,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 #[derive(Deserialize)]
 pub struct AddTriggerRequest {
@@ -115,8 +124,12 @@ pub struct AddTriggerRequest {
     pub chance: i32,
 }
 
-fn default_interval() -> i64 { 60 }
-fn default_chance() -> i32 { 100 }
+fn default_interval() -> i64 {
+    60
+}
+fn default_chance() -> i32 {
+    100
+}
 
 #[derive(Deserialize)]
 pub struct AddExtraDescRequest {
@@ -164,23 +177,53 @@ pub struct RoomSummaryQuery {
 impl RoomSummary {
     pub fn from_room(room: &RoomData) -> Self {
         let mut exits = Vec::new();
-        if room.exits.north.is_some() { exits.push("north".to_string()); }
-        if room.exits.south.is_some() { exits.push("south".to_string()); }
-        if room.exits.east.is_some() { exits.push("east".to_string()); }
-        if room.exits.west.is_some() { exits.push("west".to_string()); }
-        if room.exits.up.is_some() { exits.push("up".to_string()); }
-        if room.exits.down.is_some() { exits.push("down".to_string()); }
+        if room.exits.north.is_some() {
+            exits.push("north".to_string());
+        }
+        if room.exits.south.is_some() {
+            exits.push("south".to_string());
+        }
+        if room.exits.east.is_some() {
+            exits.push("east".to_string());
+        }
+        if room.exits.west.is_some() {
+            exits.push("west".to_string());
+        }
+        if room.exits.up.is_some() {
+            exits.push("up".to_string());
+        }
+        if room.exits.down.is_some() {
+            exits.push("down".to_string());
+        }
 
         let mut flags = Vec::new();
-        if room.flags.dark { flags.push("dark".to_string()); }
-        if room.flags.no_mob { flags.push("no_mob".to_string()); }
-        if room.flags.indoors { flags.push("indoors".to_string()); }
-        if room.flags.combat_zone.is_some() { flags.push("safe".to_string()); }
-        if room.flags.shallow_water { flags.push("shallow_water".to_string()); }
-        if room.flags.deep_water { flags.push("deep_water".to_string()); }
-        if room.flags.difficult_terrain { flags.push("difficult_terrain".to_string()); }
-        if room.flags.city { flags.push("city".to_string()); }
-        if room.flags.garden { flags.push("garden".to_string()); }
+        if room.flags.dark {
+            flags.push("dark".to_string());
+        }
+        if room.flags.no_mob {
+            flags.push("no_mob".to_string());
+        }
+        if room.flags.indoors {
+            flags.push("indoors".to_string());
+        }
+        if room.flags.combat_zone.is_some() {
+            flags.push("safe".to_string());
+        }
+        if room.flags.shallow_water {
+            flags.push("shallow_water".to_string());
+        }
+        if room.flags.deep_water {
+            flags.push("deep_water".to_string());
+        }
+        if room.flags.difficult_terrain {
+            flags.push("difficult_terrain".to_string());
+        }
+        if room.flags.city {
+            flags.push("city".to_string());
+        }
+        if room.flags.garden {
+            flags.push("garden".to_string());
+        }
 
         let has_doors: Vec<String> = room.doors.keys().cloned().collect();
 
@@ -206,13 +249,15 @@ async fn list_rooms(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let mut rooms = state.db.list_all_rooms()
+    let mut rooms = state
+        .db
+        .list_all_rooms()
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     // Filter by area_id if provided
     if let Some(ref area_id_str) = query.area_id {
-        let area_uuid = Uuid::parse_str(area_id_str)
-            .map_err(|_| ApiError::InvalidInput("Invalid area_id UUID format".into()))?;
+        let area_uuid =
+            Uuid::parse_str(area_id_str).map_err(|_| ApiError::InvalidInput("Invalid area_id UUID format".into()))?;
         rooms.retain(|r| r.area_id == Some(area_uuid));
     }
 
@@ -220,10 +265,7 @@ async fn list_rooms(
     let offset = query.offset.unwrap_or(0);
     let limit = query.limit.unwrap_or(100);
 
-    let rooms: Vec<RoomData> = rooms.into_iter()
-        .skip(offset)
-        .take(limit)
-        .collect();
+    let rooms: Vec<RoomData> = rooms.into_iter().skip(offset).take(limit).collect();
 
     Ok(Json(RoomsListResponse {
         success: true,
@@ -242,19 +284,25 @@ async fn list_rooms_summary(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let mut rooms = state.db.list_all_rooms()
+    let mut rooms = state
+        .db
+        .list_all_rooms()
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     // Filter by area_id if provided
     if let Some(ref area_id_str) = query.area_id {
-        let area_uuid = Uuid::parse_str(area_id_str)
-            .map_err(|_| ApiError::InvalidInput("Invalid area_id UUID format".into()))?;
+        let area_uuid =
+            Uuid::parse_str(area_id_str).map_err(|_| ApiError::InvalidInput("Invalid area_id UUID format".into()))?;
         rooms.retain(|r| r.area_id == Some(area_uuid));
     }
 
     // Filter by vnum_prefix if provided
     if let Some(ref prefix) = query.vnum_prefix {
-        rooms.retain(|r| r.vnum.as_ref().map_or(false, |v| v.starts_with(&format!("{}:", prefix))));
+        rooms.retain(|r| {
+            r.vnum
+                .as_ref()
+                .map_or(false, |v| v.starts_with(&format!("{}:", prefix)))
+        });
     }
 
     let summaries: Vec<RoomSummary> = rooms.iter().map(RoomSummary::from_room).collect();
@@ -277,10 +325,11 @@ async fn get_room(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let room = state.db.get_room_data(&uuid)
+    let room = state
+        .db
+        .get_room_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
@@ -300,7 +349,9 @@ async fn get_room_by_vnum(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let room = state.db.get_room_by_vnum(&vnum)
+    let room = state
+        .db
+        .get_room_by_vnum(&vnum)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Room with vnum '{}' not found", vnum)))?;
 
@@ -322,16 +373,20 @@ async fn create_room(
 
     // Parse area_id if provided
     let area_id = if let Some(ref area_id_str) = req.area_id {
-        let uuid = Uuid::parse_str(area_id_str)
-            .map_err(|_| ApiError::InvalidInput("Invalid area_id UUID format".into()))?;
+        let uuid =
+            Uuid::parse_str(area_id_str).map_err(|_| ApiError::InvalidInput("Invalid area_id UUID format".into()))?;
 
         // Verify area exists and user has permission
-        let area = state.db.get_area_data(&uuid)
+        let area = state
+            .db
+            .get_area_data(&uuid)
             .map_err(|e| ApiError::Internal(e.to_string()))?
             .ok_or_else(|| ApiError::NotFound(format!("Area '{}' not found", area_id_str)))?;
 
         if !can_edit_area(&user, &area) {
-            return Err(ApiError::Forbidden("You don't have permission to add rooms to this area".into()));
+            return Err(ApiError::Forbidden(
+                "You don't have permission to add rooms to this area".into(),
+            ));
         }
 
         Some(uuid)
@@ -341,7 +396,9 @@ async fn create_room(
 
     // Check vnum uniqueness if provided
     if let Some(ref vnum) = req.vnum {
-        if state.db.get_room_by_vnum(vnum)
+        if state
+            .db
+            .get_room_by_vnum(vnum)
             .map_err(|e| ApiError::Internal(e.to_string()))?
             .is_some()
         {
@@ -399,19 +456,27 @@ async fn create_room(
         residents: Vec::new(),
     };
 
-    state.db.save_room_data(room.clone())
+    state
+        .db
+        .save_room_data(room.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     // Register vnum in the index so it's findable by vnum lookup
     if let Some(ref vnum) = room.vnum {
-        state.db.set_room_vnum(&room.id, vnum)
+        state
+            .db
+            .set_room_vnum(&room.id, vnum)
             .map_err(|e| ApiError::Internal(e.to_string()))?;
     }
 
-    notify_builders(&state.connections, &format!(
-        "[API] Room '{}' created by {}",
-        room.vnum.as_ref().unwrap_or(&room.id.to_string()), user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!(
+            "[API] Room '{}' created by {}",
+            room.vnum.as_ref().unwrap_or(&room.id.to_string()),
+            user.api_key.name
+        ),
+    );
 
     Ok(Json(RoomResponse {
         success: true,
@@ -426,20 +491,25 @@ async fn update_room(
     Path(id): Path<String>,
     Json(req): Json<UpdateRoomRequest>,
 ) -> Result<Json<RoomResponse>, ApiError> {
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut room = state.db.get_room_data(&uuid)
+    let mut room = state
+        .db
+        .get_room_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission if room belongs to an area
     if let Some(area_id) = room.area_id {
-        if let Some(area) = state.db.get_area_data(&area_id)
+        if let Some(area) = state
+            .db
+            .get_area_data(&area_id)
             .map_err(|e| ApiError::Internal(e.to_string()))?
         {
             if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden("You don't have permission to edit this room".into()));
+                return Err(ApiError::Forbidden(
+                    "You don't have permission to edit this room".into(),
+                ));
             }
         }
     } else if !can_write(&user) {
@@ -454,8 +524,8 @@ async fn update_room(
         room.description = description;
     }
     if let Some(area_id_str) = req.area_id {
-        let new_area_id = Uuid::parse_str(&area_id_str)
-            .map_err(|_| ApiError::InvalidInput("Invalid area_id UUID format".into()))?;
+        let new_area_id =
+            Uuid::parse_str(&area_id_str).map_err(|_| ApiError::InvalidInput("Invalid area_id UUID format".into()))?;
         room.area_id = Some(new_area_id);
     }
     if let Some(flags) = req.flags {
@@ -476,13 +546,19 @@ async fn update_room(
         room.living_capacity = cap.max(0);
     }
 
-    state.db.save_room_data(room.clone())
+    state
+        .db
+        .save_room_data(room.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    notify_builders(&state.connections, &format!(
-        "[API] Room '{}' updated by {}",
-        room.vnum.as_ref().unwrap_or(&room.id.to_string()), user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!(
+            "[API] Room '{}' updated by {}",
+            room.vnum.as_ref().unwrap_or(&room.id.to_string()),
+            user.api_key.name
+        ),
+    );
 
     Ok(Json(RoomResponse {
         success: true,
@@ -496,20 +572,25 @@ async fn delete_room(
     Extension(user): Extension<AuthenticatedUser>,
     Path(id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let room = state.db.get_room_data(&uuid)
+    let room = state
+        .db
+        .get_room_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
     if let Some(area_id) = room.area_id {
-        if let Some(area) = state.db.get_area_data(&area_id)
+        if let Some(area) = state
+            .db
+            .get_area_data(&area_id)
             .map_err(|e| ApiError::Internal(e.to_string()))?
         {
             if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden("You don't have permission to delete this room".into()));
+                return Err(ApiError::Forbidden(
+                    "You don't have permission to delete this room".into(),
+                ));
             }
         }
     } else if !can_write(&user) {
@@ -520,17 +601,21 @@ async fn delete_room(
 
     // Clear vnum from index before deleting
     if room.vnum.is_some() {
-        state.db.clear_room_vnum(&uuid)
+        state
+            .db
+            .clear_room_vnum(&uuid)
             .map_err(|e| ApiError::Internal(e.to_string()))?;
     }
 
-    state.db.delete_room(&uuid)
+    state
+        .db
+        .delete_room(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    notify_builders(&state.connections, &format!(
-        "[API] Room '{}' deleted by {}",
-        room_name, user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!("[API] Room '{}' deleted by {}", room_name, user.api_key.name),
+    );
 
     Ok(Json(serde_json::json!({
         "success": true,
@@ -545,28 +630,35 @@ async fn set_exit(
     Path((id, direction)): Path<(String, String)>,
     Json(req): Json<SetExitRequest>,
 ) -> Result<Json<RoomResponse>, ApiError> {
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
     let target_uuid = Uuid::parse_str(&req.target_room_id)
         .map_err(|_| ApiError::InvalidInput("Invalid target_room_id UUID format".into()))?;
 
     // Verify target room exists
-    let _target = state.db.get_room_data(&target_uuid)
+    let _target = state
+        .db
+        .get_room_data(&target_uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Target room '{}' not found", req.target_room_id)))?;
 
-    let mut room = state.db.get_room_data(&uuid)
+    let mut room = state
+        .db
+        .get_room_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
     if let Some(area_id) = room.area_id {
-        if let Some(area) = state.db.get_area_data(&area_id)
+        if let Some(area) = state
+            .db
+            .get_area_data(&area_id)
             .map_err(|e| ApiError::Internal(e.to_string()))?
         {
             if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden("You don't have permission to edit this room".into()));
+                return Err(ApiError::Forbidden(
+                    "You don't have permission to edit this room".into(),
+                ));
             }
         }
     } else if !can_write(&user) {
@@ -581,10 +673,17 @@ async fn set_exit(
         "west" | "w" => room.exits.west = Some(target_uuid),
         "up" | "u" => room.exits.up = Some(target_uuid),
         "down" | "d" => room.exits.down = Some(target_uuid),
-        _ => return Err(ApiError::InvalidInput(format!("Invalid direction '{}'. Use: north, south, east, west, up, down", direction))),
+        _ => {
+            return Err(ApiError::InvalidInput(format!(
+                "Invalid direction '{}'. Use: north, south, east, west, up, down",
+                direction
+            )));
+        }
     }
 
-    state.db.save_room_data(room.clone())
+    state
+        .db
+        .save_room_data(room.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     Ok(Json(RoomResponse {
@@ -599,20 +698,25 @@ async fn remove_exit(
     Extension(user): Extension<AuthenticatedUser>,
     Path((id, direction)): Path<(String, String)>,
 ) -> Result<Json<RoomResponse>, ApiError> {
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut room = state.db.get_room_data(&uuid)
+    let mut room = state
+        .db
+        .get_room_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
     if let Some(area_id) = room.area_id {
-        if let Some(area) = state.db.get_area_data(&area_id)
+        if let Some(area) = state
+            .db
+            .get_area_data(&area_id)
             .map_err(|e| ApiError::Internal(e.to_string()))?
         {
             if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden("You don't have permission to edit this room".into()));
+                return Err(ApiError::Forbidden(
+                    "You don't have permission to edit this room".into(),
+                ));
             }
         }
     } else if !can_write(&user) {
@@ -627,10 +731,17 @@ async fn remove_exit(
         "west" | "w" => room.exits.west = None,
         "up" | "u" => room.exits.up = None,
         "down" | "d" => room.exits.down = None,
-        _ => return Err(ApiError::InvalidInput(format!("Invalid direction '{}'. Use: north, south, east, west, up, down", direction))),
+        _ => {
+            return Err(ApiError::InvalidInput(format!(
+                "Invalid direction '{}'. Use: north, south, east, west, up, down",
+                direction
+            )));
+        }
     }
 
-    state.db.save_room_data(room.clone())
+    state
+        .db
+        .save_room_data(room.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     Ok(Json(RoomResponse {
@@ -646,20 +757,25 @@ async fn set_door(
     Path((id, direction)): Path<(String, String)>,
     Json(req): Json<SetDoorRequest>,
 ) -> Result<Json<RoomResponse>, ApiError> {
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut room = state.db.get_room_data(&uuid)
+    let mut room = state
+        .db
+        .get_room_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
     if let Some(area_id) = room.area_id {
-        if let Some(area) = state.db.get_area_data(&area_id)
+        if let Some(area) = state
+            .db
+            .get_area_data(&area_id)
             .map_err(|e| ApiError::Internal(e.to_string()))?
         {
             if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden("You don't have permission to edit this room".into()));
+                return Err(ApiError::Forbidden(
+                    "You don't have permission to edit this room".into(),
+                ));
             }
         }
     } else if !can_write(&user) {
@@ -674,10 +790,16 @@ async fn set_door(
         "west" | "w" => "west",
         "up" | "u" => "up",
         "down" | "d" => "down",
-        _ => return Err(ApiError::InvalidInput(format!("Invalid direction '{}'. Use: north, south, east, west, up, down", direction))),
+        _ => {
+            return Err(ApiError::InvalidInput(format!(
+                "Invalid direction '{}'. Use: north, south, east, west, up, down",
+                direction
+            )));
+        }
     };
 
-    let key_id = req.key_id
+    let key_id = req
+        .key_id
         .as_ref()
         .map(|s| Uuid::parse_str(s))
         .transpose()
@@ -694,7 +816,9 @@ async fn set_door(
 
     room.doors.insert(dir_key.to_string(), door);
 
-    state.db.save_room_data(room.clone())
+    state
+        .db
+        .save_room_data(room.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     Ok(Json(RoomResponse {
@@ -709,20 +833,25 @@ async fn remove_door(
     Extension(user): Extension<AuthenticatedUser>,
     Path((id, direction)): Path<(String, String)>,
 ) -> Result<Json<RoomResponse>, ApiError> {
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut room = state.db.get_room_data(&uuid)
+    let mut room = state
+        .db
+        .get_room_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
     if let Some(area_id) = room.area_id {
-        if let Some(area) = state.db.get_area_data(&area_id)
+        if let Some(area) = state
+            .db
+            .get_area_data(&area_id)
             .map_err(|e| ApiError::Internal(e.to_string()))?
         {
             if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden("You don't have permission to edit this room".into()));
+                return Err(ApiError::Forbidden(
+                    "You don't have permission to edit this room".into(),
+                ));
             }
         }
     } else if !can_write(&user) {
@@ -737,12 +866,19 @@ async fn remove_door(
         "west" | "w" => "west",
         "up" | "u" => "up",
         "down" | "d" => "down",
-        _ => return Err(ApiError::InvalidInput(format!("Invalid direction '{}'. Use: north, south, east, west, up, down", direction))),
+        _ => {
+            return Err(ApiError::InvalidInput(format!(
+                "Invalid direction '{}'. Use: north, south, east, west, up, down",
+                direction
+            )));
+        }
     };
 
     room.doors.remove(dir_key);
 
-    state.db.save_room_data(room.clone())
+    state
+        .db
+        .save_room_data(room.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     Ok(Json(RoomResponse {
@@ -758,20 +894,25 @@ async fn add_trigger(
     Path(id): Path<String>,
     Json(req): Json<AddTriggerRequest>,
 ) -> Result<Json<RoomResponse>, ApiError> {
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut room = state.db.get_room_data(&uuid)
+    let mut room = state
+        .db
+        .get_room_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
     if let Some(area_id) = room.area_id {
-        if let Some(area) = state.db.get_area_data(&area_id)
+        if let Some(area) = state
+            .db
+            .get_area_data(&area_id)
             .map_err(|e| ApiError::Internal(e.to_string()))?
         {
             if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden("You don't have permission to edit this room".into()));
+                return Err(ApiError::Forbidden(
+                    "You don't have permission to edit this room".into(),
+                ));
             }
         }
     } else if !can_write(&user) {
@@ -788,7 +929,12 @@ async fn add_trigger(
         "weather" | "onweatherchange" => TriggerType::OnWeatherChange,
         "season" | "onseasonchange" => TriggerType::OnSeasonChange,
         "month" | "onmonthchange" => TriggerType::OnMonthChange,
-        _ => return Err(ApiError::InvalidInput(format!("Invalid trigger type '{}'. Use: enter, exit, look, periodic, time, weather, season, month", req.trigger_type))),
+        _ => {
+            return Err(ApiError::InvalidInput(format!(
+                "Invalid trigger type '{}'. Use: enter, exit, look, periodic, time, weather, season, month",
+                req.trigger_type
+            )));
+        }
     };
 
     let trigger = RoomTrigger {
@@ -803,7 +949,9 @@ async fn add_trigger(
 
     room.triggers.push(trigger);
 
-    state.db.save_room_data(room.clone())
+    state
+        .db
+        .save_room_data(room.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     Ok(Json(RoomResponse {
@@ -818,20 +966,25 @@ async fn remove_trigger(
     Extension(user): Extension<AuthenticatedUser>,
     Path((id, index)): Path<(String, usize)>,
 ) -> Result<Json<RoomResponse>, ApiError> {
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut room = state.db.get_room_data(&uuid)
+    let mut room = state
+        .db
+        .get_room_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
     if let Some(area_id) = room.area_id {
-        if let Some(area) = state.db.get_area_data(&area_id)
+        if let Some(area) = state
+            .db
+            .get_area_data(&area_id)
             .map_err(|e| ApiError::Internal(e.to_string()))?
         {
             if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden("You don't have permission to edit this room".into()));
+                return Err(ApiError::Forbidden(
+                    "You don't have permission to edit this room".into(),
+                ));
             }
         }
     } else if !can_write(&user) {
@@ -844,7 +997,9 @@ async fn remove_trigger(
 
     room.triggers.remove(index);
 
-    state.db.save_room_data(room.clone())
+    state
+        .db
+        .save_room_data(room.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     Ok(Json(RoomResponse {
@@ -860,20 +1015,25 @@ async fn add_extra_desc(
     Path(id): Path<String>,
     Json(req): Json<AddExtraDescRequest>,
 ) -> Result<Json<RoomResponse>, ApiError> {
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut room = state.db.get_room_data(&uuid)
+    let mut room = state
+        .db
+        .get_room_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
     if let Some(area_id) = room.area_id {
-        if let Some(area) = state.db.get_area_data(&area_id)
+        if let Some(area) = state
+            .db
+            .get_area_data(&area_id)
             .map_err(|e| ApiError::Internal(e.to_string()))?
         {
             if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden("You don't have permission to edit this room".into()));
+                return Err(ApiError::Forbidden(
+                    "You don't have permission to edit this room".into(),
+                ));
             }
         }
     } else if !can_write(&user) {
@@ -887,7 +1047,9 @@ async fn add_extra_desc(
 
     room.extra_descs.push(extra);
 
-    state.db.save_room_data(room.clone())
+    state
+        .db
+        .save_room_data(room.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     Ok(Json(RoomResponse {
@@ -902,20 +1064,25 @@ async fn remove_extra_desc(
     Extension(user): Extension<AuthenticatedUser>,
     Path((id, keyword)): Path<(String, String)>,
 ) -> Result<Json<RoomResponse>, ApiError> {
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut room = state.db.get_room_data(&uuid)
+    let mut room = state
+        .db
+        .get_room_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", id)))?;
 
     // Check permission
     if let Some(area_id) = room.area_id {
-        if let Some(area) = state.db.get_area_data(&area_id)
+        if let Some(area) = state
+            .db
+            .get_area_data(&area_id)
             .map_err(|e| ApiError::Internal(e.to_string()))?
         {
             if !can_edit_area(&user, &area) {
-                return Err(ApiError::Forbidden("You don't have permission to edit this room".into()));
+                return Err(ApiError::Forbidden(
+                    "You don't have permission to edit this room".into(),
+                ));
             }
         }
     } else if !can_write(&user) {
@@ -924,15 +1091,19 @@ async fn remove_extra_desc(
 
     let keyword_lower = keyword.to_lowercase();
     let original_len = room.extra_descs.len();
-    room.extra_descs.retain(|ed| {
-        !ed.keywords.iter().any(|k| k.to_lowercase() == keyword_lower)
-    });
+    room.extra_descs
+        .retain(|ed| !ed.keywords.iter().any(|k| k.to_lowercase() == keyword_lower));
 
     if room.extra_descs.len() == original_len {
-        return Err(ApiError::NotFound(format!("Extra description with keyword '{}' not found", keyword)));
+        return Err(ApiError::NotFound(format!(
+            "Extra description with keyword '{}' not found",
+            keyword
+        )));
     }
 
-    state.db.save_room_data(room.clone())
+    state
+        .db
+        .save_room_data(room.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     Ok(Json(RoomResponse {

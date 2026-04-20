@@ -68,4 +68,3 @@ pub use spawn::run_spawn_tick;
 pub use spoilage::{run_corpse_decay_tick, run_spoilage_tick};
 pub use transport::run_transport_tick;
 pub use triggers::run_periodic_trigger_tick;
-

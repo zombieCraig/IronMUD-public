@@ -3,10 +3,10 @@
 //! Handles thirst, hunger, and stamina/HP regeneration for players.
 
 use anyhow::Result;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::error;
 
-use ironmud::{db, BodyPart, CharacterData, CharacterPosition, EffectType, SharedConnections, TemperatureCategory};
+use ironmud::{BodyPart, CharacterData, CharacterPosition, EffectType, SharedConnections, TemperatureCategory, db};
 
 /// Thirst tick interval in seconds (check thirst every minute)
 pub const THIRST_TICK_INTERVAL_SECS: u64 = 60;
@@ -198,8 +198,12 @@ fn process_hunger_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
             // Hunger rate traits
             let has_efficient = char.traits.iter().any(|t| t == "efficient_metabolism");
             let has_ravenous = char.traits.iter().any(|t| t == "ravenous");
-            if has_efficient { decrease = (decrease + 1) / 2; }  // 50% reduction
-            if has_ravenous { decrease = decrease + decrease * 3 / 4; }  // 75% increase
+            if has_efficient {
+                decrease = (decrease + 1) / 2;
+            } // 50% reduction
+            if has_ravenous {
+                decrease = decrease + decrease * 3 / 4;
+            } // 75% increase
 
             // Position modifier - 50% reduction while sitting or sleeping (less activity)
             if char.position == CharacterPosition::Sitting || char.position == CharacterPosition::Sleeping {
@@ -375,9 +379,9 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections) -> Result<()
                 };
 
                 if hunger_pct > 75 {
-                    hp_regen * 3 / 2  // 150% - well fed bonus
+                    hp_regen * 3 / 2 // 150% - well fed bonus
                 } else if hunger_pct > 50 {
-                    hp_regen           // 100% - normal
+                    hp_regen // 100% - normal
                 } else if hunger_pct > 25 {
                     (hp_regen + 1) / 2 // ~50% - hungry penalty (min 1 if resting)
                 } else {
@@ -393,22 +397,38 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections) -> Result<()
             let has_frail = char.traits.iter().any(|t| t == "frail");
             let hp_regen_final = if hp_regen_adjusted > 0 {
                 let mut r = hp_regen_adjusted;
-                if has_vigorous { r = r + r / 4; }  // +25%
-                if has_frail { r = (r * 3 / 4).max(1); }  // -25%
+                if has_vigorous {
+                    r = r + r / 4;
+                } // +25%
+                if has_frail {
+                    r = (r * 3 / 4).max(1);
+                } // -25%
                 r
-            } else { 0 };
+            } else {
+                0
+            };
 
             // Max HP traits (effective cap)
             let has_tough = char.traits.iter().any(|t| t == "tough");
             let has_sickly = char.traits.iter().any(|t| t == "sickly");
             let mut effective_max_hp = char.max_hp;
-            if has_vigorous { effective_max_hp = effective_max_hp * 115 / 100; }  // +15%
-            if has_tough { effective_max_hp = effective_max_hp * 120 / 100; }  // +20%
-            if has_frail { effective_max_hp = effective_max_hp * 80 / 100; }  // -20%
-            if has_sickly { effective_max_hp = effective_max_hp * 90 / 100; }  // -10%
+            if has_vigorous {
+                effective_max_hp = effective_max_hp * 115 / 100;
+            } // +15%
+            if has_tough {
+                effective_max_hp = effective_max_hp * 120 / 100;
+            } // +20%
+            if has_frail {
+                effective_max_hp = effective_max_hp * 80 / 100;
+            } // -20%
+            if has_sickly {
+                effective_max_hp = effective_max_hp * 90 / 100;
+            } // -10%
 
             // Torso wound caps max HP (broken ribs limit vitality)
-            let torso_penalty = char.wounds.iter()
+            let torso_penalty = char
+                .wounds
+                .iter()
                 .filter(|w| w.body_part == BodyPart::Torso)
                 .map(|w| w.level.penalty())
                 .max()
@@ -418,9 +438,9 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections) -> Result<()
                 if char.hp > effective_max_hp {
                     char.hp = effective_max_hp;
                     modified = true;
-                    let _ = session.sender.send(
-                        "\nYour cracked ribs limit your vitality.\n".to_string()
-                    );
+                    let _ = session
+                        .sender
+                        .send("\nYour cracked ribs limit your vitality.\n".to_string());
                 }
             }
 
@@ -433,9 +453,9 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections) -> Result<()
             if char.position == CharacterPosition::Sleeping && old_stamina == 0 {
                 let wake_threshold = char.max_stamina / 10;
                 if char.stamina >= wake_threshold {
-                    let _ = session.sender.send(
-                        "\nYou feel rested enough to wake up. Type 'wake' to get up.\n".to_string()
-                    );
+                    let _ = session
+                        .sender
+                        .send("\nYou feel rested enough to wake up. Type 'wake' to get up.\n".to_string());
                 }
             }
 
@@ -458,23 +478,24 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections) -> Result<()
                     let drowning_damage = ((char.max_hp * 15) / 100).max(1);
                     char.hp -= drowning_damage;
                     modified = true;
-                    let _ = session.sender.send(
-                        format!("\n\x1b[1;31mExhausted, you struggle to stay afloat! You take {} drowning damage!\x1b[0m\n", drowning_damage)
-                    );
+                    let _ = session.sender.send(format!(
+                        "\n\x1b[1;31mExhausted, you struggle to stay afloat! You take {} drowning damage!\x1b[0m\n",
+                        drowning_damage
+                    ));
                     if char.hp <= 0 {
                         char.hp = 0;
                         char.is_unconscious = true;
                         char.bleedout_rounds_remaining = 1;
                         let _ = session.sender.send(
-                            "\n\x1b[1;31mYou lose consciousness as you slip beneath the water...\x1b[0m\n".to_string()
+                            "\n\x1b[1;31mYou lose consciousness as you slip beneath the water...\x1b[0m\n".to_string(),
                         );
                     }
                 } else {
                     char.position = CharacterPosition::Sleeping;
                     modified = true;
-                    let _ = session.sender.send(
-                        "\nYou collapse from exhaustion and fall into a deep sleep!\n".to_string()
-                    );
+                    let _ = session
+                        .sender
+                        .send("\nYou collapse from exhaustion and fall into a deep sleep!\n".to_string());
                 }
             }
 
@@ -484,7 +505,11 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections) -> Result<()
                 let tick_secs = REGEN_TICK_INTERVAL_SECS as i32;
 
                 // Regeneration buff: add magnitude HP per tick (respects effective max HP)
-                if let Some(regen_buff) = char.active_buffs.iter().find(|b| b.effect_type == EffectType::Regeneration) {
+                if let Some(regen_buff) = char
+                    .active_buffs
+                    .iter()
+                    .find(|b| b.effect_type == EffectType::Regeneration)
+                {
                     let regen_hp = regen_buff.magnitude;
                     if char.hp < effective_max_hp && regen_hp > 0 {
                         char.hp = (char.hp + regen_hp).min(effective_max_hp);
@@ -533,18 +558,28 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections) -> Result<()
                 // Mana regen traits
                 let has_focused_mind = char.traits.iter().any(|t| t == "focused_mind");
                 let has_scattered_thoughts = char.traits.iter().any(|t| t == "scattered_thoughts");
-                if has_focused_mind { mana_regen = mana_regen + mana_regen / 2; }  // +50%
-                if has_scattered_thoughts { mana_regen = (mana_regen / 2).max(1); }  // -50%
+                if has_focused_mind {
+                    mana_regen = mana_regen + mana_regen / 2;
+                } // +50%
+                if has_scattered_thoughts {
+                    mana_regen = (mana_regen / 2).max(1);
+                } // -50%
 
                 // Max mana traits (effective cap)
                 let has_mana_well = char.traits.iter().any(|t| t == "mana_well");
                 let has_mana_stunted = char.traits.iter().any(|t| t == "mana_stunted");
                 let mut effective_max_mana = char.max_mana;
-                if has_mana_well { effective_max_mana = effective_max_mana * 130 / 100; }  // +30%
-                if has_mana_stunted { effective_max_mana = effective_max_mana * 75 / 100; }  // -25%
+                if has_mana_well {
+                    effective_max_mana = effective_max_mana * 130 / 100;
+                } // +30%
+                if has_mana_stunted {
+                    effective_max_mana = effective_max_mana * 75 / 100;
+                } // -25%
 
                 // Head wound caps max mana (concussion effect)
-                let head_penalty = char.wounds.iter()
+                let head_penalty = char
+                    .wounds
+                    .iter()
                     .filter(|w| w.body_part == BodyPart::Head)
                     .map(|w| w.level.penalty())
                     .max()
@@ -568,9 +603,7 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections) -> Result<()
                 char.drunk_level -= 1;
                 modified = true;
                 if char.drunk_level == 0 {
-                    let _ = session.sender.send(
-                        "\nYou feel sober again.\n".to_string()
-                    );
+                    let _ = session.sender.send("\nYou feel sober again.\n".to_string());
                 }
             }
 
@@ -620,21 +653,28 @@ pub async fn run_hunting_tick(db: db::Db, connections: SharedConnections) {
 
 /// Process hunting auto-follow for all logged-in players with active hunt targets
 fn process_hunting_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
-    use super::broadcast::{
-        broadcast_to_room_except_awake, send_message_to_character, sync_character_to_session,
-    };
+    use super::broadcast::{broadcast_to_room_except_awake, send_message_to_character, sync_character_to_session};
     use super::mobile::get_opposite_direction_rust;
 
     // Collect hunters from session data (avoid holding lock during processing)
     let hunters: Vec<(String, String, uuid::Uuid)> = {
         let conns = connections.lock().unwrap();
-        conns.iter().filter_map(|(_, session)| {
-            let char = session.character.as_ref()?;
-            if char.hunting_target.is_empty() { return None; }
-            if char.position != CharacterPosition::Standing && char.position != CharacterPosition::Swimming { return None; }
-            if char.combat.in_combat { return None; }
-            Some((char.name.clone(), char.hunting_target.clone(), char.current_room_id))
-        }).collect()
+        conns
+            .iter()
+            .filter_map(|(_, session)| {
+                let char = session.character.as_ref()?;
+                if char.hunting_target.is_empty() {
+                    return None;
+                }
+                if char.position != CharacterPosition::Standing && char.position != CharacterPosition::Swimming {
+                    return None;
+                }
+                if char.combat.in_combat {
+                    return None;
+                }
+                Some((char.name.clone(), char.hunting_target.clone(), char.current_room_id))
+            })
+            .collect()
     };
 
     for (char_name, hunt_target, current_room_id) in hunters {
@@ -658,7 +698,9 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections) -> Result<
                     c.current_room_id == current_room_id
                         && c.name.to_lowercase() == target_lower
                         && c.name.to_lowercase() != char_name.to_lowercase()
-                } else { false }
+                } else {
+                    false
+                }
             })
         };
 
@@ -669,8 +711,7 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections) -> Result<
                 let _ = db.save_character_data(char.clone());
                 sync_character_to_session(connections, &char);
             }
-            send_message_to_character(connections, &char_name,
-                &format!("You have found {}!", hunt_target));
+            send_message_to_character(connections, &char_name, &format!("You have found {}!", hunt_target));
             continue;
         }
 
@@ -678,10 +719,10 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections) -> Result<
         let mut best_direction: Option<String> = None;
         let mut best_timestamp: i64 = 0;
         for dep in &room.recent_departures {
-            if now - dep.timestamp >= 900 { continue; } // 15 min expiry
-            if dep.name.to_lowercase() == target_lower
-                || dep.name.to_lowercase().contains(&target_lower)
-            {
+            if now - dep.timestamp >= 900 {
+                continue;
+            } // 15 min expiry
+            if dep.name.to_lowercase() == target_lower || dep.name.to_lowercase().contains(&target_lower) {
                 if dep.timestamp > best_timestamp {
                     best_direction = Some(dep.direction.clone());
                     best_timestamp = dep.timestamp;
@@ -693,11 +734,13 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections) -> Result<
         if best_direction.is_none() {
             let mut best_blood_ts: i64 = 0;
             for trail in &room.blood_trails {
-                if now - trail.timestamp >= 300 { continue; }
-                if trail.direction.is_none() { continue; }
-                if trail.name.to_lowercase() == target_lower
-                    || trail.name.to_lowercase().contains(&target_lower)
-                {
+                if now - trail.timestamp >= 300 {
+                    continue;
+                }
+                if trail.direction.is_none() {
+                    continue;
+                }
+                if trail.name.to_lowercase() == target_lower || trail.name.to_lowercase().contains(&target_lower) {
                     if trail.timestamp > best_blood_ts {
                         best_direction = trail.direction.clone();
                         best_blood_ts = trail.timestamp;
@@ -726,9 +769,10 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections) -> Result<
                     let conns = connections.lock().unwrap();
                     conns.iter().any(|(_, session)| {
                         if let Some(ref c) = session.character {
-                            c.current_room_id == exit_id
-                                && c.name.to_lowercase() == target_lower
-                        } else { false }
+                            c.current_room_id == exit_id && c.name.to_lowercase() == target_lower
+                        } else {
+                            false
+                        }
                     })
                 };
 
@@ -755,8 +799,7 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections) -> Result<
             char.hunting_target.clear();
             let _ = db.save_character_data(char.clone());
             sync_character_to_session(connections, &char);
-            send_message_to_character(connections, &char_name,
-                "You are too exhausted to continue hunting.");
+            send_message_to_character(connections, &char_name, "You are too exhausted to continue hunting.");
             continue;
         }
 
@@ -777,29 +820,44 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections) -> Result<
 
         // Check for closed doors
         if let Some(door) = room.doors.get(&direction) {
-            if door.is_closed { continue; }
+            if door.is_closed {
+                continue;
+            }
         }
 
         // Move the character
         let old_room_id = char.current_room_id;
         if !char.god_mode && !ironmud::check_build_mode(db, &char_name, &char.current_room_id) {
             char.stamina -= 1;
-            if char.stamina < 0 { char.stamina = 0; }
+            if char.stamina < 0 {
+                char.stamina = 0;
+            }
         }
         char.current_room_id = target_room_id;
         let _ = db.save_character_data(char.clone());
         sync_character_to_session(connections, &char);
 
         // Send tracking message
-        send_message_to_character(connections, &char_name,
-            &format!("You sense {}'s trail leading {}...", hunt_target, direction));
+        send_message_to_character(
+            connections,
+            &char_name,
+            &format!("You sense {}'s trail leading {}...", hunt_target, direction),
+        );
 
         // Broadcast departure and arrival
-        broadcast_to_room_except_awake(connections, &old_room_id,
-            &format!("{} heads {} following a trail.", char_name, direction), &char_name);
+        broadcast_to_room_except_awake(
+            connections,
+            &old_room_id,
+            &format!("{} heads {} following a trail.", char_name, direction),
+            &char_name,
+        );
         let arrival_dir = get_opposite_direction_rust(&direction);
-        broadcast_to_room_except_awake(connections, &target_room_id,
-            &format!("{} arrives from the {}, tracking something.", char_name, arrival_dir), &char_name);
+        broadcast_to_room_except_awake(
+            connections,
+            &target_room_id,
+            &format!("{} arrives from the {}, tracking something.", char_name, arrival_dir),
+            &char_name,
+        );
     }
 
     Ok(())
@@ -829,13 +887,16 @@ fn process_drowning_tick(db: &db::Db, connections: &SharedConnections) -> Result
     // Collect player data outside the lock to avoid holding it during db operations
     let players: Vec<(String, uuid::Uuid)> = {
         let conns = connections.lock().unwrap();
-        conns.iter().filter_map(|(_, session)| {
-            let char = session.character.as_ref()?;
-            if !char.creation_complete || char.god_mode {
-                return None;
-            }
-            Some((char.name.clone(), char.current_room_id))
-        }).collect()
+        conns
+            .iter()
+            .filter_map(|(_, session)| {
+                let char = session.character.as_ref()?;
+                if !char.creation_complete || char.god_mode {
+                    return None;
+                }
+                Some((char.name.clone(), char.current_room_id))
+            })
+            .collect()
     };
 
     for (char_name, room_id) in players {
@@ -855,7 +916,10 @@ fn process_drowning_tick(db: &db::Db, connections: &SharedConnections) -> Result
 
         if room.flags.underwater {
             // Check for WaterBreathing buff
-            let has_water_breathing = char.active_buffs.iter().any(|b| b.effect_type == EffectType::WaterBreathing);
+            let has_water_breathing = char
+                .active_buffs
+                .iter()
+                .any(|b| b.effect_type == EffectType::WaterBreathing);
 
             if has_water_breathing {
                 // Restore breath while having water breathing underwater
@@ -879,16 +943,28 @@ fn process_drowning_tick(db: &db::Db, connections: &SharedConnections) -> Result
             let has_hydrophobic = char.traits.iter().any(|t| t == "hydrophobic");
 
             let mut drain_modifier: i32 = 0;
-            if has_deep_lungs { drain_modifier -= 30; }
-            if has_iron_lungs { drain_modifier -= 20; }
-            if has_shallow_breather { drain_modifier += 30; }
-            if has_hydrophobic { drain_modifier += 15; }
+            if has_deep_lungs {
+                drain_modifier -= 30;
+            }
+            if has_iron_lungs {
+                drain_modifier -= 20;
+            }
+            if has_shallow_breather {
+                drain_modifier += 30;
+            }
+            if has_hydrophobic {
+                drain_modifier += 15;
+            }
             breath_drain = (breath_drain * (100 + drain_modifier) / 100).max(1);
 
             // Effective max breath for threshold messages (capacity traits)
             let mut capacity_modifier: i32 = 0;
-            if has_deep_lungs { capacity_modifier += 50; }
-            if has_iron_lungs { capacity_modifier += 30; }
+            if has_deep_lungs {
+                capacity_modifier += 50;
+            }
+            if has_iron_lungs {
+                capacity_modifier += 30;
+            }
             let effective_max = char.max_breath * (100 + capacity_modifier) / 100;
 
             let old_breath = char.breath;
@@ -897,33 +973,51 @@ fn process_drowning_tick(db: &db::Db, connections: &SharedConnections) -> Result
             // Threshold messages (use effective_max for trait-adjusted thresholds)
             let max = effective_max;
             if old_breath > max * 75 / 100 && char.breath <= max * 75 / 100 {
-                send_message_to_character(connections, &char_name,
-                    "\x1b[1;36mYour lungs begin to ache.\x1b[0m");
+                send_message_to_character(connections, &char_name, "\x1b[1;36mYour lungs begin to ache.\x1b[0m");
             } else if old_breath > max * 50 / 100 && char.breath <= max * 50 / 100 {
-                send_message_to_character(connections, &char_name,
-                    "\x1b[1;36mYou desperately need air! Your vision blurs.\x1b[0m");
+                send_message_to_character(
+                    connections,
+                    &char_name,
+                    "\x1b[1;36mYou desperately need air! Your vision blurs.\x1b[0m",
+                );
             } else if old_breath > max * 25 / 100 && char.breath <= max * 25 / 100 {
-                send_message_to_character(connections, &char_name,
-                    "\x1b[1;31mYou are about to drown! Get to the surface!\x1b[0m");
+                send_message_to_character(
+                    connections,
+                    &char_name,
+                    "\x1b[1;31mYou are about to drown! Get to the surface!\x1b[0m",
+                );
             }
 
             // Drowning damage at breath 0
             if char.breath <= 0 {
                 // Drowning damage traits: iron_lungs=-50%, hydrophobic=+25%
                 let mut drown_dmg_mod: i32 = 0;
-                if has_iron_lungs { drown_dmg_mod -= 50; }
-                if has_hydrophobic { drown_dmg_mod += 25; }
+                if has_iron_lungs {
+                    drown_dmg_mod -= 50;
+                }
+                if has_hydrophobic {
+                    drown_dmg_mod += 25;
+                }
                 let drowning_damage = ((char.max_hp * 15) / 100 * (100 + drown_dmg_mod) / 100).max(1);
                 char.hp -= drowning_damage;
-                send_message_to_character(connections, &char_name,
-                    &format!("\x1b[1;31mYou are drowning! Water fills your lungs for {} damage!\x1b[0m", drowning_damage.max(1)));
+                send_message_to_character(
+                    connections,
+                    &char_name,
+                    &format!(
+                        "\x1b[1;31mYou are drowning! Water fills your lungs for {} damage!\x1b[0m",
+                        drowning_damage.max(1)
+                    ),
+                );
 
                 if char.hp <= 0 {
                     char.hp = 0;
                     char.is_unconscious = true;
                     char.bleedout_rounds_remaining = 1;
-                    send_message_to_character(connections, &char_name,
-                        "\x1b[1;31mYou lose consciousness as water fills your lungs...\x1b[0m");
+                    send_message_to_character(
+                        connections,
+                        &char_name,
+                        "\x1b[1;31mYou lose consciousness as water fills your lungs...\x1b[0m",
+                    );
                 }
             }
 
@@ -939,14 +1033,17 @@ fn process_drowning_tick(db: &db::Db, connections: &SharedConnections) -> Result
                 let has_aquatic_heritage = char.traits.iter().any(|t| t == "aquatic_heritage");
                 let has_hydrophobic = char.traits.iter().any(|t| t == "hydrophobic");
                 let mut recovery_modifier: i32 = 0;
-                if has_aquatic_heritage { recovery_modifier += 50; }
-                if has_hydrophobic { recovery_modifier -= 25; }
+                if has_aquatic_heritage {
+                    recovery_modifier += 50;
+                }
+                if has_hydrophobic {
+                    recovery_modifier -= 25;
+                }
                 let recovery = 25 * (100 + recovery_modifier) / 100;
                 char.breath = (char.breath + recovery).min(max_breath_with_skill);
 
                 if char.breath >= char.max_breath && char.breath - 25 < char.max_breath {
-                    send_message_to_character(connections, &char_name,
-                        "\x1b[1;36mYou catch your breath.\x1b[0m");
+                    send_message_to_character(connections, &char_name, "\x1b[1;36mYou catch your breath.\x1b[0m");
                 }
 
                 db.save_character_data(char.clone())?;

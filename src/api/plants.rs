@@ -1,21 +1,31 @@
 //! Plant prototype CRUD endpoints
 
 use axum::{
-    routing::get,
-    extract::{State, Path, Extension},
     Json, Router,
+    extract::{Extension, Path, State},
+    routing::get,
 };
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use std::sync::Arc;
+use uuid::Uuid;
 
-use super::{ApiState, error::ApiError, auth::{AuthenticatedUser, can_read, can_write}, notify_builders};
-use crate::{PlantPrototype, PlantCategory, GrowthStageDef, GrowthStage, Season};
+use super::{
+    ApiState,
+    auth::{AuthenticatedUser, can_read, can_write},
+    error::ApiError,
+    notify_builders,
+};
+use crate::{GrowthStage, GrowthStageDef, PlantCategory, PlantPrototype, Season};
 
 pub fn routes() -> Router<Arc<ApiState>> {
     Router::new()
         .route("/", get(list_plant_prototypes).post(create_plant_prototype))
-        .route("/:id", get(get_plant_prototype).put(update_plant_prototype).delete(delete_plant_prototype))
+        .route(
+            "/:id",
+            get(get_plant_prototype)
+                .put(update_plant_prototype)
+                .delete(delete_plant_prototype),
+        )
         .route("/by-vnum/:vnum", get(get_plant_prototype_by_vnum))
 }
 
@@ -57,8 +67,12 @@ pub struct CreatePlantPrototypeRequest {
     pub multi_harvest: bool,
 }
 
-fn default_harvest_min() -> i32 { 1 }
-fn default_harvest_max() -> i32 { 3 }
+fn default_harvest_min() -> i32 {
+    1
+}
+fn default_harvest_max() -> i32 {
+    3
+}
 
 #[derive(Deserialize)]
 pub struct GrowthStageDefRequest {
@@ -114,31 +128,44 @@ fn parse_season(s: &str) -> Option<Season> {
 }
 
 fn parse_seasons(names: &[String]) -> Result<Vec<Season>, ApiError> {
-    names.iter().map(|s| {
-        parse_season(s).ok_or_else(|| ApiError::InvalidInput(
-            format!("Invalid season '{}'. Valid: spring, summer, autumn, winter", s)
-        ))
-    }).collect()
+    names
+        .iter()
+        .map(|s| {
+            parse_season(s).ok_or_else(|| {
+                ApiError::InvalidInput(format!("Invalid season '{}'. Valid: spring, summer, autumn, winter", s))
+            })
+        })
+        .collect()
 }
 
 fn parse_stages(defs: &[GrowthStageDefRequest]) -> Result<Vec<GrowthStageDef>, ApiError> {
-    defs.iter().map(|d| {
-        let stage = GrowthStage::from_str(&d.stage).ok_or_else(|| ApiError::InvalidInput(
-            format!("Invalid growth stage '{}'. Valid: {}", d.stage, GrowthStage::all_names().join(", "))
-        ))?;
-        Ok(GrowthStageDef {
-            stage,
-            duration_game_hours: d.duration_game_hours,
-            description: d.description.clone(),
-            examine_desc: d.examine_desc.clone(),
+    defs.iter()
+        .map(|d| {
+            let stage = GrowthStage::from_str(&d.stage).ok_or_else(|| {
+                ApiError::InvalidInput(format!(
+                    "Invalid growth stage '{}'. Valid: {}",
+                    d.stage,
+                    GrowthStage::all_names().join(", ")
+                ))
+            })?;
+            Ok(GrowthStageDef {
+                stage,
+                duration_game_hours: d.duration_game_hours,
+                description: d.description.clone(),
+                examine_desc: d.examine_desc.clone(),
+            })
         })
-    }).collect()
+        .collect()
 }
 
 fn parse_category(s: &str) -> Result<PlantCategory, ApiError> {
-    PlantCategory::from_str(s).ok_or_else(|| ApiError::InvalidInput(
-        format!("Invalid plant category '{}'. Valid: {}", s, PlantCategory::all_names().join(", "))
-    ))
+    PlantCategory::from_str(s).ok_or_else(|| {
+        ApiError::InvalidInput(format!(
+            "Invalid plant category '{}'. Valid: {}",
+            s,
+            PlantCategory::all_names().join(", ")
+        ))
+    })
 }
 
 /// List all plant prototypes
@@ -150,7 +177,9 @@ async fn list_plant_prototypes(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let prototypes = state.db.list_all_plant_prototypes()
+    let prototypes = state
+        .db
+        .list_all_plant_prototypes()
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     Ok(Json(PlantPrototypeListResponse {
@@ -169,10 +198,11 @@ async fn get_plant_prototype(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let proto = state.db.get_plant_prototype(&uuid)
+    let proto = state
+        .db
+        .get_plant_prototype(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Plant prototype '{}' not found", id)))?;
 
@@ -192,7 +222,9 @@ async fn get_plant_prototype_by_vnum(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let proto = state.db.get_plant_prototype_by_vnum(&vnum)
+    let proto = state
+        .db
+        .get_plant_prototype_by_vnum(&vnum)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Plant prototype with vnum '{}' not found", vnum)))?;
 
@@ -214,7 +246,10 @@ async fn create_plant_prototype(
 
     // Check vnum uniqueness
     if let Ok(Some(_)) = state.db.get_plant_prototype_by_vnum(&req.vnum) {
-        return Err(ApiError::Conflict(format!("Plant prototype with vnum '{}' already exists", req.vnum)));
+        return Err(ApiError::Conflict(format!(
+            "Plant prototype with vnum '{}' already exists",
+            req.vnum
+        )));
     }
 
     let category = if let Some(ref cat) = req.category {
@@ -250,13 +285,18 @@ async fn create_plant_prototype(
         is_prototype: true,
     };
 
-    state.db.save_plant_prototype(proto.clone())
+    state
+        .db
+        .save_plant_prototype(proto.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    notify_builders(&state.connections, &format!(
-        "[API] Plant prototype '{}' created by {}",
-        proto.name, user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!(
+            "[API] Plant prototype '{}' created by {}",
+            proto.name, user.api_key.name
+        ),
+    );
 
     Ok(Json(PlantPrototypeResponse {
         success: true,
@@ -275,10 +315,11 @@ async fn update_plant_prototype(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut proto = state.db.get_plant_prototype(&uuid)
+    let mut proto = state
+        .db
+        .get_plant_prototype(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Plant prototype '{}' not found", id)))?;
 
@@ -334,13 +375,18 @@ async fn update_plant_prototype(
         proto.multi_harvest = v;
     }
 
-    state.db.save_plant_prototype(proto.clone())
+    state
+        .db
+        .save_plant_prototype(proto.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    notify_builders(&state.connections, &format!(
-        "[API] Plant prototype '{}' updated by {}",
-        proto.name, user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!(
+            "[API] Plant prototype '{}' updated by {}",
+            proto.name, user.api_key.name
+        ),
+    );
 
     Ok(Json(PlantPrototypeResponse {
         success: true,
@@ -358,20 +404,26 @@ async fn delete_plant_prototype(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let proto = state.db.get_plant_prototype(&uuid)
+    let proto = state
+        .db
+        .get_plant_prototype(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Plant prototype '{}' not found", id)))?;
 
-    state.db.delete_plant_prototype(&uuid)
+    state
+        .db
+        .delete_plant_prototype(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    notify_builders(&state.connections, &format!(
-        "[API] Plant prototype '{}' deleted by {}",
-        proto.name, user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!(
+            "[API] Plant prototype '{}' deleted by {}",
+            proto.name, user.api_key.name
+        ),
+    );
 
     Ok(Json(serde_json::json!({
         "success": true,

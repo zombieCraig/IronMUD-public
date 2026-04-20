@@ -3,10 +3,10 @@
 //! The tick polls on a short wall-clock cadence; the body is a no-op unless
 //! a new game day has started (gated inside the sync core).
 
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::error;
 
-use ironmud::{aging::process_aging_tick, db, SharedConnections};
+use ironmud::{SharedConnections, aging::process_aging_tick, db};
 
 /// Wall-clock interval between aging-tick polls. Actual work is gated inside
 /// `process_aging_tick` by `AGING_LAST_CHECK_KEY`, so short polling is cheap.

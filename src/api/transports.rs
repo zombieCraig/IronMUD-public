@@ -1,21 +1,29 @@
 //! Transport CRUD endpoints
 
 use axum::{
-    routing::{get, post, delete},
-    extract::{State, Path, Extension},
     Json, Router,
+    extract::{Extension, Path, State},
+    routing::{delete, get, post},
 };
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use std::sync::Arc;
+use uuid::Uuid;
 
-use super::{ApiState, error::ApiError, auth::{AuthenticatedUser, can_read, can_write}, notify_builders};
-use crate::{TransportData, TransportType, TransportState, TransportSchedule, TransportStop, get_opposite_direction};
+use super::{
+    ApiState,
+    auth::{AuthenticatedUser, can_read, can_write},
+    error::ApiError,
+    notify_builders,
+};
+use crate::{TransportData, TransportSchedule, TransportState, TransportStop, TransportType, get_opposite_direction};
 
 pub fn routes() -> Router<Arc<ApiState>> {
     Router::new()
         .route("/", get(list_transports).post(create_transport))
-        .route("/:id", get(get_transport).put(update_transport).delete(delete_transport))
+        .route(
+            "/:id",
+            get(get_transport).put(update_transport).delete(delete_transport),
+        )
         .route("/:id/stops", post(add_stop))
         .route("/:id/stops/:index", delete(remove_stop))
         .route("/:id/connect", post(connect_transport))
@@ -38,8 +46,12 @@ pub struct CreateTransportRequest {
     pub dwell_time_secs: Option<i64>,
 }
 
-fn default_travel_time() -> i64 { 30 }
-fn default_schedule_type() -> String { "ondemand".to_string() }
+fn default_travel_time() -> i64 {
+    30
+}
+fn default_schedule_type() -> String {
+    "ondemand".to_string()
+}
 
 #[derive(Deserialize)]
 pub struct UpdateTransportRequest {
@@ -95,14 +107,12 @@ fn build_schedule(
 ) -> Result<TransportSchedule, ApiError> {
     match schedule_type.to_lowercase().as_str() {
         "ondemand" | "on_demand" => Ok(TransportSchedule::OnDemand),
-        "gametime" | "game_time" => {
-            Ok(TransportSchedule::GameTime {
-                frequency_hours: frequency_hours.unwrap_or(1),
-                operating_start: operating_start.unwrap_or(6),
-                operating_end: operating_end.unwrap_or(22),
-                dwell_time_secs: dwell_time_secs.unwrap_or(30),
-            })
-        }
+        "gametime" | "game_time" => Ok(TransportSchedule::GameTime {
+            frequency_hours: frequency_hours.unwrap_or(1),
+            operating_start: operating_start.unwrap_or(6),
+            operating_end: operating_end.unwrap_or(22),
+            dwell_time_secs: dwell_time_secs.unwrap_or(30),
+        }),
         _ => Err(ApiError::InvalidInput(format!(
             "Invalid schedule_type '{}'. Use: ondemand, gametime",
             schedule_type
@@ -126,7 +136,9 @@ async fn list_transports(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let transports = state.db.list_all_transports()
+    let transports = state
+        .db
+        .list_all_transports()
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     Ok(Json(TransportsListResponse {
@@ -164,17 +176,20 @@ async fn create_transport(
     }
 
     // Parse transport type
-    let transport_type = parse_transport_type(&req.transport_type)
-        .ok_or_else(|| ApiError::InvalidInput(format!(
+    let transport_type = parse_transport_type(&req.transport_type).ok_or_else(|| {
+        ApiError::InvalidInput(format!(
             "Invalid transport_type '{}'. Use: elevator, bus, train, ferry, airship",
             req.transport_type
-        )))?;
+        ))
+    })?;
 
     // Validate interior room exists
     let interior_room_id = Uuid::parse_str(&req.interior_room_id)
         .map_err(|_| ApiError::InvalidInput("Invalid interior_room_id UUID format".into()))?;
 
-    let _room = state.db.get_room_data(&interior_room_id)
+    let _room = state
+        .db
+        .get_room_data(&interior_room_id)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Interior room '{}' not found", req.interior_room_id)))?;
 
@@ -200,13 +215,15 @@ async fn create_transport(
     transport.travel_time_secs = req.travel_time_secs;
     transport.schedule = schedule;
 
-    state.db.save_transport(&transport)
+    state
+        .db
+        .save_transport(&transport)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    notify_builders(&state.connections, &format!(
-        "[API] Transport '{}' created by {}",
-        req.name, user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!("[API] Transport '{}' created by {}", req.name, user.api_key.name),
+    );
 
     Ok(Json(TransportResponse {
         success: true,
@@ -232,11 +249,12 @@ async fn update_transport(
     }
 
     if let Some(ref transport_type_str) = req.transport_type {
-        transport.transport_type = parse_transport_type(transport_type_str)
-            .ok_or_else(|| ApiError::InvalidInput(format!(
+        transport.transport_type = parse_transport_type(transport_type_str).ok_or_else(|| {
+            ApiError::InvalidInput(format!(
                 "Invalid transport_type '{}'. Use: elevator, bus, train, ferry, airship",
                 transport_type_str
-            )))?;
+            ))
+        })?;
     }
 
     if let Some(travel_time_secs) = req.travel_time_secs {
@@ -273,20 +291,30 @@ async fn update_transport(
             ref mut dwell_time_secs,
         } = transport.schedule
         {
-            if let Some(fh) = req.frequency_hours { *frequency_hours = fh; }
-            if let Some(os) = req.operating_start { *operating_start = os; }
-            if let Some(oe) = req.operating_end { *operating_end = oe; }
-            if let Some(dt) = req.dwell_time_secs { *dwell_time_secs = dt; }
+            if let Some(fh) = req.frequency_hours {
+                *frequency_hours = fh;
+            }
+            if let Some(os) = req.operating_start {
+                *operating_start = os;
+            }
+            if let Some(oe) = req.operating_end {
+                *operating_end = oe;
+            }
+            if let Some(dt) = req.dwell_time_secs {
+                *dwell_time_secs = dt;
+            }
         }
     }
 
-    state.db.save_transport(&transport)
+    state
+        .db
+        .save_transport(&transport)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    notify_builders(&state.connections, &format!(
-        "[API] Transport '{}' updated by {}",
-        transport.name, user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!("[API] Transport '{}' updated by {}", transport.name, user.api_key.name),
+    );
 
     Ok(Json(TransportResponse {
         success: true,
@@ -322,13 +350,15 @@ async fn delete_transport(
         }
     }
 
-    state.db.delete_transport(transport.id)
+    state
+        .db
+        .delete_transport(transport.id)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    notify_builders(&state.connections, &format!(
-        "[API] Transport '{}' deleted by {}",
-        transport_name, user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!("[API] Transport '{}' deleted by {}", transport_name, user.api_key.name),
+    );
 
     Ok(Json(serde_json::json!({
         "success": true,
@@ -350,10 +380,12 @@ async fn add_stop(
     let mut transport = find_transport(&state, &id)?;
 
     // Validate room exists
-    let room_id = Uuid::parse_str(&req.room_id)
-        .map_err(|_| ApiError::InvalidInput("Invalid room_id UUID format".into()))?;
+    let room_id =
+        Uuid::parse_str(&req.room_id).map_err(|_| ApiError::InvalidInput("Invalid room_id UUID format".into()))?;
 
-    let _room = state.db.get_room_data(&room_id)
+    let _room = state
+        .db
+        .get_room_data(&room_id)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", req.room_id)))?;
 
@@ -365,13 +397,18 @@ async fn add_stop(
 
     transport.stops.push(stop);
 
-    state.db.save_transport(&transport)
+    state
+        .db
+        .save_transport(&transport)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    notify_builders(&state.connections, &format!(
-        "[API] Stop '{}' added to transport '{}' by {}",
-        req.name, transport.name, user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!(
+            "[API] Stop '{}' added to transport '{}' by {}",
+            req.name, transport.name, user.api_key.name
+        ),
+    );
 
     Ok(Json(TransportResponse {
         success: true,
@@ -403,13 +440,18 @@ async fn remove_stop(
         transport.current_stop_index = transport.stops.len() - 1;
     }
 
-    state.db.save_transport(&transport)
+    state
+        .db
+        .save_transport(&transport)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    notify_builders(&state.connections, &format!(
-        "[API] Stop '{}' removed from transport '{}' by {}",
-        removed_name, transport.name, user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!(
+            "[API] Stop '{}' removed from transport '{}' by {}",
+            removed_name, transport.name, user.api_key.name
+        ),
+    );
 
     Ok(Json(TransportResponse {
         success: true,
@@ -433,7 +475,8 @@ async fn connect_transport(
     if req.stop_index >= transport.stops.len() {
         return Err(ApiError::InvalidInput(format!(
             "Stop index {} out of range (transport has {} stops)",
-            req.stop_index, transport.stops.len()
+            req.stop_index,
+            transport.stops.len()
         )));
     }
 
@@ -442,12 +485,16 @@ async fn connect_transport(
     let exit_direction = stop.exit_direction.clone();
 
     // Create exit from stop room to vehicle interior
-    state.db.set_room_exit(&stop_room_id, &exit_direction, &transport.interior_room_id)
+    state
+        .db
+        .set_room_exit(&stop_room_id, &exit_direction, &transport.interior_room_id)
         .map_err(|e| ApiError::Internal(format!("Failed to create exit from stop to interior: {}", e)))?;
 
     // Create exit from vehicle interior to stop room
     let interior_exit = get_opposite_direction(&exit_direction).unwrap_or("out");
-    state.db.set_room_exit(&transport.interior_room_id, interior_exit, &stop_room_id)
+    state
+        .db
+        .set_room_exit(&transport.interior_room_id, interior_exit, &stop_room_id)
         .map_err(|e| ApiError::Internal(format!("Failed to create exit from interior to stop: {}", e)))?;
 
     // Update transport state
@@ -461,14 +508,19 @@ async fn connect_transport(
         let _ = state.db.save_room_data(room);
     }
 
-    state.db.save_transport(&transport)
+    state
+        .db
+        .save_transport(&transport)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     let stop_name = transport.stops[req.stop_index].name.clone();
-    notify_builders(&state.connections, &format!(
-        "[API] Transport '{}' connected to stop '{}' by {}",
-        transport.name, stop_name, user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!(
+            "[API] Transport '{}' connected to stop '{}' by {}",
+            transport.name, stop_name, user.api_key.name
+        ),
+    );
 
     Ok(Json(TransportResponse {
         success: true,
@@ -492,7 +544,7 @@ async fn travel_transport(
     // Verify transport is on-demand
     if !matches!(transport.schedule, TransportSchedule::OnDemand) {
         return Err(ApiError::InvalidInput(
-            "Only on-demand transports can be started via the travel endpoint".into()
+            "Only on-demand transports can be started via the travel endpoint".into(),
         ));
     }
 
@@ -505,7 +557,8 @@ async fn travel_transport(
     if req.destination_index >= transport.stops.len() {
         return Err(ApiError::InvalidInput(format!(
             "Destination index {} out of range (transport has {} stops)",
-            req.destination_index, transport.stops.len()
+            req.destination_index,
+            transport.stops.len()
         )));
     }
 
@@ -534,14 +587,19 @@ async fn travel_transport(
     transport.state = TransportState::Moving;
     transport.last_state_change = now_secs();
 
-    state.db.save_transport(&transport)
+    state
+        .db
+        .save_transport(&transport)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     let dest_name = transport.stops[req.destination_index].name.clone();
-    notify_builders(&state.connections, &format!(
-        "[API] Transport '{}' traveling to '{}' by {}",
-        transport.name, dest_name, user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!(
+            "[API] Transport '{}' traveling to '{}' by {}",
+            transport.name, dest_name, user.api_key.name
+        ),
+    );
 
     Ok(Json(TransportResponse {
         success: true,
@@ -553,14 +611,19 @@ async fn travel_transport(
 fn find_transport(state: &Arc<ApiState>, id: &str) -> Result<TransportData, ApiError> {
     // Try UUID first
     if let Ok(uuid) = Uuid::parse_str(id) {
-        if let Some(transport) = state.db.get_transport(uuid)
-            .map_err(|e| ApiError::Internal(e.to_string()))? {
+        if let Some(transport) = state
+            .db
+            .get_transport(uuid)
+            .map_err(|e| ApiError::Internal(e.to_string()))?
+        {
             return Ok(transport);
         }
     }
 
     // Fall back to vnum lookup
-    state.db.get_transport_by_vnum(id)
+    state
+        .db
+        .get_transport_by_vnum(id)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Transport '{}' not found", id)))
 }

@@ -12,9 +12,7 @@
 use rand::Rng;
 
 use crate::db::Db;
-use crate::types::{
-    ActiveBuff, EffectType, MobileData, MoodState, Relationship, RelationshipKind,
-};
+use crate::types::{ActiveBuff, EffectType, MobileData, MoodState, Relationship, RelationshipKind};
 use uuid::Uuid;
 
 pub const MOOD_BUFF_SOURCE: &str = "mood";
@@ -42,9 +40,7 @@ pub fn apply_mood(mobile: &mut MobileData) -> bool {
     let changed = new_mood != social.mood;
     social.mood = new_mood;
 
-    mobile
-        .active_buffs
-        .retain(|b| b.source != MOOD_BUFF_SOURCE);
+    mobile.active_buffs.retain(|b| b.source != MOOD_BUFF_SOURCE);
 
     match new_mood {
         MoodState::Content => {
@@ -118,10 +114,9 @@ pub fn grief_params(kind: RelationshipKind, affinity: i32) -> Option<(i32, i32)>
         return None;
     }
     let (base_delta, days) = match kind {
-        RelationshipKind::Partner
-        | RelationshipKind::Parent
-        | RelationshipKind::Child
-        | RelationshipKind::Sibling => FAMILY_GRIEF,
+        RelationshipKind::Partner | RelationshipKind::Parent | RelationshipKind::Child | RelationshipKind::Sibling => {
+            FAMILY_GRIEF
+        }
         RelationshipKind::Cohabitant => COHABITANT_GRIEF,
         RelationshipKind::Friend => return None,
     };
@@ -140,10 +135,7 @@ pub fn grief_params(kind: RelationshipKind, affinity: i32) -> Option<(i32, i32)>
 /// still accumulate resentment over time if pushed.
 pub fn apply_family_bias(delta: i32, kind: RelationshipKind) -> i32 {
     match kind {
-        RelationshipKind::Partner
-        | RelationshipKind::Parent
-        | RelationshipKind::Child
-        | RelationshipKind::Sibling => {
+        RelationshipKind::Partner | RelationshipKind::Parent | RelationshipKind::Child | RelationshipKind::Sibling => {
             if delta < 0 {
                 (delta as f32 * 0.5).round() as i32
             } else {
@@ -164,15 +156,25 @@ pub const MALE_FERTILITY_CAP: i32 = 65;
 /// True if the mobile is a viable biological mother for conception this tick.
 /// Uses Characteristics age + LifeStage + gender + existing pregnancy state.
 pub fn is_fertile_female(mobile: &MobileData, current_game_day: i32) -> bool {
-    let Some(chars) = mobile.characteristics.as_ref() else { return false };
-    if chars.gender != "female" { return false }
-    if chars.age >= FEMALE_FERTILITY_CAP { return false }
-    use crate::types::{life_stage_for_age, LifeStage};
+    let Some(chars) = mobile.characteristics.as_ref() else {
+        return false;
+    };
+    if chars.gender != "female" {
+        return false;
+    }
+    if chars.age >= FEMALE_FERTILITY_CAP {
+        return false;
+    }
+    use crate::types::{LifeStage, life_stage_for_age};
     if !matches!(life_stage_for_age(chars.age), LifeStage::YoungAdult | LifeStage::Adult) {
         return false;
     }
-    let Some(social) = mobile.social.as_ref() else { return false };
-    if social.pregnant_until_day.is_some() { return false }
+    let Some(social) = mobile.social.as_ref() else {
+        return false;
+    };
+    if social.pregnant_until_day.is_some() {
+        return false;
+    }
     if social.bereaved_until_day.map(|d| d > current_game_day).unwrap_or(false) {
         return false;
     }
@@ -181,10 +183,16 @@ pub fn is_fertile_female(mobile: &MobileData, current_game_day: i32) -> bool {
 
 /// True if the mobile is a viable biological father for conception this tick.
 pub fn is_fertile_male(mobile: &MobileData) -> bool {
-    let Some(chars) = mobile.characteristics.as_ref() else { return false };
-    if chars.gender != "male" { return false }
-    if chars.age >= MALE_FERTILITY_CAP { return false }
-    use crate::types::{life_stage_for_age, LifeStage};
+    let Some(chars) = mobile.characteristics.as_ref() else {
+        return false;
+    };
+    if chars.gender != "male" {
+        return false;
+    }
+    if chars.age >= MALE_FERTILITY_CAP {
+        return false;
+    }
+    use crate::types::{LifeStage, life_stage_for_age};
     matches!(
         life_stage_for_age(chars.age),
         LifeStage::YoungAdult | LifeStage::Adult | LifeStage::MiddleAged
@@ -202,19 +210,24 @@ pub fn eligible_mate(db: &Db, mobile: &MobileData) -> Option<Uuid> {
     let my_household = mobile.household_id?;
     let my_vnum = mobile.resident_of.as_deref().filter(|v| !v.is_empty())?;
     for rel in &mobile.relationships {
-        if !matches!(
-            rel.kind,
-            RelationshipKind::Partner | RelationshipKind::Cohabitant
-        ) {
+        if !matches!(rel.kind, RelationshipKind::Partner | RelationshipKind::Cohabitant) {
             continue;
         }
         if rel.affinity < CONCEPTION_MIN_AFFINITY {
             continue;
         }
-        let Ok(Some(other)) = db.get_mobile_data(&rel.other_id) else { continue };
-        if other.current_hp <= 0 { continue }
-        if other.household_id != Some(my_household) { continue }
-        if other.resident_of.as_deref() != Some(my_vnum) { continue }
+        let Ok(Some(other)) = db.get_mobile_data(&rel.other_id) else {
+            continue;
+        };
+        if other.current_hp <= 0 {
+            continue;
+        }
+        if other.household_id != Some(my_household) {
+            continue;
+        }
+        if other.resident_of.as_deref() != Some(my_vnum) {
+            continue;
+        }
         return Some(rel.other_id);
     }
     None
@@ -235,9 +248,13 @@ pub const ADOPT_WEIGHT_SAME_PAIR: f32 = 3.0;
 /// True if this mobile is a viable adopter: sim adult, alive, not a
 /// prototype, not currently deeply mourning a family loss.
 pub fn is_eligible_adopter(mobile: &MobileData, current_game_day: i32) -> bool {
-    if mobile.is_prototype || mobile.current_hp <= 0 { return false }
-    let Some(chars) = mobile.characteristics.as_ref() else { return false };
-    use crate::types::{life_stage_for_age, LifeStage};
+    if mobile.is_prototype || mobile.current_hp <= 0 {
+        return false;
+    }
+    let Some(chars) = mobile.characteristics.as_ref() else {
+        return false;
+    };
+    use crate::types::{LifeStage, life_stage_for_age};
     if !matches!(
         life_stage_for_age(chars.age),
         LifeStage::YoungAdult | LifeStage::Adult | LifeStage::MiddleAged
@@ -245,19 +262,25 @@ pub fn is_eligible_adopter(mobile: &MobileData, current_game_day: i32) -> bool {
         return false;
     }
     // Must be a simulated NPC to have the capacity to care for a child.
-    if mobile.social.is_none() { return false }
+    if mobile.social.is_none() {
+        return false;
+    }
     // Skip mobiles still in active family bereavement — they'd just bring
     // grief into a new home.
     if let Some(social) = mobile.social.as_ref() {
-        let mourning_family = social
-            .bereaved_for
-            .iter()
-            .any(|n| n.until_day > current_game_day && matches!(
-                n.kind,
-                RelationshipKind::Partner | RelationshipKind::Parent
-                    | RelationshipKind::Child | RelationshipKind::Sibling
-            ));
-        if mourning_family { return false }
+        let mourning_family = social.bereaved_for.iter().any(|n| {
+            n.until_day > current_game_day
+                && matches!(
+                    n.kind,
+                    RelationshipKind::Partner
+                        | RelationshipKind::Parent
+                        | RelationshipKind::Child
+                        | RelationshipKind::Sibling
+                )
+        });
+        if mourning_family {
+            return false;
+        }
     }
     true
 }
@@ -267,10 +290,13 @@ pub fn is_eligible_adopter(mobile: &MobileData, current_game_day: i32) -> bool {
 /// the appropriate pair bonus. Returns `None` if a partner is referenced
 /// but missing/dead (treat as unsuitable rather than downgrading silently).
 pub fn adoption_weight(db: &Db, adopter: &MobileData) -> Option<f32> {
-    let Some(adopter_chars) = adopter.characteristics.as_ref() else { return Some(ADOPT_WEIGHT_SINGLE) };
-    let partner_rel = adopter.relationships.iter().find(|r| {
-        matches!(r.kind, RelationshipKind::Partner | RelationshipKind::Cohabitant)
-    });
+    let Some(adopter_chars) = adopter.characteristics.as_ref() else {
+        return Some(ADOPT_WEIGHT_SINGLE);
+    };
+    let partner_rel = adopter
+        .relationships
+        .iter()
+        .find(|r| matches!(r.kind, RelationshipKind::Partner | RelationshipKind::Cohabitant));
     let Some(rel) = partner_rel else {
         return Some(ADOPT_WEIGHT_SINGLE);
     };
@@ -297,12 +323,7 @@ pub fn adoption_weight(db: &Db, adopter: &MobileData) -> Option<f32> {
 /// random selection restricted to the orphan's area (or same room as
 /// fallback when area resolution fails). Returns `None` when no eligible
 /// adopter exists.
-pub fn pick_adopter<R: Rng>(
-    db: &Db,
-    orphan: &MobileData,
-    mobiles: &[MobileData],
-    rng: &mut R,
-) -> Option<Uuid> {
+pub fn pick_adopter<R: Rng>(db: &Db, orphan: &MobileData, mobiles: &[MobileData], rng: &mut R) -> Option<Uuid> {
     // Same-area filter: look up orphan's current room → area_id. If we can't
     // resolve, fall back to same-room comparisons on current_room_id.
     let orphan_area = orphan
@@ -312,7 +333,9 @@ pub fn pick_adopter<R: Rng>(
 
     let mut weighted: Vec<(Uuid, f32)> = Vec::new();
     for adopter in mobiles {
-        if adopter.id == orphan.id { continue }
+        if adopter.id == orphan.id {
+            continue;
+        }
         // Don't re-adopt if already a parent of this orphan.
         if adopter
             .relationships
@@ -323,27 +346,39 @@ pub fn pick_adopter<R: Rng>(
         }
         // Shallow "today" approximation for eligibility mourning check —
         // caller's current day isn't threaded in, so pass a sentinel.
-        if !is_eligible_adopter(adopter, i32::MIN) { continue }
+        if !is_eligible_adopter(adopter, i32::MIN) {
+            continue;
+        }
         // Scope to area when resolvable.
         if let Some(oa) = orphan_area {
             let adopter_area = adopter
                 .current_room_id
                 .and_then(|rid| db.get_room_data(&rid).ok().flatten())
                 .and_then(|r| r.area_id);
-            if adopter_area != Some(oa) { continue }
+            if adopter_area != Some(oa) {
+                continue;
+            }
         } else if adopter.current_room_id != orphan.current_room_id {
             continue;
         }
-        let Some(w) = adoption_weight(db, adopter) else { continue };
-        if w > 0.0 { weighted.push((adopter.id, w)); }
+        let Some(w) = adoption_weight(db, adopter) else {
+            continue;
+        };
+        if w > 0.0 {
+            weighted.push((adopter.id, w));
+        }
     }
-    if weighted.is_empty() { return None }
+    if weighted.is_empty() {
+        return None;
+    }
 
     // Weighted pick: sum weights, roll u in [0, sum), walk until cumulative > u.
     let total: f32 = weighted.iter().map(|(_, w)| *w).sum();
     let mut roll = rng.r#gen::<f32>() * total;
     for (id, w) in &weighted {
-        if roll < *w { return Some(*id); }
+        if roll < *w {
+            return Some(*id);
+        }
         roll -= *w;
     }
     weighted.last().map(|(id, _)| *id)
@@ -368,16 +403,19 @@ pub fn wire_adoption(db: &Db, adopter_id: Uuid, orphan_id: Uuid) -> anyhow::Resu
         .map(|p| p.id);
 
     // Household: prefer adopter's existing, else partner's, else mint.
-    let household_id = adopter.household_id.or_else(|| {
-        partner_id.and_then(|pid| db.get_mobile_data(&pid).ok().flatten().and_then(|p| p.household_id))
-    }).unwrap_or_else(Uuid::new_v4);
+    let household_id = adopter
+        .household_id
+        .or_else(|| partner_id.and_then(|pid| db.get_mobile_data(&pid).ok().flatten().and_then(|p| p.household_id)))
+        .unwrap_or_else(Uuid::new_v4);
 
     let adopter_resident = adopter.resident_of.clone();
     let adopter_room = adopter.current_room_id;
 
     // Adopter ← Child of orphan
     db.update_mobile(&adopter_id, |m| {
-        if m.household_id.is_none() { m.household_id = Some(household_id); }
+        if m.household_id.is_none() {
+            m.household_id = Some(household_id);
+        }
         if !m.relationships.iter().any(|r| r.other_id == orphan_id) {
             m.relationships.push(Relationship {
                 other_id: orphan_id,
@@ -392,7 +430,9 @@ pub fn wire_adoption(db: &Db, adopter_id: Uuid, orphan_id: Uuid) -> anyhow::Resu
     // Partner ← Child of orphan (second parent)
     if let Some(pid) = partner_id {
         db.update_mobile(&pid, |m| {
-            if m.household_id.is_none() { m.household_id = Some(household_id); }
+            if m.household_id.is_none() {
+                m.household_id = Some(household_id);
+            }
             if !m.relationships.iter().any(|r| r.other_id == orphan_id) {
                 m.relationships.push(Relationship {
                     other_id: orphan_id,
@@ -479,12 +519,7 @@ pub enum FamilyError {
     PartnerConflict,
 }
 
-pub fn set_family_relationship(
-    db: &Db,
-    src: Uuid,
-    tgt: Uuid,
-    kind_str: &str,
-) -> Result<(), FamilyError> {
+pub fn set_family_relationship(db: &Db, src: Uuid, tgt: Uuid, kind_str: &str) -> Result<(), FamilyError> {
     if src == tgt {
         return Err(FamilyError::SelfLink);
     }
@@ -585,7 +620,11 @@ mod tests {
         let mut m = mobile_with_happiness(95);
         apply_mood(&mut m);
         assert_eq!(m.social.as_ref().unwrap().mood, MoodState::Content);
-        assert!(m.active_buffs.iter().any(|b| b.magnitude > 0 && b.source == MOOD_BUFF_SOURCE));
+        assert!(
+            m.active_buffs
+                .iter()
+                .any(|b| b.magnitude > 0 && b.source == MOOD_BUFF_SOURCE)
+        );
     }
 
     #[test]
@@ -633,25 +672,16 @@ mod tests {
     #[test]
     fn grief_params_scale_with_affinity() {
         // Deeply negative affinity = no grief.
-        assert_eq!(
-            grief_params(RelationshipKind::Parent, GRIEF_AFFINITY_FLOOR),
-            None
-        );
+        assert_eq!(grief_params(RelationshipKind::Parent, GRIEF_AFFINITY_FLOOR), None);
         assert_eq!(grief_params(RelationshipKind::Sibling, -50), None);
         // Mildly negative: halved delta.
         let (d, days) = grief_params(RelationshipKind::Partner, -5).unwrap();
         assert_eq!(d, -30);
         assert_eq!(days, 28);
         // Healthy: full family grief.
-        assert_eq!(
-            grief_params(RelationshipKind::Child, 80),
-            Some(FAMILY_GRIEF)
-        );
+        assert_eq!(grief_params(RelationshipKind::Child, 80), Some(FAMILY_GRIEF));
         // Cohabitant curve intact.
-        assert_eq!(
-            grief_params(RelationshipKind::Cohabitant, 80),
-            Some(COHABITANT_GRIEF)
-        );
+        assert_eq!(grief_params(RelationshipKind::Cohabitant, 80), Some(COHABITANT_GRIEF));
         assert_eq!(grief_params(RelationshipKind::Friend, 80), None);
     }
 

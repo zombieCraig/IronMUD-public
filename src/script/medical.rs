@@ -1,10 +1,10 @@
 // src/script/medical.rs
 // Medical treatment system functions
 
+use crate::SharedConnections;
+use crate::db::Db;
 use rhai::Engine;
 use std::sync::Arc;
-use crate::db::Db;
-use crate::SharedConnections;
 
 /// Register medical-related functions
 pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections) {
@@ -78,21 +78,26 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // can_tool_treat_wound_type(item_id, wound_type) -> bool
     // Checks if a medical tool can treat a specific wound type
     let cloned_db = db.clone();
-    engine.register_fn("can_tool_treat_wound_type", move |item_id: String, wound_type: String| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
-            if let Ok(Some(item)) = cloned_db.get_item_data(&uuid) {
-                if item.flags.medical_tool {
-                    // Empty treats_wound_types means treats all types
-                    if item.treats_wound_types.is_empty() {
-                        return true;
+    engine.register_fn(
+        "can_tool_treat_wound_type",
+        move |item_id: String, wound_type: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+                if let Ok(Some(item)) = cloned_db.get_item_data(&uuid) {
+                    if item.flags.medical_tool {
+                        // Empty treats_wound_types means treats all types
+                        if item.treats_wound_types.is_empty() {
+                            return true;
+                        }
+                        return item
+                            .treats_wound_types
+                            .iter()
+                            .any(|t| t.to_lowercase() == wound_type.to_lowercase());
                     }
-                    return item.treats_wound_types.iter()
-                        .any(|t| t.to_lowercase() == wound_type.to_lowercase());
                 }
             }
-        }
-        false
-    });
+            false
+        },
+    );
 
     // get_tool_max_wound_level(item_id) -> String
     // Returns the maximum wound level this tool can treat ("minor", "moderate", "severe", "critical")
@@ -105,7 +110,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 }
             }
         }
-        "critical".to_string()  // Default to treating all wound levels
+        "critical".to_string() // Default to treating all wound levels
     });
 
     // get_tool_quality_bonus(item_id) -> i64
@@ -141,45 +146,51 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // set_helpline_enabled(connection_id, enabled) -> bool
     let conns = connections.clone();
     let cloned_db = db.clone();
-    engine.register_fn("set_helpline_enabled", move |connection_id: String, enabled: bool| -> bool {
-        if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns_lock = conns.lock().unwrap();
-            if let Some(session) = conns_lock.get_mut(&conn_id) {
-                if let Some(ref mut char) = session.character {
-                    char.helpline_enabled = enabled;
-                    let _ = cloned_db.save_character_data(char.clone());
-                    return true;
+    engine.register_fn(
+        "set_helpline_enabled",
+        move |connection_id: String, enabled: bool| -> bool {
+            if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+                let mut conns_lock = conns.lock().unwrap();
+                if let Some(session) = conns_lock.get_mut(&conn_id) {
+                    if let Some(ref mut char) = session.character {
+                        char.helpline_enabled = enabled;
+                        let _ = cloned_db.save_character_data(char.clone());
+                        return true;
+                    }
                 }
             }
-        }
-        false
-    });
+            false
+        },
+    );
 
     // broadcast_to_helpline(message, room_name, area_name) -> i64
     // Broadcasts a message to all players with helpline enabled. Returns count of recipients.
     let conns = connections.clone();
-    engine.register_fn("broadcast_to_helpline", move |message: String, room_name: String, area_name: String| -> i64 {
-        let mut count = 0i64;
-        let conns_lock = conns.lock().unwrap();
+    engine.register_fn(
+        "broadcast_to_helpline",
+        move |message: String, room_name: String, area_name: String| -> i64 {
+            let mut count = 0i64;
+            let conns_lock = conns.lock().unwrap();
 
-        let location = if area_name.is_empty() {
-            room_name.clone()
-        } else {
-            format!("{} ({})", room_name, area_name)
-        };
+            let location = if area_name.is_empty() {
+                room_name.clone()
+            } else {
+                format!("{} ({})", room_name, area_name)
+            };
 
-        let formatted = format!("[HELPLINE] {} Location: {}\n", message, location);
+            let formatted = format!("[HELPLINE] {} Location: {}\n", message, location);
 
-        for session in conns_lock.values() {
-            if let Some(ref char) = session.character {
-                if char.helpline_enabled {
-                    let _ = session.sender.send(formatted.clone());
-                    count += 1;
+            for session in conns_lock.values() {
+                if let Some(ref char) = session.character {
+                    if char.helpline_enabled {
+                        let _ = session.sender.send(formatted.clone());
+                        count += 1;
+                    }
                 }
             }
-        }
-        count
-    });
+            count
+        },
+    );
 
     // ========== Weather Exposure Functions ==========
 
@@ -276,24 +287,27 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // has_condition(connection_id, condition) -> bool
     // Check if character has a specific condition ("hypothermia", "frostbite", "heat_exhaustion", "heat_stroke", "illness")
     let conns = connections.clone();
-    engine.register_fn("has_condition", move |connection_id: String, condition: String| -> bool {
-        if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-            let conns_lock = conns.lock().unwrap();
-            if let Some(session) = conns_lock.get(&conn_id) {
-                if let Some(ref char) = session.character {
-                    return match condition.to_lowercase().as_str() {
-                        "hypothermia" => char.has_hypothermia,
-                        "frostbite" => !char.has_frostbite.is_empty(),
-                        "heat_exhaustion" => char.has_heat_exhaustion,
-                        "heat_stroke" => char.has_heat_stroke,
-                        "illness" | "sick" | "cold" | "flu" => char.has_illness,
-                        _ => false,
-                    };
+    engine.register_fn(
+        "has_condition",
+        move |connection_id: String, condition: String| -> bool {
+            if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+                let conns_lock = conns.lock().unwrap();
+                if let Some(session) = conns_lock.get(&conn_id) {
+                    if let Some(ref char) = session.character {
+                        return match condition.to_lowercase().as_str() {
+                            "hypothermia" => char.has_hypothermia,
+                            "frostbite" => !char.has_frostbite.is_empty(),
+                            "heat_exhaustion" => char.has_heat_exhaustion,
+                            "heat_stroke" => char.has_heat_stroke,
+                            "illness" | "sick" | "cold" | "flu" => char.has_illness,
+                            _ => false,
+                        };
+                    }
                 }
             }
-        }
-        false
-    });
+            false
+        },
+    );
 
     // get_illness_progress(connection_id) -> i64
     let conns = connections.clone();
@@ -369,33 +383,36 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // calculate_treatment_success(skill_level, tool_tier, tool_quality, wound_level, is_self) -> i64
     // Returns success chance (0-100)
-    engine.register_fn("calculate_treatment_success", |skill_level: i64, tool_tier: i64, tool_quality: i64, wound_level: String, is_self: bool| -> i64 {
-        // Base chance: 30 + (skill * 5)
-        let mut chance = 30 + (skill_level * 5);
+    engine.register_fn(
+        "calculate_treatment_success",
+        |skill_level: i64, tool_tier: i64, tool_quality: i64, wound_level: String, is_self: bool| -> i64 {
+            // Base chance: 30 + (skill * 5)
+            let mut chance = 30 + (skill_level * 5);
 
-        // Tool tier bonus: +10 per tier
-        chance += tool_tier * 10;
+            // Tool tier bonus: +10 per tier
+            chance += tool_tier * 10;
 
-        // Quality bonus (quality / 20, so 0-5)
-        chance += tool_quality;
+            // Quality bonus (quality / 20, so 0-5)
+            chance += tool_quality;
 
-        // Wound level penalty
-        let wound_penalty = match wound_level.to_lowercase().as_str() {
-            "minor" => 0,
-            "moderate" => -10,
-            "severe" => -20,
-            "critical" => -30,
-            "disabled" => -40,
-            _ => 0,
-        };
-        chance += wound_penalty;
+            // Wound level penalty
+            let wound_penalty = match wound_level.to_lowercase().as_str() {
+                "minor" => 0,
+                "moderate" => -10,
+                "severe" => -20,
+                "critical" => -30,
+                "disabled" => -40,
+                _ => 0,
+            };
+            chance += wound_penalty;
 
-        // Self-treatment penalty
-        if is_self {
-            chance -= 20;
-        }
+            // Self-treatment penalty
+            if is_self {
+                chance -= 20;
+            }
 
-        // Clamp to 5-95 range
-        chance.clamp(5, 95)
-    });
+            // Clamp to 5-95 range
+            chance.clamp(5, 95)
+        },
+    );
 }

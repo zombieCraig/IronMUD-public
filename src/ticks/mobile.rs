@@ -4,18 +4,17 @@
 
 use anyhow::Result;
 use std::collections::{HashSet, VecDeque};
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::{debug, error, warn};
 
 use ironmud::{
-    db, get_opposite_direction, CombatDistance, CombatTarget, CombatTargetType,
-    CombatZoneType, CharacterPosition, InputEvent, ItemData, MobileData, RoomData,
-    SharedConnections, WoundType,
+    CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, CombatZoneType, InputEvent, ItemData,
+    MobileData, RoomData, SharedConnections, WoundType, db, get_opposite_direction,
 };
 
 use super::broadcast::{
-    broadcast_to_room_awake, broadcast_to_room_except_awake, broadcast_to_room_mobiles,
-    send_message_to_character, sync_character_to_session,
+    broadcast_to_room_awake, broadcast_to_room_except_awake, broadcast_to_room_mobiles, send_message_to_character,
+    sync_character_to_session,
 };
 
 /// Mobile wandering tick interval in seconds
@@ -101,7 +100,9 @@ fn get_routine_exits(
                     continue;
                 }
                 // cant_swim mobiles cannot enter any water rooms
-                if cant_swim && (target_room.flags.shallow_water || target_room.flags.deep_water || target_room.flags.underwater) {
+                if cant_swim
+                    && (target_room.flags.shallow_water || target_room.flags.deep_water || target_room.flags.underwater)
+                {
                     continue;
                 }
                 exits.push((dir_name.to_string(), target_id, door_action));
@@ -114,12 +115,7 @@ fn get_routine_exits(
 
 /// BFS pathfinding: find the next step direction and room to move toward a destination.
 /// Returns (direction, target_room_id) for the first step, or None if unreachable.
-fn bfs_next_step(
-    db: &db::Db,
-    from: uuid::Uuid,
-    to: uuid::Uuid,
-    mobile: &MobileData,
-) -> Option<(String, uuid::Uuid)> {
+fn bfs_next_step(db: &db::Db, from: uuid::Uuid, to: uuid::Uuid, mobile: &MobileData) -> Option<(String, uuid::Uuid)> {
     if from == to {
         return None;
     }
@@ -142,7 +138,13 @@ fn bfs_next_step(
 
     // Seed with exits from starting room
     if let Ok(Some(start_room)) = db.get_room_data(&from) {
-        if let Ok(exits) = get_routine_exits(db, &start_room, &mobile_key_ids, mobile.flags.can_open_doors, mobile.flags.cant_swim) {
+        if let Ok(exits) = get_routine_exits(
+            db,
+            &start_room,
+            &mobile_key_ids,
+            mobile.flags.can_open_doors,
+            mobile.flags.cant_swim,
+        ) {
             for (dir, target_id, _) in exits {
                 if !visited.contains(&target_id) {
                     visited.insert(target_id);
@@ -171,7 +173,13 @@ fn bfs_next_step(
         }
 
         if let Ok(Some(room)) = db.get_room_data(&current) {
-            if let Ok(exits) = get_routine_exits(db, &room, &mobile_key_ids, mobile.flags.can_open_doors, mobile.flags.cant_swim) {
+            if let Ok(exits) = get_routine_exits(
+                db,
+                &room,
+                &mobile_key_ids,
+                mobile.flags.can_open_doors,
+                mobile.flags.cant_swim,
+            ) {
                 for (_, target_id, _) in exits {
                     if !visited.contains(&target_id) {
                         visited.insert(target_id);
@@ -277,28 +285,21 @@ fn close_door_behind(
         d.is_closed = true;
     }
 
-    broadcast_to_room_awake(
-        connections,
-        departure_room_id,
-        &format!("The {} closes.", door_name),
-    );
+    broadcast_to_room_awake(connections, departure_room_id, &format!("The {} closes.", door_name));
 
     // Re-lock if it was originally locked
     if was_locked {
         if let Some(d) = room.doors.get_mut(direction) {
             d.is_locked = true;
         }
-        broadcast_to_room_awake(
-            connections,
-            departure_room_id,
-            &format!("The {} locks.", door_name),
-        );
+        broadcast_to_room_awake(connections, departure_room_id, &format!("The {} locks.", door_name));
     }
 
     db.save_room_data(room)?;
 
     // Update the other side
-    if let Some(exit_target) = get_exit_target_for_direction(&db.get_room_data(departure_room_id)?.unwrap(), direction) {
+    if let Some(exit_target) = get_exit_target_for_direction(&db.get_room_data(departure_room_id)?.unwrap(), direction)
+    {
         if let Some(opposite_dir) = get_opposite_direction(direction) {
             if let Ok(Some(mut target_room)) = db.get_room_data(&exit_target) {
                 if let Some(other_door) = target_room.doors.get_mut(opposite_dir) {
@@ -353,8 +354,8 @@ fn should_suppress_wander(mobile: &MobileData) -> bool {
 
 /// Process wandering for all non-sentinel mobiles
 fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
-    use rand::seq::SliceRandom;
     use rand::Rng;
+    use rand::seq::SliceRandom;
 
     let wander_chance_percent: u32 = db
         .get_setting_or_default("wander_chance_percent", "33")
@@ -387,13 +388,20 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
 
         // Skip mobiles in combat (using fresh data)
         if current_mobile.combat.in_combat {
-            debug!("Wander: skipping {} - in combat (targets={})", current_mobile.name, current_mobile.combat.targets.len());
+            debug!(
+                "Wander: skipping {} - in combat (targets={})",
+                current_mobile.name,
+                current_mobile.combat.targets.len()
+            );
             continue;
         }
 
         // Skip dead mobiles (safety check, using fresh data)
         if current_mobile.current_hp <= 0 {
-            debug!("Wander: skipping {} - dead (hp={})", current_mobile.name, current_mobile.current_hp);
+            debug!(
+                "Wander: skipping {} - dead (hp={})",
+                current_mobile.name, current_mobile.current_hp
+            );
             continue;
         }
 
@@ -412,7 +420,8 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
                 }
 
                 // BFS to find next step
-                if let Some((direction, _next_room)) = bfs_next_step(db, current_room_id, dest_room_id, &current_mobile) {
+                if let Some((direction, _next_room)) = bfs_next_step(db, current_room_id, dest_room_id, &current_mobile)
+                {
                     // Check for and handle door in this direction
                     let room = db.get_room_data(&current_room_id)?.unwrap();
                     let door_info = room.doors.get(&direction).map(|d| (d.is_closed, d.is_locked));
@@ -432,14 +441,22 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
                             if let Some(target_id) = get_exit_target_for_direction(&updated_room, &direction) {
                                 // Move through
                                 if db.move_mobile_to_room(&current_mobile.id, &target_id).is_ok() {
-                                    let departure_msg = format!("{} leaves heading {}.\n", current_mobile.name, direction);
+                                    let departure_msg =
+                                        format!("{} leaves heading {}.\n", current_mobile.name, direction);
                                     broadcast_to_room_mobiles(connections, &current_room_id, &departure_msg);
 
                                     let arrival_dir = get_opposite_direction_rust(&direction);
-                                    let arrival_msg = format!("{} arrives from the {}.\n", current_mobile.name, arrival_dir);
+                                    let arrival_msg =
+                                        format!("{} arrives from the {}.\n", current_mobile.name, arrival_dir);
                                     broadcast_to_room_mobiles(connections, &target_id, &arrival_msg);
 
-                                    propagate_mobile_followers(connections, &current_mobile.id, &current_mobile.name, &current_room_id, &direction);
+                                    propagate_mobile_followers(
+                                        connections,
+                                        &current_mobile.id,
+                                        &current_mobile.name,
+                                        &current_room_id,
+                                        &direction,
+                                    );
 
                                     // Close and re-lock door behind
                                     close_door_behind(db, connections, &direction, &current_room_id, was_locked)?;
@@ -449,14 +466,22 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
                             // Door exists but is open, just move normally
                             if let Some(target_id) = get_exit_target_for_direction(&room, &direction) {
                                 if db.move_mobile_to_room(&current_mobile.id, &target_id).is_ok() {
-                                    let departure_msg = format!("{} leaves heading {}.\n", current_mobile.name, direction);
+                                    let departure_msg =
+                                        format!("{} leaves heading {}.\n", current_mobile.name, direction);
                                     broadcast_to_room_mobiles(connections, &current_room_id, &departure_msg);
 
                                     let arrival_dir = get_opposite_direction_rust(&direction);
-                                    let arrival_msg = format!("{} arrives from the {}.\n", current_mobile.name, arrival_dir);
+                                    let arrival_msg =
+                                        format!("{} arrives from the {}.\n", current_mobile.name, arrival_dir);
                                     broadcast_to_room_mobiles(connections, &target_id, &arrival_msg);
 
-                                    propagate_mobile_followers(connections, &current_mobile.id, &current_mobile.name, &current_room_id, &direction);
+                                    propagate_mobile_followers(
+                                        connections,
+                                        &current_mobile.id,
+                                        &current_mobile.name,
+                                        &current_room_id,
+                                        &direction,
+                                    );
                                 }
                             }
                         }
@@ -468,10 +493,17 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
                                 broadcast_to_room_mobiles(connections, &current_room_id, &departure_msg);
 
                                 let arrival_dir = get_opposite_direction_rust(&direction);
-                                let arrival_msg = format!("{} arrives from the {}.\n", current_mobile.name, arrival_dir);
+                                let arrival_msg =
+                                    format!("{} arrives from the {}.\n", current_mobile.name, arrival_dir);
                                 broadcast_to_room_mobiles(connections, &target_id, &arrival_msg);
 
-                                propagate_mobile_followers(connections, &current_mobile.id, &current_mobile.name, &current_room_id, &direction);
+                                propagate_mobile_followers(
+                                    connections,
+                                    &current_mobile.id,
+                                    &current_mobile.name,
+                                    &current_room_id,
+                                    &direction,
+                                );
                             }
                         }
                     }
@@ -494,8 +526,7 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
             if let Some(room_id) = current_mobile.current_room_id {
                 // Check if room allows combat (not a safe zone)
                 if let Ok(Some(room)) = db.get_room_data(&room_id) {
-                    let is_safe =
-                        room.flags.combat_zone == Some(CombatZoneType::Safe);
+                    let is_safe = room.flags.combat_zone == Some(CombatZoneType::Safe);
 
                     if !is_safe {
                         // Find a player in the room to attack
@@ -513,8 +544,7 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
                                 }
 
                                 // Check if player is sleeping - wake them up
-                                let was_sleeping =
-                                    char.position == CharacterPosition::Sleeping;
+                                let was_sleeping = char.position == CharacterPosition::Sleeping;
                                 if was_sleeping {
                                     char.position = CharacterPosition::Standing;
                                     send_message_to_character(
@@ -534,7 +564,12 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
                                 let player_target_id = uuid::Uuid::nil();
                                 let _ = db.update_mobile(&current_mobile.id, |m| {
                                     m.combat.in_combat = true;
-                                    if !m.combat.targets.iter().any(|t| t.target_type == CombatTargetType::Player) {
+                                    if !m
+                                        .combat
+                                        .targets
+                                        .iter()
+                                        .any(|t| t.target_type == CombatTargetType::Player)
+                                    {
                                         m.combat.targets.push(CombatTarget {
                                             target_type: CombatTargetType::Player,
                                             target_id: player_target_id,
@@ -560,10 +595,7 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
                                 broadcast_to_room_awake(
                                     connections,
                                     &room_id,
-                                    &format!(
-                                        "{} snarls and attacks {}!",
-                                        current_mobile.name, player_name
-                                    ),
+                                    &format!("{} snarls and attacks {}!", current_mobile.name, player_name),
                                 );
 
                                 // Skip wandering - mobile is now in combat
@@ -579,15 +611,16 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
         if current_mobile.flags.scavenger {
             if let Some(room_id) = current_mobile.current_room_id {
                 if let Ok(items) = db.get_items_in_room(&room_id) {
-                    let pickable: Vec<&ItemData> = items
-                        .iter()
-                        .filter(|i| !i.is_prototype && !i.flags.no_get)
-                        .collect();
+                    let pickable: Vec<&ItemData> =
+                        items.iter().filter(|i| !i.is_prototype && !i.flags.no_get).collect();
                     if !pickable.is_empty() {
                         let item = pickable[rng.gen_range(0..pickable.len())];
                         let item_name = item.name.clone();
                         let item_id = item.id;
-                        if db.move_item_to_mobile_inventory(&item_id, &current_mobile.id).unwrap_or(false) {
+                        if db
+                            .move_item_to_mobile_inventory(&item_id, &current_mobile.id)
+                            .unwrap_or(false)
+                        {
                             broadcast_to_room_awake(
                                 connections,
                                 &room_id,
@@ -610,21 +643,25 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
                         if !is_safe {
                             let players = find_players_in_room(connections, &room_id);
                             // Pick a random eligible player
-                            let eligible: Vec<String> = players.into_iter().filter(|name| {
-                                if let Ok(Some(c)) = db.get_character_data(name) {
-                                    !c.god_mode && !ironmud::check_build_mode(&db, name, &room_id) && c.position != CharacterPosition::Sleeping && c.gold > 0
-                                } else {
-                                    false
-                                }
-                            }).collect();
+                            let eligible: Vec<String> = players
+                                .into_iter()
+                                .filter(|name| {
+                                    if let Ok(Some(c)) = db.get_character_data(name) {
+                                        !c.god_mode
+                                            && !ironmud::check_build_mode(&db, name, &room_id)
+                                            && c.position != CharacterPosition::Sleeping
+                                            && c.gold > 0
+                                    } else {
+                                        false
+                                    }
+                                })
+                                .collect();
 
                             if let Some(target_name) = eligible.choose(&mut rng) {
                                 if let Ok(Some(mut char)) = db.get_character_data(target_name) {
                                     let mob_level = current_mobile.level;
                                     let player_level = char.level;
-                                    let thievery_skill = char.skills.get("thievery")
-                                        .map(|s| s.level)
-                                        .unwrap_or(0);
+                                    let thievery_skill = char.skills.get("thievery").map(|s| s.level).unwrap_or(0);
 
                                     // Success formula: 25 + (mob_level * 5) - (player_level * 3) - (thievery * 4)
                                     let success_chance = (25 + mob_level * 5 - player_level * 3 - thievery_skill * 4)
@@ -659,7 +696,10 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
                                         broadcast_to_room_except_awake(
                                             connections,
                                             &room_id,
-                                            &format!("{} is caught trying to pick {}'s pocket!", current_mobile.name, target_name),
+                                            &format!(
+                                                "{} is caught trying to pick {}'s pocket!",
+                                                current_mobile.name, target_name
+                                            ),
                                             target_name,
                                         );
 
@@ -679,7 +719,12 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
                                             let player_target_id = uuid::Uuid::nil();
                                             let _ = db.update_mobile(&current_mobile.id, |m| {
                                                 m.combat.in_combat = true;
-                                                if !m.combat.targets.iter().any(|t| t.target_type == CombatTargetType::Player) {
+                                                if !m
+                                                    .combat
+                                                    .targets
+                                                    .iter()
+                                                    .any(|t| t.target_type == CombatTargetType::Player)
+                                                {
                                                     m.combat.targets.push(CombatTarget {
                                                         target_type: CombatTargetType::Player,
                                                         target_id: player_target_id,
@@ -702,12 +747,22 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
                                             broadcast_to_room_awake(
                                                 connections,
                                                 &room_id,
-                                                &format!("{} draws a weapon and attacks {}!", current_mobile.name, target_name),
+                                                &format!(
+                                                    "{} draws a weapon and attacks {}!",
+                                                    current_mobile.name, target_name
+                                                ),
                                             );
                                         }
 
                                         // Guard response to caught thief
-                                        handle_guard_response(db, connections, &current_mobile, &room_id, target_name, &mut rng);
+                                        handle_guard_response(
+                                            db,
+                                            connections,
+                                            &current_mobile,
+                                            &room_id,
+                                            target_name,
+                                            &mut rng,
+                                        );
                                     }
                                 }
                             }
@@ -758,8 +813,10 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
         };
 
         // Move the mobile
-        debug!("Wander: moving {} ({}) from room {} to room {} ({})",
-               current_mobile.name, current_mobile.id, mobile_room_id, target_room_id, direction);
+        debug!(
+            "Wander: moving {} ({}) from room {} to room {} ({})",
+            current_mobile.name, current_mobile.id, mobile_room_id, target_room_id, direction
+        );
         if db.move_mobile_to_room(&current_mobile.id, &target_room_id).is_ok() {
             // Broadcast departure message
             let departure_msg = format!("{} leaves heading {}.\n", current_mobile.name, direction);
@@ -770,7 +827,13 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
             let arrival_msg = format!("{} arrives from the {}.\n", current_mobile.name, arrival_dir);
             broadcast_to_room_mobiles(connections, &target_room_id, &arrival_msg);
 
-            propagate_mobile_followers(connections, &current_mobile.id, &current_mobile.name, &mobile_room_id, &direction);
+            propagate_mobile_followers(
+                connections,
+                &current_mobile.id,
+                &current_mobile.name,
+                &mobile_room_id,
+                &direction,
+            );
 
             debug!("Wander: {} move complete", current_mobile.name);
         }
@@ -785,7 +848,11 @@ pub fn get_valid_wander_exits(db: &db::Db, room: &RoomData) -> Result<Vec<(Strin
 }
 
 /// Get valid wander exits, with cant_swim flag blocking shallow water too
-pub fn get_valid_wander_exits_with_flags(db: &db::Db, room: &RoomData, cant_swim: bool) -> Result<Vec<(String, uuid::Uuid)>> {
+pub fn get_valid_wander_exits_with_flags(
+    db: &db::Db,
+    room: &RoomData,
+    cant_swim: bool,
+) -> Result<Vec<(String, uuid::Uuid)>> {
     let mut valid_exits = Vec::new();
 
     // Direction names and their corresponding exit Option<Uuid>
@@ -875,11 +942,7 @@ fn handle_guard_response(
     if let Ok(mobiles) = db.get_mobiles_in_room(room_id) {
         for guard in &mobiles {
             if guard.flags.guard && guard.id != thief_mobile.id && !guard.combat.in_combat && guard.current_hp > 0 {
-                broadcast_to_room_awake(
-                    connections,
-                    room_id,
-                    &format!("{} shouts: Stop, thief!", guard.name),
-                );
+                broadcast_to_room_awake(connections, room_id, &format!("{} shouts: Stop, thief!", guard.name));
             }
         }
     }
@@ -940,15 +1003,22 @@ pub fn propagate_mobile_followers(
     source_room: &uuid::Uuid,
     direction: &str,
 ) {
-    let Ok(conns) = connections.lock() else { return };
+    let Ok(conns) = connections.lock() else {
+        return;
+    };
     for session in conns.values() {
-        let Some(ref char) = session.character else { continue };
-        if char.following_mobile_id != Some(*mobile_id) { continue; }
-        if char.current_room_id != *source_room { continue; }
-        let _ = session.sender.send(format!(
-            "You follow {} {}.\r\n",
-            mobile_name, direction
-        ));
+        let Some(ref char) = session.character else {
+            continue;
+        };
+        if char.following_mobile_id != Some(*mobile_id) {
+            continue;
+        }
+        if char.current_room_id != *source_room {
+            continue;
+        }
+        let _ = session
+            .sender
+            .send(format!("You follow {} {}.\r\n", mobile_name, direction));
         let _ = session.input_sender.send(InputEvent::Line(direction.to_string()));
     }
 }

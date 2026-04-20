@@ -86,7 +86,16 @@ impl GrowthStage {
 
     /// All valid stage names for completion
     pub fn all_names() -> &'static [&'static str] {
-        &["seed", "sprout", "seedling", "growing", "mature", "flowering", "wilting", "dead"]
+        &[
+            "seed",
+            "sprout",
+            "seedling",
+            "growing",
+            "mature",
+            "flowering",
+            "wilting",
+            "dead",
+        ]
     }
 }
 
@@ -270,12 +279,24 @@ pub struct PlantPrototype {
     pub is_prototype: bool,
 }
 
-fn default_harvest_min() -> i32 { 1 }
-fn default_harvest_max() -> i32 { 3 }
-fn default_water_consumption() -> f64 { 1.0 }
-fn default_water_capacity() -> f64 { 100.0 }
-fn default_base_xp() -> i32 { 10 }
-fn default_pest_resistance() -> i32 { 30 }
+fn default_harvest_min() -> i32 {
+    1
+}
+fn default_harvest_max() -> i32 {
+    3
+}
+fn default_water_consumption() -> f64 {
+    1.0
+}
+fn default_water_capacity() -> f64 {
+    100.0
+}
+fn default_base_xp() -> i32 {
+    10
+}
+fn default_pest_resistance() -> i32 {
+    30
+}
 
 impl PlantPrototype {
     pub fn new(name: String, vnum: String) -> Self {
@@ -371,11 +392,21 @@ pub struct PlantInstance {
     pub planted_game_year: u32,
 }
 
-fn default_water_level() -> f64 { 50.0 }
-fn default_health() -> f64 { 100.0 }
+fn default_water_level() -> f64 {
+    50.0
+}
+fn default_health() -> f64 {
+    100.0
+}
 
 impl PlantInstance {
-    pub fn new(prototype_vnum: String, room_id: Uuid, planter_name: String, is_potted: bool, pot_item_id: Option<Uuid>) -> Self {
+    pub fn new(
+        prototype_vnum: String,
+        room_id: Uuid,
+        planter_name: String,
+        is_potted: bool,
+        pot_item_id: Option<Uuid>,
+    ) -> Self {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)

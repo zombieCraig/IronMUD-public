@@ -5,7 +5,7 @@
 //! that needs live-server state. Each client connection carries a single
 //! JSON request line and receives a single JSON response line.
 
-use crate::{broadcast_to_all_players, SharedConnections};
+use crate::{SharedConnections, broadcast_to_all_players};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -40,30 +40,20 @@ pub fn default_socket_path(database_path: &str) -> PathBuf {
     dir.join("control.sock")
 }
 
-pub async fn run_control_socket(
-    path: PathBuf,
-    connections: SharedConnections,
-) -> Result<()> {
+pub async fn run_control_socket(path: PathBuf, connections: SharedConnections) -> Result<()> {
     if path.exists() {
         if let Err(e) = std::fs::remove_file(&path) {
-            warn!(
-                "Failed to remove stale control socket at {}: {}",
-                path.display(),
-                e
-            );
+            warn!("Failed to remove stale control socket at {}: {}", path.display(), e);
         }
     }
 
-    let listener = UnixListener::bind(&path).with_context(|| {
-        format!("Failed to bind control socket at {}", path.display())
-    })?;
+    let listener =
+        UnixListener::bind(&path).with_context(|| format!("Failed to bind control socket at {}", path.display()))?;
 
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        if let Err(e) =
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o660))
-        {
+        if let Err(e) = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o660)) {
             warn!("Failed to set permissions on control socket: {}", e);
         }
     }

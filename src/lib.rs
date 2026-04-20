@@ -1,4 +1,4 @@
-use rhai::{Engine, AST};
+use rhai::{AST, Engine};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -9,21 +9,21 @@ use uuid::Uuid;
 
 pub mod aging;
 pub mod api;
+pub mod chat;
 pub mod claude;
 pub mod completion;
 pub mod control;
 pub mod db;
+pub mod discord;
 pub mod game;
 pub mod gemini;
 pub mod init;
-pub mod chat;
-pub mod discord;
 pub mod matrix;
 pub mod migration;
 pub mod script;
-pub mod social;
 pub mod seed;
 pub mod session;
+pub mod social;
 pub mod telnet;
 pub mod types;
 
@@ -33,11 +33,10 @@ pub use types::*;
 pub use init::{load_command_metadata, load_game_data, load_scripts, watch_scripts};
 pub use script::check_build_mode;
 pub use session::{
-    broadcast_to_all_players, broadcast_to_builders, broadcast_to_outdoor_players,
-    broadcast_to_room, broadcast_to_room_awake, broadcast_to_room_dreaming,
-    clear_player_character, disconnect_client, find_player_connection_by_name,
-    get_character_for_connection, get_characters_in_room, get_characters_in_room_with_positions,
-    send_client_message, set_character_for_connection,
+    broadcast_to_all_players, broadcast_to_builders, broadcast_to_outdoor_players, broadcast_to_room,
+    broadcast_to_room_awake, broadcast_to_room_dreaming, clear_player_character, disconnect_client,
+    find_player_connection_by_name, get_character_for_connection, get_characters_in_room,
+    get_characters_in_room_with_positions, send_client_message, set_character_for_connection,
 };
 
 // Starting room UUID constant
@@ -71,9 +70,9 @@ pub struct PlayerSession {
     pub cursor_pos: usize,
     // Readline-like input handling
     pub command_history: VecDeque<String>,
-    pub history_index: Option<usize>,  // None = editing new line, Some(n) = viewing history[n]
-    pub saved_input: String,           // Saved current input when navigating history
-    pub escape_state: telnet::EscapeState,  // State for multi-byte escape sequences
+    pub history_index: Option<usize>, // None = editing new line, Some(n) = viewing history[n]
+    pub saved_input: String,          // Saved current input when navigating history
+    pub escape_state: telnet::EscapeState, // State for multi-byte escape sequences
     // AI integration fields (Claude or Gemini)
     pub pending_ai_request: Option<Uuid>,
     pub pending_ai_response: Option<claude::AiResponse>,
@@ -160,7 +159,9 @@ pub fn get_season_transition_message(season: &Season) -> &'static str {
     match season {
         Season::Spring => "The air grows warmer as spring arrives. Flowers begin to bloom across the land.",
         Season::Summer => "Summer has arrived! The sun beats down warmly and the days grow long.",
-        Season::Autumn => "The leaves begin to change color as autumn settles in. A cool breeze carries the scent of fallen leaves.",
+        Season::Autumn => {
+            "The leaves begin to change color as autumn settles in. A cool breeze carries the scent of fallen leaves."
+        }
         Season::Winter => "Winter descends upon the land. A chill fills the air as frost blankets the ground.",
     }
 }
@@ -184,10 +185,15 @@ pub fn fire_environmental_triggers_impl(
 
     for room in rooms {
         // For time, weather, and season triggers, skip indoor/climate_controlled rooms
-        if trigger_type == TriggerType::OnTimeChange || trigger_type == TriggerType::OnWeatherChange || trigger_type == TriggerType::OnSeasonChange {
+        if trigger_type == TriggerType::OnTimeChange
+            || trigger_type == TriggerType::OnWeatherChange
+            || trigger_type == TriggerType::OnSeasonChange
+        {
             // Check for climate_controlled (room or area inherited)
-            let is_climate_controlled = room.flags.climate_controlled ||
-                room.area_id.and_then(|aid| db.get_area_data(&aid).ok().flatten())
+            let is_climate_controlled = room.flags.climate_controlled
+                || room
+                    .area_id
+                    .and_then(|aid| db.get_area_data(&aid).ok().flatten())
                     .map(|area| area.flags.climate_controlled)
                     .unwrap_or(false);
             if room.flags.indoors || is_climate_controlled {
@@ -212,7 +218,8 @@ pub fn fire_environmental_triggers_impl(
             // Find all players in this room
             let players_in_room: Vec<(Uuid, tokio::sync::mpsc::UnboundedSender<String>)> = {
                 let conns = connections.lock().unwrap();
-                conns.iter()
+                conns
+                    .iter()
                     .filter_map(|(conn_id, session)| {
                         if let Some(ref char) = session.character {
                             if char.current_room_id == room.id {
@@ -261,16 +268,19 @@ pub fn fire_environmental_triggers_impl(
             // Register broadcast_to_room
             let conns_clone = connections.clone();
             let room_id = room.id;
-            trigger_engine.register_fn("broadcast_to_room", move |_rid: String, message: String, _exclude: String| {
-                let conns = conns_clone.lock().unwrap();
-                for (_, session) in conns.iter() {
-                    if let Some(ref char) = session.character {
-                        if char.current_room_id == room_id {
-                            let _ = session.sender.send(message.clone());
+            trigger_engine.register_fn(
+                "broadcast_to_room",
+                move |_rid: String, message: String, _exclude: String| {
+                    let conns = conns_clone.lock().unwrap();
+                    for (_, session) in conns.iter() {
+                        if let Some(ref char) = session.character {
+                            if char.current_room_id == room_id {
+                                let _ = session.sender.send(message.clone());
+                            }
                         }
                     }
-                }
-            });
+                },
+            );
 
             // Register random_int
             trigger_engine.register_fn("random_int", |min: i64, max: i64| {
@@ -355,10 +365,12 @@ fn execute_room_template(
                 if let Some(new_weather) = context.get("new_weather") {
                     let weather_lower = new_weather.to_lowercase();
                     let matches = weather_lower == target_weather
-                        || (target_weather == "raining" && (weather_lower.contains("rain") || weather_lower == "thunderstorm"))
+                        || (target_weather == "raining"
+                            && (weather_lower.contains("rain") || weather_lower == "thunderstorm"))
                         || (target_weather == "snowing" && weather_lower.contains("snow"))
                         || (target_weather == "stormy" && weather_lower == "thunderstorm")
-                        || (target_weather == "precipitation" && (weather_lower.contains("rain") || weather_lower.contains("snow")));
+                        || (target_weather == "precipitation"
+                            && (weather_lower.contains("rain") || weather_lower.contains("snow")));
 
                     if matches {
                         broadcast(message);
@@ -391,7 +403,8 @@ pub struct OnlinePlayer {
 
 pub fn get_online_players(connections: &SharedConnections) -> Vec<OnlinePlayer> {
     let conns = connections.lock().unwrap();
-    conns.values()
+    conns
+        .values()
         .filter_map(|session| {
             session.character.as_ref().map(|c| OnlinePlayer {
                 name: c.name.clone(),
@@ -450,11 +463,7 @@ pub fn get_default_aliases() -> HashMap<String, String> {
     defaults
 }
 
-fn resolve_alias(
-    connections: &SharedConnections,
-    connection_id: ConnectionId,
-    alias: &str,
-) -> Option<String> {
+fn resolve_alias(connections: &SharedConnections, connection_id: ConnectionId, alias: &str) -> Option<String> {
     let conns = connections.lock().unwrap();
     if let Some(session) = conns.get(&connection_id) {
         if let Some(ref character) = session.character {
@@ -525,7 +534,10 @@ enum EditorCommandResult {
 
 /// Check if a command is allowed while unconscious.
 fn is_unconscious_allowed(cmd: &str) -> bool {
-    matches!(cmd, "quit" | "logout" | "who" | "help" | "diagnose" | "status" | "tell" | "gtell")
+    matches!(
+        cmd,
+        "quit" | "logout" | "who" | "help" | "diagnose" | "status" | "tell" | "gtell"
+    )
 }
 
 /// Find a command by prefix matching.
@@ -691,7 +703,11 @@ fn handle_editor_command(
                     buffer.insert(n - 1, text);
                     return EditorCommandResult::Handled(format!("Line {} inserted.\n", n));
                 } else {
-                    return EditorCommandResult::Handled(format!("Line {} out of range (1-{}).\n", n, buffer.len() + 1));
+                    return EditorCommandResult::Handled(format!(
+                        "Line {} out of range (1-{}).\n",
+                        n,
+                        buffer.len() + 1
+                    ));
                 }
             } else {
                 return EditorCommandResult::Handled("Usage: .i <line_number> <text>\n".to_string());
@@ -731,12 +747,22 @@ fn handle_editor_command(
 /// Build the prompt string for a connection, respecting prompt_mode setting.
 /// Returns simple "> " for guests or when prompt_mode is "simple".
 /// Returns verbose "[HP:current/max] >" with color coding when prompt_mode is "verbose".
-fn build_prompt(
-    connection_id: &ConnectionId,
-    connections: &SharedConnections,
-    state: &SharedState,
-) -> String {
-    let (prompt_mode, hp, max_hp, stamina, max_stamina, mana, max_mana, mana_enabled, breath, max_breath, colors_enabled, char_name, build_mode) = {
+fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, state: &SharedState) -> String {
+    let (
+        prompt_mode,
+        hp,
+        max_hp,
+        stamina,
+        max_stamina,
+        mana,
+        max_mana,
+        mana_enabled,
+        breath,
+        max_breath,
+        colors_enabled,
+        char_name,
+        build_mode,
+    ) = {
         let conns = connections.lock().unwrap();
         let session = match conns.get(connection_id) {
             Some(s) => s,
@@ -747,35 +773,63 @@ fn build_prompt(
 
         match &session.character {
             Some(c) => {
-                let mode = if c.prompt_mode.is_empty() { "simple" } else { &c.prompt_mode };
+                let mode = if c.prompt_mode.is_empty() {
+                    "simple"
+                } else {
+                    &c.prompt_mode
+                };
                 // Apply torso wound HP cap
-                let torso_penalty = c.wounds.iter()
+                let torso_penalty = c
+                    .wounds
+                    .iter()
                     .filter(|w| w.body_part == BodyPart::Torso)
                     .map(|w| w.level.penalty())
                     .max()
                     .unwrap_or(0);
                 let effective_max_hp = if torso_penalty > 0 {
                     (c.max_hp * (100 - torso_penalty) / 100).max(1)
-                } else { c.max_hp };
+                } else {
+                    c.max_hp
+                };
                 // Apply head wound mana cap
-                let head_penalty = c.wounds.iter()
+                let head_penalty = c
+                    .wounds
+                    .iter()
                     .filter(|w| w.body_part == BodyPart::Head)
                     .map(|w| w.level.penalty())
                     .max()
                     .unwrap_or(0);
                 let effective_max_mana = if head_penalty > 0 {
                     (c.max_mana * (100 - head_penalty) / 100).max(0)
-                } else { c.max_mana };
-                (mode.to_string(), c.hp, effective_max_hp, c.stamina, c.max_stamina, c.mana, effective_max_mana, c.mana_enabled, c.breath, c.max_breath, colors, c.name.clone(), c.build_mode)
+                } else {
+                    c.max_mana
+                };
+                (
+                    mode.to_string(),
+                    c.hp,
+                    effective_max_hp,
+                    c.stamina,
+                    c.max_stamina,
+                    c.mana,
+                    effective_max_mana,
+                    c.mana_enabled,
+                    c.breath,
+                    c.max_breath,
+                    colors,
+                    c.name.clone(),
+                    c.build_mode,
+                )
             }
-            None => return "> ".to_string(),  // Not logged in = simple prompt
+            None => return "> ".to_string(), // Not logged in = simple prompt
         }
     };
 
     // Get equipped items from database (source of truth is ItemLocation::Equipped)
     let equipped_items: Vec<Uuid> = {
         let world = state.lock().unwrap();
-        world.db.get_equipped_items(&char_name)
+        world
+            .db
+            .get_equipped_items(&char_name)
             .unwrap_or_default()
             .into_iter()
             .map(|item| item.id)
@@ -792,11 +846,11 @@ fn build_prompt(
     // Color based on health percentage
     let (hp_color, reset) = if colors_enabled {
         let color = if hp_percent >= 70 {
-            "\x1b[32m"  // Green: healthy
+            "\x1b[32m" // Green: healthy
         } else if hp_percent >= 30 {
-            "\x1b[33m"  // Yellow: wounded
+            "\x1b[33m" // Yellow: wounded
         } else {
-            "\x1b[31m"  // Red: critical
+            "\x1b[31m" // Red: critical
         };
         (color, "\x1b[0m")
     } else {
@@ -804,14 +858,18 @@ fn build_prompt(
     };
 
     // Stamina percentage and color
-    let stamina_percent = if max_stamina > 0 { (stamina * 100) / max_stamina } else { 100 };
+    let stamina_percent = if max_stamina > 0 {
+        (stamina * 100) / max_stamina
+    } else {
+        100
+    };
     let st_color = if colors_enabled {
         if stamina_percent >= 70 {
-            "\x1b[36m"  // Cyan: energized
+            "\x1b[36m" // Cyan: energized
         } else if stamina_percent >= 30 {
-            "\x1b[34m"  // Blue: tired
+            "\x1b[34m" // Blue: tired
         } else {
-            "\x1b[35m"  // Magenta: exhausted
+            "\x1b[35m" // Magenta: exhausted
         }
     } else {
         ""
@@ -822,11 +880,11 @@ fn build_prompt(
         let mana_percent = if max_mana > 0 { (mana * 100) / max_mana } else { 100 };
         let mp_color = if colors_enabled {
             if mana_percent >= 70 {
-                "\x1b[94m"  // Bright blue: full
+                "\x1b[94m" // Bright blue: full
             } else if mana_percent >= 30 {
-                "\x1b[34m"  // Blue: moderate
+                "\x1b[34m" // Blue: moderate
             } else {
-                "\x1b[35m"  // Magenta: low
+                "\x1b[35m" // Magenta: low
             }
         } else {
             ""
@@ -838,14 +896,18 @@ fn build_prompt(
 
     // Breath segment (only shown when breath < max_breath)
     let breath_segment = if breath < max_breath {
-        let breath_percent = if max_breath > 0 { (breath * 100) / max_breath } else { 100 };
+        let breath_percent = if max_breath > 0 {
+            (breath * 100) / max_breath
+        } else {
+            100
+        };
         let br_color = if colors_enabled {
             if breath_percent >= 50 {
-                "\x1b[36m"  // Cyan: ok
+                "\x1b[36m" // Cyan: ok
             } else if breath_percent >= 25 {
-                "\x1b[33m"  // Yellow: low
+                "\x1b[33m" // Yellow: low
             } else {
-                "\x1b[31m"  // Red: critical
+                "\x1b[31m" // Red: critical
             }
         } else {
             ""
@@ -855,7 +917,10 @@ fn build_prompt(
         String::new()
     };
 
-    let base_prompt = format!("[{}HP:{}/{}{}] [{}ST:{}/{}{}] {}{}", hp_color, hp, max_hp, reset, st_color, stamina, max_stamina, reset, mana_segment, breath_segment);
+    let base_prompt = format!(
+        "[{}HP:{}/{}{}] [{}ST:{}/{}{}] {}{}",
+        hp_color, hp, max_hp, reset, st_color, stamina, max_stamina, reset, mana_segment, breath_segment
+    );
 
     // Distance indicator for combat prompt
     let distance_tag = {
@@ -863,7 +928,9 @@ fn build_prompt(
         if let Ok(Some(char_data)) = world.db.get_character_data(&char_name) {
             if char_data.combat.in_combat && !char_data.combat.targets.is_empty() {
                 let primary = &char_data.combat.targets[0];
-                let distance = char_data.combat.distances
+                let distance = char_data
+                    .combat
+                    .distances
                     .get(&primary.target_id)
                     .copied()
                     .unwrap_or(CombatDistance::Melee);
@@ -871,16 +938,14 @@ fn build_prompt(
                     CombatDistance::Ranged | CombatDistance::Pole => {
                         // Resolve target name
                         let target_name = match primary.target_type {
-                            CombatTargetType::Mobile => {
-                                world.db.get_mobile_data(&primary.target_id)
-                                    .ok()
-                                    .flatten()
-                                    .map(|m| m.name.clone())
-                                    .unwrap_or_else(|| "opponent".to_string())
-                            }
-                            CombatTargetType::Player => {
-                                "opponent".to_string()
-                            }
+                            CombatTargetType::Mobile => world
+                                .db
+                                .get_mobile_data(&primary.target_id)
+                                .ok()
+                                .flatten()
+                                .map(|m| m.name.clone())
+                                .unwrap_or_else(|| "opponent".to_string()),
+                            CombatTargetType::Player => "opponent".to_string(),
                         };
                         let (tag_color, label) = if distance == CombatDistance::Ranged {
                             ("\x1b[33m", "Ranged")
@@ -938,7 +1003,9 @@ fn collect_on_prompt_contributions(
         };
 
         // Find enabled on_prompt triggers
-        let prompt_triggers: Vec<_> = item.triggers.iter()
+        let prompt_triggers: Vec<_> = item
+            .triggers
+            .iter()
             .filter(|t| t.trigger_type == ItemTriggerType::OnPrompt && t.enabled)
             .collect();
 
@@ -975,7 +1042,10 @@ fn collect_on_prompt_contributions(
                 map.insert("day".into(), rhai::Dynamic::from(game_time.day as i64));
                 map.insert("month".into(), rhai::Dynamic::from(game_time.month as i64));
                 map.insert("year".into(), rhai::Dynamic::from(game_time.year as i64));
-                map.insert("season".into(), rhai::Dynamic::from(game_time.get_season().to_string().to_lowercase()));
+                map.insert(
+                    "season".into(),
+                    rhai::Dynamic::from(game_time.get_season().to_string().to_lowercase()),
+                );
                 map
             });
 
@@ -990,7 +1060,7 @@ fn collect_on_prompt_contributions(
                         &mut rhai::Scope::new(),
                         &ast,
                         "run_trigger",
-                        (item_id_str, conn_id_str, context)
+                        (item_id_str, conn_id_str, context),
                     ) {
                         Ok(result) => {
                             let result_str = result.to_string();
@@ -1103,7 +1173,8 @@ pub async fn handle_connection(
         // Only send prompt in line mode (char mode echoes as you type)
         let is_char_mode = {
             let conns = connections.lock().unwrap();
-            conns.get(&connection_id)
+            conns
+                .get(&connection_id)
                 .map(|s| s.telnet_state.char_mode)
                 .unwrap_or(false)
         };
@@ -1125,59 +1196,78 @@ pub async fn handle_connection(
             // Get current input buffer and cursor position
             let (current_input, cursor_pos, window_width) = {
                 let conns = connections.lock().unwrap();
-                conns.get(&connection_id)
+                conns
+                    .get(&connection_id)
                     .map(|s| (s.input_buffer.clone(), s.cursor_pos, s.telnet_state.window_width))
                     .unwrap_or_default()
             };
 
             // Gather completion data
-            let (available_commands, room_vnums, item_vnums, mobile_vnums, area_prefixes, recipe_vnums, transport_vnums, property_template_vnums, shop_preset_vnums, plant_vnums, spell_names, online_players, has_builder_access) = {
+            let (
+                available_commands,
+                room_vnums,
+                item_vnums,
+                mobile_vnums,
+                area_prefixes,
+                recipe_vnums,
+                transport_vnums,
+                property_template_vnums,
+                shop_preset_vnums,
+                plant_vnums,
+                spell_names,
+                online_players,
+                has_builder_access,
+            ) = {
                 let world = state.lock().unwrap();
 
                 // Get commands the user can access
                 let is_logged_in = {
                     let conns = connections.lock().unwrap();
-                    conns.get(&connection_id)
-                        .and_then(|s| s.character.as_ref())
-                        .is_some()
+                    conns.get(&connection_id).and_then(|s| s.character.as_ref()).is_some()
                 };
                 let (is_builder, is_admin) = {
                     let conns = connections.lock().unwrap();
-                    conns.get(&connection_id)
+                    conns
+                        .get(&connection_id)
                         .and_then(|s| s.character.as_ref())
                         .map(|c| (c.is_builder, c.is_admin))
                         .unwrap_or((false, false))
                 };
 
-                let available_commands: Vec<String> = world.command_metadata
+                let available_commands: Vec<String> = world
+                    .command_metadata
                     .iter()
-                    .filter(|(_, meta)| {
-                        match meta.access.as_str() {
-                            "guest" => true,
-                            "user" => is_logged_in,
-                            "builder" => is_builder || is_admin,
-                            "admin" => is_admin,
-                            _ => true,
-                        }
+                    .filter(|(_, meta)| match meta.access.as_str() {
+                        "guest" => true,
+                        "user" => is_logged_in,
+                        "builder" => is_builder || is_admin,
+                        "admin" => is_admin,
+                        _ => true,
                     })
                     .map(|(name, _)| name.clone())
                     .collect();
 
                 // Get vnums from database
-                let room_vnums: Vec<String> = world.db.list_all_rooms()
+                let room_vnums: Vec<String> = world
+                    .db
+                    .list_all_rooms()
                     .unwrap_or_default()
                     .iter()
                     .filter_map(|r| r.vnum.clone())
                     .collect();
 
-                let item_vnums: Vec<String> = world.db.list_all_items()
+                let item_vnums: Vec<String> = world
+                    .db
+                    .list_all_items()
                     .unwrap_or_default()
                     .iter()
                     .filter(|i| i.is_prototype)
                     .filter_map(|i| i.vnum.clone())
                     .collect();
 
-                let mobile_vnums: Vec<String> = world.db.list_all_mobiles()
+                let mobile_vnums: Vec<String> = world
+                    .db
+                    .list_all_mobiles()
                     .unwrap_or_default()
                     .iter()
                     .filter(|m| m.is_prototype)
@@ -1185,50 +1275,55 @@ pub async fn handle_connection(
                     .filter(|v| !v.is_empty())
                     .collect();
 
-                let area_prefixes: Vec<String> = world.db.list_all_areas()
+                let area_prefixes: Vec<String> = world
+                    .db
+                    .list_all_areas()
                     .unwrap_or_default()
                     .iter()
                     .map(|a| a.prefix.clone())
                     .collect();
 
-                let recipe_vnums: Vec<String> = world.recipes
-                    .keys()
-                    .cloned()
-                    .collect();
+                let recipe_vnums: Vec<String> = world.recipes.keys().cloned().collect();
 
-                let transport_vnums: Vec<String> = world.db.list_all_transports()
+                let transport_vnums: Vec<String> = world
+                    .db
+                    .list_all_transports()
                     .unwrap_or_default()
                     .iter()
                     .filter_map(|t| t.vnum.clone())
                     .collect();
 
-                let property_template_vnums: Vec<String> = world.db.list_all_property_templates()
+                let property_template_vnums: Vec<String> = world
+                    .db
+                    .list_all_property_templates()
                     .unwrap_or_default()
                     .iter()
                     .map(|t| t.vnum.clone())
                     .collect();
 
-                let shop_preset_vnums: Vec<String> = world.db.list_all_shop_presets()
+                let shop_preset_vnums: Vec<String> = world
+                    .db
+                    .list_all_shop_presets()
                     .unwrap_or_default()
                     .iter()
                     .map(|p| p.vnum.clone())
                     .collect();
 
-                let plant_vnums: Vec<String> = world.db.list_all_plant_prototypes()
+                let plant_vnums: Vec<String> = world
+                    .db
+                    .list_all_plant_prototypes()
                     .unwrap_or_default()
                     .iter()
                     .filter_map(|p| p.vnum.clone())
                     .collect();
 
-                let spell_names: Vec<String> = world.spell_definitions
-                    .values()
-                    .map(|s| s.name.clone())
-                    .collect();
+                let spell_names: Vec<String> = world.spell_definitions.values().map(|s| s.name.clone()).collect();
 
                 // Get online player names
                 let online_players: Vec<String> = {
                     let conns = connections.lock().unwrap();
-                    conns.values()
+                    conns
+                        .values()
                         .filter_map(|s| s.character.as_ref())
                         .map(|c| c.name.clone())
                         .collect()
@@ -1236,7 +1331,21 @@ pub async fn handle_connection(
 
                 let has_builder_access = is_builder || is_admin;
 
-                (available_commands, room_vnums, item_vnums, mobile_vnums, area_prefixes, recipe_vnums, transport_vnums, property_template_vnums, shop_preset_vnums, plant_vnums, spell_names, online_players, has_builder_access)
+                (
+                    available_commands,
+                    room_vnums,
+                    item_vnums,
+                    mobile_vnums,
+                    area_prefixes,
+                    recipe_vnums,
+                    transport_vnums,
+                    property_template_vnums,
+                    shop_preset_vnums,
+                    plant_vnums,
+                    spell_names,
+                    online_players,
+                    has_builder_access,
+                )
             };
 
             // Perform completion
@@ -1272,7 +1381,8 @@ pub async fn handle_connection(
                     let mut conns = connections.lock().unwrap();
                     if let Some(session) = conns.get_mut(&connection_id) {
                         // Find byte offset for cursor position (char-based)
-                        let byte_pos = session.input_buffer
+                        let byte_pos = session
+                            .input_buffer
                             .char_indices()
                             .nth(session.cursor_pos)
                             .map(|(i, _)| i)
@@ -1299,9 +1409,7 @@ pub async fn handle_connection(
                 // Redraw the full line (handles cursor positioning)
                 let cursor_pos = {
                     let conns = connections.lock().unwrap();
-                    conns.get(&connection_id)
-                        .map(|s| s.cursor_pos)
-                        .unwrap_or(0)
+                    conns.get(&connection_id).map(|s| s.cursor_pos).unwrap_or(0)
                 };
                 let redraw = telnet::redraw_input_line("> ", &new_input, cursor_pos);
                 let _ = tx_client.send(String::from_utf8_lossy(&redraw).into_owned());
@@ -1319,7 +1427,8 @@ pub async fn handle_connection(
                 if !to_add.is_empty() {
                     let mut conns = connections.lock().unwrap();
                     if let Some(session) = conns.get_mut(&connection_id) {
-                        let byte_pos = session.input_buffer
+                        let byte_pos = session
+                            .input_buffer
                             .char_indices()
                             .nth(session.cursor_pos)
                             .map(|(i, _)| i)
@@ -1333,7 +1442,8 @@ pub async fn handle_connection(
                 // Redraw: show completions list, then redraw input line with cursor
                 let (new_input, cursor_pos) = {
                     let conns = connections.lock().unwrap();
-                    conns.get(&connection_id)
+                    conns
+                        .get(&connection_id)
                         .map(|s| (s.input_buffer.clone(), s.cursor_pos))
                         .unwrap_or_default()
                 };
@@ -1365,8 +1475,7 @@ pub async fn handle_connection(
         // Check for OLC description collection mode
         let olc_mode = {
             let conns = connections.lock().unwrap();
-            conns.get(&connection_id)
-                .and_then(|s| s.olc_mode.clone())
+            conns.get(&connection_id).and_then(|s| s.olc_mode.clone())
         };
 
         if olc_mode.as_deref() == Some("collecting_desc") {
@@ -1619,29 +1728,37 @@ pub async fn handle_connection(
                                 claude::AiTargetType::Room => {
                                     scope.push("room_id", target.entity_id.to_string());
                                     scope.push("new_desc", desc.clone());
-                                    let _ = engine.eval_with_scope::<()>(&mut scope,
-                                        "set_room_description(room_id, new_desc);");
+                                    let _ = engine
+                                        .eval_with_scope::<()>(&mut scope, "set_room_description(room_id, new_desc);");
                                 }
                                 claude::AiTargetType::Mobile => {
                                     scope.push("mobile_id", target.entity_id.to_string());
                                     scope.push("new_desc", desc.clone());
                                     if target.field == "short_desc" {
-                                        let _ = engine.eval_with_scope::<()>(&mut scope,
-                                            "set_mobile_short_desc(mobile_id, new_desc);");
+                                        let _ = engine.eval_with_scope::<()>(
+                                            &mut scope,
+                                            "set_mobile_short_desc(mobile_id, new_desc);",
+                                        );
                                     } else {
-                                        let _ = engine.eval_with_scope::<()>(&mut scope,
-                                            "set_mobile_long_desc(mobile_id, new_desc);");
+                                        let _ = engine.eval_with_scope::<()>(
+                                            &mut scope,
+                                            "set_mobile_long_desc(mobile_id, new_desc);",
+                                        );
                                     }
                                 }
                                 claude::AiTargetType::Item => {
                                     scope.push("item_id", target.entity_id.to_string());
                                     scope.push("new_desc", desc.clone());
                                     if target.field == "short_desc" {
-                                        let _ = engine.eval_with_scope::<()>(&mut scope,
-                                            "set_item_short_desc(item_id, new_desc);");
+                                        let _ = engine.eval_with_scope::<()>(
+                                            &mut scope,
+                                            "set_item_short_desc(item_id, new_desc);",
+                                        );
                                     } else {
-                                        let _ = engine.eval_with_scope::<()>(&mut scope,
-                                            "set_item_long_desc(item_id, new_desc);");
+                                        let _ = engine.eval_with_scope::<()>(
+                                            &mut scope,
+                                            "set_item_long_desc(item_id, new_desc);",
+                                        );
                                     }
                                 }
                             }
@@ -1655,10 +1772,15 @@ pub async fn handle_connection(
                                 scope.push("room_id", target.entity_id.to_string());
                                 scope.push("keywords", keywords_str);
                                 scope.push("extra_desc", extra.description.clone());
-                                let _ = engine.eval_with_scope::<()>(&mut scope,
-                                    "add_room_extra_desc(room_id, keywords, extra_desc);");
+                                let _ = engine.eval_with_scope::<()>(
+                                    &mut scope,
+                                    "add_room_extra_desc(room_id, keywords, extra_desc);",
+                                );
                             }
-                            let _ = tx_client.send(format!("Description updated. {} extra description(s) added.\n", extra_count));
+                            let _ = tx_client.send(format!(
+                                "Description updated. {} extra description(s) added.\n",
+                                extra_count
+                            ));
                         } else {
                             let _ = tx_client.send("Description updated.\n".to_string());
                         }
@@ -1691,7 +1813,8 @@ pub async fn handle_connection(
                 // Check wizard_data to determine which script started the wizard
                 let is_migration = {
                     let conns = connections.lock().unwrap();
-                    conns.get(&connection_id)
+                    conns
+                        .get(&connection_id)
                         .and_then(|s| s.wizard_data.as_ref())
                         .map(|d| d.contains("migration=true"))
                         .unwrap_or(false)
@@ -1726,7 +1849,7 @@ pub async fn handle_connection(
                         &mut scope,
                         &ast,
                         "run_command",
-                        (input.clone(), connection_id.to_string(),),
+                        (input.clone(), connection_id.to_string()),
                     ) {
                         Ok(output) => {
                             if output.is_string() {
@@ -1757,7 +1880,9 @@ pub async fn handle_connection(
                         session.command_history.front().cloned()
                     } else {
                         let search = &input[1..];
-                        session.command_history.iter()
+                        session
+                            .command_history
+                            .iter()
                             .find(|cmd| cmd.starts_with(search))
                             .cloned()
                     }
@@ -1808,7 +1933,8 @@ pub async fn handle_connection(
             // Check if user is logged in
             let is_logged_in = {
                 let conns = connections.lock().unwrap();
-                conns.get(&connection_id)
+                conns
+                    .get(&connection_id)
                     .map(|s| s.character.is_some())
                     .unwrap_or(false)
             };
@@ -1816,9 +1942,12 @@ pub async fn handle_connection(
             // Get player permissions for access control
             let (is_builder, is_admin, abbrev_enabled) = {
                 let conns = connections.lock().unwrap();
-                conns.get(&connection_id)
+                conns
+                    .get(&connection_id)
                     .map(|s| {
-                        let (b, a) = s.character.as_ref()
+                        let (b, a) = s
+                            .character
+                            .as_ref()
                             .map(|c| (c.is_builder || c.is_admin, c.is_admin))
                             .unwrap_or((false, false));
                         (b, a, s.abbrev_enabled)
@@ -1860,9 +1989,9 @@ pub async fn handle_connection(
                     "guest" => !is_logged_in,
                     "any" => true,
                     "user" => is_logged_in,
-                    "builder" => is_builder,  // Now includes admins
-                    "admin" => is_admin,      // Only admins
-                    _ => is_logged_in, // Default to requiring login
+                    "builder" => is_builder, // Now includes admins
+                    "admin" => is_admin,     // Only admins
+                    _ => is_logged_in,       // Default to requiring login
                 }
             } else {
                 is_logged_in // Unknown commands require login
@@ -1871,8 +2000,12 @@ pub async fn handle_connection(
             if !access_allowed {
                 let msg = match access_requirement.as_deref() {
                     Some("guest") => format!("Command '{}' is only available before logging in.\n", resolved_command),
-                    Some("builder") => format!("Command '{}' requires builder access.\n", resolved_command),
-                    Some("admin") => format!("Command '{}' requires admin access.\n", resolved_command),
+                    Some("builder") => {
+                        format!("Command '{}' requires builder access.\n", resolved_command)
+                    }
+                    Some("admin") => {
+                        format!("Command '{}' requires admin access.\n", resolved_command)
+                    }
                     _ if !is_logged_in => "You must log in first. Use 'login' or 'create'.\n".to_string(),
                     _ => format!("You don't have access to command '{}'.\n", resolved_command),
                 };
@@ -1884,7 +2017,8 @@ pub async fn handle_connection(
             if is_logged_in {
                 let is_unconscious = {
                     let conns = connections.lock().unwrap();
-                    conns.get(&connection_id)
+                    conns
+                        .get(&connection_id)
                         .and_then(|s| s.character.as_ref())
                         .map(|c| c.is_unconscious)
                         .unwrap_or(false)
@@ -1918,7 +2052,7 @@ pub async fn handle_connection(
                     &mut scope,
                     &ast,
                     "run_command",
-                    (args.to_string(), connection_id.to_string(),),
+                    (args.to_string(), connection_id.to_string()),
                 ) {
                     Ok(output) => {
                         if output.is_string() {
@@ -1989,9 +2123,10 @@ pub async fn handle_connection(
         {
             let world = state.lock().unwrap();
             if let Some(ref chat_tx) = world.chat_sender {
-                let _ = chat_tx.send(chat::ChatMessage::Broadcast(
-                    format!("{} has lost their connection.", char_name),
-                ));
+                let _ = chat_tx.send(chat::ChatMessage::Broadcast(format!(
+                    "{} has lost their connection.",
+                    char_name
+                )));
             }
         }
 
@@ -2048,15 +2183,18 @@ async fn handle_read_char_mode(
         let read_result = if !negotiation_complete && tokio::time::Instant::now() < negotiation_deadline {
             match tokio::time::timeout(
                 negotiation_deadline - tokio::time::Instant::now(),
-                reader.read(&mut buf)
-            ).await {
+                reader.read(&mut buf),
+            )
+            .await
+            {
                 Ok(result) => result,
                 Err(_) => {
                     // Negotiation timeout - check if we got char mode
                     negotiation_complete = true;
                     let is_char_mode = {
                         let conns = connections.lock().unwrap();
-                        conns.get(&connection_id)
+                        conns
+                            .get(&connection_id)
                             .map(|s| s.telnet_state.char_mode)
                             .unwrap_or(false)
                     };
@@ -2069,10 +2207,7 @@ async fn handle_read_char_mode(
             }
         } else {
             // Use timeout to periodically check if connection was removed
-            match tokio::time::timeout(
-                tokio::time::Duration::from_millis(100),
-                reader.read(&mut buf)
-            ).await {
+            match tokio::time::timeout(tokio::time::Duration::from_millis(100), reader.read(&mut buf)).await {
                 Ok(result) => result,
                 Err(_) => continue, // Timeout - loop back to check if still connected
             }
@@ -2225,7 +2360,8 @@ async fn handle_read_char_mode(
                 if !negotiation_complete && (!data.is_empty() || had_events) {
                     let is_char_mode = {
                         let conns = connections.lock().unwrap();
-                        conns.get(&connection_id)
+                        conns
+                            .get(&connection_id)
                             .map(|s| s.telnet_state.char_mode)
                             .unwrap_or(false)
                     };
@@ -2241,10 +2377,7 @@ async fn handle_read_char_mode(
                         let key_event = {
                             let mut conns = connections.lock().unwrap();
                             if let Some(session) = conns.get_mut(&connection_id) {
-                                let (new_state, event) = telnet::parse_key_byte(
-                                    session.escape_state.clone(),
-                                    byte,
-                                );
+                                let (new_state, event) = telnet::parse_key_byte(session.escape_state.clone(), byte);
                                 session.escape_state = new_state;
                                 event
                             } else {
@@ -2267,7 +2400,8 @@ async fn handle_read_char_mode(
                                             let line = session.input_buffer.trim().to_string();
                                             // Add to history if non-empty and different from last
                                             if !line.is_empty() {
-                                                let should_add = session.command_history
+                                                let should_add = session
+                                                    .command_history
                                                     .front()
                                                     .map(|last| last != &line)
                                                     .unwrap_or(true);
@@ -2337,7 +2471,8 @@ async fn handle_read_char_mode(
                                     // Logout on empty line
                                     let should_logout = {
                                         let conns = connections.lock().unwrap();
-                                        conns.get(&connection_id)
+                                        conns
+                                            .get(&connection_id)
                                             .map(|s| s.input_buffer.is_empty())
                                             .unwrap_or(false)
                                     };
@@ -2779,7 +2914,11 @@ fn handle_readline_redraw_screen(
     if let Some(session) = conns.get(&connection_id) {
         // Clear screen and redraw
         let mut output = b"\x1b[2J\x1b[H".to_vec(); // Clear screen, home cursor
-        output.extend(telnet::redraw_input_line("> ", &session.input_buffer, session.cursor_pos));
+        output.extend(telnet::redraw_input_line(
+            "> ",
+            &session.input_buffer,
+            session.cursor_pos,
+        ));
         let _ = tx_raw.send(output);
     }
 }
@@ -2824,11 +2963,7 @@ fn handle_readline_insert_char(
     }
 }
 
-pub async fn run_server(
-    state: SharedState,
-    listener: TcpListener,
-    shutdown_rx: tokio::sync::oneshot::Receiver<()>,
-) {
+pub async fn run_server(state: SharedState, listener: TcpListener, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
     tokio::select! {
         _ = async {
             loop {

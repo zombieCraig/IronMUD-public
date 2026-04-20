@@ -1,7 +1,7 @@
-use anyhow::Result;
+use super::seed_uuid;
 use crate::db::Db;
 use crate::types::{AreaData, AreaFlags, AreaPermission, CombatZoneType, ForageEntry, ImmigrationVariationChances};
-use super::seed_uuid;
+use anyhow::Result;
 
 pub fn seed_areas(db: &Db) -> Result<()> {
     let areas = vec![

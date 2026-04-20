@@ -7,22 +7,20 @@
 use std::env;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
-use tracing::{info, warn, error, debug};
+use tracing::{debug, error, info, warn};
 
 use matrix_sdk::{
+    Client,
     config::SyncSettings,
     room::Room,
     ruma::{
-        events::room::message::{
-            MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent,
-        },
         OwnedRoomId,
+        events::room::message::{MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent},
     },
-    Client,
 };
 
 use crate::chat::ChatMessage;
-use crate::{SharedConnections, get_online_players, find_player_connection_by_name, send_client_message};
+use crate::{SharedConnections, find_player_connection_by_name, get_online_players, send_client_message};
 
 /// Configuration for Matrix bot, loaded from environment variables
 #[derive(Clone)]
@@ -52,16 +50,14 @@ impl MatrixConfig {
         };
 
         // Avatar path: use env var if set, otherwise check for default file
-        let avatar_path = env::var("MATRIX_AVATAR")
-            .ok()
-            .or_else(|| {
-                let default = "assets/matrix_avatar.png";
-                if std::path::Path::new(default).exists() {
-                    Some(default.to_string())
-                } else {
-                    None
-                }
-            });
+        let avatar_path = env::var("MATRIX_AVATAR").ok().or_else(|| {
+            let default = "assets/matrix_avatar.png";
+            if std::path::Path::new(default).exists() {
+                Some(default.to_string())
+            } else {
+                None
+            }
+        });
 
         Some(Self {
             homeserver,
@@ -157,14 +153,23 @@ pub async fn run_matrix_bot(
             }
 
             // Don't respond to our own messages
-            if ev.sender.localpart() == target_room.client().user_id().map(|u| u.localpart()).unwrap_or_default() {
+            if ev.sender.localpart()
+                == target_room
+                    .client()
+                    .user_id()
+                    .map(|u| u.localpart())
+                    .unwrap_or_default()
+            {
                 return;
             }
 
             // Skip messages sent before we started (avoids replaying old commands on reconnect)
             let msg_time_ms: u64 = ev.origin_server_ts.0.into();
             if msg_time_ms < startup_time_ms {
-                debug!("Ignoring old message from {} (sent before bot startup)", ev.sender.localpart());
+                debug!(
+                    "Ignoring old message from {} (sent before bot startup)",
+                    ev.sender.localpart()
+                );
                 return;
             }
 
@@ -205,10 +210,7 @@ pub async fn run_matrix_bot(
 
 /// Create the Matrix client
 async fn create_client(config: &MatrixConfig) -> anyhow::Result<Client> {
-    let client = Client::builder()
-        .homeserver_url(&config.homeserver)
-        .build()
-        .await?;
+    let client = Client::builder().homeserver_url(&config.homeserver).build().await?;
     Ok(client)
 }
 
@@ -259,11 +261,7 @@ async fn send_to_room(room: &Room, message: &str) -> anyhow::Result<()> {
 }
 
 /// Handle incoming Matrix commands (!who, !tell)
-async fn handle_matrix_command(
-    body: &str,
-    sender: &str,
-    connections: &SharedConnections,
-) -> Option<String> {
+async fn handle_matrix_command(body: &str, sender: &str, connections: &SharedConnections) -> Option<String> {
     if body.eq_ignore_ascii_case("!who") {
         return Some(handle_who_command(connections));
     }
@@ -297,26 +295,25 @@ fn handle_who_command(connections: &SharedConnections) -> String {
     // Build player names with AFK status
     let names: Vec<String> = {
         let conns = connections.lock().unwrap();
-        players.iter().map(|p| {
-            let is_afk = conns.values().any(|session| {
-                if let Some(ref char) = session.character {
-                    char.name == p.name && session.afk
+        players
+            .iter()
+            .map(|p| {
+                let is_afk = conns.values().any(|session| {
+                    if let Some(ref char) = session.character {
+                        char.name == p.name && session.afk
+                    } else {
+                        false
+                    }
+                });
+                if is_afk {
+                    format!("{} [AFK]", p.name)
                 } else {
-                    false
+                    p.name.clone()
                 }
-            });
-            if is_afk {
-                format!("{} [AFK]", p.name)
-            } else {
-                p.name.clone()
-            }
-        }).collect()
+            })
+            .collect()
     };
-    format!(
-        "Players online ({}): {}",
-        names.len(),
-        names.join(", ")
-    )
+    format!("Players online ({}): {}", names.len(), names.join(", "))
 }
 
 /// Handle the !tell command - send a message to an online player
@@ -337,10 +334,7 @@ fn handle_tell_command(args: &str, sender: &str, connections: &SharedConnections
     // Find the player
     match find_player_connection_by_name(connections, target_name) {
         Some(conn_id) => {
-            let formatted_msg = format!(
-                "\n[Matrix] {} says: {}\n",
-                sender, message
-            );
+            let formatted_msg = format!("\n[Matrix] {} says: {}\n", sender, message);
             send_client_message(connections, conn_id.to_string(), formatted_msg);
             format!("Message sent to {}.", target_name)
         }

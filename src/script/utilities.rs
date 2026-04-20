@@ -1,17 +1,17 @@
 // src/script/utilities.rs
 // MXP, ANSI colors, AFK, terminal size, and text formatting functions
 
+use crate::SharedConnections;
+use crate::db::Db;
 use rhai::Engine;
 use std::sync::Arc;
-use crate::db::Db;
-use crate::SharedConnections;
 
 /// Helper function to escape special characters for MXP
 pub fn escape_mxp(s: &str) -> String {
     s.replace('&', "&amp;")
-     .replace('<', "&lt;")
-     .replace('>', "&gt;")
-     .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 /// Helper function to strip MXP tags from text
@@ -69,33 +69,39 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // mxp_menu(commands, hints, display) -> string - Generate MXP popup menu
     // Example: mxp_menu(["cmd1", "cmd2"], ["Option 1", "Option 2"], "Click")
     // -> <send "cmd1|cmd2" hint="Menu|Option 1|Option 2">Click</send>
-    engine.register_fn("mxp_menu", |commands: rhai::Array, hints: rhai::Array, display: String| {
-        let cmds: Vec<String> = commands.into_iter()
-            .filter_map(|d| d.try_cast::<String>())
-            .collect();
-        let hint_strs: Vec<String> = hints.into_iter()
-            .filter_map(|d| d.try_cast::<String>())
-            .collect();
+    engine.register_fn(
+        "mxp_menu",
+        |commands: rhai::Array, hints: rhai::Array, display: String| {
+            let cmds: Vec<String> = commands.into_iter().filter_map(|d| d.try_cast::<String>()).collect();
+            let hint_strs: Vec<String> = hints.into_iter().filter_map(|d| d.try_cast::<String>()).collect();
 
-        let cmd_str = cmds.join("|");
-        let hint_str = format!("Menu|{}", hint_strs.join("|"));
+            let cmd_str = cmds.join("|");
+            let hint_str = format!("Menu|{}", hint_strs.join("|"));
 
-        format!("<send \"{}\" hint=\"{}\">{}</send>",
-                escape_mxp(&cmd_str), escape_mxp(&hint_str), display)
-    });
+            format!(
+                "<send \"{}\" hint=\"{}\">{}</send>",
+                escape_mxp(&cmd_str),
+                escape_mxp(&hint_str),
+                display
+            )
+        },
+    );
 
     // mxp_or(mxp_text, plain_text, connection_id) -> string
     // Returns MXP version if MXP enabled, plain text otherwise
     let conns = connections.clone();
-    engine.register_fn("mxp_or", move |mxp_text: String, plain_text: String, connection_id: String| {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
-            if conns.get(&uuid).map(|s| s.mxp_enabled).unwrap_or(false) {
-                return mxp_text;
+    engine.register_fn(
+        "mxp_or",
+        move |mxp_text: String, plain_text: String, connection_id: String| {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
+                let conns = conns.lock().unwrap();
+                if conns.get(&uuid).map(|s| s.mxp_enabled).unwrap_or(false) {
+                    return mxp_text;
+                }
             }
-        }
-        plain_text
-    });
+            plain_text
+        },
+    );
 
     // send_mxp_message(connection_id, message) - Send message with MXP secure line prefix
     // If MXP disabled, strips tags and sends plain text
@@ -117,9 +123,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     });
 
     // strip_mxp_tags(text) -> string - Remove MXP tags from text
-    engine.register_fn("strip_mxp_tags", |text: String| {
-        strip_mxp_tags(&text)
-    });
+    engine.register_fn("strip_mxp_tags", |text: String| strip_mxp_tags(&text));
 
     // ========== ANSI Color Functions ==========
 
@@ -156,16 +160,19 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // set_colors_enabled(connection_id, enabled) -> bool
     let conns = connections.clone();
-    engine.register_fn("set_colors_enabled", move |connection_id: String, enabled: bool| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = conns.lock().unwrap();
-            if let Some(session) = conns.get_mut(&uuid) {
-                session.colors_enabled = enabled;
-                return true;
+    engine.register_fn(
+        "set_colors_enabled",
+        move |connection_id: String, enabled: bool| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
+                let mut conns = conns.lock().unwrap();
+                if let Some(session) = conns.get_mut(&uuid) {
+                    session.colors_enabled = enabled;
+                    return true;
+                }
             }
-        }
-        false
-    });
+            false
+        },
+    );
 
     // is_room_flags_enabled(connection_id) -> bool - Check if room flags display is enabled
     let conns = connections.clone();
@@ -182,24 +189,27 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // Also persists the setting to CharacterData
     let conns = connections.clone();
     let cloned_db = db.clone();
-    engine.register_fn("set_room_flags_enabled", move |connection_id: String, enabled: bool| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = conns.lock().unwrap();
-            if let Some(session) = conns.get_mut(&uuid) {
-                session.show_room_flags = enabled;
-                // Also persist to character data
-                if let Some(ref mut character) = session.character {
-                    character.show_room_flags = enabled;
-                    // Save to database
-                    if let Err(e) = cloned_db.save_character_data(character.clone()) {
-                        tracing::error!("Failed to save show_room_flags setting: {}", e);
+    engine.register_fn(
+        "set_room_flags_enabled",
+        move |connection_id: String, enabled: bool| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
+                let mut conns = conns.lock().unwrap();
+                if let Some(session) = conns.get_mut(&uuid) {
+                    session.show_room_flags = enabled;
+                    // Also persist to character data
+                    if let Some(ref mut character) = session.character {
+                        character.show_room_flags = enabled;
+                        // Save to database
+                        if let Err(e) = cloned_db.save_character_data(character.clone()) {
+                            tracing::error!("Failed to save show_room_flags setting: {}", e);
+                        }
                     }
+                    return true;
                 }
-                return true;
             }
-        }
-        false
-    });
+            false
+        },
+    );
 
     // ========== AFK (Away From Keyboard) Functions ==========
 
@@ -267,19 +277,16 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // set_abbrev_enabled(connection_id, enabled) -> bool - Set abbreviation mode for connection
     let conns = connections.clone();
-    engine.register_fn(
-        "set_abbrev_enabled",
-        move |connection_id: String, enabled: bool| {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns = conns.lock().unwrap();
-                if let Some(session) = conns.get_mut(&uuid) {
-                    session.abbrev_enabled = enabled;
-                    return true;
-                }
+    engine.register_fn("set_abbrev_enabled", move |connection_id: String, enabled: bool| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
+            let mut conns = conns.lock().unwrap();
+            if let Some(session) = conns.get_mut(&uuid) {
+                session.abbrev_enabled = enabled;
+                return true;
             }
-            false
-        },
-    );
+        }
+        false
+    });
 
     // ========== Idle Detection Functions ==========
     // Idle is automatic (unlike AFK) - computed from last_activity_time
@@ -374,53 +381,89 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // set_builder_debug_enabled(connection_id, enabled) -> bool - Set builder debug flag
     let conns = connections.clone();
     let cloned_db = db.clone();
-    engine.register_fn("set_builder_debug_enabled", move |connection_id: String, enabled: bool| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mut conns = conns.lock().unwrap();
-            if let Some(session) = conns.get_mut(&uuid) {
-                if let Some(ref mut character) = session.character {
-                    character.builder_debug_enabled = enabled;
-                    // Persist to database
-                    let _ = cloned_db.save_character_data(character.clone());
-                    return true;
+    engine.register_fn(
+        "set_builder_debug_enabled",
+        move |connection_id: String, enabled: bool| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
+                let mut conns = conns.lock().unwrap();
+                if let Some(session) = conns.get_mut(&uuid) {
+                    if let Some(ref mut character) = session.character {
+                        character.builder_debug_enabled = enabled;
+                        // Persist to database
+                        let _ = cloned_db.save_character_data(character.clone());
+                        return true;
+                    }
                 }
             }
-        }
-        false
-    });
+            false
+        },
+    );
 
     // Color wrapper functions - wrap text in color codes with auto-reset
-    engine.register_fn("ansi_black", |text: String| format!("{}{}{}", ANSI_BLACK, text, ANSI_RESET));
+    engine.register_fn("ansi_black", |text: String| {
+        format!("{}{}{}", ANSI_BLACK, text, ANSI_RESET)
+    });
     engine.register_fn("ansi_red", |text: String| format!("{}{}{}", ANSI_RED, text, ANSI_RESET));
-    engine.register_fn("ansi_green", |text: String| format!("{}{}{}", ANSI_GREEN, text, ANSI_RESET));
-    engine.register_fn("ansi_yellow", |text: String| format!("{}{}{}", ANSI_YELLOW, text, ANSI_RESET));
-    engine.register_fn("ansi_blue", |text: String| format!("{}{}{}", ANSI_BLUE, text, ANSI_RESET));
-    engine.register_fn("ansi_magenta", |text: String| format!("{}{}{}", ANSI_MAGENTA, text, ANSI_RESET));
-    engine.register_fn("ansi_cyan", |text: String| format!("{}{}{}", ANSI_CYAN, text, ANSI_RESET));
-    engine.register_fn("ansi_white", |text: String| format!("{}{}{}", ANSI_WHITE, text, ANSI_RESET));
+    engine.register_fn("ansi_green", |text: String| {
+        format!("{}{}{}", ANSI_GREEN, text, ANSI_RESET)
+    });
+    engine.register_fn("ansi_yellow", |text: String| {
+        format!("{}{}{}", ANSI_YELLOW, text, ANSI_RESET)
+    });
+    engine.register_fn("ansi_blue", |text: String| {
+        format!("{}{}{}", ANSI_BLUE, text, ANSI_RESET)
+    });
+    engine.register_fn("ansi_magenta", |text: String| {
+        format!("{}{}{}", ANSI_MAGENTA, text, ANSI_RESET)
+    });
+    engine.register_fn("ansi_cyan", |text: String| {
+        format!("{}{}{}", ANSI_CYAN, text, ANSI_RESET)
+    });
+    engine.register_fn("ansi_white", |text: String| {
+        format!("{}{}{}", ANSI_WHITE, text, ANSI_RESET)
+    });
 
     // Bright color variants
-    engine.register_fn("ansi_bright_black", |text: String| format!("{}{}{}", ANSI_BRIGHT_BLACK, text, ANSI_RESET));
-    engine.register_fn("ansi_bright_red", |text: String| format!("{}{}{}", ANSI_BRIGHT_RED, text, ANSI_RESET));
-    engine.register_fn("ansi_bright_green", |text: String| format!("{}{}{}", ANSI_BRIGHT_GREEN, text, ANSI_RESET));
-    engine.register_fn("ansi_bright_yellow", |text: String| format!("{}{}{}", ANSI_BRIGHT_YELLOW, text, ANSI_RESET));
-    engine.register_fn("ansi_bright_blue", |text: String| format!("{}{}{}", ANSI_BRIGHT_BLUE, text, ANSI_RESET));
-    engine.register_fn("ansi_bright_magenta", |text: String| format!("{}{}{}", ANSI_BRIGHT_MAGENTA, text, ANSI_RESET));
-    engine.register_fn("ansi_bright_cyan", |text: String| format!("{}{}{}", ANSI_BRIGHT_CYAN, text, ANSI_RESET));
-    engine.register_fn("ansi_bright_white", |text: String| format!("{}{}{}", ANSI_BRIGHT_WHITE, text, ANSI_RESET));
+    engine.register_fn("ansi_bright_black", |text: String| {
+        format!("{}{}{}", ANSI_BRIGHT_BLACK, text, ANSI_RESET)
+    });
+    engine.register_fn("ansi_bright_red", |text: String| {
+        format!("{}{}{}", ANSI_BRIGHT_RED, text, ANSI_RESET)
+    });
+    engine.register_fn("ansi_bright_green", |text: String| {
+        format!("{}{}{}", ANSI_BRIGHT_GREEN, text, ANSI_RESET)
+    });
+    engine.register_fn("ansi_bright_yellow", |text: String| {
+        format!("{}{}{}", ANSI_BRIGHT_YELLOW, text, ANSI_RESET)
+    });
+    engine.register_fn("ansi_bright_blue", |text: String| {
+        format!("{}{}{}", ANSI_BRIGHT_BLUE, text, ANSI_RESET)
+    });
+    engine.register_fn("ansi_bright_magenta", |text: String| {
+        format!("{}{}{}", ANSI_BRIGHT_MAGENTA, text, ANSI_RESET)
+    });
+    engine.register_fn("ansi_bright_cyan", |text: String| {
+        format!("{}{}{}", ANSI_BRIGHT_CYAN, text, ANSI_RESET)
+    });
+    engine.register_fn("ansi_bright_white", |text: String| {
+        format!("{}{}{}", ANSI_BRIGHT_WHITE, text, ANSI_RESET)
+    });
 
     // color_or(colored_text, plain_text, connection_id) -> string
     // Returns colored_text if colors enabled, plain_text otherwise
     let conns = connections.clone();
-    engine.register_fn("color_or", move |colored_text: String, plain_text: String, connection_id: String| -> String {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
-            if conns.get(&uuid).map(|s| s.colors_enabled).unwrap_or(false) {
-                return colored_text;
+    engine.register_fn(
+        "color_or",
+        move |colored_text: String, plain_text: String, connection_id: String| -> String {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
+                let conns = conns.lock().unwrap();
+                if conns.get(&uuid).map(|s| s.colors_enabled).unwrap_or(false) {
+                    return colored_text;
+                }
             }
-        }
-        plain_text
-    });
+            plain_text
+        },
+    );
 
     // strip_ansi(text) -> string - removes all ANSI escape sequences
     engine.register_fn("strip_ansi", |text: String| -> String {
@@ -449,7 +492,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     engine.register_fn("get_terminal_width", move |connection_id: String| -> i64 {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
             let conns = conns.lock().unwrap();
-            conns.get(&uuid)
+            conns
+                .get(&uuid)
                 .map(|s| s.telnet_state.window_width as i64)
                 .unwrap_or(80)
         } else {
@@ -462,7 +506,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     engine.register_fn("get_terminal_height", move |connection_id: String| -> i64 {
         if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
             let conns = conns.lock().unwrap();
-            conns.get(&uuid)
+            conns
+                .get(&uuid)
                 .map(|s| s.telnet_state.window_height as i64)
                 .unwrap_or(24)
         } else {
@@ -520,62 +565,63 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // format_columns(items, width, col_padding) -> string - Format items into columns
     // Automatically calculates number of columns based on longest item and terminal width
     // ANSI-aware: uses visible length (ignoring escape sequences) for width calculations
-    engine.register_fn("format_columns", |items: rhai::Array, width: i64, padding: i64| -> String {
-        let items: Vec<String> = items.into_iter()
-            .filter_map(|d| d.try_cast::<String>())
-            .collect();
+    engine.register_fn(
+        "format_columns",
+        |items: rhai::Array, width: i64, padding: i64| -> String {
+            let items: Vec<String> = items.into_iter().filter_map(|d| d.try_cast::<String>()).collect();
 
-        if items.is_empty() {
-            return String::new();
-        }
+            if items.is_empty() {
+                return String::new();
+            }
 
-        let width = width.max(20) as usize;
-        let padding = padding.max(1) as usize;
+            let width = width.max(20) as usize;
+            let padding = padding.max(1) as usize;
 
-        // Visible length ignoring ANSI escape sequences
-        let visible_len = |s: &str| -> usize {
-            let mut len = 0;
-            let mut in_escape = false;
-            for c in s.chars() {
-                if c == '\x1b' {
-                    in_escape = true;
-                } else if in_escape {
-                    if c == 'm' {
-                        in_escape = false;
+            // Visible length ignoring ANSI escape sequences
+            let visible_len = |s: &str| -> usize {
+                let mut len = 0;
+                let mut in_escape = false;
+                for c in s.chars() {
+                    if c == '\x1b' {
+                        in_escape = true;
+                    } else if in_escape {
+                        if c == 'm' {
+                            in_escape = false;
+                        }
+                    } else {
+                        len += 1;
                     }
-                } else {
-                    len += 1;
+                }
+                len
+            };
+
+            // Find longest item by visible length
+            let max_len = items.iter().map(|s| visible_len(s)).max().unwrap_or(0);
+            let col_width = max_len + padding;
+
+            // Calculate number of columns
+            let num_cols = (width / col_width).max(1);
+
+            let mut result = String::new();
+            for (i, item) in items.iter().enumerate() {
+                result.push_str(item);
+                let vis_len = visible_len(item);
+                if vis_len < col_width {
+                    result.push_str(&" ".repeat(col_width - vis_len));
+                }
+                if (i + 1) % num_cols == 0 {
+                    result.push('\n');
                 }
             }
-            len
-        };
 
-        // Find longest item by visible length
-        let max_len = items.iter().map(|s| visible_len(s)).max().unwrap_or(0);
-        let col_width = max_len + padding;
-
-        // Calculate number of columns
-        let num_cols = (width / col_width).max(1);
-
-        let mut result = String::new();
-        for (i, item) in items.iter().enumerate() {
-            result.push_str(item);
-            let vis_len = visible_len(item);
-            if vis_len < col_width {
-                result.push_str(&" ".repeat(col_width - vis_len));
-            }
-            if (i + 1) % num_cols == 0 {
+            // Add final newline if needed
+            if !result.ends_with('\n') {
                 result.push('\n');
             }
-        }
 
-        // Add final newline if needed
-        if !result.ends_with('\n') {
-            result.push('\n');
-        }
-
-        result
-    });
+            result
+        },
+    );
 
     // ========== Safe Parsing Functions ==========
 

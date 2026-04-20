@@ -1,11 +1,11 @@
 // src/script/spells.rs
 // Spell system functions: spell definitions, cooldowns, mana, and reagents
 
-use rhai::Engine;
-use crate::db::Db;
+use crate::EffectType;
 use crate::SharedConnections;
 use crate::SharedState;
-use crate::EffectType;
+use crate::db::Db;
+use rhai::Engine;
 use std::sync::Arc;
 
 pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnections, state: SharedState) {
@@ -13,7 +13,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
     let state_clone = state.clone();
     engine.register_fn("get_spell_list", move || -> rhai::Array {
         let world = state_clone.lock().unwrap();
-        world.spell_definitions.keys()
+        world
+            .spell_definitions
+            .keys()
             .map(|k| rhai::Dynamic::from(k.clone()))
             .collect()
     });
@@ -27,24 +29,48 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
             map.insert("id".into(), rhai::Dynamic::from(spell.id.clone()));
             map.insert("name".into(), rhai::Dynamic::from(spell.name.clone()));
             map.insert("description".into(), rhai::Dynamic::from(spell.description.clone()));
-            map.insert("skill_required".into(), rhai::Dynamic::from(spell.skill_required as i64));
+            map.insert(
+                "skill_required".into(),
+                rhai::Dynamic::from(spell.skill_required as i64),
+            );
             map.insert("scroll_only".into(), rhai::Dynamic::from(spell.scroll_only));
             map.insert("mana_cost".into(), rhai::Dynamic::from(spell.mana_cost as i64));
             map.insert("cooldown_secs".into(), rhai::Dynamic::from(spell.cooldown_secs as i64));
             map.insert("spell_type".into(), rhai::Dynamic::from(spell.spell_type.clone()));
             map.insert("damage_base".into(), rhai::Dynamic::from(spell.damage_base as i64));
-            map.insert("damage_per_skill".into(), rhai::Dynamic::from(spell.damage_per_skill as i64));
-            map.insert("damage_int_scaling".into(), rhai::Dynamic::from(spell.damage_int_scaling as i64));
+            map.insert(
+                "damage_per_skill".into(),
+                rhai::Dynamic::from(spell.damage_per_skill as i64),
+            );
+            map.insert(
+                "damage_int_scaling".into(),
+                rhai::Dynamic::from(spell.damage_int_scaling as i64),
+            );
             map.insert("damage_type".into(), rhai::Dynamic::from(spell.damage_type.clone()));
             map.insert("buff_effect".into(), rhai::Dynamic::from(spell.buff_effect.clone()));
-            map.insert("buff_magnitude".into(), rhai::Dynamic::from(spell.buff_magnitude as i64));
-            map.insert("buff_duration_secs".into(), rhai::Dynamic::from(spell.buff_duration_secs as i64));
+            map.insert(
+                "buff_magnitude".into(),
+                rhai::Dynamic::from(spell.buff_magnitude as i64),
+            );
+            map.insert(
+                "buff_duration_secs".into(),
+                rhai::Dynamic::from(spell.buff_duration_secs as i64),
+            );
             map.insert("heal_base".into(), rhai::Dynamic::from(spell.heal_base as i64));
-            map.insert("heal_per_skill".into(), rhai::Dynamic::from(spell.heal_per_skill as i64));
-            map.insert("heal_int_scaling".into(), rhai::Dynamic::from(spell.heal_int_scaling as i64));
+            map.insert(
+                "heal_per_skill".into(),
+                rhai::Dynamic::from(spell.heal_per_skill as i64),
+            );
+            map.insert(
+                "heal_int_scaling".into(),
+                rhai::Dynamic::from(spell.heal_int_scaling as i64),
+            );
             map.insert("target_type".into(), rhai::Dynamic::from(spell.target_type.clone()));
             map.insert("requires_combat".into(), rhai::Dynamic::from(spell.requires_combat));
-            map.insert("reagent_vnum".into(), rhai::Dynamic::from(spell.reagent_vnum.clone().unwrap_or_default()));
+            map.insert(
+                "reagent_vnum".into(),
+                rhai::Dynamic::from(spell.reagent_vnum.clone().unwrap_or_default()),
+            );
             map.insert("xp_award".into(), rhai::Dynamic::from(spell.xp_award as i64));
         }
         map
@@ -78,12 +104,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
 
     // has_learned_spell(char_name, spell_id) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("has_learned_spell", move |char_name: String, spell_id: String| -> bool {
-        match cloned_db.get_character_data(&char_name.to_lowercase()) {
-            Ok(Some(c)) => c.learned_spells.contains(&spell_id),
-            _ => false,
-        }
-    });
+    engine.register_fn(
+        "has_learned_spell",
+        move |char_name: String, spell_id: String| -> bool {
+            match cloned_db.get_character_data(&char_name.to_lowercase()) {
+                Ok(Some(c)) => c.learned_spells.contains(&spell_id),
+                _ => false,
+            }
+        },
+    );
 
     // learn_spell(char_name, spell_id) -> bool
     let cloned_db = db.clone();
@@ -103,37 +132,43 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
 
     // get_spell_cooldown_remaining(char_name, spell_id) -> i64 (seconds remaining, 0 if ready)
     let cloned_db = db.clone();
-    engine.register_fn("get_spell_cooldown_remaining", move |char_name: String, spell_id: String| -> i64 {
-        match cloned_db.get_character_data(&char_name.to_lowercase()) {
-            Ok(Some(c)) => {
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs() as i64;
-                match c.spell_cooldowns.get(&spell_id) {
-                    Some(&ready_at) => (ready_at - now).max(0),
-                    None => 0,
+    engine.register_fn(
+        "get_spell_cooldown_remaining",
+        move |char_name: String, spell_id: String| -> i64 {
+            match cloned_db.get_character_data(&char_name.to_lowercase()) {
+                Ok(Some(c)) => {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() as i64;
+                    match c.spell_cooldowns.get(&spell_id) {
+                        Some(&ready_at) => (ready_at - now).max(0),
+                        None => 0,
+                    }
                 }
+                _ => 0,
             }
-            _ => 0,
-        }
-    });
+        },
+    );
 
     // set_spell_cooldown(char_name, spell_id, secs) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("set_spell_cooldown", move |char_name: String, spell_id: String, secs: i64| -> bool {
-        match cloned_db.get_character_data(&char_name.to_lowercase()) {
-            Ok(Some(mut c)) => {
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .unwrap_or_default()
-                    .as_secs() as i64;
-                c.spell_cooldowns.insert(spell_id, now + secs);
-                cloned_db.save_character_data(c).is_ok()
+    engine.register_fn(
+        "set_spell_cooldown",
+        move |char_name: String, spell_id: String, secs: i64| -> bool {
+            match cloned_db.get_character_data(&char_name.to_lowercase()) {
+                Ok(Some(mut c)) => {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs() as i64;
+                    c.spell_cooldowns.insert(spell_id, now + secs);
+                    cloned_db.save_character_data(c).is_ok()
+                }
+                _ => false,
             }
-            _ => false,
-        }
-    });
+        },
+    );
 
     // recalculate_max_mana(char_name) -> i64 (new max_mana value)
     // Formula: 50 + (magic_skill * 10) + (max(0, effective_int - 10) * 5)
@@ -145,7 +180,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
                 let magic_level = c.skills.get("magic").map(|s| s.level).unwrap_or(0);
                 // Calculate effective INT (base + buffs + racial)
                 let mut effective_int = c.stat_int;
-                let buff_bonus: i32 = c.active_buffs.iter()
+                let buff_bonus: i32 = c
+                    .active_buffs
+                    .iter()
                     .filter(|b| b.effect_type == EffectType::IntelligenceBoost)
                     .map(|b| b.magnitude)
                     .sum();
@@ -174,21 +211,24 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
     // consume_reagent(char_name, reagent_vnum) -> bool
     // Finds one item with matching vnum in player inventory and deletes it
     let cloned_db = db.clone();
-    engine.register_fn("consume_reagent", move |char_name: String, reagent_vnum: String| -> bool {
-        if reagent_vnum.is_empty() {
-            return true; // No reagent needed
-        }
-        let items = match cloned_db.get_items_in_inventory(&char_name.to_lowercase()) {
-            Ok(items) => items,
-            Err(_) => return false,
-        };
-        for item in items {
-            if item.vnum.as_deref() == Some(&reagent_vnum) {
-                return cloned_db.delete_item(&item.id).is_ok();
+    engine.register_fn(
+        "consume_reagent",
+        move |char_name: String, reagent_vnum: String| -> bool {
+            if reagent_vnum.is_empty() {
+                return true; // No reagent needed
             }
-        }
-        false
-    });
+            let items = match cloned_db.get_items_in_inventory(&char_name.to_lowercase()) {
+                Ok(items) => items,
+                Err(_) => return false,
+            };
+            for item in items {
+                if item.vnum.as_deref() == Some(&reagent_vnum) {
+                    return cloned_db.delete_item(&item.id).is_ok();
+                }
+            }
+            false
+        },
+    );
 
     // has_reagent(char_name, reagent_vnum) -> bool
     let cloned_db = db.clone();
@@ -208,12 +248,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
     engine.register_fn("get_item_teaches_spell", move |item_id: String| -> rhai::Dynamic {
         if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
             match cloned_db.get_item_data(&uuid) {
-                Ok(Some(item)) => {
-                    match item.teaches_spell {
-                        Some(spell_id) => rhai::Dynamic::from(spell_id),
-                        None => rhai::Dynamic::UNIT,
-                    }
-                }
+                Ok(Some(item)) => match item.teaches_spell {
+                    Some(spell_id) => rhai::Dynamic::from(spell_id),
+                    None => rhai::Dynamic::UNIT,
+                },
                 _ => rhai::Dynamic::UNIT,
             }
         } else {
@@ -223,17 +261,20 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
 
     // set_item_teaches_spell(item_id, spell_id) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("set_item_teaches_spell", move |item_id: String, spell_id: String| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
-            match cloned_db.get_item_data(&uuid) {
-                Ok(Some(mut item)) => {
-                    item.teaches_spell = if spell_id.is_empty() { None } else { Some(spell_id) };
-                    cloned_db.save_item_data(item).is_ok()
+    engine.register_fn(
+        "set_item_teaches_spell",
+        move |item_id: String, spell_id: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+                match cloned_db.get_item_data(&uuid) {
+                    Ok(Some(mut item)) => {
+                        item.teaches_spell = if spell_id.is_empty() { None } else { Some(spell_id) };
+                        cloned_db.save_item_data(item).is_ok()
+                    }
+                    _ => false,
                 }
-                _ => false,
+            } else {
+                false
             }
-        } else {
-            false
-        }
-    });
+        },
+    );
 }

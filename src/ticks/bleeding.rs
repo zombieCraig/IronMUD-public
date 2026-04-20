@@ -4,14 +4,13 @@
 //! regardless of whether the character/mobile is in combat.
 
 use anyhow::Result;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::error;
 
-use ironmud::{db, BloodTrail, SharedConnections};
+use ironmud::{BloodTrail, SharedConnections, db};
 
 use super::broadcast::{
-    broadcast_to_room_awake, broadcast_to_room_except, send_message_to_character,
-    sync_character_to_session,
+    broadcast_to_room_awake, broadcast_to_room_except, send_message_to_character, sync_character_to_session,
 };
 use super::combat::{process_mobile_death, process_player_death};
 
@@ -33,7 +32,8 @@ fn deposit_blood_trail(db: &db::Db, room_id: &uuid::Uuid, name: &str, bleeding: 
 
     let _ = db.update_room(room_id, |room| {
         // Expire old trails
-        room.blood_trails.retain(|t| now - t.timestamp < BLOOD_TRAIL_EXPIRY_SECS);
+        room.blood_trails
+            .retain(|t| now - t.timestamp < BLOOD_TRAIL_EXPIRY_SECS);
 
         if let Some(existing) = room
             .blood_trails
@@ -148,7 +148,10 @@ fn process_character_bleeding(db: &db::Db, connections: &SharedConnections) -> R
 
         let Some(mut char) = db.update_character(&char_name, |c| {
             c.hp -= adjusted_bleeding;
-        })? else { continue };
+        })?
+        else {
+            continue;
+        };
 
         // Deposit blood trail in room
         deposit_blood_trail(db, &room_id, &char.name, bleeding);
@@ -169,11 +172,7 @@ fn process_character_bleeding(db: &db::Db, connections: &SharedConnections) -> R
             }
             sync_character_to_session(connections, &char);
 
-            send_message_to_character(
-                connections,
-                &char_name,
-                "You collapse, unconscious from blood loss!",
-            );
+            send_message_to_character(connections, &char_name, "You collapse, unconscious from blood loss!");
             broadcast_to_room_except(
                 connections,
                 &room_id,

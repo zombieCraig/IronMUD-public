@@ -9,9 +9,9 @@ use uuid::Uuid;
 #[serde(rename_all = "snake_case")]
 pub enum CombatZoneType {
     #[default]
-    Pve,   // Default: can attack mobiles, not players
-    Safe,  // No combat at all
-    Pvp,   // Can attack mobiles and players
+    Pve, // Default: can attack mobiles, not players
+    Safe, // No combat at all
+    Pvp,  // Can attack mobiles and players
 }
 
 impl CombatZoneType {
@@ -57,7 +57,7 @@ impl CombatZoneType {
 pub enum CombatDistance {
     #[default]
     Melee, // Close combat range
-    Pole,  // Reach weapon range (polearms)
+    Pole,   // Reach weapon range (polearms)
     Ranged, // Missile weapon range (bows, guns)
 }
 
@@ -236,9 +236,9 @@ impl BodyPart {
     /// Returns the parent body part if this is a sub-part (e.g., LeftEye -> Head)
     pub fn parent_part(&self) -> Option<Self> {
         match self {
-            BodyPart::LeftEye | BodyPart::RightEye
-            | BodyPart::LeftEar | BodyPart::RightEar
-            | BodyPart::Jaw => Some(BodyPart::Head),
+            BodyPart::LeftEye | BodyPart::RightEye | BodyPart::LeftEar | BodyPart::RightEar | BodyPart::Jaw => {
+                Some(BodyPart::Head)
+            }
             _ => None,
         }
     }
@@ -320,11 +320,11 @@ impl BodyPart {
 pub enum WoundLevel {
     #[default]
     None,
-    Minor,      // 10% penalty
-    Moderate,   // 25% penalty
-    Severe,     // 50% penalty
-    Critical,   // 75% penalty
-    Disabled,   // 100% penalty
+    Minor,    // 10% penalty
+    Moderate, // 25% penalty
+    Severe,   // 50% penalty
+    Critical, // 75% penalty
+    Disabled, // 100% penalty
 }
 
 impl WoundLevel {
@@ -380,14 +380,14 @@ impl WoundLevel {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WoundType {
-    Cut,        // Slashing damage
-    Puncture,   // Piercing damage
-    Bruise,     // Bludgeoning (mild)
-    Fracture,   // Bludgeoning (severe)
-    Burn,       // Fire damage
-    Frostbite,  // Cold damage
-    Poisoned,   // Poison damage
-    Corroded,   // Acid damage
+    Cut,       // Slashing damage
+    Puncture,  // Piercing damage
+    Bruise,    // Bludgeoning (mild)
+    Fracture,  // Bludgeoning (severe)
+    Burn,      // Fire damage
+    Frostbite, // Cold damage
+    Poisoned,  // Poison damage
+    Corroded,  // Acid damage
 }
 
 impl WoundType {
@@ -422,10 +422,10 @@ impl WoundType {
 /// An ongoing damage-over-time effect (burn, poison, frostbite, acid)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OngoingEffect {
-    pub effect_type: String,       // "fire", "cold", "poison", "acid"
+    pub effect_type: String, // "fire", "cold", "poison", "acid"
     pub rounds_remaining: i32,
     pub damage_per_round: i32,
-    pub body_part: String,         // affected body part display name
+    pub body_part: String, // affected body part display name
 }
 
 /// A wound on a body part
@@ -435,20 +435,20 @@ pub struct Wound {
     pub level: WoundLevel,
     pub wound_type: WoundType,
     #[serde(default)]
-    pub bleeding_severity: i32,  // 0-5, damage per round from bleeding
+    pub bleeding_severity: i32, // 0-5, damage per round from bleeding
 }
 
 /// Weapon skill categories for combat
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum WeaponSkill {
-    ShortBlades,  // Daggers, knives, shortswords
-    LongBlades,   // Swords, longswords, greatswords
-    ShortBlunt,   // Clubs, maces, hammers
-    LongBlunt,    // Warhammers, staves, mauls
-    Polearms,     // Spears, halberds, pikes
-    Unarmed,      // Fists, natural weapons
-    Ranged,       // Bows, crossbows
+    ShortBlades, // Daggers, knives, shortswords
+    LongBlades,  // Swords, longswords, greatswords
+    ShortBlunt,  // Clubs, maces, hammers
+    LongBlunt,   // Warhammers, staves, mauls
+    Polearms,    // Spears, halberds, pikes
+    Unarmed,     // Fists, natural weapons
+    Ranged,      // Bows, crossbows
 }
 
 impl WeaponSkill {

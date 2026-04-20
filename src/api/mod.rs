@@ -3,29 +3,24 @@
 //! This module provides a REST API for creating and modifying MUD content,
 //! designed for integration with Claude Code via MCP (Model Context Protocol).
 
-pub mod error;
-pub mod auth;
 pub mod areas;
-pub mod rooms;
+pub mod auth;
+pub mod bugs;
+pub mod error;
 pub mod items;
 pub mod mobiles;
+pub mod plants;
+pub mod rooms;
 pub mod spawn;
 pub mod transports;
-pub mod plants;
-pub mod bugs;
 
-use axum::{
-    Router,
-    routing::get,
-    middleware,
-    Json,
-};
-use tower_http::cors::{CorsLayer, Any};
-use tower_http::trace::TraceLayer;
+use axum::{Json, Router, middleware, routing::get};
 use std::sync::Arc;
+use tower_http::cors::{Any, CorsLayer};
+use tower_http::trace::TraceLayer;
 
-use crate::db::Db;
 use crate::SharedConnections;
+use crate::db::Db;
 
 /// Shared state for API handlers
 pub struct ApiState {
@@ -45,20 +40,13 @@ pub fn create_router(state: Arc<ApiState>) -> Router {
         .nest("/plants", plants::routes())
         .nest("/bugs", bugs::routes())
         .route("/health", get(health_check))
-        .layer(middleware::from_fn_with_state(
-            state.clone(),
-            auth::auth_middleware
-        ));
+        .layer(middleware::from_fn_with_state(state.clone(), auth::auth_middleware));
 
     Router::new()
         .nest("/api/v1", api_routes)
         .layer(
-            CorsLayer::new()
-                .allow_origin(Any)
-                .allow_methods(Any)
-                .allow_headers(Any)
-            // Note: credentials are NOT allowed (no .allow_credentials(true)),
-            // which prevents browser-based CSRF with stored tokens.
+            CorsLayer::new().allow_origin(Any).allow_methods(Any).allow_headers(Any), // Note: credentials are NOT allowed (no .allow_credentials(true)),
+                                                                                      // which prevents browser-based CSRF with stored tokens.
         )
         .layer(TraceLayer::new_for_http())
         .with_state(state)

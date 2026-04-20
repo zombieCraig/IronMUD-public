@@ -8,12 +8,10 @@ use rand::Rng;
 use std::path::Path;
 use tracing::{debug, info};
 
-use crate::db::Db;
-use crate::migration::{absolute_game_day, load_migration_data, MigrationData};
-use crate::types::{
-    age_label_for_stage, life_stage_for_age, LifeStage, MobileData, GAME_DAYS_PER_YEAR,
-};
 use crate::SharedConnections;
+use crate::db::Db;
+use crate::migration::{MigrationData, absolute_game_day, load_migration_data};
+use crate::types::{GAME_DAYS_PER_YEAR, LifeStage, MobileData, age_label_for_stage, life_stage_for_age};
 
 /// Setting key for the last absolute game day the aging tick processed.
 pub const AGING_LAST_CHECK_KEY: &str = "aging_last_check_day";
@@ -88,15 +86,10 @@ pub fn process_aging_tick_with_rng<R: Rng>(
             aged += 1;
         }
 
-        if matches!(life_stage_for_age(chars.age), LifeStage::Elderly)
-            && roll_natural_death(chars.age, rng)
-        {
+        if matches!(life_stage_for_age(chars.age), LifeStage::Elderly) && roll_natural_death(chars.age, rng) {
             if db.delete_mobile(&mobile_id).unwrap_or(false) {
                 deaths += 1;
-                info!(
-                    "Aging: {} (age {}) died of natural causes",
-                    snapshot.name, chars.age
-                );
+                info!("Aging: {} (age {}) died of natural causes", snapshot.name, chars.age);
             }
         }
     }
@@ -117,12 +110,7 @@ pub fn process_aging_tick_with_rng<R: Rng>(
 }
 
 /// Conception + birth passes. Returns the number of births that occurred.
-fn process_pregnancy_passes<R: Rng>(
-    db: &Db,
-    data: &MigrationData,
-    today: i64,
-    rng: &mut R,
-) -> Result<usize> {
+fn process_pregnancy_passes<R: Rng>(db: &Db, data: &MigrationData, today: i64, rng: &mut R) -> Result<usize> {
     let today_i32 = today as i32;
     let conception_chance = read_conception_chance(db);
 
@@ -162,9 +150,15 @@ fn process_pregnancy_passes<R: Rng>(
     // Birth pass: any pregnancy whose due day has arrived.
     let mut births = 0usize;
     for mobile in db.list_all_mobiles()? {
-        let Some(social) = mobile.social.as_ref() else { continue };
-        let Some(due) = social.pregnant_until_day else { continue };
-        if due > today_i32 { continue }
+        let Some(social) = mobile.social.as_ref() else {
+            continue;
+        };
+        let Some(due) = social.pregnant_until_day else {
+            continue;
+        };
+        if due > today_i32 {
+            continue;
+        }
         let mother_id = mobile.id;
         let father_id = social.pregnant_by;
         match crate::migration::spawn_child(db, data, mother_id, father_id) {
@@ -226,10 +220,7 @@ fn process_adoption_pass<R: Rng>(db: &Db, _today: i64, rng: &mut R) -> Result<us
             match crate::social::wire_adoption(db, adopter_id, orphan.id) {
                 Ok(()) => {
                     adoptions += 1;
-                    info!(
-                        "Adoption: {} adopted by mobile id {}",
-                        orphan.name, adopter_id
-                    );
+                    info!("Adoption: {} adopted by mobile id {}", orphan.name, adopter_id);
                 }
                 Err(e) => {
                     tracing::warn!("wire_adoption failed for orphan {}: {}", orphan.name, e);

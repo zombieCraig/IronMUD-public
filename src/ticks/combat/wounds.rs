@@ -23,11 +23,7 @@ impl Woundable for MobileData {
 /// Add bleeding to a wound on a specific body part.
 /// If a wound exists on that body part, increase its bleeding severity.
 /// Otherwise, create a new wound with the specified bleeding severity.
-pub fn add_wound_bleeding<T: Woundable>(
-    entity: &mut T,
-    body_part: &str,
-    severity: i32,
-) {
+pub fn add_wound_bleeding<T: Woundable>(entity: &mut T, body_part: &str, severity: i32) {
     let target_bp = BodyPart::from_str(body_part).unwrap_or(BodyPart::Torso);
     let wounds = entity.wounds_mut();
 
@@ -48,10 +44,7 @@ pub fn add_wound_bleeding<T: Woundable>(
 /// Escalate a wound to Severe level (limb disable).
 /// If a wound exists on that body part, set it to Severe.
 /// Otherwise, create a new Severe wound.
-pub fn escalate_wound_to_severe<T: Woundable>(
-    entity: &mut T,
-    body_part: &str,
-) {
+pub fn escalate_wound_to_severe<T: Woundable>(entity: &mut T, body_part: &str) {
     let target_bp = BodyPart::from_str(body_part).unwrap_or(BodyPart::Torso);
     let wounds = entity.wounds_mut();
 

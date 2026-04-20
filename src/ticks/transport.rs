@@ -3,12 +3,11 @@
 //! Handles movement of transports (elevators, buses, trains, ferries, airships).
 
 use anyhow::Result;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::error;
 
 use ironmud::{
-    db, NPCTravelSchedule, SharedConnections, TransportData, TransportSchedule, TransportState,
-    TransportType,
+    NPCTravelSchedule, SharedConnections, TransportData, TransportSchedule, TransportState, TransportType, db,
 };
 
 use super::broadcast::{broadcast_to_room, broadcast_to_room_awake};
@@ -41,7 +40,10 @@ fn get_transport_arrival_messages(transport_type: &TransportType, name: &str, st
             format!("The {} pulls up to the stop with a squeal of brakes.\n", name),
         ),
         TransportType::Train => (
-            format!("The {} slows with a screech of brakes. \"{}!\" calls the conductor.\n", name, stop_name),
+            format!(
+                "The {} slows with a screech of brakes. \"{}!\" calls the conductor.\n",
+                name, stop_name
+            ),
             format!("The {} rumbles into the station, coming to a stop.\n", name),
         ),
         TransportType::Ferry => (
@@ -49,7 +51,10 @@ fn get_transport_arrival_messages(transport_type: &TransportType, name: &str, st
             format!("The {} approaches the dock, its horn sounding.\n", name),
         ),
         TransportType::Airship => (
-            format!("The {} descends gently to {}. The boarding ramp extends.\n", name, stop_name),
+            format!(
+                "The {} descends gently to {}. The boarding ramp extends.\n",
+                name, stop_name
+            ),
             format!("The {} descends from the clouds, mooring at the tower.\n", name),
         ),
     }
@@ -67,15 +72,24 @@ fn get_transport_departure_messages(transport_type: &TransportType, name: &str, 
             format!("The {} pulls away from the curb.\n", name),
         ),
         TransportType::Train => (
-            format!("\"All aboard!\" The doors close and the {} lurches forward. Next stop: {}.\n", name, next_stop),
+            format!(
+                "\"All aboard!\" The doors close and the {} lurches forward. Next stop: {}.\n",
+                name, next_stop
+            ),
             format!("With a blast of its whistle, the {} departs.\n", name),
         ),
         TransportType::Ferry => (
-            format!("The gangway is raised. The {} casts off, heading for {}.\n", name, next_stop),
+            format!(
+                "The gangway is raised. The {} casts off, heading for {}.\n",
+                name, next_stop
+            ),
             format!("The {} sounds its horn and pulls away from the dock.\n", name),
         ),
         TransportType::Airship => (
-            format!("The boarding ramp retracts. The {} rises smoothly toward {}.\n", name, next_stop),
+            format!(
+                "The boarding ramp retracts. The {} rises smoothly toward {}.\n",
+                name, next_stop
+            ),
             format!("The {} releases its moorings and ascends into the sky.\n", name),
         ),
     }
@@ -144,17 +158,18 @@ fn process_npc_transport_at_stop(
             if !route.is_on_transport {
                 let at_boarding_stop = if route.is_at_destination {
                     // At destination, check if should return home
-                    stop_index == route.destination_stop_index &&
-                    mobile.current_room_id == Some(stop_room_id)
+                    stop_index == route.destination_stop_index && mobile.current_room_id == Some(stop_room_id)
                 } else {
                     // At home, check if should go to destination
-                    stop_index == route.home_stop_index &&
-                    mobile.current_room_id == Some(stop_room_id)
+                    stop_index == route.home_stop_index && mobile.current_room_id == Some(stop_room_id)
                 };
 
                 if at_boarding_stop {
                     let should_board = match &route.schedule {
-                        NPCTravelSchedule::FixedHours { depart_hour, return_hour } => {
+                        NPCTravelSchedule::FixedHours {
+                            depart_hour,
+                            return_hour,
+                        } => {
                             if route.is_at_destination {
                                 // At destination, board to return home
                                 game_hour >= *return_hour || game_hour < *depart_hour
@@ -228,9 +243,8 @@ fn process_transport_tick(db: &db::Db, connections: &SharedConnections) -> Resul
                     }
 
                     // Type-specific arrival messages
-                    let (inside_msg, outside_msg) = get_transport_arrival_messages(
-                        &transport.transport_type, &transport.name, &stop_name
-                    );
+                    let (inside_msg, outside_msg) =
+                        get_transport_arrival_messages(&transport.transport_type, &transport.name, &stop_name);
                     broadcast_to_room(connections, &transport.interior_room_id, &inside_msg);
                     broadcast_to_room_awake(connections, &stop_room_id, &outside_msg);
 
@@ -255,7 +269,8 @@ fn process_transport_tick(db: &db::Db, connections: &SharedConnections) -> Resul
 
                             // Remove exits (disconnect transport from stop)
                             db.clear_room_exit(&current_stop_room_id, &current_exit_dir)?;
-                            let interior_exit = ironmud::types::get_opposite_direction(&current_exit_dir).unwrap_or("out");
+                            let interior_exit =
+                                ironmud::types::get_opposite_direction(&current_exit_dir).unwrap_or("out");
                             db.clear_room_exit(&transport.interior_room_id, interior_exit)?;
 
                             // Clear dynamic description from stop room
@@ -275,7 +290,9 @@ fn process_transport_tick(db: &db::Db, connections: &SharedConnections) -> Resul
 
                             // Type-specific departure messages
                             let (inside_msg, outside_msg) = get_transport_departure_messages(
-                                &transport.transport_type, &transport.name, &next_stop_name
+                                &transport.transport_type,
+                                &transport.name,
+                                &next_stop_name,
                             );
                             broadcast_to_room(connections, &transport.interior_room_id, &inside_msg);
                             broadcast_to_room_awake(connections, &current_stop_room_id, &outside_msg);

@@ -16,7 +16,9 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
         name: name.to_string(),
         short_desc: short_desc.to_string(),
         long_desc: long_desc.to_string(),
-        keywords: name.to_lowercase().split_whitespace()
+        keywords: name
+            .to_lowercase()
+            .split_whitespace()
             .filter(|w| !["a", "an", "the"].contains(w))
             .map(|s| s.to_string())
             .collect(),
@@ -118,8 +120,14 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
         "oakvale:wooden_staff".to_string(),
     ];
     blacksmith.shop_buys_types = vec!["weapon".to_string()];
-    blacksmith.dialogue.insert("hello".to_string(), "Well met, traveler! Looking for a fine blade? I forge the best steel in Oakvale.".to_string());
-    blacksmith.dialogue.insert("work".to_string(), "Aye, the forge never rests. Iron Keep's knights keep me busy with orders.".to_string());
+    blacksmith.dialogue.insert(
+        "hello".to_string(),
+        "Well met, traveler! Looking for a fine blade? I forge the best steel in Oakvale.".to_string(),
+    );
+    blacksmith.dialogue.insert(
+        "work".to_string(),
+        "Aye, the forge never rests. Iron Keep's knights keep me busy with orders.".to_string(),
+    );
     blacksmith.daily_routine = vec![
         RoutineEntry {
             start_hour: 7,
@@ -151,9 +159,7 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
             destination_vnum: Some("oakvale:tavern_upstairs".to_string()),
             transition_message: Some("banks the forge and retires for the night.".to_string()),
             suppress_wander: true,
-            dialogue_overrides: HashMap::from([
-                ("hello".to_string(), "*snores loudly*".to_string()),
-            ]),
+            dialogue_overrides: HashMap::from([("hello".to_string(), "*snores loudly*".to_string())]),
         },
     ];
     blacksmith.schedule_visible = true;
@@ -184,8 +190,15 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
         "oakvale:fishing_rod".to_string(),
     ];
     merchant.shop_buys_types = vec!["all".to_string()];
-    merchant.dialogue.insert("hello".to_string(), "Welcome, welcome! Browse to your heart's content. I have supplies for every adventure.".to_string());
-    merchant.dialogue.insert("work".to_string(), "Goods don't sell themselves! Though I must say, business has been brisk since the caves opened up.".to_string());
+    merchant.dialogue.insert(
+        "hello".to_string(),
+        "Welcome, welcome! Browse to your heart's content. I have supplies for every adventure.".to_string(),
+    );
+    merchant.dialogue.insert(
+        "work".to_string(),
+        "Goods don't sell themselves! Though I must say, business has been brisk since the caves opened up."
+            .to_string(),
+    );
     merchant.daily_routine = vec![
         RoutineEntry {
             start_hour: 8,
@@ -201,9 +214,10 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
             destination_vnum: Some("oakvale:tavern_upstairs".to_string()),
             transition_message: Some("locks up the shop and heads home for the evening.".to_string()),
             suppress_wander: true,
-            dialogue_overrides: HashMap::from([
-                ("hello".to_string(), "*mumbles in her sleep about inventory*".to_string()),
-            ]),
+            dialogue_overrides: HashMap::from([(
+                "hello".to_string(),
+                "*mumbles in her sleep about inventory*".to_string(),
+            )]),
         },
     ];
     merchant.schedule_visible = true;
@@ -233,7 +247,10 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
         "oakvale:iron_shield".to_string(),
     ];
     armorer.shop_buys_types = vec!["armor".to_string()];
-    armorer.dialogue.insert("hello".to_string(), "Looking for protection? A wise adventurer values armor over a sharp blade.".to_string());
+    armorer.dialogue.insert(
+        "hello".to_string(),
+        "Looking for protection? A wise adventurer values armor over a sharp blade.".to_string(),
+    );
     armorer.dialogue.insert("knight".to_string(), "Aye, I served twenty years with the Iron Keep garrison. These old bones have seen more battles than I care to remember.".to_string());
     armorer.daily_routine = vec![
         RoutineEntry {
@@ -250,9 +267,10 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
             destination_vnum: Some("ironkeep:barracks".to_string()),
             transition_message: Some("locks the armory and retires to the barracks.".to_string()),
             suppress_wander: true,
-            dialogue_overrides: HashMap::from([
-                ("hello".to_string(), "*snores, muttering about plate mail*".to_string()),
-            ]),
+            dialogue_overrides: HashMap::from([(
+                "hello".to_string(),
+                "*snores, muttering about plate mail*".to_string(),
+            )]),
         },
     ];
     armorer.schedule_visible = true;
@@ -279,9 +297,18 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
     priestess.healer_type = "cleric".to_string();
     priestess.healing_free = false;
     priestess.healing_cost_multiplier = 80; // Slightly cheaper than default
-    priestess.dialogue.insert("hello".to_string(), "Blessings upon you, child. Do you seek healing? Simply ask and I shall tend your wounds.".to_string());
-    priestess.dialogue.insert("temple".to_string(), "This temple has stood for three hundred years, a beacon of light in times of darkness.".to_string());
-    priestess.dialogue.insert("heal".to_string(), "I can mend wounds of body and spirit. Say 'heal' to receive my ministrations.".to_string());
+    priestess.dialogue.insert(
+        "hello".to_string(),
+        "Blessings upon you, child. Do you seek healing? Simply ask and I shall tend your wounds.".to_string(),
+    );
+    priestess.dialogue.insert(
+        "temple".to_string(),
+        "This temple has stood for three hundred years, a beacon of light in times of darkness.".to_string(),
+    );
+    priestess.dialogue.insert(
+        "heal".to_string(),
+        "I can mend wounds of body and spirit. Say 'heal' to receive my ministrations.".to_string(),
+    );
     mobiles.push(priestess);
 
     // Barkeeper — food and drink at the tavern
@@ -308,9 +335,18 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
         "oakvale:apple".to_string(),
     ];
     barkeeper.shop_buys_types = vec!["food".to_string(), "liquid_container".to_string()];
-    barkeeper.dialogue.insert("hello".to_string(), "Welcome to the Rusty Tankard! Pull up a stool. What'll it be?".to_string());
-    barkeeper.dialogue.insert("rumors".to_string(), "They say strange noises echo from the caves beneath Iron Keep. Goblins, most like. Or worse.".to_string());
-    barkeeper.dialogue.insert("ale".to_string(), "Best ale in the valley! Brewed right here with Hilltop barley and Whisperwood hops.".to_string());
+    barkeeper.dialogue.insert(
+        "hello".to_string(),
+        "Welcome to the Rusty Tankard! Pull up a stool. What'll it be?".to_string(),
+    );
+    barkeeper.dialogue.insert(
+        "rumors".to_string(),
+        "They say strange noises echo from the caves beneath Iron Keep. Goblins, most like. Or worse.".to_string(),
+    );
+    barkeeper.dialogue.insert(
+        "ale".to_string(),
+        "Best ale in the valley! Brewed right here with Hilltop barley and Whisperwood hops.".to_string(),
+    );
     barkeeper.daily_routine = vec![
         RoutineEntry {
             start_hour: 10,
@@ -326,9 +362,10 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
             destination_vnum: Some("oakvale:tavern_upstairs".to_string()),
             transition_message: Some("wipes down the bar one last time and heads upstairs.".to_string()),
             suppress_wander: true,
-            dialogue_overrides: HashMap::from([
-                ("hello".to_string(), "*snores, one hand still clutching a tankard*".to_string()),
-            ]),
+            dialogue_overrides: HashMap::from([(
+                "hello".to_string(),
+                "*snores, one hand still clutching a tankard*".to_string(),
+            )]),
         },
     ];
     barkeeper.schedule_visible = true;
@@ -349,8 +386,14 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
     postmaster.current_hp = 30;
     postmaster.flags.sentinel = true;
     postmaster.flags.no_attack = true;
-    postmaster.dialogue.insert("hello".to_string(), "Ah, a visitor! Need to send a letter? Check your mail? I handle it all!".to_string());
-    postmaster.dialogue.insert("mail".to_string(), "Just use the 'mail' command to send letters to anyone in the realm!".to_string());
+    postmaster.dialogue.insert(
+        "hello".to_string(),
+        "Ah, a visitor! Need to send a letter? Check your mail? I handle it all!".to_string(),
+    );
+    postmaster.dialogue.insert(
+        "mail".to_string(),
+        "Just use the 'mail' command to send letters to anyone in the realm!".to_string(),
+    );
     mobiles.push(postmaster);
 
     // Banker
@@ -368,8 +411,15 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
     banker.current_hp = 40;
     banker.flags.sentinel = true;
     banker.flags.no_attack = true;
-    banker.dialogue.insert("hello".to_string(), "Good day. The Oakvale Bank is at your service. Use 'deposit' and 'withdraw' to manage your gold.".to_string());
-    banker.dialogue.insert("vault".to_string(), "The vault? Triple-locked, magically warded, and guarded by an invisible something. Your gold is quite safe.".to_string());
+    banker.dialogue.insert(
+        "hello".to_string(),
+        "Good day. The Oakvale Bank is at your service. Use 'deposit' and 'withdraw' to manage your gold.".to_string(),
+    );
+    banker.dialogue.insert(
+        "vault".to_string(),
+        "The vault? Triple-locked, magically warded, and guarded by an invisible something. Your gold is quite safe."
+            .to_string(),
+    );
     mobiles.push(banker);
 
     // ── Leasing Agent ────────────────────────────────────────────
@@ -391,7 +441,10 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
     agent.flags.no_attack = true;
     agent.leasing_area_id = Some(seed_uuid("area:oakvale"));
     agent.dialogue.insert("hello".to_string(), "Looking for a place to call home? I have several lovely properties available. Use 'lease list' to see options!".to_string());
-    agent.dialogue.insert("property".to_string(), "Every adventurer needs a home base! Our cottages come fully furnished with storage space.".to_string());
+    agent.dialogue.insert(
+        "property".to_string(),
+        "Every adventurer needs a home base! Our cottages come fully furnished with storage space.".to_string(),
+    );
     mobiles.push(agent);
 
     // ── Guards ───────────────────────────────────────────────────
@@ -414,8 +467,15 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
     guard.armor_class = 7;
     guard.flags.sentinel = false; // Patrols
     guard.flags.no_attack = true;
-    guard.dialogue.insert("hello".to_string(), "Move along, citizen. All is well in Oakvale.".to_string());
-    guard.dialogue.insert("trouble".to_string(), "If you're looking for trouble, try the caves beneath Iron Keep. Plenty of goblins to keep you busy.".to_string());
+    guard.dialogue.insert(
+        "hello".to_string(),
+        "Move along, citizen. All is well in Oakvale.".to_string(),
+    );
+    guard.dialogue.insert(
+        "trouble".to_string(),
+        "If you're looking for trouble, try the caves beneath Iron Keep. Plenty of goblins to keep you busy."
+            .to_string(),
+    );
     guard.daily_routine = vec![
         RoutineEntry {
             start_hour: 6,
@@ -447,9 +507,7 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
             destination_vnum: Some("oakvale:tavern_upstairs".to_string()),
             transition_message: Some("ends the watch and retires for the night.".to_string()),
             suppress_wander: true,
-            dialogue_overrides: HashMap::from([
-                ("hello".to_string(), "*snores, still in armor*".to_string()),
-            ]),
+            dialogue_overrides: HashMap::from([("hello".to_string(), "*snores, still in armor*".to_string())]),
         },
     ];
     guard.schedule_visible = true;
@@ -474,9 +532,19 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
     knight.flags.sentinel = true;
     knight.flags.no_attack = true;
     knight.flags.can_open_doors = true;
-    knight.dialogue.insert("hello".to_string(), "State your business at Iron Keep, traveler.".to_string());
-    knight.dialogue.insert("gate".to_string(), "The gate key is entrusted to the garrison. Only authorized persons may pass.".to_string());
-    knight.dialogue.insert("caves".to_string(), "The dungeons below connect to the Shadowfang Caves. Foul creatures lurk within. Enter at your own peril.".to_string());
+    knight.dialogue.insert(
+        "hello".to_string(),
+        "State your business at Iron Keep, traveler.".to_string(),
+    );
+    knight.dialogue.insert(
+        "gate".to_string(),
+        "The gate key is entrusted to the garrison. Only authorized persons may pass.".to_string(),
+    );
+    knight.dialogue.insert(
+        "caves".to_string(),
+        "The dungeons below connect to the Shadowfang Caves. Foul creatures lurk within. Enter at your own peril."
+            .to_string(),
+    );
     mobiles.push(knight);
 
     // ── Hostile Mobs ─────────────────────────────────────────────
@@ -592,9 +660,19 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
     farmer.flags.sentinel = false;
     farmer.flags.no_attack = true;
     farmer.dialogue.insert("hello".to_string(), "Well now, a visitor! Don't get many of those up on the hill. You look like you could use some fresh air and honest work.".to_string());
-    farmer.dialogue.insert("crops".to_string(), "The wheat's coming in nicely this season. Tomatoes are looking good too, if the frost holds off.".to_string());
-    farmer.dialogue.insert("weather".to_string(), "I can feel it in my bones — rain's coming. Good for the crops, not so good for my knees.".to_string());
-    farmer.dialogue.insert("garden".to_string(), "If you're keen on gardening, the plots out back have good soil. Plant some seeds and see what grows!".to_string());
+    farmer.dialogue.insert(
+        "crops".to_string(),
+        "The wheat's coming in nicely this season. Tomatoes are looking good too, if the frost holds off.".to_string(),
+    );
+    farmer.dialogue.insert(
+        "weather".to_string(),
+        "I can feel it in my bones — rain's coming. Good for the crops, not so good for my knees.".to_string(),
+    );
+    farmer.dialogue.insert(
+        "garden".to_string(),
+        "If you're keen on gardening, the plots out back have good soil. Plant some seeds and see what grows!"
+            .to_string(),
+    );
     farmer.daily_routine = vec![
         RoutineEntry {
             start_hour: 5,
@@ -626,9 +704,10 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
             destination_vnum: Some("hilltop:farmhouse".to_string()),
             transition_message: Some("puts away his tools and settles in for the night.".to_string()),
             suppress_wander: true,
-            dialogue_overrides: HashMap::from([
-                ("hello".to_string(), "*snores contentedly, dreaming of bountiful harvests*".to_string()),
-            ]),
+            dialogue_overrides: HashMap::from([(
+                "hello".to_string(),
+                "*snores contentedly, dreaming of bountiful harvests*".to_string(),
+            )]),
         },
     ];
     farmer.schedule_visible = true;

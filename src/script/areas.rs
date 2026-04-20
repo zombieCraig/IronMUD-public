@@ -1,10 +1,10 @@
 // src/script/areas.rs
 // Area system functions: CRUD, permissions, trustees, vnums, forage tables
 
-use rhai::{Engine, EvalAltResult, Position};
-use std::sync::Arc;
 use crate::db::Db;
 use crate::{AreaData, AreaPermission, CombatZoneType};
+use rhai::{Engine, EvalAltResult, Position};
+use std::sync::Arc;
 
 /// Check if a character is in build mode AND can edit the area containing the given room.
 /// Used by Rust tick files to bypass restrictions for builders in their areas.
@@ -102,11 +102,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 level_min: 0,
                 level_max: 0,
                 theme: String::new(),
-                owner: if owner.is_empty() {
-                    None
-                } else {
-                    Some(owner)
-                },
+                owner: if owner.is_empty() { None } else { Some(owner) },
                 permission_level: AreaPermission::AllBuilders,
                 trusted_builders: Vec::new(),
                 city_forage_table: Vec::new(),
@@ -150,8 +146,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // save_area_data(area) -> Saves area data
     let cloned_db = db.clone();
     engine.register_fn("save_area_data", move |area: AreaData| {
-        cloned_db.save_area_data(area)
-            .map_err(|e| Box::new(EvalAltResult::ErrorRuntime(rhai::Dynamic::from(format!("DB Error: {}", e)), Position::NONE)))
+        cloned_db
+            .save_area_data(area)
+            .map_err(|e| {
+                Box::new(EvalAltResult::ErrorRuntime(
+                    rhai::Dynamic::from(format!("DB Error: {}", e)),
+                    Position::NONE,
+                ))
+            })
             .map(|_| rhai::Dynamic::UNIT)
     });
 
@@ -171,33 +173,27 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
 
     // set_area_description(area_id, desc) -> bool
     let cloned_db = db.clone();
-    engine.register_fn(
-        "set_area_description",
-        move |area_id: String, desc: String| {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-                if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
-                    area.description = desc;
-                    return cloned_db.save_area_data(area).is_ok();
-                }
+    engine.register_fn("set_area_description", move |area_id: String, desc: String| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+            if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+                area.description = desc;
+                return cloned_db.save_area_data(area).is_ok();
             }
-            false
-        },
-    );
+        }
+        false
+    });
 
     // set_area_prefix(area_id, prefix) -> bool
     let cloned_db = db.clone();
-    engine.register_fn(
-        "set_area_prefix",
-        move |area_id: String, prefix: String| {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-                if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
-                    area.prefix = prefix;
-                    return cloned_db.save_area_data(area).is_ok();
-                }
+    engine.register_fn("set_area_prefix", move |area_id: String, prefix: String| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+            if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+                area.prefix = prefix;
+                return cloned_db.save_area_data(area).is_ok();
             }
-            false
-        },
-    );
+        }
+        false
+    });
 
     // set_area_theme(area_id, theme) -> bool
     let cloned_db = db.clone();
@@ -213,19 +209,16 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
 
     // set_area_levels(area_id, min, max) -> bool
     let cloned_db = db.clone();
-    engine.register_fn(
-        "set_area_levels",
-        move |area_id: String, min: i64, max: i64| {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-                if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
-                    area.level_min = min as i32;
-                    area.level_max = max as i32;
-                    return cloned_db.save_area_data(area).is_ok();
-                }
+    engine.register_fn("set_area_levels", move |area_id: String, min: i64, max: i64| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+            if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+                area.level_min = min as i32;
+                area.level_max = max as i32;
+                return cloned_db.save_area_data(area).is_ok();
             }
-            false
-        },
-    );
+        }
+        false
+    });
 
     // set_area_owner(area_id, owner_name) -> bool (empty string clears owner)
     let cloned_db = db.clone();
@@ -241,106 +234,86 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
 
     // set_area_permission(area_id, level_str) -> bool
     let cloned_db = db.clone();
-    engine.register_fn(
-        "set_area_permission",
-        move |area_id: String, level: String| {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-                if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
-                    area.permission_level = match level.to_lowercase().as_str() {
-                        "owner_only" | "owner" => AreaPermission::OwnerOnly,
-                        "trusted" => AreaPermission::Trusted,
-                        "all_builders" | "all" | "builders" => AreaPermission::AllBuilders,
-                        _ => return false,
-                    };
-                    return cloned_db.save_area_data(area).is_ok();
-                }
+    engine.register_fn("set_area_permission", move |area_id: String, level: String| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+            if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+                area.permission_level = match level.to_lowercase().as_str() {
+                    "owner_only" | "owner" => AreaPermission::OwnerOnly,
+                    "trusted" => AreaPermission::Trusted,
+                    "all_builders" | "all" | "builders" => AreaPermission::AllBuilders,
+                    _ => return false,
+                };
+                return cloned_db.save_area_data(area).is_ok();
             }
-            false
-        },
-    );
+        }
+        false
+    });
 
     // add_area_trustee(area_id, character_name) -> bool
     let cloned_db = db.clone();
-    engine.register_fn(
-        "add_area_trustee",
-        move |area_id: String, name: String| {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-                if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
-                    // Check if already in list (case-insensitive)
-                    if !area
-                        .trusted_builders
-                        .iter()
-                        .any(|t| t.eq_ignore_ascii_case(&name))
-                    {
-                        area.trusted_builders.push(name);
-                        return cloned_db.save_area_data(area).is_ok();
-                    }
+    engine.register_fn("add_area_trustee", move |area_id: String, name: String| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+            if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+                // Check if already in list (case-insensitive)
+                if !area.trusted_builders.iter().any(|t| t.eq_ignore_ascii_case(&name)) {
+                    area.trusted_builders.push(name);
+                    return cloned_db.save_area_data(area).is_ok();
                 }
             }
-            false
-        },
-    );
+        }
+        false
+    });
 
     // remove_area_trustee(area_id, character_name) -> bool
     let cloned_db = db.clone();
-    engine.register_fn(
-        "remove_area_trustee",
-        move |area_id: String, name: String| {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-                if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
-                    let before_len = area.trusted_builders.len();
-                    area.trusted_builders
-                        .retain(|t| !t.eq_ignore_ascii_case(&name));
-                    if area.trusted_builders.len() < before_len {
-                        return cloned_db.save_area_data(area).is_ok();
-                    }
+    engine.register_fn("remove_area_trustee", move |area_id: String, name: String| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+            if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+                let before_len = area.trusted_builders.len();
+                area.trusted_builders.retain(|t| !t.eq_ignore_ascii_case(&name));
+                if area.trusted_builders.len() < before_len {
+                    return cloned_db.save_area_data(area).is_ok();
                 }
             }
-            false
-        },
-    );
+        }
+        false
+    });
 
     // can_edit_area(area_id, character_name) -> bool
     // Checks if a character has permission to edit the area
     let cloned_db = db.clone();
-    engine.register_fn(
-        "can_edit_area",
-        move |area_id: String, char_name: String| {
-            // Admins can always edit any area
-            if let Ok(Some(character)) = cloned_db.get_character_data(&char_name) {
-                if character.is_admin {
+    engine.register_fn("can_edit_area", move |area_id: String, char_name: String| {
+        // Admins can always edit any area
+        if let Ok(Some(character)) = cloned_db.get_character_data(&char_name) {
+            if character.is_admin {
+                return true;
+            }
+        }
+
+        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+            if let Ok(Some(area)) = cloned_db.get_area_data(&uuid) {
+                // No owner = any builder can edit (caller should check is_builder)
+                if area.owner.is_none() {
                     return true;
                 }
-            }
 
-            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-                if let Ok(Some(area)) = cloned_db.get_area_data(&uuid) {
-                    // No owner = any builder can edit (caller should check is_builder)
-                    if area.owner.is_none() {
-                        return true;
+                let owner = area.owner.as_ref().unwrap();
+
+                match area.permission_level {
+                    AreaPermission::OwnerOnly => owner.eq_ignore_ascii_case(&char_name),
+                    AreaPermission::Trusted => {
+                        owner.eq_ignore_ascii_case(&char_name)
+                            || area.trusted_builders.iter().any(|t| t.eq_ignore_ascii_case(&char_name))
                     }
-
-                    let owner = area.owner.as_ref().unwrap();
-
-                    match area.permission_level {
-                        AreaPermission::OwnerOnly => owner.eq_ignore_ascii_case(&char_name),
-                        AreaPermission::Trusted => {
-                            owner.eq_ignore_ascii_case(&char_name)
-                                || area
-                                    .trusted_builders
-                                    .iter()
-                                    .any(|t| t.eq_ignore_ascii_case(&char_name))
-                        }
-                        AreaPermission::AllBuilders => true,
-                    }
-                } else {
-                    true // Area not found = allow (let other checks handle it)
+                    AreaPermission::AllBuilders => true,
                 }
             } else {
-                true // Invalid ID = allow
+                true // Area not found = allow (let other checks handle it)
             }
-        },
-    );
+        } else {
+            true // Invalid ID = allow
+        }
+    });
 
     // delete_area(area_id) -> Deletes an area (unassigns rooms, doesn't delete them)
     let cloned_db = db.clone();
@@ -355,7 +328,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // list_all_areas() -> Returns array of all AreaData
     let cloned_db = db.clone();
     engine.register_fn("list_all_areas", move || {
-        cloned_db.list_all_areas()
+        cloned_db
+            .list_all_areas()
             .unwrap_or_default()
             .into_iter()
             .map(rhai::Dynamic::from)
@@ -573,14 +547,24 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         let base_vnum = slug;
 
         // Check if available
-        if cloned_db.get_property_template_by_vnum(&base_vnum).ok().flatten().is_none() {
+        if cloned_db
+            .get_property_template_by_vnum(&base_vnum)
+            .ok()
+            .flatten()
+            .is_none()
+        {
             return base_vnum;
         }
 
         // Try numbered suffixes: _2, _3, ...
         for i in 2..=999 {
             let candidate = format!("{}_{}", base_vnum, i);
-            if cloned_db.get_property_template_by_vnum(&candidate).ok().flatten().is_none() {
+            if cloned_db
+                .get_property_template_by_vnum(&candidate)
+                .ok()
+                .flatten()
+                .is_none()
+            {
                 return candidate;
             }
         }
@@ -623,7 +607,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     let cloned_db = db.clone();
     engine.register_fn("get_rooms_in_area", move |area_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            cloned_db.get_rooms_in_area(&uuid)
+            cloned_db
+                .get_rooms_in_area(&uuid)
                 .unwrap_or_default()
                 .into_iter()
                 .map(rhai::Dynamic::from)
@@ -637,389 +622,481 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
 
     // add_area_city_forage(area_id, vnum, min_skill, rarity) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("add_area_city_forage", move |area_id: String, vnum: String, min_skill: i64, rarity: String| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            match cloned_db.get_area_data(&uuid) {
-                Ok(Some(mut area)) => {
-                    // Check if vnum already exists
-                    if area.city_forage_table.iter().any(|e| e.vnum == vnum) {
-                        return false;
+    engine.register_fn(
+        "add_area_city_forage",
+        move |area_id: String, vnum: String, min_skill: i64, rarity: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                match cloned_db.get_area_data(&uuid) {
+                    Ok(Some(mut area)) => {
+                        // Check if vnum already exists
+                        if area.city_forage_table.iter().any(|e| e.vnum == vnum) {
+                            return false;
+                        }
+                        area.city_forage_table.push(crate::ForageEntry {
+                            vnum,
+                            min_skill: min_skill as i32,
+                            rarity,
+                        });
+                        cloned_db.save_area_data(area).is_ok()
                     }
-                    area.city_forage_table.push(crate::ForageEntry {
-                        vnum,
-                        min_skill: min_skill as i32,
-                        rarity,
-                    });
-                    cloned_db.save_area_data(area).is_ok()
+                    _ => false,
                 }
-                _ => false,
+            } else {
+                false
             }
-        } else {
-            false
-        }
-    });
+        },
+    );
 
     // remove_area_city_forage(area_id, vnum) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("remove_area_city_forage", move |area_id: String, vnum: String| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            match cloned_db.get_area_data(&uuid) {
-                Ok(Some(mut area)) => {
-                    let orig_len = area.city_forage_table.len();
-                    area.city_forage_table.retain(|e| e.vnum != vnum);
-                    if area.city_forage_table.len() < orig_len {
-                        cloned_db.save_area_data(area).is_ok()
-                    } else {
-                        false
+    engine.register_fn(
+        "remove_area_city_forage",
+        move |area_id: String, vnum: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                match cloned_db.get_area_data(&uuid) {
+                    Ok(Some(mut area)) => {
+                        let orig_len = area.city_forage_table.len();
+                        area.city_forage_table.retain(|e| e.vnum != vnum);
+                        if area.city_forage_table.len() < orig_len {
+                            cloned_db.save_area_data(area).is_ok()
+                        } else {
+                            false
+                        }
                     }
+                    _ => false,
                 }
-                _ => false,
+            } else {
+                false
             }
-        } else {
-            false
-        }
-    });
+        },
+    );
 
     // get_area_city_forage_table(area_id) -> Array of Maps
     let cloned_db = db.clone();
-    engine.register_fn("get_area_city_forage_table", move |area_id: String| -> Vec<rhai::Dynamic> {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            match cloned_db.get_area_data(&uuid) {
-                Ok(Some(area)) => {
-                    area.city_forage_table.iter().map(|entry| {
-                        let mut map = rhai::Map::new();
-                        map.insert("vnum".into(), rhai::Dynamic::from(entry.vnum.clone()));
-                        map.insert("min_skill".into(), rhai::Dynamic::from(entry.min_skill as i64));
-                        map.insert("rarity".into(), rhai::Dynamic::from(entry.rarity.clone()));
-                        rhai::Dynamic::from(map)
-                    }).collect()
+    engine.register_fn(
+        "get_area_city_forage_table",
+        move |area_id: String| -> Vec<rhai::Dynamic> {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                match cloned_db.get_area_data(&uuid) {
+                    Ok(Some(area)) => area
+                        .city_forage_table
+                        .iter()
+                        .map(|entry| {
+                            let mut map = rhai::Map::new();
+                            map.insert("vnum".into(), rhai::Dynamic::from(entry.vnum.clone()));
+                            map.insert("min_skill".into(), rhai::Dynamic::from(entry.min_skill as i64));
+                            map.insert("rarity".into(), rhai::Dynamic::from(entry.rarity.clone()));
+                            rhai::Dynamic::from(map)
+                        })
+                        .collect(),
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
+            } else {
+                Vec::new()
             }
-        } else {
-            Vec::new()
-        }
-    });
+        },
+    );
 
     // add_area_wilderness_forage(area_id, vnum, min_skill, rarity) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("add_area_wilderness_forage", move |area_id: String, vnum: String, min_skill: i64, rarity: String| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            match cloned_db.get_area_data(&uuid) {
-                Ok(Some(mut area)) => {
-                    // Check if vnum already exists
-                    if area.wilderness_forage_table.iter().any(|e| e.vnum == vnum) {
-                        return false;
+    engine.register_fn(
+        "add_area_wilderness_forage",
+        move |area_id: String, vnum: String, min_skill: i64, rarity: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                match cloned_db.get_area_data(&uuid) {
+                    Ok(Some(mut area)) => {
+                        // Check if vnum already exists
+                        if area.wilderness_forage_table.iter().any(|e| e.vnum == vnum) {
+                            return false;
+                        }
+                        area.wilderness_forage_table.push(crate::ForageEntry {
+                            vnum,
+                            min_skill: min_skill as i32,
+                            rarity,
+                        });
+                        cloned_db.save_area_data(area).is_ok()
                     }
-                    area.wilderness_forage_table.push(crate::ForageEntry {
-                        vnum,
-                        min_skill: min_skill as i32,
-                        rarity,
-                    });
-                    cloned_db.save_area_data(area).is_ok()
+                    _ => false,
                 }
-                _ => false,
+            } else {
+                false
             }
-        } else {
-            false
-        }
-    });
+        },
+    );
 
     // remove_area_wilderness_forage(area_id, vnum) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("remove_area_wilderness_forage", move |area_id: String, vnum: String| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            match cloned_db.get_area_data(&uuid) {
-                Ok(Some(mut area)) => {
-                    let orig_len = area.wilderness_forage_table.len();
-                    area.wilderness_forage_table.retain(|e| e.vnum != vnum);
-                    if area.wilderness_forage_table.len() < orig_len {
-                        cloned_db.save_area_data(area).is_ok()
-                    } else {
-                        false
+    engine.register_fn(
+        "remove_area_wilderness_forage",
+        move |area_id: String, vnum: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                match cloned_db.get_area_data(&uuid) {
+                    Ok(Some(mut area)) => {
+                        let orig_len = area.wilderness_forage_table.len();
+                        area.wilderness_forage_table.retain(|e| e.vnum != vnum);
+                        if area.wilderness_forage_table.len() < orig_len {
+                            cloned_db.save_area_data(area).is_ok()
+                        } else {
+                            false
+                        }
                     }
+                    _ => false,
                 }
-                _ => false,
+            } else {
+                false
             }
-        } else {
-            false
-        }
-    });
+        },
+    );
 
     // get_area_wilderness_forage_table(area_id) -> Array of Maps
     let cloned_db = db.clone();
-    engine.register_fn("get_area_wilderness_forage_table", move |area_id: String| -> Vec<rhai::Dynamic> {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            match cloned_db.get_area_data(&uuid) {
-                Ok(Some(area)) => {
-                    area.wilderness_forage_table.iter().map(|entry| {
-                        let mut map = rhai::Map::new();
-                        map.insert("vnum".into(), rhai::Dynamic::from(entry.vnum.clone()));
-                        map.insert("min_skill".into(), rhai::Dynamic::from(entry.min_skill as i64));
-                        map.insert("rarity".into(), rhai::Dynamic::from(entry.rarity.clone()));
-                        rhai::Dynamic::from(map)
-                    }).collect()
+    engine.register_fn(
+        "get_area_wilderness_forage_table",
+        move |area_id: String| -> Vec<rhai::Dynamic> {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                match cloned_db.get_area_data(&uuid) {
+                    Ok(Some(area)) => area
+                        .wilderness_forage_table
+                        .iter()
+                        .map(|entry| {
+                            let mut map = rhai::Map::new();
+                            map.insert("vnum".into(), rhai::Dynamic::from(entry.vnum.clone()));
+                            map.insert("min_skill".into(), rhai::Dynamic::from(entry.min_skill as i64));
+                            map.insert("rarity".into(), rhai::Dynamic::from(entry.rarity.clone()));
+                            rhai::Dynamic::from(map)
+                        })
+                        .collect(),
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
+            } else {
+                Vec::new()
             }
-        } else {
-            Vec::new()
-        }
-    });
+        },
+    );
 
     // ========== Water Forage Table Functions ==========
 
     // add_area_shallow_water_forage(area_id, vnum, min_skill, rarity) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("add_area_shallow_water_forage", move |area_id: String, vnum: String, min_skill: i64, rarity: String| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            match cloned_db.get_area_data(&uuid) {
-                Ok(Some(mut area)) => {
-                    if area.shallow_water_forage_table.iter().any(|e| e.vnum == vnum) {
-                        return false;
+    engine.register_fn(
+        "add_area_shallow_water_forage",
+        move |area_id: String, vnum: String, min_skill: i64, rarity: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                match cloned_db.get_area_data(&uuid) {
+                    Ok(Some(mut area)) => {
+                        if area.shallow_water_forage_table.iter().any(|e| e.vnum == vnum) {
+                            return false;
+                        }
+                        area.shallow_water_forage_table.push(crate::ForageEntry {
+                            vnum,
+                            min_skill: min_skill as i32,
+                            rarity,
+                        });
+                        cloned_db.save_area_data(area).is_ok()
                     }
-                    area.shallow_water_forage_table.push(crate::ForageEntry {
-                        vnum, min_skill: min_skill as i32, rarity,
-                    });
-                    cloned_db.save_area_data(area).is_ok()
+                    _ => false,
                 }
-                _ => false,
+            } else {
+                false
             }
-        } else { false }
-    });
+        },
+    );
 
     // remove_area_shallow_water_forage(area_id, vnum) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("remove_area_shallow_water_forage", move |area_id: String, vnum: String| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            match cloned_db.get_area_data(&uuid) {
-                Ok(Some(mut area)) => {
-                    let orig_len = area.shallow_water_forage_table.len();
-                    area.shallow_water_forage_table.retain(|e| e.vnum != vnum);
-                    if area.shallow_water_forage_table.len() < orig_len {
-                        cloned_db.save_area_data(area).is_ok()
-                    } else { false }
+    engine.register_fn(
+        "remove_area_shallow_water_forage",
+        move |area_id: String, vnum: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                match cloned_db.get_area_data(&uuid) {
+                    Ok(Some(mut area)) => {
+                        let orig_len = area.shallow_water_forage_table.len();
+                        area.shallow_water_forage_table.retain(|e| e.vnum != vnum);
+                        if area.shallow_water_forage_table.len() < orig_len {
+                            cloned_db.save_area_data(area).is_ok()
+                        } else {
+                            false
+                        }
+                    }
+                    _ => false,
                 }
-                _ => false,
+            } else {
+                false
             }
-        } else { false }
-    });
+        },
+    );
 
     // get_area_shallow_water_forage_table(area_id) -> Array of Maps
     let cloned_db = db.clone();
-    engine.register_fn("get_area_shallow_water_forage_table", move |area_id: String| -> Vec<rhai::Dynamic> {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            match cloned_db.get_area_data(&uuid) {
-                Ok(Some(area)) => {
-                    area.shallow_water_forage_table.iter().map(|entry| {
-                        let mut map = rhai::Map::new();
-                        map.insert("vnum".into(), rhai::Dynamic::from(entry.vnum.clone()));
-                        map.insert("min_skill".into(), rhai::Dynamic::from(entry.min_skill as i64));
-                        map.insert("rarity".into(), rhai::Dynamic::from(entry.rarity.clone()));
-                        rhai::Dynamic::from(map)
-                    }).collect()
+    engine.register_fn(
+        "get_area_shallow_water_forage_table",
+        move |area_id: String| -> Vec<rhai::Dynamic> {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                match cloned_db.get_area_data(&uuid) {
+                    Ok(Some(area)) => area
+                        .shallow_water_forage_table
+                        .iter()
+                        .map(|entry| {
+                            let mut map = rhai::Map::new();
+                            map.insert("vnum".into(), rhai::Dynamic::from(entry.vnum.clone()));
+                            map.insert("min_skill".into(), rhai::Dynamic::from(entry.min_skill as i64));
+                            map.insert("rarity".into(), rhai::Dynamic::from(entry.rarity.clone()));
+                            rhai::Dynamic::from(map)
+                        })
+                        .collect(),
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
+            } else {
+                Vec::new()
             }
-        } else { Vec::new() }
-    });
+        },
+    );
 
     // add_area_deep_water_forage(area_id, vnum, min_skill, rarity) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("add_area_deep_water_forage", move |area_id: String, vnum: String, min_skill: i64, rarity: String| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            match cloned_db.get_area_data(&uuid) {
-                Ok(Some(mut area)) => {
-                    if area.deep_water_forage_table.iter().any(|e| e.vnum == vnum) {
-                        return false;
+    engine.register_fn(
+        "add_area_deep_water_forage",
+        move |area_id: String, vnum: String, min_skill: i64, rarity: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                match cloned_db.get_area_data(&uuid) {
+                    Ok(Some(mut area)) => {
+                        if area.deep_water_forage_table.iter().any(|e| e.vnum == vnum) {
+                            return false;
+                        }
+                        area.deep_water_forage_table.push(crate::ForageEntry {
+                            vnum,
+                            min_skill: min_skill as i32,
+                            rarity,
+                        });
+                        cloned_db.save_area_data(area).is_ok()
                     }
-                    area.deep_water_forage_table.push(crate::ForageEntry {
-                        vnum, min_skill: min_skill as i32, rarity,
-                    });
-                    cloned_db.save_area_data(area).is_ok()
+                    _ => false,
                 }
-                _ => false,
+            } else {
+                false
             }
-        } else { false }
-    });
+        },
+    );
 
     // remove_area_deep_water_forage(area_id, vnum) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("remove_area_deep_water_forage", move |area_id: String, vnum: String| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            match cloned_db.get_area_data(&uuid) {
-                Ok(Some(mut area)) => {
-                    let orig_len = area.deep_water_forage_table.len();
-                    area.deep_water_forage_table.retain(|e| e.vnum != vnum);
-                    if area.deep_water_forage_table.len() < orig_len {
-                        cloned_db.save_area_data(area).is_ok()
-                    } else { false }
+    engine.register_fn(
+        "remove_area_deep_water_forage",
+        move |area_id: String, vnum: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                match cloned_db.get_area_data(&uuid) {
+                    Ok(Some(mut area)) => {
+                        let orig_len = area.deep_water_forage_table.len();
+                        area.deep_water_forage_table.retain(|e| e.vnum != vnum);
+                        if area.deep_water_forage_table.len() < orig_len {
+                            cloned_db.save_area_data(area).is_ok()
+                        } else {
+                            false
+                        }
+                    }
+                    _ => false,
                 }
-                _ => false,
+            } else {
+                false
             }
-        } else { false }
-    });
+        },
+    );
 
     // get_area_deep_water_forage_table(area_id) -> Array of Maps
     let cloned_db = db.clone();
-    engine.register_fn("get_area_deep_water_forage_table", move |area_id: String| -> Vec<rhai::Dynamic> {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            match cloned_db.get_area_data(&uuid) {
-                Ok(Some(area)) => {
-                    area.deep_water_forage_table.iter().map(|entry| {
-                        let mut map = rhai::Map::new();
-                        map.insert("vnum".into(), rhai::Dynamic::from(entry.vnum.clone()));
-                        map.insert("min_skill".into(), rhai::Dynamic::from(entry.min_skill as i64));
-                        map.insert("rarity".into(), rhai::Dynamic::from(entry.rarity.clone()));
-                        rhai::Dynamic::from(map)
-                    }).collect()
+    engine.register_fn(
+        "get_area_deep_water_forage_table",
+        move |area_id: String| -> Vec<rhai::Dynamic> {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                match cloned_db.get_area_data(&uuid) {
+                    Ok(Some(area)) => area
+                        .deep_water_forage_table
+                        .iter()
+                        .map(|entry| {
+                            let mut map = rhai::Map::new();
+                            map.insert("vnum".into(), rhai::Dynamic::from(entry.vnum.clone()));
+                            map.insert("min_skill".into(), rhai::Dynamic::from(entry.min_skill as i64));
+                            map.insert("rarity".into(), rhai::Dynamic::from(entry.rarity.clone()));
+                            rhai::Dynamic::from(map)
+                        })
+                        .collect(),
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
+            } else {
+                Vec::new()
             }
-        } else { Vec::new() }
-    });
+        },
+    );
 
     // add_area_underwater_forage(area_id, vnum, min_skill, rarity) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("add_area_underwater_forage", move |area_id: String, vnum: String, min_skill: i64, rarity: String| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            match cloned_db.get_area_data(&uuid) {
-                Ok(Some(mut area)) => {
-                    if area.underwater_forage_table.iter().any(|e| e.vnum == vnum) {
-                        return false;
+    engine.register_fn(
+        "add_area_underwater_forage",
+        move |area_id: String, vnum: String, min_skill: i64, rarity: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                match cloned_db.get_area_data(&uuid) {
+                    Ok(Some(mut area)) => {
+                        if area.underwater_forage_table.iter().any(|e| e.vnum == vnum) {
+                            return false;
+                        }
+                        area.underwater_forage_table.push(crate::ForageEntry {
+                            vnum,
+                            min_skill: min_skill as i32,
+                            rarity,
+                        });
+                        cloned_db.save_area_data(area).is_ok()
                     }
-                    area.underwater_forage_table.push(crate::ForageEntry {
-                        vnum, min_skill: min_skill as i32, rarity,
-                    });
-                    cloned_db.save_area_data(area).is_ok()
+                    _ => false,
                 }
-                _ => false,
+            } else {
+                false
             }
-        } else { false }
-    });
+        },
+    );
 
     // remove_area_underwater_forage(area_id, vnum) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("remove_area_underwater_forage", move |area_id: String, vnum: String| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            match cloned_db.get_area_data(&uuid) {
-                Ok(Some(mut area)) => {
-                    let orig_len = area.underwater_forage_table.len();
-                    area.underwater_forage_table.retain(|e| e.vnum != vnum);
-                    if area.underwater_forage_table.len() < orig_len {
-                        cloned_db.save_area_data(area).is_ok()
-                    } else { false }
+    engine.register_fn(
+        "remove_area_underwater_forage",
+        move |area_id: String, vnum: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                match cloned_db.get_area_data(&uuid) {
+                    Ok(Some(mut area)) => {
+                        let orig_len = area.underwater_forage_table.len();
+                        area.underwater_forage_table.retain(|e| e.vnum != vnum);
+                        if area.underwater_forage_table.len() < orig_len {
+                            cloned_db.save_area_data(area).is_ok()
+                        } else {
+                            false
+                        }
+                    }
+                    _ => false,
                 }
-                _ => false,
+            } else {
+                false
             }
-        } else { false }
-    });
+        },
+    );
 
     // get_area_underwater_forage_table(area_id) -> Array of Maps
     let cloned_db = db.clone();
-    engine.register_fn("get_area_underwater_forage_table", move |area_id: String| -> Vec<rhai::Dynamic> {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            match cloned_db.get_area_data(&uuid) {
-                Ok(Some(area)) => {
-                    area.underwater_forage_table.iter().map(|entry| {
-                        let mut map = rhai::Map::new();
-                        map.insert("vnum".into(), rhai::Dynamic::from(entry.vnum.clone()));
-                        map.insert("min_skill".into(), rhai::Dynamic::from(entry.min_skill as i64));
-                        map.insert("rarity".into(), rhai::Dynamic::from(entry.rarity.clone()));
-                        rhai::Dynamic::from(map)
-                    }).collect()
+    engine.register_fn(
+        "get_area_underwater_forage_table",
+        move |area_id: String| -> Vec<rhai::Dynamic> {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                match cloned_db.get_area_data(&uuid) {
+                    Ok(Some(area)) => area
+                        .underwater_forage_table
+                        .iter()
+                        .map(|entry| {
+                            let mut map = rhai::Map::new();
+                            map.insert("vnum".into(), rhai::Dynamic::from(entry.vnum.clone()));
+                            map.insert("min_skill".into(), rhai::Dynamic::from(entry.min_skill as i64));
+                            map.insert("rarity".into(), rhai::Dynamic::from(entry.rarity.clone()));
+                            rhai::Dynamic::from(map)
+                        })
+                        .collect(),
+                    _ => Vec::new(),
                 }
-                _ => Vec::new(),
+            } else {
+                Vec::new()
             }
-        } else { Vec::new() }
-    });
+        },
+    );
 
     // select_area_forage(area_id, forage_type, skill_level) -> Map with vnum and rarity, or () if nothing
     // forage_type: "city", "wilderness", "shallow_water", "deep_water", or "underwater"
     // Uses item weight from prototype for weighted selection
     let cloned_db = db.clone();
-    engine.register_fn("select_area_forage", move |area_id: String, forage_type: String, skill_level: i64| -> rhai::Dynamic {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            match cloned_db.get_area_data(&uuid) {
-                Ok(Some(area)) => {
-                    let forage_table = match forage_type.to_lowercase().as_str() {
-                        "city" => &area.city_forage_table,
-                        "wilderness" => &area.wilderness_forage_table,
-                        "shallow_water" => &area.shallow_water_forage_table,
-                        "deep_water" => &area.deep_water_forage_table,
-                        "underwater" => &area.underwater_forage_table,
-                        _ => return rhai::Dynamic::UNIT,
-                    };
-
-                    // Filter by skill level
-                    let available: Vec<_> = forage_table.iter()
-                        .filter(|e| (e.min_skill as i64) <= skill_level)
-                        .collect();
-
-                    if available.is_empty() {
-                        return rhai::Dynamic::UNIT;
-                    }
-
-                    // Get weights from item prototypes
-                    let mut weighted_entries: Vec<(&crate::ForageEntry, i32)> = Vec::new();
-                    for entry in &available {
-                        // Try to get item weight from prototype
-                        let weight = if let Ok(Some(item)) = cloned_db.get_item_by_vnum(&entry.vnum) {
-                            item.weight.max(1) // Minimum weight of 1
-                        } else {
-                            1 // Default weight if prototype not found
+    engine.register_fn(
+        "select_area_forage",
+        move |area_id: String, forage_type: String, skill_level: i64| -> rhai::Dynamic {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                match cloned_db.get_area_data(&uuid) {
+                    Ok(Some(area)) => {
+                        let forage_table = match forage_type.to_lowercase().as_str() {
+                            "city" => &area.city_forage_table,
+                            "wilderness" => &area.wilderness_forage_table,
+                            "shallow_water" => &area.shallow_water_forage_table,
+                            "deep_water" => &area.deep_water_forage_table,
+                            "underwater" => &area.underwater_forage_table,
+                            _ => return rhai::Dynamic::UNIT,
                         };
-                        weighted_entries.push((entry, weight));
-                    }
 
-                    let total_weight: i32 = weighted_entries.iter().map(|(_, w)| *w).sum();
-                    if total_weight <= 0 {
-                        return rhai::Dynamic::UNIT;
-                    }
+                        // Filter by skill level
+                        let available: Vec<_> = forage_table
+                            .iter()
+                            .filter(|e| (e.min_skill as i64) <= skill_level)
+                            .collect();
 
-                    // Random selection
-                    use std::time::{SystemTime, UNIX_EPOCH};
-                    let seed = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .map(|d| d.as_nanos() as u64)
-                        .unwrap_or(0);
-                    let mut roll = (seed % total_weight as u64) as i32;
-
-                    for (entry, weight) in weighted_entries {
-                        roll -= weight;
-                        if roll < 0 {
-                            let mut result = rhai::Map::new();
-                            result.insert("vnum".into(), rhai::Dynamic::from(entry.vnum.clone()));
-                            result.insert("rarity".into(), rhai::Dynamic::from(entry.rarity.clone()));
-                            result.insert("min_skill".into(), rhai::Dynamic::from(entry.min_skill as i64));
-                            return rhai::Dynamic::from(result);
+                        if available.is_empty() {
+                            return rhai::Dynamic::UNIT;
                         }
+
+                        // Get weights from item prototypes
+                        let mut weighted_entries: Vec<(&crate::ForageEntry, i32)> = Vec::new();
+                        for entry in &available {
+                            // Try to get item weight from prototype
+                            let weight = if let Ok(Some(item)) = cloned_db.get_item_by_vnum(&entry.vnum) {
+                                item.weight.max(1) // Minimum weight of 1
+                            } else {
+                                1 // Default weight if prototype not found
+                            };
+                            weighted_entries.push((entry, weight));
+                        }
+
+                        let total_weight: i32 = weighted_entries.iter().map(|(_, w)| *w).sum();
+                        if total_weight <= 0 {
+                            return rhai::Dynamic::UNIT;
+                        }
+
+                        // Random selection
+                        use std::time::{SystemTime, UNIX_EPOCH};
+                        let seed = SystemTime::now()
+                            .duration_since(UNIX_EPOCH)
+                            .map(|d| d.as_nanos() as u64)
+                            .unwrap_or(0);
+                        let mut roll = (seed % total_weight as u64) as i32;
+
+                        for (entry, weight) in weighted_entries {
+                            roll -= weight;
+                            if roll < 0 {
+                                let mut result = rhai::Map::new();
+                                result.insert("vnum".into(), rhai::Dynamic::from(entry.vnum.clone()));
+                                result.insert("rarity".into(), rhai::Dynamic::from(entry.rarity.clone()));
+                                result.insert("min_skill".into(), rhai::Dynamic::from(entry.min_skill as i64));
+                                return rhai::Dynamic::from(result);
+                            }
+                        }
+                        rhai::Dynamic::UNIT
                     }
-                    rhai::Dynamic::UNIT
+                    _ => rhai::Dynamic::UNIT,
                 }
-                _ => rhai::Dynamic::UNIT,
+            } else {
+                rhai::Dynamic::UNIT
             }
-        } else {
-            rhai::Dynamic::UNIT
-        }
-    });
+        },
+    );
 
     // ========== Combat Zone Functions ==========
 
     // set_area_combat_zone(area_id, zone_type) -> bool
     // Sets the area's combat zone type ("pve", "safe", or "pvp")
     let cloned_db = db.clone();
-    engine.register_fn("set_area_combat_zone", move |area_id: String, zone_type: String| -> bool {
-        if let Some(zone) = CombatZoneType::from_str(&zone_type) {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-                if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
-                    area.combat_zone = zone;
-                    return cloned_db.save_area_data(area).is_ok();
+    engine.register_fn(
+        "set_area_combat_zone",
+        move |area_id: String, zone_type: String| -> bool {
+            if let Some(zone) = CombatZoneType::from_str(&zone_type) {
+                if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                    if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+                        area.combat_zone = zone;
+                        return cloned_db.save_area_data(area).is_ok();
+                    }
                 }
             }
-        }
-        false
-    });
+            false
+        },
+    );
 
     // get_area_combat_zone(area_id) -> String
     // Gets the area's combat zone type ("pve", "safe", or "pvp")
@@ -1037,18 +1114,21 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
 
     // set_area_flag(area_id, flag_name, value) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("set_area_flag", move |area_id: String, flag_name: String, value: bool| -> bool {
-        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-            if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
-                match flag_name.to_lowercase().as_str() {
-                    "climate_controlled" => area.flags.climate_controlled = value,
-                    _ => return false,
+    engine.register_fn(
+        "set_area_flag",
+        move |area_id: String, flag_name: String, value: bool| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+                    match flag_name.to_lowercase().as_str() {
+                        "climate_controlled" => area.flags.climate_controlled = value,
+                        _ => return false,
+                    }
+                    return cloned_db.save_area_data(area).is_ok();
                 }
-                return cloned_db.save_area_data(area).is_ok();
             }
-        }
-        false
-    });
+            false
+        },
+    );
 
     // get_area_flag(area_id, flag_name) -> bool
     let cloned_db = db.clone();
@@ -1106,8 +1186,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         let outdoor_temp = game_time.calculate_effective_temperature();
 
         // Check climate controlled (room or area)
-        let is_climate_controlled = room.flags.climate_controlled ||
-            room.area_id.and_then(|aid| cloned_db.get_area_data(&aid).ok().flatten())
+        let is_climate_controlled = room.flags.climate_controlled
+            || room
+                .area_id
+                .and_then(|aid| cloned_db.get_area_data(&aid).ok().flatten())
                 .map(|area| area.flags.climate_controlled)
                 .unwrap_or(false);
         let is_outdoors = !room.flags.indoors && !is_climate_controlled;
@@ -1327,74 +1409,59 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
 
     // clear_area_migrant_sim_defaults(area_id) -> bool
     let cloned_db = db.clone();
-    engine.register_fn(
-        "clear_area_migrant_sim_defaults",
-        move |area_id: String| -> bool {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-                if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
-                    area.migrant_sim_defaults = None;
-                    return cloned_db.save_area_data(area).is_ok();
-                }
+    engine.register_fn("clear_area_migrant_sim_defaults", move |area_id: String| -> bool {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+            if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+                area.migrant_sim_defaults = None;
+                return cloned_db.save_area_data(area).is_ok();
             }
-            false
-        },
-    );
+        }
+        false
+    });
 
     // is_valid_name_pool(name) -> bool - check if a name pool config file exists
-    engine.register_fn(
-        "is_valid_name_pool",
-        |name: String| -> bool {
-            let path = std::path::Path::new("scripts/data/names").join(format!("{}.json", name));
-            path.exists()
-        },
-    );
+    engine.register_fn("is_valid_name_pool", |name: String| -> bool {
+        let path = std::path::Path::new("scripts/data/names").join(format!("{}.json", name));
+        path.exists()
+    });
 
     // is_valid_visual_profile(name) -> bool - check if a visual profile config file exists
-    engine.register_fn(
-        "is_valid_visual_profile",
-        |name: String| -> bool {
-            let path = std::path::Path::new("scripts/data/visuals").join(format!("{}.json", name));
-            path.exists()
-        },
-    );
+    engine.register_fn("is_valid_visual_profile", |name: String| -> bool {
+        let path = std::path::Path::new("scripts/data/visuals").join(format!("{}.json", name));
+        path.exists()
+    });
 
     // list_name_pools() -> Array - list available name pool names
-    engine.register_fn(
-        "list_name_pools",
-        || -> rhai::Array {
-            let dir = std::path::Path::new("scripts/data/names");
-            let mut pools = rhai::Array::new();
-            if let Ok(entries) = std::fs::read_dir(dir) {
-                for entry in entries.flatten() {
-                    if let Some(name) = entry.path().file_stem() {
-                        if entry.path().extension().and_then(|e| e.to_str()) == Some("json") {
-                            pools.push(rhai::Dynamic::from(name.to_string_lossy().to_string()));
-                        }
+    engine.register_fn("list_name_pools", || -> rhai::Array {
+        let dir = std::path::Path::new("scripts/data/names");
+        let mut pools = rhai::Array::new();
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.path().file_stem() {
+                    if entry.path().extension().and_then(|e| e.to_str()) == Some("json") {
+                        pools.push(rhai::Dynamic::from(name.to_string_lossy().to_string()));
                     }
                 }
             }
-            pools
-        },
-    );
+        }
+        pools
+    });
 
     // list_visual_profiles() -> Array - list available visual profile names
-    engine.register_fn(
-        "list_visual_profiles",
-        || -> rhai::Array {
-            let dir = std::path::Path::new("scripts/data/visuals");
-            let mut profiles = rhai::Array::new();
-            if let Ok(entries) = std::fs::read_dir(dir) {
-                for entry in entries.flatten() {
-                    if let Some(name) = entry.path().file_stem() {
-                        if entry.path().extension().and_then(|e| e.to_str()) == Some("json") {
-                            profiles.push(rhai::Dynamic::from(name.to_string_lossy().to_string()));
-                        }
+    engine.register_fn("list_visual_profiles", || -> rhai::Array {
+        let dir = std::path::Path::new("scripts/data/visuals");
+        let mut profiles = rhai::Array::new();
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.path().file_stem() {
+                    if entry.path().extension().and_then(|e| e.to_str()) == Some("json") {
+                        profiles.push(rhai::Dynamic::from(name.to_string_lossy().to_string()));
                     }
                 }
             }
-            profiles
-        },
-    );
+        }
+        profiles
+    });
 }
 
 fn default_sim() -> crate::SimulationConfig {

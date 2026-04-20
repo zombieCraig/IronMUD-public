@@ -6,30 +6,30 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::net::TcpListener;
 use tokio::time::Duration;
-use tracing::{info, error};
-
+use tracing::{error, info};
 
 mod ticks;
 
 use ironmud::{
-    db, game::Entity, load_command_metadata, load_game_data, load_scripts, run_server, watch_scripts, World,
-    SharedConnections, save_all_players, broadcast_to_all_players, ShutdownCommand,
+    SharedConnections, ShutdownCommand, World, broadcast_to_all_players,
     chat::ChatMessage,
-    matrix::{MatrixConfig, run_matrix_bot},
-    discord::{DiscordConfig, run_discord_bot},
     claude::{ClaudeConfig, ClaudeRequest, run_claude_task},
+    db,
+    discord::{DiscordConfig, run_discord_bot},
+    game::Entity,
     gemini::{GeminiConfig, GeminiRequest, run_gemini_task},
+    load_command_metadata, load_game_data, load_scripts,
+    matrix::{MatrixConfig, run_matrix_bot},
+    run_server, save_all_players, watch_scripts,
 };
 
-use ticks::{
-    run_spawn_tick, run_periodic_trigger_tick, run_time_tick, run_thirst_tick,
-    run_hunger_tick, run_hunting_tick, run_regen_tick, run_wander_tick, run_combat_tick,
-    run_corpse_decay_tick, run_exposure_tick, run_transport_tick, run_rent_tick,
-    run_spoilage_tick, run_mobile_effects_tick, run_pursuit_tick, run_routine_tick,
-    run_garden_tick, run_drowning_tick, run_bleeding_tick,
-    run_simulation_tick, run_migration_tick, run_aging_tick,
-};
 use ironmud::script;
+use ticks::{
+    run_aging_tick, run_bleeding_tick, run_combat_tick, run_corpse_decay_tick, run_drowning_tick, run_exposure_tick,
+    run_garden_tick, run_hunger_tick, run_hunting_tick, run_migration_tick, run_mobile_effects_tick,
+    run_periodic_trigger_tick, run_pursuit_tick, run_regen_tick, run_rent_tick, run_routine_tick, run_simulation_tick,
+    run_spawn_tick, run_spoilage_tick, run_thirst_tick, run_time_tick, run_transport_tick, run_wander_tick,
+};
 
 #[derive(Parser, Debug)]
 #[command(name = "ironmud")]
@@ -66,7 +66,7 @@ async fn main() -> Result<()> {
     let mut engine = Engine::new();
     engine.set_max_expr_depths(128, 128);
     engine.set_max_operations(1_000_000);
-    engine.set_max_string_size(1_000_000);  // 1MB max string
+    engine.set_max_string_size(1_000_000); // 1MB max string
     engine.set_max_array_size(10_000);
     engine.set_max_map_size(10_000);
 
@@ -135,9 +135,9 @@ async fn main() -> Result<()> {
         recipes: HashMap::new(),
         spell_definitions: HashMap::new(),
         transports: HashMap::new(),
-        chat_sender: None,             // Set after chat bridge channel is created
-        shutdown_sender: None,         // Set after shutdown channel is created
-        shutdown_cancel_sender: None,  // Set after shutdown channel is created
+        chat_sender: None,            // Set after chat bridge channel is created
+        shutdown_sender: None,        // Set after shutdown channel is created
+        shutdown_cancel_sender: None, // Set after shutdown channel is created
     }));
 
     // Register types and functions
@@ -148,12 +148,15 @@ async fn main() -> Result<()> {
             .register_type_with_name::<Entity>("Entity")
             .register_get("id", |entity: &mut Entity| entity.id.to_string())
             .register_get("name", |entity: &mut Entity| entity.name.clone())
-            .register_get("description", |entity: &mut Entity| {
-                entity.description.clone()
-            });
+            .register_get("description", |entity: &mut Entity| entity.description.clone());
 
         // Register Rhai functions - pass SharedConnections and SharedState
-        script::register_rhai_functions(&mut world.engine, Arc::new(cloned_db_for_rhai), connections.clone(), state.clone());
+        script::register_rhai_functions(
+            &mut world.engine,
+            Arc::new(cloned_db_for_rhai),
+            connections.clone(),
+            state.clone(),
+        );
     }
 
     // Load and watch scripts
@@ -311,9 +314,7 @@ async fn main() -> Result<()> {
             .unwrap_or_else(|| ironmud::control::default_socket_path(&args.database));
         let control_connections = connections.clone();
         tokio::spawn(async move {
-            if let Err(e) =
-                ironmud::control::run_control_socket(socket_path, control_connections).await
-            {
+            if let Err(e) = ironmud::control::run_control_socket(socket_path, control_connections).await {
                 error!("Control socket terminated: {}", e);
             }
         });
@@ -431,7 +432,9 @@ async fn main() -> Result<()> {
 
     if claude_configured && gemini_configured {
         // Both configured - error and disable both
-        error!("Both CLAUDE_API_KEY and GEMINI_API_KEY are set. Only one AI provider can be used at a time. Disabling AI integration.");
+        error!(
+            "Both CLAUDE_API_KEY and GEMINI_API_KEY are set. Only one AI provider can be used at a time. Disabling AI integration."
+        );
         // Register a dummy Claude sender that will never receive anything
         let (claude_tx, _) = tokio::sync::mpsc::unbounded_channel::<ClaudeRequest>();
         let mut world = state.lock().unwrap();
@@ -469,11 +472,9 @@ async fn main() -> Result<()> {
     let shutdown_connections = connections.clone();
     #[cfg(unix)]
     {
-        use tokio::signal::unix::{signal, SignalKind};
-        let mut sigterm = signal(SignalKind::terminate())
-            .expect("Failed to set up SIGTERM handler");
-        let mut sigint = signal(SignalKind::interrupt())
-            .expect("Failed to set up SIGINT handler");
+        use tokio::signal::unix::{SignalKind, signal};
+        let mut sigterm = signal(SignalKind::terminate()).expect("Failed to set up SIGTERM handler");
+        let mut sigint = signal(SignalKind::interrupt()).expect("Failed to set up SIGINT handler");
 
         loop {
             tokio::select! {
@@ -542,7 +543,10 @@ async fn main() -> Result<()> {
     }
 
     // Notify all connected players about shutdown
-    broadcast_to_all_players(&connections, "\n*** SERVER NOTICE: The server is shutting down. Your progress will be saved. ***\n");
+    broadcast_to_all_players(
+        &connections,
+        "\n*** SERVER NOTICE: The server is shutting down. Your progress will be saved. ***\n",
+    );
 
     // Notify chat integrations about shutdown
     let _ = shutdown_chat_tx.send(ChatMessage::Broadcast("IronMUD server is shutting down.".to_string()));
@@ -605,12 +609,15 @@ async fn run_shutdown_countdown(
         // Check if cancelled
         if *cancel_rx.borrow() {
             broadcast_to_all_players(connections, "\n*** SERVER SHUTDOWN CANCELLED ***\n");
-            let _ = chat_tx.send(ChatMessage::Broadcast("Server shutdown has been cancelled.".to_string()));
+            let _ = chat_tx.send(ChatMessage::Broadcast(
+                "Server shutdown has been cancelled.".to_string(),
+            ));
             return true;
         }
 
         // Find the next milestone
-        let next_milestone = milestones.iter()
+        let next_milestone = milestones
+            .iter()
             .filter(|&&m| m < remaining)
             .max()
             .copied()
@@ -652,4 +659,3 @@ async fn run_shutdown_countdown(
     broadcast_to_all_players(connections, "\n*** SERVER SHUTDOWN NOW ***\n");
     false // Not cancelled, proceed with shutdown
 }
-

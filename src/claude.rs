@@ -3,10 +3,10 @@
 //! Provides AI-assisted description writing for OLC editors.
 //! Uses message-passing to handle async API calls from sync Rhai scripts.
 
+use serde::{Deserialize, Serialize};
 use std::env;
 use tokio::sync::mpsc;
-use tracing::{info, warn, debug};
-use serde::{Deserialize, Serialize};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::SharedConnections;
@@ -24,8 +24,7 @@ impl ClaudeConfig {
     /// Returns None if CLAUDE_API_KEY is missing.
     pub fn from_env() -> Option<Self> {
         let api_key = env::var("CLAUDE_API_KEY").ok()?;
-        let model = env::var("CLAUDE_MODEL")
-            .unwrap_or_else(|_| "claude-sonnet-4-20250514".to_string());
+        let model = env::var("CLAUDE_MODEL").unwrap_or_else(|_| "claude-sonnet-4-20250514".to_string());
         let max_tokens = env::var("CLAUDE_MAX_TOKENS")
             .ok()
             .and_then(|s| s.parse().ok())
@@ -169,11 +168,7 @@ pub async fn run_claude_task(
     info!("Claude AI integration task shutting down");
 }
 
-async fn process_request(
-    config: &ClaudeConfig,
-    client: &reqwest::Client,
-    request: ClaudeRequest,
-) -> AiResponse {
+async fn process_request(config: &ClaudeConfig, client: &reqwest::Client, request: ClaudeRequest) -> AiResponse {
     match request {
         ClaudeRequest::HelpMeWrite {
             request_id,
@@ -411,11 +406,7 @@ Return ONLY the long description, no formatting or labels."#
     }
 }
 
-fn build_help_me_write_prompt(
-    desc_type: &DescriptionType,
-    prompt: &str,
-    context: &DescriptionContext,
-) -> String {
+fn build_help_me_write_prompt(desc_type: &DescriptionType, prompt: &str, context: &DescriptionContext) -> String {
     match desc_type {
         DescriptionType::RoomDescription => {
             let mut p = String::new();
@@ -468,11 +459,7 @@ fn build_help_me_write_prompt(
     }
 }
 
-fn build_rephrase_prompt(
-    desc_type: &DescriptionType,
-    existing_text: &str,
-    context: &DescriptionContext,
-) -> String {
+fn build_rephrase_prompt(desc_type: &DescriptionType, existing_text: &str, context: &DescriptionContext) -> String {
     match desc_type {
         DescriptionType::RoomDescription => {
             let mut p = String::new();
@@ -489,7 +476,9 @@ fn build_rephrase_prompt(
         }
         DescriptionType::MobileShortDesc | DescriptionType::MobileLongDesc => {
             let mut p = String::new();
-            p.push_str("Rephrase the following NPC description to be more evocative while keeping the same general meaning");
+            p.push_str(
+                "Rephrase the following NPC description to be more evocative while keeping the same general meaning",
+            );
             if let Some(ref name) = context.entity_name {
                 p.push_str(&format!(" for \"{}\"", name));
             }
@@ -502,7 +491,9 @@ fn build_rephrase_prompt(
         }
         DescriptionType::ItemShortDesc | DescriptionType::ItemLongDesc => {
             let mut p = String::new();
-            p.push_str("Rephrase the following item description to be more evocative while keeping the same general meaning");
+            p.push_str(
+                "Rephrase the following item description to be more evocative while keeping the same general meaning",
+            );
             if let Some(ref name) = context.entity_name {
                 p.push_str(&format!(" for \"{}\"", name));
             }
@@ -516,12 +507,7 @@ fn build_rephrase_prompt(
     }
 }
 
-fn parse_ai_response(
-    request_id: Uuid,
-    connection_id: Uuid,
-    desc_type: &DescriptionType,
-    response: &str,
-) -> AiResponse {
+fn parse_ai_response(request_id: Uuid, connection_id: Uuid, desc_type: &DescriptionType, response: &str) -> AiResponse {
     match desc_type {
         DescriptionType::RoomDescription => {
             // Parse the structured response for room descriptions

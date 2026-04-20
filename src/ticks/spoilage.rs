@@ -3,10 +3,10 @@
 //! Handles corpse decay and food spoilage.
 
 use anyhow::Result;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::{debug, error};
 
-use ironmud::{db, ItemLocation, ItemType, SharedConnections, TemperatureCategory};
+use ironmud::{ItemLocation, ItemType, SharedConnections, TemperatureCategory, db};
 
 use super::broadcast::broadcast_to_room;
 
@@ -60,7 +60,11 @@ fn process_corpse_decay(db: &db::Db, connections: &SharedConnections) -> Result<
 
             let age = now - item.flags.corpse_created_at;
 
-            let decay_time = if item.flags.corpse_is_player { player_corpse_decay } else { mobile_corpse_decay };
+            let decay_time = if item.flags.corpse_is_player {
+                player_corpse_decay
+            } else {
+                mobile_corpse_decay
+            };
 
             if age >= decay_time {
                 // Get room for message
@@ -133,9 +137,9 @@ fn get_spoilage_container_modifier(item: &ironmud::ItemData, db: &db::Db) -> f64
             if container.container_closed {
                 if container.flags.preserves_contents {
                     return match container.preservation_level {
-                        2 => 0.0,   // Freezer - no spoilage
-                        1 => 0.25,  // Fridge - very slow
-                        _ => 0.5,   // Sealed preserving container
+                        2 => 0.0,  // Freezer - no spoilage
+                        1 => 0.25, // Fridge - very slow
+                        _ => 0.5,  // Sealed preserving container
                     };
                 }
                 return 0.75; // Closed but no preservation
@@ -149,9 +153,7 @@ fn get_spoilage_container_modifier(item: &ironmud::ItemData, db: &db::Db) -> f64
 /// Resolve an item's effective room for temperature purposes
 fn resolve_item_room(item: &ironmud::ItemData, db: &db::Db) -> Option<ironmud::RoomData> {
     match &item.location {
-        ItemLocation::Room(room_id) => {
-            db.get_room_data(room_id).ok().flatten()
-        }
+        ItemLocation::Room(room_id) => db.get_room_data(room_id).ok().flatten(),
         ItemLocation::Container(container_id) => {
             // Resolve the container's location (one level deep)
             if let Ok(Some(container)) = db.get_item_data(container_id) {
@@ -159,8 +161,7 @@ fn resolve_item_room(item: &ironmud::ItemData, db: &db::Db) -> Option<ironmud::R
                     ItemLocation::Room(room_id) => {
                         return db.get_room_data(room_id).ok().flatten();
                     }
-                    ItemLocation::Inventory(char_name) |
-                    ItemLocation::Equipped(char_name) => {
+                    ItemLocation::Inventory(char_name) | ItemLocation::Equipped(char_name) => {
                         if let Ok(Some(ch)) = db.get_character_data(char_name) {
                             return db.get_room_data(&ch.current_room_id).ok().flatten();
                         }
@@ -170,8 +171,7 @@ fn resolve_item_room(item: &ironmud::ItemData, db: &db::Db) -> Option<ironmud::R
             }
             None
         }
-        ItemLocation::Inventory(char_name) |
-        ItemLocation::Equipped(char_name) => {
+        ItemLocation::Inventory(char_name) | ItemLocation::Equipped(char_name) => {
             if let Ok(Some(ch)) = db.get_character_data(char_name) {
                 db.get_room_data(&ch.current_room_id).ok().flatten()
             } else {

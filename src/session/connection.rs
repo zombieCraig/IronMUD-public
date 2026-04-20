@@ -114,10 +114,7 @@ pub fn send_client_message(connections: &SharedConnections, connection_id_str: S
 }
 
 /// Find a player's connection ID by their character name (case-insensitive)
-pub fn find_player_connection_by_name(
-    connections: &SharedConnections,
-    player_name: &str,
-) -> Option<ConnectionId> {
+pub fn find_player_connection_by_name(connections: &SharedConnections, player_name: &str) -> Option<ConnectionId> {
     let conns = connections.lock().unwrap();
     for (id, session) in conns.iter() {
         if let Some(ref character) = session.character {

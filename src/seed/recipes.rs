@@ -37,13 +37,11 @@ pub fn seed_recipes(db: &Db) -> Result<()> {
             skill: "cooking".to_string(),
             skill_required: 0,
             auto_learn: true,
-            ingredients: vec![
-                RecipeIngredient {
-                    vnum: Some("oakvale:flour".to_string()),
-                    category: None,
-                    quantity: 1,
-                },
-            ],
+            ingredients: vec![RecipeIngredient {
+                vnum: Some("oakvale:flour".to_string()),
+                category: None,
+                quantity: 1,
+            }],
             tools: Vec::new(),
             output_vnum: "oakvale:bread".to_string(),
             output_quantity: 2,
@@ -57,13 +55,11 @@ pub fn seed_recipes(db: &Db) -> Result<()> {
             skill: "crafting".to_string(),
             skill_required: 0,
             auto_learn: true,
-            ingredients: vec![
-                RecipeIngredient {
-                    vnum: Some("oakvale:leather".to_string()),
-                    category: None,
-                    quantity: 1,
-                },
-            ],
+            ingredients: vec![RecipeIngredient {
+                vnum: Some("oakvale:leather".to_string()),
+                category: None,
+                quantity: 1,
+            }],
             tools: Vec::new(),
             output_vnum: "oakvale:bandage".to_string(),
             output_quantity: 2,
@@ -77,13 +73,11 @@ pub fn seed_recipes(db: &Db) -> Result<()> {
             skill: "crafting".to_string(),
             skill_required: 0,
             auto_learn: true,
-            ingredients: vec![
-                RecipeIngredient {
-                    vnum: Some("oakvale:wood".to_string()),
-                    category: None,
-                    quantity: 1,
-                },
-            ],
+            ingredients: vec![RecipeIngredient {
+                vnum: Some("oakvale:wood".to_string()),
+                category: None,
+                quantity: 1,
+            }],
             tools: Vec::new(),
             output_vnum: "oakvale:torch".to_string(),
             output_quantity: 1,

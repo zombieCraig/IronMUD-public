@@ -53,11 +53,7 @@ fn roll<R: Rng>(chance: f32, rng: &mut R) -> bool {
     chance > 0.0 && rng.r#gen::<f32>() < chance.clamp(0.0, 1.0)
 }
 
-pub fn apply_variation<R: Rng>(
-    mobile: &mut MobileData,
-    variation: MigrantVariation,
-    rng: &mut R,
-) {
+pub fn apply_variation<R: Rng>(mobile: &mut MobileData, variation: MigrantVariation, rng: &mut R) {
     match variation {
         MigrantVariation::Common => {}
         MigrantVariation::Guard => apply_guard(mobile, rng),
@@ -296,13 +292,30 @@ mod tests {
     #[test]
     fn guard_bias_keeps_list_lengths_and_prefers_role_topics() {
         use crate::types::SocialState;
-        use rand::rngs::StdRng;
         use rand::SeedableRng;
+        use rand::rngs::StdRng;
 
         let pool: Vec<String> = vec![
-            "fishing", "cooking", "gossip", "religion", "music", "drinking", "hunting",
-            "farming", "politics", "the weather", "the harvest", "old stories", "travel",
-            "children", "craft", "trade", "the road", "the mayor", "rumors", "the sea",
+            "fishing",
+            "cooking",
+            "gossip",
+            "religion",
+            "music",
+            "drinking",
+            "hunting",
+            "farming",
+            "politics",
+            "the weather",
+            "the harvest",
+            "old stories",
+            "travel",
+            "children",
+            "craft",
+            "trade",
+            "the road",
+            "the mayor",
+            "rumors",
+            "the sea",
         ]
         .into_iter()
         .map(String::from)
@@ -360,8 +373,8 @@ mod tests {
     #[test]
     fn bias_does_not_overwrite_opposite_list() {
         use crate::types::SocialState;
-        use rand::rngs::StdRng;
         use rand::SeedableRng;
+        use rand::rngs::StdRng;
 
         let pool: Vec<String> = vec!["drinking".to_string(), "children".to_string()];
         let mut rng = StdRng::seed_from_u64(1);

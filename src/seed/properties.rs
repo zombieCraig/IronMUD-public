@@ -12,7 +12,8 @@ pub fn seed_properties(db: &Db) -> Result<()> {
         vnum: "oakvale:cozy_cottage".to_string(),
         name: "A Cozy Cottage".to_string(),
         description: "A charming stone cottage with a thatched roof, perfect for an adventurer \
-            seeking a place to call home. Comes with a storage chest and a warm hearth.".to_string(),
+            seeking a place to call home. Comes with a storage chest and a warm hearth."
+            .to_string(),
         monthly_rent: 50,
         entrance_room_id: seed_uuid("oakvale:cottage_entry"),
         max_instances: 0, // Unlimited

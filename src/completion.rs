@@ -9,7 +9,6 @@
 
 use unicode_width::UnicodeWidthStr;
 
-
 /// Result of a completion request
 #[derive(Debug, Clone)]
 pub struct CompletionResult {
@@ -241,11 +240,7 @@ fn filter_static(options: &[&str], partial: &str, comp_type: CompletionType) -> 
 
 /// Helper: Return all static options (no filtering)
 fn all_static(options: &[&str], comp_type: CompletionType) -> CompletionResult {
-    CompletionResult::new(
-        options.iter().map(|s| s.to_string()).collect(),
-        "",
-        comp_type,
-    )
+    CompletionResult::new(options.iter().map(|s| s.to_string()).collect(), "", comp_type)
 }
 
 /// Helper: Filter dynamic (runtime) options by prefix
@@ -274,32 +269,70 @@ fn get_partial(words: &[&str], completing_word: bool) -> String {
 
 /// Directions for movement
 pub const DIRECTIONS: &[&str] = &[
-    "north", "south", "east", "west", "up", "down",
-    "northeast", "northwest", "southeast", "southwest",
+    "north",
+    "south",
+    "east",
+    "west",
+    "up",
+    "down",
+    "northeast",
+    "northwest",
+    "southeast",
+    "southwest",
 ];
 
 /// Skill names for crafting/cooking
-pub const SKILL_NAMES: &[&str] = &[
-    "cooking", "crafting", "fishing", "foraging", "gardening", "swimming",
-];
+pub const SKILL_NAMES: &[&str] = &["cooking", "crafting", "fishing", "foraging", "gardening", "swimming"];
 
 /// Medit subcommands
 pub const MEDIT_SUBCOMMANDS: &[&str] = &[
-    "name", "short", "long", "keywords", "level", "hp", "damage", "ac", "damtype",
-    "stat", "flags", "flag", "prototype", "vnum", "dialogue", "dialogues",
-    "rmdialogue", "spawn", "shop", "healer", "trigger", "transport", "leasing",
-    "routine", "autostats", "gold", "perception", "simulation",
+    "name",
+    "short",
+    "long",
+    "keywords",
+    "level",
+    "hp",
+    "damage",
+    "ac",
+    "damtype",
+    "stat",
+    "flags",
+    "flag",
+    "prototype",
+    "vnum",
+    "dialogue",
+    "dialogues",
+    "rmdialogue",
+    "spawn",
+    "shop",
+    "healer",
+    "trigger",
+    "transport",
+    "leasing",
+    "routine",
+    "autostats",
+    "gold",
+    "perception",
+    "simulation",
 ];
 
 /// Mobile transport route actions
-pub const MOBILE_TRANSPORT_ACTIONS: &[&str] = &[
-    "set", "fixed", "random", "permanent", "clear",
-];
+pub const MOBILE_TRANSPORT_ACTIONS: &[&str] = &["set", "fixed", "random", "permanent", "clear"];
 
 /// Mobile flags
 pub const MOBILE_FLAGS: &[&str] = &[
-    "aggressive", "sentinel", "scavenger", "shopkeeper", "no_attack", "healer",
-    "leasing_agent", "cowardly", "can_open_doors", "guard", "thief", "cant_swim",
+    "aggressive",
+    "sentinel",
+    "scavenger",
+    "shopkeeper",
+    "no_attack",
+    "healer",
+    "leasing_agent",
+    "cowardly",
+    "can_open_doors",
+    "guard",
+    "thief",
+    "cant_swim",
 ];
 
 /// Routine subcommands
@@ -307,18 +340,21 @@ pub const ROUTINE_SUBCOMMANDS: &[&str] = &[
     "add", "remove", "clear", "preset", "msg", "wander", "visible", "dialogue",
 ];
 
-pub const SIMULATION_SUBCOMMANDS: &[&str] = &[
-    "setup", "remove", "pay", "hours", "food", "decay",
-];
+pub const SIMULATION_SUBCOMMANDS: &[&str] = &["setup", "remove", "pay", "hours", "food", "decay"];
 
 /// Activity states for routine entries
-pub const ACTIVITY_STATES: &[&str] = &[
-    "working", "sleeping", "patrolling", "off_duty", "socializing", "eating",
-];
+pub const ACTIVITY_STATES: &[&str] = &["working", "sleeping", "patrolling", "off_duty", "socializing", "eating"];
 
 /// Shop subcommands
 pub const SHOP_SUBCOMMANDS: &[&str] = &[
-    "stock", "buyrate", "sellrate", "buys", "categories", "preset", "minvalue", "maxvalue",
+    "stock",
+    "buyrate",
+    "sellrate",
+    "buys",
+    "categories",
+    "preset",
+    "minvalue",
+    "maxvalue",
 ];
 
 /// Shop categories actions
@@ -333,27 +369,41 @@ pub const BPREDIT_SUBCOMMANDS: &[&str] = &[
 ];
 
 /// Leasing agent subcommands
-pub const LEASING_SUBCOMMANDS: &[&str] = &[
-    "area", "add", "remove",
-];
+pub const LEASING_SUBCOMMANDS: &[&str] = &["area", "add", "remove"];
 
 /// Shop stock actions
-pub const SHOP_STOCK_ACTIONS: &[&str] = &[
-    "add", "remove",
-];
+pub const SHOP_STOCK_ACTIONS: &[&str] = &["add", "remove"];
 
 /// Item flags
 pub const ITEM_FLAGS: &[&str] = &[
-    "no_drop", "no_get", "no_remove", "invisible", "glow", "hum", "no_sell",
-    "unique", "quest_item", "vending", "provides_light", "fishing_rod", "bait",
-    "foraging_tool", "waterproof", "provides_warmth", "reduces_glare", "medical_tool",
-    "preserves_contents", "death_only", "atm", "plant_pot", "lockpick", "is_skinned",
+    "no_drop",
+    "no_get",
+    "no_remove",
+    "invisible",
+    "glow",
+    "hum",
+    "no_sell",
+    "unique",
+    "quest_item",
+    "vending",
+    "provides_light",
+    "fishing_rod",
+    "bait",
+    "foraging_tool",
+    "waterproof",
+    "provides_warmth",
+    "reduces_glare",
+    "medical_tool",
+    "preserves_contents",
+    "death_only",
+    "atm",
+    "plant_pot",
+    "lockpick",
+    "is_skinned",
 ];
 
 /// Vending subcommands
-pub const VENDING_SUBCOMMANDS: &[&str] = &[
-    "stock", "sellrate",
-];
+pub const VENDING_SUBCOMMANDS: &[&str] = &["stock", "sellrate"];
 
 /// Trigger actions
 pub const TRIGGER_ACTIONS: &[&str] = &[
@@ -361,58 +411,120 @@ pub const TRIGGER_ACTIONS: &[&str] = &[
 ];
 
 /// Trigger types
-pub const TRIGGER_TYPES: &[&str] = &[
-    "greet", "attack", "death", "say", "idle", "always", "flee",
-];
+pub const TRIGGER_TYPES: &[&str] = &["greet", "attack", "death", "say", "idle", "always", "flee"];
 
 /// Mobile trigger templates
-pub const MOBILE_TRIGGER_TEMPLATES: &[&str] = &[
-    "@say_greeting", "@say_random", "@emote", "@shout",
-];
+pub const MOBILE_TRIGGER_TEMPLATES: &[&str] = &["@say_greeting", "@say_random", "@emote", "@shout"];
 
 /// Room trigger templates
 pub const ROOM_TRIGGER_TEMPLATES: &[&str] = &[
-    "@room_message", "@time_message", "@weather_message", "@season_message", "@random_message",
+    "@room_message",
+    "@time_message",
+    "@weather_message",
+    "@season_message",
+    "@random_message",
 ];
 
 /// Item trigger templates
-pub const ITEM_TRIGGER_TEMPLATES: &[&str] = &[
-    "@message", "@random_message", "@block_message",
-];
+pub const ITEM_TRIGGER_TEMPLATES: &[&str] = &["@message", "@random_message", "@block_message"];
 
 /// Oedit subcommands
 pub const OEDIT_SUBCOMMANDS: &[&str] = &[
-    "name", "short", "long", "keywords", "type", "wear", "ac", "protects", "weight", "value",
-    "flags", "flag", "spawn", "damage", "damtype", "twohanded", "wskill",
-    "caliber", "ammocount", "ammobonus",
-    "rangedtype", "magsize", "loadedammo", "firemode", "firemodes",
-    "capacity", "closed", "locked", "key",
-    "liquid", "fill", "empty", "liqpoison", "liqeffect", "clearliqeffects",
-    "nutrition", "spoil", "foodpoison", "foodeffect", "clearfoodeffects", "resetfresh", "preservation", "spoilage",
-    "level", "stat", "insulation", "category", "teaches", "transport",
-    "prototype", "vnum", "trigger", "vending",
-    "quality", "baituses", "weightreduction", "medical",
-    "noise", "plantproto", "fertduration", "treats", "teaches_spell",
+    "name",
+    "short",
+    "long",
+    "keywords",
+    "type",
+    "wear",
+    "ac",
+    "protects",
+    "weight",
+    "value",
+    "flags",
+    "flag",
+    "spawn",
+    "damage",
+    "damtype",
+    "twohanded",
+    "wskill",
+    "caliber",
+    "ammocount",
+    "ammobonus",
+    "rangedtype",
+    "magsize",
+    "loadedammo",
+    "firemode",
+    "firemodes",
+    "capacity",
+    "closed",
+    "locked",
+    "key",
+    "liquid",
+    "fill",
+    "empty",
+    "liqpoison",
+    "liqeffect",
+    "clearliqeffects",
+    "nutrition",
+    "spoil",
+    "foodpoison",
+    "foodeffect",
+    "clearfoodeffects",
+    "resetfresh",
+    "preservation",
+    "spoilage",
+    "level",
+    "stat",
+    "insulation",
+    "category",
+    "teaches",
+    "transport",
+    "prototype",
+    "vnum",
+    "trigger",
+    "vending",
+    "quality",
+    "baituses",
+    "weightreduction",
+    "medical",
+    "noise",
+    "plantproto",
+    "fertduration",
+    "treats",
+    "teaches_spell",
 ];
 
 /// Item trigger actions
-pub const ITEM_TRIGGER_ACTIONS: &[&str] = &[
-    "list", "add", "remove", "enable", "disable", "chance", "test", "view",
-];
+pub const ITEM_TRIGGER_ACTIONS: &[&str] = &["list", "add", "remove", "enable", "disable", "chance", "test", "view"];
 
 /// Item trigger types
-pub const ITEM_TRIGGER_TYPES: &[&str] = &[
-    "get", "drop", "use", "examine", "on_prompt",
-];
+pub const ITEM_TRIGGER_TYPES: &[&str] = &["get", "drop", "use", "examine", "on_prompt"];
 
 /// Item types
 pub const ITEM_TYPES: &[&str] = &[
-    "armor", "weapon", "container", "liquid_container", "food", "key", "misc", "ammunition",
+    "armor",
+    "weapon",
+    "container",
+    "liquid_container",
+    "food",
+    "key",
+    "misc",
+    "ammunition",
 ];
 
 /// Damage types
 pub const DAMAGE_TYPES: &[&str] = &[
-    "arcane", "bludgeoning", "slashing", "piercing", "fire", "cold", "lightning", "poison", "acid", "bite", "ballistic",
+    "arcane",
+    "bludgeoning",
+    "slashing",
+    "piercing",
+    "fire",
+    "cold",
+    "lightning",
+    "poison",
+    "acid",
+    "bite",
+    "ballistic",
 ];
 
 /// Ranged weapon types
@@ -426,8 +538,8 @@ pub const NOISE_LEVELS: &[&str] = &["silent", "quiet", "normal", "loud", "clear"
 
 /// Redit subcommands
 pub const REDIT_SUBCOMMANDS: &[&str] = &[
-    "show", "title", "desc", "flags", "flag", "zone", "extra", "vnum", "area", "trigger",
-    "door", "seasonal", "dynamic", "water", "catch", "create",
+    "show", "title", "desc", "flags", "flag", "zone", "extra", "vnum", "area", "trigger", "door", "seasonal",
+    "dynamic", "water", "catch", "create",
 ];
 
 /// Room trigger actions
@@ -437,49 +549,73 @@ pub const ROOM_TRIGGER_ACTIONS: &[&str] = &[
 
 /// Room trigger types
 pub const ROOM_TRIGGER_TYPES: &[&str] = &[
-    "enter", "exit", "look", "periodic",
-    "on_time_change", "on_weather_change", "on_season_change", "on_month_change",
+    "enter",
+    "exit",
+    "look",
+    "periodic",
+    "on_time_change",
+    "on_weather_change",
+    "on_season_change",
+    "on_month_change",
 ];
 
 /// Room flags
 pub const ROOM_FLAGS: &[&str] = &[
-    "dark", "no_mob", "indoors", "underwater", "climate_controlled", "always_hot", "always_cold",
-    "city", "no_windows", "difficult_terrain", "dirt_floor", "property_storage",
-    "post_office", "bank", "garden", "spawn_point", "shallow_water", "deep_water",
+    "dark",
+    "no_mob",
+    "indoors",
+    "underwater",
+    "climate_controlled",
+    "always_hot",
+    "always_cold",
+    "city",
+    "no_windows",
+    "difficult_terrain",
+    "dirt_floor",
+    "property_storage",
+    "post_office",
+    "bank",
+    "garden",
+    "spawn_point",
+    "shallow_water",
+    "deep_water",
 ];
 
 /// Combat zone types
-pub const COMBAT_ZONE_TYPES: &[&str] = &[
-    "pve", "safe", "pvp", "inherit",
-];
+pub const COMBAT_ZONE_TYPES: &[&str] = &["pve", "safe", "pvp", "inherit"];
 
 /// Water types for fishing
-pub const WATER_TYPES: &[&str] = &[
-    "none", "freshwater", "saltwater", "magical",
-];
+pub const WATER_TYPES: &[&str] = &["none", "freshwater", "saltwater", "magical"];
 
 /// Door subcommands
 pub const DOOR_SUBCOMMANDS: &[&str] = &[
-    "add", "remove", "name", "desc", "key", "keywords",
-    "open", "close", "lock", "unlock", "sync",
+    "add", "remove", "name", "desc", "key", "keywords", "open", "close", "lock", "unlock", "sync",
 ];
 
 /// Extra description actions
-pub const EXTRA_DESC_ACTIONS: &[&str] = &[
-    "list", "add", "edit", "remove",
-];
+pub const EXTRA_DESC_ACTIONS: &[&str] = &["list", "add", "edit", "remove"];
 
 /// Aedit subcommands
 pub const AEDIT_SUBCOMMANDS: &[&str] = &[
-    "show", "name", "desc", "prefix", "theme", "levels",
-    "owner", "permission", "trust", "untrust", "trustees",
-    "forage", "zone", "flags", "immigration",
+    "show",
+    "name",
+    "desc",
+    "prefix",
+    "theme",
+    "levels",
+    "owner",
+    "permission",
+    "trust",
+    "untrust",
+    "trustees",
+    "forage",
+    "zone",
+    "flags",
+    "immigration",
 ];
 
 /// Permission levels
-pub const PERMISSION_LEVELS: &[&str] = &[
-    "owner_only", "trusted", "all_builders",
-];
+pub const PERMISSION_LEVELS: &[&str] = &["owner_only", "trusted", "all_builders"];
 
 /// Forage table types
 pub const FORAGE_TYPES: &[&str] = &["city", "wilderness", "shallow_water", "deep_water", "underwater"];
@@ -495,8 +631,18 @@ pub const AREA_ZONE_TYPES: &[&str] = &["pve", "safe", "pvp"];
 
 /// Immigration subcommands
 pub const IMMIGRATION_SUBCOMMANDS: &[&str] = &[
-    "on", "off", "room", "namepool", "visuals", "interval", "max", "workhours", "pay", "clear_sim",
-    "variations", "list",
+    "on",
+    "off",
+    "room",
+    "namepool",
+    "visuals",
+    "interval",
+    "max",
+    "workhours",
+    "pay",
+    "clear_sim",
+    "variations",
+    "list",
 ];
 
 /// Spedit subcommands
@@ -515,14 +661,25 @@ pub const SPEDIT_DEP_TYPES: &[&str] = &["inv", "equip", "contain"];
 
 /// Wear slots for equipment
 pub const WEAR_SLOTS: &[&str] = &[
-    "head", "neck", "shoulders", "torso", "back", "arms", "hands",
-    "waist", "legs", "feet", "wrists", "ankles", "wielded", "offhand", "ears",
+    "head",
+    "neck",
+    "shoulders",
+    "torso",
+    "back",
+    "arms",
+    "hands",
+    "waist",
+    "legs",
+    "feet",
+    "wrists",
+    "ankles",
+    "wielded",
+    "offhand",
+    "ears",
 ];
 
 /// Spawn entity types
-pub const SPAWN_ENTITY_TYPES: &[&str] = &[
-    "mobile", "item",
-];
+pub const SPAWN_ENTITY_TYPES: &[&str] = &["mobile", "item"];
 
 /// Set command subcommands (available to all users)
 pub const SET_SUBCOMMANDS_BASE: &[&str] = &["mxp", "color", "afk", "helpline"];
@@ -540,8 +697,16 @@ pub const RCOPY_CATEGORIES: &[&str] = &[
 
 /// Recedit subcommands
 pub const RECEDIT_SUBCOMMANDS: &[&str] = &[
-    "name", "vnum", "skill", "level", "autolearn", "difficulty", "xp", "output",
-    "ingredient", "tool",
+    "name",
+    "vnum",
+    "skill",
+    "level",
+    "autolearn",
+    "difficulty",
+    "xp",
+    "output",
+    "ingredient",
+    "tool",
 ];
 
 /// Recipe ingredient actions
@@ -552,18 +717,34 @@ pub const TOOL_ACTIONS: &[&str] = &["list", "add", "remove"];
 
 /// Admin subcommands
 pub const ADMIN_SUBCOMMANDS: &[&str] = &[
-    "kick", "summon", "heal", "settime", "broadcast", "shutdown", "cancel", "god", "user", "api-key", "help",
+    "kick",
+    "summon",
+    "heal",
+    "settime",
+    "broadcast",
+    "shutdown",
+    "cancel",
+    "god",
+    "user",
+    "api-key",
+    "help",
 ];
 
 /// Admin user sub-actions
 pub const ADMIN_USER_ACTIONS: &[&str] = &[
-    "list", "info", "grant-admin", "revoke-admin", "grant-builder", "revoke-builder", "password", "delete", "help",
+    "list",
+    "info",
+    "grant-admin",
+    "revoke-admin",
+    "grant-builder",
+    "revoke-builder",
+    "password",
+    "delete",
+    "help",
 ];
 
 /// Admin api-key sub-actions
-pub const ADMIN_API_KEY_ACTIONS: &[&str] = &[
-    "list", "create", "show", "revoke", "enable", "delete", "help",
-];
+pub const ADMIN_API_KEY_ACTIONS: &[&str] = &["list", "create", "show", "revoke", "enable", "delete", "help"];
 
 /// Recipe tool locations
 pub const TOOL_LOCATIONS: &[&str] = &["inv", "inventory", "room", "either"];
@@ -573,13 +754,21 @@ pub const RECIPE_SKILLS: &[&str] = &["cooking", "crafting"];
 
 /// Tedit subcommands
 pub const TEDIT_SUBCOMMANDS: &[&str] = &[
-    "name", "vnum", "type", "interior", "traveltime", "schedule", "stop", "connect", "disconnect", "delete", "show",
+    "name",
+    "vnum",
+    "type",
+    "interior",
+    "traveltime",
+    "schedule",
+    "stop",
+    "connect",
+    "disconnect",
+    "delete",
+    "show",
 ];
 
 /// Transport types
-pub const TRANSPORT_TYPES: &[&str] = &[
-    "elevator", "bus", "train", "ferry", "airship",
-];
+pub const TRANSPORT_TYPES: &[&str] = &["elevator", "bus", "train", "ferry", "airship"];
 
 /// Transport schedule types
 pub const SCHEDULE_TYPES: &[&str] = &["ondemand", "gametime"];
@@ -592,26 +781,51 @@ pub const PRESS_TARGETS: &[&str] = &["button"];
 
 /// Body parts for treat command (primary names)
 pub const BODY_PARTS: &[&str] = &[
-    "head", "neck", "torso",
-    "leftarm", "rightarm", "leftleg", "rightleg",
-    "lefthand", "righthand", "leftfoot", "rightfoot",
-    "lefteye", "righteye", "leftear", "rightear", "jaw",
+    "head",
+    "neck",
+    "torso",
+    "leftarm",
+    "rightarm",
+    "leftleg",
+    "rightleg",
+    "lefthand",
+    "righthand",
+    "leftfoot",
+    "rightfoot",
+    "lefteye",
+    "righteye",
+    "leftear",
+    "rightear",
+    "jaw",
 ];
 
 /// Treatable conditions for treat command
-pub const TREATABLE_CONDITIONS: &[&str] = &[
-    "illness", "hypothermia", "heat_exhaustion", "heat_stroke",
-];
+pub const TREATABLE_CONDITIONS: &[&str] = &["illness", "hypothermia", "heat_exhaustion", "heat_stroke"];
 
 /// Combined body parts and conditions for treat command second argument
 pub const TREAT_TARGETS: &[&str] = &[
     // Body parts
-    "head", "neck", "torso",
-    "leftarm", "rightarm", "leftleg", "rightleg",
-    "lefthand", "righthand", "leftfoot", "rightfoot",
-    "lefteye", "righteye", "leftear", "rightear", "jaw",
+    "head",
+    "neck",
+    "torso",
+    "leftarm",
+    "rightarm",
+    "leftleg",
+    "rightleg",
+    "lefthand",
+    "righthand",
+    "leftfoot",
+    "rightfoot",
+    "lefteye",
+    "righteye",
+    "leftear",
+    "rightear",
+    "jaw",
     // Conditions
-    "illness", "hypothermia", "heat_exhaustion", "heat_stroke",
+    "illness",
+    "hypothermia",
+    "heat_exhaustion",
+    "heat_stroke",
 ];
 
 /// Pedit subcommands
@@ -620,29 +834,19 @@ pub const PEDIT_SUBCOMMANDS: &[&str] = &[
 ];
 
 /// Property command subcommands
-pub const PROPERTY_SUBCOMMANDS: &[&str] = &[
-    "access", "trust", "untrust",
-];
+pub const PROPERTY_SUBCOMMANDS: &[&str] = &["access", "trust", "untrust"];
 
 /// Property access levels
-pub const PROPERTY_ACCESS_LEVELS: &[&str] = &[
-    "none", "visit", "full",
-];
+pub const PROPERTY_ACCESS_LEVELS: &[&str] = &["none", "visit", "full"];
 
 /// Mail command subcommands
-pub const MAIL_SUBCOMMANDS: &[&str] = &[
-    "check", "list", "read", "send", "compose", "delete", "reply", "help",
-];
+pub const MAIL_SUBCOMMANDS: &[&str] = &["check", "list", "read", "send", "compose", "delete", "reply", "help"];
 
 /// Bank command subcommands
-pub const BANK_SUBCOMMANDS: &[&str] = &[
-    "balance", "deposit", "withdraw", "help",
-];
+pub const BANK_SUBCOMMANDS: &[&str] = &["balance", "deposit", "withdraw", "help"];
 
 /// Escrow command subcommands
-pub const ESCROW_SUBCOMMANDS: &[&str] = &[
-    "retrieve",
-];
+pub const ESCROW_SUBCOMMANDS: &[&str] = &["retrieve"];
 
 /// MOTD command subcommands
 pub const MOTD_SUBCOMMANDS: &[&str] = &["show", "edit", "clear", "help"];
@@ -653,9 +857,7 @@ pub const BUGS_SUBCOMMANDS: &[&str] = &[
 ];
 
 /// Bug status filter values (for bugs list)
-pub const BUG_STATUS_FILTERS: &[&str] = &[
-    "open", "closed", "inprogress", "resolved", "all", "unapproved",
-];
+pub const BUG_STATUS_FILTERS: &[&str] = &["open", "closed", "inprogress", "resolved", "all", "unapproved"];
 
 /// Bug priority values
 pub const BUG_PRIORITY_VALUES: &[&str] = &["low", "normal", "high", "critical"];
@@ -665,9 +867,25 @@ pub const BUG_STATUS_VALUES: &[&str] = &["open", "inprogress", "resolved", "clos
 
 /// Plantedit subcommands
 pub const PLANTEDIT_SUBCOMMANDS: &[&str] = &[
-    "create", "list", "show", "delete", "name", "seed_vnum", "harvest_vnum",
-    "category", "harvest_min", "harvest_max", "skill", "xp", "pest_resistance",
-    "multi_harvest", "indoor_only", "water", "season", "stage", "keyword",
+    "create",
+    "list",
+    "show",
+    "delete",
+    "name",
+    "seed_vnum",
+    "harvest_vnum",
+    "category",
+    "harvest_min",
+    "harvest_max",
+    "skill",
+    "xp",
+    "pest_resistance",
+    "multi_harvest",
+    "indoor_only",
+    "water",
+    "season",
+    "stage",
+    "keyword",
 ];
 
 /// Plant seasons
@@ -677,14 +895,10 @@ pub const PLANT_SEASONS: &[&str] = &["spring", "summer", "autumn", "winter"];
 pub const PLANT_SEASON_ACTIONS: &[&str] = &["add", "remove"];
 
 /// Plant stage names (for stage add subcommand)
-pub const PLANT_STAGES: &[&str] = &[
-    "seed", "sprout", "seedling", "growing", "mature", "flowering",
-];
+pub const PLANT_STAGES: &[&str] = &["seed", "sprout", "seedling", "growing", "mature", "flowering"];
 
 /// Plant categories
-pub const PLANT_CATEGORIES: &[&str] = &[
-    "vegetable", "herb", "flower", "fruit", "grain",
-];
+pub const PLANT_CATEGORIES: &[&str] = &["vegetable", "herb", "flower", "fruit", "grain"];
 
 /// Complete a partial input line
 pub fn complete(
@@ -776,7 +990,15 @@ pub fn complete(
                 ArgumentContext::MobileVnum => {
                     // For medit, provide context-aware completion based on position
                     if command.to_lowercase() == "medit" {
-                        return complete_medit(&words, completing_word, mobile_vnums, item_vnums, transport_vnums, property_template_vnums, shop_preset_vnums);
+                        return complete_medit(
+                            &words,
+                            completing_word,
+                            mobile_vnums,
+                            item_vnums,
+                            transport_vnums,
+                            property_template_vnums,
+                            shop_preset_vnums,
+                        );
                     }
                     // Default mobile vnum completion for mspawn, mdelete
                     let matches: Vec<String> = mobile_vnums
@@ -793,7 +1015,14 @@ pub fn complete(
                     }
                     // For spedit, provide context-aware completion based on position
                     if command.to_lowercase() == "spedit" {
-                        return complete_spedit(&words, completing_word, area_prefixes, room_vnums, mobile_vnums, item_vnums);
+                        return complete_spedit(
+                            &words,
+                            completing_word,
+                            area_prefixes,
+                            room_vnums,
+                            mobile_vnums,
+                            item_vnums,
+                        );
                     }
                     // Default area prefix completion for adelete, areset, acreate
                     let matches: Vec<String> = area_prefixes
@@ -928,7 +1157,15 @@ pub fn complete(
 }
 
 /// Context-aware completion for medit command
-fn complete_medit(words: &[&str], completing_word: bool, mobile_vnums: &[String], item_vnums: &[String], transport_vnums: &[String], property_template_vnums: &[String], shop_preset_vnums: &[String]) -> CompletionResult {
+fn complete_medit(
+    words: &[&str],
+    completing_word: bool,
+    mobile_vnums: &[String],
+    item_vnums: &[String],
+    transport_vnums: &[String],
+    property_template_vnums: &[String],
+    shop_preset_vnums: &[String],
+) -> CompletionResult {
     let partial = get_partial(words, completing_word);
 
     match words.len() {
@@ -939,87 +1176,186 @@ fn complete_medit(words: &[&str], completing_word: bool, mobile_vnums: &[String]
         // medit <vnum> <partial_subcmd> - complete subcommand
         3 if completing_word => filter_static(MEDIT_SUBCOMMANDS, &partial, CompletionType::MeditSubcommand),
         // medit <vnum> trigger - show all trigger actions
-        3 if !completing_word && words[2].to_lowercase() == "trigger" => all_static(TRIGGER_ACTIONS, CompletionType::TriggerAction),
+        3 if !completing_word && words[2].to_lowercase() == "trigger" => {
+            all_static(TRIGGER_ACTIONS, CompletionType::TriggerAction)
+        }
         // medit <vnum> trigger <partial_action> - complete trigger action
-        4 if completing_word && words[2].to_lowercase() == "trigger" => filter_static(TRIGGER_ACTIONS, &partial, CompletionType::TriggerAction),
+        4 if completing_word && words[2].to_lowercase() == "trigger" => {
+            filter_static(TRIGGER_ACTIONS, &partial, CompletionType::TriggerAction)
+        }
         // medit <vnum> trigger add - show all trigger types
-        4 if !completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => all_static(TRIGGER_TYPES, CompletionType::TriggerType),
+        4 if !completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => {
+            all_static(TRIGGER_TYPES, CompletionType::TriggerType)
+        }
         // medit <vnum> trigger add <partial_type> - complete trigger type
-        5 if completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => filter_static(TRIGGER_TYPES, &partial, CompletionType::TriggerType),
+        5 if completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => {
+            filter_static(TRIGGER_TYPES, &partial, CompletionType::TriggerType)
+        }
         // medit <vnum> trigger add <type> - show all templates
-        5 if !completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => all_static(MOBILE_TRIGGER_TEMPLATES, CompletionType::TriggerScript),
+        5 if !completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => {
+            all_static(MOBILE_TRIGGER_TEMPLATES, CompletionType::TriggerScript)
+        }
         // medit <vnum> trigger add <type> <partial_script> - complete template/script
-        6 if completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => filter_static(MOBILE_TRIGGER_TEMPLATES, &partial, CompletionType::TriggerScript),
+        6 if completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => {
+            filter_static(MOBILE_TRIGGER_TEMPLATES, &partial, CompletionType::TriggerScript)
+        }
         // medit <vnum> transport - show all transport actions
-        3 if !completing_word && words[2].to_lowercase() == "transport" => all_static(MOBILE_TRANSPORT_ACTIONS, CompletionType::MobileTransportAction),
+        3 if !completing_word && words[2].to_lowercase() == "transport" => {
+            all_static(MOBILE_TRANSPORT_ACTIONS, CompletionType::MobileTransportAction)
+        }
         // medit <vnum> transport <partial_action> - complete transport action
-        4 if completing_word && words[2].to_lowercase() == "transport" => filter_static(MOBILE_TRANSPORT_ACTIONS, &partial, CompletionType::MobileTransportAction),
+        4 if completing_word && words[2].to_lowercase() == "transport" => filter_static(
+            MOBILE_TRANSPORT_ACTIONS,
+            &partial,
+            CompletionType::MobileTransportAction,
+        ),
         // medit <vnum> transport set - show all transport vnums
-        4 if !completing_word && words[2].to_lowercase() == "transport" && words[3].to_lowercase() == "set" => all_dynamic(transport_vnums, CompletionType::TransportVnum),
+        4 if !completing_word && words[2].to_lowercase() == "transport" && words[3].to_lowercase() == "set" => {
+            all_dynamic(transport_vnums, CompletionType::TransportVnum)
+        }
         // medit <vnum> transport set <partial_vnum> - complete transport vnum
-        5 if completing_word && words[2].to_lowercase() == "transport" && words[3].to_lowercase() == "set" => filter_dynamic(transport_vnums, &partial, CompletionType::TransportVnum),
+        5 if completing_word && words[2].to_lowercase() == "transport" && words[3].to_lowercase() == "set" => {
+            filter_dynamic(transport_vnums, &partial, CompletionType::TransportVnum)
+        }
         // medit <vnum> flag - show all mobile flags
-        3 if !completing_word && words[2].to_lowercase() == "flag" => all_static(MOBILE_FLAGS, CompletionType::MobileFlag),
+        3 if !completing_word && words[2].to_lowercase() == "flag" => {
+            all_static(MOBILE_FLAGS, CompletionType::MobileFlag)
+        }
         // medit <vnum> flag <partial_flag> - complete flag name
-        4 if completing_word && words[2].to_lowercase() == "flag" => filter_static(MOBILE_FLAGS, &partial, CompletionType::MobileFlag),
+        4 if completing_word && words[2].to_lowercase() == "flag" => {
+            filter_static(MOBILE_FLAGS, &partial, CompletionType::MobileFlag)
+        }
         // medit <vnum> shop - show all shop subcommands
-        3 if !completing_word && words[2].to_lowercase() == "shop" => all_static(SHOP_SUBCOMMANDS, CompletionType::ShopSubcommand),
+        3 if !completing_word && words[2].to_lowercase() == "shop" => {
+            all_static(SHOP_SUBCOMMANDS, CompletionType::ShopSubcommand)
+        }
         // medit <vnum> shop <partial_subcmd> - complete shop subcommand
-        4 if completing_word && words[2].to_lowercase() == "shop" => filter_static(SHOP_SUBCOMMANDS, &partial, CompletionType::ShopSubcommand),
+        4 if completing_word && words[2].to_lowercase() == "shop" => {
+            filter_static(SHOP_SUBCOMMANDS, &partial, CompletionType::ShopSubcommand)
+        }
         // medit <vnum> shop stock - show stock actions
-        4 if !completing_word && words[2].to_lowercase() == "shop" && words[3].to_lowercase() == "stock" => all_static(SHOP_STOCK_ACTIONS, CompletionType::ShopStockAction),
+        4 if !completing_word && words[2].to_lowercase() == "shop" && words[3].to_lowercase() == "stock" => {
+            all_static(SHOP_STOCK_ACTIONS, CompletionType::ShopStockAction)
+        }
         // medit <vnum> shop stock <partial_action> - complete stock action
-        5 if completing_word && words[2].to_lowercase() == "shop" && words[3].to_lowercase() == "stock" => filter_static(SHOP_STOCK_ACTIONS, &partial, CompletionType::ShopStockAction),
+        5 if completing_word && words[2].to_lowercase() == "shop" && words[3].to_lowercase() == "stock" => {
+            filter_static(SHOP_STOCK_ACTIONS, &partial, CompletionType::ShopStockAction)
+        }
         // medit <vnum> shop stock add - show item vnums
-        5 if !completing_word && words[2].to_lowercase() == "shop" && words[3].to_lowercase() == "stock" && words[4].to_lowercase() == "add" => all_dynamic(item_vnums, CompletionType::ItemVnum),
+        5 if !completing_word
+            && words[2].to_lowercase() == "shop"
+            && words[3].to_lowercase() == "stock"
+            && words[4].to_lowercase() == "add" =>
+        {
+            all_dynamic(item_vnums, CompletionType::ItemVnum)
+        }
         // medit <vnum> shop stock add <partial_vnum> - complete item vnum
-        6 if completing_word && words[2].to_lowercase() == "shop" && words[3].to_lowercase() == "stock" && words[4].to_lowercase() == "add" => filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum),
+        6 if completing_word
+            && words[2].to_lowercase() == "shop"
+            && words[3].to_lowercase() == "stock"
+            && words[4].to_lowercase() == "add" =>
+        {
+            filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum)
+        }
         // medit <vnum> shop categories - show categories actions
-        4 if !completing_word && words[2].to_lowercase() == "shop" && words[3].to_lowercase() == "categories" => all_static(SHOP_CATEGORIES_ACTIONS, CompletionType::ShopCategoriesAction),
+        4 if !completing_word && words[2].to_lowercase() == "shop" && words[3].to_lowercase() == "categories" => {
+            all_static(SHOP_CATEGORIES_ACTIONS, CompletionType::ShopCategoriesAction)
+        }
         // medit <vnum> shop categories <partial_action>
-        5 if completing_word && words[2].to_lowercase() == "shop" && words[3].to_lowercase() == "categories" => filter_static(SHOP_CATEGORIES_ACTIONS, &partial, CompletionType::ShopCategoriesAction),
+        5 if completing_word && words[2].to_lowercase() == "shop" && words[3].to_lowercase() == "categories" => {
+            filter_static(SHOP_CATEGORIES_ACTIONS, &partial, CompletionType::ShopCategoriesAction)
+        }
         // medit <vnum> shop preset - show preset actions
-        4 if !completing_word && words[2].to_lowercase() == "shop" && words[3].to_lowercase() == "preset" => all_static(SHOP_PRESET_ACTIONS, CompletionType::ShopPresetAction),
+        4 if !completing_word && words[2].to_lowercase() == "shop" && words[3].to_lowercase() == "preset" => {
+            all_static(SHOP_PRESET_ACTIONS, CompletionType::ShopPresetAction)
+        }
         // medit <vnum> shop preset <partial_action>
-        5 if completing_word && words[2].to_lowercase() == "shop" && words[3].to_lowercase() == "preset" => filter_static(SHOP_PRESET_ACTIONS, &partial, CompletionType::ShopPresetAction),
+        5 if completing_word && words[2].to_lowercase() == "shop" && words[3].to_lowercase() == "preset" => {
+            filter_static(SHOP_PRESET_ACTIONS, &partial, CompletionType::ShopPresetAction)
+        }
         // medit <vnum> shop preset set - show preset vnums
-        5 if !completing_word && words[2].to_lowercase() == "shop" && words[3].to_lowercase() == "preset" && words[4].to_lowercase() == "set" => all_dynamic(shop_preset_vnums, CompletionType::ShopPresetVnum),
+        5 if !completing_word
+            && words[2].to_lowercase() == "shop"
+            && words[3].to_lowercase() == "preset"
+            && words[4].to_lowercase() == "set" =>
+        {
+            all_dynamic(shop_preset_vnums, CompletionType::ShopPresetVnum)
+        }
         // medit <vnum> shop preset set <partial_vnum>
-        6 if completing_word && words[2].to_lowercase() == "shop" && words[3].to_lowercase() == "preset" && words[4].to_lowercase() == "set" => filter_dynamic(shop_preset_vnums, &partial, CompletionType::ShopPresetVnum),
+        6 if completing_word
+            && words[2].to_lowercase() == "shop"
+            && words[3].to_lowercase() == "preset"
+            && words[4].to_lowercase() == "set" =>
+        {
+            filter_dynamic(shop_preset_vnums, &partial, CompletionType::ShopPresetVnum)
+        }
         // medit <vnum> leasing - show all leasing subcommands
-        3 if !completing_word && words[2].to_lowercase() == "leasing" => all_static(LEASING_SUBCOMMANDS, CompletionType::LeasingSubcommand),
+        3 if !completing_word && words[2].to_lowercase() == "leasing" => {
+            all_static(LEASING_SUBCOMMANDS, CompletionType::LeasingSubcommand)
+        }
         // medit <vnum> leasing <partial_subcmd> - complete leasing subcommand
-        4 if completing_word && words[2].to_lowercase() == "leasing" => filter_static(LEASING_SUBCOMMANDS, &partial, CompletionType::LeasingSubcommand),
+        4 if completing_word && words[2].to_lowercase() == "leasing" => {
+            filter_static(LEASING_SUBCOMMANDS, &partial, CompletionType::LeasingSubcommand)
+        }
         // medit <vnum> leasing add - show property template vnums
-        4 if !completing_word && words[2].to_lowercase() == "leasing" && words[3].to_lowercase() == "add" => all_dynamic(property_template_vnums, CompletionType::PropertyTemplateVnum),
+        4 if !completing_word && words[2].to_lowercase() == "leasing" && words[3].to_lowercase() == "add" => {
+            all_dynamic(property_template_vnums, CompletionType::PropertyTemplateVnum)
+        }
         // medit <vnum> leasing add <partial_vnum> - complete property template vnum
-        5 if completing_word && words[2].to_lowercase() == "leasing" && words[3].to_lowercase() == "add" => filter_dynamic(property_template_vnums, &partial, CompletionType::PropertyTemplateVnum),
+        5 if completing_word && words[2].to_lowercase() == "leasing" && words[3].to_lowercase() == "add" => {
+            filter_dynamic(property_template_vnums, &partial, CompletionType::PropertyTemplateVnum)
+        }
         // medit <vnum> leasing remove - show property template vnums
-        4 if !completing_word && words[2].to_lowercase() == "leasing" && words[3].to_lowercase() == "remove" => all_dynamic(property_template_vnums, CompletionType::PropertyTemplateVnum),
+        4 if !completing_word && words[2].to_lowercase() == "leasing" && words[3].to_lowercase() == "remove" => {
+            all_dynamic(property_template_vnums, CompletionType::PropertyTemplateVnum)
+        }
         // medit <vnum> leasing remove <partial_vnum> - complete property template vnum
-        5 if completing_word && words[2].to_lowercase() == "leasing" && words[3].to_lowercase() == "remove" => filter_dynamic(property_template_vnums, &partial, CompletionType::PropertyTemplateVnum),
+        5 if completing_word && words[2].to_lowercase() == "leasing" && words[3].to_lowercase() == "remove" => {
+            filter_dynamic(property_template_vnums, &partial, CompletionType::PropertyTemplateVnum)
+        }
         // medit <vnum> damtype - show all damage types
-        3 if !completing_word && words[2].to_lowercase() == "damtype" => all_static(DAMAGE_TYPES, CompletionType::DamageType),
+        3 if !completing_word && words[2].to_lowercase() == "damtype" => {
+            all_static(DAMAGE_TYPES, CompletionType::DamageType)
+        }
         // medit <vnum> damtype <partial_type> - complete damage type
-        4 if completing_word && words[2].to_lowercase() == "damtype" => filter_static(DAMAGE_TYPES, &partial, CompletionType::DamageType),
+        4 if completing_word && words[2].to_lowercase() == "damtype" => {
+            filter_static(DAMAGE_TYPES, &partial, CompletionType::DamageType)
+        }
         // medit <vnum> simulation - show all simulation subcommands
-        3 if !completing_word && (words[2].to_lowercase() == "simulation" || words[2].to_lowercase() == "sim") => all_static(SIMULATION_SUBCOMMANDS, CompletionType::SimulationSubcommand),
+        3 if !completing_word && (words[2].to_lowercase() == "simulation" || words[2].to_lowercase() == "sim") => {
+            all_static(SIMULATION_SUBCOMMANDS, CompletionType::SimulationSubcommand)
+        }
         // medit <vnum> simulation <partial_subcmd> - complete simulation subcommand
-        4 if completing_word && (words[2].to_lowercase() == "simulation" || words[2].to_lowercase() == "sim") => filter_static(SIMULATION_SUBCOMMANDS, &partial, CompletionType::SimulationSubcommand),
+        4 if completing_word && (words[2].to_lowercase() == "simulation" || words[2].to_lowercase() == "sim") => {
+            filter_static(SIMULATION_SUBCOMMANDS, &partial, CompletionType::SimulationSubcommand)
+        }
         // medit <vnum> routine - show all routine subcommands
-        3 if !completing_word && words[2].to_lowercase() == "routine" => all_static(ROUTINE_SUBCOMMANDS, CompletionType::RoutineSubcommand),
+        3 if !completing_word && words[2].to_lowercase() == "routine" => {
+            all_static(ROUTINE_SUBCOMMANDS, CompletionType::RoutineSubcommand)
+        }
         // medit <vnum> routine <partial_subcmd> - complete routine subcommand
-        4 if completing_word && words[2].to_lowercase() == "routine" => filter_static(ROUTINE_SUBCOMMANDS, &partial, CompletionType::RoutineSubcommand),
+        4 if completing_word && words[2].to_lowercase() == "routine" => {
+            filter_static(ROUTINE_SUBCOMMANDS, &partial, CompletionType::RoutineSubcommand)
+        }
         // medit <vnum> routine add <hour> - show activity states
-        5 if !completing_word && words[2].to_lowercase() == "routine" && words[3].to_lowercase() == "add" => all_static(ACTIVITY_STATES, CompletionType::ActivityState),
+        5 if !completing_word && words[2].to_lowercase() == "routine" && words[3].to_lowercase() == "add" => {
+            all_static(ACTIVITY_STATES, CompletionType::ActivityState)
+        }
         // medit <vnum> routine add <hour> <partial_activity> - complete activity state
-        6 if completing_word && words[2].to_lowercase() == "routine" && words[3].to_lowercase() == "add" => filter_static(ACTIVITY_STATES, &partial, CompletionType::ActivityState),
+        6 if completing_word && words[2].to_lowercase() == "routine" && words[3].to_lowercase() == "add" => {
+            filter_static(ACTIVITY_STATES, &partial, CompletionType::ActivityState)
+        }
         _ => CompletionResult::empty(),
     }
 }
 
 /// Context-aware completion for oedit command
-fn complete_oedit(words: &[&str], completing_word: bool, item_vnums: &[String], transport_vnums: &[String]) -> CompletionResult {
+fn complete_oedit(
+    words: &[&str],
+    completing_word: bool,
+    item_vnums: &[String],
+    transport_vnums: &[String],
+) -> CompletionResult {
     let partial = get_partial(words, completing_word);
 
     match words.len() {
@@ -1032,19 +1368,33 @@ fn complete_oedit(words: &[&str], completing_word: bool, item_vnums: &[String], 
         // oedit <vnum> type - show all item types
         3 if !completing_word && words[2].to_lowercase() == "type" => all_static(ITEM_TYPES, CompletionType::ItemType),
         // oedit <vnum> type <partial_type> - complete item type
-        4 if completing_word && words[2].to_lowercase() == "type" => filter_static(ITEM_TYPES, &partial, CompletionType::ItemType),
+        4 if completing_word && words[2].to_lowercase() == "type" => {
+            filter_static(ITEM_TYPES, &partial, CompletionType::ItemType)
+        }
         // oedit <vnum> trigger - show all trigger actions
-        3 if !completing_word && words[2].to_lowercase() == "trigger" => all_static(ITEM_TRIGGER_ACTIONS, CompletionType::ItemTriggerAction),
+        3 if !completing_word && words[2].to_lowercase() == "trigger" => {
+            all_static(ITEM_TRIGGER_ACTIONS, CompletionType::ItemTriggerAction)
+        }
         // oedit <vnum> trigger <partial_action> - complete trigger action
-        4 if completing_word && words[2].to_lowercase() == "trigger" => filter_static(ITEM_TRIGGER_ACTIONS, &partial, CompletionType::ItemTriggerAction),
+        4 if completing_word && words[2].to_lowercase() == "trigger" => {
+            filter_static(ITEM_TRIGGER_ACTIONS, &partial, CompletionType::ItemTriggerAction)
+        }
         // oedit <vnum> trigger add - show all trigger types
-        4 if !completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => all_static(ITEM_TRIGGER_TYPES, CompletionType::ItemTriggerType),
+        4 if !completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => {
+            all_static(ITEM_TRIGGER_TYPES, CompletionType::ItemTriggerType)
+        }
         // oedit <vnum> trigger add <partial_type> - complete trigger type
-        5 if completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => filter_static(ITEM_TRIGGER_TYPES, &partial, CompletionType::ItemTriggerType),
+        5 if completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => {
+            filter_static(ITEM_TRIGGER_TYPES, &partial, CompletionType::ItemTriggerType)
+        }
         // oedit <vnum> trigger add <type> - show all templates
-        5 if !completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => all_static(ITEM_TRIGGER_TEMPLATES, CompletionType::TriggerScript),
+        5 if !completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => {
+            all_static(ITEM_TRIGGER_TEMPLATES, CompletionType::TriggerScript)
+        }
         // oedit <vnum> trigger add <type> <partial_script> - complete template/script
-        6 if completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => filter_static(ITEM_TRIGGER_TEMPLATES, &partial, CompletionType::TriggerScript),
+        6 if completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => {
+            filter_static(ITEM_TRIGGER_TEMPLATES, &partial, CompletionType::TriggerScript)
+        }
         // oedit <vnum> transport - show all transport vnums + clear
         3 if !completing_word && words[2].to_lowercase() == "transport" => {
             let mut matches: Vec<String> = transport_vnums.to_vec();
@@ -1066,39 +1416,81 @@ fn complete_oedit(words: &[&str], completing_word: bool, item_vnums: &[String], 
         // oedit <vnum> flag - show all item flags
         3 if !completing_word && words[2].to_lowercase() == "flag" => all_static(ITEM_FLAGS, CompletionType::ItemFlag),
         // oedit <vnum> flag <partial_flag> - complete flag name
-        4 if completing_word && words[2].to_lowercase() == "flag" => filter_static(ITEM_FLAGS, &partial, CompletionType::ItemFlag),
+        4 if completing_word && words[2].to_lowercase() == "flag" => {
+            filter_static(ITEM_FLAGS, &partial, CompletionType::ItemFlag)
+        }
         // oedit <vnum> vending - show vending subcommands
-        3 if !completing_word && words[2].to_lowercase() == "vending" => all_static(VENDING_SUBCOMMANDS, CompletionType::VendingSubcommand),
+        3 if !completing_word && words[2].to_lowercase() == "vending" => {
+            all_static(VENDING_SUBCOMMANDS, CompletionType::VendingSubcommand)
+        }
         // oedit <vnum> vending <partial_subcmd> - complete vending subcommand
-        4 if completing_word && words[2].to_lowercase() == "vending" => filter_static(VENDING_SUBCOMMANDS, &partial, CompletionType::VendingSubcommand),
+        4 if completing_word && words[2].to_lowercase() == "vending" => {
+            filter_static(VENDING_SUBCOMMANDS, &partial, CompletionType::VendingSubcommand)
+        }
         // oedit <vnum> vending stock - show stock actions
-        4 if !completing_word && words[2].to_lowercase() == "vending" && words[3].to_lowercase() == "stock" => all_static(SHOP_STOCK_ACTIONS, CompletionType::ShopStockAction),
+        4 if !completing_word && words[2].to_lowercase() == "vending" && words[3].to_lowercase() == "stock" => {
+            all_static(SHOP_STOCK_ACTIONS, CompletionType::ShopStockAction)
+        }
         // oedit <vnum> vending stock <partial_action> - complete stock action
-        5 if completing_word && words[2].to_lowercase() == "vending" && words[3].to_lowercase() == "stock" => filter_static(SHOP_STOCK_ACTIONS, &partial, CompletionType::ShopStockAction),
+        5 if completing_word && words[2].to_lowercase() == "vending" && words[3].to_lowercase() == "stock" => {
+            filter_static(SHOP_STOCK_ACTIONS, &partial, CompletionType::ShopStockAction)
+        }
         // oedit <vnum> vending stock add - show item vnums
-        5 if !completing_word && words[2].to_lowercase() == "vending" && words[3].to_lowercase() == "stock" && words[4].to_lowercase() == "add" => all_dynamic(item_vnums, CompletionType::ItemVnum),
+        5 if !completing_word
+            && words[2].to_lowercase() == "vending"
+            && words[3].to_lowercase() == "stock"
+            && words[4].to_lowercase() == "add" =>
+        {
+            all_dynamic(item_vnums, CompletionType::ItemVnum)
+        }
         // oedit <vnum> vending stock add <partial_vnum> - complete item vnum
-        6 if completing_word && words[2].to_lowercase() == "vending" && words[3].to_lowercase() == "stock" && words[4].to_lowercase() == "add" => filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum),
+        6 if completing_word
+            && words[2].to_lowercase() == "vending"
+            && words[3].to_lowercase() == "stock"
+            && words[4].to_lowercase() == "add" =>
+        {
+            filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum)
+        }
         // oedit <vnum> damtype - show all damage types
-        3 if !completing_word && words[2].to_lowercase() == "damtype" => all_static(DAMAGE_TYPES, CompletionType::DamageType),
+        3 if !completing_word && words[2].to_lowercase() == "damtype" => {
+            all_static(DAMAGE_TYPES, CompletionType::DamageType)
+        }
         // oedit <vnum> damtype <partial_type> - complete damage type
-        4 if completing_word && words[2].to_lowercase() == "damtype" => filter_static(DAMAGE_TYPES, &partial, CompletionType::DamageType),
+        4 if completing_word && words[2].to_lowercase() == "damtype" => {
+            filter_static(DAMAGE_TYPES, &partial, CompletionType::DamageType)
+        }
         // oedit <vnum> rangedtype - show all ranged types
-        3 if !completing_word && (words[2].to_lowercase() == "rangedtype" || words[2].to_lowercase() == "rtype") => all_static(RANGED_TYPES, CompletionType::OeditSubcommand),
+        3 if !completing_word && (words[2].to_lowercase() == "rangedtype" || words[2].to_lowercase() == "rtype") => {
+            all_static(RANGED_TYPES, CompletionType::OeditSubcommand)
+        }
         // oedit <vnum> rangedtype <partial> - complete ranged type
-        4 if completing_word && (words[2].to_lowercase() == "rangedtype" || words[2].to_lowercase() == "rtype") => filter_static(RANGED_TYPES, &partial, CompletionType::OeditSubcommand),
+        4 if completing_word && (words[2].to_lowercase() == "rangedtype" || words[2].to_lowercase() == "rtype") => {
+            filter_static(RANGED_TYPES, &partial, CompletionType::OeditSubcommand)
+        }
         // oedit <vnum> firemode - show all fire modes
-        3 if !completing_word && words[2].to_lowercase() == "firemode" => all_static(FIRE_MODES, CompletionType::OeditSubcommand),
+        3 if !completing_word && words[2].to_lowercase() == "firemode" => {
+            all_static(FIRE_MODES, CompletionType::OeditSubcommand)
+        }
         // oedit <vnum> firemode <partial> - complete fire mode
-        4 if completing_word && words[2].to_lowercase() == "firemode" => filter_static(FIRE_MODES, &partial, CompletionType::OeditSubcommand),
+        4 if completing_word && words[2].to_lowercase() == "firemode" => {
+            filter_static(FIRE_MODES, &partial, CompletionType::OeditSubcommand)
+        }
         // oedit <vnum> noise - show all noise levels
-        3 if !completing_word && (words[2].to_lowercase() == "noise" || words[2].to_lowercase() == "noiselevel") => all_static(NOISE_LEVELS, CompletionType::OeditSubcommand),
+        3 if !completing_word && (words[2].to_lowercase() == "noise" || words[2].to_lowercase() == "noiselevel") => {
+            all_static(NOISE_LEVELS, CompletionType::OeditSubcommand)
+        }
         // oedit <vnum> noise <partial> - complete noise level
-        4 if completing_word && (words[2].to_lowercase() == "noise" || words[2].to_lowercase() == "noiselevel") => filter_static(NOISE_LEVELS, &partial, CompletionType::OeditSubcommand),
+        4 if completing_word && (words[2].to_lowercase() == "noise" || words[2].to_lowercase() == "noiselevel") => {
+            filter_static(NOISE_LEVELS, &partial, CompletionType::OeditSubcommand)
+        }
         // oedit <vnum> firemodes - show all fire modes (multi-select)
-        3 if !completing_word && words[2].to_lowercase() == "firemodes" => all_static(FIRE_MODES, CompletionType::OeditSubcommand),
+        3 if !completing_word && words[2].to_lowercase() == "firemodes" => {
+            all_static(FIRE_MODES, CompletionType::OeditSubcommand)
+        }
         // oedit <vnum> firemodes <partial> - complete fire modes
-        4.. if completing_word && words[2].to_lowercase() == "firemodes" => filter_static(FIRE_MODES, &partial, CompletionType::OeditSubcommand),
+        4.. if completing_word && words[2].to_lowercase() == "firemodes" => {
+            filter_static(FIRE_MODES, &partial, CompletionType::OeditSubcommand)
+        }
         _ => CompletionResult::empty(),
     }
 }
@@ -1115,39 +1507,71 @@ fn complete_redit(words: &[&str], completing_word: bool) -> CompletionResult {
         // redit flag - show all flags
         2 if !completing_word && words[1].to_lowercase() == "flag" => all_static(ROOM_FLAGS, CompletionType::RoomFlag),
         // redit flag <partial_flag> - complete flag name
-        3 if completing_word && words[1].to_lowercase() == "flag" => filter_static(ROOM_FLAGS, &partial, CompletionType::RoomFlag),
+        3 if completing_word && words[1].to_lowercase() == "flag" => {
+            filter_static(ROOM_FLAGS, &partial, CompletionType::RoomFlag)
+        }
         // redit zone - show combat zone types
-        2 if !completing_word && words[1].to_lowercase() == "zone" => all_static(COMBAT_ZONE_TYPES, CompletionType::CombatZone),
+        2 if !completing_word && words[1].to_lowercase() == "zone" => {
+            all_static(COMBAT_ZONE_TYPES, CompletionType::CombatZone)
+        }
         // redit zone <partial_type> - complete zone type
-        3 if completing_word && words[1].to_lowercase() == "zone" => filter_static(COMBAT_ZONE_TYPES, &partial, CompletionType::CombatZone),
+        3 if completing_word && words[1].to_lowercase() == "zone" => {
+            filter_static(COMBAT_ZONE_TYPES, &partial, CompletionType::CombatZone)
+        }
         // redit water - show water types
-        2 if !completing_word && words[1].to_lowercase() == "water" => all_static(WATER_TYPES, CompletionType::WaterType),
+        2 if !completing_word && words[1].to_lowercase() == "water" => {
+            all_static(WATER_TYPES, CompletionType::WaterType)
+        }
         // redit water <partial_type> - complete water type
-        3 if completing_word && words[1].to_lowercase() == "water" => filter_static(WATER_TYPES, &partial, CompletionType::WaterType),
+        3 if completing_word && words[1].to_lowercase() == "water" => {
+            filter_static(WATER_TYPES, &partial, CompletionType::WaterType)
+        }
         // redit door - show door subcommands
-        2 if !completing_word && words[1].to_lowercase() == "door" => all_static(DOOR_SUBCOMMANDS, CompletionType::DoorSubcommand),
+        2 if !completing_word && words[1].to_lowercase() == "door" => {
+            all_static(DOOR_SUBCOMMANDS, CompletionType::DoorSubcommand)
+        }
         // redit door <partial_subcmd> - complete door subcommand
-        3 if completing_word && words[1].to_lowercase() == "door" => filter_static(DOOR_SUBCOMMANDS, &partial, CompletionType::DoorSubcommand),
+        3 if completing_word && words[1].to_lowercase() == "door" => {
+            filter_static(DOOR_SUBCOMMANDS, &partial, CompletionType::DoorSubcommand)
+        }
         // redit door <subcmd> - show directions (for subcommands that take direction)
         3 if !completing_word && words[1].to_lowercase() == "door" => all_static(DIRECTIONS, CompletionType::Direction),
         // redit door <subcmd> <partial_dir> - complete direction
-        4 if completing_word && words[1].to_lowercase() == "door" => filter_static(DIRECTIONS, &partial, CompletionType::Direction),
+        4 if completing_word && words[1].to_lowercase() == "door" => {
+            filter_static(DIRECTIONS, &partial, CompletionType::Direction)
+        }
         // redit extra - show extra actions
-        2 if !completing_word && words[1].to_lowercase() == "extra" => all_static(EXTRA_DESC_ACTIONS, CompletionType::ExtraDescAction),
+        2 if !completing_word && words[1].to_lowercase() == "extra" => {
+            all_static(EXTRA_DESC_ACTIONS, CompletionType::ExtraDescAction)
+        }
         // redit extra <partial_action> - complete extra action
-        3 if completing_word && words[1].to_lowercase() == "extra" => filter_static(EXTRA_DESC_ACTIONS, &partial, CompletionType::ExtraDescAction),
+        3 if completing_word && words[1].to_lowercase() == "extra" => {
+            filter_static(EXTRA_DESC_ACTIONS, &partial, CompletionType::ExtraDescAction)
+        }
         // redit trigger - show trigger actions
-        2 if !completing_word && words[1].to_lowercase() == "trigger" => all_static(ROOM_TRIGGER_ACTIONS, CompletionType::RoomTriggerAction),
+        2 if !completing_word && words[1].to_lowercase() == "trigger" => {
+            all_static(ROOM_TRIGGER_ACTIONS, CompletionType::RoomTriggerAction)
+        }
         // redit trigger <partial_action> - complete trigger action
-        3 if completing_word && words[1].to_lowercase() == "trigger" => filter_static(ROOM_TRIGGER_ACTIONS, &partial, CompletionType::RoomTriggerAction),
+        3 if completing_word && words[1].to_lowercase() == "trigger" => {
+            filter_static(ROOM_TRIGGER_ACTIONS, &partial, CompletionType::RoomTriggerAction)
+        }
         // redit trigger add - show trigger types
-        3 if !completing_word && words[1].to_lowercase() == "trigger" && words[2].to_lowercase() == "add" => all_static(ROOM_TRIGGER_TYPES, CompletionType::RoomTriggerType),
+        3 if !completing_word && words[1].to_lowercase() == "trigger" && words[2].to_lowercase() == "add" => {
+            all_static(ROOM_TRIGGER_TYPES, CompletionType::RoomTriggerType)
+        }
         // redit trigger add <partial_type> - complete trigger type
-        4 if completing_word && words[1].to_lowercase() == "trigger" && words[2].to_lowercase() == "add" => filter_static(ROOM_TRIGGER_TYPES, &partial, CompletionType::RoomTriggerType),
+        4 if completing_word && words[1].to_lowercase() == "trigger" && words[2].to_lowercase() == "add" => {
+            filter_static(ROOM_TRIGGER_TYPES, &partial, CompletionType::RoomTriggerType)
+        }
         // redit trigger add <type> - show all templates
-        4 if !completing_word && words[1].to_lowercase() == "trigger" && words[2].to_lowercase() == "add" => all_static(ROOM_TRIGGER_TEMPLATES, CompletionType::TriggerScript),
+        4 if !completing_word && words[1].to_lowercase() == "trigger" && words[2].to_lowercase() == "add" => {
+            all_static(ROOM_TRIGGER_TEMPLATES, CompletionType::TriggerScript)
+        }
         // redit trigger add <type> <partial_script> - complete template/script
-        5 if completing_word && words[1].to_lowercase() == "trigger" && words[2].to_lowercase() == "add" => filter_static(ROOM_TRIGGER_TEMPLATES, &partial, CompletionType::TriggerScript),
+        5 if completing_word && words[1].to_lowercase() == "trigger" && words[2].to_lowercase() == "add" => {
+            filter_static(ROOM_TRIGGER_TEMPLATES, &partial, CompletionType::TriggerScript)
+        }
         _ => CompletionResult::empty(),
     }
 }
@@ -1189,37 +1613,63 @@ fn complete_aedit(words: &[&str], completing_word: bool, area_prefixes: &[String
             CompletionResult::new(combined, &partial, CompletionType::AeditSubcommand)
         }
         // aedit immigration - show immigration subcommands (no area prefix; area inferred from current room)
-        2 if !completing_word && words[1].to_lowercase() == "immigration" => all_static(IMMIGRATION_SUBCOMMANDS, CompletionType::ImmigrationSubcommand),
+        2 if !completing_word && words[1].to_lowercase() == "immigration" => {
+            all_static(IMMIGRATION_SUBCOMMANDS, CompletionType::ImmigrationSubcommand)
+        }
         // aedit <area> - show all subcommands
         2 if !completing_word => all_static(AEDIT_SUBCOMMANDS, CompletionType::AeditSubcommand),
         // aedit immigration <partial_subcmd> - complete immigration subcommand (no area)
-        3 if completing_word && words[1].to_lowercase() == "immigration" => filter_static(IMMIGRATION_SUBCOMMANDS, &partial, CompletionType::ImmigrationSubcommand),
+        3 if completing_word && words[1].to_lowercase() == "immigration" => {
+            filter_static(IMMIGRATION_SUBCOMMANDS, &partial, CompletionType::ImmigrationSubcommand)
+        }
         // aedit <area> <partial_subcmd> - complete subcommand
         3 if completing_word => filter_static(AEDIT_SUBCOMMANDS, &partial, CompletionType::AeditSubcommand),
         // aedit <area> permission - show all permission levels
-        3 if !completing_word && words[2].to_lowercase() == "permission" => all_static(PERMISSION_LEVELS, CompletionType::PermissionLevel),
+        3 if !completing_word && words[2].to_lowercase() == "permission" => {
+            all_static(PERMISSION_LEVELS, CompletionType::PermissionLevel)
+        }
         // aedit <area> permission <partial_level> - complete permission level
-        4 if completing_word && words[2].to_lowercase() == "permission" => filter_static(PERMISSION_LEVELS, &partial, CompletionType::PermissionLevel),
+        4 if completing_word && words[2].to_lowercase() == "permission" => {
+            filter_static(PERMISSION_LEVELS, &partial, CompletionType::PermissionLevel)
+        }
         // aedit <area> zone - show zone types
-        3 if !completing_word && words[2].to_lowercase() == "zone" => all_static(AREA_ZONE_TYPES, CompletionType::AreaZoneType),
+        3 if !completing_word && words[2].to_lowercase() == "zone" => {
+            all_static(AREA_ZONE_TYPES, CompletionType::AreaZoneType)
+        }
         // aedit <area> zone <partial_type> - complete zone type
-        4 if completing_word && words[2].to_lowercase() == "zone" => filter_static(AREA_ZONE_TYPES, &partial, CompletionType::AreaZoneType),
+        4 if completing_word && words[2].to_lowercase() == "zone" => {
+            filter_static(AREA_ZONE_TYPES, &partial, CompletionType::AreaZoneType)
+        }
         // aedit <area> flags - show area flags
         3 if !completing_word && words[2].to_lowercase() == "flags" => all_static(AREA_FLAGS, CompletionType::AreaFlag),
         // aedit <area> flags <partial_flag> - complete area flag
-        4 if completing_word && words[2].to_lowercase() == "flags" => filter_static(AREA_FLAGS, &partial, CompletionType::AreaFlag),
+        4 if completing_word && words[2].to_lowercase() == "flags" => {
+            filter_static(AREA_FLAGS, &partial, CompletionType::AreaFlag)
+        }
         // aedit <area> forage - show forage types
-        3 if !completing_word && words[2].to_lowercase() == "forage" => all_static(FORAGE_TYPES, CompletionType::ForageType),
+        3 if !completing_word && words[2].to_lowercase() == "forage" => {
+            all_static(FORAGE_TYPES, CompletionType::ForageType)
+        }
         // aedit <area> forage <partial_type> - complete forage type
-        4 if completing_word && words[2].to_lowercase() == "forage" => filter_static(FORAGE_TYPES, &partial, CompletionType::ForageType),
+        4 if completing_word && words[2].to_lowercase() == "forage" => {
+            filter_static(FORAGE_TYPES, &partial, CompletionType::ForageType)
+        }
         // aedit <area> forage <type> - show forage actions
-        4 if !completing_word && words[2].to_lowercase() == "forage" => all_static(FORAGE_ACTIONS, CompletionType::ForageAction),
+        4 if !completing_word && words[2].to_lowercase() == "forage" => {
+            all_static(FORAGE_ACTIONS, CompletionType::ForageAction)
+        }
         // aedit <area> forage <type> <partial_action> - complete forage action
-        5 if completing_word && words[2].to_lowercase() == "forage" => filter_static(FORAGE_ACTIONS, &partial, CompletionType::ForageAction),
+        5 if completing_word && words[2].to_lowercase() == "forage" => {
+            filter_static(FORAGE_ACTIONS, &partial, CompletionType::ForageAction)
+        }
         // aedit <area> immigration - show immigration subcommands
-        3 if !completing_word && words[2].to_lowercase() == "immigration" => all_static(IMMIGRATION_SUBCOMMANDS, CompletionType::ImmigrationSubcommand),
+        3 if !completing_word && words[2].to_lowercase() == "immigration" => {
+            all_static(IMMIGRATION_SUBCOMMANDS, CompletionType::ImmigrationSubcommand)
+        }
         // aedit <area> immigration <partial_subcmd> - complete immigration subcommand
-        4 if completing_word && words[2].to_lowercase() == "immigration" => filter_static(IMMIGRATION_SUBCOMMANDS, &partial, CompletionType::ImmigrationSubcommand),
+        4 if completing_word && words[2].to_lowercase() == "immigration" => {
+            filter_static(IMMIGRATION_SUBCOMMANDS, &partial, CompletionType::ImmigrationSubcommand)
+        }
         _ => CompletionResult::empty(),
     }
 }
@@ -1235,7 +1685,10 @@ fn is_spedit_filter(word: &str) -> bool {
 /// Helper to check if a word is a spedit modification command that supports filters
 fn is_spedit_mod_command(word: &str) -> bool {
     let lower = word.to_lowercase();
-    matches!(lower.as_str(), "delete" | "enable" | "disable" | "max" | "interval" | "dep")
+    matches!(
+        lower.as_str(),
+        "delete" | "enable" | "disable" | "max" | "interval" | "dep"
+    )
 }
 
 fn complete_spedit(
@@ -1256,13 +1709,21 @@ fn complete_spedit(
 
         // === list command ===
         // spedit list - show filter options
-        2 if !completing_word && words[1].to_lowercase() == "list" => all_static(SPEDIT_FILTERS, CompletionType::SpeditFilter),
+        2 if !completing_word && words[1].to_lowercase() == "list" => {
+            all_static(SPEDIT_FILTERS, CompletionType::SpeditFilter)
+        }
         // spedit list <partial_filter> - complete filter
-        3 if completing_word && words[1].to_lowercase() == "list" => filter_static(SPEDIT_FILTERS, &partial, CompletionType::SpeditFilter),
+        3 if completing_word && words[1].to_lowercase() == "list" => {
+            filter_static(SPEDIT_FILTERS, &partial, CompletionType::SpeditFilter)
+        }
         // spedit list room - show room vnums
-        3 if !completing_word && words[1].to_lowercase() == "list" && words[2].to_lowercase() == "room" => all_dynamic(room_vnums, CompletionType::RoomVnum),
+        3 if !completing_word && words[1].to_lowercase() == "list" && words[2].to_lowercase() == "room" => {
+            all_dynamic(room_vnums, CompletionType::RoomVnum)
+        }
         // spedit list room <partial_vnum> - complete room vnum
-        4 if completing_word && words[1].to_lowercase() == "list" && words[2].to_lowercase() == "room" => filter_dynamic(room_vnums, &partial, CompletionType::RoomVnum),
+        4 if completing_word && words[1].to_lowercase() == "list" && words[2].to_lowercase() == "room" => {
+            filter_dynamic(room_vnums, &partial, CompletionType::RoomVnum)
+        }
 
         // === create command ===
         // spedit create - show room vnums (including "." for current room)
@@ -1282,32 +1743,60 @@ fn complete_spedit(
                 room_vnums
                     .iter()
                     .filter(|v| v.to_lowercase().starts_with(&partial))
-                    .cloned()
+                    .cloned(),
             );
             CompletionResult::new(matches, &partial, CompletionType::RoomVnum)
         }
         // spedit create <room> - show entity types
-        3 if !completing_word && words[1].to_lowercase() == "create" => all_static(SPAWN_ENTITY_TYPES, CompletionType::SpawnEntityType),
+        3 if !completing_word && words[1].to_lowercase() == "create" => {
+            all_static(SPAWN_ENTITY_TYPES, CompletionType::SpawnEntityType)
+        }
         // spedit create <room> <partial_type> - complete entity type
-        4 if completing_word && words[1].to_lowercase() == "create" => filter_static(SPAWN_ENTITY_TYPES, &partial, CompletionType::SpawnEntityType),
+        4 if completing_word && words[1].to_lowercase() == "create" => {
+            filter_static(SPAWN_ENTITY_TYPES, &partial, CompletionType::SpawnEntityType)
+        }
         // spedit create <room> mobile - complete mobile vnums
-        4 if !completing_word && words[1].to_lowercase() == "create" && words[3].to_lowercase() == "mobile" => all_dynamic(mobile_vnums, CompletionType::MobileVnum),
+        4 if !completing_word && words[1].to_lowercase() == "create" && words[3].to_lowercase() == "mobile" => {
+            all_dynamic(mobile_vnums, CompletionType::MobileVnum)
+        }
         // spedit create <room> mobile <partial_vnum> - complete mobile vnum
-        5 if completing_word && words[1].to_lowercase() == "create" && words[3].to_lowercase() == "mobile" => filter_dynamic(mobile_vnums, &partial, CompletionType::MobileVnum),
+        5 if completing_word && words[1].to_lowercase() == "create" && words[3].to_lowercase() == "mobile" => {
+            filter_dynamic(mobile_vnums, &partial, CompletionType::MobileVnum)
+        }
         // spedit create <room> item - complete item vnums
-        4 if !completing_word && words[1].to_lowercase() == "create" && words[3].to_lowercase() == "item" => all_dynamic(item_vnums, CompletionType::ItemVnum),
+        4 if !completing_word && words[1].to_lowercase() == "create" && words[3].to_lowercase() == "item" => {
+            all_dynamic(item_vnums, CompletionType::ItemVnum)
+        }
         // spedit create <room> item <partial_vnum> - complete item vnum
-        5 if completing_word && words[1].to_lowercase() == "create" && words[3].to_lowercase() == "item" => filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum),
+        5 if completing_word && words[1].to_lowercase() == "create" && words[3].to_lowercase() == "item" => {
+            filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum)
+        }
 
         // === modification commands (delete, enable, disable, max, interval) ===
         // spedit <mod_cmd> - show filter options (since index can also be typed directly)
-        2 if !completing_word && is_spedit_mod_command(words[1]) && words[1].to_lowercase() != "dep" => all_static(SPEDIT_FILTERS, CompletionType::SpeditFilter),
+        2 if !completing_word && is_spedit_mod_command(words[1]) && words[1].to_lowercase() != "dep" => {
+            all_static(SPEDIT_FILTERS, CompletionType::SpeditFilter)
+        }
         // spedit <mod_cmd> <partial_filter> - complete filter (or could be index)
-        3 if completing_word && is_spedit_mod_command(words[1]) && words[1].to_lowercase() != "dep" => filter_static(SPEDIT_FILTERS, &partial, CompletionType::SpeditFilter),
+        3 if completing_word && is_spedit_mod_command(words[1]) && words[1].to_lowercase() != "dep" => {
+            filter_static(SPEDIT_FILTERS, &partial, CompletionType::SpeditFilter)
+        }
         // spedit <mod_cmd> room - show room vnums for "room <vnum>" filter
-        3 if !completing_word && is_spedit_mod_command(words[1]) && words[1].to_lowercase() != "dep" && words[2].to_lowercase() == "room" => all_dynamic(room_vnums, CompletionType::RoomVnum),
+        3 if !completing_word
+            && is_spedit_mod_command(words[1])
+            && words[1].to_lowercase() != "dep"
+            && words[2].to_lowercase() == "room" =>
+        {
+            all_dynamic(room_vnums, CompletionType::RoomVnum)
+        }
         // spedit <mod_cmd> room <partial_vnum> - complete room vnum
-        4 if completing_word && is_spedit_mod_command(words[1]) && words[1].to_lowercase() != "dep" && words[2].to_lowercase() == "room" => filter_dynamic(room_vnums, &partial, CompletionType::RoomVnum),
+        4 if completing_word
+            && is_spedit_mod_command(words[1])
+            && words[1].to_lowercase() != "dep"
+            && words[2].to_lowercase() == "room" =>
+        {
+            filter_dynamic(room_vnums, &partial, CompletionType::RoomVnum)
+        }
 
         // === dep command ===
         // spedit dep - show filter options AND dep actions combined
@@ -1328,59 +1817,167 @@ fn complete_spedit(
             CompletionResult::new(matches, &partial, CompletionType::SpeditDepAction)
         }
         // spedit dep <filter> - show dep actions
-        3 if !completing_word && words[1].to_lowercase() == "dep" && is_spedit_filter(words[2]) => all_static(SPEDIT_DEP_ACTIONS, CompletionType::SpeditDepAction),
+        3 if !completing_word && words[1].to_lowercase() == "dep" && is_spedit_filter(words[2]) => {
+            all_static(SPEDIT_DEP_ACTIONS, CompletionType::SpeditDepAction)
+        }
         // spedit dep <filter> <partial_action> - complete dep action
-        4 if completing_word && words[1].to_lowercase() == "dep" && is_spedit_filter(words[2]) => filter_static(SPEDIT_DEP_ACTIONS, &partial, CompletionType::SpeditDepAction),
+        4 if completing_word && words[1].to_lowercase() == "dep" && is_spedit_filter(words[2]) => {
+            filter_static(SPEDIT_DEP_ACTIONS, &partial, CompletionType::SpeditDepAction)
+        }
         // spedit dep room - show room vnums
-        3 if !completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "room" => all_dynamic(room_vnums, CompletionType::RoomVnum),
+        3 if !completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "room" => {
+            all_dynamic(room_vnums, CompletionType::RoomVnum)
+        }
         // spedit dep room <partial_vnum> - complete room vnum
-        4 if completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "room" => filter_dynamic(room_vnums, &partial, CompletionType::RoomVnum),
+        4 if completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "room" => {
+            filter_dynamic(room_vnums, &partial, CompletionType::RoomVnum)
+        }
         // spedit dep room <vnum> - show dep actions
-        4 if !completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "room" => all_static(SPEDIT_DEP_ACTIONS, CompletionType::SpeditDepAction),
+        4 if !completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "room" => {
+            all_static(SPEDIT_DEP_ACTIONS, CompletionType::SpeditDepAction)
+        }
         // spedit dep room <vnum> <partial_action> - complete dep action
-        5 if completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "room" => filter_static(SPEDIT_DEP_ACTIONS, &partial, CompletionType::SpeditDepAction),
+        5 if completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "room" => {
+            filter_static(SPEDIT_DEP_ACTIONS, &partial, CompletionType::SpeditDepAction)
+        }
 
         // === dep add without filter (spedit dep add <index> <type> <vnum>) ===
         // spedit dep add <index> - show dep types
-        4 if !completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "add" => all_static(SPEDIT_DEP_TYPES, CompletionType::SpeditDepType),
+        4 if !completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "add" => {
+            all_static(SPEDIT_DEP_TYPES, CompletionType::SpeditDepType)
+        }
         // spedit dep add <index> <partial_type> - complete dep type
-        5 if completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "add" => filter_static(SPEDIT_DEP_TYPES, &partial, CompletionType::SpeditDepType),
+        5 if completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "add" => {
+            filter_static(SPEDIT_DEP_TYPES, &partial, CompletionType::SpeditDepType)
+        }
         // spedit dep add <index> <type> - show item vnums
-        5 if !completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "add" => all_dynamic(item_vnums, CompletionType::ItemVnum),
+        5 if !completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "add" => {
+            all_dynamic(item_vnums, CompletionType::ItemVnum)
+        }
         // spedit dep add <index> <type> <partial_vnum> - complete item vnum
-        6 if completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "add" => filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum),
+        6 if completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "add" => {
+            filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum)
+        }
         // spedit dep add <index> equip <vnum> - show wear slots
-        6 if !completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "add" && words[4].to_lowercase() == "equip" => all_static(WEAR_SLOTS, CompletionType::WearSlot),
+        6 if !completing_word
+            && words[1].to_lowercase() == "dep"
+            && words[2].to_lowercase() == "add"
+            && words[4].to_lowercase() == "equip" =>
+        {
+            all_static(WEAR_SLOTS, CompletionType::WearSlot)
+        }
         // spedit dep add <index> equip <vnum> <partial_slot> - complete wear slot
-        7 if completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "add" && words[4].to_lowercase() == "equip" => filter_static(WEAR_SLOTS, &partial, CompletionType::WearSlot),
+        7 if completing_word
+            && words[1].to_lowercase() == "dep"
+            && words[2].to_lowercase() == "add"
+            && words[4].to_lowercase() == "equip" =>
+        {
+            filter_static(WEAR_SLOTS, &partial, CompletionType::WearSlot)
+        }
 
         // === dep add with filter (spedit dep <filter> add <index> <type> <vnum>) ===
         // spedit dep <filter> add <index> - show dep types
-        5 if !completing_word && words[1].to_lowercase() == "dep" && is_spedit_filter(words[2]) && words[3].to_lowercase() == "add" => all_static(SPEDIT_DEP_TYPES, CompletionType::SpeditDepType),
+        5 if !completing_word
+            && words[1].to_lowercase() == "dep"
+            && is_spedit_filter(words[2])
+            && words[3].to_lowercase() == "add" =>
+        {
+            all_static(SPEDIT_DEP_TYPES, CompletionType::SpeditDepType)
+        }
         // spedit dep <filter> add <index> <partial_type> - complete dep type
-        6 if completing_word && words[1].to_lowercase() == "dep" && is_spedit_filter(words[2]) && words[3].to_lowercase() == "add" => filter_static(SPEDIT_DEP_TYPES, &partial, CompletionType::SpeditDepType),
+        6 if completing_word
+            && words[1].to_lowercase() == "dep"
+            && is_spedit_filter(words[2])
+            && words[3].to_lowercase() == "add" =>
+        {
+            filter_static(SPEDIT_DEP_TYPES, &partial, CompletionType::SpeditDepType)
+        }
         // spedit dep <filter> add <index> <type> - show item vnums
-        6 if !completing_word && words[1].to_lowercase() == "dep" && is_spedit_filter(words[2]) && words[3].to_lowercase() == "add" => all_dynamic(item_vnums, CompletionType::ItemVnum),
+        6 if !completing_word
+            && words[1].to_lowercase() == "dep"
+            && is_spedit_filter(words[2])
+            && words[3].to_lowercase() == "add" =>
+        {
+            all_dynamic(item_vnums, CompletionType::ItemVnum)
+        }
         // spedit dep <filter> add <index> <type> <partial_vnum> - complete item vnum
-        7 if completing_word && words[1].to_lowercase() == "dep" && is_spedit_filter(words[2]) && words[3].to_lowercase() == "add" => filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum),
+        7 if completing_word
+            && words[1].to_lowercase() == "dep"
+            && is_spedit_filter(words[2])
+            && words[3].to_lowercase() == "add" =>
+        {
+            filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum)
+        }
         // spedit dep <filter> add <index> equip <vnum> - show wear slots
-        7 if !completing_word && words[1].to_lowercase() == "dep" && is_spedit_filter(words[2]) && words[3].to_lowercase() == "add" && words[5].to_lowercase() == "equip" => all_static(WEAR_SLOTS, CompletionType::WearSlot),
+        7 if !completing_word
+            && words[1].to_lowercase() == "dep"
+            && is_spedit_filter(words[2])
+            && words[3].to_lowercase() == "add"
+            && words[5].to_lowercase() == "equip" =>
+        {
+            all_static(WEAR_SLOTS, CompletionType::WearSlot)
+        }
         // spedit dep <filter> add <index> equip <vnum> <partial_slot> - complete wear slot
-        8 if completing_word && words[1].to_lowercase() == "dep" && is_spedit_filter(words[2]) && words[3].to_lowercase() == "add" && words[5].to_lowercase() == "equip" => filter_static(WEAR_SLOTS, &partial, CompletionType::WearSlot),
+        8 if completing_word
+            && words[1].to_lowercase() == "dep"
+            && is_spedit_filter(words[2])
+            && words[3].to_lowercase() == "add"
+            && words[5].to_lowercase() == "equip" =>
+        {
+            filter_static(WEAR_SLOTS, &partial, CompletionType::WearSlot)
+        }
 
         // === dep add with "room <vnum>" filter (spedit dep room <vnum> add <index> <type> <item_vnum>) ===
         // spedit dep room <vnum> add <index> - show dep types
-        6 if !completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "room" && words[4].to_lowercase() == "add" => all_static(SPEDIT_DEP_TYPES, CompletionType::SpeditDepType),
+        6 if !completing_word
+            && words[1].to_lowercase() == "dep"
+            && words[2].to_lowercase() == "room"
+            && words[4].to_lowercase() == "add" =>
+        {
+            all_static(SPEDIT_DEP_TYPES, CompletionType::SpeditDepType)
+        }
         // spedit dep room <vnum> add <index> <partial_type> - complete dep type
-        7 if completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "room" && words[4].to_lowercase() == "add" => filter_static(SPEDIT_DEP_TYPES, &partial, CompletionType::SpeditDepType),
+        7 if completing_word
+            && words[1].to_lowercase() == "dep"
+            && words[2].to_lowercase() == "room"
+            && words[4].to_lowercase() == "add" =>
+        {
+            filter_static(SPEDIT_DEP_TYPES, &partial, CompletionType::SpeditDepType)
+        }
         // spedit dep room <vnum> add <index> <type> - show item vnums
-        7 if !completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "room" && words[4].to_lowercase() == "add" => all_dynamic(item_vnums, CompletionType::ItemVnum),
+        7 if !completing_word
+            && words[1].to_lowercase() == "dep"
+            && words[2].to_lowercase() == "room"
+            && words[4].to_lowercase() == "add" =>
+        {
+            all_dynamic(item_vnums, CompletionType::ItemVnum)
+        }
         // spedit dep room <vnum> add <index> <type> <partial_vnum> - complete item vnum
-        8 if completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "room" && words[4].to_lowercase() == "add" => filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum),
+        8 if completing_word
+            && words[1].to_lowercase() == "dep"
+            && words[2].to_lowercase() == "room"
+            && words[4].to_lowercase() == "add" =>
+        {
+            filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum)
+        }
         // spedit dep room <vnum> add <index> equip <vnum> - show wear slots
-        8 if !completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "room" && words[4].to_lowercase() == "add" && words[6].to_lowercase() == "equip" => all_static(WEAR_SLOTS, CompletionType::WearSlot),
+        8 if !completing_word
+            && words[1].to_lowercase() == "dep"
+            && words[2].to_lowercase() == "room"
+            && words[4].to_lowercase() == "add"
+            && words[6].to_lowercase() == "equip" =>
+        {
+            all_static(WEAR_SLOTS, CompletionType::WearSlot)
+        }
         // spedit dep room <vnum> add <index> equip <vnum> <partial_slot> - complete wear slot
-        9 if completing_word && words[1].to_lowercase() == "dep" && words[2].to_lowercase() == "room" && words[4].to_lowercase() == "add" && words[6].to_lowercase() == "equip" => filter_static(WEAR_SLOTS, &partial, CompletionType::WearSlot),
+        9 if completing_word
+            && words[1].to_lowercase() == "dep"
+            && words[2].to_lowercase() == "room"
+            && words[4].to_lowercase() == "add"
+            && words[6].to_lowercase() == "equip" =>
+        {
+            filter_static(WEAR_SLOTS, &partial, CompletionType::WearSlot)
+        }
 
         _ => CompletionResult::empty(),
     }
@@ -1410,7 +2007,12 @@ fn complete_set(words: &[&str], completing_word: bool, is_builder: bool) -> Comp
 }
 
 /// Context-aware completion for recedit command
-fn complete_recedit(words: &[&str], completing_word: bool, recipe_vnums: &[String], item_vnums: &[String]) -> CompletionResult {
+fn complete_recedit(
+    words: &[&str],
+    completing_word: bool,
+    recipe_vnums: &[String],
+    item_vnums: &[String],
+) -> CompletionResult {
     let partial = get_partial(words, completing_word);
 
     match words.len() {
@@ -1421,37 +2023,69 @@ fn complete_recedit(words: &[&str], completing_word: bool, recipe_vnums: &[Strin
         // recedit <vnum> <partial_subcmd> - complete subcommand
         3 if completing_word => filter_static(RECEDIT_SUBCOMMANDS, &partial, CompletionType::ReceditSubcommand),
         // recedit <vnum> skill - show skill types
-        3 if !completing_word && words[2].to_lowercase() == "skill" => all_static(RECIPE_SKILLS, CompletionType::RecipeSkill),
+        3 if !completing_word && words[2].to_lowercase() == "skill" => {
+            all_static(RECIPE_SKILLS, CompletionType::RecipeSkill)
+        }
         // recedit <vnum> output - show item vnums (hint)
-        3 if !completing_word && words[2].to_lowercase() == "output" => all_dynamic(item_vnums, CompletionType::ItemVnum),
+        3 if !completing_word && words[2].to_lowercase() == "output" => {
+            all_dynamic(item_vnums, CompletionType::ItemVnum)
+        }
         // recedit <vnum> skill <partial> - complete skill
-        4 if completing_word && words[2].to_lowercase() == "skill" => filter_static(RECIPE_SKILLS, &partial, CompletionType::RecipeSkill),
+        4 if completing_word && words[2].to_lowercase() == "skill" => {
+            filter_static(RECIPE_SKILLS, &partial, CompletionType::RecipeSkill)
+        }
         // recedit <vnum> autolearn - show on/off
-        3 if !completing_word && words[2].to_lowercase() == "autolearn" => all_static(SET_TOGGLE_VALUES, CompletionType::SetSubcommand),
+        3 if !completing_word && words[2].to_lowercase() == "autolearn" => {
+            all_static(SET_TOGGLE_VALUES, CompletionType::SetSubcommand)
+        }
         // recedit <vnum> autolearn <partial> - complete on/off
-        4 if completing_word && words[2].to_lowercase() == "autolearn" => filter_static(SET_TOGGLE_VALUES, &partial, CompletionType::SetSubcommand),
+        4 if completing_word && words[2].to_lowercase() == "autolearn" => {
+            filter_static(SET_TOGGLE_VALUES, &partial, CompletionType::SetSubcommand)
+        }
         // recedit <vnum> output <partial_item_vnum> - complete item vnum
-        4 if completing_word && words[2].to_lowercase() == "output" => filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum),
+        4 if completing_word && words[2].to_lowercase() == "output" => {
+            filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum)
+        }
         // recedit <vnum> ingredient - show actions
-        3 if !completing_word && words[2].to_lowercase() == "ingredient" => all_static(INGREDIENT_ACTIONS, CompletionType::IngredientAction),
+        3 if !completing_word && words[2].to_lowercase() == "ingredient" => {
+            all_static(INGREDIENT_ACTIONS, CompletionType::IngredientAction)
+        }
         // recedit <vnum> ingredient <partial> - complete action
-        4 if completing_word && words[2].to_lowercase() == "ingredient" => filter_static(INGREDIENT_ACTIONS, &partial, CompletionType::IngredientAction),
+        4 if completing_word && words[2].to_lowercase() == "ingredient" => {
+            filter_static(INGREDIENT_ACTIONS, &partial, CompletionType::IngredientAction)
+        }
         // recedit <vnum> ingredient add - show item vnums
-        4 if !completing_word && words[2].to_lowercase() == "ingredient" && words[3].to_lowercase() == "add" => all_dynamic(item_vnums, CompletionType::ItemVnum),
+        4 if !completing_word && words[2].to_lowercase() == "ingredient" && words[3].to_lowercase() == "add" => {
+            all_dynamic(item_vnums, CompletionType::ItemVnum)
+        }
         // recedit <vnum> ingredient add <partial_vnum> - complete item vnum
-        5 if completing_word && words[2].to_lowercase() == "ingredient" && words[3].to_lowercase() == "add" => filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum),
+        5 if completing_word && words[2].to_lowercase() == "ingredient" && words[3].to_lowercase() == "add" => {
+            filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum)
+        }
         // recedit <vnum> tool - show actions
-        3 if !completing_word && words[2].to_lowercase() == "tool" => all_static(TOOL_ACTIONS, CompletionType::ToolAction),
+        3 if !completing_word && words[2].to_lowercase() == "tool" => {
+            all_static(TOOL_ACTIONS, CompletionType::ToolAction)
+        }
         // recedit <vnum> tool <partial> - complete action
-        4 if completing_word && words[2].to_lowercase() == "tool" => filter_static(TOOL_ACTIONS, &partial, CompletionType::ToolAction),
+        4 if completing_word && words[2].to_lowercase() == "tool" => {
+            filter_static(TOOL_ACTIONS, &partial, CompletionType::ToolAction)
+        }
         // recedit <vnum> tool add - show item vnums
-        4 if !completing_word && words[2].to_lowercase() == "tool" && words[3].to_lowercase() == "add" => all_dynamic(item_vnums, CompletionType::ItemVnum),
+        4 if !completing_word && words[2].to_lowercase() == "tool" && words[3].to_lowercase() == "add" => {
+            all_dynamic(item_vnums, CompletionType::ItemVnum)
+        }
         // recedit <vnum> tool add <partial_vnum> - complete item vnum
-        5 if completing_word && words[2].to_lowercase() == "tool" && words[3].to_lowercase() == "add" => filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum),
+        5 if completing_word && words[2].to_lowercase() == "tool" && words[3].to_lowercase() == "add" => {
+            filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum)
+        }
         // recedit <vnum> tool add <spec> - show locations
-        5 if !completing_word && words[2].to_lowercase() == "tool" && words[3].to_lowercase() == "add" => all_static(TOOL_LOCATIONS, CompletionType::ToolLocation),
+        5 if !completing_word && words[2].to_lowercase() == "tool" && words[3].to_lowercase() == "add" => {
+            all_static(TOOL_LOCATIONS, CompletionType::ToolLocation)
+        }
         // recedit <vnum> tool add <spec> <partial_loc> - complete location
-        6 if completing_word && words[2].to_lowercase() == "tool" && words[3].to_lowercase() == "add" => filter_static(TOOL_LOCATIONS, &partial, CompletionType::ToolLocation),
+        6 if completing_word && words[2].to_lowercase() == "tool" && words[3].to_lowercase() == "add" => {
+            filter_static(TOOL_LOCATIONS, &partial, CompletionType::ToolLocation)
+        }
         _ => CompletionResult::empty(),
     }
 }
@@ -1504,9 +2138,8 @@ fn complete_admin(words: &[&str], completing_word: bool, online_players: &[Strin
             if subcommand == "user" {
                 let action = words[2].to_lowercase();
                 match action.as_str() {
-                    "info" | "grant-admin" | "revoke-admin" | "grant-builder" | "revoke-builder" | "password" | "delete" => {
-                        all_dynamic(online_players, CompletionType::PlayerName)
-                    }
+                    "info" | "grant-admin" | "revoke-admin" | "grant-builder" | "revoke-builder" | "password"
+                    | "delete" => all_dynamic(online_players, CompletionType::PlayerName),
                     _ => CompletionResult::empty(),
                 }
             } else {
@@ -1519,9 +2152,8 @@ fn complete_admin(words: &[&str], completing_word: bool, online_players: &[Strin
             if subcommand == "user" {
                 let action = words[2].to_lowercase();
                 match action.as_str() {
-                    "info" | "grant-admin" | "revoke-admin" | "grant-builder" | "revoke-builder" | "password" | "delete" => {
-                        filter_dynamic(online_players, &partial, CompletionType::PlayerName)
-                    }
+                    "info" | "grant-admin" | "revoke-admin" | "grant-builder" | "revoke-builder" | "password"
+                    | "delete" => filter_dynamic(online_players, &partial, CompletionType::PlayerName),
                     _ => CompletionResult::empty(),
                 }
             } else {
@@ -1584,7 +2216,13 @@ fn complete_bugs(words: &[&str], completing_word: bool) -> CompletionResult {
 
 /// Context-aware completion for summon command
 /// Syntax: summon mob <vnum> [room_vnum] | summon player <name> [room_vnum]
-fn complete_summon(words: &[&str], completing_word: bool, mobile_vnums: &[String], online_players: &[String], room_vnums: &[String]) -> CompletionResult {
+fn complete_summon(
+    words: &[&str],
+    completing_word: bool,
+    mobile_vnums: &[String],
+    online_players: &[String],
+    room_vnums: &[String],
+) -> CompletionResult {
     let partial = get_partial(words, completing_word);
 
     match words.len() {
@@ -1638,7 +2276,7 @@ fn complete_treat(words: &[&str], completing_word: bool, online_players: &[Strin
                 online_players
                     .iter()
                     .filter(|p| p.to_lowercase().starts_with(&partial))
-                    .cloned()
+                    .cloned(),
             );
             CompletionResult::new(matches, &partial, CompletionType::TreatTarget)
         }
@@ -1668,7 +2306,12 @@ fn complete_treat(words: &[&str], completing_word: bool, online_players: &[Strin
 /// Context-aware completion for tedit command
 /// Syntax: tedit <vnum> <subcommand> [args...]
 /// Or: tedit create <vnum>
-fn complete_tedit(words: &[&str], completing_word: bool, transport_vnums: &[String], room_vnums: &[String]) -> CompletionResult {
+fn complete_tedit(
+    words: &[&str],
+    completing_word: bool,
+    transport_vnums: &[String],
+    room_vnums: &[String],
+) -> CompletionResult {
     let partial = get_partial(words, completing_word);
 
     match words.len() {
@@ -1682,7 +2325,7 @@ fn complete_tedit(words: &[&str], completing_word: bool, transport_vnums: &[Stri
                 transport_vnums
                     .iter()
                     .filter(|v| v.to_lowercase().starts_with(&partial))
-                    .cloned()
+                    .cloned(),
             );
             CompletionResult::new(matches, &partial, CompletionType::TransportVnum)
         }
@@ -1703,29 +2346,53 @@ fn complete_tedit(words: &[&str], completing_word: bool, transport_vnums: &[Stri
         // tedit <vnum> <partial_subcmd> - complete subcommand
         3 if completing_word => filter_static(TEDIT_SUBCOMMANDS, &partial, CompletionType::TeditSubcommand),
         // tedit <vnum> type - show transport types
-        3 if !completing_word && words[2].to_lowercase() == "type" => all_static(TRANSPORT_TYPES, CompletionType::TransportType),
+        3 if !completing_word && words[2].to_lowercase() == "type" => {
+            all_static(TRANSPORT_TYPES, CompletionType::TransportType)
+        }
         // tedit <vnum> type <partial_type> - complete transport type
-        4 if completing_word && words[2].to_lowercase() == "type" => filter_static(TRANSPORT_TYPES, &partial, CompletionType::TransportType),
+        4 if completing_word && words[2].to_lowercase() == "type" => {
+            filter_static(TRANSPORT_TYPES, &partial, CompletionType::TransportType)
+        }
         // tedit <vnum> schedule - show schedule types
-        3 if !completing_word && words[2].to_lowercase() == "schedule" => all_static(SCHEDULE_TYPES, CompletionType::TeditSubcommand),
+        3 if !completing_word && words[2].to_lowercase() == "schedule" => {
+            all_static(SCHEDULE_TYPES, CompletionType::TeditSubcommand)
+        }
         // tedit <vnum> schedule <partial_type> - complete schedule type
-        4 if completing_word && words[2].to_lowercase() == "schedule" => filter_static(SCHEDULE_TYPES, &partial, CompletionType::TeditSubcommand),
+        4 if completing_word && words[2].to_lowercase() == "schedule" => {
+            filter_static(SCHEDULE_TYPES, &partial, CompletionType::TeditSubcommand)
+        }
         // tedit <vnum> stop - show stop actions
-        3 if !completing_word && words[2].to_lowercase() == "stop" => all_static(STOP_ACTIONS, CompletionType::StopAction),
+        3 if !completing_word && words[2].to_lowercase() == "stop" => {
+            all_static(STOP_ACTIONS, CompletionType::StopAction)
+        }
         // tedit <vnum> stop <partial_action> - complete stop action
-        4 if completing_word && words[2].to_lowercase() == "stop" => filter_static(STOP_ACTIONS, &partial, CompletionType::StopAction),
+        4 if completing_word && words[2].to_lowercase() == "stop" => {
+            filter_static(STOP_ACTIONS, &partial, CompletionType::StopAction)
+        }
         // tedit <vnum> stop add - show room vnums
-        4 if !completing_word && words[2].to_lowercase() == "stop" && words[3].to_lowercase() == "add" => all_dynamic(room_vnums, CompletionType::RoomVnum),
+        4 if !completing_word && words[2].to_lowercase() == "stop" && words[3].to_lowercase() == "add" => {
+            all_dynamic(room_vnums, CompletionType::RoomVnum)
+        }
         // tedit <vnum> stop add <partial_room> - complete room vnum
-        5 if completing_word && words[2].to_lowercase() == "stop" && words[3].to_lowercase() == "add" => filter_dynamic(room_vnums, &partial, CompletionType::RoomVnum),
+        5 if completing_word && words[2].to_lowercase() == "stop" && words[3].to_lowercase() == "add" => {
+            filter_dynamic(room_vnums, &partial, CompletionType::RoomVnum)
+        }
         // tedit <vnum> stop add <room> <name> - show directions (after name entered)
-        6 if !completing_word && words[2].to_lowercase() == "stop" && words[3].to_lowercase() == "add" => all_static(DIRECTIONS, CompletionType::Direction),
+        6 if !completing_word && words[2].to_lowercase() == "stop" && words[3].to_lowercase() == "add" => {
+            all_static(DIRECTIONS, CompletionType::Direction)
+        }
         // tedit <vnum> stop add <room> <name> <partial_dir> - complete direction
-        7 if completing_word && words[2].to_lowercase() == "stop" && words[3].to_lowercase() == "add" => filter_static(DIRECTIONS, &partial, CompletionType::Direction),
+        7 if completing_word && words[2].to_lowercase() == "stop" && words[3].to_lowercase() == "add" => {
+            filter_static(DIRECTIONS, &partial, CompletionType::Direction)
+        }
         // tedit <vnum> interior - show room vnums
-        3 if !completing_word && words[2].to_lowercase() == "interior" => all_dynamic(room_vnums, CompletionType::RoomVnum),
+        3 if !completing_word && words[2].to_lowercase() == "interior" => {
+            all_dynamic(room_vnums, CompletionType::RoomVnum)
+        }
         // tedit <vnum> interior <partial_room> - complete room vnum
-        4 if completing_word && words[2].to_lowercase() == "interior" => filter_dynamic(room_vnums, &partial, CompletionType::RoomVnum),
+        4 if completing_word && words[2].to_lowercase() == "interior" => {
+            filter_dynamic(room_vnums, &partial, CompletionType::RoomVnum)
+        }
         _ => CompletionResult::empty(),
     }
 }
@@ -1772,13 +2439,21 @@ fn complete_property(words: &[&str], completing_word: bool, online_players: &[St
         // property <partial_subcmd> - complete subcommand
         2 if completing_word => filter_static(PROPERTY_SUBCOMMANDS, &partial, CompletionType::PropertySubcommand),
         // property access - show access levels
-        2 if !completing_word && words[1].to_lowercase() == "access" => all_static(PROPERTY_ACCESS_LEVELS, CompletionType::PropertyAccessLevel),
+        2 if !completing_word && words[1].to_lowercase() == "access" => {
+            all_static(PROPERTY_ACCESS_LEVELS, CompletionType::PropertyAccessLevel)
+        }
         // property access <partial_level> - complete access level
-        3 if completing_word && words[1].to_lowercase() == "access" => filter_static(PROPERTY_ACCESS_LEVELS, &partial, CompletionType::PropertyAccessLevel),
+        3 if completing_word && words[1].to_lowercase() == "access" => {
+            filter_static(PROPERTY_ACCESS_LEVELS, &partial, CompletionType::PropertyAccessLevel)
+        }
         // property trust/untrust - show online players
-        2 if !completing_word && (words[1].to_lowercase() == "trust" || words[1].to_lowercase() == "untrust") => all_dynamic(online_players, CompletionType::PlayerName),
+        2 if !completing_word && (words[1].to_lowercase() == "trust" || words[1].to_lowercase() == "untrust") => {
+            all_dynamic(online_players, CompletionType::PlayerName)
+        }
         // property trust/untrust <partial_name> - complete player name
-        3 if completing_word && (words[1].to_lowercase() == "trust" || words[1].to_lowercase() == "untrust") => filter_dynamic(online_players, &partial, CompletionType::PlayerName),
+        3 if completing_word && (words[1].to_lowercase() == "trust" || words[1].to_lowercase() == "untrust") => {
+            filter_dynamic(online_players, &partial, CompletionType::PlayerName)
+        }
         _ => CompletionResult::empty(),
     }
 }
@@ -1793,7 +2468,11 @@ fn complete_mail(words: &[&str], completing_word: bool, online_players: &[String
         // mail <partial_subcmd> - complete subcommand
         2 if completing_word => filter_static(MAIL_SUBCOMMANDS, &partial, CompletionType::MailSubcommand),
         // mail send/compose/reply - show online players (for recipient)
-        2 if !completing_word && (words[1].to_lowercase() == "send" || words[1].to_lowercase() == "compose" || words[1].to_lowercase() == "reply") => {
+        2 if !completing_word
+            && (words[1].to_lowercase() == "send"
+                || words[1].to_lowercase() == "compose"
+                || words[1].to_lowercase() == "reply") =>
+        {
             all_dynamic(online_players, CompletionType::PlayerName)
         }
         // mail send/compose <partial_name> - complete player name
@@ -1857,17 +2536,29 @@ fn complete_bpredit(words: &[&str], completing_word: bool, shop_preset_vnums: &[
         // bpredit <vnum> <partial_subcmd>
         3 if completing_word => filter_static(BPREDIT_SUBCOMMANDS, &partial, CompletionType::BpreditSubcommand),
         // bpredit <vnum> type - show add/remove
-        3 if !completing_word && words[2].to_lowercase() == "type" => all_static(SHOP_STOCK_ACTIONS, CompletionType::ShopStockAction),
+        3 if !completing_word && words[2].to_lowercase() == "type" => {
+            all_static(SHOP_STOCK_ACTIONS, CompletionType::ShopStockAction)
+        }
         // bpredit <vnum> type <partial_action>
-        4 if completing_word && words[2].to_lowercase() == "type" => filter_static(SHOP_STOCK_ACTIONS, &partial, CompletionType::ShopStockAction),
+        4 if completing_word && words[2].to_lowercase() == "type" => {
+            filter_static(SHOP_STOCK_ACTIONS, &partial, CompletionType::ShopStockAction)
+        }
         // bpredit <vnum> type add - show item types
-        4 if !completing_word && words[2].to_lowercase() == "type" && words[3].to_lowercase() == "add" => all_static(ITEM_TYPES, CompletionType::ItemType),
+        4 if !completing_word && words[2].to_lowercase() == "type" && words[3].to_lowercase() == "add" => {
+            all_static(ITEM_TYPES, CompletionType::ItemType)
+        }
         // bpredit <vnum> type add <partial_type>
-        5 if completing_word && words[2].to_lowercase() == "type" && words[3].to_lowercase() == "add" => filter_static(ITEM_TYPES, &partial, CompletionType::ItemType),
+        5 if completing_word && words[2].to_lowercase() == "type" && words[3].to_lowercase() == "add" => {
+            filter_static(ITEM_TYPES, &partial, CompletionType::ItemType)
+        }
         // bpredit <vnum> category - show add/remove
-        3 if !completing_word && words[2].to_lowercase() == "category" => all_static(SHOP_STOCK_ACTIONS, CompletionType::ShopStockAction),
+        3 if !completing_word && words[2].to_lowercase() == "category" => {
+            all_static(SHOP_STOCK_ACTIONS, CompletionType::ShopStockAction)
+        }
         // bpredit <vnum> category <partial_action>
-        4 if completing_word && words[2].to_lowercase() == "category" => filter_static(SHOP_STOCK_ACTIONS, &partial, CompletionType::ShopStockAction),
+        4 if completing_word && words[2].to_lowercase() == "category" => {
+            filter_static(SHOP_STOCK_ACTIONS, &partial, CompletionType::ShopStockAction)
+        }
         _ => CompletionResult::empty(),
     }
 }
@@ -1876,7 +2567,12 @@ fn complete_bpredit(words: &[&str], completing_word: bool, shop_preset_vnums: &[
 /// Syntax: plantedit <vnum> <subcommand> [args...]
 /// Or: plantedit create <vnum>
 /// Or: plantedit list
-fn complete_plantedit(words: &[&str], completing_word: bool, plant_vnums: &[String], item_vnums: &[String]) -> CompletionResult {
+fn complete_plantedit(
+    words: &[&str],
+    completing_word: bool,
+    plant_vnums: &[String],
+    item_vnums: &[String],
+) -> CompletionResult {
     let partial = get_partial(words, completing_word);
 
     match words.len() {
@@ -1913,37 +2609,69 @@ fn complete_plantedit(words: &[&str], completing_word: bool, plant_vnums: &[Stri
         // plantedit <vnum> <partial_subcmd> - complete subcommand
         3 if completing_word => filter_static(PLANTEDIT_SUBCOMMANDS, &partial, CompletionType::PlanteditSubcommand),
         // plantedit <vnum> category - show plant categories
-        3 if !completing_word && words[2].to_lowercase() == "category" => all_static(PLANT_CATEGORIES, CompletionType::PlantCategory),
+        3 if !completing_word && words[2].to_lowercase() == "category" => {
+            all_static(PLANT_CATEGORIES, CompletionType::PlantCategory)
+        }
         // plantedit <vnum> category <partial> - complete category
-        4 if completing_word && words[2].to_lowercase() == "category" => filter_static(PLANT_CATEGORIES, &partial, CompletionType::PlantCategory),
+        4 if completing_word && words[2].to_lowercase() == "category" => {
+            filter_static(PLANT_CATEGORIES, &partial, CompletionType::PlantCategory)
+        }
         // plantedit <vnum> season - show season actions
-        3 if !completing_word && words[2].to_lowercase() == "season" => all_static(PLANT_SEASON_ACTIONS, CompletionType::PlanteditSubcommand),
+        3 if !completing_word && words[2].to_lowercase() == "season" => {
+            all_static(PLANT_SEASON_ACTIONS, CompletionType::PlanteditSubcommand)
+        }
         // plantedit <vnum> season <partial_action> - complete action
-        4 if completing_word && words[2].to_lowercase() == "season" => filter_static(PLANT_SEASON_ACTIONS, &partial, CompletionType::PlanteditSubcommand),
+        4 if completing_word && words[2].to_lowercase() == "season" => {
+            filter_static(PLANT_SEASON_ACTIONS, &partial, CompletionType::PlanteditSubcommand)
+        }
         // plantedit <vnum> season add/remove - show seasons
-        4 if !completing_word && words[2].to_lowercase() == "season" => all_static(PLANT_SEASONS, CompletionType::PlantSeason),
+        4 if !completing_word && words[2].to_lowercase() == "season" => {
+            all_static(PLANT_SEASONS, CompletionType::PlantSeason)
+        }
         // plantedit <vnum> season add/remove <partial_season> - complete season
-        5 if completing_word && words[2].to_lowercase() == "season" => filter_static(PLANT_SEASONS, &partial, CompletionType::PlantSeason),
+        5 if completing_word && words[2].to_lowercase() == "season" => {
+            filter_static(PLANT_SEASONS, &partial, CompletionType::PlantSeason)
+        }
         // plantedit <vnum> stage - show add/remove
-        3 if !completing_word && words[2].to_lowercase() == "stage" => all_static(PLANT_SEASON_ACTIONS, CompletionType::PlanteditSubcommand),
+        3 if !completing_word && words[2].to_lowercase() == "stage" => {
+            all_static(PLANT_SEASON_ACTIONS, CompletionType::PlanteditSubcommand)
+        }
         // plantedit <vnum> stage <partial_action>
-        4 if completing_word && words[2].to_lowercase() == "stage" => filter_static(PLANT_SEASON_ACTIONS, &partial, CompletionType::PlanteditSubcommand),
+        4 if completing_word && words[2].to_lowercase() == "stage" => {
+            filter_static(PLANT_SEASON_ACTIONS, &partial, CompletionType::PlanteditSubcommand)
+        }
         // plantedit <vnum> stage add - show stage names
-        4 if !completing_word && words[2].to_lowercase() == "stage" && words[3].to_lowercase() == "add" => all_static(PLANT_STAGES, CompletionType::PlantStage),
+        4 if !completing_word && words[2].to_lowercase() == "stage" && words[3].to_lowercase() == "add" => {
+            all_static(PLANT_STAGES, CompletionType::PlantStage)
+        }
         // plantedit <vnum> stage add <partial_stage> - complete stage name
-        5 if completing_word && words[2].to_lowercase() == "stage" && words[3].to_lowercase() == "add" => filter_static(PLANT_STAGES, &partial, CompletionType::PlantStage),
+        5 if completing_word && words[2].to_lowercase() == "stage" && words[3].to_lowercase() == "add" => {
+            filter_static(PLANT_STAGES, &partial, CompletionType::PlantStage)
+        }
         // plantedit <vnum> keyword - show add/remove
-        3 if !completing_word && words[2].to_lowercase() == "keyword" => all_static(PLANT_SEASON_ACTIONS, CompletionType::PlanteditSubcommand),
+        3 if !completing_word && words[2].to_lowercase() == "keyword" => {
+            all_static(PLANT_SEASON_ACTIONS, CompletionType::PlanteditSubcommand)
+        }
         // plantedit <vnum> keyword <partial_action>
-        4 if completing_word && words[2].to_lowercase() == "keyword" => filter_static(PLANT_SEASON_ACTIONS, &partial, CompletionType::PlanteditSubcommand),
+        4 if completing_word && words[2].to_lowercase() == "keyword" => {
+            filter_static(PLANT_SEASON_ACTIONS, &partial, CompletionType::PlanteditSubcommand)
+        }
         // plantedit <vnum> seed_vnum - show item vnums
-        3 if !completing_word && words[2].to_lowercase() == "seed_vnum" => all_dynamic(item_vnums, CompletionType::ItemVnum),
+        3 if !completing_word && words[2].to_lowercase() == "seed_vnum" => {
+            all_dynamic(item_vnums, CompletionType::ItemVnum)
+        }
         // plantedit <vnum> seed_vnum <partial> - complete item vnum
-        4 if completing_word && words[2].to_lowercase() == "seed_vnum" => filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum),
+        4 if completing_word && words[2].to_lowercase() == "seed_vnum" => {
+            filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum)
+        }
         // plantedit <vnum> harvest_vnum - show item vnums
-        3 if !completing_word && words[2].to_lowercase() == "harvest_vnum" => all_dynamic(item_vnums, CompletionType::ItemVnum),
+        3 if !completing_word && words[2].to_lowercase() == "harvest_vnum" => {
+            all_dynamic(item_vnums, CompletionType::ItemVnum)
+        }
         // plantedit <vnum> harvest_vnum <partial> - complete item vnum
-        4 if completing_word && words[2].to_lowercase() == "harvest_vnum" => filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum),
+        4 if completing_word && words[2].to_lowercase() == "harvest_vnum" => {
+            filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum)
+        }
         _ => CompletionResult::empty(),
     }
 }
@@ -2019,7 +2747,23 @@ mod tests {
             "help".to_string(),
         ];
 
-        let result = complete("lo", 2, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "lo",
+            2,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert_eq!(result.completions.len(), 3);
         assert!(result.completions.contains(&"look".to_string()));
         assert!(result.completions.contains(&"login".to_string()));
@@ -2036,7 +2780,23 @@ mod tests {
             "forest:entrance".to_string(),
         ];
 
-        let result = complete("rgoto town:", 11, &commands, &room_vnums, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "rgoto town:",
+            11,
+            &commands,
+            &room_vnums,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert_eq!(result.completions.len(), 2);
         assert!(result.completions.contains(&"town:square".to_string()));
         assert!(result.completions.contains(&"town:tavern".to_string()));
@@ -2056,14 +2816,46 @@ mod tests {
     #[test]
     fn test_empty_input() {
         let commands = vec!["look".to_string(), "help".to_string()];
-        let result = complete("", 0, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "",
+            0,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert_eq!(result.completions.len(), 2);
     }
 
     #[test]
     fn test_direction_completion() {
         let commands = vec!["go".to_string()];
-        let result = complete("go nor", 6, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "go nor",
+            6,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert_eq!(result.completions.len(), 3); // north, northeast, northwest
         assert!(result.completions.contains(&"north".to_string()));
         assert!(result.completions.contains(&"northeast".to_string()));
@@ -2076,7 +2868,23 @@ mod tests {
         let mobile_vnums = vec!["town:guard".to_string()];
 
         // Complete subcommand after vnum
-        let result = complete("medit town:guard tr", 19, &commands, &[], &[], &mobile_vnums, &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "medit town:guard tr",
+            19,
+            &commands,
+            &[],
+            &[],
+            &mobile_vnums,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"trigger".to_string()));
         assert_eq!(result.completion_type, CompletionType::MeditSubcommand);
     }
@@ -2087,7 +2895,23 @@ mod tests {
         let mobile_vnums = vec!["town:guard".to_string()];
 
         // Complete trigger action after "trigger"
-        let result = complete("medit town:guard trigger a", 26, &commands, &[], &[], &mobile_vnums, &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "medit town:guard trigger a",
+            26,
+            &commands,
+            &[],
+            &[],
+            &mobile_vnums,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"add".to_string()));
         assert_eq!(result.completion_type, CompletionType::TriggerAction);
     }
@@ -2098,7 +2922,23 @@ mod tests {
         let mobile_vnums = vec!["town:guard".to_string()];
 
         // Complete trigger type after "add"
-        let result = complete("medit town:guard trigger add gr", 31, &commands, &[], &[], &mobile_vnums, &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "medit town:guard trigger add gr",
+            31,
+            &commands,
+            &[],
+            &[],
+            &mobile_vnums,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"greet".to_string()));
         assert_eq!(result.completion_type, CompletionType::TriggerType);
     }
@@ -2109,7 +2949,23 @@ mod tests {
         let mobile_vnums = vec!["town:guard".to_string()];
 
         // Complete template after trigger type
-        let result = complete("medit town:guard trigger add greet @say", 39, &commands, &[], &[], &mobile_vnums, &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "medit town:guard trigger add greet @say",
+            39,
+            &commands,
+            &[],
+            &[],
+            &mobile_vnums,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"@say_greeting".to_string()));
         assert!(result.completions.contains(&"@say_random".to_string()));
         assert_eq!(result.completion_type, CompletionType::TriggerScript);
@@ -2121,7 +2977,23 @@ mod tests {
         let item_vnums = vec!["town:sword".to_string()];
 
         // Complete subcommand after vnum
-        let result = complete("oedit town:sword ty", 19, &commands, &[], &item_vnums, &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "oedit town:sword ty",
+            19,
+            &commands,
+            &[],
+            &item_vnums,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"type".to_string()));
         assert_eq!(result.completion_type, CompletionType::OeditSubcommand);
     }
@@ -2132,7 +3004,23 @@ mod tests {
         let item_vnums = vec!["town:sword".to_string()];
 
         // Complete item type after "type"
-        let result = complete("oedit town:sword type ar", 24, &commands, &[], &item_vnums, &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "oedit town:sword type ar",
+            24,
+            &commands,
+            &[],
+            &item_vnums,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"armor".to_string()));
         assert_eq!(result.completion_type, CompletionType::ItemType);
     }
@@ -2143,7 +3031,23 @@ mod tests {
         let item_vnums = vec!["town:sword".to_string()];
 
         // Complete trigger action after "trigger"
-        let result = complete("oedit town:sword trigger a", 26, &commands, &[], &item_vnums, &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "oedit town:sword trigger a",
+            26,
+            &commands,
+            &[],
+            &item_vnums,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"add".to_string()));
         assert_eq!(result.completion_type, CompletionType::ItemTriggerAction);
     }
@@ -2154,7 +3058,23 @@ mod tests {
         let item_vnums = vec!["town:sword".to_string()];
 
         // Complete trigger type after "add"
-        let result = complete("oedit town:sword trigger add ge", 31, &commands, &[], &item_vnums, &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "oedit town:sword trigger add ge",
+            31,
+            &commands,
+            &[],
+            &item_vnums,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"get".to_string()));
         assert_eq!(result.completion_type, CompletionType::ItemTriggerType);
     }
@@ -2164,7 +3084,23 @@ mod tests {
         let commands = vec!["redit".to_string()];
 
         // Complete subcommand
-        let result = complete("redit tr", 8, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "redit tr",
+            8,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"trigger".to_string()));
         assert_eq!(result.completion_type, CompletionType::ReditSubcommand);
     }
@@ -2174,7 +3110,23 @@ mod tests {
         let commands = vec!["redit".to_string()];
 
         // Complete flag name after "flag"
-        let result = complete("redit flag da", 13, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "redit flag da",
+            13,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"dark".to_string()));
         assert_eq!(result.completion_type, CompletionType::RoomFlag);
     }
@@ -2184,7 +3136,23 @@ mod tests {
         let commands = vec!["redit".to_string()];
 
         // Complete extra action
-        let result = complete("redit extra li", 14, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "redit extra li",
+            14,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"list".to_string()));
         assert_eq!(result.completion_type, CompletionType::ExtraDescAction);
     }
@@ -2194,7 +3162,23 @@ mod tests {
         let commands = vec!["redit".to_string()];
 
         // Complete trigger action
-        let result = complete("redit trigger a", 15, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "redit trigger a",
+            15,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"add".to_string()));
         assert_eq!(result.completion_type, CompletionType::RoomTriggerAction);
     }
@@ -2204,7 +3188,23 @@ mod tests {
         let commands = vec!["redit".to_string()];
 
         // Complete trigger type after "add"
-        let result = complete("redit trigger add en", 20, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "redit trigger add en",
+            20,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"enter".to_string()));
         assert_eq!(result.completion_type, CompletionType::RoomTriggerType);
     }
@@ -2215,7 +3215,23 @@ mod tests {
         let area_prefixes = vec!["town".to_string()];
 
         // Complete subcommand after area
-        let result = complete("aedit town pe", 13, &commands, &[], &[], &[], &area_prefixes, &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "aedit town pe",
+            13,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &area_prefixes,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"permission".to_string()));
         assert_eq!(result.completion_type, CompletionType::AeditSubcommand);
     }
@@ -2226,7 +3242,23 @@ mod tests {
         let area_prefixes = vec!["town".to_string()];
 
         // Complete permission level
-        let result = complete("aedit town permission ow", 24, &commands, &[], &[], &[], &area_prefixes, &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "aedit town permission ow",
+            24,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &area_prefixes,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"owner_only".to_string()));
         assert_eq!(result.completion_type, CompletionType::PermissionLevel);
     }
@@ -2236,7 +3268,23 @@ mod tests {
         let commands = vec!["spedit".to_string()];
 
         // Complete subcommand (no area prefix in new syntax)
-        let result = complete("spedit cr", 9, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "spedit cr",
+            9,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"create".to_string()));
         assert_eq!(result.completion_type, CompletionType::SpeditSubcommand);
     }
@@ -2246,7 +3294,23 @@ mod tests {
         let commands = vec!["spedit".to_string()];
 
         // Complete filter after "list"
-        let result = complete("spedit list mo", 14, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "spedit list mo",
+            14,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"mobs".to_string()));
         assert_eq!(result.completion_type, CompletionType::SpeditFilter);
     }
@@ -2257,7 +3321,23 @@ mod tests {
         let room_vnums = vec!["town:plaza".to_string(), "town:market".to_string()];
 
         // Complete room vnum after "create"
-        let result = complete("spedit create town:p", 20, &commands, &room_vnums, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "spedit create town:p",
+            20,
+            &commands,
+            &room_vnums,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"town:plaza".to_string()));
         assert_eq!(result.completion_type, CompletionType::RoomVnum);
     }
@@ -2268,7 +3348,23 @@ mod tests {
         let room_vnums = vec!["town:plaza".to_string()];
 
         // Complete entity type after "create <room>"
-        let result = complete("spedit create town:plaza mo", 27, &commands, &room_vnums, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "spedit create town:plaza mo",
+            27,
+            &commands,
+            &room_vnums,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"mobile".to_string()));
         assert_eq!(result.completion_type, CompletionType::SpawnEntityType);
     }
@@ -2280,7 +3376,23 @@ mod tests {
         let mobile_vnums = vec!["town:guard".to_string(), "town:merchant".to_string()];
 
         // Complete mobile vnum after "create <room> mobile"
-        let result = complete("spedit create town:plaza mobile town:g", 38, &commands, &room_vnums, &[], &mobile_vnums, &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "spedit create town:plaza mobile town:g",
+            38,
+            &commands,
+            &room_vnums,
+            &[],
+            &mobile_vnums,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"town:guard".to_string()));
         assert_eq!(result.completion_type, CompletionType::MobileVnum);
     }
@@ -2292,7 +3404,23 @@ mod tests {
         let item_vnums = vec!["town:sword".to_string(), "town:shield".to_string()];
 
         // Complete item vnum after "create <room> item"
-        let result = complete("spedit create town:plaza item town:sw", 37, &commands, &room_vnums, &item_vnums, &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "spedit create town:plaza item town:sw",
+            37,
+            &commands,
+            &room_vnums,
+            &item_vnums,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"town:sword".to_string()));
         assert_eq!(result.completion_type, CompletionType::ItemVnum);
     }
@@ -2302,7 +3430,23 @@ mod tests {
         let commands = vec!["spedit".to_string()];
 
         // Complete filter after "delete"
-        let result = complete("spedit delete mo", 16, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "spedit delete mo",
+            16,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"mobs".to_string()));
         assert_eq!(result.completion_type, CompletionType::SpeditFilter);
     }
@@ -2312,7 +3456,23 @@ mod tests {
         let commands = vec!["spedit".to_string()];
 
         // Complete filter OR dep action after "dep" (both should be offered)
-        let result = complete("spedit dep a", 12, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "spedit dep a",
+            12,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"all".to_string())); // filter
         assert!(result.completions.contains(&"add".to_string())); // dep action
     }
@@ -2322,7 +3482,23 @@ mod tests {
         let commands = vec!["spedit".to_string()];
 
         // Complete dep action after "dep mobs"
-        let result = complete("spedit dep mobs a", 17, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "spedit dep mobs a",
+            17,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"add".to_string()));
         assert_eq!(result.completion_type, CompletionType::SpeditDepAction);
     }
@@ -2332,7 +3508,23 @@ mod tests {
         let commands = vec!["set".to_string()];
 
         // Non-builder should see mxp, color, and afk but NOT roomflags
-        let result = complete("set ", 4, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "set ",
+            4,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"mxp".to_string()));
         assert!(result.completions.contains(&"color".to_string()));
         assert!(result.completions.contains(&"afk".to_string()));
@@ -2345,7 +3537,23 @@ mod tests {
         let commands = vec!["set".to_string()];
 
         // Builder should see all settings including roomflags
-        let result = complete("set ", 4, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], true);
+        let result = complete(
+            "set ",
+            4,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            true,
+        );
         assert!(result.completions.contains(&"mxp".to_string()));
         assert!(result.completions.contains(&"color".to_string()));
         assert!(result.completions.contains(&"afk".to_string()));
@@ -2358,7 +3566,23 @@ mod tests {
         let commands = vec!["set".to_string()];
 
         // Complete partial setting name
-        let result = complete("set m", 5, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "set m",
+            5,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"mxp".to_string()));
         assert!(!result.completions.contains(&"color".to_string()));
         assert_eq!(result.completion_type, CompletionType::SetSubcommand);
@@ -2369,7 +3593,23 @@ mod tests {
         let commands = vec!["set".to_string()];
 
         // After setting name, show on/off
-        let result = complete("set mxp ", 8, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "set mxp ",
+            8,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"on".to_string()));
         assert!(result.completions.contains(&"off".to_string()));
         assert_eq!(result.completion_type, CompletionType::SetSubcommand);
@@ -2380,7 +3620,23 @@ mod tests {
         let commands = vec!["set".to_string()];
 
         // Complete partial toggle value
-        let result = complete("set mxp o", 9, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], false);
+        let result = complete(
+            "set mxp o",
+            9,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
         assert!(result.completions.contains(&"on".to_string()));
         assert!(result.completions.contains(&"off".to_string()));
         assert_eq!(result.completion_type, CompletionType::SetSubcommand);
@@ -2392,7 +3648,23 @@ mod tests {
         let online_players = vec!["Alice".to_string(), "Bob".to_string()];
 
         // After "treat" show self and online players
-        let result = complete("treat ", 6, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &online_players, false);
+        let result = complete(
+            "treat ",
+            6,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &online_players,
+            false,
+        );
         assert!(result.completions.contains(&"self".to_string()));
         assert!(result.completions.contains(&"Alice".to_string()));
         assert!(result.completions.contains(&"Bob".to_string()));
@@ -2405,7 +3677,23 @@ mod tests {
         let online_players = vec!["Alice".to_string(), "Bob".to_string()];
 
         // Complete partial target
-        let result = complete("treat se", 8, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &online_players, false);
+        let result = complete(
+            "treat se",
+            8,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &online_players,
+            false,
+        );
         assert!(result.completions.contains(&"self".to_string()));
         assert!(!result.completions.contains(&"Alice".to_string()));
         assert_eq!(result.completion_type, CompletionType::TreatTarget);
@@ -2417,7 +3705,23 @@ mod tests {
         let online_players = vec!["Alice".to_string()];
 
         // After target, show body parts and conditions
-        let result = complete("treat self ", 11, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &online_players, false);
+        let result = complete(
+            "treat self ",
+            11,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &online_players,
+            false,
+        );
         assert!(result.completions.contains(&"head".to_string()));
         assert!(result.completions.contains(&"torso".to_string()));
         assert!(result.completions.contains(&"hypothermia".to_string()));
@@ -2431,7 +3735,23 @@ mod tests {
         let online_players = vec!["Alice".to_string()];
 
         // Complete partial body part
-        let result = complete("treat self le", 13, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &online_players, false);
+        let result = complete(
+            "treat self le",
+            13,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &online_players,
+            false,
+        );
         assert!(result.completions.contains(&"leftarm".to_string()));
         assert!(result.completions.contains(&"leftleg".to_string()));
         assert!(result.completions.contains(&"lefthand".to_string()));
@@ -2446,7 +3766,23 @@ mod tests {
         let online_players = vec!["Alice".to_string()];
 
         // Complete partial condition - should get only conditions
-        let result = complete("treat self heat", 15, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &online_players, false);
+        let result = complete(
+            "treat self heat",
+            15,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &online_players,
+            false,
+        );
         assert!(result.completions.contains(&"heat_exhaustion".to_string()));
         assert!(result.completions.contains(&"heat_stroke".to_string()));
         assert!(!result.completions.contains(&"head".to_string()));
@@ -2459,7 +3795,23 @@ mod tests {
         let online_players = vec!["Alice".to_string(), "Bob".to_string()];
 
         // Complete subcommand
-        let result = complete("mail ", 5, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &online_players, false);
+        let result = complete(
+            "mail ",
+            5,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &online_players,
+            false,
+        );
         assert!(result.completions.contains(&"check".to_string()));
         assert!(result.completions.contains(&"list".to_string()));
         assert!(result.completions.contains(&"read".to_string()));
@@ -2470,13 +3822,45 @@ mod tests {
         assert_eq!(result.completion_type, CompletionType::MailSubcommand);
 
         // Complete partial subcommand
-        let result = complete("mail se", 7, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &online_players, false);
+        let result = complete(
+            "mail se",
+            7,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &online_players,
+            false,
+        );
         assert!(result.completions.contains(&"send".to_string()));
         assert!(!result.completions.contains(&"list".to_string()));
         assert_eq!(result.completion_type, CompletionType::MailSubcommand);
 
         // Complete player name for send
-        let result = complete("mail send ", 10, &commands, &[], &[], &[], &[], &[], &[], &[], &[], &[], &[], &online_players, false);
+        let result = complete(
+            "mail send ",
+            10,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &online_players,
+            false,
+        );
         assert!(result.completions.contains(&"Alice".to_string()));
         assert!(result.completions.contains(&"Bob".to_string()));
         assert_eq!(result.completion_type, CompletionType::PlayerName);

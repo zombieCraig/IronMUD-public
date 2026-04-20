@@ -1,15 +1,19 @@
 use anyhow::Result;
+use serde_json;
 use sled::{Db as SledDb, Tree};
 use std::path::Path;
-use serde_json;
 use std::sync::Arc; // Import Arc
 
-use crate::{ApiKey, AreaData, CharacterData, EscrowData, ItemData, ItemLocation, ItemType, LeaseData, MailMessage, MobileData, PlantInstance, PlantPrototype, PropertyTemplate, Recipe, RoomData, ShopPreset, SpawnEntityType, SpawnPointData, TransportData, STARTING_ROOM_ID};
+use crate::{
+    ApiKey, AreaData, CharacterData, EscrowData, ItemData, ItemLocation, ItemType, LeaseData, MailMessage, MobileData,
+    PlantInstance, PlantPrototype, PropertyTemplate, Recipe, RoomData, STARTING_ROOM_ID, ShopPreset, SpawnEntityType,
+    SpawnPointData, TransportData,
+};
 use uuid::Uuid;
 
 #[derive(Clone)] // Derive Clone
 pub struct Db {
-    db: Arc<SledDb>, // Use Arc
+    db: Arc<SledDb>,       // Use Arc
     characters: Arc<Tree>, // Use Arc
     rooms: Arc<Tree>,
     vnum_index: Arc<Tree>,
@@ -76,7 +80,7 @@ impl Db {
         let plant_prototypes = db.open_tree("plant_prototypes")?;
         let bug_reports = db.open_tree("bug_reports")?;
         Ok(Self {
-            db: Arc::new(db), // Wrap in Arc
+            db: Arc::new(db),                 // Wrap in Arc
             characters: Arc::new(characters), // Wrap in Arc
             rooms: Arc::new(rooms),
             vnum_index: Arc::new(vnum_index),
@@ -144,8 +148,8 @@ impl Db {
     // Hashing function
     pub fn hash_password(&self, password: &str) -> Result<String> {
         use argon2::{
-            password_hash::{rand_core::OsRng, PasswordHasher, SaltString},
             Argon2,
+            password_hash::{PasswordHasher, SaltString, rand_core::OsRng},
         };
 
         let salt = SaltString::generate(&mut OsRng);
@@ -158,8 +162,8 @@ impl Db {
 
     // Verification function
     pub fn verify_password(&self, password: &str, hash: &str) -> Result<bool> {
-        use argon2::password_hash::PasswordVerifier;
         use argon2::Argon2;
+        use argon2::password_hash::PasswordVerifier;
 
         let parsed_hash = argon2::password_hash::PasswordHash::new(hash)
             .map_err(|e| anyhow::anyhow!("Argon2 parsing hash error: {}", e))?;
@@ -235,7 +239,8 @@ impl Db {
     /// Set an exit on a room (used by transport system)
     /// Supports the 6 cardinal directions: north, south, east, west, up, down
     pub fn set_room_exit(&self, room_id: &Uuid, direction: &str, target_room_id: &Uuid) -> Result<()> {
-        let mut room = self.get_room_data(room_id)?
+        let mut room = self
+            .get_room_data(room_id)?
             .ok_or_else(|| anyhow::anyhow!("Room not found: {}", room_id))?;
 
         let dir_lower = direction.to_lowercase();
@@ -260,7 +265,8 @@ impl Db {
     /// Clear an exit from a room (used by transport system)
     /// Supports cardinal directions, "out", and custom exits
     pub fn clear_room_exit(&self, room_id: &Uuid, direction: &str) -> Result<()> {
-        let mut room = self.get_room_data(room_id)?
+        let mut room = self
+            .get_room_data(room_id)?
             .ok_or_else(|| anyhow::anyhow!("Room not found: {}", room_id))?;
 
         let dir_lower = direction.to_lowercase();
@@ -410,7 +416,8 @@ impl Db {
             self.save_room_data(room)?;
 
             // Add to index
-            self.vnum_index.insert(vnum_lower.as_bytes(), room_id.to_string().as_bytes())?;
+            self.vnum_index
+                .insert(vnum_lower.as_bytes(), room_id.to_string().as_bytes())?;
             Ok(true)
         } else {
             Ok(false)
@@ -438,10 +445,8 @@ impl Db {
         // Rebuild from rooms
         for room in self.list_all_rooms()? {
             if let Some(ref vnum) = room.vnum {
-                self.vnum_index.insert(
-                    vnum.to_lowercase().as_bytes(),
-                    room.id.to_string().as_bytes()
-                )?;
+                self.vnum_index
+                    .insert(vnum.to_lowercase().as_bytes(), room.id.to_string().as_bytes())?;
             }
         }
         Ok(())
@@ -484,10 +489,7 @@ impl Db {
         }
 
         if migrated_count > 0 {
-            tracing::info!(
-                "Migrated {} character key(s) to lowercase",
-                migrated_count
-            );
+            tracing::info!("Migrated {} character key(s) to lowercase", migrated_count);
         }
         Ok(())
     }
@@ -502,11 +504,14 @@ impl Db {
             let mut character: CharacterData = serde_json::from_slice(&value)?;
 
             // Check if room is nil or doesn't exist
-            let needs_migration = character.current_room_id == nil_uuid
-                || !self.room_exists(&character.current_room_id)?;
+            let needs_migration =
+                character.current_room_id == nil_uuid || !self.room_exists(&character.current_room_id)?;
 
             if needs_migration {
-                tracing::info!("Migrating character '{}' from invalid room to starting room", character.name);
+                tracing::info!(
+                    "Migrating character '{}' from invalid room to starting room",
+                    character.name
+                );
                 character.current_room_id = starting_room;
                 self.save_character_data(character)?;
                 migrated_count += 1;
@@ -834,8 +839,7 @@ impl Db {
             let (_key, value) = entry?;
             let item: ItemData = serde_json::from_slice(&value)?;
             let name_match = item.name.to_lowercase().contains(&keyword_lower);
-            let keyword_match = item.keywords.iter()
-                .any(|k| k.to_lowercase().contains(&keyword_lower));
+            let keyword_match = item.keywords.iter().any(|k| k.to_lowercase().contains(&keyword_lower));
             if name_match || keyword_match {
                 results.push(item);
             }
@@ -1070,11 +1074,7 @@ impl Db {
                             });
                         }
                         if is_cohabitant {
-                            if let Some(rel) = m
-                                .relationships
-                                .iter_mut()
-                                .find(|r| r.other_id == *mobile_id)
-                            {
+                            if let Some(rel) = m.relationships.iter_mut().find(|r| r.other_id == *mobile_id) {
                                 rel.kind = crate::types::RelationshipKind::Friend;
                             }
                         }
@@ -1099,9 +1099,13 @@ impl Db {
     /// `delete_mobile` after a parent is removed. Silent no-op on any error
     /// so bereavement cleanup never aborts.
     fn flag_orphan_if_last_parent(&self, child_id: &Uuid) {
-        let Ok(Some(child)) = self.get_mobile_data(child_id) else { return };
-        let Some(chars) = child.characteristics.as_ref() else { return };
-        use crate::types::{life_stage_for_age, LifeStage};
+        let Ok(Some(child)) = self.get_mobile_data(child_id) else {
+            return;
+        };
+        let Some(chars) = child.characteristics.as_ref() else {
+            return;
+        };
+        use crate::types::{LifeStage, life_stage_for_age};
         if !matches!(
             life_stage_for_age(chars.age),
             LifeStage::Baby | LifeStage::Child | LifeStage::Adolescent
@@ -1202,7 +1206,9 @@ impl Db {
             let (_key, value) = entry?;
             let mobile: MobileData = serde_json::from_slice(&value)?;
             let name_match = mobile.name.to_lowercase().contains(&keyword_lower);
-            let keyword_match = mobile.keywords.iter()
+            let keyword_match = mobile
+                .keywords
+                .iter()
                 .any(|k| k.to_lowercase().contains(&keyword_lower));
             let vnum_match = mobile.vnum.to_lowercase().contains(&keyword_lower);
             if name_match || keyword_match || vnum_match {
@@ -1476,9 +1482,10 @@ impl Db {
 
     /// Get a setting value by key
     pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
-        Ok(self.settings.get(key.as_bytes())?.map(|ivec| {
-            String::from_utf8_lossy(&ivec).to_string()
-        }))
+        Ok(self
+            .settings
+            .get(key.as_bytes())?
+            .map(|ivec| String::from_utf8_lossy(&ivec).to_string()))
     }
 
     /// Set a setting value
@@ -1587,14 +1594,23 @@ impl Db {
             };
             // Log non-prototype mobiles and their combat state
             if !mobile.is_prototype {
-                tracing::debug!("get_all_mobiles_in_combat: checking {} ({}) - in_combat={}, targets={}",
-                               mobile.name, mobile.id, mobile.combat.in_combat, mobile.combat.targets.len());
+                tracing::debug!(
+                    "get_all_mobiles_in_combat: checking {} ({}) - in_combat={}, targets={}",
+                    mobile.name,
+                    mobile.id,
+                    mobile.combat.in_combat,
+                    mobile.combat.targets.len()
+                );
             }
             if mobile.combat.in_combat {
                 ids.push(mobile.id);
             }
         }
-        tracing::debug!("get_all_mobiles_in_combat: iterated {} entries, {} in combat", count, ids.len());
+        tracing::debug!(
+            "get_all_mobiles_in_combat: iterated {} entries, {} in combat",
+            count,
+            ids.len()
+        );
         Ok(ids)
     }
 
@@ -1740,7 +1756,8 @@ impl Db {
             let (_key, value) = entry?;
             let transport: TransportData = serde_json::from_slice(&value)?;
             let name_match = transport.name.to_lowercase().contains(&keyword_lower);
-            let vnum_match = transport.vnum
+            let vnum_match = transport
+                .vnum
                 .as_ref()
                 .map(|v| v.to_lowercase().contains(&keyword_lower))
                 .unwrap_or(false);
@@ -1957,9 +1974,7 @@ impl Db {
         for entry in self.leases.iter() {
             let (_key, value) = entry?;
             let lease: LeaseData = serde_json::from_slice(&value)?;
-            if lease.owner_name.to_lowercase() == name_lower
-               && lease.area_id == *area_id
-               && !lease.is_evicted {
+            if lease.owner_name.to_lowercase() == name_lower && lease.area_id == *area_id && !lease.is_evicted {
                 return Ok(Some(lease));
             }
         }
@@ -2239,7 +2254,8 @@ impl Db {
     /// Get the next sequential bug ticket number (atomic increment)
     pub fn next_bug_ticket_number(&self) -> Result<i64> {
         // Try to get current counter from settings
-        let current = self.get_setting("bug_ticket_counter")?
+        let current = self
+            .get_setting("bug_ticket_counter")?
             .and_then(|s| s.parse::<i64>().ok())
             .unwrap_or(0);
 
@@ -2291,7 +2307,11 @@ impl Db {
 
     /// List bug reports with optional status filter and approval filter
     /// When approved_only=true, only returns approved reports (for API/MCP)
-    pub fn list_bug_reports(&self, status_filter: Option<&crate::BugStatus>, approved_only: bool) -> Result<Vec<crate::BugReport>> {
+    pub fn list_bug_reports(
+        &self,
+        status_filter: Option<&crate::BugStatus>,
+        approved_only: bool,
+    ) -> Result<Vec<crate::BugReport>> {
         let mut reports = Vec::new();
         for entry in self.bug_reports.iter() {
             let (_key, value) = entry?;
@@ -2597,9 +2617,8 @@ mod tests {
 
         let db2 = t.db.clone();
         let mut first_call = true;
-        let result = t
-            .db
-            .update_mobile(&id, |m| {
+        let result =
+            t.db.update_mobile(&id, |m| {
                 if first_call {
                     // Inject a concurrent modification: bump gold by 1 via
                     // a direct save. Our pending CAS should fail, we retry,

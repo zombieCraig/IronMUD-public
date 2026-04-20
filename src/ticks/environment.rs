@@ -3,14 +3,13 @@
 //! Handles game time advancement, weather updates, and weather exposure effects.
 
 use anyhow::Result;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::{debug, error};
 
 use ironmud::session::broadcast_to_builders;
 use ironmud::{
-    db, BodyPart, CharacterData, GameTime, Season, SharedConnections, TemperatureCategory,
-    TimeOfDay, TriggerType, WeatherCondition, Wound, WoundLevel, WoundType,
-    broadcast_to_all_players, broadcast_to_outdoor_players,
+    BodyPart, CharacterData, GameTime, Season, SharedConnections, TemperatureCategory, TimeOfDay, TriggerType,
+    WeatherCondition, Wound, WoundLevel, WoundType, broadcast_to_all_players, broadcast_to_outdoor_players, db,
 };
 
 use super::broadcast::broadcast_to_room_except;
@@ -65,7 +64,10 @@ fn process_time_tick(db: &db::Db, connections: &SharedConnections) -> Result<()>
         context.insert("new_time".to_string(), format!("{}", new_time_of_day));
         context.insert("is_dawn".to_string(), (new_time_of_day == TimeOfDay::Dawn).to_string());
         context.insert("is_dusk".to_string(), (new_time_of_day == TimeOfDay::Dusk).to_string());
-        context.insert("is_night".to_string(), (new_time_of_day == TimeOfDay::Night).to_string());
+        context.insert(
+            "is_night".to_string(),
+            (new_time_of_day == TimeOfDay::Night).to_string(),
+        );
         context.insert("is_day".to_string(), game_time.is_daytime().to_string());
 
         if let Err(e) = fire_environmental_triggers(db, connections, TriggerType::OnTimeChange, &context) {
@@ -82,16 +84,27 @@ fn process_time_tick(db: &db::Db, connections: &SharedConnections) -> Result<()>
         if game_time.weather != old_weather {
             let mut context = std::collections::HashMap::new();
             context.insert("old_weather".to_string(), format!("{:?}", old_weather).to_lowercase());
-            context.insert("new_weather".to_string(), format!("{:?}", game_time.weather).to_lowercase());
+            context.insert(
+                "new_weather".to_string(),
+                format!("{:?}", game_time.weather).to_lowercase(),
+            );
 
             // Helper flags for common weather categories
-            let is_raining = matches!(game_time.weather,
-                WeatherCondition::LightRain | WeatherCondition::Rain |
-                WeatherCondition::HeavyRain | WeatherCondition::Thunderstorm);
-            let is_snowing = matches!(game_time.weather,
-                WeatherCondition::LightSnow | WeatherCondition::Snow | WeatherCondition::Blizzard);
-            let is_clear = matches!(game_time.weather,
-                WeatherCondition::Clear | WeatherCondition::PartlyCloudy);
+            let is_raining = matches!(
+                game_time.weather,
+                WeatherCondition::LightRain
+                    | WeatherCondition::Rain
+                    | WeatherCondition::HeavyRain
+                    | WeatherCondition::Thunderstorm
+            );
+            let is_snowing = matches!(
+                game_time.weather,
+                WeatherCondition::LightSnow | WeatherCondition::Snow | WeatherCondition::Blizzard
+            );
+            let is_clear = matches!(
+                game_time.weather,
+                WeatherCondition::Clear | WeatherCondition::PartlyCloudy
+            );
 
             context.insert("is_raining".to_string(), is_raining.to_string());
             context.insert("is_snowing".to_string(), is_snowing.to_string());
@@ -162,7 +175,9 @@ pub fn get_season_transition_message(season: &Season) -> &'static str {
     match season {
         Season::Spring => "The air grows warmer as spring arrives. Flowers begin to bloom across the land.",
         Season::Summer => "Summer has arrived! The sun beats down warmly and the days grow long.",
-        Season::Autumn => "The leaves begin to change color as autumn settles in. A cool breeze carries the scent of fallen leaves.",
+        Season::Autumn => {
+            "The leaves begin to change color as autumn settles in. A cool breeze carries the scent of fallen leaves."
+        }
         Season::Winter => "Winter descends upon the land. A chill fills the air as frost blankets the ground.",
     }
 }
@@ -184,7 +199,11 @@ fn update_weather(game_time: &mut GameTime) {
     let roll: i32 = rng.gen_range(1..=100);
 
     game_time.weather = if roll <= clear_chance {
-        if rng.gen_bool(0.3) { WeatherCondition::PartlyCloudy } else { WeatherCondition::Clear }
+        if rng.gen_bool(0.3) {
+            WeatherCondition::PartlyCloudy
+        } else {
+            WeatherCondition::Clear
+        }
     } else if roll <= clear_chance + rain_chance {
         // Check if it should be snow instead in cold conditions
         if game_time.get_season() == Season::Winter && game_time.calculate_effective_temperature() < 2 {
@@ -232,10 +251,15 @@ fn fire_environmental_triggers(
 
     for room in rooms {
         // For time, weather, and season triggers, skip indoor/climate_controlled rooms
-        if trigger_type == TriggerType::OnTimeChange || trigger_type == TriggerType::OnWeatherChange || trigger_type == TriggerType::OnSeasonChange {
+        if trigger_type == TriggerType::OnTimeChange
+            || trigger_type == TriggerType::OnWeatherChange
+            || trigger_type == TriggerType::OnSeasonChange
+        {
             // Check for climate_controlled (room or area inherited)
-            let is_climate_controlled = room.flags.climate_controlled ||
-                room.area_id.and_then(|aid| db.get_area_data(&aid).ok().flatten())
+            let is_climate_controlled = room.flags.climate_controlled
+                || room
+                    .area_id
+                    .and_then(|aid| db.get_area_data(&aid).ok().flatten())
                     .map(|area| area.flags.climate_controlled)
                     .unwrap_or(false);
             if room.flags.indoors || is_climate_controlled {
@@ -260,11 +284,11 @@ fn fire_environmental_triggers(
             // Find all awake players in this room (sleeping players don't see environmental triggers)
             let players_in_room: Vec<(uuid::Uuid, tokio::sync::mpsc::UnboundedSender<String>)> = {
                 let conns = connections.lock().unwrap();
-                conns.iter()
+                conns
+                    .iter()
                     .filter_map(|(conn_id, session)| {
                         if let Some(ref char) = session.character {
-                            if char.current_room_id == room.id
-                                && char.position != ironmud::CharacterPosition::Sleeping
+                            if char.current_room_id == room.id && char.position != ironmud::CharacterPosition::Sleeping
                             {
                                 return Some((*conn_id, session.sender.clone()));
                             }
@@ -281,13 +305,7 @@ fn fire_environmental_triggers(
             // Handle built-in templates (script_name starts with @)
             if trigger.script_name.starts_with('@') {
                 let template_name = &trigger.script_name[1..];
-                execute_room_template_main(
-                    template_name,
-                    &trigger.args,
-                    &room.id,
-                    connections,
-                    context,
-                );
+                execute_room_template_main(template_name, &trigger.args, &room.id, connections, context);
                 continue;
             }
 
@@ -319,16 +337,19 @@ fn fire_environmental_triggers(
             // Register broadcast_to_room
             let conns_clone = connections.clone();
             let room_id = room.id;
-            trigger_engine.register_fn("broadcast_to_room", move |_rid: String, message: String, _exclude: String| {
-                let conns = conns_clone.lock().unwrap();
-                for (_, session) in conns.iter() {
-                    if let Some(ref char) = session.character {
-                        if char.current_room_id == room_id {
-                            let _ = session.sender.send(message.clone());
+            trigger_engine.register_fn(
+                "broadcast_to_room",
+                move |_rid: String, message: String, _exclude: String| {
+                    let conns = conns_clone.lock().unwrap();
+                    for (_, session) in conns.iter() {
+                        if let Some(ref char) = session.character {
+                            if char.current_room_id == room_id {
+                                let _ = session.sender.send(message.clone());
+                            }
                         }
                     }
-                }
-            });
+                },
+            );
 
             // Register random_int
             trigger_engine.register_fn("random_int", |min: i64, max: i64| {
@@ -359,13 +380,13 @@ fn fire_environmental_triggers(
                             (room_id_str.clone(), conn_id_str.clone(), rhai_context.clone()),
                         ) {
                             Ok(_) => {
-                                debug!("Environmental trigger {} executed for room {}", trigger.script_name, room.id);
+                                debug!(
+                                    "Environmental trigger {} executed for room {}",
+                                    trigger.script_name, room.id
+                                );
                             }
                             Err(e) => {
-                                let msg = format!(
-                                    "Environmental trigger script error in {}: {}",
-                                    script_path, e
-                                );
+                                let msg = format!("Environmental trigger script error in {}: {}", script_path, e);
                                 error!("{}", msg);
                                 broadcast_to_builders(connections, &msg);
                             }
@@ -373,10 +394,7 @@ fn fire_environmental_triggers(
                     }
                 }
                 Err(e) => {
-                    let msg = format!(
-                        "Failed to compile environmental trigger script {}: {}",
-                        script_path, e
-                    );
+                    let msg = format!("Failed to compile environmental trigger script {}: {}", script_path, e);
                     error!("{}", msg);
                     broadcast_to_builders(connections, &msg);
                 }
@@ -434,10 +452,12 @@ fn execute_room_template_main(
                 if let Some(new_weather) = context.get("new_weather") {
                     let weather_lower = new_weather.to_lowercase();
                     let matches = weather_lower == target_weather
-                        || (target_weather == "raining" && (weather_lower.contains("rain") || weather_lower == "thunderstorm"))
+                        || (target_weather == "raining"
+                            && (weather_lower.contains("rain") || weather_lower == "thunderstorm"))
                         || (target_weather == "snowing" && weather_lower.contains("snow"))
                         || (target_weather == "stormy" && weather_lower == "thunderstorm")
-                        || (target_weather == "precipitation" && (weather_lower.contains("rain") || weather_lower.contains("snow")));
+                        || (target_weather == "precipitation"
+                            && (weather_lower.contains("rain") || weather_lower.contains("snow")));
 
                     if matches {
                         broadcast(message);
@@ -514,8 +534,10 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
 
             // === Calculate effective temperature for this room ===
             // Check for climate_controlled (room or area inherited)
-            let is_climate_controlled = room.flags.climate_controlled ||
-                room.area_id.and_then(|aid| db.get_area_data(&aid).ok().flatten())
+            let is_climate_controlled = room.flags.climate_controlled
+                || room
+                    .area_id
+                    .and_then(|aid| db.get_area_data(&aid).ok().flatten())
                     .map(|area| area.flags.climate_controlled)
                     .unwrap_or(false);
             let is_outdoors = !room.flags.indoors && !is_climate_controlled;
@@ -523,9 +545,9 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
 
             // Calculate effective temperature for this room
             let effective_temp = if room.flags.always_cold {
-                -5  // Always freezing (ice caves, freezers)
+                -5 // Always freezing (ice caves, freezers)
             } else if room.flags.always_hot {
-                36  // Always sweltering (forges, volcanoes)
+                36 // Always sweltering (forges, volcanoes)
             } else if !is_outdoors {
                 let target = 15;
                 outdoor_temp + ((target - outdoor_temp) * 60 / 100)
@@ -555,8 +577,10 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
                     WeatherCondition::Rain | WeatherCondition::Snow => 20,
                     WeatherCondition::LightRain | WeatherCondition::LightSnow => 10,
                     WeatherCondition::Fog => 5,
-                    WeatherCondition::PartlyCloudy | WeatherCondition::Overcast |
-                    WeatherCondition::Cloudy | WeatherCondition::Clear => 0,
+                    WeatherCondition::PartlyCloudy
+                    | WeatherCondition::Overcast
+                    | WeatherCondition::Cloudy
+                    | WeatherCondition::Clear => 0,
                 };
                 if wet_increase > 0 {
                     char.wet_level = (char.wet_level + wet_increase).min(100);
@@ -578,12 +602,18 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
             let has_weatherproof = char.traits.iter().any(|t| t == "weatherproof");
             let has_delicate = char.traits.iter().any(|t| t == "delicate");
             let mut wet_mod: i32 = 0;
-            if has_weatherproof { wet_mod += 50; }
-            if has_delicate { wet_mod -= 25; }
+            if has_weatherproof {
+                wet_mod += 50;
+            }
+            if has_delicate {
+                wet_mod -= 25;
+            }
             let dry_rate = base_dry_rate * (100 + wet_mod) / 100;
 
             // Can dry if: near warmth, indoors, or outdoors with clear weather
-            if char.wet_level > 0 && (has_warmth || room.flags.indoors || (is_outdoors && weather == WeatherCondition::Clear)) {
+            if char.wet_level > 0
+                && (has_warmth || room.flags.indoors || (is_outdoors && weather == WeatherCondition::Clear))
+            {
                 char.wet_level = (char.wet_level - dry_rate).max(0);
                 char.is_wet = char.wet_level > 0;
                 modified = true;
@@ -595,9 +625,9 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
 
             // Cold exposure - only dangerous temperatures cause exposure
             let cold_threshold = match temp_category {
-                TemperatureCategory::Freezing => 80,  // < 0°C - Need heavy insulation
-                TemperatureCategory::Cold => 40,      // 0-9°C - Need moderate insulation
-                TemperatureCategory::Cool => 0,       // 10-14°C - Cool but safe
+                TemperatureCategory::Freezing => 80, // < 0°C - Need heavy insulation
+                TemperatureCategory::Cold => 40,     // 0-9°C - Need moderate insulation
+                TemperatureCategory::Cool => 0,      // 10-14°C - Cool but safe
                 _ => 0,
             };
 
@@ -609,15 +639,25 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
                 let effective_insulation = (insulation - wet_penalty).max(0);
                 let mut exposure_rate = if effective_insulation >= cold_threshold {
                     // Recovering - faster near warmth
-                    if has_warmth { -20 } else if !expose_to_elements { -10 } else { -5 }
+                    if has_warmth {
+                        -20
+                    } else if !expose_to_elements {
+                        -10
+                    } else {
+                        -5
+                    }
                 } else {
                     ((cold_threshold - effective_insulation) / 10).max(1) as i32
                 };
                 // Apply exposure traits (only to positive exposure gain)
                 if exposure_rate > 0 {
                     let mut exposure_mod: i32 = 0;
-                    if has_hardy { exposure_mod -= 25; }
-                    if has_exposure_prone { exposure_mod += 25; }
+                    if has_hardy {
+                        exposure_mod -= 25;
+                    }
+                    if has_exposure_prone {
+                        exposure_mod += 25;
+                    }
                     exposure_rate = (exposure_rate * (100 + exposure_mod) / 100).max(1);
                 }
                 char.cold_exposure = (char.cold_exposure + exposure_rate).clamp(0, 100);
@@ -625,7 +665,13 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
             } else {
                 // Warm enough or sheltered indoors, recover from cold
                 if char.cold_exposure > 0 {
-                    let recovery = if has_warmth { 25 } else if !expose_to_elements { 15 } else { 10 };
+                    let recovery = if has_warmth {
+                        25
+                    } else if !expose_to_elements {
+                        15
+                    } else {
+                        10
+                    };
                     char.cold_exposure = (char.cold_exposure - recovery).max(0);
                     modified = true;
                 }
@@ -643,8 +689,12 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
                 let mut exposure_rate = (heat_threshold + (insulation / 5)).max(1) as i32;
                 // Apply exposure traits
                 let mut heat_exposure_mod: i32 = 0;
-                if has_hardy { heat_exposure_mod -= 25; }
-                if has_exposure_prone { heat_exposure_mod += 25; }
+                if has_hardy {
+                    heat_exposure_mod -= 25;
+                }
+                if has_exposure_prone {
+                    heat_exposure_mod += 25;
+                }
                 exposure_rate = (exposure_rate * (100 + heat_exposure_mod) / 100).max(1);
                 char.heat_exposure = (char.heat_exposure + exposure_rate).clamp(0, 100);
                 modified = true;
@@ -662,15 +712,23 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
             let had_hypothermia = char.has_hypothermia;
             char.has_hypothermia = char.cold_exposure >= 50;
             if char.has_hypothermia && !had_hypothermia {
-                let _ = session.sender.send("You begin to shiver uncontrollably. You're getting hypothermia!\n".to_string());
+                let _ = session
+                    .sender
+                    .send("You begin to shiver uncontrollably. You're getting hypothermia!\n".to_string());
             } else if !char.has_hypothermia && had_hypothermia {
-                let _ = session.sender.send("Your body temperature returns to normal.\n".to_string());
+                let _ = session
+                    .sender
+                    .send("Your body temperature returns to normal.\n".to_string());
             }
 
             // Frostbite wound at 80% cold exposure
             if char.cold_exposure >= 80 && char.has_frostbite.is_empty() {
                 // Add frostbite wound to extremities
-                let frostbite_part = if rand::random::<bool>() { BodyPart::LeftFoot } else { BodyPart::RightHand };
+                let frostbite_part = if rand::random::<bool>() {
+                    BodyPart::LeftFoot
+                } else {
+                    BodyPart::RightHand
+                };
                 char.has_frostbite.push(frostbite_part);
                 char.wounds.push(Wound {
                     body_part: frostbite_part,
@@ -678,7 +736,10 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
                     wound_type: WoundType::Frostbite,
                     bleeding_severity: 0,
                 });
-                let _ = session.sender.send(format!("Your {} is getting frostbitten!\n", frostbite_part.to_display_string()));
+                let _ = session.sender.send(format!(
+                    "Your {} is getting frostbitten!\n",
+                    frostbite_part.to_display_string()
+                ));
                 modified = true;
             }
 
@@ -686,7 +747,9 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
             let had_heat_exhaustion = char.has_heat_exhaustion;
             char.has_heat_exhaustion = char.heat_exposure >= 50;
             if char.has_heat_exhaustion && !had_heat_exhaustion {
-                let _ = session.sender.send("You're feeling lightheaded and weak from the heat!\n".to_string());
+                let _ = session
+                    .sender
+                    .send("You're feeling lightheaded and weak from the heat!\n".to_string());
             } else if !char.has_heat_exhaustion && had_heat_exhaustion {
                 let _ = session.sender.send("You feel better as you cool down.\n".to_string());
             }
@@ -695,7 +758,9 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
             let had_heat_stroke = char.has_heat_stroke;
             char.has_heat_stroke = char.heat_exposure >= 80;
             if char.has_heat_stroke && !had_heat_stroke {
-                let _ = session.sender.send("WARNING: You're suffering from heat stroke! Get to shade or you will collapse!\n".to_string());
+                let _ = session.sender.send(
+                    "WARNING: You're suffering from heat stroke! Get to shade or you will collapse!\n".to_string(),
+                );
             }
 
             // Illness progression from being wet and cold
@@ -703,15 +768,25 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
             let has_vigorous_env = char.traits.iter().any(|t| t == "vigorous");
             if char.is_wet && char.cold_exposure >= 25 && !char.food_sick {
                 let mut illness_gain = 5;
-                if has_weatherproof { illness_gain = illness_gain * 50 / 100; }  // 50% reduction
-                if has_sickly { illness_gain = illness_gain * 150 / 100; }  // 50% increase
-                if has_delicate { illness_gain = illness_gain * 150 / 100; }  // 50% increase
-                if has_vigorous_env { illness_gain = illness_gain * 75 / 100; }  // 25% reduction
+                if has_weatherproof {
+                    illness_gain = illness_gain * 50 / 100;
+                } // 50% reduction
+                if has_sickly {
+                    illness_gain = illness_gain * 150 / 100;
+                } // 50% increase
+                if has_delicate {
+                    illness_gain = illness_gain * 150 / 100;
+                } // 50% increase
+                if has_vigorous_env {
+                    illness_gain = illness_gain * 75 / 100;
+                } // 25% reduction
                 illness_gain = illness_gain.max(1);
                 char.illness_progress = (char.illness_progress + illness_gain).min(100);
                 if char.illness_progress >= 50 && !char.has_illness {
                     char.has_illness = true;
-                    let _ = session.sender.send("You're coming down with a cold. You should get warm and dry!\n".to_string());
+                    let _ = session
+                        .sender
+                        .send("You're coming down with a cold. You should get warm and dry!\n".to_string());
                 }
                 modified = true;
             } else if char.has_illness && char.food_sick {
@@ -720,7 +795,9 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
                 if char.illness_progress == 0 {
                     char.has_illness = false;
                     char.food_sick = false;
-                    let _ = session.sender.send("Your stomach finally settles. You feel better.\n".to_string());
+                    let _ = session
+                        .sender
+                        .send("Your stomach finally settles. You feel better.\n".to_string());
                 }
                 modified = true;
             } else if char.has_illness && !char.food_sick {
@@ -729,7 +806,9 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
                     char.illness_progress = (char.illness_progress - 2).max(0);
                     if char.illness_progress == 0 {
                         char.has_illness = false;
-                        let _ = session.sender.send("You feel better - your illness has passed.\n".to_string());
+                        let _ = session
+                            .sender
+                            .send("You feel better - your illness has passed.\n".to_string());
                     }
                     modified = true;
                 }
@@ -738,7 +817,10 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
             // === Condition damage ===
 
             // Heat stroke damage
-            if char.has_heat_stroke && !char.god_mode && !ironmud::check_build_mode(db, &char.name, &char.current_room_id) {
+            if char.has_heat_stroke
+                && !char.god_mode
+                && !ironmud::check_build_mode(db, &char.name, &char.current_room_id)
+            {
                 char.hp = (char.hp - 2).max(1);
                 modified = true;
             }
@@ -789,15 +871,14 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
                 if rng.gen_range(0..100) < 8 {
                     let (player_msg, room_msg) = match rng.gen_range(0..3) {
                         0 => ("You retch and vomit.\n", format!("{} retches and vomits.", char.name)),
-                        1 => ("Your stomach churns violently.\n", format!("{} looks very ill.", char.name)),
+                        1 => (
+                            "Your stomach churns violently.\n",
+                            format!("{} looks very ill.", char.name),
+                        ),
                         _ => ("You feel nauseous.\n", format!("{} looks queasy.", char.name)),
                     };
                     let _ = session.sender.send(player_msg.to_string());
-                    room_broadcasts.push((
-                        char.current_room_id,
-                        room_msg,
-                        char.name.clone(),
-                    ));
+                    room_broadcasts.push((char.current_room_id, room_msg, char.name.clone()));
                 }
             }
 
@@ -808,19 +889,21 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
                 // ~8% chance per tick
                 if rng.gen_range(0..100) < 8 {
                     let (player_msg, room_msg) = match rng.gen_range(0..3) {
-                        0 => ("You shudder as poison courses through your veins.\n",
-                              format!("{} shudders, looking poisoned.", char.name)),
-                        1 => ("A wave of nausea from the poison washes over you.\n",
-                              format!("{} looks sickly and pale.", char.name)),
-                        _ => ("Your vision blurs as the poison takes its toll.\n",
-                              format!("{} sways unsteadily, looking ill.", char.name)),
+                        0 => (
+                            "You shudder as poison courses through your veins.\n",
+                            format!("{} shudders, looking poisoned.", char.name),
+                        ),
+                        1 => (
+                            "A wave of nausea from the poison washes over you.\n",
+                            format!("{} looks sickly and pale.", char.name),
+                        ),
+                        _ => (
+                            "Your vision blurs as the poison takes its toll.\n",
+                            format!("{} sways unsteadily, looking ill.", char.name),
+                        ),
                     };
                     let _ = session.sender.send(player_msg.to_string());
-                    room_broadcasts.push((
-                        char.current_room_id,
-                        room_msg,
-                        char.name.clone(),
-                    ));
+                    room_broadcasts.push((char.current_room_id, room_msg, char.name.clone()));
                 }
             }
 
@@ -832,18 +915,20 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
                 let shiver_chance = 5 + (char.cold_exposure - 25) / 5;
                 if rng.gen_range(0..100) < shiver_chance as i32 {
                     let (player_msg, room_msg) = if char.cold_exposure >= 75 {
-                        ("You shiver violently from the bitter cold!\n", format!("{} shivers violently.", char.name))
+                        (
+                            "You shiver violently from the bitter cold!\n",
+                            format!("{} shivers violently.", char.name),
+                        )
                     } else if char.cold_exposure >= 50 {
-                        ("You shiver uncontrollably!\n", format!("{} shivers uncontrollably.", char.name))
+                        (
+                            "You shiver uncontrollably!\n",
+                            format!("{} shivers uncontrollably.", char.name),
+                        )
                     } else {
                         ("You shiver from the cold.\n", format!("{} shivers.", char.name))
                     };
                     let _ = session.sender.send(player_msg.to_string());
-                    room_broadcasts.push((
-                        char.current_room_id,
-                        room_msg,
-                        char.name.clone(),
-                    ));
+                    room_broadcasts.push((char.current_room_id, room_msg, char.name.clone()));
                 }
             }
 
@@ -855,18 +940,23 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
                 let sweat_chance = 5 + (char.heat_exposure - 25) / 5;
                 if rng.gen_range(0..100) < sweat_chance as i32 {
                     let (player_msg, room_msg) = if char.heat_exposure >= 75 {
-                        ("Sweat pours down your face as you struggle with the oppressive heat!\n", format!("{} is drenched in sweat.", char.name))
+                        (
+                            "Sweat pours down your face as you struggle with the oppressive heat!\n",
+                            format!("{} is drenched in sweat.", char.name),
+                        )
                     } else if char.heat_exposure >= 50 {
-                        ("You wipe the sweat from your brow.\n", format!("{} wipes sweat from their brow.", char.name))
+                        (
+                            "You wipe the sweat from your brow.\n",
+                            format!("{} wipes sweat from their brow.", char.name),
+                        )
                     } else {
-                        ("You feel yourself starting to sweat.\n", format!("{} is starting to sweat.", char.name))
+                        (
+                            "You feel yourself starting to sweat.\n",
+                            format!("{} is starting to sweat.", char.name),
+                        )
                     };
                     let _ = session.sender.send(player_msg.to_string());
-                    room_broadcasts.push((
-                        char.current_room_id,
-                        room_msg,
-                        char.name.clone(),
-                    ));
+                    room_broadcasts.push((char.current_room_id, room_msg, char.name.clone()));
                 }
             }
 

@@ -2,15 +2,19 @@
 //! All GET endpoints only return admin-approved reports to protect against prompt injection.
 
 use axum::{
-    routing::get,
-    extract::{State, Path, Query, Extension},
     Json, Router,
+    extract::{Extension, Path, Query, State},
+    routing::get,
 };
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use std::sync::Arc;
+use uuid::Uuid;
 
-use super::{ApiState, error::ApiError, auth::{AuthenticatedUser, can_read, can_write}};
+use super::{
+    ApiState,
+    auth::{AuthenticatedUser, can_read, can_write},
+    error::ApiError,
+};
 use crate::{AdminNote, BugPriority, BugReport, BugStatus};
 
 pub fn routes() -> Router<Arc<ApiState>> {
@@ -67,12 +71,12 @@ async fn list_bugs(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let status_filter = query.status
-        .as_ref()
-        .and_then(|s| BugStatus::from_str(s));
+    let status_filter = query.status.as_ref().and_then(|s| BugStatus::from_str(s));
 
     // API always returns approved-only
-    let mut reports = state.db.list_bug_reports(status_filter.as_ref(), true)
+    let mut reports = state
+        .db
+        .list_bug_reports(status_filter.as_ref(), true)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     // Apply offset/limit
@@ -99,10 +103,11 @@ async fn get_bug(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let report = state.db.get_bug_report(&uuid)
+    let report = state
+        .db
+        .get_bug_report(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Bug report '{}' not found", id)))?;
 
@@ -127,7 +132,9 @@ async fn get_bug_by_ticket(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let report = state.db.get_bug_report_by_ticket(num)
+    let report = state
+        .db
+        .get_bug_report_by_ticket(num)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Bug report #{} not found", num)))?;
 
@@ -153,10 +160,11 @@ async fn update_bug(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut report = state.db.get_bug_report(&uuid)
+    let mut report = state
+        .db
+        .get_bug_report(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Bug report '{}' not found", id)))?;
 
@@ -166,8 +174,12 @@ async fn update_bug(
         .unwrap_or(0);
 
     if let Some(ref status_str) = body.status {
-        let new_status = BugStatus::from_str(status_str)
-            .ok_or_else(|| ApiError::InvalidInput(format!("Invalid status: {}. Valid: open, inprogress, resolved, closed", status_str)))?;
+        let new_status = BugStatus::from_str(status_str).ok_or_else(|| {
+            ApiError::InvalidInput(format!(
+                "Invalid status: {}. Valid: open, inprogress, resolved, closed",
+                status_str
+            ))
+        })?;
         if new_status == BugStatus::Closed || new_status == BugStatus::Resolved {
             report.resolved_at = Some(now);
         }
@@ -175,13 +187,19 @@ async fn update_bug(
     }
 
     if let Some(ref priority_str) = body.priority {
-        let new_priority = BugPriority::from_str(priority_str)
-            .ok_or_else(|| ApiError::InvalidInput(format!("Invalid priority: {}. Valid: low, normal, high, critical", priority_str)))?;
+        let new_priority = BugPriority::from_str(priority_str).ok_or_else(|| {
+            ApiError::InvalidInput(format!(
+                "Invalid priority: {}. Valid: low, normal, high, critical",
+                priority_str
+            ))
+        })?;
         report.priority = new_priority;
     }
 
     report.updated_at = now;
-    state.db.save_bug_report(report.clone())
+    state
+        .db
+        .save_bug_report(report.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     Ok(Json(BugReportResponse {
@@ -201,10 +219,11 @@ async fn add_note(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut report = state.db.get_bug_report(&uuid)
+    let mut report = state
+        .db
+        .get_bug_report(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Bug report '{}' not found", id)))?;
 
@@ -220,7 +239,9 @@ async fn add_note(
     });
     report.updated_at = now;
 
-    state.db.save_bug_report(report.clone())
+    state
+        .db
+        .save_bug_report(report.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     Ok(Json(BugReportResponse {
@@ -239,10 +260,11 @@ async fn delete_bug(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let deleted = state.db.delete_bug_report(&uuid)
+    let deleted = state
+        .db
+        .delete_bug_report(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     if !deleted {

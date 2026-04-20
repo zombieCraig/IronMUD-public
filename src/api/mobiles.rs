@@ -1,17 +1,25 @@
 //! Mobile CRUD endpoints
 
 use axum::{
-    routing::{get, post, delete},
-    extract::{State, Path, Query, Extension},
     Json, Router,
+    extract::{Extension, Path, Query, State},
+    routing::{delete, get, post},
 };
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-use std::sync::Arc;
 use std::collections::HashMap;
+use std::sync::Arc;
+use uuid::Uuid;
 
-use super::{ApiState, error::ApiError, auth::{AuthenticatedUser, can_read, can_write}, notify_builders};
-use crate::{MobileData, MobileFlags, CombatState, DamageType, ActivityState, RoutineEntry, MobileTrigger, MobileTriggerType, SimulationConfig, NeedsState};
+use super::{
+    ApiState,
+    auth::{AuthenticatedUser, can_read, can_write},
+    error::ApiError,
+    notify_builders,
+};
+use crate::{
+    ActivityState, CombatState, DamageType, MobileData, MobileFlags, MobileTrigger, MobileTriggerType, NeedsState,
+    RoutineEntry, SimulationConfig,
+};
 
 pub fn routes() -> Router<Arc<ApiState>> {
     Router::new()
@@ -105,10 +113,18 @@ pub struct SimulationConfigRequest {
     pub low_gold_threshold: i32,
 }
 
-fn default_work_pay() -> i32 { 50 }
-fn default_work_start() -> u8 { 8 }
-fn default_work_end() -> u8 { 17 }
-fn default_low_gold_threshold() -> i32 { 10 }
+fn default_work_pay() -> i32 {
+    50
+}
+fn default_work_start() -> u8 {
+    8
+}
+fn default_work_end() -> u8 {
+    17
+}
+fn default_low_gold_threshold() -> i32 {
+    10
+}
 
 fn convert_simulation_config(req: SimulationConfigRequest) -> SimulationConfig {
     SimulationConfig {
@@ -126,9 +142,15 @@ fn convert_simulation_config(req: SimulationConfigRequest) -> SimulationConfig {
     }
 }
 
-fn default_level() -> i32 { 1 }
-fn default_hp() -> i32 { 20 }
-fn default_ac() -> i32 { 10 }
+fn default_level() -> i32 {
+    1
+}
+fn default_hp() -> i32 {
+    20
+}
+fn default_ac() -> i32 {
+    10
+}
 
 fn parse_activity(s: &str) -> ActivityState {
     match s.to_lowercase().as_str() {
@@ -143,14 +165,17 @@ fn parse_activity(s: &str) -> ActivityState {
 }
 
 fn convert_routine_entries(entries: Vec<RoutineEntryRequest>) -> Vec<RoutineEntry> {
-    entries.into_iter().map(|e| RoutineEntry {
-        start_hour: e.start_hour,
-        activity: parse_activity(&e.activity),
-        destination_vnum: e.destination_vnum,
-        transition_message: e.transition_message,
-        suppress_wander: e.suppress_wander,
-        dialogue_overrides: e.dialogue_overrides,
-    }).collect()
+    entries
+        .into_iter()
+        .map(|e| RoutineEntry {
+            start_hour: e.start_hour,
+            activity: parse_activity(&e.activity),
+            destination_vnum: e.destination_vnum,
+            transition_message: e.transition_message,
+            suppress_wander: e.suppress_wander,
+            dialogue_overrides: e.dialogue_overrides,
+        })
+        .collect()
 }
 
 #[derive(Deserialize, Default)]
@@ -260,8 +285,12 @@ pub struct AddMobileTriggerRequest {
     pub chance: i32,
 }
 
-fn default_trigger_interval() -> i64 { 60 }
-fn default_trigger_chance() -> i32 { 100 }
+fn default_trigger_interval() -> i64 {
+    60
+}
+fn default_trigger_chance() -> i32 {
+    100
+}
 
 #[derive(Serialize)]
 pub struct MobileResponse {
@@ -307,18 +336,42 @@ pub struct MobileSummaryQuery {
 impl MobileSummary {
     pub fn from_mobile(mobile: &MobileData) -> Self {
         let mut flags = Vec::new();
-        if mobile.flags.aggressive { flags.push("aggressive".to_string()); }
-        if mobile.flags.sentinel { flags.push("sentinel".to_string()); }
-        if mobile.flags.scavenger { flags.push("scavenger".to_string()); }
-        if mobile.flags.shopkeeper { flags.push("shopkeeper".to_string()); }
-        if mobile.flags.healer { flags.push("healer".to_string()); }
-        if mobile.flags.no_attack { flags.push("no_attack".to_string()); }
-        if mobile.flags.cowardly { flags.push("cowardly".to_string()); }
-        if mobile.flags.can_open_doors { flags.push("can_open_doors".to_string()); }
-        if mobile.flags.leasing_agent { flags.push("leasing_agent".to_string()); }
-        if mobile.flags.guard { flags.push("guard".to_string()); }
-        if mobile.flags.thief { flags.push("thief".to_string()); }
-        if mobile.flags.cant_swim { flags.push("cant_swim".to_string()); }
+        if mobile.flags.aggressive {
+            flags.push("aggressive".to_string());
+        }
+        if mobile.flags.sentinel {
+            flags.push("sentinel".to_string());
+        }
+        if mobile.flags.scavenger {
+            flags.push("scavenger".to_string());
+        }
+        if mobile.flags.shopkeeper {
+            flags.push("shopkeeper".to_string());
+        }
+        if mobile.flags.healer {
+            flags.push("healer".to_string());
+        }
+        if mobile.flags.no_attack {
+            flags.push("no_attack".to_string());
+        }
+        if mobile.flags.cowardly {
+            flags.push("cowardly".to_string());
+        }
+        if mobile.flags.can_open_doors {
+            flags.push("can_open_doors".to_string());
+        }
+        if mobile.flags.leasing_agent {
+            flags.push("leasing_agent".to_string());
+        }
+        if mobile.flags.guard {
+            flags.push("guard".to_string());
+        }
+        if mobile.flags.thief {
+            flags.push("thief".to_string());
+        }
+        if mobile.flags.cant_swim {
+            flags.push("cant_swim".to_string());
+        }
 
         MobileSummary {
             vnum: mobile.vnum.clone(),
@@ -364,17 +417,16 @@ async fn list_mobiles(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let mobiles = state.db.list_all_mobiles()
+    let mobiles = state
+        .db
+        .list_all_mobiles()
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     let total = mobiles.len();
     let offset = query.offset.unwrap_or(0);
     let limit = query.limit.unwrap_or(100);
 
-    let mobiles: Vec<MobileData> = mobiles.into_iter()
-        .skip(offset)
-        .take(limit)
-        .collect();
+    let mobiles: Vec<MobileData> = mobiles.into_iter().skip(offset).take(limit).collect();
 
     Ok(Json(MobilesListResponse {
         success: true,
@@ -392,7 +444,9 @@ async fn list_prototypes(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let mobiles: Vec<MobileData> = state.db.list_all_mobiles()
+    let mobiles: Vec<MobileData> = state
+        .db
+        .list_all_mobiles()
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .into_iter()
         .filter(|m| m.is_prototype)
@@ -417,13 +471,16 @@ async fn list_prototypes_summary(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let mobiles: Vec<MobileData> = state.db.list_all_mobiles()
+    let mobiles: Vec<MobileData> = state
+        .db
+        .list_all_mobiles()
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .into_iter()
         .filter(|m| m.is_prototype)
         .collect();
 
-    let summaries: Vec<MobileSummary> = mobiles.iter()
+    let summaries: Vec<MobileSummary> = mobiles
+        .iter()
         .filter(|m| {
             if let Some(ref prefix) = query.vnum_prefix {
                 m.vnum.starts_with(&format!("{}:", prefix))
@@ -453,10 +510,11 @@ async fn get_mobile(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mobile = state.db.get_mobile_data(&uuid)
+    let mobile = state
+        .db
+        .get_mobile_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
@@ -477,7 +535,9 @@ async fn get_mobile_by_vnum(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let mobile = state.db.get_mobile_by_vnum(&vnum)
+    let mobile = state
+        .db
+        .get_mobile_by_vnum(&vnum)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile with vnum '{}' not found", vnum)))?;
 
@@ -499,7 +559,9 @@ async fn create_mobile(
     }
 
     // Check vnum uniqueness
-    if state.db.get_mobile_by_vnum(&req.vnum)
+    if state
+        .db
+        .get_mobile_by_vnum(&req.vnum)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .is_some()
     {
@@ -596,13 +658,15 @@ async fn create_mobile(
         adoption_pending: false,
     };
 
-    state.db.save_mobile_data(mobile.clone())
+    state
+        .db
+        .save_mobile_data(mobile.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    notify_builders(&state.connections, &format!(
-        "[API] Mobile prototype '{}' created by {}",
-        req.vnum, user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!("[API] Mobile prototype '{}' created by {}", req.vnum, user.api_key.name),
+    );
 
     Ok(Json(MobileResponse {
         success: true,
@@ -622,10 +686,11 @@ async fn update_mobile(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut mobile = state.db.get_mobile_data(&uuid)
+    let mut mobile = state
+        .db
+        .get_mobile_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
@@ -724,21 +789,26 @@ async fn update_mobile(
         }
     }
 
-    state.db.save_mobile_data(mobile.clone())
+    state
+        .db
+        .save_mobile_data(mobile.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     let refreshed = refresh_mobile_instances(&state.db, &mobile);
 
     if refreshed > 0 {
-        notify_builders(&state.connections, &format!(
-            "[API] Mobile '{}' updated by {} ({} instance(s) refreshed)",
-            mobile.vnum, user.api_key.name, refreshed
-        ));
+        notify_builders(
+            &state.connections,
+            &format!(
+                "[API] Mobile '{}' updated by {} ({} instance(s) refreshed)",
+                mobile.vnum, user.api_key.name, refreshed
+            ),
+        );
     } else {
-        notify_builders(&state.connections, &format!(
-            "[API] Mobile '{}' updated by {}",
-            mobile.vnum, user.api_key.name
-        ));
+        notify_builders(
+            &state.connections,
+            &format!("[API] Mobile '{}' updated by {}", mobile.vnum, user.api_key.name),
+        );
     }
 
     Ok(Json(MobileResponse {
@@ -758,22 +828,25 @@ async fn delete_mobile(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mobile = state.db.get_mobile_data(&uuid)
+    let mobile = state
+        .db
+        .get_mobile_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
     let mobile_name = mobile.vnum.clone();
 
-    state.db.delete_mobile(&uuid)
+    state
+        .db
+        .delete_mobile(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    notify_builders(&state.connections, &format!(
-        "[API] Mobile '{}' deleted by {}",
-        mobile_name, user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!("[API] Mobile '{}' deleted by {}", mobile_name, user.api_key.name),
+    );
 
     Ok(Json(serde_json::json!({
         "success": true,
@@ -792,16 +865,19 @@ async fn add_dialogue(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut mobile = state.db.get_mobile_data(&uuid)
+    let mut mobile = state
+        .db
+        .get_mobile_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
     mobile.dialogue.insert(req.keyword.to_lowercase(), req.response);
 
-    state.db.save_mobile_data(mobile.clone())
+    state
+        .db
+        .save_mobile_data(mobile.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     let refreshed = refresh_mobile_instances(&state.db, &mobile);
@@ -823,10 +899,11 @@ async fn remove_dialogue(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut mobile = state.db.get_mobile_data(&uuid)
+    let mut mobile = state
+        .db
+        .get_mobile_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
@@ -834,7 +911,9 @@ async fn remove_dialogue(
         return Err(ApiError::NotFound(format!("Dialogue keyword '{}' not found", keyword)));
     }
 
-    state.db.save_mobile_data(mobile.clone())
+    state
+        .db
+        .save_mobile_data(mobile.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     let refreshed = refresh_mobile_instances(&state.db, &mobile);
@@ -857,10 +936,11 @@ async fn add_routine_entry(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut mobile = state.db.get_mobile_data(&uuid)
+    let mut mobile = state
+        .db
+        .get_mobile_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
@@ -877,7 +957,9 @@ async fn add_routine_entry(
     // Sort by start_hour for correct schedule ordering
     mobile.daily_routine.sort_by_key(|e| e.start_hour);
 
-    state.db.save_mobile_data(mobile.clone())
+    state
+        .db
+        .save_mobile_data(mobile.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     let refreshed = refresh_mobile_instances(&state.db, &mobile);
@@ -899,10 +981,11 @@ async fn remove_routine_entry(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut mobile = state.db.get_mobile_data(&uuid)
+    let mut mobile = state
+        .db
+        .get_mobile_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
@@ -912,7 +995,9 @@ async fn remove_routine_entry(
 
     mobile.daily_routine.remove(index);
 
-    state.db.save_mobile_data(mobile.clone())
+    state
+        .db
+        .save_mobile_data(mobile.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     let refreshed = refresh_mobile_instances(&state.db, &mobile);
@@ -935,10 +1020,11 @@ async fn add_trigger(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut mobile = state.db.get_mobile_data(&uuid)
+    let mut mobile = state
+        .db
+        .get_mobile_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
@@ -950,10 +1036,12 @@ async fn add_trigger(
         "idle" | "on_idle" => MobileTriggerType::OnIdle,
         "always" | "on_always" => MobileTriggerType::OnAlways,
         "flee" | "on_flee" => MobileTriggerType::OnFlee,
-        _ => return Err(ApiError::InvalidInput(format!(
-            "Invalid trigger type '{}'. Use: greet, attack, death, say, idle, always, flee",
-            req.trigger_type
-        ))),
+        _ => {
+            return Err(ApiError::InvalidInput(format!(
+                "Invalid trigger type '{}'. Use: greet, attack, death, say, idle, always, flee",
+                req.trigger_type
+            )));
+        }
     };
 
     let trigger = MobileTrigger {
@@ -968,7 +1056,9 @@ async fn add_trigger(
 
     mobile.triggers.push(trigger);
 
-    state.db.save_mobile_data(mobile.clone())
+    state
+        .db
+        .save_mobile_data(mobile.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     let refreshed = refresh_mobile_instances(&state.db, &mobile);
@@ -990,10 +1080,11 @@ async fn remove_trigger(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut mobile = state.db.get_mobile_data(&uuid)
+    let mut mobile = state
+        .db
+        .get_mobile_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
@@ -1003,7 +1094,9 @@ async fn remove_trigger(
 
     mobile.triggers.remove(index);
 
-    state.db.save_mobile_data(mobile.clone())
+    state
+        .db
+        .save_mobile_data(mobile.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     let refreshed = refresh_mobile_instances(&state.db, &mobile);
@@ -1027,7 +1120,9 @@ async fn spawn_mobile(
     }
 
     // Get the prototype
-    let prototype = state.db.get_mobile_by_vnum(&vnum)
+    let prototype = state
+        .db
+        .get_mobile_by_vnum(&vnum)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile prototype '{}' not found", vnum)))?;
 
@@ -1036,10 +1131,12 @@ async fn spawn_mobile(
     }
 
     // Verify room exists
-    let room_uuid = Uuid::parse_str(&req.room_id)
-        .map_err(|_| ApiError::InvalidInput("Invalid room_id UUID format".into()))?;
+    let room_uuid =
+        Uuid::parse_str(&req.room_id).map_err(|_| ApiError::InvalidInput("Invalid room_id UUID format".into()))?;
 
-    let _room = state.db.get_room_data(&room_uuid)
+    let _room = state
+        .db
+        .get_room_data(&room_uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", req.room_id)))?;
 
@@ -1050,13 +1147,15 @@ async fn spawn_mobile(
     instance.current_room_id = Some(room_uuid);
     instance.current_hp = instance.max_hp;
 
-    state.db.save_mobile_data(instance.clone())
+    state
+        .db
+        .save_mobile_data(instance.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    notify_builders(&state.connections, &format!(
-        "[API] Mobile '{}' spawned in room by {}",
-        vnum, user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!("[API] Mobile '{}' spawned in room by {}", vnum, user.api_key.name),
+    );
 
     Ok(Json(MobileResponse {
         success: true,

@@ -14,8 +14,8 @@ pub use garden::*;
 pub use time::*;
 pub use trigger::*;
 
-use std::collections::HashMap;
 use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Deserialize categories from either a single string (legacy), an array of strings, or null.
@@ -35,17 +35,23 @@ where
         }
 
         fn visit_unit<E>(self) -> Result<Vec<String>, E>
-        where E: de::Error {
+        where
+            E: de::Error,
+        {
             Ok(Vec::new())
         }
 
         fn visit_none<E>(self) -> Result<Vec<String>, E>
-        where E: de::Error {
+        where
+            E: de::Error,
+        {
             Ok(Vec::new())
         }
 
         fn visit_str<E>(self, v: &str) -> Result<Vec<String>, E>
-        where E: de::Error {
+        where
+            E: de::Error,
+        {
             if v.is_empty() {
                 Ok(Vec::new())
             } else {
@@ -54,16 +60,16 @@ where
         }
 
         fn visit_string<E>(self, v: String) -> Result<Vec<String>, E>
-        where E: de::Error {
-            if v.is_empty() {
-                Ok(Vec::new())
-            } else {
-                Ok(vec![v])
-            }
+        where
+            E: de::Error,
+        {
+            if v.is_empty() { Ok(Vec::new()) } else { Ok(vec![v]) }
         }
 
         fn visit_seq<A>(self, mut seq: A) -> Result<Vec<String>, A::Error>
-        where A: de::SeqAccess<'de> {
+        where
+            A: de::SeqAccess<'de>,
+        {
             let mut categories = Vec::new();
             while let Some(val) = seq.next_element::<String>()? {
                 categories.push(val);
@@ -95,7 +101,7 @@ pub struct CharacterData {
     #[serde(default)]
     pub gold: i32,
     #[serde(default)]
-    pub bank_gold: i64,  // Gold stored in bank account (accessible from any bank/ATM)
+    pub bank_gold: i64, // Gold stored in bank account (accessible from any bank/ATM)
     // Character creation wizard fields
     #[serde(default)]
     pub race: String,
@@ -130,7 +136,7 @@ pub struct CharacterData {
     pub max_hp: i32,
     // Prompt settings
     #[serde(default)]
-    pub prompt_mode: String,  // "simple" (default) or "verbose"
+    pub prompt_mode: String, // "simple" (default) or "verbose"
     // Password management
     #[serde(default)]
     pub must_change_password: bool,
@@ -158,27 +164,27 @@ pub struct CharacterData {
     pub foraged_rooms: HashMap<String, i64>,
     // Group/Party system fields
     #[serde(default)]
-    pub following: Option<String>,    // Name of character being followed
+    pub following: Option<String>, // Name of character being followed
     #[serde(default)]
     pub following_mobile_id: Option<Uuid>, // Mobile instance being followed (mutually exclusive with `following`)
     #[serde(default)]
-    pub is_grouped: bool,             // Whether actively grouped (not just following)
+    pub is_grouped: bool, // Whether actively grouped (not just following)
     // Character stats (affect carrying capacity, health, stamina, etc.)
     #[serde(default = "default_stat")]
-    pub stat_str: i32,  // Strength - affects carrying capacity
+    pub stat_str: i32, // Strength - affects carrying capacity
     #[serde(default = "default_stat")]
-    pub stat_dex: i32,  // Dexterity
+    pub stat_dex: i32, // Dexterity
     #[serde(default = "default_stat")]
-    pub stat_con: i32,  // Constitution - affects max health/stamina
+    pub stat_con: i32, // Constitution - affects max health/stamina
     #[serde(default = "default_stat")]
-    pub stat_int: i32,  // Intelligence
+    pub stat_int: i32, // Intelligence
     #[serde(default = "default_stat")]
-    pub stat_wis: i32,  // Wisdom
+    pub stat_wis: i32, // Wisdom
     #[serde(default = "default_stat")]
-    pub stat_cha: i32,  // Charisma
+    pub stat_cha: i32, // Charisma
     // Combat system fields
     #[serde(default)]
-    pub spawn_room_id: Option<Uuid>,  // Respawn location on death
+    pub spawn_room_id: Option<Uuid>, // Respawn location on death
     #[serde(default)]
     pub combat: CombatState,
     #[serde(default)]
@@ -186,7 +192,7 @@ pub struct CharacterData {
     #[serde(default)]
     pub ongoing_effects: Vec<OngoingEffect>,
     #[serde(default)]
-    pub scars: HashMap<String, i32>,  // body_part display name -> scar count
+    pub scars: HashMap<String, i32>, // body_part display name -> scar count
     // Death/unconscious state (persisted, cleared on login)
     #[serde(default)]
     pub is_unconscious: bool,
@@ -196,18 +202,18 @@ pub struct CharacterData {
     #[serde(skip)]
     pub is_wet: bool,
     #[serde(skip)]
-    pub wet_level: i32,           // 0-100, higher = more soaked
+    pub wet_level: i32, // 0-100, higher = more soaked
     #[serde(skip)]
-    pub cold_exposure: i32,       // 0-100, escalates to hypothermia at thresholds
+    pub cold_exposure: i32, // 0-100, escalates to hypothermia at thresholds
     #[serde(skip)]
-    pub heat_exposure: i32,       // 0-100, escalates to heat exhaustion
+    pub heat_exposure: i32, // 0-100, escalates to heat exhaustion
     // Environmental conditions (persisted)
     #[serde(default)]
-    pub illness_progress: i32,    // 0-100, illness severity
+    pub illness_progress: i32, // 0-100, illness severity
     #[serde(default)]
     pub has_hypothermia: bool,
     #[serde(default)]
-    pub has_frostbite: Vec<BodyPart>,  // Body parts affected
+    pub has_frostbite: Vec<BodyPart>, // Body parts affected
     #[serde(default)]
     pub has_heat_exhaustion: bool,
     #[serde(default)]
@@ -221,13 +227,13 @@ pub struct CharacterData {
     pub helpline_enabled: bool,
     // Property rental system
     #[serde(default)]
-    pub active_leases: HashMap<Uuid, Uuid>,  // area_id -> lease_id (one per area)
+    pub active_leases: HashMap<Uuid, Uuid>, // area_id -> lease_id (one per area)
     #[serde(default)]
-    pub escrow_ids: Vec<Uuid>,               // Escrow IDs for evicted items
+    pub escrow_ids: Vec<Uuid>, // Escrow IDs for evicted items
     #[serde(default)]
-    pub tour_origin_room: Option<Uuid>,      // Return location after tour
+    pub tour_origin_room: Option<Uuid>, // Return location after tour
     #[serde(default)]
-    pub on_tour: bool,                       // Currently touring a template
+    pub on_tour: bool, // Currently touring a template
     // Buff system fields
     #[serde(default)]
     pub active_buffs: Vec<ActiveBuff>,
@@ -236,9 +242,9 @@ pub struct CharacterData {
     #[serde(default)]
     pub max_mana: i32,
     #[serde(default)]
-    pub mana_enabled: bool,      // Admin flag - hidden from stats/prompt unless true
+    pub mana_enabled: bool, // Admin flag - hidden from stats/prompt unless true
     #[serde(default)]
-    pub drunk_level: i32,        // 0-100, decreases over time
+    pub drunk_level: i32, // 0-100, decreases over time
     // Racial ability cooldowns (ability_id -> unix timestamp when usable)
     #[serde(default)]
     pub racial_cooldowns: HashMap<String, i64>,
@@ -275,7 +281,7 @@ fn default_level() -> i32 {
 }
 
 fn default_stat() -> i32 {
-    10  // Average stat value
+    10 // Average stat value
 }
 
 fn default_max_thirst() -> i32 {
@@ -374,8 +380,8 @@ pub struct TraitDefinition {
 // Skill system
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SkillProgress {
-    pub level: i32,           // 0-10
-    pub experience: i32,      // XP toward next level
+    pub level: i32,      // 0-10
+    pub experience: i32, // XP toward next level
 }
 
 // Recipe/Crafting system
@@ -383,22 +389,22 @@ pub struct SkillProgress {
 pub struct Recipe {
     pub id: String,
     pub name: String,
-    pub skill: String,                  // "crafting" or "cooking"
+    pub skill: String, // "crafting" or "cooking"
     #[serde(default)]
-    pub skill_required: i32,            // Minimum skill level (0-10)
+    pub skill_required: i32, // Minimum skill level (0-10)
     #[serde(default)]
-    pub auto_learn: bool,               // Learned automatically at skill level?
+    pub auto_learn: bool, // Learned automatically at skill level?
     #[serde(default)]
     pub ingredients: Vec<RecipeIngredient>,
     #[serde(default)]
     pub tools: Vec<RecipeTool>,
-    pub output_vnum: String,            // Prototype vnum to spawn
+    pub output_vnum: String, // Prototype vnum to spawn
     #[serde(default = "default_one")]
-    pub output_quantity: i32,           // How many to produce
+    pub output_quantity: i32, // How many to produce
     #[serde(default)]
-    pub base_xp: i32,                   // XP awarded on success
+    pub base_xp: i32, // XP awarded on success
     #[serde(default = "default_one")]
-    pub difficulty: i32,                // Affects quality roll (1-10)
+    pub difficulty: i32, // Affects quality roll (1-10)
 }
 
 fn default_one() -> i32 {
@@ -408,29 +414,29 @@ fn default_one() -> i32 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecipeIngredient {
     #[serde(default)]
-    pub vnum: Option<String>,           // Exact vnum (if specified)
+    pub vnum: Option<String>, // Exact vnum (if specified)
     #[serde(default)]
-    pub category: Option<String>,       // Category match (e.g., "flour", "meat")
+    pub category: Option<String>, // Category match (e.g., "flour", "meat")
     #[serde(default = "default_one")]
-    pub quantity: i32,                  // How many needed
+    pub quantity: i32, // How many needed
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecipeTool {
     #[serde(default)]
-    pub vnum: Option<String>,           // Exact tool vnum (if specified)
+    pub vnum: Option<String>, // Exact tool vnum (if specified)
     #[serde(default)]
-    pub category: Option<String>,       // Tool category (e.g., "knife", "forge")
+    pub category: Option<String>, // Tool category (e.g., "knife", "forge")
     #[serde(default)]
-    pub location: ToolLocation,         // Where to find it
+    pub location: ToolLocation, // Where to find it
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub enum ToolLocation {
     #[default]
-    Inventory,                          // Must be in player's inventory
-    Room,                               // Must be in current room
-    Either,                             // Can be in inventory OR room
+    Inventory, // Must be in player's inventory
+    Room,   // Must be in current room
+    Either, // Can be in inventory OR room
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -506,7 +512,7 @@ pub struct SpellDefinition {
     #[serde(default)]
     pub cooldown_secs: i32,
     #[serde(default)]
-    pub spell_type: String,           // "damage", "buff", "heal", "utility"
+    pub spell_type: String, // "damage", "buff", "heal", "utility"
     #[serde(default)]
     pub damage_base: i32,
     #[serde(default)]
@@ -514,9 +520,9 @@ pub struct SpellDefinition {
     #[serde(default)]
     pub damage_int_scaling: i32,
     #[serde(default)]
-    pub damage_type: String,          // "arcane", "fire", "lightning"
+    pub damage_type: String, // "arcane", "fire", "lightning"
     #[serde(default)]
-    pub buff_effect: String,          // EffectType string
+    pub buff_effect: String, // EffectType string
     #[serde(default)]
     pub buff_magnitude: i32,
     #[serde(default)]
@@ -528,7 +534,7 @@ pub struct SpellDefinition {
     #[serde(default)]
     pub heal_int_scaling: i32,
     #[serde(default)]
-    pub target_type: String,          // "enemy", "self", "self_or_friendly", "room"
+    pub target_type: String, // "enemy", "self", "self_or_friendly", "room"
     #[serde(default)]
     pub requires_combat: bool,
     #[serde(default)]
@@ -578,16 +584,16 @@ pub struct RoomData {
     pub catch_table: Vec<CatchEntry>,
     // Property template fields
     #[serde(default)]
-    pub is_property_template: bool,          // This is a template room
+    pub is_property_template: bool, // This is a template room
     #[serde(default)]
-    pub property_template_id: Option<Uuid>,  // Which template this belongs to
+    pub property_template_id: Option<Uuid>, // Which template this belongs to
     #[serde(default)]
-    pub is_template_entrance: bool,          // Entry point for template
+    pub is_template_entrance: bool, // Entry point for template
     // Property instance fields
     #[serde(default)]
-    pub property_lease_id: Option<Uuid>,     // Which lease owns this instance
+    pub property_lease_id: Option<Uuid>, // Which lease owns this instance
     #[serde(default)]
-    pub property_entrance: bool,             // Entry point for rental
+    pub property_entrance: bool, // Entry point for rental
     // Stealth/tracking system
     #[serde(default)]
     pub recent_departures: Vec<DepartureRecord>,
@@ -615,20 +621,20 @@ pub struct RoomExits {
     pub up: Option<Uuid>,
     pub down: Option<Uuid>,
     #[serde(default)]
-    pub out: Option<Uuid>,  // Used for transport vehicles, buildings, etc.
+    pub out: Option<Uuid>, // Used for transport vehicles, buildings, etc.
     #[serde(default)]
-    pub custom: std::collections::HashMap<String, Uuid>,  // Custom exits like "elevator", "train", "portal"
+    pub custom: std::collections::HashMap<String, Uuid>, // Custom exits like "elevator", "train", "portal"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DoorState {
-    pub name: String,              // "door", "gate", "hatch", etc.
+    pub name: String, // "door", "gate", "hatch", etc.
     pub is_closed: bool,
     pub is_locked: bool,
     pub key_id: Option<Uuid>,
     pub description: Option<String>,
     #[serde(default)]
-    pub keywords: Vec<String>,     // Additional keywords like "wooden", "iron"
+    pub keywords: Vec<String>, // Additional keywords like "wooden", "iron"
 }
 
 // === Fishing System - Water Types ===
@@ -666,17 +672,17 @@ impl WaterType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CatchEntry {
-    pub vnum: String,       // Item vnum to spawn
-    pub weight: i32,        // Relative spawn weight
-    pub min_skill: i32,     // Minimum skill level (0-10)
-    pub rarity: String,     // common/uncommon/rare/legendary
+    pub vnum: String,   // Item vnum to spawn
+    pub weight: i32,    // Relative spawn weight
+    pub min_skill: i32, // Minimum skill level (0-10)
+    pub rarity: String, // common/uncommon/rare/legendary
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ForageEntry {
-    pub vnum: String,       // Item vnum to spawn (weight comes from item prototype)
-    pub min_skill: i32,     // Minimum skill level (0-10)
-    pub rarity: String,     // common/uncommon/rare/legendary
+    pub vnum: String,   // Item vnum to spawn (weight comes from item prototype)
+    pub min_skill: i32, // Minimum skill level (0-10)
+    pub rarity: String, // common/uncommon/rare/legendary
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -694,44 +700,44 @@ pub struct RoomFlags {
     pub underwater: bool,
     // Climate/weather flags
     #[serde(default)]
-    pub climate_controlled: bool,  // Room ignores outside weather/temp
+    pub climate_controlled: bool, // Room ignores outside weather/temp
     #[serde(default)]
-    pub always_hot: bool,          // Forge, volcano, etc.
+    pub always_hot: bool, // Forge, volcano, etc.
     #[serde(default)]
-    pub always_cold: bool,         // Ice cave, freezer, etc.
+    pub always_cold: bool, // Ice cave, freezer, etc.
     #[serde(default)]
-    pub city: bool,                // City rooms stay lit at night
+    pub city: bool, // City rooms stay lit at night
     #[serde(default)]
-    pub no_windows: bool,          // No day/night messages (caves, deep buildings)
+    pub no_windows: bool, // No day/night messages (caves, deep buildings)
     // Stamina system flag
     #[serde(default)]
-    pub difficult_terrain: bool,   // Costs 2 stamina to traverse instead of 1
+    pub difficult_terrain: bool, // Costs 2 stamina to traverse instead of 1
     // Foraging flag
     #[serde(default)]
-    pub dirt_floor: bool,          // Allows wilderness foraging
+    pub dirt_floor: bool, // Allows wilderness foraging
     // Property rental flag
     #[serde(default)]
-    pub property_storage: bool,    // Items dropped here are safe (property rooms)
+    pub property_storage: bool, // Items dropped here are safe (property rooms)
     // Mail system flag
     #[serde(default)]
-    pub post_office: bool,         // Players can send mail from this room
+    pub post_office: bool, // Players can send mail from this room
     // Banking system flag
     #[serde(default)]
-    pub bank: bool,                // Players can use banking commands here
+    pub bank: bool, // Players can use banking commands here
     // Gardening system flag
     #[serde(default)]
-    pub garden: bool,              // Thematic flag for garden display in look output
+    pub garden: bool, // Thematic flag for garden display in look output
     // Recall system flag
     #[serde(default)]
-    pub spawn_point: bool,         // Players can bind their spawn point here (inns, safe rooms)
+    pub spawn_point: bool, // Players can bind their spawn point here (inns, safe rooms)
     // Water system flags
     #[serde(default)]
-    pub shallow_water: bool,       // Surface water - extra stamina, gets wet
+    pub shallow_water: bool, // Surface water - extra stamina, gets wet
     #[serde(default)]
-    pub deep_water: bool,          // Deep water - requires boat or swimming 5+
+    pub deep_water: bool, // Deep water - requires boat or swimming 5+
     // Migrant housing flag
     #[serde(default)]
-    pub liveable: bool,            // Migrant NPCs can claim this room as a home
+    pub liveable: bool, // Migrant NPCs can claim this room as a home
 }
 
 // === Stealth/Tracking System Structures ===
@@ -754,13 +760,13 @@ pub struct BloodTrail {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoomTrap {
-    pub trap_type: String,         // "spike", "alarm", "snare", "poison_dart"
+    pub trap_type: String, // "spike", "alarm", "snare", "poison_dart"
     pub owner_name: String,
     pub damage: i32,
     pub detect_difficulty: i32,
     pub disarm_difficulty: i32,
     pub charges: i32,
-    pub effect: String,            // "damage", "alarm", "slow", "poison"
+    pub effect: String, // "damage", "alarm", "slow", "poison"
     pub placed_at: i64,
 }
 
@@ -922,7 +928,11 @@ impl TransportData {
     pub fn is_within_operating_hours(&self, hour: u8) -> bool {
         match &self.schedule {
             TransportSchedule::OnDemand => true,
-            TransportSchedule::GameTime { operating_start, operating_end, .. } => {
+            TransportSchedule::GameTime {
+                operating_start,
+                operating_end,
+                ..
+            } => {
                 if operating_start <= operating_end {
                     // Normal range: e.g., 6 AM to 11 PM
                     hour >= *operating_start && hour <= *operating_end
@@ -969,12 +979,12 @@ impl TransportData {
 pub enum NPCTravelSchedule {
     /// NPC travels at fixed game hours (e.g., commuter going to work)
     FixedHours {
-        depart_hour: u8,   // Hour to leave home for destination
-        return_hour: u8,   // Hour to return home
+        depart_hour: u8, // Hour to leave home for destination
+        return_hour: u8, // Hour to return home
     },
     /// NPC has a random chance to travel each game hour
     Random {
-        chance_per_hour: i32,  // 1-100 percent chance to travel per hour
+        chance_per_hour: i32, // 1-100 percent chance to travel per hour
     },
     /// NPC stays on the transport permanently (e.g., conductor)
     Permanent,
@@ -992,14 +1002,14 @@ impl Default for NPCTravelSchedule {
 /// Configuration for an NPC that uses transport
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TransportRoute {
-    pub transport_id: Uuid,           // Which transport to use
-    pub home_stop_index: usize,       // Where NPC "lives" (boards from)
+    pub transport_id: Uuid,            // Which transport to use
+    pub home_stop_index: usize,        // Where NPC "lives" (boards from)
     pub destination_stop_index: usize, // Where NPC travels to
     pub schedule: NPCTravelSchedule,
     #[serde(default)]
-    pub is_at_destination: bool,      // Track if NPC is currently at destination
+    pub is_at_destination: bool, // Track if NPC is currently at destination
     #[serde(default)]
-    pub is_on_transport: bool,        // Track if NPC is currently riding
+    pub is_on_transport: bool, // Track if NPC is currently riding
 }
 
 impl TransportRoute {
@@ -1248,10 +1258,18 @@ pub struct SimulationConfig {
     pub low_gold_threshold: i32,
 }
 
-fn default_work_pay() -> i32 { 50 }
-fn default_work_start() -> u8 { 8 }
-fn default_work_end() -> u8 { 17 }
-fn default_low_gold_threshold() -> i32 { 10 }
+fn default_work_pay() -> i32 {
+    50
+}
+fn default_work_start() -> u8 {
+    8
+}
+fn default_work_end() -> u8 {
+    17
+}
+fn default_low_gold_threshold() -> i32 {
+    10
+}
 
 // === Migrant Characteristics & Relationships ===
 
@@ -1260,11 +1278,11 @@ fn default_low_gold_threshold() -> i32 { 10 }
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Characteristics {
     #[serde(default)]
-    pub gender: String,       // "male" | "female"
+    pub gender: String, // "male" | "female"
     #[serde(default)]
     pub age: i32,
     #[serde(default)]
-    pub age_label: String,    // "young adult", "middle-aged", etc.
+    pub age_label: String, // "young adult", "middle-aged", etc.
     /// Absolute game day the mobile was born. Source of truth for age; `age` and
     /// `age_label` are caches refreshed by the aging tick. Zero means unknown
     /// (back-compat for pre-aging saves — aging tick back-computes from `age`).
@@ -1664,8 +1682,12 @@ pub struct SpawnDependency {
     pub chance: i32,
 }
 
-fn default_spawn_count() -> i32 { 1 }
-fn default_spawn_chance() -> i32 { 100 }
+fn default_spawn_count() -> i32 {
+    1
+}
+fn default_spawn_chance() -> i32 {
+    100
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpawnPointData {
@@ -1952,7 +1974,10 @@ pub fn get_gold_long_desc(amount: i32) -> String {
         11..=50 => format!("A modest collection of {} gold coins is piled here.", amount),
         51..=200 => format!("An enticing pile of {} gold coins awaits collection.", amount),
         201..=1000 => format!("A large heap of {} gold coins gleams invitingly.", amount),
-        _ => format!("An absolutely staggering fortune of {} gold coins fills the area.", amount),
+        _ => format!(
+            "An absolutely staggering fortune of {} gold coins fills the area.",
+            amount
+        ),
     }
 }
 
@@ -2033,7 +2058,19 @@ impl DamageType {
     }
 
     pub fn all() -> Vec<&'static str> {
-        vec!["bludgeoning", "slashing", "piercing", "fire", "cold", "lightning", "poison", "acid", "bite", "ballistic", "arcane"]
+        vec![
+            "bludgeoning",
+            "slashing",
+            "piercing",
+            "fire",
+            "cold",
+            "lightning",
+            "poison",
+            "acid",
+            "bite",
+            "ballistic",
+            "arcane",
+        ]
     }
 }
 
@@ -2076,8 +2113,12 @@ impl EffectType {
             "stamina_restore" | "staminarestore" | "stamina" => Some(EffectType::StaminaRestore),
             "strength_boost" | "strengthboost" | "str_boost" | "strength" => Some(EffectType::StrengthBoost),
             "dexterity_boost" | "dexterityboost" | "dex_boost" | "dexterity" => Some(EffectType::DexterityBoost),
-            "constitution_boost" | "constitutionboost" | "con_boost" | "constitution" => Some(EffectType::ConstitutionBoost),
-            "intelligence_boost" | "intelligenceboost" | "int_boost" | "intelligence" => Some(EffectType::IntelligenceBoost),
+            "constitution_boost" | "constitutionboost" | "con_boost" | "constitution" => {
+                Some(EffectType::ConstitutionBoost)
+            }
+            "intelligence_boost" | "intelligenceboost" | "int_boost" | "intelligence" => {
+                Some(EffectType::IntelligenceBoost)
+            }
             "wisdom_boost" | "wisdomboost" | "wis_boost" | "wisdom" => Some(EffectType::WisdomBoost),
             "charisma_boost" | "charismaboost" | "cha_boost" | "charisma" => Some(EffectType::CharismaBoost),
             "haste" => Some(EffectType::Haste),
@@ -2126,12 +2167,29 @@ impl EffectType {
 
     pub fn all() -> Vec<&'static str> {
         vec![
-            "none", "heal", "poison", "mana_restore", "stamina_restore",
-            "strength_boost", "dexterity_boost", "constitution_boost",
-            "intelligence_boost", "wisdom_boost", "charisma_boost",
-            "haste", "slow", "invisibility", "detect_invisible",
-            "regeneration", "drunk", "satiated", "quenched",
-            "armor_class_boost", "magic_light", "disguise", "water_breathing",
+            "none",
+            "heal",
+            "poison",
+            "mana_restore",
+            "stamina_restore",
+            "strength_boost",
+            "dexterity_boost",
+            "constitution_boost",
+            "intelligence_boost",
+            "wisdom_boost",
+            "charisma_boost",
+            "haste",
+            "slow",
+            "invisibility",
+            "detect_invisible",
+            "regeneration",
+            "drunk",
+            "satiated",
+            "quenched",
+            "armor_class_boost",
+            "magic_light",
+            "disguise",
+            "water_breathing",
         ]
     }
 }
@@ -2198,67 +2256,196 @@ impl LiquidType {
 
     pub fn all() -> Vec<&'static str> {
         vec![
-            "water", "ale", "wine", "beer", "alcohol", "milk", "juice", "tea",
-            "coffee", "poison", "healing_potion", "mana_potion", "blood", "oil",
+            "water",
+            "ale",
+            "wine",
+            "beer",
+            "alcohol",
+            "milk",
+            "juice",
+            "tea",
+            "coffee",
+            "poison",
+            "healing_potion",
+            "mana_potion",
+            "blood",
+            "oil",
         ]
     }
 
     /// Returns default liquid effects for this liquid type, mirroring oedit auto_set_liquid_defaults.
     pub fn default_effects(&self) -> Vec<ItemEffect> {
         match self {
-            LiquidType::Water => vec![
-                ItemEffect { effect_type: EffectType::Quenched, magnitude: 100, duration: 0, script_callback: None },
-            ],
+            LiquidType::Water => vec![ItemEffect {
+                effect_type: EffectType::Quenched,
+                magnitude: 100,
+                duration: 0,
+                script_callback: None,
+            }],
             LiquidType::Ale => vec![
-                ItemEffect { effect_type: EffectType::Drunk, magnitude: 2, duration: 300, script_callback: None },
-                ItemEffect { effect_type: EffectType::Quenched, magnitude: 50, duration: 0, script_callback: None },
+                ItemEffect {
+                    effect_type: EffectType::Drunk,
+                    magnitude: 2,
+                    duration: 300,
+                    script_callback: None,
+                },
+                ItemEffect {
+                    effect_type: EffectType::Quenched,
+                    magnitude: 50,
+                    duration: 0,
+                    script_callback: None,
+                },
             ],
             LiquidType::Wine => vec![
-                ItemEffect { effect_type: EffectType::Drunk, magnitude: 4, duration: 300, script_callback: None },
-                ItemEffect { effect_type: EffectType::Quenched, magnitude: 30, duration: 0, script_callback: None },
+                ItemEffect {
+                    effect_type: EffectType::Drunk,
+                    magnitude: 4,
+                    duration: 300,
+                    script_callback: None,
+                },
+                ItemEffect {
+                    effect_type: EffectType::Quenched,
+                    magnitude: 30,
+                    duration: 0,
+                    script_callback: None,
+                },
             ],
             LiquidType::Beer => vec![
-                ItemEffect { effect_type: EffectType::Drunk, magnitude: 2, duration: 300, script_callback: None },
-                ItemEffect { effect_type: EffectType::Quenched, magnitude: 50, duration: 0, script_callback: None },
-                ItemEffect { effect_type: EffectType::Satiated, magnitude: 10, duration: 0, script_callback: None },
+                ItemEffect {
+                    effect_type: EffectType::Drunk,
+                    magnitude: 2,
+                    duration: 300,
+                    script_callback: None,
+                },
+                ItemEffect {
+                    effect_type: EffectType::Quenched,
+                    magnitude: 50,
+                    duration: 0,
+                    script_callback: None,
+                },
+                ItemEffect {
+                    effect_type: EffectType::Satiated,
+                    magnitude: 10,
+                    duration: 0,
+                    script_callback: None,
+                },
             ],
             LiquidType::Alcohol => vec![
-                ItemEffect { effect_type: EffectType::Drunk, magnitude: 6, duration: 300, script_callback: None },
-                ItemEffect { effect_type: EffectType::Quenched, magnitude: 20, duration: 0, script_callback: None },
+                ItemEffect {
+                    effect_type: EffectType::Drunk,
+                    magnitude: 6,
+                    duration: 300,
+                    script_callback: None,
+                },
+                ItemEffect {
+                    effect_type: EffectType::Quenched,
+                    magnitude: 20,
+                    duration: 0,
+                    script_callback: None,
+                },
             ],
             LiquidType::Milk => vec![
-                ItemEffect { effect_type: EffectType::Satiated, magnitude: 20, duration: 0, script_callback: None },
-                ItemEffect { effect_type: EffectType::Quenched, magnitude: 80, duration: 0, script_callback: None },
+                ItemEffect {
+                    effect_type: EffectType::Satiated,
+                    magnitude: 20,
+                    duration: 0,
+                    script_callback: None,
+                },
+                ItemEffect {
+                    effect_type: EffectType::Quenched,
+                    magnitude: 80,
+                    duration: 0,
+                    script_callback: None,
+                },
             ],
             LiquidType::Juice => vec![
-                ItemEffect { effect_type: EffectType::StaminaRestore, magnitude: 5, duration: 0, script_callback: None },
-                ItemEffect { effect_type: EffectType::Quenched, magnitude: 80, duration: 0, script_callback: None },
+                ItemEffect {
+                    effect_type: EffectType::StaminaRestore,
+                    magnitude: 5,
+                    duration: 0,
+                    script_callback: None,
+                },
+                ItemEffect {
+                    effect_type: EffectType::Quenched,
+                    magnitude: 80,
+                    duration: 0,
+                    script_callback: None,
+                },
             ],
             LiquidType::Tea => vec![
-                ItemEffect { effect_type: EffectType::StaminaRestore, magnitude: 3, duration: 0, script_callback: None },
-                ItemEffect { effect_type: EffectType::Quenched, magnitude: 90, duration: 0, script_callback: None },
+                ItemEffect {
+                    effect_type: EffectType::StaminaRestore,
+                    magnitude: 3,
+                    duration: 0,
+                    script_callback: None,
+                },
+                ItemEffect {
+                    effect_type: EffectType::Quenched,
+                    magnitude: 90,
+                    duration: 0,
+                    script_callback: None,
+                },
             ],
             LiquidType::Coffee => vec![
-                ItemEffect { effect_type: EffectType::StaminaRestore, magnitude: 8, duration: 0, script_callback: None },
-                ItemEffect { effect_type: EffectType::Quenched, magnitude: 70, duration: 0, script_callback: None },
+                ItemEffect {
+                    effect_type: EffectType::StaminaRestore,
+                    magnitude: 8,
+                    duration: 0,
+                    script_callback: None,
+                },
+                ItemEffect {
+                    effect_type: EffectType::Quenched,
+                    magnitude: 70,
+                    duration: 0,
+                    script_callback: None,
+                },
             ],
-            LiquidType::Poison => vec![
-                ItemEffect { effect_type: EffectType::Poison, magnitude: 10, duration: 0, script_callback: None },
-            ],
+            LiquidType::Poison => vec![ItemEffect {
+                effect_type: EffectType::Poison,
+                magnitude: 10,
+                duration: 0,
+                script_callback: None,
+            }],
             LiquidType::HealingPotion => vec![
-                ItemEffect { effect_type: EffectType::Heal, magnitude: 20, duration: 0, script_callback: None },
-                ItemEffect { effect_type: EffectType::Quenched, magnitude: 30, duration: 0, script_callback: None },
+                ItemEffect {
+                    effect_type: EffectType::Heal,
+                    magnitude: 20,
+                    duration: 0,
+                    script_callback: None,
+                },
+                ItemEffect {
+                    effect_type: EffectType::Quenched,
+                    magnitude: 30,
+                    duration: 0,
+                    script_callback: None,
+                },
             ],
             LiquidType::ManaPotion => vec![
-                ItemEffect { effect_type: EffectType::ManaRestore, magnitude: 20, duration: 0, script_callback: None },
-                ItemEffect { effect_type: EffectType::Quenched, magnitude: 30, duration: 0, script_callback: None },
+                ItemEffect {
+                    effect_type: EffectType::ManaRestore,
+                    magnitude: 20,
+                    duration: 0,
+                    script_callback: None,
+                },
+                ItemEffect {
+                    effect_type: EffectType::Quenched,
+                    magnitude: 30,
+                    duration: 0,
+                    script_callback: None,
+                },
             ],
-            LiquidType::Blood => vec![
-                ItemEffect { effect_type: EffectType::Satiated, magnitude: 10, duration: 0, script_callback: None },
-            ],
-            LiquidType::Oil => vec![
-                ItemEffect { effect_type: EffectType::Poison, magnitude: 3, duration: 0, script_callback: None },
-            ],
+            LiquidType::Blood => vec![ItemEffect {
+                effect_type: EffectType::Satiated,
+                magnitude: 10,
+                duration: 0,
+                script_callback: None,
+            }],
+            LiquidType::Oil => vec![ItemEffect {
+                effect_type: EffectType::Poison,
+                magnitude: 3,
+                duration: 0,
+                script_callback: None,
+            }],
         }
     }
 }
@@ -2267,7 +2454,7 @@ impl LiquidType {
 pub struct ItemEffect {
     pub effect_type: EffectType,
     pub magnitude: i32,
-    pub duration: i32,  // seconds, 0 = instant
+    pub duration: i32, // seconds, 0 = instant
     #[serde(default)]
     pub script_callback: Option<String>,
 }
@@ -2287,8 +2474,8 @@ impl Default for ItemEffect {
 pub struct ActiveBuff {
     pub effect_type: EffectType,
     pub magnitude: i32,
-    pub remaining_secs: i32,  // -1 = permanent until dispelled
-    pub source: String,       // e.g. "coffee", "healing potion"
+    pub remaining_secs: i32, // -1 = permanent until dispelled
+    pub source: String,      // e.g. "coffee", "healing potion"
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -2312,53 +2499,53 @@ pub struct ItemFlags {
     #[serde(default)]
     pub quest_item: bool,
     #[serde(default)]
-    pub vending: bool,          // Functions as a vending machine
+    pub vending: bool, // Functions as a vending machine
     #[serde(default)]
-    pub provides_light: bool,   // Provides light when equipped/wielded
+    pub provides_light: bool, // Provides light when equipped/wielded
     #[serde(default)]
-    pub fishing_rod: bool,      // Can be used for fishing when held
+    pub fishing_rod: bool, // Can be used for fishing when held
     #[serde(default)]
-    pub bait: bool,             // Can be used as fishing bait
+    pub bait: bool, // Can be used as fishing bait
     #[serde(default)]
-    pub foraging_tool: bool,    // Can be used as foraging tool (uses quality for bonus)
+    pub foraging_tool: bool, // Can be used as foraging tool (uses quality for bonus)
     #[serde(default)]
-    pub waterproof: bool,       // Protects from rain/water when worn
+    pub waterproof: bool, // Protects from rain/water when worn
     #[serde(default)]
-    pub provides_warmth: bool,  // Radiates warmth to room (campfire, fireplace)
+    pub provides_warmth: bool, // Radiates warmth to room (campfire, fireplace)
     #[serde(default)]
-    pub reduces_glare: bool,    // Reduces bright light penalty (sunglasses)
+    pub reduces_glare: bool, // Reduces bright light penalty (sunglasses)
     #[serde(default)]
-    pub medical_tool: bool,     // Can be used for medical treatment
+    pub medical_tool: bool, // Can be used for medical treatment
     #[serde(default)]
     pub preserves_contents: bool, // Container preserves food inside (fridge/freezer)
     #[serde(default)]
-    pub death_only: bool,         // Only visible in corpse after death
+    pub death_only: bool, // Only visible in corpse after death
     #[serde(default)]
-    pub atm: bool,                // Functions as an ATM for banking
+    pub atm: bool, // Functions as an ATM for banking
     // Corpse system fields
     #[serde(default)]
-    pub is_corpse: bool,        // This item is a corpse container
+    pub is_corpse: bool, // This item is a corpse container
     #[serde(default)]
-    pub corpse_owner: String,   // Name of the dead character/mobile
+    pub corpse_owner: String, // Name of the dead character/mobile
     #[serde(default)]
     pub corpse_created_at: i64, // Unix timestamp when corpse was created
     #[serde(default)]
     pub corpse_is_player: bool, // true = 1hr decay, false = 10min decay
     #[serde(default)]
-    pub corpse_gold: i64,       // Gold carried by the corpse
+    pub corpse_gold: i64, // Gold carried by the corpse
     #[serde(default)]
-    pub broken: bool,           // Broken arrows/bolts cannot be used as ammo
+    pub broken: bool, // Broken arrows/bolts cannot be used as ammo
     // Gardening system flags
     #[serde(default)]
-    pub plant_pot: bool,        // Can be used as a planting container
+    pub plant_pot: bool, // Can be used as a planting container
     // Stealth/thievery system flags
     #[serde(default)]
-    pub lockpick: bool,         // Can be used to pick locks
+    pub lockpick: bool, // Can be used to pick locks
     #[serde(default)]
-    pub is_skinned: bool,       // Corpse has been butchered/skinned
+    pub is_skinned: bool, // Corpse has been butchered/skinned
     // Water system flags
     #[serde(default)]
-    pub boat: bool,             // Allows traversing deep_water rooms when in inventory
+    pub boat: bool, // Allows traversing deep_water rooms when in inventory
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -2457,9 +2644,9 @@ pub struct ItemData {
     #[serde(default)]
     pub food_effects: Vec<ItemEffect>,
     #[serde(default)]
-    pub food_spoilage_points: f64,  // 0.0 = fresh, 1.0 = spoiled
+    pub food_spoilage_points: f64, // 0.0 = fresh, 1.0 = spoiled
     #[serde(default)]
-    pub preservation_level: i32,    // 0=none, 1=fridge/cool, 2=freezer/frozen (for containers)
+    pub preservation_level: i32, // 0=none, 1=fridge/cool, 2=freezer/frozen (for containers)
     // Level requirement and stat bonuses
     #[serde(default)]
     pub level_requirement: i32,
@@ -2477,7 +2664,7 @@ pub struct ItemData {
     pub stat_cha: i32,
     // Insulation for temperature/weather system
     #[serde(default)]
-    pub insulation: i32,  // 0-100 scale for warmth
+    pub insulation: i32, // 0-100 scale for warmth
     // Prototype fields
     #[serde(default)]
     pub is_prototype: bool,
@@ -2488,58 +2675,58 @@ pub struct ItemData {
     pub triggers: Vec<ItemTrigger>,
     // Vending machine fields (requires flags.vending = true)
     #[serde(default)]
-    pub vending_stock: Vec<String>,      // Vnums for infinite stock
+    pub vending_stock: Vec<String>, // Vnums for infinite stock
     #[serde(default = "default_vending_sell_rate")]
-    pub vending_sell_rate: i32,          // % charged when selling (default 150)
+    pub vending_sell_rate: i32, // % charged when selling (default 150)
     // Generic quality field (0-100, used by fishing rods, bait, etc.)
     #[serde(default)]
     pub quality: i32,
     // Bait-specific fields (requires flags.bait = true)
     #[serde(default)]
-    pub bait_uses: i32,                  // Uses remaining (0 = infinite)
+    pub bait_uses: i32, // Uses remaining (0 = infinite)
     // Combat system - armor degradation
     /// Armor holes from combat damage (0-3, destroyed at 3)
     #[serde(default)]
     pub holes: i32,
     // Medical tool fields (requires flags.medical_tool = true)
     #[serde(default)]
-    pub medical_tier: i32,              // 1=basic, 2=intermediate, 3=advanced
+    pub medical_tier: i32, // 1=basic, 2=intermediate, 3=advanced
     #[serde(default)]
-    pub medical_uses: i32,              // 0 = reusable, >0 = consumable uses
+    pub medical_uses: i32, // 0 = reusable, >0 = consumable uses
     #[serde(default)]
     pub treats_wound_types: Vec<String>, // ["cut", "puncture", "burn", etc.]
     #[serde(default)]
-    pub max_treatable_wound: String,    // "minor", "moderate", "severe", "critical"
+    pub max_treatable_wound: String, // "minor", "moderate", "severe", "critical"
     // Transport sign - links to a TransportData to show status when read
     #[serde(default)]
     pub transport_link: Option<Uuid>,
     // Ammunition fields (for both weapons with caliber and ammunition items)
     #[serde(default)]
-    pub caliber: Option<String>,      // "arrow", "bolt", "9mm", "5.56mm"
+    pub caliber: Option<String>, // "arrow", "bolt", "9mm", "5.56mm"
     #[serde(default)]
-    pub ammo_count: i32,              // Stack size for ammunition items
+    pub ammo_count: i32, // Stack size for ammunition items
     #[serde(default)]
-    pub ammo_damage_bonus: i32,       // Quality bonus to damage
+    pub ammo_damage_bonus: i32, // Quality bonus to damage
     // Crossbow/Firearm fields (internal magazine weapons)
     #[serde(default)]
-    pub ranged_type: Option<String>,         // "bow", "crossbow", "firearm"
+    pub ranged_type: Option<String>, // "bow", "crossbow", "firearm"
     #[serde(default)]
-    pub magazine_size: i32,                   // weapon capacity (crossbow=1, pistol=15, etc.)
+    pub magazine_size: i32, // weapon capacity (crossbow=1, pistol=15, etc.)
     #[serde(default)]
-    pub loaded_ammo: i32,                     // currently loaded rounds
+    pub loaded_ammo: i32, // currently loaded rounds
     #[serde(default)]
-    pub loaded_ammo_bonus: i32,               // ammo_damage_bonus captured at reload time
+    pub loaded_ammo_bonus: i32, // ammo_damage_bonus captured at reload time
     #[serde(default)]
-    pub loaded_ammo_vnum: Option<String>,     // vnum of loaded ammo prototype (for unload)
+    pub loaded_ammo_vnum: Option<String>, // vnum of loaded ammo prototype (for unload)
     #[serde(default)]
-    pub fire_mode: String,                    // current: "single", "burst", "auto"
+    pub fire_mode: String, // current: "single", "burst", "auto"
     #[serde(default)]
-    pub supported_fire_modes: Vec<String>,    // which modes this weapon supports
+    pub supported_fire_modes: Vec<String>, // which modes this weapon supports
     #[serde(default)]
-    pub noise_level: String,  // "silent", "quiet", "normal", "loud" or "" for default
+    pub noise_level: String, // "silent", "quiet", "normal", "loud" or "" for default
     // Special ammo effect payload (ammunition items)
     #[serde(default)]
-    pub ammo_effect_type: String,       // "fire", "cold", "poison", "acid", or ""
+    pub ammo_effect_type: String, // "fire", "cold", "poison", "acid", or ""
     #[serde(default)]
     pub ammo_effect_duration: i32,
     #[serde(default)]
@@ -2553,7 +2740,7 @@ pub struct ItemData {
     pub loaded_ammo_effect_damage: i32,
     // Attachment properties (for attachment items)
     #[serde(default)]
-    pub attachment_slot: String,           // "scope", "suppressor", "magazine", "accessory"
+    pub attachment_slot: String, // "scope", "suppressor", "magazine", "accessory"
     #[serde(default)]
     pub attachment_accuracy_bonus: i32,
     #[serde(default)]
@@ -2684,40 +2871,40 @@ impl ItemData {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MobileFlags {
     #[serde(default)]
-    pub aggressive: bool,    // Attacks players on sight
+    pub aggressive: bool, // Attacks players on sight
     #[serde(default)]
-    pub sentinel: bool,      // Never wanders from spawn room
+    pub sentinel: bool, // Never wanders from spawn room
     #[serde(default)]
-    pub scavenger: bool,     // Picks up items from ground
+    pub scavenger: bool, // Picks up items from ground
     #[serde(default)]
-    pub shopkeeper: bool,    // Can buy/sell items
+    pub shopkeeper: bool, // Can buy/sell items
     #[serde(default)]
-    pub no_attack: bool,     // Cannot be attacked
+    pub no_attack: bool, // Cannot be attacked
     #[serde(default)]
-    pub healer: bool,        // Can provide healing services
+    pub healer: bool, // Can provide healing services
     #[serde(default)]
     pub leasing_agent: bool, // Can rent out property templates
     #[serde(default)]
-    pub cowardly: bool,      // Flees when sniped or HP < 25%
+    pub cowardly: bool, // Flees when sniped or HP < 25%
     #[serde(default)]
     pub can_open_doors: bool, // Can open/unlock doors during routine pathfinding
     #[serde(default)]
-    pub guard: bool,           // Enhanced perception, responds to nearby theft
+    pub guard: bool, // Enhanced perception, responds to nearby theft
     #[serde(default)]
-    pub thief: bool,           // Steals gold from players
+    pub thief: bool, // Steals gold from players
     #[serde(default)]
-    pub cant_swim: bool,       // Cannot enter water rooms, takes damage if in water
+    pub cant_swim: bool, // Cannot enter water rooms, takes damage if in water
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileData {
     // Identity
     pub id: Uuid,
-    pub name: String,           // "a goblin guard"
-    pub short_desc: String,     // "A goblin guard stands here."
-    pub long_desc: String,      // Full description
+    pub name: String,       // "a goblin guard"
+    pub short_desc: String, // "A goblin guard stands here."
+    pub long_desc: String,  // Full description
     #[serde(default)]
-    pub keywords: Vec<String>,  // ["goblin", "guard"]
+    pub keywords: Vec<String>, // ["goblin", "guard"]
 
     // Location
     #[serde(default)]
@@ -2727,7 +2914,7 @@ pub struct MobileData {
     #[serde(default)]
     pub is_prototype: bool,
     #[serde(default)]
-    pub vnum: String,           // "goblin_guard"
+    pub vnum: String, // "goblin_guard"
 
     // Base stats (for future combat)
     #[serde(default)]
@@ -2741,7 +2928,7 @@ pub struct MobileData {
     #[serde(default = "default_mobile_stamina")]
     pub current_stamina: i32,
     #[serde(default)]
-    pub damage_dice: String,    // "2d6+3"
+    pub damage_dice: String, // "2d6+3"
     #[serde(default)]
     pub damage_type: DamageType,
     #[serde(default)]
@@ -2775,39 +2962,39 @@ pub struct MobileData {
 
     // Shop system (requires shopkeeper flag)
     #[serde(default)]
-    pub shop_stock: Vec<String>,        // Vnums for infinite base stock
+    pub shop_stock: Vec<String>, // Vnums for infinite base stock
     #[serde(default)]
-    pub shop_inventory: Vec<Uuid>,      // Items bought from players (finite)
+    pub shop_inventory: Vec<Uuid>, // Items bought from players (finite)
     #[serde(default = "default_shop_buy_rate")]
-    pub shop_buy_rate: i32,             // % paid when buying from player (e.g., 50)
+    pub shop_buy_rate: i32, // % paid when buying from player (e.g., 50)
     #[serde(default = "default_shop_sell_rate")]
-    pub shop_sell_rate: i32,            // % charged when selling (e.g., 150)
+    pub shop_sell_rate: i32, // % charged when selling (e.g., 150)
     #[serde(default = "default_shop_buys_types")]
-    pub shop_buys_types: Vec<String>,   // Item types this shop buys ("all" = any, empty = none)
+    pub shop_buys_types: Vec<String>, // Item types this shop buys ("all" = any, empty = none)
     #[serde(default)]
-    pub shop_buys_categories: Vec<String>,   // Categories this shop buys directly
+    pub shop_buys_categories: Vec<String>, // Categories this shop buys directly
     #[serde(default)]
-    pub shop_preset_vnum: String,            // Preset reference (live lookup)
+    pub shop_preset_vnum: String, // Preset reference (live lookup)
     #[serde(default)]
-    pub shop_extra_types: Vec<String>,       // Add types beyond preset
+    pub shop_extra_types: Vec<String>, // Add types beyond preset
     #[serde(default)]
-    pub shop_extra_categories: Vec<String>,  // Add categories beyond preset
+    pub shop_extra_categories: Vec<String>, // Add categories beyond preset
     #[serde(default)]
-    pub shop_deny_types: Vec<String>,        // Exclude types from preset
+    pub shop_deny_types: Vec<String>, // Exclude types from preset
     #[serde(default)]
-    pub shop_deny_categories: Vec<String>,   // Exclude categories from preset
+    pub shop_deny_categories: Vec<String>, // Exclude categories from preset
     #[serde(default)]
-    pub shop_min_value: i32,                 // 0 = no minimum
+    pub shop_min_value: i32, // 0 = no minimum
     #[serde(default)]
-    pub shop_max_value: i32,                 // 0 = no maximum
+    pub shop_max_value: i32, // 0 = no maximum
 
     // Healer system (requires healer flag)
     #[serde(default)]
-    pub healer_type: String,             // "medic", "herbalist", "cleric"
+    pub healer_type: String, // "medic", "herbalist", "cleric"
     #[serde(default)]
-    pub healing_free: bool,              // Free healing or charges gold?
+    pub healing_free: bool, // Free healing or charges gold?
     #[serde(default = "default_healing_cost_multiplier")]
-    pub healing_cost_multiplier: i32,    // 100 = base price, 200 = 2x, etc.
+    pub healing_cost_multiplier: i32, // 100 = base price, 200 = 2x, etc.
 
     // Trigger system
     #[serde(default)]
@@ -2819,9 +3006,9 @@ pub struct MobileData {
 
     // Leasing agent system (requires leasing_agent flag)
     #[serde(default)]
-    pub property_templates: Vec<String>,     // Vnums of available PropertyTemplates
+    pub property_templates: Vec<String>, // Vnums of available PropertyTemplates
     #[serde(default)]
-    pub leasing_area_id: Option<Uuid>,       // Area this agent manages
+    pub leasing_area_id: Option<Uuid>, // Area this agent manages
 
     // Combat system
     #[serde(default)]
@@ -2831,7 +3018,7 @@ pub struct MobileData {
     #[serde(default)]
     pub ongoing_effects: Vec<OngoingEffect>,
     #[serde(default)]
-    pub scars: HashMap<String, i32>,  // body_part display name -> scar count
+    pub scars: HashMap<String, i32>, // body_part display name -> scar count
     // Death/unconscious state (not persisted)
     #[serde(skip)]
     pub is_unconscious: bool,
@@ -2923,7 +3110,7 @@ fn default_shop_buys_types() -> Vec<String> {
 }
 
 fn default_healing_cost_multiplier() -> i32 {
-    100  // Base price, no markup
+    100 // Base price, no markup
 }
 
 fn default_vending_sell_rate() -> i32 {
@@ -3014,7 +3201,7 @@ impl MobileData {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommandMeta {
-    pub access: String,      // "guest", "any", "user", "admin"
+    pub access: String, // "guest", "any", "user", "admin"
     pub description: String,
 }
 
@@ -3037,9 +3224,9 @@ pub struct FishingState {
 #[serde(rename_all = "snake_case")]
 pub enum PartyAccessLevel {
     #[default]
-    None,              // No party access
-    VisitOnly,         // Can enter and look
-    FullAccess,        // Can use amenities, take items
+    None, // No party access
+    VisitOnly,  // Can enter and look
+    FullAccess, // Can use amenities, take items
 }
 
 impl PartyAccessLevel {
@@ -3065,18 +3252,18 @@ impl PartyAccessLevel {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShopPreset {
     pub id: Uuid,
-    pub vnum: String,                    // e.g., "weapons_dealer"
-    pub name: String,                    // "Weapons Dealer"
+    pub vnum: String, // e.g., "weapons_dealer"
+    pub name: String, // "Weapons Dealer"
     #[serde(default)]
     pub description: String,
     #[serde(default)]
-    pub buy_types: Vec<String>,          // Item types: "weapon", "armor", etc.
+    pub buy_types: Vec<String>, // Item types: "weapon", "armor", etc.
     #[serde(default)]
-    pub buy_categories: Vec<String>,     // Item categories: "leather", "herbs", etc.
+    pub buy_categories: Vec<String>, // Item categories: "leather", "herbs", etc.
     #[serde(default)]
-    pub min_value: i32,                  // 0 = no minimum
+    pub min_value: i32, // 0 = no minimum
     #[serde(default)]
-    pub max_value: i32,                  // 0 = no maximum
+    pub max_value: i32, // 0 = no maximum
 }
 
 impl ShopPreset {
@@ -3098,17 +3285,17 @@ impl ShopPreset {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PropertyTemplate {
     pub id: Uuid,
-    pub vnum: String,                      // e.g., "cottage_small"
-    pub name: String,                      // "Small Cottage"
-    pub description: String,               // Shown when listing properties
-    pub monthly_rent: i32,                 // Gold per game month
-    pub entrance_room_id: Uuid,            // Template entrance room
+    pub vnum: String,           // e.g., "cottage_small"
+    pub name: String,           // "Small Cottage"
+    pub description: String,    // Shown when listing properties
+    pub monthly_rent: i32,      // Gold per game month
+    pub entrance_room_id: Uuid, // Template entrance room
     #[serde(default)]
-    pub max_instances: i32,                // 0 = unlimited
+    pub max_instances: i32, // 0 = unlimited
     #[serde(default)]
-    pub level_requirement: i32,            // Minimum level to rent
+    pub level_requirement: i32, // Minimum level to rent
     #[serde(default)]
-    pub area_id: Option<Uuid>,             // Which area this template belongs to
+    pub area_id: Option<Uuid>, // Which area this template belongs to
 }
 
 impl PropertyTemplate {
@@ -3131,24 +3318,24 @@ impl PropertyTemplate {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LeaseData {
     pub id: Uuid,
-    pub template_vnum: String,             // Which PropertyTemplate
-    pub owner_name: String,                // Character name who rented
-    pub leasing_agent_id: Uuid,            // Mobile who leased this
-    pub leasing_office_room_id: Uuid,      // Room to return to via "out"
-    pub area_id: Uuid,                     // Area where lease is active
-    pub instanced_rooms: Vec<Uuid>,        // Actual room UUIDs created
-    pub entrance_room_id: Uuid,            // Player's entrance room
-    pub monthly_rent: i32,                 // Locked rent amount
-    pub rent_paid_until: i64,              // Unix timestamp
-    pub created_at: i64,                   // When lease started
+    pub template_vnum: String,        // Which PropertyTemplate
+    pub owner_name: String,           // Character name who rented
+    pub leasing_agent_id: Uuid,       // Mobile who leased this
+    pub leasing_office_room_id: Uuid, // Room to return to via "out"
+    pub area_id: Uuid,                // Area where lease is active
+    pub instanced_rooms: Vec<Uuid>,   // Actual room UUIDs created
+    pub entrance_room_id: Uuid,       // Player's entrance room
+    pub monthly_rent: i32,            // Locked rent amount
+    pub rent_paid_until: i64,         // Unix timestamp
+    pub created_at: i64,              // When lease started
     #[serde(default)]
-    pub is_evicted: bool,                  // Ended due to non-payment
+    pub is_evicted: bool, // Ended due to non-payment
     #[serde(default)]
-    pub eviction_time: Option<i64>,        // When eviction occurred
+    pub eviction_time: Option<i64>, // When eviction occurred
     #[serde(default)]
-    pub party_access: PartyAccessLevel,    // Access for grouped players
+    pub party_access: PartyAccessLevel, // Access for grouped players
     #[serde(default)]
-    pub trusted_visitors: Vec<String>,     // Names with full access
+    pub trusted_visitors: Vec<String>, // Names with full access
 }
 
 impl LeaseData {
@@ -3191,9 +3378,9 @@ impl LeaseData {
 pub struct MailMessage {
     pub id: Uuid,
     pub sender: String,
-    pub recipient: String,      // lowercase for lookup
+    pub recipient: String, // lowercase for lookup
     pub body: String,
-    pub sent_at: i64,           // Unix timestamp
+    pub sent_at: i64, // Unix timestamp
     pub read: bool,
 }
 
@@ -3390,12 +3577,12 @@ pub struct BugReport {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EscrowData {
     pub id: Uuid,
-    pub owner_name: String,                // Character who owned items
-    pub items: Vec<Uuid>,                  // Item IDs held in escrow
-    pub source_lease_id: Uuid,             // Original lease
-    pub created_at: i64,                   // When escrow started
-    pub expires_at: i64,                   // When items get deleted
-    pub retrieval_fee: i32,                // Gold fee to retrieve
+    pub owner_name: String,    // Character who owned items
+    pub items: Vec<Uuid>,      // Item IDs held in escrow
+    pub source_lease_id: Uuid, // Original lease
+    pub created_at: i64,       // When escrow started
+    pub expires_at: i64,       // When items get deleted
+    pub retrieval_fee: i32,    // Gold fee to retrieve
     #[serde(default)]
     pub destination_lease_id: Option<Uuid>, // Property to ship items to
 }

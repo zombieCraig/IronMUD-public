@@ -7,7 +7,7 @@
 use std::env;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 use serenity::async_trait;
 use serenity::model::channel::Message;
@@ -16,7 +16,7 @@ use serenity::model::id::ChannelId;
 use serenity::prelude::*;
 
 use crate::chat::ChatMessage;
-use crate::{SharedConnections, get_online_players, find_player_connection_by_name, send_client_message};
+use crate::{SharedConnections, find_player_connection_by_name, get_online_players, send_client_message};
 
 /// Configuration for Discord bot, loaded from environment variables
 #[derive(Clone)]
@@ -42,16 +42,14 @@ impl DiscordConfig {
         };
 
         // Avatar path: use env var if set, otherwise check for default file
-        let avatar_path = env::var("DISCORD_AVATAR")
-            .ok()
-            .or_else(|| {
-                let default = "assets/discord_avatar.png";
-                if std::path::Path::new(default).exists() {
-                    Some(default.to_string())
-                } else {
-                    None
-                }
-            });
+        let avatar_path = env::var("DISCORD_AVATAR").ok().or_else(|| {
+            let default = "assets/discord_avatar.png";
+            if std::path::Path::new(default).exists() {
+                Some(default.to_string())
+            } else {
+                None
+            }
+        });
 
         Some(Self {
             token,
@@ -117,14 +115,9 @@ pub async fn run_discord_bot(
         http_sender: http_tx,
     };
 
-    let intents = GatewayIntents::GUILD_MESSAGES
-        | GatewayIntents::DIRECT_MESSAGES
-        | GatewayIntents::MESSAGE_CONTENT;
+    let intents = GatewayIntents::GUILD_MESSAGES | GatewayIntents::DIRECT_MESSAGES | GatewayIntents::MESSAGE_CONTENT;
 
-    let mut client = match Client::builder(&config.token, intents)
-        .event_handler(handler)
-        .await
-    {
+    let mut client = match Client::builder(&config.token, intents).event_handler(handler).await {
         Ok(c) => c,
         Err(e) => {
             error!("Failed to create Discord client: {}", e);
@@ -190,18 +183,16 @@ async fn setup_avatar(http: &serenity::http::Http, avatar_path: &str) -> anyhow:
     let attachment = CreateAttachment::bytes(image_data, filename);
 
     let mut current_user = http.get_current_user().await?;
-    current_user.edit(http, serenity::builder::EditProfile::new().avatar(&attachment)).await?;
+    current_user
+        .edit(http, serenity::builder::EditProfile::new().avatar(&attachment))
+        .await?;
     info!("Discord avatar uploaded successfully from {}", avatar_path);
 
     Ok(())
 }
 
 /// Handle incoming Discord commands (!who, !tell)
-fn handle_discord_command(
-    body: &str,
-    sender: &str,
-    connections: &SharedConnections,
-) -> Option<String> {
+fn handle_discord_command(body: &str, sender: &str, connections: &SharedConnections) -> Option<String> {
     if body.eq_ignore_ascii_case("!who") {
         return Some(handle_who_command(connections));
     }
@@ -235,26 +226,25 @@ fn handle_who_command(connections: &SharedConnections) -> String {
     // Build player names with AFK status
     let names: Vec<String> = {
         let conns = connections.lock().unwrap();
-        players.iter().map(|p| {
-            let is_afk = conns.values().any(|session| {
-                if let Some(ref char) = session.character {
-                    char.name == p.name && session.afk
+        players
+            .iter()
+            .map(|p| {
+                let is_afk = conns.values().any(|session| {
+                    if let Some(ref char) = session.character {
+                        char.name == p.name && session.afk
+                    } else {
+                        false
+                    }
+                });
+                if is_afk {
+                    format!("{} [AFK]", p.name)
                 } else {
-                    false
+                    p.name.clone()
                 }
-            });
-            if is_afk {
-                format!("{} [AFK]", p.name)
-            } else {
-                p.name.clone()
-            }
-        }).collect()
+            })
+            .collect()
     };
-    format!(
-        "Players online ({}): {}",
-        names.len(),
-        names.join(", ")
-    )
+    format!("Players online ({}): {}", names.len(), names.join(", "))
 }
 
 /// Handle the !tell command - send a message to an online player
@@ -275,10 +265,7 @@ fn handle_tell_command(args: &str, sender: &str, connections: &SharedConnections
     // Find the player
     match find_player_connection_by_name(connections, target_name) {
         Some(conn_id) => {
-            let formatted_msg = format!(
-                "\n[Discord] {} says: {}\n",
-                sender, message
-            );
+            let formatted_msg = format!("\n[Discord] {} says: {}\n", sender, message);
             send_client_message(connections, conn_id.to_string(), formatted_msg);
             format!("Message sent to {}.", target_name)
         }

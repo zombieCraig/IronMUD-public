@@ -29,7 +29,7 @@ pub fn build_social_cues(
     // Life-stage hint: only surface non-adult stages to keep the line
     // budget for the emotionally-salient cues below.
     if let Some(chars) = mobile.characteristics.as_ref() {
-        use crate::types::{life_stage_for_age, LifeStage};
+        use crate::types::{LifeStage, life_stage_for_age};
         match life_stage_for_age(chars.age) {
             LifeStage::Baby => cues.push("They are barely more than an infant.".into()),
             LifeStage::Child => cues.push("They have a child's easy wonder.".into()),
@@ -68,11 +68,7 @@ pub fn build_social_cues(
             RelationshipKind::Friend => "A recent loss weighs heavily on them.",
         };
         cues.push(role_line.to_string());
-    } else if social
-        .bereaved_until_day
-        .map(|d| d > current_game_day)
-        .unwrap_or(false)
-    {
+    } else if social.bereaved_until_day.map(|d| d > current_game_day).unwrap_or(false) {
         cues.push("A recent loss weighs heavily on them.".into());
     }
 
@@ -95,8 +91,7 @@ pub fn build_social_cues(
                 if other.current_hp <= 0 {
                     continue;
                 }
-                let same_room = mobile.current_room_id.is_some()
-                    && mobile.current_room_id == other.current_room_id;
+                let same_room = mobile.current_room_id.is_some() && mobile.current_room_id == other.current_room_id;
                 if same_room {
                     cues.push(format!("Their {} {} is here.", role, other.name));
                     break 'family;
@@ -115,8 +110,7 @@ pub fn build_social_cues(
     {
         if let Ok(Some(partner)) = db.get_mobile_data(&cohab_rel.other_id) {
             if partner.current_hp > 0 {
-                let same_room = mobile.current_room_id.is_some()
-                    && mobile.current_room_id == partner.current_room_id;
+                let same_room = mobile.current_room_id.is_some() && mobile.current_room_id == partner.current_room_id;
                 if same_room {
                     cues.push(format!("They glance warmly at {}.", partner.name));
                 } else {
@@ -148,25 +142,22 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
 
     // set_mobile_happiness(mobile_id, value) -> bool
     let cloned_db = db.clone();
-    engine.register_fn(
-        "set_mobile_happiness",
-        move |mobile_id: String, value: i64| -> bool {
-            let uuid = match uuid::Uuid::parse_str(&mobile_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            let clamped = (value as i32).clamp(0, 100);
-            let ok = cloned_db
-                .update_mobile(&uuid, |m| {
-                    if let Some(s) = m.social.as_mut() {
-                        s.happiness = clamped;
-                        crate::social::apply_mood(m);
-                    }
-                })
-                .is_ok();
-            ok
-        },
-    );
+    engine.register_fn("set_mobile_happiness", move |mobile_id: String, value: i64| -> bool {
+        let uuid = match uuid::Uuid::parse_str(&mobile_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let clamped = (value as i32).clamp(0, 100);
+        let ok = cloned_db
+            .update_mobile(&uuid, |m| {
+                if let Some(s) = m.social.as_mut() {
+                    s.happiness = clamped;
+                    crate::social::apply_mood(m);
+                }
+            })
+            .is_ok();
+        ok
+    });
 
     // adjust_mobile_happiness(mobile_id, delta) -> bool
     let cloned_db = db.clone();
@@ -367,10 +358,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 map.insert("name".into(), Dynamic::from(other.name.clone()));
                 map.insert("other_id".into(), Dynamic::from(rel.other_id.to_string()));
                 map.insert("affinity".into(), Dynamic::from(rel.affinity as i64));
-                map.insert(
-                    "kind".into(),
-                    Dynamic::from(rel.kind.to_display_string().to_string()),
-                );
+                map.insert("kind".into(), Dynamic::from(rel.kind.to_display_string().to_string()));
                 return Dynamic::from(map);
             }
             Dynamic::UNIT
@@ -464,10 +452,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 let mut map = Map::new();
                 map.insert("other_id".into(), Dynamic::from(r.other_id.to_string()));
                 map.insert("name".into(), Dynamic::from(name));
-                map.insert(
-                    "kind".into(),
-                    Dynamic::from(r.kind.to_display_string().to_string()),
-                );
+                map.insert("kind".into(), Dynamic::from(r.kind.to_display_string().to_string()));
                 map.insert("affinity".into(), Dynamic::from(r.affinity as i64));
                 Dynamic::from(map)
             })
@@ -498,40 +483,37 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // Copies `other_id`'s household_id onto `source_id`. If other lacks one,
     // mint a fresh household and assign it to BOTH so the pair shares one.
     let cloned_db = db.clone();
-    engine.register_fn(
-        "link_household",
-        move |source_id: String, other_id: String| -> bool {
-            let src = match uuid::Uuid::parse_str(&source_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            let tgt = match uuid::Uuid::parse_str(&other_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            let other = match cloned_db.get_mobile_data(&tgt) {
-                Ok(Some(m)) => m,
-                _ => return false,
-            };
-            let household = other.household_id.unwrap_or_else(uuid::Uuid::new_v4);
-            let a = cloned_db
-                .update_mobile(&src, |m| m.household_id = Some(household))
+    engine.register_fn("link_household", move |source_id: String, other_id: String| -> bool {
+        let src = match uuid::Uuid::parse_str(&source_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let tgt = match uuid::Uuid::parse_str(&other_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let other = match cloned_db.get_mobile_data(&tgt) {
+            Ok(Some(m)) => m,
+            _ => return false,
+        };
+        let household = other.household_id.unwrap_or_else(uuid::Uuid::new_v4);
+        let a = cloned_db
+            .update_mobile(&src, |m| m.household_id = Some(household))
+            .ok()
+            .flatten()
+            .is_some();
+        // If other had no household, give it one too.
+        let b = if other.household_id.is_none() {
+            cloned_db
+                .update_mobile(&tgt, |m| m.household_id = Some(household))
                 .ok()
                 .flatten()
-                .is_some();
-            // If other had no household, give it one too.
-            let b = if other.household_id.is_none() {
-                cloned_db
-                    .update_mobile(&tgt, |m| m.household_id = Some(household))
-                    .ok()
-                    .flatten()
-                    .is_some()
-            } else {
-                true
-            };
-            a && b
-        },
-    );
+                .is_some()
+        } else {
+            true
+        };
+        a && b
+    });
 
     // clear_household(mobile_id) -> bool
     let cloned_db = db.clone();
@@ -564,8 +546,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         let Ok(Some(mobile)) = cloned_db.get_mobile_data(&uuid) else {
             return Dynamic::UNIT;
         };
-        let Some(social) = mobile.social.as_ref() else { return Dynamic::UNIT };
-        let Some(due) = social.pregnant_until_day else { return Dynamic::UNIT };
+        let Some(social) = mobile.social.as_ref() else {
+            return Dynamic::UNIT;
+        };
+        let Some(due) = social.pregnant_until_day else {
+            return Dynamic::UNIT;
+        };
         let today = cloned_db
             .get_game_time()
             .ok()

@@ -43,12 +43,7 @@ pub fn get_characters_in_room_with_positions(
 }
 
 /// Broadcast a message to all players in a room
-pub fn broadcast_to_room(
-    connections: &SharedConnections,
-    room_id: Uuid,
-    message: String,
-    exclude_name: Option<&str>,
-) {
+pub fn broadcast_to_room(connections: &SharedConnections, room_id: Uuid, message: String, exclude_name: Option<&str>) {
     let conns = connections.lock().unwrap();
     for (_id, session) in conns.iter() {
         if let Some(ref character) = session.character {
@@ -144,8 +139,7 @@ pub fn broadcast_to_outdoor_players(db: &db::Db, connections: &SharedConnections
                         .map(|area| area.flags.climate_controlled)
                         .unwrap_or(false);
                 // Skip if room has no windows, is climate controlled, underwater, or deep water
-                if !room.flags.no_windows && !is_climate_controlled
-                    && !room.flags.underwater && !room.flags.deep_water
+                if !room.flags.no_windows && !is_climate_controlled && !room.flags.underwater && !room.flags.deep_water
                 {
                     let _ = session.sender.send(message.to_string());
                 }

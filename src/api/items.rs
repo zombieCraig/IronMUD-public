@@ -1,17 +1,22 @@
 //! Item CRUD endpoints
 
 use axum::{
-    routing::{get, post},
-    extract::{State, Path, Query, Extension},
     Json, Router,
+    extract::{Extension, Path, Query, State},
+    routing::{get, post},
 };
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use std::sync::Arc;
+use uuid::Uuid;
 
-use super::{ApiState, error::ApiError, auth::{AuthenticatedUser, can_read, can_write}, notify_builders};
-use crate::{ItemData, ItemLocation, ItemType, ItemFlags, WearLocation, DamageType, LiquidType, WeaponSkill};
-use crate::types::{ItemEffect, EffectType};
+use super::{
+    ApiState,
+    auth::{AuthenticatedUser, can_read, can_write},
+    error::ApiError,
+    notify_builders,
+};
+use crate::types::{EffectType, ItemEffect};
+use crate::{DamageType, ItemData, ItemFlags, ItemLocation, ItemType, LiquidType, WeaponSkill, WearLocation};
 
 pub fn routes() -> Router<Arc<ApiState>> {
     Router::new()
@@ -356,7 +361,9 @@ async fn list_items(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let mut items = state.db.list_all_items()
+    let mut items = state
+        .db
+        .list_all_items()
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     // Filter by item_type if provided
@@ -370,10 +377,7 @@ async fn list_items(
     let offset = query.offset.unwrap_or(0);
     let limit = query.limit.unwrap_or(100);
 
-    let items: Vec<ItemData> = items.into_iter()
-        .skip(offset)
-        .take(limit)
-        .collect();
+    let items: Vec<ItemData> = items.into_iter().skip(offset).take(limit).collect();
 
     Ok(Json(ItemsListResponse {
         success: true,
@@ -391,7 +395,9 @@ async fn list_prototypes(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let items: Vec<ItemData> = state.db.list_all_items()
+    let items: Vec<ItemData> = state
+        .db
+        .list_all_items()
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .into_iter()
         .filter(|i| i.is_prototype)
@@ -416,16 +422,21 @@ async fn list_prototypes_summary(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let items: Vec<ItemData> = state.db.list_all_items()
+    let items: Vec<ItemData> = state
+        .db
+        .list_all_items()
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .into_iter()
         .filter(|i| i.is_prototype)
         .collect();
 
-    let summaries: Vec<ItemSummary> = items.iter()
+    let summaries: Vec<ItemSummary> = items
+        .iter()
         .filter(|i| {
             if let Some(ref prefix) = query.vnum_prefix {
-                i.vnum.as_ref().map_or(false, |v| v.starts_with(&format!("{}:", prefix)))
+                i.vnum
+                    .as_ref()
+                    .map_or(false, |v| v.starts_with(&format!("{}:", prefix)))
             } else {
                 true
             }
@@ -452,10 +463,11 @@ async fn get_item(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let item = state.db.get_item_data(&uuid)
+    let item = state
+        .db
+        .get_item_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
 
@@ -476,7 +488,9 @@ async fn get_item_by_vnum(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let item = state.db.get_item_by_vnum(&vnum)
+    let item = state
+        .db
+        .get_item_by_vnum(&vnum)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Item with vnum '{}' not found", vnum)))?;
 
@@ -498,7 +512,9 @@ async fn create_item(
     }
 
     // Check vnum uniqueness
-    if state.db.get_item_by_vnum(&req.vnum)
+    if state
+        .db
+        .get_item_by_vnum(&req.vnum)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .is_some()
     {
@@ -506,8 +522,12 @@ async fn create_item(
     }
 
     // Parse item type
-    let item_type = parse_item_type(&req.item_type)
-        .ok_or_else(|| ApiError::InvalidInput(format!("Invalid item type '{}'. Use: weapon, armor, container, liquid_container, food, key, gold, misc", req.item_type)))?;
+    let item_type = parse_item_type(&req.item_type).ok_or_else(|| {
+        ApiError::InvalidInput(format!(
+            "Invalid item type '{}'. Use: weapon, armor, container, liquid_container, food, key, gold, misc",
+            req.item_type
+        ))
+    })?;
 
     // Parse wear location if provided
     let wear_locations = if let Some(ref loc_str) = req.wear_location {
@@ -517,7 +537,8 @@ async fn create_item(
     };
 
     // Parse damage type
-    let damage_type = req.damage_type
+    let damage_type = req
+        .damage_type
         .as_ref()
         .and_then(|s| DamageType::from_str(s))
         .unwrap_or_default();
@@ -565,7 +586,9 @@ async fn create_item(
         container_locked: false,
         container_key_id: None,
         weight_reduction: 0,
-        liquid_type: req.liquid_type.as_ref()
+        liquid_type: req
+            .liquid_type
+            .as_ref()
             .and_then(|s| LiquidType::from_str(s))
             .unwrap_or_default(),
         liquid_current: req.liquid_current.unwrap_or(0),
@@ -576,16 +599,23 @@ async fn create_item(
         food_poisoned: false,
         food_spoil_duration: req.food_spoil_duration.unwrap_or(0),
         food_created_at: None,
-        food_effects: req.food_effects.as_ref().map(|effects| {
-            effects.iter().filter_map(|e| {
-                EffectType::from_str(&e.effect_type).map(|et| ItemEffect {
-                    effect_type: et,
-                    magnitude: e.magnitude,
-                    duration: e.duration,
-                    script_callback: None,
-                })
-            }).collect()
-        }).unwrap_or_default(),
+        food_effects: req
+            .food_effects
+            .as_ref()
+            .map(|effects| {
+                effects
+                    .iter()
+                    .filter_map(|e| {
+                        EffectType::from_str(&e.effect_type).map(|et| ItemEffect {
+                            effect_type: et,
+                            magnitude: e.magnitude,
+                            duration: e.duration,
+                            script_callback: None,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
         food_spoilage_points: 0.0,
         preservation_level: 0,
         level_requirement: 0,
@@ -639,13 +669,15 @@ async fn create_item(
         item.liquid_effects = item.liquid_type.default_effects();
     }
 
-    state.db.save_item_data(item.clone())
+    state
+        .db
+        .save_item_data(item.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    notify_builders(&state.connections, &format!(
-        "[API] Item prototype '{}' created by {}",
-        req.vnum, user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!("[API] Item prototype '{}' created by {}", req.vnum, user.api_key.name),
+    );
 
     Ok(Json(ItemResponse {
         success: true,
@@ -665,10 +697,11 @@ async fn update_item(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let mut item = state.db.get_item_data(&uuid)
+    let mut item = state
+        .db
+        .get_item_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
 
@@ -828,32 +861,40 @@ async fn update_item(
         item.food_spoil_duration = fsd;
     }
     if let Some(effects) = req.food_effects {
-        item.food_effects = effects.iter().filter_map(|e| {
-            EffectType::from_str(&e.effect_type).map(|et| ItemEffect {
-                effect_type: et,
-                magnitude: e.magnitude,
-                duration: e.duration,
-                script_callback: None,
+        item.food_effects = effects
+            .iter()
+            .filter_map(|e| {
+                EffectType::from_str(&e.effect_type).map(|et| ItemEffect {
+                    effect_type: et,
+                    magnitude: e.magnitude,
+                    duration: e.duration,
+                    script_callback: None,
+                })
             })
-        }).collect();
+            .collect();
     }
 
-    state.db.save_item_data(item.clone())
+    state
+        .db
+        .save_item_data(item.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
     let refreshed = refresh_item_instances(&state.db, &item);
 
     let vnum_display = item.vnum.as_ref().unwrap_or(&item.id.to_string()).clone();
     if refreshed > 0 {
-        notify_builders(&state.connections, &format!(
-            "[API] Item '{}' updated by {} ({} instance(s) refreshed)",
-            vnum_display, user.api_key.name, refreshed
-        ));
+        notify_builders(
+            &state.connections,
+            &format!(
+                "[API] Item '{}' updated by {} ({} instance(s) refreshed)",
+                vnum_display, user.api_key.name, refreshed
+            ),
+        );
     } else {
-        notify_builders(&state.connections, &format!(
-            "[API] Item '{}' updated by {}",
-            vnum_display, user.api_key.name
-        ));
+        notify_builders(
+            &state.connections,
+            &format!("[API] Item '{}' updated by {}", vnum_display, user.api_key.name),
+        );
     }
 
     Ok(Json(ItemResponse {
@@ -873,22 +914,25 @@ async fn delete_item(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
-    let uuid = Uuid::parse_str(&id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
-    let item = state.db.get_item_data(&uuid)
+    let item = state
+        .db
+        .get_item_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
 
     let item_name = item.vnum.clone().unwrap_or_else(|| item.id.to_string());
 
-    state.db.delete_item(&uuid)
+    state
+        .db
+        .delete_item(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    notify_builders(&state.connections, &format!(
-        "[API] Item '{}' deleted by {}",
-        item_name, user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!("[API] Item '{}' deleted by {}", item_name, user.api_key.name),
+    );
 
     Ok(Json(serde_json::json!({
         "success": true,
@@ -908,7 +952,9 @@ async fn spawn_item(
     }
 
     // Get the prototype
-    let prototype = state.db.get_item_by_vnum(&vnum)
+    let prototype = state
+        .db
+        .get_item_by_vnum(&vnum)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Item prototype '{}' not found", vnum)))?;
 
@@ -917,10 +963,12 @@ async fn spawn_item(
     }
 
     // Verify room exists
-    let room_uuid = Uuid::parse_str(&req.room_id)
-        .map_err(|_| ApiError::InvalidInput("Invalid room_id UUID format".into()))?;
+    let room_uuid =
+        Uuid::parse_str(&req.room_id).map_err(|_| ApiError::InvalidInput("Invalid room_id UUID format".into()))?;
 
-    let _room = state.db.get_room_data(&room_uuid)
+    let _room = state
+        .db
+        .get_room_data(&room_uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", req.room_id)))?;
 
@@ -930,13 +978,15 @@ async fn spawn_item(
     instance.is_prototype = false;
     instance.location = ItemLocation::Room(room_uuid);
 
-    state.db.save_item_data(instance.clone())
+    state
+        .db
+        .save_item_data(instance.clone())
         .map_err(|e| ApiError::Internal(e.to_string()))?;
 
-    notify_builders(&state.connections, &format!(
-        "[API] Item '{}' spawned in room by {}",
-        vnum, user.api_key.name
-    ));
+    notify_builders(
+        &state.connections,
+        &format!("[API] Item '{}' spawned in room by {}", vnum, user.api_key.name),
+    );
 
     Ok(Json(ItemResponse {
         success: true,

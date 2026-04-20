@@ -3,12 +3,11 @@
 //! Handles respawning of mobiles and items at spawn points.
 
 use anyhow::Result;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::{debug, error};
 
 use ironmud::{
-    db, ItemType, SharedConnections, SpawnDestination, SpawnEntityType, SpawnPointData,
-    broadcast_to_builders,
+    ItemType, SharedConnections, SpawnDestination, SpawnEntityType, SpawnPointData, broadcast_to_builders, db,
 };
 
 /// Spawn tick interval in seconds
@@ -28,11 +27,7 @@ pub async fn run_spawn_tick(db: db::Db, connections: SharedConnections) {
 }
 
 /// Refill container dependencies for existing spawned containers
-fn refill_container_dependencies(
-    db: &db::Db,
-    connections: &SharedConnections,
-    sp: &SpawnPointData,
-) -> Result<()> {
+fn refill_container_dependencies(db: &db::Db, connections: &SharedConnections, sp: &SpawnPointData) -> Result<()> {
     // Only process dependencies with Container destination
     let container_deps: Vec<_> = sp
         .dependencies
@@ -69,10 +64,7 @@ fn refill_container_dependencies(
                 match db.spawn_item_from_prototype(&dep.item_vnum) {
                     Ok(Some(item)) => {
                         if let Err(e) = db.move_item_to_container(&item.id, container_id) {
-                            broadcast_to_builders(
-                                connections,
-                                &format!("Container refill error: {}", e),
-                            );
+                            broadcast_to_builders(connections, &format!("Container refill error: {}", e));
                             let _ = db.delete_item(&item.id);
                         }
                     }
@@ -80,10 +72,7 @@ fn refill_container_dependencies(
                         // Prototype not found - already warned during initial spawn
                     }
                     Err(e) => {
-                        broadcast_to_builders(
-                            connections,
-                            &format!("Container refill spawn error: {}", e),
-                        );
+                        broadcast_to_builders(connections, &format!("Container refill spawn error: {}", e));
                     }
                 }
             }
@@ -127,20 +116,18 @@ fn process_spawn_points(db: &db::Db, connections: &SharedConnections) -> Result<
         // Also count existing entities of the same vnum in the room
         // to prevent duplicates from manual spawns or untracked entities
         let existing_in_room = match sp.entity_type {
-            SpawnEntityType::Mobile => {
-                db.get_mobiles_in_room(&sp.room_id)
-                    .unwrap_or_default()
-                    .iter()
-                    .filter(|m| m.vnum == sp.vnum)
-                    .count() as i32
-            }
-            SpawnEntityType::Item => {
-                db.get_items_in_room(&sp.room_id)
-                    .unwrap_or_default()
-                    .iter()
-                    .filter(|i| i.vnum.as_deref() == Some(&sp.vnum))
-                    .count() as i32
-            }
+            SpawnEntityType::Mobile => db
+                .get_mobiles_in_room(&sp.room_id)
+                .unwrap_or_default()
+                .iter()
+                .filter(|m| m.vnum == sp.vnum)
+                .count() as i32,
+            SpawnEntityType::Item => db
+                .get_items_in_room(&sp.room_id)
+                .unwrap_or_default()
+                .iter()
+                .filter(|i| i.vnum.as_deref() == Some(&sp.vnum))
+                .count() as i32,
         };
 
         let needs_new_spawn = current_count < sp.max_count && existing_in_room < sp.max_count;
@@ -148,20 +135,14 @@ fn process_spawn_points(db: &db::Db, connections: &SharedConnections) -> Result<
         // Spawn new entity if needed
         let spawned_id = if needs_new_spawn {
             match sp.entity_type {
-            SpawnEntityType::Mobile => {
-                db.spawn_mobile_from_prototype(&sp.vnum)?
-                    .and_then(|mobile| {
-                        db.move_mobile_to_room(&mobile.id, &sp.room_id).ok();
-                        Some(mobile.id)
-                    })
-            }
-            SpawnEntityType::Item => {
-                db.spawn_item_from_prototype(&sp.vnum)?
-                    .and_then(|item| {
-                        db.move_item_to_room(&item.id, &sp.room_id).ok();
-                        Some(item.id)
-                    })
-            }
+                SpawnEntityType::Mobile => db.spawn_mobile_from_prototype(&sp.vnum)?.and_then(|mobile| {
+                    db.move_mobile_to_room(&mobile.id, &sp.room_id).ok();
+                    Some(mobile.id)
+                }),
+                SpawnEntityType::Item => db.spawn_item_from_prototype(&sp.vnum)?.and_then(|item| {
+                    db.move_item_to_room(&item.id, &sp.room_id).ok();
+                    Some(item.id)
+                }),
             }
         } else {
             None
@@ -185,9 +166,7 @@ fn process_spawn_points(db: &db::Db, connections: &SharedConnections) -> Result<
                         Ok(Some(item)) => {
                             let item_id = item.id;
                             let result = match &dep.destination {
-                                SpawnDestination::Inventory => {
-                                    db.move_item_to_mobile_inventory(&item_id, &entity_id)
-                                }
+                                SpawnDestination::Inventory => db.move_item_to_mobile_inventory(&item_id, &entity_id),
                                 SpawnDestination::Equipped(wear_loc) => {
                                     // Validate the item can be worn at this location
                                     if !item.wear_locations.contains(wear_loc) {
@@ -239,10 +218,7 @@ fn process_spawn_points(db: &db::Db, connections: &SharedConnections) -> Result<
                                 Err(e) => {
                                     broadcast_to_builders(
                                         connections,
-                                        &format!(
-                                            "Spawn error: Failed to place item '{}': {}",
-                                            dep.item_vnum, e
-                                        ),
+                                        &format!("Spawn error: Failed to place item '{}': {}", dep.item_vnum, e),
                                     );
                                     let _ = db.delete_item(&item_id);
                                 }
@@ -260,10 +236,7 @@ fn process_spawn_points(db: &db::Db, connections: &SharedConnections) -> Result<
                         Err(e) => {
                             broadcast_to_builders(
                                 connections,
-                                &format!(
-                                    "Spawn error: Failed to spawn item '{}': {}",
-                                    dep.item_vnum, e
-                                ),
+                                &format!("Spawn error: Failed to spawn item '{}': {}", dep.item_vnum, e),
                             );
                         }
                     }
@@ -273,7 +246,10 @@ fn process_spawn_points(db: &db::Db, connections: &SharedConnections) -> Result<
             sp.spawned_entities.push(entity_id);
 
             if dep_success_count > 0 {
-                debug!("Spawned {} with {} dependency items at spawn point {}", sp.vnum, dep_success_count, sp.id);
+                debug!(
+                    "Spawned {} with {} dependency items at spawn point {}",
+                    sp.vnum, dep_success_count, sp.id
+                );
             } else {
                 debug!("Spawned {} at spawn point {}", sp.vnum, sp.id);
             }

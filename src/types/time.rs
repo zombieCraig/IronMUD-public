@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 // Game time constants
-pub const REAL_MINUTES_PER_GAME_HOUR: u64 = 2;  // 2 real minutes = 1 game hour
+pub const REAL_MINUTES_PER_GAME_HOUR: u64 = 2; // 2 real minutes = 1 game hour
 pub const GAME_HOURS_PER_DAY: u64 = 24;
 pub const GAME_DAYS_PER_MONTH: u64 = 30;
 pub const GAME_MONTHS_PER_YEAR: u64 = 12;
@@ -11,10 +11,10 @@ pub const GAME_MONTHS_PER_YEAR: u64 = 12;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Season {
-    Spring,  // Months 3, 4, 5
-    Summer,  // Months 6, 7, 8
-    Autumn,  // Months 9, 10, 11
-    Winter,  // Months 12, 1, 2
+    Spring, // Months 3, 4, 5
+    Summer, // Months 6, 7, 8
+    Autumn, // Months 9, 10, 11
+    Winter, // Months 12, 1, 2
 }
 
 impl Default for Season {
@@ -37,13 +37,13 @@ impl std::fmt::Display for Season {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TimeOfDay {
-    Dawn,       // 5-6
-    Morning,    // 7-11
-    Noon,       // 12-13
-    Afternoon,  // 14-16
-    Dusk,       // 17-18
-    Evening,    // 19-21
-    Night,      // 22-4
+    Dawn,      // 5-6
+    Morning,   // 7-11
+    Noon,      // 12-13
+    Afternoon, // 14-16
+    Dusk,      // 17-18
+    Evening,   // 19-21
+    Night,     // 22-4
 }
 
 impl Default for TimeOfDay {
@@ -170,7 +170,7 @@ impl Default for GameTime {
             .unwrap_or(0);
         GameTime {
             epoch_start: now,
-            hour: 8,  // Start at 8 AM
+            hour: 8, // Start at 8 AM
             day: 1,
             month: 3, // Start in spring (Month 3)
             year: 1,
@@ -201,7 +201,7 @@ impl GameTime {
             14..=16 => TimeOfDay::Afternoon,
             17..=18 => TimeOfDay::Dusk,
             19..=21 => TimeOfDay::Evening,
-            _ => TimeOfDay::Night,  // 22-4
+            _ => TimeOfDay::Night, // 22-4
         }
     }
 

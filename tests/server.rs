@@ -1,13 +1,13 @@
 use anyhow::Result;
-use ironmud::{load_command_metadata, load_game_data, load_scripts, run_server, script, watch_scripts, World};
+use ironmud::{World, load_command_metadata, load_game_data, load_scripts, run_server, script, watch_scripts};
 use rhai::Engine;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tokio::time::{sleep, timeout};
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
+use tokio::time::{sleep, timeout};
 
 // Telnet protocol constants
 const IAC: u8 = 255;
@@ -215,7 +215,7 @@ async fn test_server_hot_reload() -> Result<()> {
     assert!(response.contains("A vast, empty test void."));
 
     // 4. Modify the look.rhai script
-    let new_content = r#" 
+    let new_content = r#"
 fn look(entity) {
     `You see ${entity.name}.
 ${entity.description}
@@ -276,7 +276,12 @@ async fn test_character_system_lifecycle() -> Result<()> {
     {
         let mut world = state.lock().unwrap();
         let db_clone = world.db.clone();
-        script::register_rhai_functions(&mut world.engine, Arc::new(db_clone), connections.clone(), state.clone());
+        script::register_rhai_functions(
+            &mut world.engine,
+            Arc::new(db_clone),
+            connections.clone(),
+            state.clone(),
+        );
         // Register no-op chat broadcast functions for tests (chat integrations not configured in test environment)
         world.engine.register_fn("chat_broadcast", |_message: String| {});
         world.engine.register_fn("matrix_broadcast", |_message: String| {});
@@ -311,17 +316,29 @@ async fn test_character_system_lifecycle() -> Result<()> {
     let response = client.read_until_prompt().await?;
     println!("[TEST] Response from create: {}", response);
     // New wizard flow: should show the character creation menu
-    assert!(response.contains("=== Character Creation:"), "Did not enter character wizard: {}", response);
+    assert!(
+        response.contains("=== Character Creation:"),
+        "Did not enter character wizard: {}",
+        response
+    );
 
     // Complete the wizard by pressing "d" (Done) - this now auto-logs in
     client.send("d").await?;
     let response = client.read_until_prompt().await?;
     println!("[TEST] Response from 'd': {}", response);
     let expected_creation_msg = format!("Character '{}' created successfully!", char_name);
-    assert!(response.contains(&expected_creation_msg), "Failed to complete character creation wizard: {}", response);
+    assert!(
+        response.contains(&expected_creation_msg),
+        "Failed to complete character creation wizard: {}",
+        response
+    );
     // Should also see welcome message since auto-login
     let expected_welcome_msg = format!("Welcome, {}!", char_name);
-    assert!(response.contains(&expected_welcome_msg), "Auto-login after creation failed: {}", response);
+    assert!(
+        response.contains(&expected_welcome_msg),
+        "Auto-login after creation failed: {}",
+        response
+    );
 
     // --- Test 2: Logout and Disconnect ---
     client.send("quit").await?;
@@ -338,7 +355,11 @@ async fn test_character_system_lifecycle() -> Result<()> {
 
     client2.send(&format!("login {} {}", char_name, wrong_password)).await?;
     let response2 = client2.read_until_prompt().await?;
-    assert!(response2.contains("Incorrect password."), "Login with wrong password unexpectedly succeeded or gave wrong message: {}", response2);
+    assert!(
+        response2.contains("Incorrect password."),
+        "Login with wrong password unexpectedly succeeded or gave wrong message: {}",
+        response2
+    );
 
     client2.send("quit").await?;
     let _ = client2.read_until_prompt().await?;
@@ -350,10 +371,16 @@ async fn test_character_system_lifecycle() -> Result<()> {
 
     let _ = client3.read_until_prompt().await?;
 
-    client3.send(&format!("login {} {}", non_existent_char, password)).await?;
+    client3
+        .send(&format!("login {} {}", non_existent_char, password))
+        .await?;
     let response3 = client3.read_until_prompt().await?;
     let expected_not_found_msg = format!("Character '{}' not found.", non_existent_char);
-    assert!(response3.contains(&expected_not_found_msg), "Login with non-existent character unexpectedly succeeded or gave wrong message: {}", response3);
+    assert!(
+        response3.contains(&expected_not_found_msg),
+        "Login with non-existent character unexpectedly succeeded or gave wrong message: {}",
+        response3
+    );
 
     client3.send("quit").await?;
     let _ = client3.read_until_prompt().await?;
@@ -395,10 +422,7 @@ fn test_all_scripts_compile() {
     }
 
     if !failures.is_empty() {
-        panic!(
-            "Script compilation failures:\n{}",
-            failures.join("\n")
-        );
+        panic!("Script compilation failures:\n{}", failures.join("\n"));
     }
 }
 
@@ -440,21 +464,76 @@ fn test_scripts_call_registered_functions() {
     // Step 2: Add Rhai built-in functions and common patterns
     let builtins = [
         // String methods
-        "len", "is_empty", "to_upper", "to_lower", "trim", "contains", "starts_with",
-        "ends_with", "sub_string", "split", "replace", "index_of", "pad",
+        "len",
+        "is_empty",
+        "to_upper",
+        "to_lower",
+        "trim",
+        "contains",
+        "starts_with",
+        "ends_with",
+        "sub_string",
+        "split",
+        "replace",
+        "index_of",
+        "pad",
         // Array methods
-        "push", "pop", "shift", "insert", "remove", "clear", "reverse", "sort",
-        "filter", "map", "reduce", "all", "any", "find", "index_of",
+        "push",
+        "pop",
+        "shift",
+        "insert",
+        "remove",
+        "clear",
+        "reverse",
+        "sort",
+        "filter",
+        "map",
+        "reduce",
+        "all",
+        "any",
+        "find",
+        "index_of",
         // Map methods
-        "keys", "values", "get", "set", "remove", "contains", "clear",
+        "keys",
+        "values",
+        "get",
+        "set",
+        "remove",
+        "contains",
+        "clear",
         // Type conversion
-        "to_string", "to_int", "to_float", "to_bool", "parse_int", "parse_float",
-        "type_of", "is_string", "is_int", "is_float", "is_bool", "is_array", "is_map",
+        "to_string",
+        "to_int",
+        "to_float",
+        "to_bool",
+        "parse_int",
+        "parse_float",
+        "type_of",
+        "is_string",
+        "is_int",
+        "is_float",
+        "is_bool",
+        "is_array",
+        "is_map",
         // Math
-        "abs", "floor", "ceiling", "round", "sqrt", "sin", "cos", "tan", "log", "exp",
-        "min", "max", "clamp",
+        "abs",
+        "floor",
+        "ceiling",
+        "round",
+        "sqrt",
+        "sin",
+        "cos",
+        "tan",
+        "log",
+        "exp",
+        "min",
+        "max",
+        "clamp",
         // Utility
-        "print", "debug", "timestamp", "elapsed",
+        "print",
+        "debug",
+        "timestamp",
+        "elapsed",
         // Range
         "range",
     ];
@@ -505,7 +584,21 @@ fn test_scripts_call_registered_functions() {
                         let fn_name = &cap[1];
 
                         // Skip if it's a control flow keyword
-                        if matches!(fn_name, "if" | "else" | "while" | "for" | "loop" | "return" | "let" | "fn" | "in" | "switch" | "throw" | "try" | "catch") {
+                        if matches!(
+                            fn_name,
+                            "if" | "else"
+                                | "while"
+                                | "for"
+                                | "loop"
+                                | "return"
+                                | "let"
+                                | "fn"
+                                | "in"
+                                | "switch"
+                                | "throw"
+                                | "try"
+                                | "catch"
+                        ) {
                             continue;
                         }
 
@@ -513,7 +606,9 @@ fn test_scripts_call_registered_functions() {
                         if !registered_functions.contains(fn_name) && !local_functions.contains(fn_name) {
                             failures.push(format!(
                                 "{}:{}: unknown function '{}' (not registered)",
-                                path_str, line_num + 1, fn_name
+                                path_str,
+                                line_num + 1,
+                                fn_name
                             ));
                         }
                     }
@@ -526,10 +621,7 @@ fn test_scripts_call_registered_functions() {
         // Deduplicate and sort failures
         let mut unique_failures: Vec<String> = failures.into_iter().collect::<HashSet<_>>().into_iter().collect();
         unique_failures.sort();
-        panic!(
-            "Scripts call unregistered functions:\n{}",
-            unique_failures.join("\n")
-        );
+        panic!("Scripts call unregistered functions:\n{}", unique_failures.join("\n"));
     }
 }
 
@@ -549,14 +641,11 @@ fn test_scripts_access_registered_properties() {
     let mut getters_by_type: HashMap<String, HashSet<String>> = HashMap::new();
 
     // Match: .register_get("field_name", |var: &mut TypeName| ...)
-    let register_get_re = Regex::new(
-        r#"\.register_get\s*\(\s*"([^"]+)"[^|]*\|\s*\w+\s*:\s*&mut\s+(\w+)\s*\|"#,
-    )
-    .unwrap();
+    let register_get_re =
+        Regex::new(r#"\.register_get\s*\(\s*"([^"]+)"[^|]*\|\s*\w+\s*:\s*&mut\s+(\w+)\s*\|"#).unwrap();
 
     // Match: register_bool_flags!(engine, TypeName, flag1, flag2, ...)
-    let bool_flags_re =
-        Regex::new(r"register_bool_flags!\s*\(\s*\w+\s*,\s*(\w+)\s*,\s*([\s\S]*?)\);").unwrap();
+    let bool_flags_re = Regex::new(r"register_bool_flags!\s*\(\s*\w+\s*,\s*(\w+)\s*,\s*([\s\S]*?)\);").unwrap();
 
     for entry in glob("src/script/**/*.rs").expect("Failed to glob src/script") {
         if let Ok(path) = entry {
@@ -756,16 +845,9 @@ fn test_scripts_access_registered_properties() {
     }
 
     if !failures.is_empty() {
-        let mut unique: Vec<String> = failures
-            .into_iter()
-            .collect::<HashSet<_>>()
-            .into_iter()
-            .collect();
+        let mut unique: Vec<String> = failures.into_iter().collect::<HashSet<_>>().into_iter().collect();
         unique.sort();
-        panic!(
-            "Scripts access unregistered properties:\n{}",
-            unique.join("\n")
-        );
+        panic!("Scripts access unregistered properties:\n{}", unique.join("\n"));
     }
 }
 
@@ -785,8 +867,7 @@ fn test_registered_getters_return_rhai_compatible_types() {
 
     // --- Phase 1: Auto-discover ALL i32 fields from src/types/mod.rs ---
     // This eliminates the manual allowlist that kept going stale.
-    let types_content = fs::read_to_string("src/types/mod.rs")
-        .expect("Failed to read src/types/mod.rs");
+    let types_content = fs::read_to_string("src/types/mod.rs").expect("Failed to read src/types/mod.rs");
 
     let field_re = Regex::new(r"pub\s+(\w+)\s*:\s*i32\b").unwrap();
 
@@ -797,10 +878,8 @@ fn test_registered_getters_return_rhai_compatible_types() {
 
     // --- Phase 2: Scan all register_get calls ---
     // Match: .register_get("name", |var: &mut Type| BODY)
-    let getter_re = Regex::new(
-        r#"\.register_get\s*\(\s*"([^"]+)"\s*,\s*\|(\w+)\s*:\s*&mut\s+(\w+)\s*\|\s*(.+)"#,
-    )
-    .unwrap();
+    let getter_re =
+        Regex::new(r#"\.register_get\s*\(\s*"([^"]+)"\s*,\s*\|(\w+)\s*:\s*&mut\s+(\w+)\s*\|\s*(.+)"#).unwrap();
 
     let mut failures: Vec<String> = Vec::new();
 
@@ -808,12 +887,33 @@ fn test_registered_getters_return_rhai_compatible_types() {
         if let Ok(path) = entry {
             let path_str = path.display().to_string();
             if let Ok(content) = fs::read_to_string(&path) {
-                for (line_num, line) in content.lines().enumerate() {
+                let lines: Vec<&str> = content.lines().collect();
+                for (line_num, line) in lines.iter().enumerate() {
                     if let Some(cap) = getter_re.captures(line) {
                         let prop_name = &cap[1];
                         let _var = &cap[2];
                         let type_name = &cap[3];
-                        let body = &cap[4];
+                        let body_head = &cap[4];
+
+                        // rustfmt may split a closure body across multiple lines.
+                        // If the captured body is just `{` or ends with `{`, extend
+                        // the body scan to include subsequent lines up to the
+                        // matching close. Cap at 10 lines for safety.
+                        let body: String = if body_head.trim_end().ends_with('{') {
+                            let mut acc = body_head.to_string();
+                            let end = (line_num + 10).min(lines.len());
+                            for follow in lines[line_num + 1..end].iter() {
+                                acc.push(' ');
+                                acc.push_str(follow.trim());
+                                if follow.trim_start().starts_with("})") || follow.trim() == "}" {
+                                    break;
+                                }
+                            }
+                            acc
+                        } else {
+                            body_head.to_string()
+                        };
+                        let body = body.as_str();
 
                         // Check if the getter name matches a known i32 field
                         let accesses_i32_field = i32_fields.contains(prop_name);
@@ -896,10 +996,7 @@ fn test_rhai_property_writes_have_registered_setters() {
 
     // Functions known to return Rhai maps (not registered Rust types).
     // Add entries here when the test flags writes on variables from map-returning functions.
-    let map_returning_fns: HashSet<&str> = [
-        "get_attacker_weapon_info",
-        "get_lockout_data",
-    ].into_iter().collect();
+    let map_returning_fns: HashSet<&str> = ["get_attacker_weapon_info", "get_lockout_data"].into_iter().collect();
 
     let mut failures: Vec<String> = Vec::new();
 
@@ -936,7 +1033,11 @@ fn test_rhai_property_writes_have_registered_setters() {
                         if !registered_setters.contains(prop_name) {
                             failures.push(format!(
                                 "{}:{}: '{}.{} = ...' but no register_set(\"{}\") found in src/script/",
-                                path_str, line_num + 1, var_name, prop_name, prop_name
+                                path_str,
+                                line_num + 1,
+                                var_name,
+                                prop_name,
+                                prop_name
                             ));
                         }
                     }
@@ -967,8 +1068,7 @@ fn test_commands_json_covers_all_scripts() {
     use std::collections::BTreeSet;
 
     let commands_json: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string("scripts/commands.json")
-            .expect("read commands.json"))
+        serde_json::from_str(&std::fs::read_to_string("scripts/commands.json").expect("read commands.json"))
             .expect("parse commands.json");
 
     let registered: BTreeSet<String> = commands_json
@@ -1010,14 +1110,9 @@ fn test_commands_json_covers_all_scripts() {
 /// Extract bool field names from a Rust struct defined in src/types/mod.rs.
 fn extract_bool_field_names(struct_name: &str) -> Vec<String> {
     use regex::Regex;
-    let types_content =
-        std::fs::read_to_string("src/types/mod.rs").expect("read src/types/mod.rs");
+    let types_content = std::fs::read_to_string("src/types/mod.rs").expect("read src/types/mod.rs");
 
-    let struct_re = Regex::new(&format!(
-        r"pub struct {} \{{([^}}]+)\}}",
-        struct_name
-    ))
-    .unwrap();
+    let struct_re = Regex::new(&format!(r"pub struct {} \{{([^}}]+)\}}", struct_name)).unwrap();
     let struct_body = struct_re
         .captures(&types_content)
         .unwrap_or_else(|| panic!("{} struct not found", struct_name))
@@ -1027,21 +1122,14 @@ fn extract_bool_field_names(struct_name: &str) -> Vec<String> {
         .to_string();
 
     let field_re = Regex::new(r"pub\s+(\w+)\s*:\s*bool").unwrap();
-    field_re
-        .captures_iter(&struct_body)
-        .map(|c| c[1].to_string())
-        .collect()
+    field_re.captures_iter(&struct_body).map(|c| c[1].to_string()).collect()
 }
 
 /// Extract the body of a Rhai function by name.
 fn extract_rhai_fn_body<'a>(file_content: &'a str, fn_name: &str) -> &'a str {
     use regex::Regex;
     // Rhai function bodies end at a top-level `}` at column 0.
-    let re = Regex::new(&format!(
-        r"(?ms)^fn {}\s*\([^)]*\)\s*\{{(.*?)^\}}",
-        fn_name
-    ))
-    .unwrap();
+    let re = Regex::new(&format!(r"(?ms)^fn {}\s*\([^)]*\)\s*\{{(.*?)^\}}", fn_name)).unwrap();
     let m = re
         .captures(file_content)
         .unwrap_or_else(|| panic!("fn {} not found", fn_name))
@@ -1109,14 +1197,9 @@ fn test_flag_editors_stay_in_sync_with_structs() {
 
     for editor in &editors {
         let fields = extract_bool_field_names(editor.struct_name);
-        assert!(
-            !fields.is_empty(),
-            "Expected bool fields on {}",
-            editor.struct_name
-        );
+        assert!(!fields.is_empty(), "Expected bool fields on {}", editor.struct_name);
 
-        let script = fs::read_to_string(editor.script_path)
-            .unwrap_or_else(|_| panic!("read {}", editor.script_path));
+        let script = fs::read_to_string(editor.script_path).unwrap_or_else(|_| panic!("read {}", editor.script_path));
 
         for (fn_name, tmpl) in &editor.sections {
             let body = extract_rhai_fn_body(&script, fn_name);
@@ -1137,8 +1220,7 @@ fn test_flag_editors_stay_in_sync_with_structs() {
         // Scan every build_flag_line(...) call in the script for descriptions
         // containing raw `<` or `>` — these survive into MXP output and cause
         // the client to eat subsequent text.
-        let call_re = Regex::new(r#"build_flag_line\s*\(\s*"[^"]*"\s*,\s*[^,]+,\s*"([^"]*)""#)
-            .unwrap();
+        let call_re = Regex::new(r#"build_flag_line\s*\(\s*"[^"]*"\s*,\s*[^,]+,\s*"([^"]*)""#).unwrap();
         for cap in call_re.captures_iter(&script) {
             let desc = &cap[1];
             if desc.contains('<') || desc.contains('>') {
@@ -1156,19 +1238,13 @@ fn test_flag_editors_stay_in_sync_with_structs() {
     let room_fields = extract_bool_field_names("RoomFlags");
     // property_storage, climate_controlled, always_hot, always_cold are
     // system-managed and not yet exposed via redit; skip them for now.
-    let room_skip: HashSet<&str> = [
-        "property_storage",
-        "climate_controlled",
-        "always_hot",
-        "always_cold",
-    ]
-    .into_iter()
-    .collect();
+    let room_skip: HashSet<&str> = ["property_storage", "climate_controlled", "always_hot", "always_cold"]
+        .into_iter()
+        .collect();
 
     let redit = fs::read_to_string("scripts/commands/redit.rhai").expect("read redit.rhai");
     // Isolate the flags display and the flag-setter dispatch blocks.
-    let flags_display_re =
-        Regex::new(r#"(?ms)if subcommand == "flags" \{(.*?)return;\s*\}"#).unwrap();
+    let flags_display_re = Regex::new(r#"(?ms)if subcommand == "flags" \{(.*?)return;\s*\}"#).unwrap();
     let flags_display_block = flags_display_re
         .captures(&redit)
         .expect("redit flags subcommand block not found")
@@ -1206,16 +1282,12 @@ fn test_flag_editors_stay_in_sync_with_structs() {
     if !missing.is_empty() || !bad_desc.is_empty() {
         let mut msg = String::new();
         if !missing.is_empty() {
-            msg.push_str(
-                "*Flags struct fields not handled in their editor UI:\n  ",
-            );
+            msg.push_str("*Flags struct fields not handled in their editor UI:\n  ");
             msg.push_str(&missing.join("\n  "));
             msg.push('\n');
         }
         if !bad_desc.is_empty() {
-            msg.push_str(
-                "\nbuild_flag_line descriptions contain raw '<' or '>' — these break MXP:\n  ",
-            );
+            msg.push_str("\nbuild_flag_line descriptions contain raw '<' or '>' — these break MXP:\n  ");
             msg.push_str(&bad_desc.join("\n  "));
         }
         panic!("{}", msg);
@@ -1241,12 +1313,32 @@ fn test_seed_demo_world() {
         assert_eq!(stats.areas, 5, "Expected 5 areas");
         assert!(stats.rooms >= 50, "Expected at least 50 rooms, got {}", stats.rooms);
         assert!(stats.items >= 30, "Expected at least 30 items, got {}", stats.items);
-        assert!(stats.mobiles >= 14, "Expected at least 14 mobiles, got {}", stats.mobiles);
-        assert!(stats.spawn_points >= 15, "Expected at least 15 spawn points, got {}", stats.spawn_points);
+        assert!(
+            stats.mobiles >= 14,
+            "Expected at least 14 mobiles, got {}",
+            stats.mobiles
+        );
+        assert!(
+            stats.spawn_points >= 15,
+            "Expected at least 15 spawn points, got {}",
+            stats.spawn_points
+        );
         assert!(stats.recipes >= 4, "Expected at least 4 recipes, got {}", stats.recipes);
-        assert!(stats.plant_prototypes >= 2, "Expected at least 2 plant prototypes, got {}", stats.plant_prototypes);
-        assert!(stats.transports >= 1, "Expected at least 1 transport, got {}", stats.transports);
-        assert!(stats.property_templates >= 1, "Expected at least 1 property template, got {}", stats.property_templates);
+        assert!(
+            stats.plant_prototypes >= 2,
+            "Expected at least 2 plant prototypes, got {}",
+            stats.plant_prototypes
+        );
+        assert!(
+            stats.transports >= 1,
+            "Expected at least 1 transport, got {}",
+            stats.transports
+        );
+        assert!(
+            stats.property_templates >= 1,
+            "Expected at least 1 property template, got {}",
+            stats.property_templates
+        );
 
         // Second call should be idempotent (already exists)
         let seeded_again = ironmud::seed::seed_demo_world(&db).expect("seed_demo_world again");
@@ -1282,12 +1374,9 @@ fn test_seed_demo_world() {
 
 mod migration_tests {
     use ironmud::db::Db;
-    use ironmud::migration::{
-        absolute_game_day, load_migration_data, process_migration_tick, MigrationData,
-    };
+    use ironmud::migration::{MigrationData, absolute_game_day, load_migration_data, process_migration_tick};
     use ironmud::{
-        AreaData, AreaFlags, AreaPermission, CombatZoneType, GameTime, RoomData, RoomExits,
-        RoomFlags, WaterType,
+        AreaData, AreaFlags, AreaPermission, CombatZoneType, GameTime, RoomData, RoomExits, RoomFlags, WaterType,
     };
     use std::collections::HashMap;
     use std::panic::AssertUnwindSafe;
@@ -1346,7 +1435,10 @@ mod migration_tests {
             title: format!("Room {}", vnum),
             description: String::new(),
             exits: RoomExits::default(),
-            flags: RoomFlags { liveable, ..Default::default() },
+            flags: RoomFlags {
+                liveable,
+                ..Default::default()
+            },
             extra_descs: Vec::new(),
             vnum: Some(vnum.to_string()),
             area_id: Some(area_id),
@@ -1440,8 +1532,12 @@ mod migration_tests {
             run_one_tick(&db, &data);
 
             // Exactly 1 migrant spawned.
-            let mobs: Vec<_> = db.list_all_mobiles().unwrap().into_iter()
-                .filter(|m| !m.is_prototype).collect();
+            let mobs: Vec<_> = db
+                .list_all_mobiles()
+                .unwrap()
+                .into_iter()
+                .filter(|m| !m.is_prototype)
+                .collect();
             assert_eq!(mobs.len(), 1, "expected one migrant");
             let m = &mobs[0];
             assert_eq!(m.resident_of.as_deref(), Some(format!("{}:home", area.prefix).as_str()));
@@ -1459,7 +1555,9 @@ mod migration_tests {
             assert_eq!(refreshed_area.last_migration_check_day, Some(10));
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -1480,12 +1578,18 @@ mod migration_tests {
             let data = load_migration_data(&data_dir()).unwrap();
             run_one_tick(&db, &data);
 
-            let real_mobs: Vec<_> = db.list_all_mobiles().unwrap().into_iter()
-                .filter(|m| !m.is_prototype).collect();
+            let real_mobs: Vec<_> = db
+                .list_all_mobiles()
+                .unwrap()
+                .into_iter()
+                .filter(|m| !m.is_prototype)
+                .collect();
             assert!(real_mobs.is_empty(), "no migrants when all slots full");
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -1506,12 +1610,18 @@ mod migration_tests {
             let data = load_migration_data(&data_dir()).unwrap();
             run_one_tick(&db, &data);
 
-            let mobs: Vec<_> = db.list_all_mobiles().unwrap().into_iter()
-                .filter(|m| !m.is_prototype).collect();
+            let mobs: Vec<_> = db
+                .list_all_mobiles()
+                .unwrap()
+                .into_iter()
+                .filter(|m| !m.is_prototype)
+                .collect();
             assert_eq!(mobs.len(), 3, "spawn capped to migration_max_per_check");
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -1534,8 +1644,12 @@ mod migration_tests {
             let data = load_migration_data(&data_dir()).unwrap();
             run_one_tick(&db, &data);
 
-            let mobs: Vec<_> = db.list_all_mobiles().unwrap().into_iter()
-                .filter(|m| !m.is_prototype).collect();
+            let mobs: Vec<_> = db
+                .list_all_mobiles()
+                .unwrap()
+                .into_iter()
+                .filter(|m| !m.is_prototype)
+                .collect();
             assert!(mobs.is_empty(), "no migrants before interval elapses");
 
             // Confirm last_migration_check_day was NOT advanced.
@@ -1545,12 +1659,18 @@ mod migration_tests {
             // Advance past interval — now it should fire.
             set_game_day(&db, 106);
             run_one_tick(&db, &data);
-            let mobs_after: Vec<_> = db.list_all_mobiles().unwrap().into_iter()
-                .filter(|m| !m.is_prototype).collect();
+            let mobs_after: Vec<_> = db
+                .list_all_mobiles()
+                .unwrap()
+                .into_iter()
+                .filter(|m| !m.is_prototype)
+                .collect();
             assert!(!mobs_after.is_empty(), "migrants spawn once interval elapses");
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -1569,8 +1689,12 @@ mod migration_tests {
             let data = load_migration_data(&data_dir()).unwrap();
             run_one_tick(&db, &data);
 
-            let mobs: Vec<_> = db.list_all_mobiles().unwrap().into_iter()
-                .filter(|m| !m.is_prototype).collect();
+            let mobs: Vec<_> = db
+                .list_all_mobiles()
+                .unwrap()
+                .into_iter()
+                .filter(|m| !m.is_prototype)
+                .collect();
             assert_eq!(mobs.len(), 1);
             let migrant_id = mobs[0].id;
 
@@ -1585,7 +1709,9 @@ mod migration_tests {
             );
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -1606,8 +1732,12 @@ mod migration_tests {
             let data = load_migration_data(&data_dir()).unwrap();
             run_one_tick(&db, &data);
 
-            let mobs: Vec<_> = db.list_all_mobiles().unwrap().into_iter()
-                .filter(|m| !m.is_prototype).collect();
+            let mobs: Vec<_> = db
+                .list_all_mobiles()
+                .unwrap()
+                .into_iter()
+                .filter(|m| !m.is_prototype)
+                .collect();
             assert!(!mobs.is_empty(), "tick should have spawned migrants");
             for m in &mobs {
                 assert!(!m.flags.guard, "guard chance 0.0 must never produce guards");
@@ -1615,7 +1745,9 @@ mod migration_tests {
             }
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -1636,8 +1768,12 @@ mod migration_tests {
             let data = load_migration_data(&data_dir()).unwrap();
             run_one_tick(&db, &data);
 
-            let mobs: Vec<_> = db.list_all_mobiles().unwrap().into_iter()
-                .filter(|m| !m.is_prototype).collect();
+            let mobs: Vec<_> = db
+                .list_all_mobiles()
+                .unwrap()
+                .into_iter()
+                .filter(|m| !m.is_prototype)
+                .collect();
             assert!(mobs.len() >= 5, "expected at least 5 migrants in this run");
             for m in &mobs {
                 assert!(m.flags.guard, "guard flag must be set");
@@ -1652,7 +1788,9 @@ mod migration_tests {
             }
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -1672,15 +1810,23 @@ mod migration_tests {
             let data = load_migration_data(&data_dir()).unwrap();
             run_one_tick(&db, &data);
 
-            let mobs: Vec<_> = db.list_all_mobiles().unwrap().into_iter()
-                .filter(|m| !m.is_prototype).collect();
+            let mobs: Vec<_> = db
+                .list_all_mobiles()
+                .unwrap()
+                .into_iter()
+                .filter(|m| !m.is_prototype)
+                .collect();
             assert_eq!(mobs.len(), 1);
             let m = &mobs[0];
-            assert!(m.keywords.iter().any(|k| k == "guard"),
-                "guard keyword present so `look guard` works");
+            assert!(
+                m.keywords.iter().any(|k| k == "guard"),
+                "guard keyword present so `look guard` works"
+            );
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -1700,8 +1846,12 @@ mod migration_tests {
             let data = load_migration_data(&data_dir()).unwrap();
             run_one_tick(&db, &data);
 
-            let mobs: Vec<_> = db.list_all_mobiles().unwrap().into_iter()
-                .filter(|m| !m.is_prototype).collect();
+            let mobs: Vec<_> = db
+                .list_all_mobiles()
+                .unwrap()
+                .into_iter()
+                .filter(|m| !m.is_prototype)
+                .collect();
             assert!(!mobs.is_empty(), "tick should have spawned migrants");
             for m in &mobs {
                 assert!(!m.flags.healer, "healer chance 0.0 must never produce healers");
@@ -1709,7 +1859,9 @@ mod migration_tests {
             }
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -1730,8 +1882,12 @@ mod migration_tests {
             let data = load_migration_data(&data_dir()).unwrap();
             run_one_tick(&db, &data);
 
-            let mobs: Vec<_> = db.list_all_mobiles().unwrap().into_iter()
-                .filter(|m| !m.is_prototype).collect();
+            let mobs: Vec<_> = db
+                .list_all_mobiles()
+                .unwrap()
+                .into_iter()
+                .filter(|m| !m.is_prototype)
+                .collect();
             assert!(mobs.len() >= 5, "expected at least 5 migrants in this run");
             for m in &mobs {
                 assert!(m.flags.healer, "healer flag must be set");
@@ -1745,7 +1901,9 @@ mod migration_tests {
             }
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -1765,15 +1923,23 @@ mod migration_tests {
             let data = load_migration_data(&data_dir()).unwrap();
             run_one_tick(&db, &data);
 
-            let mobs: Vec<_> = db.list_all_mobiles().unwrap().into_iter()
-                .filter(|m| !m.is_prototype).collect();
+            let mobs: Vec<_> = db
+                .list_all_mobiles()
+                .unwrap()
+                .into_iter()
+                .filter(|m| !m.is_prototype)
+                .collect();
             assert_eq!(mobs.len(), 1);
             let m = &mobs[0];
-            assert!(m.keywords.iter().any(|k| k == "healer"),
-                "healer keyword present so `look healer` works");
+            assert!(
+                m.keywords.iter().any(|k| k == "healer"),
+                "healer keyword present so `look healer` works"
+            );
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -1793,8 +1959,12 @@ mod migration_tests {
             let data = load_migration_data(&data_dir()).unwrap();
             run_one_tick(&db, &data);
 
-            let mobs: Vec<_> = db.list_all_mobiles().unwrap().into_iter()
-                .filter(|m| !m.is_prototype).collect();
+            let mobs: Vec<_> = db
+                .list_all_mobiles()
+                .unwrap()
+                .into_iter()
+                .filter(|m| !m.is_prototype)
+                .collect();
             assert!(!mobs.is_empty(), "tick should have spawned migrants");
             for m in &mobs {
                 assert!(!m.flags.scavenger, "scavenger chance 0.0 must never produce scavengers");
@@ -1802,7 +1972,9 @@ mod migration_tests {
             }
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -1823,8 +1995,12 @@ mod migration_tests {
             let data = load_migration_data(&data_dir()).unwrap();
             run_one_tick(&db, &data);
 
-            let mobs: Vec<_> = db.list_all_mobiles().unwrap().into_iter()
-                .filter(|m| !m.is_prototype).collect();
+            let mobs: Vec<_> = db
+                .list_all_mobiles()
+                .unwrap()
+                .into_iter()
+                .filter(|m| !m.is_prototype)
+                .collect();
             assert!(mobs.len() >= 5, "expected at least 5 migrants in this run");
             for m in &mobs {
                 assert!(m.flags.scavenger, "scavenger flag must be set");
@@ -1839,7 +2015,9 @@ mod migration_tests {
             }
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -1859,15 +2037,23 @@ mod migration_tests {
             let data = load_migration_data(&data_dir()).unwrap();
             run_one_tick(&db, &data);
 
-            let mobs: Vec<_> = db.list_all_mobiles().unwrap().into_iter()
-                .filter(|m| !m.is_prototype).collect();
+            let mobs: Vec<_> = db
+                .list_all_mobiles()
+                .unwrap()
+                .into_iter()
+                .filter(|m| !m.is_prototype)
+                .collect();
             assert_eq!(mobs.len(), 1);
             let m = &mobs[0];
-            assert!(m.keywords.iter().any(|k| k == "scavenger"),
-                "scavenger keyword present so `look scavenger` works");
+            assert!(
+                m.keywords.iter().any(|k| k == "scavenger"),
+                "scavenger keyword present so `look scavenger` works"
+            );
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -1884,7 +2070,7 @@ mod migration_tests {
 
     #[test]
     fn test_life_stage_boundaries() {
-        use ironmud::types::{life_stage_for_age, age_label_for_stage, LifeStage};
+        use ironmud::types::{LifeStage, age_label_for_stage, life_stage_for_age};
 
         assert_eq!(life_stage_for_age(0), LifeStage::Baby);
         assert_eq!(life_stage_for_age(2), LifeStage::Baby);
@@ -1927,7 +2113,10 @@ mod migration_tests {
             "skin_tone": "fair"
         }"#;
         let c: Characteristics = serde_json::from_str(legacy).expect("legacy characteristics load");
-        assert_eq!(c.birth_day, 0, "missing birth_day deserialises to 0 (back-compat marker)");
+        assert_eq!(
+            c.birth_day, 0,
+            "missing birth_day deserialises to 0 (back-compat marker)"
+        );
         assert_eq!(c.age, 35);
         assert_eq!(c.age_label, "adult");
 
@@ -1992,7 +2181,9 @@ mod migration_tests {
             assert_eq!(c.age_label, "adult", "label re-derived from LifeStage");
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -2032,17 +2223,21 @@ mod migration_tests {
                 if let Some(c) = mm.characteristics.as_mut() {
                     c.birth_day = 999_999;
                 }
-            }).unwrap();
+            })
+            .unwrap();
             process_aging_tick(&db, &conns).expect("second pass same day");
             let second = db.get_mobile_data(&m.id).unwrap().unwrap();
             assert_eq!(
-                second.characteristics.unwrap().birth_day, 999_999,
+                second.characteristics.unwrap().birth_day,
+                999_999,
                 "same-day re-run is a no-op (singleton guards it)"
             );
             let _ = first_birth;
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -2095,19 +2290,24 @@ mod migration_tests {
                     None => break,
                 }
             }
-            assert!(alive_days < 1000, "elderly mobile survived 1000 rolls — death curve broken");
+            assert!(
+                alive_days < 1000,
+                "elderly mobile survived 1000 rolls — death curve broken"
+            );
             assert!(
                 db.get_mobile_data(&mobile_id).unwrap().is_none(),
                 "mobile must be deleted on natural death"
             );
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
     fn test_family_grief_cascade_on_delete_mobile() {
-        use ironmud::social::{grief_params, COHABITANT_GRIEF, FAMILY_GRIEF, GRIEF_AFFINITY_FLOOR};
+        use ironmud::social::{COHABITANT_GRIEF, FAMILY_GRIEF, GRIEF_AFFINITY_FLOOR, grief_params};
         use ironmud::types::{MobileData, Relationship, RelationshipKind, SocialState};
 
         // Unit spot-checks on grief_params before the DB round-trip.
@@ -2189,7 +2389,9 @@ mod migration_tests {
             );
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -2228,18 +2430,22 @@ mod migration_tests {
             assert!(s.bereaved_for.is_empty(), "no bereavement note");
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
     fn test_set_family_relationship_writes_both_directions() {
-        use ironmud::social::{set_family_relationship, FamilyError};
+        use ironmud::social::{FamilyError, set_family_relationship};
         use ironmud::types::{MobileData, RelationshipKind};
 
         let (db, path) = open_temp_db("family_set");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            let mut p = MobileData::new("Parent".to_string()); p.is_prototype = false;
-            let mut c = MobileData::new("Child".to_string()); c.is_prototype = false;
+            let mut p = MobileData::new("Parent".to_string());
+            p.is_prototype = false;
+            let mut c = MobileData::new("Child".to_string());
+            c.is_prototype = false;
             let pid = p.id;
             let cid = c.id;
             db.save_mobile_data(p).unwrap();
@@ -2249,8 +2455,18 @@ mod migration_tests {
 
             let parent = db.get_mobile_data(&pid).unwrap().unwrap();
             let child = db.get_mobile_data(&cid).unwrap().unwrap();
-            assert!(parent.relationships.iter().any(|r| r.other_id == cid && r.kind == RelationshipKind::Parent));
-            assert!(child.relationships.iter().any(|r| r.other_id == pid && r.kind == RelationshipKind::Child));
+            assert!(
+                parent
+                    .relationships
+                    .iter()
+                    .any(|r| r.other_id == cid && r.kind == RelationshipKind::Parent)
+            );
+            assert!(
+                child
+                    .relationships
+                    .iter()
+                    .any(|r| r.other_id == pid && r.kind == RelationshipKind::Child)
+            );
 
             // Invalid kind.
             assert_eq!(
@@ -2264,20 +2480,27 @@ mod migration_tests {
             );
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
     fn test_partner_monogamy_blocks_second_partner() {
-        use ironmud::social::{set_family_relationship, FamilyError};
+        use ironmud::social::{FamilyError, set_family_relationship};
         use ironmud::types::MobileData;
 
         let (db, path) = open_temp_db("monogamy");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            let mut a = MobileData::new("A".to_string()); a.is_prototype = false;
-            let mut b = MobileData::new("B".to_string()); b.is_prototype = false;
-            let mut c = MobileData::new("C".to_string()); c.is_prototype = false;
-            let aid = a.id; let bid = b.id; let cid = c.id;
+            let mut a = MobileData::new("A".to_string());
+            a.is_prototype = false;
+            let mut b = MobileData::new("B".to_string());
+            b.is_prototype = false;
+            let mut c = MobileData::new("C".to_string());
+            c.is_prototype = false;
+            let aid = a.id;
+            let bid = b.id;
+            let cid = c.id;
             db.save_mobile_data(a).unwrap();
             db.save_mobile_data(b).unwrap();
             db.save_mobile_data(c).unwrap();
@@ -2298,15 +2521,15 @@ mod migration_tests {
             assert!(set_family_relationship(&db, aid, bid, "partner").is_ok());
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
     fn test_cohabitant_promotion_mints_shared_household() {
         use ironmud::migration::process_pair_housing;
-        use ironmud::types::{
-            Characteristics, MobileData, Relationship, RelationshipKind, SocialState,
-        };
+        use ironmud::types::{Characteristics, MobileData, Relationship, RelationshipKind, SocialState};
 
         let (db, path) = open_temp_db("cohab_household");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
@@ -2344,12 +2567,18 @@ mod migration_tests {
             bob.resident_of = Some(format!("{}:b", area.prefix));
             // Mutual affinity >= 80 so pair-housing promotes them.
             alice.relationships.push(Relationship {
-                other_id: bob.id, kind: RelationshipKind::Friend, affinity: 85,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: bob.id,
+                kind: RelationshipKind::Friend,
+                affinity: 85,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
             bob.relationships.push(Relationship {
-                other_id: alice.id, kind: RelationshipKind::Friend, affinity: 85,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: alice.id,
+                kind: RelationshipKind::Friend,
+                affinity: 85,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
             room_a.residents.push(alice.id);
             room_b.residents.push(bob.id);
@@ -2366,21 +2595,29 @@ mod migration_tests {
             let a = db.get_mobile_data(&alice_id).unwrap().unwrap();
             let b = db.get_mobile_data(&bob_id).unwrap().unwrap();
             // Both should be Cohabitant now with a shared household_id.
-            assert!(a.relationships.iter().any(|r| r.other_id == bob_id && r.kind == RelationshipKind::Cohabitant));
-            assert!(b.relationships.iter().any(|r| r.other_id == alice_id && r.kind == RelationshipKind::Cohabitant));
+            assert!(
+                a.relationships
+                    .iter()
+                    .any(|r| r.other_id == bob_id && r.kind == RelationshipKind::Cohabitant)
+            );
+            assert!(
+                b.relationships
+                    .iter()
+                    .any(|r| r.other_id == alice_id && r.kind == RelationshipKind::Cohabitant)
+            );
             assert!(a.household_id.is_some(), "alice has household");
             assert_eq!(a.household_id, b.household_id, "shared household_id");
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
     fn test_conception_and_birth_produce_newborn() {
-        use ironmud::aging::{process_aging_tick_with_rng, CONCEPTION_CHANCE_KEY, PREGNANCY_GESTATION_DAYS};
-        use ironmud::types::{
-            Characteristics, MobileData, Relationship, RelationshipKind, SocialState,
-        };
+        use ironmud::aging::{CONCEPTION_CHANCE_KEY, PREGNANCY_GESTATION_DAYS, process_aging_tick_with_rng};
+        use ironmud::types::{Characteristics, MobileData, Relationship, RelationshipKind, SocialState};
         use rand::SeedableRng;
         use rand::rngs::StdRng;
 
@@ -2394,38 +2631,52 @@ mod migration_tests {
             save_room_with_vnum(&db, &home);
 
             let household = uuid::Uuid::new_v4();
-            let mk_parent = |name: &str, gender: &str, age: i32, room_vnum: &str, room_id: Uuid, household: uuid::Uuid| {
-                let mut m = MobileData::new(name.to_string());
-                m.is_prototype = false;
-                m.characteristics = Some(Characteristics {
-                    gender: gender.to_string(),
-                    age,
-                    age_label: "adult".to_string(),
-                    birth_day: 0,
-                    height: "average".to_string(),
-                    build: "average".to_string(),
-                    hair_color: "black".to_string(),
-                    hair_style: "short".to_string(),
-                    eye_color: "brown".to_string(),
-                    skin_tone: "fair".to_string(),
-                    distinguishing_mark: None,
-                });
-                m.social = Some(SocialState::default());
-                m.household_id = Some(household);
-                m.resident_of = Some(room_vnum.to_string());
-                m.current_room_id = Some(room_id);
-                m
-            };
-            let mut mother = mk_parent("Yuki", "female", 28, &format!("{}:home", area.prefix), home.id, household);
+            let mk_parent =
+                |name: &str, gender: &str, age: i32, room_vnum: &str, room_id: Uuid, household: uuid::Uuid| {
+                    let mut m = MobileData::new(name.to_string());
+                    m.is_prototype = false;
+                    m.characteristics = Some(Characteristics {
+                        gender: gender.to_string(),
+                        age,
+                        age_label: "adult".to_string(),
+                        birth_day: 0,
+                        height: "average".to_string(),
+                        build: "average".to_string(),
+                        hair_color: "black".to_string(),
+                        hair_style: "short".to_string(),
+                        eye_color: "brown".to_string(),
+                        skin_tone: "fair".to_string(),
+                        distinguishing_mark: None,
+                    });
+                    m.social = Some(SocialState::default());
+                    m.household_id = Some(household);
+                    m.resident_of = Some(room_vnum.to_string());
+                    m.current_room_id = Some(room_id);
+                    m
+                };
+            let mut mother = mk_parent(
+                "Yuki",
+                "female",
+                28,
+                &format!("{}:home", area.prefix),
+                home.id,
+                household,
+            );
             let mut father = mk_parent("Ken", "male", 30, &format!("{}:home", area.prefix), home.id, household);
             // Cohabitant + high affinity so eligible_mate picks them.
             mother.relationships.push(Relationship {
-                other_id: father.id, kind: RelationshipKind::Cohabitant, affinity: 80,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: father.id,
+                kind: RelationshipKind::Cohabitant,
+                affinity: 80,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
             father.relationships.push(Relationship {
-                other_id: mother.id, kind: RelationshipKind::Cohabitant, affinity: 80,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: mother.id,
+                kind: RelationshipKind::Cohabitant,
+                affinity: 80,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
             let mother_id = mother.id;
             let father_id = father.id;
@@ -2443,8 +2694,11 @@ mod migration_tests {
             process_aging_tick_with_rng(&db, &conns, &migration_data_for_tests(), &mut rng).unwrap();
             let m = db.get_mobile_data(&mother_id).unwrap().unwrap();
             let s = m.social.as_ref().unwrap();
-            assert_eq!(s.pregnant_until_day, Some(100 + PREGNANCY_GESTATION_DAYS),
-                "pregnancy due date set");
+            assert_eq!(
+                s.pregnant_until_day,
+                Some(100 + PREGNANCY_GESTATION_DAYS),
+                "pregnancy due date set"
+            );
             assert_eq!(s.pregnant_by, Some(father_id));
 
             // Advance past due date.
@@ -2457,7 +2711,9 @@ mod migration_tests {
 
             // Newborn should now exist with reciprocal Parent/Child links.
             let all = db.list_all_mobiles().unwrap();
-            let newborn = all.iter().find(|m| m.id != mother_id && m.id != father_id)
+            let newborn = all
+                .iter()
+                .find(|m| m.id != mother_id && m.id != father_id)
                 .expect("newborn exists");
             assert_eq!(newborn.characteristics.as_ref().unwrap().age, 0);
             assert_eq!(
@@ -2466,26 +2722,36 @@ mod migration_tests {
             );
             assert_eq!(newborn.household_id, Some(household));
             // Newborn has TWO Parent entries (mother + father).
-            let parent_count = newborn.relationships.iter()
+            let parent_count = newborn
+                .relationships
+                .iter()
                 .filter(|r| r.kind == RelationshipKind::Parent)
                 .count();
             assert_eq!(parent_count, 2, "newborn has both parents linked");
             // Mother and father have reciprocal Child entries.
             let m = db.get_mobile_data(&mother_id).unwrap().unwrap();
             let f = db.get_mobile_data(&father_id).unwrap().unwrap();
-            assert!(m.relationships.iter().any(|r| r.other_id == newborn.id && r.kind == RelationshipKind::Child));
-            assert!(f.relationships.iter().any(|r| r.other_id == newborn.id && r.kind == RelationshipKind::Child));
+            assert!(
+                m.relationships
+                    .iter()
+                    .any(|r| r.other_id == newborn.id && r.kind == RelationshipKind::Child)
+            );
+            assert!(
+                f.relationships
+                    .iter()
+                    .any(|r| r.other_id == newborn.id && r.kind == RelationshipKind::Child)
+            );
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
     fn test_same_gender_pair_does_not_conceive() {
-        use ironmud::aging::{process_aging_tick_with_rng, CONCEPTION_CHANCE_KEY};
-        use ironmud::types::{
-            Characteristics, MobileData, Relationship, RelationshipKind, SocialState,
-        };
+        use ironmud::aging::{CONCEPTION_CHANCE_KEY, process_aging_tick_with_rng};
+        use ironmud::types::{Characteristics, MobileData, Relationship, RelationshipKind, SocialState};
         use rand::SeedableRng;
         use rand::rngs::StdRng;
 
@@ -2521,12 +2787,18 @@ mod migration_tests {
             let mut a = mk("Alice", "female");
             let mut b = mk("Beth", "female");
             a.relationships.push(Relationship {
-                other_id: b.id, kind: RelationshipKind::Partner, affinity: 80,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: b.id,
+                kind: RelationshipKind::Partner,
+                affinity: 80,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
             b.relationships.push(Relationship {
-                other_id: a.id, kind: RelationshipKind::Partner, affinity: 80,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: a.id,
+                kind: RelationshipKind::Partner,
+                affinity: 80,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
             let a_id = a.id;
             db.save_mobile_data(a).unwrap();
@@ -2539,27 +2811,34 @@ mod migration_tests {
             process_aging_tick_with_rng(&db, &conns, &migration_data_for_tests(), &mut rng).unwrap();
 
             let a = db.get_mobile_data(&a_id).unwrap().unwrap();
-            assert!(a.social.as_ref().unwrap().pregnant_until_day.is_none(),
-                "same-gender Partners don't conceive");
+            assert!(
+                a.social.as_ref().unwrap().pregnant_until_day.is_none(),
+                "same-gender Partners don't conceive"
+            );
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
     fn test_orphan_flagged_on_last_parent_death() {
-        use ironmud::types::{
-            Characteristics, MobileData, Relationship, RelationshipKind, SocialState,
-        };
+        use ironmud::types::{Characteristics, MobileData, Relationship, RelationshipKind, SocialState};
 
         let (db, path) = open_temp_db("orphan_flag");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mk = |name: &str, age: i32, gender: &str| {
-                let mut m = MobileData::new(name.to_string()); m.is_prototype = false;
+                let mut m = MobileData::new(name.to_string());
+                m.is_prototype = false;
                 m.characteristics = Some(Characteristics {
                     gender: gender.to_string(),
                     age,
-                    age_label: if age <= 12 { "child".to_string() } else { "adult".to_string() },
+                    age_label: if age <= 12 {
+                        "child".to_string()
+                    } else {
+                        "adult".to_string()
+                    },
                     birth_day: 0,
                     height: "average".to_string(),
                     build: "average".to_string(),
@@ -2576,20 +2855,32 @@ mod migration_tests {
             let mut p2 = mk("Father", 37, "male");
             let mut child = mk("Kid", 7, "male");
             child.relationships.push(Relationship {
-                other_id: p1.id, kind: RelationshipKind::Parent, affinity: 70,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: p1.id,
+                kind: RelationshipKind::Parent,
+                affinity: 70,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
             child.relationships.push(Relationship {
-                other_id: p2.id, kind: RelationshipKind::Parent, affinity: 70,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: p2.id,
+                kind: RelationshipKind::Parent,
+                affinity: 70,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
             p1.relationships.push(Relationship {
-                other_id: child.id, kind: RelationshipKind::Child, affinity: 70,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: child.id,
+                kind: RelationshipKind::Child,
+                affinity: 70,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
             p2.relationships.push(Relationship {
-                other_id: child.id, kind: RelationshipKind::Child, affinity: 70,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: child.id,
+                kind: RelationshipKind::Child,
+                affinity: 70,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
             let p1_id = p1.id;
             let p2_id = p2.id;
@@ -2610,26 +2901,32 @@ mod migration_tests {
             assert!(k.adoption_pending, "both parents dead, child flagged for adoption");
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
     fn test_orphan_adult_child_not_flagged() {
         // An adult child who loses a parent doesn't need an adopter.
-        use ironmud::types::{
-            Characteristics, MobileData, Relationship, RelationshipKind, SocialState,
-        };
+        use ironmud::types::{Characteristics, MobileData, Relationship, RelationshipKind, SocialState};
 
         let (db, path) = open_temp_db("orphan_adult");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mk_adult = |name: &str| {
-                let mut m = MobileData::new(name.to_string()); m.is_prototype = false;
+                let mut m = MobileData::new(name.to_string());
+                m.is_prototype = false;
                 m.characteristics = Some(Characteristics {
                     gender: "male".to_string(),
-                    age: 35, age_label: "adult".to_string(), birth_day: 0,
-                    height: "average".to_string(), build: "average".to_string(),
-                    hair_color: "black".to_string(), hair_style: "short".to_string(),
-                    eye_color: "brown".to_string(), skin_tone: "fair".to_string(),
+                    age: 35,
+                    age_label: "adult".to_string(),
+                    birth_day: 0,
+                    height: "average".to_string(),
+                    build: "average".to_string(),
+                    hair_color: "black".to_string(),
+                    hair_style: "short".to_string(),
+                    eye_color: "brown".to_string(),
+                    skin_tone: "fair".to_string(),
                     distinguishing_mark: None,
                 });
                 m.social = Some(SocialState::default());
@@ -2638,12 +2935,18 @@ mod migration_tests {
             let mut parent = mk_adult("Elder");
             let mut grown_child = mk_adult("Adult-Son");
             grown_child.relationships.push(Relationship {
-                other_id: parent.id, kind: RelationshipKind::Parent, affinity: 70,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: parent.id,
+                kind: RelationshipKind::Parent,
+                affinity: 70,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
             parent.relationships.push(Relationship {
-                other_id: grown_child.id, kind: RelationshipKind::Child, affinity: 70,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: grown_child.id,
+                kind: RelationshipKind::Child,
+                affinity: 70,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
             let pid = parent.id;
             let cid = grown_child.id;
@@ -2654,15 +2957,15 @@ mod migration_tests {
             assert!(!c.adoption_pending, "adult children aren't flagged");
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
     fn test_orphan_adoption_resolves_in_aging_tick() {
-        use ironmud::aging::{process_aging_tick_with_rng, ADOPTION_CHANCE_KEY};
-        use ironmud::types::{
-            Characteristics, MobileData, RelationshipKind, SocialState,
-        };
+        use ironmud::aging::{ADOPTION_CHANCE_KEY, process_aging_tick_with_rng};
+        use ironmud::types::{Characteristics, MobileData, RelationshipKind, SocialState};
         use rand::SeedableRng;
         use rand::rngs::StdRng;
 
@@ -2674,15 +2977,23 @@ mod migration_tests {
             save_room_with_vnum(&db, &home);
 
             let mk = |name: &str, age: i32, gender: &str, room: Uuid| {
-                let mut m = MobileData::new(name.to_string()); m.is_prototype = false;
+                let mut m = MobileData::new(name.to_string());
+                m.is_prototype = false;
                 m.characteristics = Some(Characteristics {
                     gender: gender.to_string(),
                     age,
-                    age_label: if age <= 12 { "child".to_string() } else { "adult".to_string() },
+                    age_label: if age <= 12 {
+                        "child".to_string()
+                    } else {
+                        "adult".to_string()
+                    },
                     birth_day: 0,
-                    height: "average".to_string(), build: "average".to_string(),
-                    hair_color: "black".to_string(), hair_style: "short".to_string(),
-                    eye_color: "brown".to_string(), skin_tone: "fair".to_string(),
+                    height: "average".to_string(),
+                    build: "average".to_string(),
+                    hair_color: "black".to_string(),
+                    hair_style: "short".to_string(),
+                    eye_color: "brown".to_string(),
+                    skin_tone: "fair".to_string(),
                     distinguishing_mark: None,
                 });
                 m.social = Some(SocialState::default());
@@ -2710,36 +3021,56 @@ mod migration_tests {
             let adopter = db.get_mobile_data(&adopter_id).unwrap().unwrap();
             let orphan = db.get_mobile_data(&orphan_id).unwrap().unwrap();
             assert!(!orphan.adoption_pending, "flag cleared on adoption");
-            assert_eq!(orphan.household_id, adopter.household_id.or(orphan.household_id),
-                "orphan inherits adopter's household");
+            assert_eq!(
+                orphan.household_id,
+                adopter.household_id.or(orphan.household_id),
+                "orphan inherits adopter's household"
+            );
             assert!(orphan.household_id.is_some(), "orphan has household");
-            assert!(adopter.relationships.iter().any(|r| r.other_id == orphan_id && r.kind == RelationshipKind::Child),
-                "adopter has Child link to orphan");
-            assert!(orphan.relationships.iter().any(|r| r.other_id == adopter_id && r.kind == RelationshipKind::Parent),
-                "orphan has Parent link to adopter");
+            assert!(
+                adopter
+                    .relationships
+                    .iter()
+                    .any(|r| r.other_id == orphan_id && r.kind == RelationshipKind::Child),
+                "adopter has Child link to orphan"
+            );
+            assert!(
+                orphan
+                    .relationships
+                    .iter()
+                    .any(|r| r.other_id == adopter_id && r.kind == RelationshipKind::Parent),
+                "orphan has Parent link to adopter"
+            );
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
     fn test_adoption_weight_prefers_same_gender_pairs() {
         use ironmud::social::{
-            adoption_weight, ADOPT_WEIGHT_SAME_PAIR, ADOPT_WEIGHT_OPPOSITE_PAIR, ADOPT_WEIGHT_SINGLE,
+            ADOPT_WEIGHT_OPPOSITE_PAIR, ADOPT_WEIGHT_SAME_PAIR, ADOPT_WEIGHT_SINGLE, adoption_weight,
         };
-        use ironmud::types::{
-            Characteristics, MobileData, Relationship, RelationshipKind, SocialState,
-        };
+        use ironmud::types::{Characteristics, MobileData, Relationship, RelationshipKind, SocialState};
 
         let (db, path) = open_temp_db("adopt_weight");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mk = |name: &str, gender: &str| {
-                let mut m = MobileData::new(name.to_string()); m.is_prototype = false;
+                let mut m = MobileData::new(name.to_string());
+                m.is_prototype = false;
                 m.characteristics = Some(Characteristics {
-                    gender: gender.to_string(), age: 30, age_label: "adult".to_string(),
-                    birth_day: 0, height: "average".to_string(), build: "average".to_string(),
-                    hair_color: "black".to_string(), hair_style: "short".to_string(),
-                    eye_color: "brown".to_string(), skin_tone: "fair".to_string(),
+                    gender: gender.to_string(),
+                    age: 30,
+                    age_label: "adult".to_string(),
+                    birth_day: 0,
+                    height: "average".to_string(),
+                    build: "average".to_string(),
+                    hair_color: "black".to_string(),
+                    hair_style: "short".to_string(),
+                    eye_color: "brown".to_string(),
+                    skin_tone: "fair".to_string(),
                     distinguishing_mark: None,
                 });
                 m.social = Some(SocialState::default());
@@ -2750,23 +3081,35 @@ mod migration_tests {
             let mut sg_a = mk("SGA", "female");
             let mut sg_b = mk("SGB", "female");
             sg_a.relationships.push(Relationship {
-                other_id: sg_b.id, kind: RelationshipKind::Partner, affinity: 80,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: sg_b.id,
+                kind: RelationshipKind::Partner,
+                affinity: 80,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
             sg_b.relationships.push(Relationship {
-                other_id: sg_a.id, kind: RelationshipKind::Partner, affinity: 80,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: sg_a.id,
+                kind: RelationshipKind::Partner,
+                affinity: 80,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
 
             let mut og_a = mk("OGA", "male");
             let mut og_b = mk("OGB", "female");
             og_a.relationships.push(Relationship {
-                other_id: og_b.id, kind: RelationshipKind::Partner, affinity: 80,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: og_b.id,
+                kind: RelationshipKind::Partner,
+                affinity: 80,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
             og_b.relationships.push(Relationship {
-                other_id: og_a.id, kind: RelationshipKind::Partner, affinity: 80,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: og_a.id,
+                kind: RelationshipKind::Partner,
+                affinity: 80,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
 
             let single = mk("Solo", "female");
@@ -2790,7 +3133,9 @@ mod migration_tests {
             assert!((w_single - ADOPT_WEIGHT_SINGLE).abs() < 0.01);
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -2799,8 +3144,7 @@ mod migration_tests {
         // so we also cover the non-simulated fallback path (juvenile children
         // with no SocialState).
         use ironmud::types::{
-            BereavementNote, Characteristics, MobileData, Relationship, RelationshipKind,
-            SocialState,
+            BereavementNote, Characteristics, MobileData, Relationship, RelationshipKind, SocialState,
         };
 
         let (db, path) = open_temp_db("examine_cues");
@@ -2836,8 +3180,10 @@ mod migration_tests {
                 distinguishing_mark: None,
             };
 
-            let mut parent = MobileData::new("Aiko".to_string()); parent.is_prototype = false;
-            let mut child = MobileData::new("Haru".to_string()); child.is_prototype = false;
+            let mut parent = MobileData::new("Aiko".to_string());
+            parent.is_prototype = false;
+            let mut child = MobileData::new("Haru".to_string());
+            child.is_prototype = false;
             parent.characteristics = Some(parent_chars);
             child.characteristics = Some(child_chars);
             parent.current_room_id = Some(room.id);
@@ -2845,12 +3191,18 @@ mod migration_tests {
             parent.current_hp = 10;
             child.current_hp = 10;
             parent.relationships.push(Relationship {
-                other_id: child.id, kind: RelationshipKind::Child, affinity: 70,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: child.id,
+                kind: RelationshipKind::Child,
+                affinity: 70,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
             child.relationships.push(Relationship {
-                other_id: parent.id, kind: RelationshipKind::Parent, affinity: 70,
-                last_interaction_day: 0, recent_topics: Vec::new(),
+                other_id: parent.id,
+                kind: RelationshipKind::Parent,
+                affinity: 70,
+                last_interaction_day: 0,
+                recent_topics: Vec::new(),
             });
             parent.social = Some(SocialState::default());
             // child stays social = None (non-simulated juvenile).
@@ -2864,17 +3216,26 @@ mod migration_tests {
             let pm = db.get_mobile_data(&parent_id).unwrap().unwrap();
             let pm_social = pm.social.clone().unwrap_or_default();
             let cues = ironmud::script::social::build_social_cues(&db, &pm, &pm_social, 100);
-            assert!(cues.contains("Their child Haru is here."),
-                "parent examine cues include child-in-room; got: {}", cues);
+            assert!(
+                cues.contains("Their child Haru is here."),
+                "parent examine cues include child-in-room; got: {}",
+                cues
+            );
 
             // Child cues (non-simulated fallback): life-stage + parent-in-room.
             let cm = db.get_mobile_data(&child_id).unwrap().unwrap();
             let cm_social = cm.social.clone().unwrap_or_default();
             let cues = ironmud::script::social::build_social_cues(&db, &cm, &cm_social, 100);
-            assert!(cues.contains("child's easy wonder"),
-                "child examine cues include life-stage; got: {}", cues);
-            assert!(cues.contains("Their parent Aiko is here."),
-                "child cues include parent-in-room; got: {}", cues);
+            assert!(
+                cues.contains("child's easy wonder"),
+                "child examine cues include life-stage; got: {}",
+                cues
+            );
+            assert!(
+                cues.contains("Their parent Aiko is here."),
+                "child cues include parent-in-room; got: {}",
+                cues
+            );
 
             // Bereavement cue: set a BereavementNote on the parent for a dead partner.
             db.update_mobile(&parent_id, |m| {
@@ -2886,15 +3247,21 @@ mod migration_tests {
                     until_day: 200,
                 });
                 s.bereaved_until_day = Some(200);
-            }).unwrap();
+            })
+            .unwrap();
             let pm = db.get_mobile_data(&parent_id).unwrap().unwrap();
             let pm_social = pm.social.clone().unwrap_or_default();
             let cues = ironmud::script::social::build_social_cues(&db, &pm, &pm_social, 100);
-            assert!(cues.contains("mourning for their partner"),
-                "partner bereavement cue rendered; got: {}", cues);
+            assert!(
+                cues.contains("mourning for their partner"),
+                "partner bereavement cue rendered; got: {}",
+                cues
+            );
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -2922,8 +3289,12 @@ mod migration_tests {
             let data = load_migration_data(&data_dir()).unwrap();
             run_one_tick(&db, &data);
 
-            let mobs: Vec<_> = db.list_all_mobiles().unwrap().into_iter()
-                .filter(|m| !m.is_prototype).collect();
+            let mobs: Vec<_> = db
+                .list_all_mobiles()
+                .unwrap()
+                .into_iter()
+                .filter(|m| !m.is_prototype)
+                .collect();
             assert_eq!(mobs.len(), 2, "parent_child slot spawns two mobiles");
 
             // Identify parent and child by their kind on the relationship edges.
@@ -2942,7 +3313,10 @@ mod migration_tests {
             assert_eq!(parent.household_id, child.household_id, "shared household_id");
 
             // Parent claims residency; child doesn't (dependent).
-            assert_eq!(parent.resident_of.as_deref(), Some(format!("{}:home", area.prefix).as_str()));
+            assert_eq!(
+                parent.resident_of.as_deref(),
+                Some(format!("{}:home", area.prefix).as_str())
+            );
             assert!(child.resident_of.is_none());
 
             // Reciprocal affinity ~70.
@@ -2963,7 +3337,8 @@ mod migration_tests {
                         | ironmud::types::LifeStage::Adolescent
                 ),
                 "child stage must be juvenile; got age {} label {}",
-                c_chars.age, c_chars.age_label
+                c_chars.age,
+                c_chars.age_label
             );
 
             // Child has no simulation or social state (not a simulated NPC).
@@ -2971,7 +3346,9 @@ mod migration_tests {
             assert!(child.simulation.is_none());
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -2997,8 +3374,12 @@ mod migration_tests {
             let data = load_migration_data(&data_dir()).unwrap();
             run_one_tick(&db, &data);
 
-            let mobs: Vec<_> = db.list_all_mobiles().unwrap().into_iter()
-                .filter(|m| !m.is_prototype).collect();
+            let mobs: Vec<_> = db
+                .list_all_mobiles()
+                .unwrap()
+                .into_iter()
+                .filter(|m| !m.is_prototype)
+                .collect();
             assert_eq!(mobs.len(), 2, "sibling pair spawns two mobiles");
 
             let a = &mobs[0];
@@ -3021,7 +3402,9 @@ mod migration_tests {
             assert_eq!(a_last, b_last, "siblings share last name");
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -3038,9 +3421,12 @@ mod migration_tests {
             stranger_affinity += apply_family_bias(-4, RelationshipKind::Friend);
         }
         // Both are negative; sibling should be less extreme.
-        assert!(sibling_affinity > stranger_affinity,
+        assert!(
+            sibling_affinity > stranger_affinity,
             "sibling ({}) should have higher (less negative) affinity than stranger ({})",
-            sibling_affinity, stranger_affinity);
+            sibling_affinity,
+            stranger_affinity
+        );
         // Specifically: strangers dropped -400; siblings should be about -200.
         assert_eq!(stranger_affinity, -400);
         assert_eq!(sibling_affinity, -200);
@@ -3095,7 +3481,9 @@ mod migration_tests {
             assert!(after.social.unwrap().bereaved_for.is_empty(), "expired note dropped");
         }));
         cleanup(&path);
-        if let Err(e) = result { std::panic::resume_unwind(e); }
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]
@@ -3104,7 +3492,7 @@ mod migration_tests {
         // those entries exist in human.json so Phase D `spawn_child` can use them,
         // but immigration always produces an adult.
         use ironmud::migration::generate_characteristics;
-        use ironmud::types::{life_stage_for_age, LifeStage};
+        use ironmud::types::{LifeStage, life_stage_for_age};
         use rand::SeedableRng;
         use rand::rngs::StdRng;
 
@@ -3118,7 +3506,8 @@ mod migration_tests {
             assert!(
                 !matches!(stage, LifeStage::Baby | LifeStage::Child | LifeStage::Adolescent),
                 "seed {seed} produced juvenile migrant (age {}, label {})",
-                chars.age, chars.age_label
+                chars.age,
+                chars.age_label
             );
             assert!(chars.age >= 18, "seed {seed} produced age {} < 18", chars.age);
         }

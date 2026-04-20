@@ -3,10 +3,10 @@
 //! Handles automatic rent payments for player properties and escrow expiration.
 
 use anyhow::Result;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::{debug, error};
 
-use ironmud::{db, EscrowData, SharedConnections};
+use ironmud::{EscrowData, SharedConnections, db};
 
 /// Interval for rent auto-payment tick (5 minutes)
 pub const RENT_TICK_INTERVAL_SECS: u64 = 300;
@@ -222,7 +222,12 @@ fn process_lease_payment(
                 }) {
                     error!("Failed to update character escrow_ids: {}", e);
                 }
-                debug!("Created escrow {} with {} items for {}", escrow.id, item_ids.len(), owner_name);
+                debug!(
+                    "Created escrow {} with {} items for {}",
+                    escrow.id,
+                    item_ids.len(),
+                    owner_name
+                );
             }
         }
 

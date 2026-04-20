@@ -26,16 +26,16 @@ impl Default for TriggerType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoomTrigger {
     pub trigger_type: TriggerType,
-    pub script_name: String,      // e.g., "forest_trap" or "@say_greeting" for templates
+    pub script_name: String, // e.g., "forest_trap" or "@say_greeting" for templates
     pub enabled: bool,
     #[serde(default = "default_trigger_interval")]
-    pub interval_secs: i64,       // For periodic triggers (default 60)
+    pub interval_secs: i64, // For periodic triggers (default 60)
     #[serde(default)]
-    pub last_fired: i64,          // Unix timestamp of last execution
+    pub last_fired: i64, // Unix timestamp of last execution
     #[serde(default = "default_trigger_chance")]
-    pub chance: i32,              // 1-100 percent (100 = always)
+    pub chance: i32, // 1-100 percent (100 = always)
     #[serde(default)]
-    pub args: Vec<String>,        // Template arguments
+    pub args: Vec<String>, // Template arguments
 }
 
 fn default_trigger_interval() -> i64 {
@@ -69,7 +69,7 @@ pub enum ItemTriggerType {
     OnDrop,
     OnUse,
     OnExamine,
-    OnPrompt,  // Fires when building prompt for equipped items
+    OnPrompt, // Fires when building prompt for equipped items
 }
 
 impl Default for ItemTriggerType {
@@ -81,12 +81,12 @@ impl Default for ItemTriggerType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ItemTrigger {
     pub trigger_type: ItemTriggerType,
-    pub script_name: String,      // e.g., "cursed_item" or "@say_greeting" for templates
+    pub script_name: String, // e.g., "cursed_item" or "@say_greeting" for templates
     pub enabled: bool,
     #[serde(default = "default_trigger_chance")]
-    pub chance: i32,              // 1-100 percent (100 = always)
+    pub chance: i32, // 1-100 percent (100 = always)
     #[serde(default)]
-    pub args: Vec<String>,        // Template arguments
+    pub args: Vec<String>, // Template arguments
 }
 
 impl Default for ItemTrigger {
@@ -106,13 +106,13 @@ impl Default for ItemTrigger {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MobileTriggerType {
-    OnGreet,    // Player enters room with NPC
-    OnAttack,   // NPC is attacked
-    OnDeath,    // NPC dies
-    OnSay,      // Player says something in room (for advanced dialogue)
-    OnIdle,     // Periodic when players present in room
-    OnAlways,   // Periodic regardless of player presence
-    OnFlee,     // Mobile flees from combat
+    OnGreet,  // Player enters room with NPC
+    OnAttack, // NPC is attacked
+    OnDeath,  // NPC dies
+    OnSay,    // Player says something in room (for advanced dialogue)
+    OnIdle,   // Periodic when players present in room
+    OnAlways, // Periodic regardless of player presence
+    OnFlee,   // Mobile flees from combat
 }
 
 impl Default for MobileTriggerType {
@@ -124,16 +124,16 @@ impl Default for MobileTriggerType {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileTrigger {
     pub trigger_type: MobileTriggerType,
-    pub script_name: String,      // e.g., "guard_greet" or "@say_greeting" for templates
+    pub script_name: String, // e.g., "guard_greet" or "@say_greeting" for templates
     pub enabled: bool,
     #[serde(default = "default_trigger_chance")]
-    pub chance: i32,              // 1-100 percent (100 = always)
+    pub chance: i32, // 1-100 percent (100 = always)
     #[serde(default)]
-    pub args: Vec<String>,        // Template arguments (e.g., greeting message)
+    pub args: Vec<String>, // Template arguments (e.g., greeting message)
     #[serde(default = "default_trigger_interval")]
-    pub interval_secs: i64,       // For OnIdle triggers (default 60)
+    pub interval_secs: i64, // For OnIdle triggers (default 60)
     #[serde(default)]
-    pub last_fired: i64,          // Unix timestamp of last execution
+    pub last_fired: i64, // Unix timestamp of last execution
 }
 
 impl Default for MobileTrigger {

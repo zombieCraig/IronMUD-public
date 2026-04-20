@@ -4,13 +4,12 @@
 //! from integration tests without the tokio runtime.
 
 use std::path::PathBuf;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::error;
 
 use ironmud::{
-    db,
+    SharedConnections, db,
     migration::{load_migration_data, process_migration_tick},
-    SharedConnections,
 };
 
 /// Wall-clock interval between migration ticks. The game-day interval per

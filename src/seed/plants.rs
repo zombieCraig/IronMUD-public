@@ -22,14 +22,18 @@ pub fn seed_plants(db: &Db) -> Result<()> {
                 GrowthStageDef {
                     stage: GrowthStage::Seed,
                     duration_game_hours: 6,
-                    description: "A small mound of freshly turned soil marks where tomato seeds have been planted.".to_string(),
-                    examine_desc: "The soil is damp and carefully patted down. Tiny seeds lie just beneath the surface.".to_string(),
+                    description: "A small mound of freshly turned soil marks where tomato seeds have been planted."
+                        .to_string(),
+                    examine_desc:
+                        "The soil is damp and carefully patted down. Tiny seeds lie just beneath the surface."
+                            .to_string(),
                 },
                 GrowthStageDef {
                     stage: GrowthStage::Sprout,
                     duration_game_hours: 12,
                     description: "A tiny green sprout has pushed through the soil.".to_string(),
-                    examine_desc: "Two small seed leaves unfurl from a delicate stem, reaching toward the light.".to_string(),
+                    examine_desc: "Two small seed leaves unfurl from a delicate stem, reaching toward the light."
+                        .to_string(),
                 },
                 GrowthStageDef {
                     stage: GrowthStage::Seedling,
@@ -40,20 +44,26 @@ pub fn seed_plants(db: &Db) -> Result<()> {
                 GrowthStageDef {
                     stage: GrowthStage::Growing,
                     duration_game_hours: 24,
-                    description: "A tomato plant grows vigorously, small yellow flowers appearing on its stems.".to_string(),
-                    examine_desc: "The plant is bushy and healthy, with clusters of tiny yellow star-shaped flowers.".to_string(),
+                    description: "A tomato plant grows vigorously, small yellow flowers appearing on its stems."
+                        .to_string(),
+                    examine_desc: "The plant is bushy and healthy, with clusters of tiny yellow star-shaped flowers."
+                        .to_string(),
                 },
                 GrowthStageDef {
                     stage: GrowthStage::Mature,
                     duration_game_hours: 36,
                     description: "A tomato plant hangs heavy with ripe red fruit, ready for harvest.".to_string(),
-                    examine_desc: "Plump, sun-warmed tomatoes dangle from sturdy vines. They're perfectly ripe and ready to pick.".to_string(),
+                    examine_desc:
+                        "Plump, sun-warmed tomatoes dangle from sturdy vines. They're perfectly ripe and ready to pick."
+                            .to_string(),
                 },
                 GrowthStageDef {
                     stage: GrowthStage::Wilting,
                     duration_game_hours: 48,
                     description: "A tomato plant droops sadly, its remaining fruit beginning to soften.".to_string(),
-                    examine_desc: "The leaves are yellowing and the fruit is overripe. It should have been harvested sooner.".to_string(),
+                    examine_desc:
+                        "The leaves are yellowing and the fruit is overripe. It should have been harvested sooner."
+                            .to_string(),
                 },
             ],
             preferred_seasons: vec![Season::Spring, Season::Summer],
@@ -83,13 +93,15 @@ pub fn seed_plants(db: &Db) -> Result<()> {
                     stage: GrowthStage::Seed,
                     duration_game_hours: 4,
                     description: "A patch of soil has been prepared and sown with tiny herb seeds.".to_string(),
-                    examine_desc: "The soil smells faintly of loam. Herb seeds are scattered just below the surface.".to_string(),
+                    examine_desc: "The soil smells faintly of loam. Herb seeds are scattered just below the surface."
+                        .to_string(),
                 },
                 GrowthStageDef {
                     stage: GrowthStage::Sprout,
                     duration_game_hours: 8,
                     description: "Delicate green sprouts emerge from the soil, fragrant even at this size.".to_string(),
-                    examine_desc: "A cluster of tiny green shoots, already giving off a pleasant herbal aroma.".to_string(),
+                    examine_desc: "A cluster of tiny green shoots, already giving off a pleasant herbal aroma."
+                        .to_string(),
                 },
                 GrowthStageDef {
                     stage: GrowthStage::Seedling,
@@ -101,19 +113,26 @@ pub fn seed_plants(db: &Db) -> Result<()> {
                     stage: GrowthStage::Growing,
                     duration_game_hours: 18,
                     description: "A lush herb plant fills the air with its rich, earthy fragrance.".to_string(),
-                    examine_desc: "The plant is thick with aromatic leaves, perfect for cooking or medicine.".to_string(),
+                    examine_desc: "The plant is thick with aromatic leaves, perfect for cooking or medicine."
+                        .to_string(),
                 },
                 GrowthStageDef {
                     stage: GrowthStage::Mature,
                     duration_game_hours: 0, // Multi-harvest resets to Growing
-                    description: "A mature herb plant offers a bounty of fragrant leaves, ready for picking.".to_string(),
-                    examine_desc: "Dense clusters of perfectly formed leaves await harvest. The plant will regrow after picking.".to_string(),
+                    description: "A mature herb plant offers a bounty of fragrant leaves, ready for picking."
+                        .to_string(),
+                    examine_desc:
+                        "Dense clusters of perfectly formed leaves await harvest. The plant will regrow after picking."
+                            .to_string(),
                 },
                 GrowthStageDef {
                     stage: GrowthStage::Wilting,
                     duration_game_hours: 72,
-                    description: "A withering herb plant struggles on, its leaves turning brown at the edges.".to_string(),
-                    examine_desc: "The plant has seen better days. Its leaves are drying out and losing their fragrance.".to_string(),
+                    description: "A withering herb plant struggles on, its leaves turning brown at the edges."
+                        .to_string(),
+                    examine_desc:
+                        "The plant has seen better days. Its leaves are drying out and losing their fragrance."
+                            .to_string(),
                 },
             ],
             preferred_seasons: vec![Season::Spring, Season::Summer, Season::Autumn],

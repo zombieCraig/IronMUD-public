@@ -1,11 +1,11 @@
 // src/script/property.rs
 // Property rental system functions for IronMUD
 
-use rhai::Engine;
-use std::sync::Arc;
+use crate::SharedConnections;
 use crate::db::Db;
 use crate::{EscrowData, LeaseData, PartyAccessLevel, PropertyTemplate, RoomData, RoomExits, RoomFlags};
-use crate::SharedConnections;
+use rhai::Engine;
+use std::sync::Arc;
 
 /// Get character name from connection ID
 fn get_character_name_from_connection(conns: &SharedConnections, connection_id: &str) -> String {
@@ -24,26 +24,39 @@ fn get_character_name_from_connection(conns: &SharedConnections, connection_id: 
 pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections) {
     // ========== Property Template Registration ==========
 
-    engine.register_type_with_name::<PropertyTemplate>("PropertyTemplate")
+    engine
+        .register_type_with_name::<PropertyTemplate>("PropertyTemplate")
         .register_get("id", |t: &mut PropertyTemplate| t.id.to_string())
         .register_get("vnum", |t: &mut PropertyTemplate| t.vnum.clone())
         .register_set("vnum", |t: &mut PropertyTemplate, val: String| t.vnum = val)
         .register_get("name", |t: &mut PropertyTemplate| t.name.clone())
         .register_set("name", |t: &mut PropertyTemplate, val: String| t.name = val)
         .register_get("description", |t: &mut PropertyTemplate| t.description.clone())
-        .register_set("description", |t: &mut PropertyTemplate, val: String| t.description = val)
+        .register_set("description", |t: &mut PropertyTemplate, val: String| {
+            t.description = val
+        })
         .register_get("monthly_rent", |t: &mut PropertyTemplate| t.monthly_rent as i64)
-        .register_set("monthly_rent", |t: &mut PropertyTemplate, val: i64| t.monthly_rent = val as i32)
-        .register_get("entrance_room_id", |t: &mut PropertyTemplate| t.entrance_room_id.to_string())
+        .register_set("monthly_rent", |t: &mut PropertyTemplate, val: i64| {
+            t.monthly_rent = val as i32
+        })
+        .register_get("entrance_room_id", |t: &mut PropertyTemplate| {
+            t.entrance_room_id.to_string()
+        })
         .register_set("entrance_room_id", |t: &mut PropertyTemplate, val: String| {
             if let Ok(uuid) = uuid::Uuid::parse_str(&val) {
                 t.entrance_room_id = uuid;
             }
         })
         .register_get("max_instances", |t: &mut PropertyTemplate| t.max_instances as i64)
-        .register_set("max_instances", |t: &mut PropertyTemplate, val: i64| t.max_instances = val as i32)
-        .register_get("level_requirement", |t: &mut PropertyTemplate| t.level_requirement as i64)
-        .register_set("level_requirement", |t: &mut PropertyTemplate, val: i64| t.level_requirement = val as i32)
+        .register_set("max_instances", |t: &mut PropertyTemplate, val: i64| {
+            t.max_instances = val as i32
+        })
+        .register_get("level_requirement", |t: &mut PropertyTemplate| {
+            t.level_requirement as i64
+        })
+        .register_set("level_requirement", |t: &mut PropertyTemplate, val: i64| {
+            t.level_requirement = val as i32
+        })
         .register_get("area_id", |t: &mut PropertyTemplate| {
             t.area_id.map(|u| u.to_string()).unwrap_or_default()
         })
@@ -57,15 +70,21 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // ========== LeaseData Registration ==========
 
-    engine.register_type_with_name::<LeaseData>("LeaseData")
+    engine
+        .register_type_with_name::<LeaseData>("LeaseData")
         .register_get("id", |l: &mut LeaseData| l.id.to_string())
         .register_get("template_vnum", |l: &mut LeaseData| l.template_vnum.clone())
         .register_get("owner_name", |l: &mut LeaseData| l.owner_name.clone())
         .register_get("leasing_agent_id", |l: &mut LeaseData| l.leasing_agent_id.to_string())
-        .register_get("leasing_office_room_id", |l: &mut LeaseData| l.leasing_office_room_id.to_string())
+        .register_get("leasing_office_room_id", |l: &mut LeaseData| {
+            l.leasing_office_room_id.to_string()
+        })
         .register_get("area_id", |l: &mut LeaseData| l.area_id.to_string())
         .register_get("instanced_rooms", |l: &mut LeaseData| {
-            l.instanced_rooms.iter().map(|u| rhai::Dynamic::from(u.to_string())).collect::<Vec<_>>()
+            l.instanced_rooms
+                .iter()
+                .map(|u| rhai::Dynamic::from(u.to_string()))
+                .collect::<Vec<_>>()
         })
         .register_get("entrance_room_id", |l: &mut LeaseData| l.entrance_room_id.to_string())
         .register_get("monthly_rent", |l: &mut LeaseData| l.monthly_rent as i64)
@@ -76,16 +95,23 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             l.party_access.to_display_string().to_string()
         })
         .register_get("trusted_visitors", |l: &mut LeaseData| {
-            l.trusted_visitors.iter().map(|s| rhai::Dynamic::from(s.clone())).collect::<Vec<_>>()
+            l.trusted_visitors
+                .iter()
+                .map(|s| rhai::Dynamic::from(s.clone()))
+                .collect::<Vec<_>>()
         });
 
     // ========== EscrowData Registration ==========
 
-    engine.register_type_with_name::<EscrowData>("EscrowData")
+    engine
+        .register_type_with_name::<EscrowData>("EscrowData")
         .register_get("id", |e: &mut EscrowData| e.id.to_string())
         .register_get("owner_name", |e: &mut EscrowData| e.owner_name.clone())
         .register_get("items", |e: &mut EscrowData| {
-            e.items.iter().map(|u| rhai::Dynamic::from(u.to_string())).collect::<Vec<_>>()
+            e.items
+                .iter()
+                .map(|u| rhai::Dynamic::from(u.to_string()))
+                .collect::<Vec<_>>()
         })
         .register_get("source_lease_id", |e: &mut EscrowData| e.source_lease_id.to_string())
         .register_get("created_at", |e: &mut EscrowData| e.created_at)
@@ -117,15 +143,16 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // save_property_template(template) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("save_property_template", move |template: PropertyTemplate| {
-        match cloned_db.save_property_template(&template) {
+    engine.register_fn(
+        "save_property_template",
+        move |template: PropertyTemplate| match cloned_db.save_property_template(&template) {
             Ok(()) => true,
             Err(e) => {
                 tracing::error!("Failed to save property template: {}", e);
                 false
             }
-        }
-    });
+        },
+    );
 
     // delete_property_template(id) -> bool
     let cloned_db = db.clone();
@@ -237,24 +264,27 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // remove_agent_property_template(mobile_id, vnum) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("remove_agent_property_template", move |mobile_id: String, vnum: String| {
-        let uuid = match uuid::Uuid::parse_str(&mobile_id) {
-            Ok(u) => u,
-            Err(_) => return false,
-        };
+    engine.register_fn(
+        "remove_agent_property_template",
+        move |mobile_id: String, vnum: String| {
+            let uuid = match uuid::Uuid::parse_str(&mobile_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
 
-        if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
-            let vnum_lower = vnum.to_lowercase();
-            mobile.property_templates.retain(|t| t.to_lowercase() != vnum_lower);
-            if let Err(e) = cloned_db.save_mobile_data(mobile.clone()) {
-                tracing::error!("Failed to save mobile: {}", e);
-                return false;
+            if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
+                let vnum_lower = vnum.to_lowercase();
+                mobile.property_templates.retain(|t| t.to_lowercase() != vnum_lower);
+                if let Err(e) = cloned_db.save_mobile_data(mobile.clone()) {
+                    tracing::error!("Failed to save mobile: {}", e);
+                    return false;
+                }
+                true
+            } else {
+                false
             }
-            true
-        } else {
-            false
-        }
-    });
+        },
+    );
 
     // set_agent_leasing_area(mobile_id, area_id) -> bool
     let cloned_db = db.clone();
@@ -298,7 +328,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if mobile.property_templates.is_empty() && !mobile.is_prototype && !mobile.vnum.is_empty() {
                 if let Ok(Some(prototype)) = cloned_db.get_mobile_by_vnum(&mobile.vnum) {
                     if prototype.is_prototype {
-                        return prototype.property_templates.into_iter().map(rhai::Dynamic::from).collect();
+                        return prototype
+                            .property_templates
+                            .into_iter()
+                            .map(rhai::Dynamic::from)
+                            .collect();
                     }
                 }
             }
@@ -335,7 +369,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         }
                         // Fall through to check prototype's templates
                         if !prototype.property_templates.is_empty() {
-                            if let Ok(Some(template)) = cloned_db.get_property_template_by_vnum(&prototype.property_templates[0]) {
+                            if let Ok(Some(template)) =
+                                cloned_db.get_property_template_by_vnum(&prototype.property_templates[0])
+                            {
                                 if let Some(area_id) = template.area_id {
                                     return area_id.to_string();
                                 }
@@ -377,28 +413,34 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // get_player_lease_in_area(char_name, area_id) -> LeaseData | ()
     let cloned_db = db.clone();
-    engine.register_fn("get_player_lease_in_area", move |char_name: String, area_id: String| -> rhai::Dynamic {
-        let uuid = match uuid::Uuid::parse_str(&area_id) {
-            Ok(u) => u,
-            Err(_) => return rhai::Dynamic::UNIT,
-        };
-        match cloned_db.get_player_lease_in_area(&char_name, &uuid) {
-            Ok(Some(lease)) => rhai::Dynamic::from(lease),
-            _ => rhai::Dynamic::UNIT,
-        }
-    });
+    engine.register_fn(
+        "get_player_lease_in_area",
+        move |char_name: String, area_id: String| -> rhai::Dynamic {
+            let uuid = match uuid::Uuid::parse_str(&area_id) {
+                Ok(u) => u,
+                Err(_) => return rhai::Dynamic::UNIT,
+            };
+            match cloned_db.get_player_lease_in_area(&char_name, &uuid) {
+                Ok(Some(lease)) => rhai::Dynamic::from(lease),
+                _ => rhai::Dynamic::UNIT,
+            }
+        },
+    );
 
     // get_all_player_leases(char_name) -> Array
     let cloned_db = db.clone();
-    engine.register_fn("get_all_player_leases", move |char_name: String| -> Vec<rhai::Dynamic> {
-        match cloned_db.get_leases_by_owner(&char_name) {
-            Ok(leases) => leases.into_iter().map(rhai::Dynamic::from).collect(),
-            Err(e) => {
-                tracing::error!("Failed to get player leases: {}", e);
-                Vec::new()
+    engine.register_fn(
+        "get_all_player_leases",
+        move |char_name: String| -> Vec<rhai::Dynamic> {
+            match cloned_db.get_leases_by_owner(&char_name) {
+                Ok(leases) => leases.into_iter().map(rhai::Dynamic::from).collect(),
+                Err(e) => {
+                    tracing::error!("Failed to get player leases: {}", e);
+                    Vec::new()
+                }
             }
-        }
-    });
+        },
+    );
 
     // save_lease(lease) -> bool
     let cloned_db = db.clone();
@@ -415,232 +457,240 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // create_lease(template_vnum, owner_name, agent_id, office_room_id) -> LeaseData | ()
     // Creates a new property instance from a template
     let cloned_db = db.clone();
-    engine.register_fn("create_lease", move |template_vnum: String, owner_name: String, agent_id: String, office_room_id: String| -> rhai::Dynamic {
-        // Parse UUIDs
-        let agent_uuid = match uuid::Uuid::parse_str(&agent_id) {
-            Ok(u) => u,
-            Err(_) => {
-                tracing::error!("Invalid agent_id UUID: {}", agent_id);
-                return rhai::Dynamic::UNIT;
-            }
-        };
-        let office_uuid = match uuid::Uuid::parse_str(&office_room_id) {
-            Ok(u) => u,
-            Err(_) => {
-                tracing::error!("Invalid office_room_id UUID: {}", office_room_id);
-                return rhai::Dynamic::UNIT;
-            }
-        };
-
-        // Get template
-        let template = match cloned_db.get_property_template_by_vnum(&template_vnum) {
-            Ok(Some(t)) => t,
-            Ok(None) => {
-                tracing::error!("Template not found: {}", template_vnum);
-                return rhai::Dynamic::UNIT;
-            }
-            Err(e) => {
-                tracing::error!("Failed to get template: {}", e);
-                return rhai::Dynamic::UNIT;
-            }
-        };
-
-        // Get area_id from template or agent
-        let area_id = match template.area_id {
-            Some(id) => id,
-            None => {
-                // Try to get from agent
-                match cloned_db.get_mobile_data(&agent_uuid) {
-                    Ok(Some(agent)) => agent.leasing_area_id.unwrap_or(uuid::Uuid::nil()),
-                    _ => uuid::Uuid::nil(),
+    engine.register_fn(
+        "create_lease",
+        move |template_vnum: String, owner_name: String, agent_id: String, office_room_id: String| -> rhai::Dynamic {
+            // Parse UUIDs
+            let agent_uuid = match uuid::Uuid::parse_str(&agent_id) {
+                Ok(u) => u,
+                Err(_) => {
+                    tracing::error!("Invalid agent_id UUID: {}", agent_id);
+                    return rhai::Dynamic::UNIT;
                 }
-            }
-        };
-
-        if area_id.is_nil() {
-            tracing::error!("No area_id for lease");
-            return rhai::Dynamic::UNIT;
-        }
-
-        // Get all template rooms
-        let template_rooms = match cloned_db.get_rooms_by_template_id(&template.id) {
-            Ok(rooms) => rooms,
-            Err(e) => {
-                tracing::error!("Failed to get template rooms: {}", e);
-                return rhai::Dynamic::UNIT;
-            }
-        };
-
-        if template_rooms.is_empty() {
-            tracing::error!("Template has no rooms: {}", template_vnum);
-            return rhai::Dynamic::UNIT;
-        }
-
-        // Generate new lease ID
-        let lease_id = uuid::Uuid::new_v4();
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
-
-        // Create UUID mapping: template_room_id -> new_instance_room_id
-        let mut room_mapping: std::collections::HashMap<uuid::Uuid, uuid::Uuid> = std::collections::HashMap::new();
-        let mut instanced_rooms: Vec<uuid::Uuid> = Vec::new();
-        let mut entrance_room_id: Option<uuid::Uuid> = None;
-
-        // First pass: Create all instance rooms
-        for template_room in &template_rooms {
-            let instance_id = uuid::Uuid::new_v4();
-            room_mapping.insert(template_room.id, instance_id);
-            instanced_rooms.push(instance_id);
-
-            let instance_room = RoomData {
-                id: instance_id,
-                title: format!("{}'s {}", owner_name, template_room.title),
-                description: template_room.description.clone(),
-                exits: RoomExits::default(), // Will be set in second pass
-                flags: RoomFlags {
-                    property_storage: true,
-                    ..template_room.flags.clone()
-                },
-                extra_descs: template_room.extra_descs.clone(),
-                vnum: None,
-                area_id: Some(area_id),
-                triggers: Vec::new(),
-                doors: std::collections::HashMap::new(),
-                spring_desc: template_room.spring_desc.clone(),
-                summer_desc: template_room.summer_desc.clone(),
-                autumn_desc: template_room.autumn_desc.clone(),
-                winter_desc: template_room.winter_desc.clone(),
-                dynamic_desc: None,
-                water_type: template_room.water_type.clone(),
-                catch_table: Vec::new(),
-                is_property_template: false,
-                property_template_id: None,
-                is_template_entrance: false,
-                property_lease_id: Some(lease_id),
-                property_entrance: template_room.is_template_entrance,
-                recent_departures: Vec::new(),
-                blood_trails: Vec::new(),
-                traps: Vec::new(),
-                living_capacity: 0,
-                residents: Vec::new(),
+            };
+            let office_uuid = match uuid::Uuid::parse_str(&office_room_id) {
+                Ok(u) => u,
+                Err(_) => {
+                    tracing::error!("Invalid office_room_id UUID: {}", office_room_id);
+                    return rhai::Dynamic::UNIT;
+                }
             };
 
-            if let Err(e) = cloned_db.save_room_data(instance_room) {
-                tracing::error!("Failed to save instance room: {}", e);
-                // Clean up created rooms on failure
-                for created_id in &instanced_rooms {
-                    let _ = cloned_db.delete_room(created_id);
+            // Get template
+            let template = match cloned_db.get_property_template_by_vnum(&template_vnum) {
+                Ok(Some(t)) => t,
+                Ok(None) => {
+                    tracing::error!("Template not found: {}", template_vnum);
+                    return rhai::Dynamic::UNIT;
                 }
+                Err(e) => {
+                    tracing::error!("Failed to get template: {}", e);
+                    return rhai::Dynamic::UNIT;
+                }
+            };
+
+            // Get area_id from template or agent
+            let area_id = match template.area_id {
+                Some(id) => id,
+                None => {
+                    // Try to get from agent
+                    match cloned_db.get_mobile_data(&agent_uuid) {
+                        Ok(Some(agent)) => agent.leasing_area_id.unwrap_or(uuid::Uuid::nil()),
+                        _ => uuid::Uuid::nil(),
+                    }
+                }
+            };
+
+            if area_id.is_nil() {
+                tracing::error!("No area_id for lease");
                 return rhai::Dynamic::UNIT;
             }
 
-            if template_room.is_template_entrance {
-                entrance_room_id = Some(instance_id);
-            }
-        }
-
-        // Second pass: Reconnect exits using the mapping
-        for template_room in &template_rooms {
-            let instance_id = room_mapping[&template_room.id];
-            let mut instance_room = match cloned_db.get_room_data(&instance_id) {
-                Ok(Some(r)) => r,
-                _ => continue,
+            // Get all template rooms
+            let template_rooms = match cloned_db.get_rooms_by_template_id(&template.id) {
+                Ok(rooms) => rooms,
+                Err(e) => {
+                    tracing::error!("Failed to get template rooms: {}", e);
+                    return rhai::Dynamic::UNIT;
+                }
             };
 
-            // Map each exit to new instance room
-            let exits = &template_room.exits;
-            instance_room.exits.north = exits.north.and_then(|t| room_mapping.get(&t).copied());
-            instance_room.exits.south = exits.south.and_then(|t| room_mapping.get(&t).copied());
-            instance_room.exits.east = exits.east.and_then(|t| room_mapping.get(&t).copied());
-            instance_room.exits.west = exits.west.and_then(|t| room_mapping.get(&t).copied());
-            instance_room.exits.up = exits.up.and_then(|t| room_mapping.get(&t).copied());
-            instance_room.exits.down = exits.down.and_then(|t| room_mapping.get(&t).copied());
-            // Copy custom exits (map to new room IDs)
-            for (name, target) in &exits.custom {
-                if let Some(&new_target) = room_mapping.get(target) {
-                    instance_room.exits.custom.insert(name.clone(), new_target);
+            if template_rooms.is_empty() {
+                tracing::error!("Template has no rooms: {}", template_vnum);
+                return rhai::Dynamic::UNIT;
+            }
+
+            // Generate new lease ID
+            let lease_id = uuid::Uuid::new_v4();
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+
+            // Create UUID mapping: template_room_id -> new_instance_room_id
+            let mut room_mapping: std::collections::HashMap<uuid::Uuid, uuid::Uuid> = std::collections::HashMap::new();
+            let mut instanced_rooms: Vec<uuid::Uuid> = Vec::new();
+            let mut entrance_room_id: Option<uuid::Uuid> = None;
+
+            // First pass: Create all instance rooms
+            for template_room in &template_rooms {
+                let instance_id = uuid::Uuid::new_v4();
+                room_mapping.insert(template_room.id, instance_id);
+                instanced_rooms.push(instance_id);
+
+                let instance_room = RoomData {
+                    id: instance_id,
+                    title: format!("{}'s {}", owner_name, template_room.title),
+                    description: template_room.description.clone(),
+                    exits: RoomExits::default(), // Will be set in second pass
+                    flags: RoomFlags {
+                        property_storage: true,
+                        ..template_room.flags.clone()
+                    },
+                    extra_descs: template_room.extra_descs.clone(),
+                    vnum: None,
+                    area_id: Some(area_id),
+                    triggers: Vec::new(),
+                    doors: std::collections::HashMap::new(),
+                    spring_desc: template_room.spring_desc.clone(),
+                    summer_desc: template_room.summer_desc.clone(),
+                    autumn_desc: template_room.autumn_desc.clone(),
+                    winter_desc: template_room.winter_desc.clone(),
+                    dynamic_desc: None,
+                    water_type: template_room.water_type.clone(),
+                    catch_table: Vec::new(),
+                    is_property_template: false,
+                    property_template_id: None,
+                    is_template_entrance: false,
+                    property_lease_id: Some(lease_id),
+                    property_entrance: template_room.is_template_entrance,
+                    recent_departures: Vec::new(),
+                    blood_trails: Vec::new(),
+                    traps: Vec::new(),
+                    living_capacity: 0,
+                    residents: Vec::new(),
+                };
+
+                if let Err(e) = cloned_db.save_room_data(instance_room) {
+                    tracing::error!("Failed to save instance room: {}", e);
+                    // Clean up created rooms on failure
+                    for created_id in &instanced_rooms {
+                        let _ = cloned_db.delete_room(created_id);
+                    }
+                    return rhai::Dynamic::UNIT;
+                }
+
+                if template_room.is_template_entrance {
+                    entrance_room_id = Some(instance_id);
                 }
             }
 
-            if let Err(e) = cloned_db.save_room_data(instance_room) {
-                tracing::error!("Failed to update instance room exits: {}", e);
-            }
-        }
+            // Second pass: Reconnect exits using the mapping
+            for template_room in &template_rooms {
+                let instance_id = room_mapping[&template_room.id];
+                let mut instance_room = match cloned_db.get_room_data(&instance_id) {
+                    Ok(Some(r)) => r,
+                    _ => continue,
+                };
 
-        // Set entrance room's "out" exit to leasing office
-        if let Some(entrance_id) = entrance_room_id {
-            if let Ok(Some(mut entrance)) = cloned_db.get_room_data(&entrance_id) {
-                entrance.exits.out = Some(office_uuid);
-                if let Err(e) = cloned_db.save_room_data(entrance) {
-                    tracing::error!("Failed to set entrance out exit: {}", e);
+                // Map each exit to new instance room
+                let exits = &template_room.exits;
+                instance_room.exits.north = exits.north.and_then(|t| room_mapping.get(&t).copied());
+                instance_room.exits.south = exits.south.and_then(|t| room_mapping.get(&t).copied());
+                instance_room.exits.east = exits.east.and_then(|t| room_mapping.get(&t).copied());
+                instance_room.exits.west = exits.west.and_then(|t| room_mapping.get(&t).copied());
+                instance_room.exits.up = exits.up.and_then(|t| room_mapping.get(&t).copied());
+                instance_room.exits.down = exits.down.and_then(|t| room_mapping.get(&t).copied());
+                // Copy custom exits (map to new room IDs)
+                for (name, target) in &exits.custom {
+                    if let Some(&new_target) = room_mapping.get(target) {
+                        instance_room.exits.custom.insert(name.clone(), new_target);
+                    }
+                }
+
+                if let Err(e) = cloned_db.save_room_data(instance_room) {
+                    tracing::error!("Failed to update instance room exits: {}", e);
                 }
             }
-        }
 
-        // Copy amenity items (items with no_get flag) to instance rooms
-        for template_room in &template_rooms {
-            let instance_room_id = room_mapping[&template_room.id];
-            if let Ok(items) = cloned_db.get_items_in_room(&template_room.id) {
-                for item in items {
-                    if item.flags.no_get {
-                        // Clone the item
-                        let mut cloned_item = item.clone();
-                        cloned_item.id = uuid::Uuid::new_v4();
-                        cloned_item.is_prototype = false;
-                        if let Err(e) = cloned_db.save_item_data(cloned_item.clone()) {
-                            tracing::error!("Failed to save cloned amenity: {}", e);
-                            continue;
-                        }
-                        if let Err(e) = cloned_db.move_item_to_room(&cloned_item.id, &instance_room_id) {
-                            tracing::error!("Failed to move amenity to instance room: {}", e);
+            // Set entrance room's "out" exit to leasing office
+            if let Some(entrance_id) = entrance_room_id {
+                if let Ok(Some(mut entrance)) = cloned_db.get_room_data(&entrance_id) {
+                    entrance.exits.out = Some(office_uuid);
+                    if let Err(e) = cloned_db.save_room_data(entrance) {
+                        tracing::error!("Failed to set entrance out exit: {}", e);
+                    }
+                }
+            }
+
+            // Copy amenity items (items with no_get flag) to instance rooms
+            for template_room in &template_rooms {
+                let instance_room_id = room_mapping[&template_room.id];
+                if let Ok(items) = cloned_db.get_items_in_room(&template_room.id) {
+                    for item in items {
+                        if item.flags.no_get {
+                            // Clone the item
+                            let mut cloned_item = item.clone();
+                            cloned_item.id = uuid::Uuid::new_v4();
+                            cloned_item.is_prototype = false;
+                            if let Err(e) = cloned_db.save_item_data(cloned_item.clone()) {
+                                tracing::error!("Failed to save cloned amenity: {}", e);
+                                continue;
+                            }
+                            if let Err(e) = cloned_db.move_item_to_room(&cloned_item.id, &instance_room_id) {
+                                tracing::error!("Failed to move amenity to instance room: {}", e);
+                            }
                         }
                     }
                 }
             }
-        }
 
-        // Rent period is configurable via settings (default: 30 game days, 900 secs per game day)
-        let rent_period_days: i64 = cloned_db
-            .get_setting_or_default("rent_period_game_days", "30")
-            .unwrap_or_else(|_| "30".to_string())
-            .parse::<i64>()
-            .unwrap_or(30)
-            .max(1);
-        let rent_duration: i64 = rent_period_days * 900;
+            // Rent period is configurable via settings (default: 30 game days, 900 secs per game day)
+            let rent_period_days: i64 = cloned_db
+                .get_setting_or_default("rent_period_game_days", "30")
+                .unwrap_or_else(|_| "30".to_string())
+                .parse::<i64>()
+                .unwrap_or(30)
+                .max(1);
+            let rent_duration: i64 = rent_period_days * 900;
 
-        // Create lease
-        let lease = LeaseData::new(
-            template_vnum.clone(),
-            owner_name.clone(),
-            agent_uuid,
-            office_uuid,
-            area_id,
-            template.monthly_rent,
-        );
+            // Create lease
+            let lease = LeaseData::new(
+                template_vnum.clone(),
+                owner_name.clone(),
+                agent_uuid,
+                office_uuid,
+                area_id,
+                template.monthly_rent,
+            );
 
-        // Update lease with calculated values
-        let mut final_lease = lease;
-        final_lease.id = lease_id;
-        final_lease.instanced_rooms = instanced_rooms;
-        final_lease.entrance_room_id = entrance_room_id.unwrap_or(uuid::Uuid::nil());
-        final_lease.rent_paid_until = now + rent_duration;
-        final_lease.created_at = now;
+            // Update lease with calculated values
+            let mut final_lease = lease;
+            final_lease.id = lease_id;
+            final_lease.instanced_rooms = instanced_rooms;
+            final_lease.entrance_room_id = entrance_room_id.unwrap_or(uuid::Uuid::nil());
+            final_lease.rent_paid_until = now + rent_duration;
+            final_lease.created_at = now;
 
-        // Save lease
-        if let Err(e) = cloned_db.save_lease(&final_lease) {
-            tracing::error!("Failed to save lease: {}", e);
-            // Clean up on failure
-            for room_id in &final_lease.instanced_rooms {
-                let _ = cloned_db.delete_room(room_id);
+            // Save lease
+            if let Err(e) = cloned_db.save_lease(&final_lease) {
+                tracing::error!("Failed to save lease: {}", e);
+                // Clean up on failure
+                for room_id in &final_lease.instanced_rooms {
+                    let _ = cloned_db.delete_room(room_id);
+                }
+                return rhai::Dynamic::UNIT;
             }
-            return rhai::Dynamic::UNIT;
-        }
 
-        tracing::info!("Created lease {} for {} (template: {})", lease_id, owner_name, template_vnum);
-        rhai::Dynamic::from(final_lease)
-    });
+            tracing::info!(
+                "Created lease {} for {} (template: {})",
+                lease_id,
+                owner_name,
+                template_vnum
+            );
+            rhai::Dynamic::from(final_lease)
+        },
+    );
 
     // is_lease_paid(lease_id) -> bool
     let cloned_db = db.clone();
@@ -753,28 +803,38 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // can_enter_property(lease_id, char_name) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("can_enter_property", move |lease_id: String, char_name: String| -> bool {
-        let uuid = match uuid::Uuid::parse_str(&lease_id) {
-            Ok(u) => u,
-            Err(_) => return false,
-        };
+    engine.register_fn(
+        "can_enter_property",
+        move |lease_id: String, char_name: String| -> bool {
+            let uuid = match uuid::Uuid::parse_str(&lease_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
 
-        match cloned_db.get_lease(&uuid) {
-            Ok(Some(lease)) => {
-                // Owner always has access
-                if lease.owner_name.to_lowercase() == char_name.to_lowercase() {
-                    return true;
+            match cloned_db.get_lease(&uuid) {
+                Ok(Some(lease)) => {
+                    // Owner always has access
+                    if lease.owner_name.to_lowercase() == char_name.to_lowercase() {
+                        return true;
+                    }
+                    // Trusted visitors always have access
+                    if lease
+                        .trusted_visitors
+                        .iter()
+                        .any(|n| n.to_lowercase() == char_name.to_lowercase())
+                    {
+                        return true;
+                    }
+                    // Check party access level
+                    matches!(
+                        lease.party_access,
+                        PartyAccessLevel::VisitOnly | PartyAccessLevel::FullAccess
+                    )
                 }
-                // Trusted visitors always have access
-                if lease.trusted_visitors.iter().any(|n| n.to_lowercase() == char_name.to_lowercase()) {
-                    return true;
-                }
-                // Check party access level
-                matches!(lease.party_access, PartyAccessLevel::VisitOnly | PartyAccessLevel::FullAccess)
+                _ => false,
             }
-            _ => false,
-        }
-    });
+        },
+    );
 
     // can_use_property(lease_id, char_name) -> bool (full access for taking items, etc.)
     let cloned_db = db.clone();
@@ -791,7 +851,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     return true;
                 }
                 // Trusted visitors have full access
-                if lease.trusted_visitors.iter().any(|n| n.to_lowercase() == char_name.to_lowercase()) {
+                if lease
+                    .trusted_visitors
+                    .iter()
+                    .any(|n| n.to_lowercase() == char_name.to_lowercase())
+                {
                     return true;
                 }
                 // Check party access level for full access
@@ -872,65 +936,68 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // create_template_room(template_id, title, description, is_entrance) -> RoomData | ()
     let cloned_db = db.clone();
-    engine.register_fn("create_template_room", move |template_id: String, title: String, description: String, is_entrance: bool| -> rhai::Dynamic {
-        let template_uuid = match uuid::Uuid::parse_str(&template_id) {
-            Ok(u) => u,
-            Err(_) => return rhai::Dynamic::UNIT,
-        };
+    engine.register_fn(
+        "create_template_room",
+        move |template_id: String, title: String, description: String, is_entrance: bool| -> rhai::Dynamic {
+            let template_uuid = match uuid::Uuid::parse_str(&template_id) {
+                Ok(u) => u,
+                Err(_) => return rhai::Dynamic::UNIT,
+            };
 
-        // Get template to inherit area_id
-        let area_id = match cloned_db.get_property_template(&template_uuid) {
-            Ok(Some(template)) => template.area_id,
-            _ => None,
-        };
+            // Get template to inherit area_id
+            let area_id = match cloned_db.get_property_template(&template_uuid) {
+                Ok(Some(template)) => template.area_id,
+                _ => None,
+            };
 
-        let room = RoomData {
-            id: uuid::Uuid::new_v4(),
-            title,
-            description,
-            exits: RoomExits::default(),
-            flags: RoomFlags::default(),
-            extra_descs: Vec::new(),
-            vnum: None,
-            area_id,
-            triggers: Vec::new(),
-            doors: std::collections::HashMap::new(),
-            spring_desc: None,
-            summer_desc: None,
-            autumn_desc: None,
-            winter_desc: None,
-            dynamic_desc: None,
-            water_type: crate::WaterType::None,
-            catch_table: Vec::new(),
-            is_property_template: true,
-            property_template_id: Some(template_uuid),
-            is_template_entrance: is_entrance,
-            property_lease_id: None,
-            property_entrance: false,
-            recent_departures: Vec::new(),
-            blood_trails: Vec::new(),
-            traps: Vec::new(),
-            living_capacity: 0,
-            residents: Vec::new(),
-        };
+            let room = RoomData {
+                id: uuid::Uuid::new_v4(),
+                title,
+                description,
+                exits: RoomExits::default(),
+                flags: RoomFlags::default(),
+                extra_descs: Vec::new(),
+                vnum: None,
+                area_id,
+                triggers: Vec::new(),
+                doors: std::collections::HashMap::new(),
+                spring_desc: None,
+                summer_desc: None,
+                autumn_desc: None,
+                winter_desc: None,
+                dynamic_desc: None,
+                water_type: crate::WaterType::None,
+                catch_table: Vec::new(),
+                is_property_template: true,
+                property_template_id: Some(template_uuid),
+                is_template_entrance: is_entrance,
+                property_lease_id: None,
+                property_entrance: false,
+                recent_departures: Vec::new(),
+                blood_trails: Vec::new(),
+                traps: Vec::new(),
+                living_capacity: 0,
+                residents: Vec::new(),
+            };
 
-        if let Err(e) = cloned_db.save_room_data(room.clone()) {
-            tracing::error!("Failed to save template room: {}", e);
-            return rhai::Dynamic::UNIT;
-        }
+            if let Err(e) = cloned_db.save_room_data(room.clone()) {
+                tracing::error!("Failed to save template room: {}", e);
+                return rhai::Dynamic::UNIT;
+            }
 
-        // If this is the entrance, update the template
-        if is_entrance {
-            if let Ok(Some(mut template)) = cloned_db.get_property_template(&template_uuid) {
-                template.entrance_room_id = room.id;
-                if let Err(e) = cloned_db.save_property_template(&template) {
-                    tracing::error!("Failed to update template entrance: {}", e);
+            // If this is the entrance, update the template
+            if is_entrance {
+                if let Ok(Some(mut template)) = cloned_db.get_property_template(&template_uuid) {
+                    template.entrance_room_id = room.id;
+                    if let Err(e) = cloned_db.save_property_template(&template) {
+                        tracing::error!("Failed to update template entrance: {}", e);
+                    }
                 }
             }
-        }
 
-        rhai::Dynamic::from(room)
-    });
+            rhai::Dynamic::from(room)
+        },
+    );
 
     // set_room_as_template_entrance(room_id) -> bool
     let cloned_db = db.clone();
@@ -984,28 +1051,31 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // mark_room_as_template(room_id, template_id) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("mark_room_as_template", move |room_id: String, template_id: String| -> bool {
-        let room_uuid = match uuid::Uuid::parse_str(&room_id) {
-            Ok(u) => u,
-            Err(_) => return false,
-        };
-        let template_uuid = match uuid::Uuid::parse_str(&template_id) {
-            Ok(u) => u,
-            Err(_) => return false,
-        };
+    engine.register_fn(
+        "mark_room_as_template",
+        move |room_id: String, template_id: String| -> bool {
+            let room_uuid = match uuid::Uuid::parse_str(&room_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let template_uuid = match uuid::Uuid::parse_str(&template_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
 
-        if let Ok(Some(mut room)) = cloned_db.get_room_data(&room_uuid) {
-            room.is_property_template = true;
-            room.property_template_id = Some(template_uuid);
-            if let Err(e) = cloned_db.save_room_data(room) {
-                tracing::error!("Failed to save room: {}", e);
-                return false;
+            if let Ok(Some(mut room)) = cloned_db.get_room_data(&room_uuid) {
+                room.is_property_template = true;
+                room.property_template_id = Some(template_uuid);
+                if let Err(e) = cloned_db.save_room_data(room) {
+                    tracing::error!("Failed to save room: {}", e);
+                    return false;
+                }
+                true
+            } else {
+                false
             }
-            true
-        } else {
-            false
-        }
-    });
+        },
+    );
 
     // ========== Escrow Functions ==========
 
@@ -1050,61 +1120,64 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // retrieve_escrow_items(escrow_id, dest_room_id) -> bool
     // Moves all items from escrow to a destination room
     let cloned_db = db.clone();
-    engine.register_fn("retrieve_escrow_items", move |escrow_id: String, dest_room_id: String| -> bool {
-        let escrow_uuid = match uuid::Uuid::parse_str(&escrow_id) {
-            Ok(u) => u,
-            Err(_) => return false,
-        };
-        let room_uuid = match uuid::Uuid::parse_str(&dest_room_id) {
-            Ok(u) => u,
-            Err(_) => return false,
-        };
+    engine.register_fn(
+        "retrieve_escrow_items",
+        move |escrow_id: String, dest_room_id: String| -> bool {
+            let escrow_uuid = match uuid::Uuid::parse_str(&escrow_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let room_uuid = match uuid::Uuid::parse_str(&dest_room_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
 
-        // Get escrow
-        let escrow = match cloned_db.get_escrow(&escrow_uuid) {
-            Ok(Some(e)) => e,
-            _ => return false,
-        };
+            // Get escrow
+            let escrow = match cloned_db.get_escrow(&escrow_uuid) {
+                Ok(Some(e)) => e,
+                _ => return false,
+            };
 
-        // Move all items to destination room
-        for item_id in &escrow.items {
-            if let Err(e) = cloned_db.move_item_to_room(item_id, &room_uuid) {
-                tracing::error!("Failed to move item {} to room: {}", item_id, e);
-            }
+            // Move all items to destination room
+            for item_id in &escrow.items {
+                if let Err(e) = cloned_db.move_item_to_room(item_id, &room_uuid) {
+                    tracing::error!("Failed to move item {} to room: {}", item_id, e);
+                }
 
-            // Relocate any plant growing in this pot
-            if let Ok(Some(item)) = cloned_db.get_item_data(item_id) {
-                if item.flags.plant_pot {
-                    if let Ok(plants) = cloned_db.list_all_plants() {
-                        for mut plant in plants {
-                            if plant.pot_item_id == Some(*item_id) {
-                                plant.room_id = room_uuid;
-                                if let Err(e) = cloned_db.save_plant(plant) {
-                                    tracing::error!("Failed to relocate plant for pot {}: {}", item_id, e);
+                // Relocate any plant growing in this pot
+                if let Ok(Some(item)) = cloned_db.get_item_data(item_id) {
+                    if item.flags.plant_pot {
+                        if let Ok(plants) = cloned_db.list_all_plants() {
+                            for mut plant in plants {
+                                if plant.pot_item_id == Some(*item_id) {
+                                    plant.room_id = room_uuid;
+                                    if let Err(e) = cloned_db.save_plant(plant) {
+                                        tracing::error!("Failed to relocate plant for pot {}: {}", item_id, e);
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-        }
 
-        // Remove escrow from character's escrow_ids
-        if let Ok(Some(mut char_data)) = cloned_db.get_character_data(&escrow.owner_name) {
-            char_data.escrow_ids.retain(|id| *id != escrow_uuid);
-            if let Err(e) = cloned_db.save_character_data(char_data) {
-                tracing::error!("Failed to update character escrow_ids: {}", e);
+            // Remove escrow from character's escrow_ids
+            if let Ok(Some(mut char_data)) = cloned_db.get_character_data(&escrow.owner_name) {
+                char_data.escrow_ids.retain(|id| *id != escrow_uuid);
+                if let Err(e) = cloned_db.save_character_data(char_data) {
+                    tracing::error!("Failed to update character escrow_ids: {}", e);
+                }
             }
-        }
 
-        // Delete escrow entry
-        if let Err(e) = cloned_db.delete_escrow(&escrow_uuid) {
-            tracing::error!("Failed to delete escrow {}: {}", escrow_uuid, e);
-            return false;
-        }
+            // Delete escrow entry
+            if let Err(e) = cloned_db.delete_escrow(&escrow_uuid) {
+                tracing::error!("Failed to delete escrow {}: {}", escrow_uuid, e);
+                return false;
+            }
 
-        true
-    });
+            true
+        },
+    );
 
     // delete_escrow(escrow_id) -> bool
     // Deletes an escrow entry and all its items
@@ -1163,36 +1236,39 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // start_tour(connection_id, template_vnum) -> bool
     let cloned_db = db.clone();
     let conns = connections.clone();
-    engine.register_fn("start_tour", move |connection_id: String, template_vnum: String| -> bool {
-        let template = match cloned_db.get_property_template_by_vnum(&template_vnum) {
-            Ok(Some(t)) => t,
-            _ => return false,
-        };
+    engine.register_fn(
+        "start_tour",
+        move |connection_id: String, template_vnum: String| -> bool {
+            let template = match cloned_db.get_property_template_by_vnum(&template_vnum) {
+                Ok(Some(t)) => t,
+                _ => return false,
+            };
 
-        if template.entrance_room_id.is_nil() {
-            return false;
-        }
-
-        // Get current room to save as return point
-        let char_name = get_character_name_from_connection(&conns, &connection_id);
-        if char_name.is_empty() {
-            return false;
-        }
-
-        if let Ok(Some(mut char_data)) = cloned_db.get_character_data(&char_name) {
-            char_data.tour_origin_room = Some(char_data.current_room_id);
-            char_data.on_tour = true;
-            char_data.current_room_id = template.entrance_room_id;
-
-            if let Err(e) = cloned_db.save_character_data(char_data.clone()) {
-                tracing::error!("Failed to save character for tour: {}", e);
+            if template.entrance_room_id.is_nil() {
                 return false;
             }
-            true
-        } else {
-            false
-        }
-    });
+
+            // Get current room to save as return point
+            let char_name = get_character_name_from_connection(&conns, &connection_id);
+            if char_name.is_empty() {
+                return false;
+            }
+
+            if let Ok(Some(mut char_data)) = cloned_db.get_character_data(&char_name) {
+                char_data.tour_origin_room = Some(char_data.current_room_id);
+                char_data.on_tour = true;
+                char_data.current_room_id = template.entrance_room_id;
+
+                if let Err(e) = cloned_db.save_character_data(char_data.clone()) {
+                    tracing::error!("Failed to save character for tour: {}", e);
+                    return false;
+                }
+                true
+            } else {
+                false
+            }
+        },
+    );
 
     // end_tour(connection_id) -> bool
     let cloned_db = db.clone();
@@ -1467,66 +1543,72 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_player_lease_by_name(owner_name, area_id) -> LeaseData | ()
     // Gets a player's lease by their name (for visit command)
     let cloned_db = db.clone();
-    engine.register_fn("get_player_lease_by_name", move |owner_name: String, area_id: String| -> rhai::Dynamic {
-        let area_uuid = match uuid::Uuid::parse_str(&area_id) {
-            Ok(u) => u,
-            Err(_) => return rhai::Dynamic::UNIT,
-        };
+    engine.register_fn(
+        "get_player_lease_by_name",
+        move |owner_name: String, area_id: String| -> rhai::Dynamic {
+            let area_uuid = match uuid::Uuid::parse_str(&area_id) {
+                Ok(u) => u,
+                Err(_) => return rhai::Dynamic::UNIT,
+            };
 
-        if let Ok(leases) = cloned_db.list_all_leases() {
-            for lease in leases {
-                if lease.owner_name.to_lowercase() == owner_name.to_lowercase()
-                    && lease.area_id == area_uuid
-                    && !lease.is_evicted
-                {
-                    return rhai::Dynamic::from(lease);
+            if let Ok(leases) = cloned_db.list_all_leases() {
+                for lease in leases {
+                    if lease.owner_name.to_lowercase() == owner_name.to_lowercase()
+                        && lease.area_id == area_uuid
+                        && !lease.is_evicted
+                    {
+                        return rhai::Dynamic::from(lease);
+                    }
                 }
             }
-        }
-        rhai::Dynamic::UNIT
-    });
+            rhai::Dynamic::UNIT
+        },
+    );
 
     // transfer_property_items(from_lease_id, to_lease_id) -> i64
     // Moves all player items from one property to another, returns count
     let cloned_db = db.clone();
-    engine.register_fn("transfer_property_items", move |from_lease_id: String, to_lease_id: String| -> i64 {
-        let from_uuid = match uuid::Uuid::parse_str(&from_lease_id) {
-            Ok(u) => u,
-            Err(_) => return 0,
-        };
-        let to_uuid = match uuid::Uuid::parse_str(&to_lease_id) {
-            Ok(u) => u,
-            Err(_) => return 0,
-        };
+    engine.register_fn(
+        "transfer_property_items",
+        move |from_lease_id: String, to_lease_id: String| -> i64 {
+            let from_uuid = match uuid::Uuid::parse_str(&from_lease_id) {
+                Ok(u) => u,
+                Err(_) => return 0,
+            };
+            let to_uuid = match uuid::Uuid::parse_str(&to_lease_id) {
+                Ok(u) => u,
+                Err(_) => return 0,
+            };
 
-        let from_lease = match cloned_db.get_lease(&from_uuid) {
-            Ok(Some(l)) => l,
-            _ => return 0,
-        };
-        let to_lease = match cloned_db.get_lease(&to_uuid) {
-            Ok(Some(l)) => l,
-            _ => return 0,
-        };
+            let from_lease = match cloned_db.get_lease(&from_uuid) {
+                Ok(Some(l)) => l,
+                _ => return 0,
+            };
+            let to_lease = match cloned_db.get_lease(&to_uuid) {
+                Ok(Some(l)) => l,
+                _ => return 0,
+            };
 
-        // Get destination entrance room
-        let dest_room_id = to_lease.entrance_room_id;
-        let mut count = 0i64;
+            // Get destination entrance room
+            let dest_room_id = to_lease.entrance_room_id;
+            let mut count = 0i64;
 
-        // Move all non-amenity items from source property
-        for room_id in &from_lease.instanced_rooms {
-            if let Ok(items) = cloned_db.get_items_in_room(room_id) {
-                for item in items {
-                    if !item.flags.no_get {
-                        if cloned_db.move_item_to_room(&item.id, &dest_room_id).is_ok() {
-                            count += 1;
+            // Move all non-amenity items from source property
+            for room_id in &from_lease.instanced_rooms {
+                if let Ok(items) = cloned_db.get_items_in_room(room_id) {
+                    for item in items {
+                        if !item.flags.no_get {
+                            if cloned_db.move_item_to_room(&item.id, &dest_room_id).is_ok() {
+                                count += 1;
+                            }
                         }
                     }
                 }
             }
-        }
 
-        count
-    });
+            count
+        },
+    );
 
     // delete_lease_rooms(lease_id) -> bool
     // Deletes all rooms associated with a lease (for upgrade cleanup)

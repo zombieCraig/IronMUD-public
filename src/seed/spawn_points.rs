@@ -1,9 +1,9 @@
 use anyhow::Result;
 use uuid::Uuid;
 
+use crate::STARTING_ROOM_ID;
 use crate::db::Db;
 use crate::types::*;
-use crate::STARTING_ROOM_ID;
 
 use super::seed_uuid;
 
@@ -162,14 +162,12 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         enabled: true,
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
-        dependencies: vec![
-            SpawnDependency {
-                item_vnum: "oakvale:gate_key".to_string(),
-                destination: SpawnDestination::Inventory,
-                count: 1,
-                chance: 100,
-            },
-        ],
+        dependencies: vec![SpawnDependency {
+            item_vnum: "oakvale:gate_key".to_string(),
+            destination: SpawnDestination::Inventory,
+            count: 1,
+            chance: 100,
+        }],
     });
 
     // ── Whispering Woods Enemies ─────────────────────────────────

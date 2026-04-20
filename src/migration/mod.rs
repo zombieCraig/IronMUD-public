@@ -6,22 +6,22 @@
 //! tick lives in `crate::ticks::migration`.
 
 use anyhow::{Context, Result};
+use rand::Rng;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
-use rand::Rng;
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
+use crate::SharedConnections;
 use crate::db::Db;
 use crate::session::{broadcast_to_builders, broadcast_to_room_awake};
 use crate::types::{
-    AreaData, Characteristics, MobileData, MobileFlags, NeedsState, Relationship,
-    RelationshipKind, RoomData, SimulationConfig, SocialState,
+    AreaData, Characteristics, MobileData, MobileFlags, NeedsState, Relationship, RelationshipKind, RoomData,
+    SimulationConfig, SocialState,
 };
-use crate::SharedConnections;
 
 pub mod variations;
 
@@ -110,8 +110,7 @@ fn load_json_dir<T: for<'de> Deserialize<'de>>(dir: &Path) -> Result<HashMap<Str
     if !dir.exists() {
         return Ok(out);
     }
-    let entries = std::fs::read_dir(dir)
-        .with_context(|| format!("reading {}", dir.display()))?;
+    let entries = std::fs::read_dir(dir).with_context(|| format!("reading {}", dir.display()))?;
     for entry in entries {
         let entry = entry?;
         let path = entry.path();
@@ -122,10 +121,8 @@ fn load_json_dir<T: for<'de> Deserialize<'de>>(dir: &Path) -> Result<HashMap<Str
             Some(k) => k.to_string(),
             None => continue,
         };
-        let text = std::fs::read_to_string(&path)
-            .with_context(|| format!("reading {}", path.display()))?;
-        let parsed: T = serde_json::from_str(&text)
-            .with_context(|| format!("parsing {}", path.display()))?;
+        let text = std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+        let parsed: T = serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
         out.insert(key, parsed);
     }
     Ok(out)
@@ -139,10 +136,8 @@ pub fn load_topic_pool(data_dir: &Path) -> Result<Vec<String>> {
     if !path.exists() {
         return Ok(Vec::new());
     }
-    let text = std::fs::read_to_string(&path)
-        .with_context(|| format!("reading {}", path.display()))?;
-    let parsed: TopicPoolFile = serde_json::from_str(&text)
-        .with_context(|| format!("parsing {}", path.display()))?;
+    let text = std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    let parsed: TopicPoolFile = serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
     Ok(parsed.topics)
 }
 
@@ -178,11 +173,7 @@ pub fn generate_characteristics<R: Rng>(
     // draw from the same profile, but immigration never spawns a baby/child/
     // adolescent as a standalone migrant. Filter by the stage of the range's
     // minimum age.
-    let adult_ranges: Vec<&AgeRange> = profile
-        .age_ranges
-        .iter()
-        .filter(|r| !is_juvenile_range(r))
-        .collect();
+    let adult_ranges: Vec<&AgeRange> = profile.age_ranges.iter().filter(|r| !is_juvenile_range(r)).collect();
     let (age, age_label) = if adult_ranges.is_empty() {
         (30, "adult".to_string())
     } else {
@@ -248,9 +239,7 @@ fn pick<'a, R: Rng>(pool: &'a [String], rng: &mut R) -> Option<&'a str> {
 pub fn is_juvenile_range(range: &AgeRange) -> bool {
     matches!(
         crate::types::life_stage_for_age(range.min.min(range.max)),
-        crate::types::LifeStage::Baby
-            | crate::types::LifeStage::Child
-            | crate::types::LifeStage::Adolescent
+        crate::types::LifeStage::Baby | crate::types::LifeStage::Child | crate::types::LifeStage::Adolescent
     )
 }
 
@@ -262,11 +251,7 @@ pub fn generate_child_characteristics<R: Rng>(
     gender: &str,
     rng: &mut R,
 ) -> Option<(Characteristics, String)> {
-    let juvenile_ranges: Vec<&AgeRange> = profile
-        .age_ranges
-        .iter()
-        .filter(|r| is_juvenile_range(r))
-        .collect();
+    let juvenile_ranges: Vec<&AgeRange> = profile.age_ranges.iter().filter(|r| is_juvenile_range(r)).collect();
     if juvenile_ranges.is_empty() {
         return None;
     }
@@ -317,12 +302,7 @@ pub fn generate_child_characteristics<R: Rng>(
 
 /// Generate a first + last name from a pool, best-effort avoiding duplicates
 /// already in `existing_names`. Returns the full "First Last" string.
-pub fn generate_name<R: Rng>(
-    pool: &NamePool,
-    gender: &str,
-    existing_names: &HashSet<String>,
-    rng: &mut R,
-) -> String {
+pub fn generate_name<R: Rng>(pool: &NamePool, gender: &str, existing_names: &HashSet<String>, rng: &mut R) -> String {
     let first_pool: &[String] = if gender == "female" {
         &pool.female_first
     } else {
@@ -351,7 +331,11 @@ pub fn generate_name<R: Rng>(
     // Fallback: accept duplicate after retries
     let first = first_pool.choose(rng).map(|s| s.as_str()).unwrap_or("Stranger");
     let last = pool.last.choose(rng).map(|s| s.as_str()).unwrap_or("");
-    if last.is_empty() { first.to_string() } else { format!("{} {}", first, last) }
+    if last.is_empty() {
+        first.to_string()
+    } else {
+        format!("{} {}", first, last)
+    }
 }
 
 /// Pick a gender ("male"/"female") with 50/50 odds.
@@ -373,43 +357,46 @@ pub fn build_migrant<R: Rng>(
         .with_context(|| format!("unknown name pool '{}'", area.immigration_name_pool))?;
     let visual_profile = data
         .visual_profile(&area.immigration_visual_profile)
-        .with_context(|| format!(
-            "unknown visual profile '{}'", area.immigration_visual_profile
-        ))?;
+        .with_context(|| format!("unknown visual profile '{}'", area.immigration_visual_profile))?;
 
     let gender = random_gender(rng);
     let full_name = generate_name(name_pool, gender, existing_names, rng);
     let (chars, description) = generate_characteristics(visual_profile, gender, rng);
 
-    let keywords: Vec<String> = full_name
-        .split_whitespace()
-        .map(|s| s.to_lowercase())
-        .collect();
+    let keywords: Vec<String> = full_name.split_whitespace().map(|s| s.to_lowercase()).collect();
 
     // Short desc: "Akio Tanaka, a young adult man, is here."
     let short_desc = format!(
         "{} is here, a {} {}.",
-        full_name, chars.age_label, if gender == "female" { "woman" } else { "man" }
+        full_name,
+        chars.age_label,
+        if gender == "female" { "woman" } else { "man" }
     );
 
     // Simulation: inherit area defaults if set, override home_room_vnum.
-    let simulation = area.migrant_sim_defaults.as_ref().map(|defaults| {
-        let mut sim = defaults.clone();
-        sim.home_room_vnum = home_room_vnum.to_string();
-        sim
-    }).or_else(|| Some(SimulationConfig {
-        home_room_vnum: home_room_vnum.to_string(),
-        work_room_vnum: String::new(),
-        shop_room_vnum: String::new(),
-        preferred_food_vnum: String::new(),
-        work_pay: 50,
-        work_start_hour: 8,
-        work_end_hour: 17,
-        hunger_decay_rate: 0,
-        energy_decay_rate: 0,
-        comfort_decay_rate: 0,
-        low_gold_threshold: 10,
-    }));
+    let simulation = area
+        .migrant_sim_defaults
+        .as_ref()
+        .map(|defaults| {
+            let mut sim = defaults.clone();
+            sim.home_room_vnum = home_room_vnum.to_string();
+            sim
+        })
+        .or_else(|| {
+            Some(SimulationConfig {
+                home_room_vnum: home_room_vnum.to_string(),
+                work_room_vnum: String::new(),
+                shop_room_vnum: String::new(),
+                preferred_food_vnum: String::new(),
+                work_pay: 50,
+                work_start_hour: 8,
+                work_end_hour: 17,
+                hunger_decay_rate: 0,
+                energy_decay_rate: 0,
+                comfort_decay_rate: 0,
+                low_gold_threshold: 10,
+            })
+        });
 
     let mut mobile = MobileData::new(full_name.clone());
     mobile.is_prototype = false;
@@ -499,11 +486,7 @@ pub fn absolute_game_day(year: u32, month: u8, day: u8) -> i64 {
 
 /// Synchronous core of the migration tick. Exposed so integration tests can
 /// drive it without spinning up the tokio runner.
-pub fn process_migration_tick(
-    db: &Db,
-    connections: &SharedConnections,
-    data: &MigrationData,
-) -> Result<()> {
+pub fn process_migration_tick(db: &Db, connections: &SharedConnections, data: &MigrationData) -> Result<()> {
     let game_time = db.get_game_time()?;
     let current_day = absolute_game_day(game_time.year, game_time.month, game_time.day);
 
@@ -632,15 +615,13 @@ fn process_cohabitations(db: &Db, mobiles: &[MobileData]) -> Result<()> {
     Ok(())
 }
 
-fn attempt_cohabitation_merge(
-    db: &Db,
-    a: &MobileData,
-    a_vnum: &str,
-    b: &MobileData,
-    b_vnum: &str,
-) -> Result<()> {
-    let Some(room_a) = db.get_room_by_vnum(a_vnum)? else { return Ok(()) };
-    let Some(room_b) = db.get_room_by_vnum(b_vnum)? else { return Ok(()) };
+fn attempt_cohabitation_merge(db: &Db, a: &MobileData, a_vnum: &str, b: &MobileData, b_vnum: &str) -> Result<()> {
+    let Some(room_a) = db.get_room_by_vnum(a_vnum)? else {
+        return Ok(());
+    };
+    let Some(room_b) = db.get_room_by_vnum(b_vnum)? else {
+        return Ok(());
+    };
 
     let free_a = (room_a.living_capacity as usize).saturating_sub(room_a.residents.len());
     let free_b = (room_b.living_capacity as usize).saturating_sub(room_b.residents.len());
@@ -671,10 +652,7 @@ fn attempt_cohabitation_merge(
     // converge on the same Uuid. Preference order: whichever side already
     // has a household keeps theirs; otherwise mint fresh. Enables pregnancy
     // on Cohabitant pairs (requires shared household).
-    let household_id = a
-        .household_id
-        .or(b.household_id)
-        .unwrap_or_else(Uuid::new_v4);
+    let household_id = a.household_id.or(b.household_id).unwrap_or_else(Uuid::new_v4);
 
     // Promote both sides' relationship to Cohabitant.
     let a_id = a.id;
@@ -814,11 +792,7 @@ fn find_free_liveable_room(db: &Db, exclude_vnum: &str) -> Result<Option<RoomDat
 }
 
 fn bereaved(mobile: &MobileData) -> bool {
-    mobile
-        .social
-        .as_ref()
-        .and_then(|s| s.bereaved_until_day)
-        .is_some()
+    mobile.social.as_ref().and_then(|s| s.bereaved_until_day).is_some()
 }
 
 fn ordered_pair(a: Uuid, b: Uuid) -> (Uuid, Uuid) {
@@ -861,33 +835,23 @@ pub fn area_for_resident(db: &Db, mobile: &MobileData) -> Option<AreaData> {
 /// and (if supplied and alive) `father_id`, plus Sibling links to any existing
 /// living children of the mother. Caller is responsible for clearing the
 /// mother's `pregnant_until_day` + `pregnant_by` after a successful return.
-pub fn spawn_child(
-    db: &Db,
-    data: &MigrationData,
-    mother_id: Uuid,
-    father_id: Option<Uuid>,
-) -> Result<Uuid> {
+pub fn spawn_child(db: &Db, data: &MigrationData, mother_id: Uuid, father_id: Option<Uuid>) -> Result<Uuid> {
     let mother = db
         .get_mobile_data(&mother_id)?
         .context("spawn_child: mother not found")?;
-    let area = area_for_resident(db, &mother)
-        .context("spawn_child: mother has no resolvable area")?;
-    let profile = data
-        .visual_profile(&area.immigration_visual_profile)
-        .with_context(|| {
-            format!(
-                "spawn_child: unknown visual profile '{}' for area '{}'",
-                area.immigration_visual_profile, area.prefix
-            )
-        })?;
-    let name_pool = data
-        .name_pool(&area.immigration_name_pool)
-        .with_context(|| {
-            format!(
-                "spawn_child: unknown name pool '{}' for area '{}'",
-                area.immigration_name_pool, area.prefix
-            )
-        })?;
+    let area = area_for_resident(db, &mother).context("spawn_child: mother has no resolvable area")?;
+    let profile = data.visual_profile(&area.immigration_visual_profile).with_context(|| {
+        format!(
+            "spawn_child: unknown visual profile '{}' for area '{}'",
+            area.immigration_visual_profile, area.prefix
+        )
+    })?;
+    let name_pool = data.name_pool(&area.immigration_name_pool).with_context(|| {
+        format!(
+            "spawn_child: unknown name pool '{}' for area '{}'",
+            area.immigration_name_pool, area.prefix
+        )
+    })?;
 
     let mut rng = thread_rng();
     let gender = random_gender(&mut rng);
@@ -1081,11 +1045,7 @@ pub fn build_migrant_family<R: Rng>(
                 .visual_profile(&area.immigration_visual_profile)
                 .expect("profile validated before build");
             let child_gender = random_gender(rng);
-            let (mut child_chars, child_desc) = match generate_child_characteristics(
-                profile,
-                child_gender,
-                rng,
-            ) {
+            let (mut child_chars, child_desc) = match generate_child_characteristics(profile, child_gender, rng) {
                 Some(pair) => pair,
                 None => {
                     // Profile lacks juvenile ranges — treat the slot as a
@@ -1130,10 +1090,7 @@ pub fn build_migrant_family<R: Rng>(
                 if child_gender == "female" { "girl" } else { "boy" }
             );
             child.long_desc = child_desc;
-            child.keywords = child_full
-                .split_whitespace()
-                .map(|s| s.to_lowercase())
-                .collect();
+            child.keywords = child_full.split_whitespace().map(|s| s.to_lowercase()).collect();
             child.characteristics = Some(child_chars);
             child.flags = MobileFlags::default();
             child.household_id = Some(household_id);
@@ -1177,10 +1134,7 @@ pub fn build_migrant_family<R: Rng>(
                     sib_b.keywords = rebuilt.split_whitespace().map(|s| s.to_lowercase()).collect();
                     if let Some(chars) = sib_b.characteristics.as_ref() {
                         let gnoun = if chars.gender == "female" { "woman" } else { "man" };
-                        sib_b.short_desc = format!(
-                            "{} is here, a {} {}.",
-                            rebuilt, chars.age_label, gnoun
-                        );
+                        sib_b.short_desc = format!("{} is here, a {} {}.", rebuilt, chars.age_label, gnoun);
                     }
                 }
             }
@@ -1216,10 +1170,7 @@ pub enum FamilyShape {
 }
 
 /// Roll the family shape for a spawn slot, or `None` for a plain single.
-pub fn roll_family_shape<R: Rng>(
-    chances: &crate::types::ImmigrationFamilyChance,
-    rng: &mut R,
-) -> Option<FamilyShape> {
+pub fn roll_family_shape<R: Rng>(chances: &crate::types::ImmigrationFamilyChance, rng: &mut R) -> Option<FamilyShape> {
     let roll: f32 = rng.r#gen();
     if roll < chances.parent_child {
         return Some(FamilyShape::ParentChild);
@@ -1254,9 +1205,7 @@ fn run_area_migration(
         broadcast_to_builders(connections, &msg);
         return Ok(0);
     }
-    if area.immigration_visual_profile.is_empty()
-        || data.visual_profile(&area.immigration_visual_profile).is_none()
-    {
+    if area.immigration_visual_profile.is_empty() || data.visual_profile(&area.immigration_visual_profile).is_none() {
         let msg = format!(
             "Migration: area '{}' references unknown visual profile '{}'",
             area.prefix, area.immigration_visual_profile
@@ -1340,11 +1289,8 @@ fn run_area_migration(
         };
 
         let group = match effective_shape {
-            Some(s) => {
-                build_migrant_family(area, &home_vnum, data, &existing_names, &mut rng, s)
-            }
-            None => build_migrant(area, &home_vnum, data, &existing_names, &mut rng)
-                .map(MigrantGroup::Single),
+            Some(s) => build_migrant_family(area, &home_vnum, data, &existing_names, &mut rng, s),
+            None => build_migrant(area, &home_vnum, data, &existing_names, &mut rng).map(MigrantGroup::Single),
         };
         let group = match group {
             Ok(g) => g,
@@ -1440,8 +1386,8 @@ fn run_area_migration(
 mod pair_housing_tests {
     use super::*;
     use crate::types::{
-        AreaData, AreaFlags, AreaPermission, CombatZoneType, ImmigrationVariationChances,
-        MobileData, RoomData, RoomExits, RoomFlags, WaterType,
+        AreaData, AreaFlags, AreaPermission, CombatZoneType, ImmigrationVariationChances, MobileData, RoomData,
+        RoomExits, RoomFlags, WaterType,
     };
 
     struct DbGuard {
@@ -1596,14 +1542,18 @@ mod pair_housing_tests {
 
         // Both sides promoted to Cohabitant.
         let alice_after = db.get_mobile_data(&alice.id).unwrap().unwrap();
-        assert!(alice_after
-            .relationships
-            .iter()
-            .any(|r| r.other_id == bob.id && matches!(r.kind, RelationshipKind::Cohabitant)));
-        assert!(bob_after
-            .relationships
-            .iter()
-            .any(|r| r.other_id == alice.id && matches!(r.kind, RelationshipKind::Cohabitant)));
+        assert!(
+            alice_after
+                .relationships
+                .iter()
+                .any(|r| r.other_id == bob.id && matches!(r.kind, RelationshipKind::Cohabitant))
+        );
+        assert!(
+            bob_after
+                .relationships
+                .iter()
+                .any(|r| r.other_id == alice.id && matches!(r.kind, RelationshipKind::Cohabitant))
+        );
     }
 
     #[test]
@@ -1627,11 +1577,13 @@ mod pair_housing_tests {
 
         let bob_after = db.get_mobile_data(&bob.id).unwrap().unwrap();
         assert_eq!(bob_after.resident_of.as_deref(), Some("free"));
-        assert!(bob_after
-            .relationships
-            .iter()
-            .find(|r| r.other_id == alice.id)
-            .map_or(false, |r| matches!(r.kind, RelationshipKind::Friend)));
+        assert!(
+            bob_after
+                .relationships
+                .iter()
+                .find(|r| r.other_id == alice.id)
+                .map_or(false, |r| matches!(r.kind, RelationshipKind::Friend))
+        );
     }
 
     #[test]
@@ -1655,8 +1607,7 @@ mod pair_housing_tests {
         // Exactly one of them is homeless now.
         let alice_after = db.get_mobile_data(&alice.id).unwrap().unwrap();
         let bob_after = db.get_mobile_data(&bob.id).unwrap().unwrap();
-        let homeless =
-            alice_after.resident_of.as_deref().unwrap_or("").is_empty() as usize
+        let homeless = alice_after.resident_of.as_deref().unwrap_or("").is_empty() as usize
             + bob_after.resident_of.as_deref().unwrap_or("").is_empty() as usize;
         assert_eq!(homeless, 1);
     }
@@ -1704,11 +1655,13 @@ mod pair_housing_tests {
         assert_eq!(social.happiness, 40); // 80 - 40
         assert!(social.bereaved_until_day.is_some());
         // Cohabitant relationship demoted to Friend.
-        assert!(alice_after
-            .relationships
-            .iter()
-            .find(|r| r.other_id == bob.id)
-            .map_or(false, |r| matches!(r.kind, RelationshipKind::Friend)));
+        assert!(
+            alice_after
+                .relationships
+                .iter()
+                .find(|r| r.other_id == bob.id)
+                .map_or(false, |r| matches!(r.kind, RelationshipKind::Friend))
+        );
         // Shared room no longer lists bob.
         let shared = db.get_room_by_vnum("shared").unwrap().unwrap();
         assert!(!shared.residents.contains(&bob.id));

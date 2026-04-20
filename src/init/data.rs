@@ -59,7 +59,11 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
         Ok(content) => match serde_json::from_str(&content) {
             Ok(classes) => {
                 world.class_definitions = classes;
-                info!("Loaded {} class definitions from {}", world.class_definitions.len(), classes_path);
+                info!(
+                    "Loaded {} class definitions from {}",
+                    world.class_definitions.len(),
+                    classes_path
+                );
             }
             Err(e) => {
                 error!("Failed to parse {}: {}", classes_path, e);
@@ -106,7 +110,11 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
                         .iter()
                         .filter_map(|r| serde_json::from_value(r.clone()).ok())
                         .collect();
-                    info!("Loaded {} race suggestions from {}", world.race_suggestions.len(), races_path);
+                    info!(
+                        "Loaded {} race suggestions from {}",
+                        world.race_suggestions.len(),
+                        races_path
+                    );
                 }
             }
             Err(e) => {
@@ -135,7 +143,10 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
             }
         },
         Err(_) => {
-            info!("No race definitions file found at {}, using default human race", race_defs_path);
+            info!(
+                "No race definitions file found at {}, using default human race",
+                race_defs_path
+            );
             world.race_definitions.insert(
                 "human".to_string(),
                 RaceDefinition {
@@ -154,7 +165,10 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
     }
 
     // Load spell definitions
-    let spell_preset = world.db.get_setting("spell_preset").unwrap_or(None)
+    let spell_preset = world
+        .db
+        .get_setting("spell_preset")
+        .unwrap_or(None)
         .unwrap_or_else(|| "fantasy".to_string());
     let spells_path = format!("scripts/data/spells_{}.json", spell_preset);
     match std::fs::read_to_string(&spells_path) {

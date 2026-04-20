@@ -1,9 +1,9 @@
 // src/script/groups.rs
 // Group/Party system functions for follow, group, ungroup, split, gtell
 
-use rhai::Engine;
-use crate::db::Db;
 use crate::SharedConnections;
+use crate::db::Db;
+use rhai::Engine;
 use std::sync::Arc;
 
 /// Register group-related functions
@@ -16,7 +16,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     engine.register_fn("get_followers", move |leader_name: String| -> rhai::Array {
         let leader_lower = leader_name.to_lowercase();
         let conns_guard = conns.lock().unwrap();
-        conns_guard.values()
+        conns_guard
+            .values()
             .filter_map(|session| {
                 session.character.as_ref().and_then(|char| {
                     if let Some(ref following) = char.following {
@@ -36,7 +37,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     engine.register_fn("get_group_members", move |leader_name: String| -> rhai::Array {
         let leader_lower = leader_name.to_lowercase();
         let conns_guard = conns.lock().unwrap();
-        conns_guard.values()
+        conns_guard
+            .values()
             .filter_map(|session| {
                 session.character.as_ref().and_then(|char| {
                     if char.is_grouped {
@@ -54,53 +56,61 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // get_group_members_in_room(leader_name, room_id) -> Array of grouped members in same room
     let conns = connections.clone();
-    engine.register_fn("get_group_members_in_room", move |leader_name: String, room_id: String| -> rhai::Array {
-        let leader_lower = leader_name.to_lowercase();
-        let room_uuid = match uuid::Uuid::parse_str(&room_id) {
-            Ok(uuid) => uuid,
-            Err(_) => return rhai::Array::new(),
-        };
-        let conns_guard = conns.lock().unwrap();
-        conns_guard.values()
-            .filter_map(|session| {
-                session.character.as_ref().and_then(|char| {
-                    if char.is_grouped && char.current_room_id == room_uuid {
-                        if let Some(ref following) = char.following {
-                            if following.to_lowercase() == leader_lower {
-                                return Some(rhai::Dynamic::from(char.name.clone()));
+    engine.register_fn(
+        "get_group_members_in_room",
+        move |leader_name: String, room_id: String| -> rhai::Array {
+            let leader_lower = leader_name.to_lowercase();
+            let room_uuid = match uuid::Uuid::parse_str(&room_id) {
+                Ok(uuid) => uuid,
+                Err(_) => return rhai::Array::new(),
+            };
+            let conns_guard = conns.lock().unwrap();
+            conns_guard
+                .values()
+                .filter_map(|session| {
+                    session.character.as_ref().and_then(|char| {
+                        if char.is_grouped && char.current_room_id == room_uuid {
+                            if let Some(ref following) = char.following {
+                                if following.to_lowercase() == leader_lower {
+                                    return Some(rhai::Dynamic::from(char.name.clone()));
+                                }
                             }
                         }
-                    }
-                    None
+                        None
+                    })
                 })
-            })
-            .collect()
-    });
+                .collect()
+        },
+    );
 
     // get_followers_in_room(leader_name, room_id) -> Array of followers in same room
     let conns = connections.clone();
-    engine.register_fn("get_followers_in_room", move |leader_name: String, room_id: String| -> rhai::Array {
-        let leader_lower = leader_name.to_lowercase();
-        let room_uuid = match uuid::Uuid::parse_str(&room_id) {
-            Ok(uuid) => uuid,
-            Err(_) => return rhai::Array::new(),
-        };
-        let conns_guard = conns.lock().unwrap();
-        conns_guard.values()
-            .filter_map(|session| {
-                session.character.as_ref().and_then(|char| {
-                    if char.current_room_id == room_uuid {
-                        if let Some(ref following) = char.following {
-                            if following.to_lowercase() == leader_lower {
-                                return Some(rhai::Dynamic::from(char.name.clone()));
+    engine.register_fn(
+        "get_followers_in_room",
+        move |leader_name: String, room_id: String| -> rhai::Array {
+            let leader_lower = leader_name.to_lowercase();
+            let room_uuid = match uuid::Uuid::parse_str(&room_id) {
+                Ok(uuid) => uuid,
+                Err(_) => return rhai::Array::new(),
+            };
+            let conns_guard = conns.lock().unwrap();
+            conns_guard
+                .values()
+                .filter_map(|session| {
+                    session.character.as_ref().and_then(|char| {
+                        if char.current_room_id == room_uuid {
+                            if let Some(ref following) = char.following {
+                                if following.to_lowercase() == leader_lower {
+                                    return Some(rhai::Dynamic::from(char.name.clone()));
+                                }
                             }
                         }
-                    }
-                    None
+                        None
+                    })
                 })
-            })
-            .collect()
-    });
+                .collect()
+        },
+    );
 
     // get_group_leader(char_name) -> String
     // Returns the ultimate leader (follows the chain up), empty string if not following anyone
@@ -251,26 +261,29 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // Returns false if mobile_id fails to parse as a Uuid.
     let conns = connections.clone();
     let db_clone = db.clone();
-    engine.register_fn("set_following_mobile", move |char_name: String, mobile_id: String| -> bool {
-        let parsed = match uuid::Uuid::parse_str(&mobile_id) {
-            Ok(u) => u,
-            Err(_) => return false,
-        };
-        let char_lower = char_name.to_lowercase();
-        let mut conns_guard = conns.lock().unwrap();
-        for session in conns_guard.values_mut() {
-            if let Some(ref mut char) = session.character {
-                if char.name.to_lowercase() == char_lower {
-                    char.following = None;
-                    char.following_mobile_id = Some(parsed);
-                    char.is_grouped = false;
-                    let _ = db_clone.save_character_data(char.clone());
-                    return true;
+    engine.register_fn(
+        "set_following_mobile",
+        move |char_name: String, mobile_id: String| -> bool {
+            let parsed = match uuid::Uuid::parse_str(&mobile_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let char_lower = char_name.to_lowercase();
+            let mut conns_guard = conns.lock().unwrap();
+            for session in conns_guard.values_mut() {
+                if let Some(ref mut char) = session.character {
+                    if char.name.to_lowercase() == char_lower {
+                        char.following = None;
+                        char.following_mobile_id = Some(parsed);
+                        char.is_grouped = false;
+                        let _ = db_clone.save_character_data(char.clone());
+                        return true;
+                    }
                 }
             }
-        }
-        false
-    });
+            false
+        },
+    );
 
     // get_following_mobile_id(char_name) -> String (empty if not following a mobile)
     let conns = connections.clone();
@@ -311,35 +324,40 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // broadcast_to_group(leader_name, message, exclude_name) -> ()
     // Sends message to leader and all grouped members (any room)
     let conns = connections.clone();
-    engine.register_fn("broadcast_to_group", move |leader_name: String, message: String, exclude_name: String| {
-        let leader_lower = leader_name.to_lowercase();
-        let exclude_lower = exclude_name.to_lowercase();
-        let conns_guard = conns.lock().unwrap();
+    engine.register_fn(
+        "broadcast_to_group",
+        move |leader_name: String, message: String, exclude_name: String| {
+            let leader_lower = leader_name.to_lowercase();
+            let exclude_lower = exclude_name.to_lowercase();
+            let conns_guard = conns.lock().unwrap();
 
-        for (_conn_id, session) in conns_guard.iter() {
-            if let Some(ref char) = session.character {
-                let char_lower = char.name.to_lowercase();
+            for (_conn_id, session) in conns_guard.iter() {
+                if let Some(ref char) = session.character {
+                    let char_lower = char.name.to_lowercase();
 
-                // Skip excluded player
-                if char_lower == exclude_lower {
-                    continue;
-                }
+                    // Skip excluded player
+                    if char_lower == exclude_lower {
+                        continue;
+                    }
 
-                // Check if this is the leader
-                let is_leader = char_lower == leader_lower;
+                    // Check if this is the leader
+                    let is_leader = char_lower == leader_lower;
 
-                // Check if this is a grouped member
-                let is_member = char.is_grouped &&
-                    char.following.as_ref()
-                        .map(|f| f.to_lowercase() == leader_lower)
-                        .unwrap_or(false);
+                    // Check if this is a grouped member
+                    let is_member = char.is_grouped
+                        && char
+                            .following
+                            .as_ref()
+                            .map(|f| f.to_lowercase() == leader_lower)
+                            .unwrap_or(false);
 
-                if is_leader || is_member {
-                    let _ = session.sender.send(message.clone());
+                    if is_leader || is_member {
+                        let _ = session.sender.send(message.clone());
+                    }
                 }
             }
-        }
-    });
+        },
+    );
 
     // ========== Gold Functions for Split ==========
 

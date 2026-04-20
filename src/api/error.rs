@@ -1,9 +1,9 @@
 //! API error types and responses
 
 use axum::{
-    response::{IntoResponse, Response},
-    http::StatusCode,
     Json,
+    http::StatusCode,
+    response::{IntoResponse, Response},
 };
 use serde_json::json;
 
@@ -32,38 +32,14 @@ impl IntoResponse for ApiError {
             ApiError::Unauthorized => (
                 StatusCode::UNAUTHORIZED,
                 "UNAUTHORIZED",
-                "Missing or invalid API key".to_string()
+                "Missing or invalid API key".to_string(),
             ),
-            ApiError::Forbidden(msg) => (
-                StatusCode::FORBIDDEN,
-                "FORBIDDEN",
-                msg
-            ),
-            ApiError::NotFound(msg) => (
-                StatusCode::NOT_FOUND,
-                "NOT_FOUND",
-                msg
-            ),
-            ApiError::VnumInUse(msg) => (
-                StatusCode::CONFLICT,
-                "VNUM_IN_USE",
-                msg
-            ),
-            ApiError::InvalidInput(msg) => (
-                StatusCode::BAD_REQUEST,
-                "INVALID_INPUT",
-                msg
-            ),
-            ApiError::Conflict(msg) => (
-                StatusCode::CONFLICT,
-                "CONFLICT",
-                msg
-            ),
-            ApiError::Internal(msg) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "INTERNAL_ERROR",
-                msg
-            ),
+            ApiError::Forbidden(msg) => (StatusCode::FORBIDDEN, "FORBIDDEN", msg),
+            ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, "NOT_FOUND", msg),
+            ApiError::VnumInUse(msg) => (StatusCode::CONFLICT, "VNUM_IN_USE", msg),
+            ApiError::InvalidInput(msg) => (StatusCode::BAD_REQUEST, "INVALID_INPUT", msg),
+            ApiError::Conflict(msg) => (StatusCode::CONFLICT, "CONFLICT", msg),
+            ApiError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", msg),
         };
 
         let body = Json(json!({

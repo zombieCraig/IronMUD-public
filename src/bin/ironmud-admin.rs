@@ -6,7 +6,7 @@
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand};
 use ironmud::control::{ControlCommand, ControlResponse, default_socket_path};
-use ironmud::{db::Db, ApiKey, ApiPermissions};
+use ironmud::{ApiKey, ApiPermissions, db::Db};
 use std::io::{self, BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
@@ -229,8 +229,7 @@ fn main() -> Result<()> {
         return send_broadcast(&socket, message);
     }
 
-    let db = Db::open(&cli.database)
-        .context(format!("Failed to open database at '{}'", cli.database))?;
+    let db = Db::open(&cli.database).context(format!("Failed to open database at '{}'", cli.database))?;
 
     match cli.command {
         Commands::User { action } => handle_user_command(&db, action),
@@ -279,37 +278,39 @@ fn send_broadcast(socket: &PathBuf, message: &str) -> Result<()> {
             println!("Broadcast sent.");
             Ok(())
         }
-        ControlResponse::Error { message } => {
-            Err(anyhow!("Server rejected broadcast: {}", message))
-        }
+        ControlResponse::Error { message } => Err(anyhow!("Server rejected broadcast: {}", message)),
     }
 }
 
 fn handle_user_command(db: &Db, action: UserAction) -> Result<()> {
     match action {
         UserAction::GrantAdmin { name } => {
-            let mut char = db.get_character_data(&name)?
+            let mut char = db
+                .get_character_data(&name)?
                 .context(format!("Character '{}' not found", name))?;
             char.is_admin = true;
             db.save_character_data(char)?;
             println!("Granted admin privileges to '{}'", name);
         }
         UserAction::RevokeAdmin { name } => {
-            let mut char = db.get_character_data(&name)?
+            let mut char = db
+                .get_character_data(&name)?
                 .context(format!("Character '{}' not found", name))?;
             char.is_admin = false;
             db.save_character_data(char)?;
             println!("Revoked admin privileges from '{}'", name);
         }
         UserAction::GrantBuilder { name } => {
-            let mut char = db.get_character_data(&name)?
+            let mut char = db
+                .get_character_data(&name)?
                 .context(format!("Character '{}' not found", name))?;
             char.is_builder = true;
             db.save_character_data(char)?;
             println!("Granted builder privileges to '{}'", name);
         }
         UserAction::RevokeBuilder { name } => {
-            let mut char = db.get_character_data(&name)?
+            let mut char = db
+                .get_character_data(&name)?
                 .context(format!("Character '{}' not found", name))?;
             char.is_builder = false;
             db.save_character_data(char)?;
@@ -336,20 +337,20 @@ fn handle_user_command(db: &Db, action: UserAction) -> Result<()> {
         }
         UserAction::ChangePassword { name } => {
             // Verify character exists first
-            let mut char = db.get_character_data(&name)?
+            let mut char = db
+                .get_character_data(&name)?
                 .context(format!("Character '{}' not found", name))?;
 
             // Prompt for new password using rpassword
-            let password = rpassword::prompt_password("Enter new password: ")
-                .context("Failed to read password")?;
+            let password = rpassword::prompt_password("Enter new password: ").context("Failed to read password")?;
 
             if password.len() < 4 {
                 anyhow::bail!("Password must be at least 4 characters long");
             }
 
             // Confirm password
-            let confirm = rpassword::prompt_password("Confirm new password: ")
-                .context("Failed to read password confirmation")?;
+            let confirm =
+                rpassword::prompt_password("Confirm new password: ").context("Failed to read password confirmation")?;
 
             if password != confirm {
                 anyhow::bail!("Passwords do not match");
@@ -358,13 +359,14 @@ fn handle_user_command(db: &Db, action: UserAction) -> Result<()> {
             // Hash and save
             let hash = db.hash_password(&password)?;
             char.password_hash = hash;
-            char.must_change_password = false;  // Clear flag since admin set the password
+            char.must_change_password = false; // Clear flag since admin set the password
             db.save_character_data(char)?;
 
             println!("Password changed for '{}'", name);
         }
         UserAction::RequirePasswordChange { name } => {
-            let mut char = db.get_character_data(&name)?
+            let mut char = db
+                .get_character_data(&name)?
                 .context(format!("Character '{}' not found", name))?;
             char.must_change_password = true;
             db.save_character_data(char)?;
@@ -372,7 +374,8 @@ fn handle_user_command(db: &Db, action: UserAction) -> Result<()> {
         }
         UserAction::Delete { name } => {
             // Verify character exists
-            let _char = db.get_character_data(&name)?
+            let _char = db
+                .get_character_data(&name)?
                 .context(format!("Character '{}' not found", name))?;
 
             // Confirmation prompt
@@ -413,22 +416,19 @@ fn handle_settings_command(db: &Db, action: SettingsAction) -> Result<()> {
             db.set_setting(&key, &value)?;
             println!("Set '{}' = '{}'", key, value);
         }
-        SettingsAction::Get { key } => {
-            match db.get_setting(&key)? {
-                Some(value) => println!("{} = {}", key, value),
-                None => {
-                    let default = setting_default(&key);
-                    if let Some(d) = default {
-                        println!("{} = {} (default)", key, d);
-                    } else {
-                        println!("{} is not set", key);
-                    }
+        SettingsAction::Get { key } => match db.get_setting(&key)? {
+            Some(value) => println!("{} = {}", key, value),
+            None => {
+                let default = setting_default(&key);
+                if let Some(d) = default {
+                    println!("{} = {} (default)", key, d);
+                } else {
+                    println!("{} is not set", key);
                 }
             }
-        }
+        },
         SettingsAction::List => {
-            let configured: std::collections::HashMap<String, String> =
-                db.list_all_settings()?.into_iter().collect();
+            let configured: std::collections::HashMap<String, String> = db.list_all_settings()?.into_iter().collect();
 
             println!("{:<35} {:<20} {}", "Key", "Value", "Source");
             println!("{}", "-".repeat(70));
@@ -442,9 +442,9 @@ fn handle_settings_command(db: &Db, action: SettingsAction) -> Result<()> {
             }
 
             // Show any extra settings not in KNOWN_SETTINGS
-            let known_keys: std::collections::HashSet<&str> =
-                KNOWN_SETTINGS.iter().map(|(k, _)| *k).collect();
-            let mut extras: Vec<_> = configured.iter()
+            let known_keys: std::collections::HashSet<&str> = KNOWN_SETTINGS.iter().map(|(k, _)| *k).collect();
+            let mut extras: Vec<_> = configured
+                .iter()
                 .filter(|(k, _)| !known_keys.contains(k.as_str()))
                 .collect();
             extras.sort_by_key(|(k, _)| k.to_owned());
@@ -465,13 +465,22 @@ fn handle_settings_command(db: &Db, action: SettingsAction) -> Result<()> {
 
 fn handle_api_key_command(db: &Db, action: ApiKeyAction) -> Result<()> {
     match action {
-        ApiKeyAction::Create { name, character, read, write, admin } => {
+        ApiKeyAction::Create {
+            name,
+            character,
+            read,
+            write,
+            admin,
+        } => {
             if admin && !read && !write {
-                anyhow::bail!("--admin alone has no effect. It only bypasses area ownership checks for --read or --write operations. Add --read and/or --write.");
+                anyhow::bail!(
+                    "--admin alone has no effect. It only bypasses area ownership checks for --read or --write operations. Add --read and/or --write."
+                );
             }
 
             // Verify the character exists
-            let _char = db.get_character_data(&character)?
+            let _char = db
+                .get_character_data(&character)?
                 .context(format!("Character '{}' not found", character))?;
 
             // Generate a random API key (32 bytes, base64 encoded)
@@ -494,11 +503,7 @@ fn handle_api_key_command(db: &Db, action: ApiKeyAction) -> Result<()> {
                 key_hash,
                 name: name.clone(),
                 owner_character: character.clone(),
-                permissions: ApiPermissions {
-                    read,
-                    write,
-                    admin,
-                },
+                permissions: ApiPermissions { read, write, admin },
                 created_at: now,
                 last_used_at: None,
                 enabled: true,
@@ -523,7 +528,10 @@ fn handle_api_key_command(db: &Db, action: ApiKeyAction) -> Result<()> {
             if keys.is_empty() {
                 println!("No API keys found.");
             } else {
-                println!("{:<36}  {:<20}  {:<15}  {:<8}  {}", "ID", "Name", "Character", "Enabled", "Permissions");
+                println!(
+                    "{:<36}  {:<20}  {:<15}  {:<8}  {}",
+                    "ID", "Name", "Character", "Enabled", "Permissions"
+                );
                 println!("{}", "-".repeat(100));
                 for key in &keys {
                     let perms = format!(
@@ -545,10 +553,8 @@ fn handle_api_key_command(db: &Db, action: ApiKeyAction) -> Result<()> {
             }
         }
         ApiKeyAction::Show { id } => {
-            let uuid = Uuid::parse_str(&id)
-                .context("Invalid UUID format")?;
-            let key = db.get_api_key(&uuid)?
-                .context(format!("API key '{}' not found", id))?;
+            let uuid = Uuid::parse_str(&id).context("Invalid UUID format")?;
+            let key = db.get_api_key(&uuid)?.context(format!("API key '{}' not found", id))?;
 
             println!("API Key Details");
             println!("{}", "-".repeat(40));
@@ -568,10 +574,8 @@ fn handle_api_key_command(db: &Db, action: ApiKeyAction) -> Result<()> {
             }
         }
         ApiKeyAction::Revoke { id } => {
-            let uuid = Uuid::parse_str(&id)
-                .context("Invalid UUID format")?;
-            let mut key = db.get_api_key(&uuid)?
-                .context(format!("API key '{}' not found", id))?;
+            let uuid = Uuid::parse_str(&id).context("Invalid UUID format")?;
+            let mut key = db.get_api_key(&uuid)?.context(format!("API key '{}' not found", id))?;
 
             if !key.enabled {
                 println!("API key '{}' is already revoked", key.name);
@@ -582,10 +586,8 @@ fn handle_api_key_command(db: &Db, action: ApiKeyAction) -> Result<()> {
             }
         }
         ApiKeyAction::Delete { id } => {
-            let uuid = Uuid::parse_str(&id)
-                .context("Invalid UUID format")?;
-            let key = db.get_api_key(&uuid)?
-                .context(format!("API key '{}' not found", id))?;
+            let uuid = Uuid::parse_str(&id).context("Invalid UUID format")?;
+            let key = db.get_api_key(&uuid)?.context(format!("API key '{}' not found", id))?;
 
             // Confirmation prompt
             println!("WARNING: This will permanently delete API key '{}'", key.name);
@@ -667,9 +669,16 @@ fn handle_world_command(db: &Db, action: WorldAction) -> Result<()> {
         }
         WorldAction::Clear => {
             let stats = db.world_stats()?;
-            let total = stats.areas + stats.rooms + stats.items + stats.mobiles
-                + stats.spawn_points + stats.recipes + stats.transports
-                + stats.property_templates + stats.leases + stats.plant_prototypes
+            let total = stats.areas
+                + stats.rooms
+                + stats.items
+                + stats.mobiles
+                + stats.spawn_points
+                + stats.recipes
+                + stats.transports
+                + stats.property_templates
+                + stats.leases
+                + stats.plant_prototypes
                 + stats.plants;
 
             if total == 0 {
@@ -678,12 +687,15 @@ fn handle_world_command(db: &Db, action: WorldAction) -> Result<()> {
             }
 
             println!("WARNING: This will permanently delete ALL world data:");
-            println!("  {} areas, {} rooms, {} items, {} mobiles, {} spawn points",
-                stats.areas, stats.rooms, stats.items, stats.mobiles, stats.spawn_points);
-            println!("  {} recipes, {} transports, {} property templates, {} leases",
-                stats.recipes, stats.transports, stats.property_templates, stats.leases);
-            println!("  {} plant prototypes, {} plants",
-                stats.plant_prototypes, stats.plants);
+            println!(
+                "  {} areas, {} rooms, {} items, {} mobiles, {} spawn points",
+                stats.areas, stats.rooms, stats.items, stats.mobiles, stats.spawn_points
+            );
+            println!(
+                "  {} recipes, {} transports, {} property templates, {} leases",
+                stats.recipes, stats.transports, stats.property_templates, stats.leases
+            );
+            println!("  {} plant prototypes, {} plants", stats.plant_prototypes, stats.plants);
             println!();
             println!("Characters, settings, and API keys will be preserved.");
             println!("All characters will be moved to the starting room.");

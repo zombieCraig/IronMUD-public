@@ -5,17 +5,16 @@
 //! then engage in combat if the target is found.
 
 use anyhow::Result;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::{debug, error};
 
 use ironmud::{
-    db, CombatDistance, CombatTarget, CombatTargetType, CombatZoneType, CharacterPosition,
-    SharedConnections,
+    CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, CombatZoneType, SharedConnections, db,
 };
 
 use super::broadcast::{
-    broadcast_to_room_awake, broadcast_to_room_except_awake,
-    broadcast_to_room_mobiles, send_message_to_character, sync_character_to_session,
+    broadcast_to_room_awake, broadcast_to_room_except_awake, broadcast_to_room_mobiles, send_message_to_character,
+    sync_character_to_session,
 };
 use super::mobile::{get_opposite_direction_rust, get_valid_wander_exits, propagate_mobile_followers};
 
@@ -37,8 +36,8 @@ pub async fn run_pursuit_tick(db: db::Db, connections: SharedConnections) {
 
 /// Process pursuit for all mobs with active pursuit state
 fn process_pursuit_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
-    use rand::seq::SliceRandom;
     use rand::Rng;
+    use rand::seq::SliceRandom;
 
     let mobiles = db.list_all_mobiles()?;
     let mut rng = rand::thread_rng();
@@ -93,12 +92,14 @@ fn process_pursuit_tick(db: &db::Db, connections: &SharedConnections) -> Result<
         // Determine movement direction
         let chosen_exit = if current_mobile.pursuit_certain {
             // Certain: use the pursuit direction
-            valid_exits.iter()
+            valid_exits
+                .iter()
                 .find(|(dir, _)| *dir == current_mobile.pursuit_direction)
                 .cloned()
         } else if !current_mobile.pursuit_direction.is_empty() && rng.gen_bool(0.5) {
             // Uncertain: 50% chance correct direction
-            valid_exits.iter()
+            valid_exits
+                .iter()
                 .find(|(dir, _)| *dir == current_mobile.pursuit_direction)
                 .cloned()
         } else {
@@ -126,10 +127,7 @@ fn process_pursuit_tick(db: &db::Db, connections: &SharedConnections) -> Result<
         // Move the mob
         if db.move_mobile_to_room(&current_mobile.id, &target_room_id).is_ok() {
             // Broadcast departure
-            let departure_msg = format!(
-                "{} charges off to the {}!\n",
-                current_mobile.name, direction
-            );
+            let departure_msg = format!("{} charges off to the {}!\n", current_mobile.name, direction);
             broadcast_to_room_mobiles(connections, &mobile_room_id, &departure_msg);
 
             // Broadcast arrival
@@ -140,13 +138,20 @@ fn process_pursuit_tick(db: &db::Db, connections: &SharedConnections) -> Result<
             );
             broadcast_to_room_mobiles(connections, &target_room_id, &arrival_msg);
 
-            propagate_mobile_followers(connections, &current_mobile.id, &current_mobile.name, &mobile_room_id, &direction);
+            propagate_mobile_followers(
+                connections,
+                &current_mobile.id,
+                &current_mobile.name,
+                &mobile_room_id,
+                &direction,
+            );
 
             // Check if the target player is in the arrival room
             let target_name = current_mobile.pursuit_target_name.clone();
             if let Some(player_name) = find_player_in_room_by_name(connections, &target_room_id, &target_name) {
                 // Check room is not a safe zone
-                let is_safe = db.get_room_data(&target_room_id)
+                let is_safe = db
+                    .get_room_data(&target_room_id)
                     .ok()
                     .flatten()
                     .map(|r| r.flags.combat_zone == Some(CombatZoneType::Safe))
@@ -176,7 +181,12 @@ fn process_pursuit_tick(db: &db::Db, connections: &SharedConnections) -> Result<
                             let player_target_id = uuid::Uuid::nil();
                             let updated = db.update_mobile(&current_mobile.id, |m| {
                                 m.combat.in_combat = true;
-                                if !m.combat.targets.iter().any(|t| t.target_type == CombatTargetType::Player) {
+                                if !m
+                                    .combat
+                                    .targets
+                                    .iter()
+                                    .any(|t| t.target_type == CombatTargetType::Player)
+                                {
                                     m.combat.targets.push(CombatTarget {
                                         target_type: CombatTargetType::Player,
                                         target_id: player_target_id,
@@ -210,16 +220,10 @@ fn process_pursuit_tick(db: &db::Db, connections: &SharedConnections) -> Result<
                                 broadcast_to_room_awake(
                                     connections,
                                     &target_room_id,
-                                    &format!(
-                                        "{} snarls and attacks {}!",
-                                        current_mobile.name, player_name
-                                    ),
+                                    &format!("{} snarls and attacks {}!", current_mobile.name, player_name),
                                 );
 
-                                debug!(
-                                    "Pursuit: {} found and attacked {}",
-                                    current_mobile.name, player_name
-                                );
+                                debug!("Pursuit: {} found and attacked {}", current_mobile.name, player_name);
                                 continue; // Skip the clear_pursuit below, already handled
                             }
                         }
@@ -254,9 +258,7 @@ fn find_player_in_room_by_name(
     if let Ok(conns) = connections.lock() {
         for (_, session) in conns.iter() {
             if let Some(ref char) = session.character {
-                if char.current_room_id == *room_id
-                    && char.name.to_lowercase() == target_name.to_lowercase()
-                {
+                if char.current_room_id == *room_id && char.name.to_lowercase() == target_name.to_lowercase() {
                     return Some(char.name.clone());
                 }
             }

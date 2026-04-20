@@ -46,9 +46,7 @@ pub fn watch_scripts(state: SharedState) {
         })
         .unwrap();
 
-        watcher
-            .watch(Path::new("scripts/"), RecursiveMode::Recursive)
-            .unwrap();
+        watcher.watch(Path::new("scripts/"), RecursiveMode::Recursive).unwrap();
 
         info!("Watching scripts directory for changes...");
 

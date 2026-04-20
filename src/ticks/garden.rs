@@ -5,10 +5,10 @@
 //! while offline.
 
 use anyhow::Result;
-use tokio::time::{interval, Duration};
+use tokio::time::{Duration, interval};
 use tracing::{debug, error};
 
-use ironmud::{db, GrowthStage, InfestationType, SharedConnections, TemperatureCategory, WeatherCondition};
+use ironmud::{GrowthStage, InfestationType, SharedConnections, TemperatureCategory, WeatherCondition, db};
 
 use super::broadcast::broadcast_to_room;
 
@@ -83,7 +83,10 @@ fn process_garden(db: &db::Db, connections: &SharedConnections) -> Result<()> {
         let proto = match db.get_plant_prototype_by_vnum(&plant.prototype_vnum)? {
             Some(p) => p,
             None => {
-                debug!("Plant {} has no prototype (vnum: {}), skipping", plant.id, plant.prototype_vnum);
+                debug!(
+                    "Plant {} has no prototype (vnum: {}), skipping",
+                    plant.id, plant.prototype_vnum
+                );
                 continue;
             }
         };
@@ -150,16 +153,18 @@ fn process_garden(db: &db::Db, connections: &SharedConnections) -> Result<()> {
 
             // Broadcast death message
             let name = proto.name.clone();
-            broadcast_to_room(connections, &plant.room_id,
-                &format!("A {} withers and dies.", name));
+            broadcast_to_room(connections, &plant.room_id, &format!("A {} withers and dies.", name));
             debug!("Plant {} ({}) died", plant.id, proto.name);
             continue;
         }
 
         // Broadcast health warning if crossing thresholds
         if prev_health >= 30.0 && plant.health < 30.0 {
-            broadcast_to_room(connections, &plant.room_id,
-                &format!("A {} looks sickly and near death.", proto.name));
+            broadcast_to_room(
+                connections,
+                &plant.room_id,
+                &format!("A {} looks sickly and near death.", proto.name),
+            );
         }
 
         // === Growth Calculation ===
@@ -200,9 +205,7 @@ fn process_garden(db: &db::Db, connections: &SharedConnections) -> Result<()> {
 
             // === Stage Advancement ===
             let stage_def = proto.get_stage_def(&plant.stage);
-            let stage_duration = stage_def
-                .map(|s| s.duration_game_hours as f64)
-                .unwrap_or(24.0); // Default 24 game hours if no def
+            let stage_duration = stage_def.map(|s| s.duration_game_hours as f64).unwrap_or(24.0); // Default 24 game hours if no def
 
             if plant.stage_progress_hours >= stage_duration {
                 if let Some(next_stage) = plant.stage.next() {
@@ -211,12 +214,18 @@ fn process_garden(db: &db::Db, connections: &SharedConnections) -> Result<()> {
                     plant.stage_progress_hours = 0.0;
 
                     // Broadcast stage advancement
-                    let stage_desc = proto.get_stage_def(&next_stage)
+                    let stage_desc = proto
+                        .get_stage_def(&next_stage)
                         .map(|s| s.description.clone())
                         .unwrap_or_else(|| format!("A {} is now {}.", proto.name, next_stage.to_display_string()));
                     broadcast_to_room(connections, &plant.room_id, &stage_desc);
-                    debug!("Plant {} ({}) advanced from {} to {}", plant.id, proto.name,
-                        old_stage.to_display_string(), next_stage.to_display_string());
+                    debug!(
+                        "Plant {} ({}) advanced from {} to {}",
+                        plant.id,
+                        proto.name,
+                        old_stage.to_display_string(),
+                        next_stage.to_display_string()
+                    );
                 }
             }
         }
@@ -225,14 +234,15 @@ fn process_garden(db: &db::Db, connections: &SharedConnections) -> Result<()> {
         // Unharvested Flowering plants eventually wilt (after 48 game hours at Flowering)
         if plant.stage == GrowthStage::Flowering {
             let flowering_def = proto.get_stage_def(&GrowthStage::Flowering);
-            let wilt_threshold = flowering_def
-                .map(|s| s.duration_game_hours as f64)
-                .unwrap_or(48.0);
+            let wilt_threshold = flowering_def.map(|s| s.duration_game_hours as f64).unwrap_or(48.0);
             if plant.stage_progress_hours >= wilt_threshold {
                 plant.stage = GrowthStage::Wilting;
                 plant.stage_progress_hours = 0.0;
-                broadcast_to_room(connections, &plant.room_id,
-                    &format!("A {} begins to wilt, its blooms fading.", proto.name));
+                broadcast_to_room(
+                    connections,
+                    &plant.room_id,
+                    &format!("A {} begins to wilt, its blooms fading.", proto.name),
+                );
             }
         }
 
@@ -243,8 +253,11 @@ fn process_garden(db: &db::Db, connections: &SharedConnections) -> Result<()> {
             if plant.stage_progress_hours >= 24.0 {
                 plant.stage = GrowthStage::Dead;
                 plant.health = 0.0;
-                broadcast_to_room(connections, &plant.room_id,
-                    &format!("A {} has withered and died.", proto.name));
+                broadcast_to_room(
+                    connections,
+                    &plant.room_id,
+                    &format!("A {} has withered and died.", proto.name),
+                );
             }
         }
 
@@ -264,12 +277,24 @@ fn process_garden(db: &db::Db, connections: &SharedConnections) -> Result<()> {
             let pseudo_rand = ((plant.id.as_u128() ^ now as u128) % 10000) as f64 / 10000.0;
             if pseudo_rand < infestation_chance {
                 // Pick a random infestation type
-                let types = [InfestationType::Aphids, InfestationType::Blight, InfestationType::RootRot, InfestationType::Frost];
+                let types = [
+                    InfestationType::Aphids,
+                    InfestationType::Blight,
+                    InfestationType::RootRot,
+                    InfestationType::Frost,
+                ];
                 let idx = ((plant.id.as_u128() ^ (now as u128).wrapping_mul(7)) % types.len() as u128) as usize;
                 plant.infestation = types[idx];
                 plant.infestation_severity = 0.1;
-                broadcast_to_room(connections, &plant.room_id,
-                    &format!("A {} shows signs of {}!", proto.name, plant.infestation.to_display_string()));
+                broadcast_to_room(
+                    connections,
+                    &plant.room_id,
+                    &format!(
+                        "A {} shows signs of {}!",
+                        proto.name,
+                        plant.infestation.to_display_string()
+                    ),
+                );
             }
         }
 
