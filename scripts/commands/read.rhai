@@ -47,6 +47,16 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Readable note body takes precedence over teaches_*: if a builder authored
+    // long-form content on this item, show that and stop — recipe/spell scrolls
+    // should not carry a note body.
+    let note_body = get_item_note_content(item.id);
+    if note_body != "" {
+        send_client_message(connection_id, "You read " + item.short_desc + ":");
+        send_client_message(connection_id, note_body);
+        return;
+    }
+
     // Check if item teaches a recipe
     let recipe_id = get_item_teaches_recipe(item.id);
 

@@ -499,40 +499,50 @@ fn handle_autostats_subcommand(mobile_id, parts, connection_id) {
 
 fn handle_flag_subcommand(mobile_id, parts, connection_id) {
     if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: medit " + mobile_id + " flag <name> [on|off]");
+        send_client_message(connection_id, "Usage: medit " + mobile_id + " flag <name> [<name>...] [on|off]");
         return;
     }
-    let flag_name = parts[2].to_lower();
     let mobile = get_mobile_data(mobile_id);
     if mobile == () {
         send_client_message(connection_id, "Mobile not found.");
         return;
     }
 
-    let current = get_mobile_flag_value(mobile, flag_name);
-    if current == () {
-        send_client_message(connection_id, "Unknown flag: " + flag_name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim");
-        return;
-    }
-
-    // Determine new value
-    let new_val = !current;  // Toggle by default
-    if parts.len() >= 4 {
-        let setting = parts[3].to_lower();
-        if setting == "on" || setting == "true" || setting == "1" {
-            new_val = true;
-        }
-        if setting == "off" || setting == "false" || setting == "0" {
-            new_val = false;
+    // Split into flag names and optional trailing on/off value.
+    let flag_names = [];
+    for i in 2..parts.len() { flag_names.push(parts[i].to_lower()); }
+    let explicit_val = ();
+    if flag_names.len() >= 2 {
+        let last = flag_names[flag_names.len() - 1];
+        if olc::is_on_value(last) {
+            explicit_val = true;
+            flag_names.pop();
+        } else if olc::is_off_value(last) {
+            explicit_val = false;
+            flag_names.pop();
         }
     }
 
-    if set_mobile_flag(mobile_id, flag_name, new_val) {
-        let status = "OFF";
-        if new_val { status = "ON"; }
-        send_client_message(connection_id, "Flag '" + flag_name + "' is now " + status + ".");
-    } else {
-        send_client_message(connection_id, "Failed to set flag.");
+    // Validate all names before changing anything.
+    for name in flag_names {
+        if get_mobile_flag_value(mobile, name) == () {
+            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim");
+            return;
+        }
+    }
+
+    for name in flag_names {
+        let new_val = if explicit_val == () {
+            !get_mobile_flag_value(mobile, name)
+        } else {
+            explicit_val
+        };
+        if set_mobile_flag(mobile_id, name, new_val) {
+            let status = if new_val { "ON" } else { "OFF" };
+            send_client_message(connection_id, "Flag '" + name + "' is now " + status + ".");
+        } else {
+            send_client_message(connection_id, "Failed to set flag '" + name + "'.");
+        }
     }
 }
 

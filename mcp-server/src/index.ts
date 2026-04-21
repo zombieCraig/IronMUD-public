@@ -467,6 +467,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           food_nutrition: args?.food_nutrition as number | undefined,
           food_spoil_duration: args?.food_spoil_duration as number | undefined,
           food_effects: args?.food_effects as { effect_type: string; magnitude: number; duration: number }[] | undefined,
+          note_content: args?.note_content as string | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(item, null, 2) }],
@@ -488,6 +489,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           "treats_infestation", "liquid_type", "liquid_current", "liquid_max",
           "medical_tier", "medical_uses", "treats_wound_types",
           "food_nutrition", "food_spoil_duration", "food_effects",
+          "note_content",
         ];
         for (const field of itemFields) {
           if (args?.[field] !== undefined) {

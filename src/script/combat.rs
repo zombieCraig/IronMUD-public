@@ -2223,6 +2223,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 categories: Vec::new(),
                 teaches_recipe: None,
                 teaches_spell: None,
+                note_content: None,
                 wear_locations: vec![],
                 armor_class: None,
                 protects: vec![],

@@ -1062,35 +1062,50 @@ fn run_command(args, connection_id) {
     }
 
     if subcommand == "flag" {
-        // Set or toggle a room flag
+        // Set or toggle one or more room flags
         if parts.len() < 2 {
-            send_client_message(connection_id, "Usage: redit flag <name> [on|off]\nValid flags: dark, no_mob, indoors, underwater, shallow_water, deep_water, city, no_windows, difficult_terrain, dirt_floor, post_office, bank, garden, spawn_point, liveable");
+            send_client_message(connection_id, "Usage: redit flag <name> [<name>...] [on|off]\nValid flags: dark, no_mob, indoors, underwater, shallow_water, deep_water, city, no_windows, difficult_terrain, dirt_floor, post_office, bank, garden, spawn_point, liveable");
             return;
         }
 
-        let flag_name = parts[1].to_lower();
         let valid_flags = ["dark", "no_mob", "nomob", "indoors", "underwater", "shallow_water", "deep_water", "city", "no_windows", "nowindows", "difficult_terrain", "dirt_floor", "post_office", "bank", "garden", "spawn_point", "liveable", "livable"];
-        let is_valid = false;
-        for f in valid_flags {
-            if f == flag_name {
-                is_valid = true;
-                break;
+
+        // Split into flag names and optional trailing on/off value.
+        let flag_names = [];
+        for i in 1..parts.len() { flag_names.push(parts[i].to_lower()); }
+        let explicit_val = ();
+        if flag_names.len() >= 2 {
+            let last = flag_names[flag_names.len() - 1];
+            if olc::is_on_value(last) {
+                explicit_val = true;
+                flag_names.pop();
+            } else if olc::is_off_value(last) {
+                explicit_val = false;
+                flag_names.pop();
             }
         }
 
-        if !is_valid {
-            send_client_message(connection_id, "Unknown flag: " + flag_name + "\nValid flags: dark, no_mob, indoors, underwater, shallow_water, deep_water, city, no_windows, difficult_terrain, dirt_floor, post_office, bank, garden, spawn_point, liveable\nFor combat zone, use 'redit zone [pve|safe|pvp|inherit]'");
-            return;
+        // Validate every name before toggling anything.
+        for name in flag_names {
+            let is_valid = false;
+            for f in valid_flags {
+                if f == name { is_valid = true; break; }
+            }
+            if !is_valid {
+                send_client_message(connection_id, "Unknown flag: " + name + "\nValid flags: dark, no_mob, indoors, underwater, shallow_water, deep_water, city, no_windows, difficult_terrain, dirt_floor, post_office, bank, garden, spawn_point, liveable\nFor combat zone, use 'redit zone [pve|safe|pvp|inherit]'");
+                return;
+            }
         }
 
-        if parts.len() >= 3 {
-            let val_str = parts[2].to_lower();
-            handle_flag_explicit(room.id, flag_name, val_str, connection_id);
-            return;
+        for name in flag_names {
+            if explicit_val == () {
+                handle_flag_cycle(room.id, name, connection_id);
+            } else if explicit_val {
+                handle_flag_explicit(room.id, name, "on", connection_id);
+            } else {
+                handle_flag_explicit(room.id, name, "off", connection_id);
+            }
         }
-
-        // No value specified - toggle the flag
-        handle_flag_cycle(room.id, flag_name, connection_id);
         return;
     }
 

@@ -18,6 +18,21 @@ use super::{
 use crate::types::{EffectType, ItemEffect};
 use crate::{DamageType, ItemData, ItemFlags, ItemLocation, ItemType, LiquidType, WeaponSkill, WearLocation};
 
+const MAX_NOTE_BYTES: usize = 32 * 1024;
+
+/// Normalize note body line endings (\r\n → \n, lone \r → \n) and enforce the size cap.
+fn normalize_note_input(raw: String) -> Result<Option<String>, ApiError> {
+    let normalized = raw.replace("\r\n", "\n").replace('\r', "\n");
+    if normalized.len() > MAX_NOTE_BYTES {
+        return Err(ApiError::InvalidInput(format!(
+            "note_content exceeds {} bytes (got {})",
+            MAX_NOTE_BYTES,
+            normalized.len()
+        )));
+    }
+    Ok(if normalized.is_empty() { None } else { Some(normalized) })
+}
+
 pub fn routes() -> Router<Arc<ApiState>> {
     Router::new()
         .route("/", get(list_items).post(create_item))
@@ -122,6 +137,8 @@ pub struct CreateItemRequest {
     pub food_spoil_duration: Option<i64>,
     #[serde(default)]
     pub food_effects: Option<Vec<FoodEffectRequest>>,
+    #[serde(default)]
+    pub note_content: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -238,6 +255,8 @@ pub struct UpdateItemRequest {
     pub food_spoil_duration: Option<i64>,
     #[serde(default)]
     pub food_effects: Option<Vec<FoodEffectRequest>>,
+    #[serde(default)]
+    pub note_content: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -554,6 +573,7 @@ async fn create_item(
         categories: Vec::new(),
         teaches_recipe: None,
         teaches_spell: None,
+        note_content: req.note_content.map(normalize_note_input).transpose()?.flatten(),
         weight: req.weight,
         value: req.value,
         is_prototype: true,
@@ -714,6 +734,9 @@ async fn update_item(
     }
     if let Some(long_desc) = req.long_desc {
         item.long_desc = long_desc;
+    }
+    if let Some(note_content) = req.note_content {
+        item.note_content = normalize_note_input(note_content)?;
     }
     if let Some(ref new_vnum) = req.vnum {
         // Check vnum uniqueness (allow keeping the same vnum)

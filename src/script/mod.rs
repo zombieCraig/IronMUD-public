@@ -1416,6 +1416,24 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         String::new()
     });
 
+    // set_olc_edit_item(connection_id, item_id) -> Set item being edited (for note editor)
+    let conns = connections.clone();
+    engine.register_fn("set_olc_edit_item", move |connection_id: String, item_id: String| {
+        if let Ok(conn_uuid) = uuid::Uuid::parse_str(&connection_id) {
+            let item_uuid = if item_id.is_empty() {
+                None
+            } else {
+                uuid::Uuid::parse_str(&item_id).ok()
+            };
+            let mut conns = conns.lock().unwrap();
+            if let Some(session) = conns.get_mut(&conn_uuid) {
+                session.olc_edit_item = item_uuid;
+                return true;
+            }
+        }
+        false
+    });
+
     // set_olc_extra_keywords(connection_id, keywords) -> Set keywords for extra desc being collected
     let conns = connections.clone();
     engine.register_fn(

@@ -2578,6 +2578,10 @@ pub struct ItemData {
     // Spell ID this item teaches when read (for spell scrolls)
     #[serde(default)]
     pub teaches_spell: Option<String>,
+    // Long-form readable body (ascii maps, tutorials, in-world documents).
+    // Authored via `oedit <id> note` multi-line editor; surfaced by `read`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note_content: Option<String>,
     #[serde(default)]
     pub wear_locations: Vec<WearLocation>,
     #[serde(default)]
@@ -2773,6 +2777,7 @@ impl ItemData {
             categories: Vec::new(),
             teaches_recipe: None,
             teaches_spell: None,
+            note_content: None,
             wear_locations: Vec::new(),
             armor_class: None,
             protects: Vec::new(),

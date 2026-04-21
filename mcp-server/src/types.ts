@@ -347,6 +347,8 @@ export interface CreateItemRequest {
   food_nutrition?: number;
   food_spoil_duration?: number;
   food_effects?: { effect_type: string; magnitude: number; duration: number }[];
+  // Readable body (any item with this becomes readable via `read`)
+  note_content?: string;
 }
 
 export interface CreateMobileRequest {

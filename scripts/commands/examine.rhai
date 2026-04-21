@@ -102,6 +102,10 @@ fn run_command(args, connection_id) {
     output += "--------------------\n";
     output += item.long_desc + "\n";
 
+    if get_item_note_content(item.id) != "" {
+        output += "(You could read this.)\n";
+    }
+
     // Item type
     output += "\nType: " + item.item_type;
 

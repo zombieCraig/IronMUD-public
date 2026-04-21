@@ -85,6 +85,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_set("short_desc", |i: &mut ItemData, v: String| i.short_desc = v)
         .register_get("long_desc", |i: &mut ItemData| i.long_desc.clone())
         .register_set("long_desc", |i: &mut ItemData, v: String| i.long_desc = v)
+        .register_get("note_content", |i: &mut ItemData| {
+            i.note_content.clone().unwrap_or_default()
+        })
+        .register_set("note_content", |i: &mut ItemData, v: String| {
+            i.note_content = if v.is_empty() { None } else { Some(v) };
+        })
         .register_get("keywords", |i: &mut ItemData| {
             i.keywords
                 .iter()
@@ -2543,6 +2549,32 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         }
         String::new()
     });
+
+    // get_item_note_content(item_id) -> String ("" if unset)
+    let cloned_db = db.clone();
+    engine.register_fn("get_item_note_content", move |item_id: String| -> String {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+            if let Ok(Some(item)) = cloned_db.get_item_data(&uuid) {
+                return item.note_content.clone().unwrap_or_default();
+            }
+        }
+        String::new()
+    });
+
+    // set_item_note_content(item_id, body) -> bool (empty body clears)
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_item_note_content",
+        move |item_id: String, body: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+                if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                    item.note_content = if body.is_empty() { None } else { Some(body) };
+                    return cloned_db.save_item_data(item).is_ok();
+                }
+            }
+            false
+        },
+    );
 
     // get_item_by_vnum(vnum) -> ItemData or () (finds prototype by vnum)
     let cloned_db = db.clone();

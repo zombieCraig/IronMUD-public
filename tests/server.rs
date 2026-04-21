@@ -3515,3 +3515,43 @@ mod migration_tests {
         }
     }
 }
+
+#[test]
+fn test_item_note_content_persists() {
+    use ironmud::ItemData;
+    use ironmud::db::Db;
+
+    let db_path = format!("test_note_content_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut item = ItemData::new(
+            "parchment".to_string(),
+            "a weathered parchment".to_string(),
+            "A rolled parchment rests here.".to_string(),
+        );
+        assert!(item.note_content.is_none(), "new items start with no note");
+
+        let body = "  N\n W-+-E\n  S\n\n(rough map of the district)";
+        item.note_content = Some(body.to_string());
+        let item_id = item.id;
+        db.save_item_data(item).expect("save");
+
+        let loaded = db.get_item_data(&item_id).expect("get").expect("present");
+        assert_eq!(loaded.note_content.as_deref(), Some(body),
+            "body survives save/load and preserves whitespace + blank lines");
+
+        let mut cleared = loaded;
+        cleared.note_content = None;
+        db.save_item_data(cleared).expect("save cleared");
+        let loaded2 = db.get_item_data(&item_id).expect("get").expect("present");
+        assert!(loaded2.note_content.is_none(), "None persists");
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}

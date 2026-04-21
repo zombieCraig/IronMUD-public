@@ -58,6 +58,7 @@ pub struct PlayerSession {
     pub olc_mode: Option<String>,
     pub olc_buffer: Vec<String>,
     pub olc_edit_room: Option<Uuid>,
+    pub olc_edit_item: Option<Uuid>,
     pub olc_extra_keywords: Vec<String>,
     pub olc_undo_buffer: Option<Vec<String>>,
     // Character creation wizard state (JSON-serialized)
@@ -1117,6 +1118,7 @@ pub async fn handle_connection(
                 olc_mode: None,
                 olc_buffer: Vec::new(),
                 olc_edit_room: None,
+                olc_edit_item: None,
                 olc_extra_keywords: Vec::new(),
                 olc_undo_buffer: None,
                 wizard_data: None,
@@ -1541,6 +1543,97 @@ pub async fn handle_connection(
                         }
                     }
                     let _ = tx_client.send("Description editing cancelled.\n".to_string());
+                    let prompt = build_prompt(&connection_id, &connections, &state);
+                    let _ = tx_client.send(prompt);
+                }
+                EditorCommandResult::AppendText(text) => {
+                    let mut conns = connections.lock().unwrap();
+                    if let Some(session) = conns.get_mut(&connection_id) {
+                        session.olc_undo_buffer = Some(session.olc_buffer.clone());
+                        session.olc_buffer.push(text);
+                    }
+                }
+            }
+            continue;
+        }
+
+        // Check for OLC note collection mode (item.note_content)
+        if olc_mode.as_deref() == Some("collecting_note") {
+            let result = {
+                let mut conns = connections.lock().unwrap();
+                if let Some(session) = conns.get_mut(&connection_id) {
+                    handle_editor_command(&input, &mut session.olc_buffer, &mut session.olc_undo_buffer)
+                } else {
+                    EditorCommandResult::Cancel
+                }
+            };
+
+            match result {
+                EditorCommandResult::Handled(msg) => {
+                    let _ = tx_client.send(msg);
+                }
+                EditorCommandResult::Save(content) => {
+                    // Cap at 32 KB to avoid runaway bodies. Keep mode active on over-cap.
+                    const MAX_NOTE_BYTES: usize = 32 * 1024;
+                    if content.len() > MAX_NOTE_BYTES {
+                        let _ = tx_client.send(format!(
+                            "Note too long ({} bytes, max {}). Trim with .d or .r, then .save.\n",
+                            content.len(),
+                            MAX_NOTE_BYTES
+                        ));
+                    } else {
+                        let edit_item_id = {
+                            let conns = connections.lock().unwrap();
+                            conns.get(&connection_id).and_then(|s| s.olc_edit_item)
+                        };
+
+                        let (saved, cleared) = if let Some(item_id) = edit_item_id {
+                            let world = state.lock().unwrap();
+                            match world.db.get_item_data(&item_id) {
+                                Ok(Some(mut item)) => {
+                                    let cleared = content.is_empty();
+                                    item.note_content = if cleared { None } else { Some(content) };
+                                    let ok = world.db.save_item_data(item).is_ok();
+                                    (ok, cleared)
+                                }
+                                _ => (false, false),
+                            }
+                        } else {
+                            (false, false)
+                        };
+
+                        if saved {
+                            let _ = tx_client.send(
+                                if cleared { "Note cleared.\n" } else { "Note saved.\n" }.to_string(),
+                            );
+                        } else {
+                            let _ = tx_client.send("Error: could not save note.\n".to_string());
+                        }
+
+                        {
+                            let mut conns = connections.lock().unwrap();
+                            if let Some(session) = conns.get_mut(&connection_id) {
+                                session.olc_mode = None;
+                                session.olc_buffer.clear();
+                                session.olc_edit_item = None;
+                                session.olc_undo_buffer = None;
+                            }
+                        }
+                        let prompt = build_prompt(&connection_id, &connections, &state);
+                        let _ = tx_client.send(prompt);
+                    }
+                }
+                EditorCommandResult::Cancel => {
+                    {
+                        let mut conns = connections.lock().unwrap();
+                        if let Some(session) = conns.get_mut(&connection_id) {
+                            session.olc_mode = None;
+                            session.olc_buffer.clear();
+                            session.olc_edit_item = None;
+                            session.olc_undo_buffer = None;
+                        }
+                    }
+                    let _ = tx_client.send("Note editing cancelled.\n".to_string());
                     let prompt = build_prompt(&connection_id, &connections, &state);
                     let _ = tx_client.send(prompt);
                 }

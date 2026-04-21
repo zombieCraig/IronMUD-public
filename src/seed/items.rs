@@ -17,6 +17,7 @@ fn item(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str, ite
         categories: Vec::new(),
         teaches_recipe: None,
         teaches_spell: None,
+        note_content: None,
         wear_locations: Vec::new(),
         armor_class: None,
         protects: Vec::new(),

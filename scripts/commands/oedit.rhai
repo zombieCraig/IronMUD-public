@@ -301,6 +301,11 @@ fn handle_subcommand(item, item_id, subcommand, parts, char, connection_id) {
         return;
     }
 
+    if subcommand == "note" {
+        handle_note_subcommand(uuid, parts, connection_id);
+        return;
+    }
+
     if subcommand == "spawn" {
         handle_spawn_subcommand(item, char, connection_id);
         return;
@@ -1162,32 +1167,65 @@ fn handle_attachment_compatible(item_id, parts, connection_id) {
     send_client_message(connection_id, "Compatible types set to: " + display);
 }
 
+// Mirrors the alias set in src/script/items.rs set_item_flag/get_item_flag.
+fn is_valid_item_flag(name) {
+    let valid = ["no_drop", "nodrop", "no_get", "noget", "no_remove", "noremove",
+        "invisible", "glow", "hum", "no_sell", "nosell", "unique",
+        "quest_item", "questitem", "quest", "vending",
+        "provides_light", "provideslight", "light",
+        "fishing_rod", "fishingrod", "rod", "bait",
+        "foraging_tool", "foragingtool", "forage", "waterproof",
+        "provides_warmth", "provideswarmth", "warmth",
+        "reduces_glare", "reducesglare", "glare",
+        "medical_tool", "medicaltool", "medical",
+        "preserves_contents", "preservescontents", "preserves",
+        "death_only", "deathonly", "atm", "lockpick",
+        "is_skinned", "skinned", "boat"];
+    for f in valid { if f == name { return true; } }
+    return false;
+}
+
 fn handle_flag_subcommand(item_id, parts, connection_id) {
     if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: oedit " + item_id + " flag <name> [on|off]");
+        send_client_message(connection_id, "Usage: oedit " + item_id + " flag <name> [<name>...] [on|off]");
         return;
     }
-    let flag_name = parts[2].to_lower();
-    let current = get_item_flag(item_id, flag_name);
 
-    // Determine new value
-    let new_val = !current;  // Toggle by default
-    if parts.len() >= 4 {
-        let setting = parts[3].to_lower();
-        if setting == "on" || setting == "true" || setting == "1" {
-            new_val = true;
-        }
-        if setting == "off" || setting == "false" || setting == "0" {
-            new_val = false;
+    // Split into flag names and optional trailing on/off value.
+    let flag_names = [];
+    for i in 2..parts.len() { flag_names.push(parts[i].to_lower()); }
+    let explicit_val = ();
+    if flag_names.len() >= 2 {
+        let last = flag_names[flag_names.len() - 1];
+        if olc::is_on_value(last) {
+            explicit_val = true;
+            flag_names.pop();
+        } else if olc::is_off_value(last) {
+            explicit_val = false;
+            flag_names.pop();
         }
     }
 
-    if set_item_flag(item_id, flag_name, new_val) {
-        let status = "OFF";
-        if new_val { status = "ON"; }
-        send_client_message(connection_id, "Flag '" + flag_name + "' is now " + status + ".");
-    } else {
-        send_client_message(connection_id, "Unknown flag: " + flag_name + "\nAvailable: no_drop, no_get, no_remove, invisible, glow, hum, no_sell, unique, quest_item, vending, provides_light, fishing_rod, bait, foraging_tool, waterproof, provides_warmth, reduces_glare, medical_tool, preserves_contents, death_only, atm, broken, plant_pot, lockpick, is_skinned, boat");
+    // Validate all names before changing anything.
+    for name in flag_names {
+        if !is_valid_item_flag(name) {
+            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: no_drop, no_get, no_remove, invisible, glow, hum, no_sell, unique, quest_item, vending, provides_light, fishing_rod, bait, foraging_tool, waterproof, provides_warmth, reduces_glare, medical_tool, preserves_contents, death_only, atm, broken, plant_pot, lockpick, is_skinned, boat");
+            return;
+        }
+    }
+
+    for name in flag_names {
+        let new_val = if explicit_val == () {
+            !get_item_flag(item_id, name)
+        } else {
+            explicit_val
+        };
+        if set_item_flag(item_id, name, new_val) {
+            let status = if new_val { "ON" } else { "OFF" };
+            send_client_message(connection_id, "Flag '" + name + "' is now " + status + ".");
+        } else {
+            send_client_message(connection_id, "Failed to set flag '" + name + "'.");
+        }
     }
 }
 
@@ -1431,6 +1469,43 @@ fn set_transport_link(item_id, transport_ref, connection_id) {
     send_client_message(connection_id, "This item will now show transport status when read.");
 }
 
+fn handle_note_subcommand(item_id, parts, connection_id) {
+    // `oedit <id> note clear` wipes the body without entering the editor.
+    if parts.len() >= 3 {
+        let sub = parts[2].to_lower();
+        if sub == "clear" || sub == "none" {
+            set_item_note_content(item_id, "");
+            send_client_message(connection_id, "Note cleared.");
+            return;
+        }
+    }
+
+    let item = get_item_data(item_id);
+    if item == () {
+        send_client_message(connection_id, "Item not found.");
+        return;
+    }
+
+    let existing = get_item_note_content(item_id);
+    let lines = if existing != "" { existing.split("\n") } else { [] };
+
+    set_olc_edit_item(connection_id, item_id);
+    set_olc_buffer(connection_id, lines);
+    set_olc_mode(connection_id, "collecting_note");
+
+    let output = "Editing note for: " + item.short_desc + "\n";
+    if lines.len() == 0 {
+        output += "(empty)\n";
+    } else {
+        for i in 0..lines.len() {
+            output += "  " + (i + 1) + ": " + lines[i] + "\n";
+        }
+    }
+    output += "\nCommands: .h help | .l list | .c clear | .d N | .r N <text> | . save | @ cancel\n";
+    output += "Type lines to append. Blank lines, ANSI, and whitespace are preserved.";
+    send_client_message(connection_id, output);
+}
+
 fn handle_spawn_subcommand(item, char, connection_id) {
     // Check unique flag - prevent duplicate spawns
     if item.flags.unique && item.vnum != () && item.vnum != "" {
@@ -1573,6 +1648,10 @@ fn handle_spawn_subcommand(item, char, connection_id) {
     let transport_link = get_item_transport_link(item.id);
     if transport_link != "" {
         set_item_transport_link(new_item.id, transport_link);
+    }
+    let note_body = get_item_note_content(item.id);
+    if note_body != "" {
+        set_item_note_content(new_item.id, note_body);
     }
 
     // Copy triggers
@@ -2051,6 +2130,14 @@ fn show_item_properties(item, item_id, connection_id) {
         } else {
             output += olc::c_label("Teaches Spell: ", connection_id) + olc::c_warn(teaches_spell + " (NOT FOUND!)", connection_id) + "\n";
         }
+    }
+
+    // Note body (readable via `read`)
+    let note_body = get_item_note_content(item.id);
+    if note_body != "" {
+        let line_count = note_body.split("\n").len();
+        let suffix = if line_count == 1 { " line" } else { " lines" };
+        output += olc::c_label("Note: ", connection_id) + olc::c_value("" + line_count + suffix + " (oedit <id> note to edit)", connection_id) + "\n";
     }
 
     // Transport link (for status signs)
