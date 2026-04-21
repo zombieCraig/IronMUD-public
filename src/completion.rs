@@ -492,6 +492,7 @@ pub const OEDIT_SUBCOMMANDS: &[&str] = &[
     "fertduration",
     "treats",
     "teaches_spell",
+    "note",
 ];
 
 /// Item trigger actions

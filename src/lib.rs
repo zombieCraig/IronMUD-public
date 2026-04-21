@@ -2623,7 +2623,18 @@ async fn handle_write_with_raw(
     mut rx_raw: mpsc::UnboundedReceiver<Vec<u8>>,
 ) {
     loop {
+        // `biased` drains rx_raw before rx_client so the \r\n emitted when the
+        // user hits Enter can't lose a race to the command's response text and
+        // end up written after it (which glued responses onto the echoed line).
         tokio::select! {
+            biased;
+            Some(raw) = rx_raw.recv() => {
+                if let Err(e) = writer.write_all(&raw).await {
+                    error!("Failed to write raw bytes to socket {}: {}", addr, e);
+                    break;
+                }
+                let _ = writer.flush().await;
+            }
             Some(msg) = rx_client.recv() => {
                 // Convert \n to \r\n for proper telnet line endings
                 // First normalize any existing \r\n to \n, then convert all \n to \r\n
@@ -2632,12 +2643,7 @@ async fn handle_write_with_raw(
                     error!("Failed to write to socket {}: {}", addr, e);
                     break;
                 }
-            }
-            Some(raw) = rx_raw.recv() => {
-                if let Err(e) = writer.write_all(&raw).await {
-                    error!("Failed to write raw bytes to socket {}: {}", addr, e);
-                    break;
-                }
+                let _ = writer.flush().await;
             }
             else => break,
         }

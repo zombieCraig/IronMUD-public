@@ -57,6 +57,7 @@ Damage set to: 2d6
 | `weight` | `oedit <id> weight <value>` | Set item weight |
 | `value` | `oedit <id> value <gold>` | Set item value |
 | `level` | `oedit <id> level <value>` | Set level requirement |
+| `note` | `oedit <id> note [clear]` | Edit a multi-line readable body (see [Readable Notes](#readable-notes)) |
 
 ### Combat Properties
 
@@ -343,6 +344,53 @@ Items can be configured as vending machines:
 | `vending sellrate` | `oedit <id> vending sellrate <rate>` | Set price multiplier |
 
 See also: [Shop System](mobiles.md#shop-system) for shopkeeper NPCs.
+
+## Readable Notes
+
+Any item can carry a long-form readable body — ascii maps, tutorials, in-world documents, inscribed walls, detailed signs. When the body is non-empty the item becomes readable: `read <item>` prints the body verbatim (whitespace, blank lines, and ANSI are preserved), and `examine <item>` appends a `(You could read this.)` hint.
+
+Notes compose with other readable mechanics. A note short-circuits `read` before `teaches_recipe` / `teaches_spell`, so do not put a note body on a scroll that also teaches — the note will win and the teaching path will never fire. For a "book with a preface plus a recipe," put the flavor text in `long_desc` and let `read` fire the recipe.
+
+### Authoring
+
+```
+> oedit parchment_district_map note
+Editing note for: a weathered parchment
+(empty)
+
+Commands: .h help | .l list | .c clear | .d N | .r N <text> | . save | @ cancel
+Type lines to append. Blank lines, ANSI, and whitespace are preserved.
+
+  N
+ W-+-E
+  S
+
+(rough map of the district)
+.save
+Note saved.
+```
+
+The editor is the same multi-line buffer used for room descriptions (`redit desc`). If the note already has content, it is pre-loaded into the buffer so you can edit in place with `.l`, `.r N <text>`, `.d N`, etc. `.save` (or `.`) commits; `.cancel` (or `@`) aborts without changes. Saving with an empty buffer clears the note ("Note cleared.").
+
+`oedit <id> note clear` wipes the body without opening the editor.
+
+### Reading
+
+```
+> read parchment
+You read a weathered parchment:
+  N
+ W-+-E
+  S
+
+(rough map of the district)
+```
+
+### Limits
+
+- Bodies are capped at 32 KB. Over-cap saves are refused; trim with `.d` or `.r` and try again.
+- `\r\n` and lone `\r` from API payloads are normalized to `\n`.
+- Writing the body via the HTTP / MCP API: set `note_content` on `update_item` or `create_item`. Use `\n` for line breaks in the JSON string.
 
 ## Spell Scrolls
 

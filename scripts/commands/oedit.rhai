@@ -2474,6 +2474,7 @@ fn build_commands_help(item_id, item) {
     output += "  oedit " + display_id + " teaches <recipe_id|clear>  (recipe book/scroll)\n";
     output += "  oedit " + display_id + " teaches_spell <spell_id|clear>  (spell scroll)\n";
     output += "  oedit " + display_id + " transport <vnum|clear>     (transport status sign)\n";
+    output += "  oedit " + display_id + " note [clear]               (multi-line readable body)\n";
 
     // Weapon commands
     if item.item_type == "weapon" {
