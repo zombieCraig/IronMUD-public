@@ -50,7 +50,7 @@ fn run_command(args, connection_id) {
     let password_hash = hash_password(password);
 
     // Create a new CharacterData with the starting room ID
-    let new_char = new_character(name, password_hash, "00000000-0000-0000-0000-000000000001");
+    let new_char = new_character(name, password_hash, resolve_starting_room_uuid());
 
     // Apply defaults/random values
     new_char.race = get_random_race();
@@ -652,7 +652,7 @@ fn finalize_character(connection_id) {
     // Safety net: verify room exists, relocate if not
     let room = get_room_data(char_data.current_room_id);
     if room == () {
-        char_data.current_room_id = "00000000-0000-0000-0000-000000000001";
+        char_data.current_room_id = resolve_starting_room_uuid();
         save_character_data(char_data);
         set_player_character(connection_id, char_data);
     }

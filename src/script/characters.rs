@@ -6,8 +6,9 @@ use crate::SharedConnections;
 use crate::SharedState;
 use crate::db::Db;
 use crate::{
-    ActiveBuff, BodyPart, EffectType, WeaponSkill, broadcast_to_all_players, broadcast_to_outdoor_players,
-    fire_environmental_triggers_impl, get_season_transition_message, get_time_transition_message,
+    ActiveBuff, BodyPart, EffectType, STARTING_ROOM_ID, WeaponSkill, broadcast_to_all_players,
+    broadcast_to_outdoor_players, fire_environmental_triggers_impl, get_season_transition_message,
+    get_time_transition_message,
 };
 use rhai::Engine;
 use std::sync::Arc;
@@ -523,6 +524,28 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_db = db.clone();
     engine.register_fn("set_setting", move |key: String, value: String| {
         cloned_db.set_setting(&key, &value).is_ok()
+    });
+
+    // resolve_starting_room_uuid() -> String
+    // Reads the `starting_room_id` setting (a room vnum). If set and resolvable via the
+    // vnum index, returns that room's UUID as a string. Falls back to STARTING_ROOM_ID
+    // for unset or unresolvable values, so a misconfigured setting can't brick character
+    // creation. Warns on unresolvable vnums so operators notice typos.
+    let cloned_db = db.clone();
+    engine.register_fn("resolve_starting_room_uuid", move || -> String {
+        if let Ok(Some(vnum)) = cloned_db.get_setting("starting_room_id") {
+            let trimmed = vnum.trim();
+            if !trimmed.is_empty() {
+                match cloned_db.get_room_by_vnum(trimmed) {
+                    Ok(Some(room)) => return room.id.to_string(),
+                    _ => tracing::warn!(
+                        "starting_room_id setting '{}' does not resolve to a room; using default",
+                        vnum
+                    ),
+                }
+            }
+        }
+        STARTING_ROOM_ID.to_string()
     });
 
     // count_characters() -> i64 - Count total characters in database

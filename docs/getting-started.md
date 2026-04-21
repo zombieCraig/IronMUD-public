@@ -218,7 +218,7 @@ Key settings you may want to configure:
 | `builder_mode` | `all` | Who can toggle builder status (`all`, `granted`, `none`) |
 | `class_preset` | `fantasy` | Active class preset |
 | `race_preset` | `fantasy` | Active race preset |
-| `starting_room_id` | (town square) | Room UUID where new characters spawn |
+| `starting_room_id` | (seeded town square) | Room vnum (e.g. `oakvale:square`) where new characters spawn. Falls back to the default town square if unset or the vnum doesn't resolve. |
 
 Manage settings with:
 ```bash

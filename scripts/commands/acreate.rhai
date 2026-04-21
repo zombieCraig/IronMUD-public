@@ -41,7 +41,11 @@ fn run_command(args, connection_id) {
     output += "ID: " + area.id + "\n";
     output += "Owner: " + char.name + "\n";
     output += "\nUse 'aedit' to modify area properties.";
-    output += "\nUse 'redit area " + area.id + "' to assign rooms to this area.";
+    output += "\nTo create the first room in this area:";
+    output += "\n  1. 'redit create <title>' - make a new (detached) room; note the room id it prints";
+    output += "\n  2. 'rgoto <room_id>'      - teleport into the new room";
+    output += "\n  3. 'redit area " + prefix + "'      - assign the room you're in to this area";
+    output += "\nFrom there, use 'dig <dir> <title>' to build outward, or 'redit' to flesh it out.";
 
     send_client_message(connection_id, output);
 }
