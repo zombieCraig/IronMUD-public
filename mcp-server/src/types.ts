@@ -339,6 +339,7 @@ export interface CreateItemRequest {
   liquid_type?: string;
   liquid_current?: number;
   liquid_max?: number;
+  liquid_effects?: { effect_type: string; magnitude: number; duration: number }[];
   // Medical fields
   medical_tier?: number;
   medical_uses?: number;

@@ -17,6 +17,7 @@ export interface Area {
     migration_interval_days?: number;
     migration_max_per_check?: number;
     last_migration_check_day?: number | null;
+    immigration_guard_chance?: number;
 }
 export interface AreaFlags {
     always_climate?: boolean;
@@ -269,6 +270,11 @@ export interface CreateItemRequest {
     liquid_type?: string;
     liquid_current?: number;
     liquid_max?: number;
+    liquid_effects?: {
+        effect_type: string;
+        magnitude: number;
+        duration: number;
+    }[];
     medical_tier?: number;
     medical_uses?: number;
     treats_wound_types?: string[];
@@ -279,6 +285,7 @@ export interface CreateItemRequest {
         magnitude: number;
         duration: number;
     }[];
+    note_content?: string;
 }
 export interface CreateMobileRequest {
     name: string;

@@ -123,6 +123,8 @@ pub struct CreateItemRequest {
     pub liquid_current: Option<i32>,
     #[serde(default)]
     pub liquid_max: Option<i32>,
+    #[serde(default)]
+    pub liquid_effects: Option<Vec<FoodEffectRequest>>,
     // Medical fields
     #[serde(default)]
     pub medical_tier: Option<i32>,
@@ -241,6 +243,8 @@ pub struct UpdateItemRequest {
     pub liquid_current: Option<i32>,
     #[serde(default)]
     pub liquid_max: Option<i32>,
+    #[serde(default)]
+    pub liquid_effects: Option<Vec<FoodEffectRequest>>,
     // Medical fields
     #[serde(default)]
     pub medical_tier: Option<i32>,
@@ -614,7 +618,23 @@ async fn create_item(
         liquid_current: req.liquid_current.unwrap_or(0),
         liquid_max: req.liquid_max.unwrap_or(0),
         liquid_poisoned: false,
-        liquid_effects: Vec::new(),
+        liquid_effects: req
+            .liquid_effects
+            .as_ref()
+            .map(|effects| {
+                effects
+                    .iter()
+                    .filter_map(|e| {
+                        EffectType::from_str(&e.effect_type).map(|et| ItemEffect {
+                            effect_type: et,
+                            magnitude: e.magnitude,
+                            duration: e.duration,
+                            script_callback: None,
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
         food_nutrition: req.food_nutrition.unwrap_or(0),
         food_poisoned: false,
         food_spoil_duration: req.food_spoil_duration.unwrap_or(0),
@@ -855,8 +875,11 @@ async fn update_item(
         let new_type = LiquidType::from_str(lt).unwrap_or_default();
         let type_changed = item.liquid_type != new_type;
         item.liquid_type = new_type;
-        // Re-apply default effects when liquid type changes and no custom effects exist
-        if type_changed && item.liquid_effects.is_empty() {
+        // Always re-apply defaults when the type changes, so stale effects from the
+        // previous type (or from fallback-to-water defaults) get replaced. A caller
+        // that wants custom effects can pass them via `liquid_effects` in the same
+        // request — that field is applied below and wins over these defaults.
+        if type_changed {
             item.liquid_effects = item.liquid_type.default_effects();
         }
     }
@@ -865,6 +888,19 @@ async fn update_item(
     }
     if let Some(lm) = req.liquid_max {
         item.liquid_max = lm;
+    }
+    if let Some(effects) = req.liquid_effects {
+        item.liquid_effects = effects
+            .iter()
+            .filter_map(|e| {
+                EffectType::from_str(&e.effect_type).map(|et| ItemEffect {
+                    effect_type: et,
+                    magnitude: e.magnitude,
+                    duration: e.duration,
+                    script_callback: None,
+                })
+            })
+            .collect();
     }
     // Medical fields
     if let Some(mt) = req.medical_tier {

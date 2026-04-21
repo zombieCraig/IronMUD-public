@@ -52,12 +52,14 @@ export declare const itemToolDefinitions: ({
             liquid_type?: undefined;
             liquid_current?: undefined;
             liquid_max?: undefined;
+            liquid_effects?: undefined;
             medical_tier?: undefined;
             medical_uses?: undefined;
             treats_wound_types?: undefined;
             food_nutrition?: undefined;
             food_spoil_duration?: undefined;
             food_effects?: undefined;
+            note_content?: undefined;
             id?: undefined;
             room_id?: undefined;
         };
@@ -107,12 +109,14 @@ export declare const itemToolDefinitions: ({
             liquid_type?: undefined;
             liquid_current?: undefined;
             liquid_max?: undefined;
+            liquid_effects?: undefined;
             medical_tier?: undefined;
             medical_uses?: undefined;
             treats_wound_types?: undefined;
             food_nutrition?: undefined;
             food_spoil_duration?: undefined;
             food_effects?: undefined;
+            note_content?: undefined;
             id?: undefined;
             room_id?: undefined;
         };
@@ -165,12 +169,14 @@ export declare const itemToolDefinitions: ({
             liquid_type?: undefined;
             liquid_current?: undefined;
             liquid_max?: undefined;
+            liquid_effects?: undefined;
             medical_tier?: undefined;
             medical_uses?: undefined;
             treats_wound_types?: undefined;
             food_nutrition?: undefined;
             food_spoil_duration?: undefined;
             food_effects?: undefined;
+            note_content?: undefined;
             id?: undefined;
             room_id?: undefined;
         };
@@ -223,12 +229,14 @@ export declare const itemToolDefinitions: ({
             liquid_type?: undefined;
             liquid_current?: undefined;
             liquid_max?: undefined;
+            liquid_effects?: undefined;
             medical_tier?: undefined;
             medical_uses?: undefined;
             treats_wound_types?: undefined;
             food_nutrition?: undefined;
             food_spoil_duration?: undefined;
             food_effects?: undefined;
+            note_content?: undefined;
             id?: undefined;
             room_id?: undefined;
         };
@@ -418,6 +426,28 @@ export declare const itemToolDefinitions: ({
                 type: string;
                 description: string;
             };
+            liquid_effects: {
+                type: string;
+                description: string;
+                items: {
+                    type: string;
+                    properties: {
+                        effect_type: {
+                            type: string;
+                            description: string;
+                        };
+                        magnitude: {
+                            type: string;
+                            description: string;
+                        };
+                        duration: {
+                            type: string;
+                            description: string;
+                        };
+                    };
+                    required: string[];
+                };
+            };
             medical_tier: {
                 type: string;
                 description: string;
@@ -462,6 +492,10 @@ export declare const itemToolDefinitions: ({
                     };
                     required: string[];
                 };
+            };
+            note_content: {
+                type: string;
+                description: string;
             };
             limit?: undefined;
             offset?: undefined;
@@ -625,6 +659,28 @@ export declare const itemToolDefinitions: ({
                 type: string;
                 description: string;
             };
+            liquid_effects: {
+                type: string;
+                description: string;
+                items: {
+                    type: string;
+                    properties: {
+                        effect_type: {
+                            type: string;
+                            description: string;
+                        };
+                        magnitude: {
+                            type: string;
+                            description: string;
+                        };
+                        duration: {
+                            type: string;
+                            description: string;
+                        };
+                    };
+                    required: string[];
+                };
+            };
             medical_tier: {
                 type: string;
                 description: string;
@@ -669,6 +725,10 @@ export declare const itemToolDefinitions: ({
                     };
                     required: string[];
                 };
+            };
+            note_content: {
+                type: string;
+                description: string;
             };
             limit?: undefined;
             offset?: undefined;
@@ -726,12 +786,14 @@ export declare const itemToolDefinitions: ({
             liquid_type?: undefined;
             liquid_current?: undefined;
             liquid_max?: undefined;
+            liquid_effects?: undefined;
             medical_tier?: undefined;
             medical_uses?: undefined;
             treats_wound_types?: undefined;
             food_nutrition?: undefined;
             food_spoil_duration?: undefined;
             food_effects?: undefined;
+            note_content?: undefined;
             room_id?: undefined;
         };
         required: string[];
@@ -787,12 +849,14 @@ export declare const itemToolDefinitions: ({
             liquid_type?: undefined;
             liquid_current?: undefined;
             liquid_max?: undefined;
+            liquid_effects?: undefined;
             medical_tier?: undefined;
             medical_uses?: undefined;
             treats_wound_types?: undefined;
             food_nutrition?: undefined;
             food_spoil_duration?: undefined;
             food_effects?: undefined;
+            note_content?: undefined;
             id?: undefined;
         };
         required: string[];

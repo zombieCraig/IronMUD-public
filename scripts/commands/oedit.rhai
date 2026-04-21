@@ -1822,6 +1822,7 @@ fn get_defaults_for_liquid(lt) {
     if lt == "wine" { return [["drunk", 4, 300], ["quenched", 30, 0]]; }
     if lt == "beer" { return get_defaults_beer(); }
     if lt == "alcohol" { return [["drunk", 6, 300], ["quenched", 20, 0]]; }
+    if lt == "spirits" { return [["drunk", 5, 300], ["quenched", 25, 0]]; }
     if lt == "milk" { return [["satiated", 20, 0], ["quenched", 80, 0]]; }
     if lt == "juice" { return get_defaults_juice(); }
     return get_defaults_for_liquid_2(lt);

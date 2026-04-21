@@ -138,6 +138,7 @@ fn seed_oakvale(db: &Db) -> Result<usize> {
     );
     tavern.flags.indoors = true;
     tavern.exits.south = Some(square_id);
+    tavern.exits.north = Some(seed_uuid("oakvale:north_gate"));
     tavern.exits.up = Some(seed_uuid("oakvale:tavern_upstairs"));
     tavern.extra_descs.push(ExtraDesc {
         keywords: vec!["fireplace".to_string(), "fire".to_string()],
@@ -164,7 +165,7 @@ fn seed_oakvale(db: &Db) -> Result<usize> {
         "Shelves line every wall from floor to ceiling, crammed with supplies of every description: rope coils, lanterns, travel rations, bedrolls, and tools. A wooden counter separates the shop floor from the storeroom behind.",
     );
     store.flags.indoors = true;
-    store.exits.west = Some(seed_uuid("oakvale:market"));
+    store.exits.north = Some(seed_uuid("oakvale:market"));
 
     // --- Smithy ---
     let mut smithy = room(
@@ -206,7 +207,7 @@ fn seed_oakvale(db: &Db) -> Result<usize> {
     );
     bank.flags.indoors = true;
     bank.flags.bank = true;
-    bank.exits.east = Some(seed_uuid("oakvale:east_road"));
+    bank.exits.north = Some(seed_uuid("oakvale:east_road"));
 
     // --- Post Office ---
     let mut post = room(
@@ -240,7 +241,7 @@ fn seed_oakvale(db: &Db) -> Result<usize> {
         "Cottage Lane",
         "A quiet lane of small timber-and-plaster cottages with thatched roofs. Window boxes overflow with wildflowers, and smoke curls from a few chimneys. A sign near one cottage reads 'For Rent — Inquire Within'.",
     );
-    cottage_entry.exits.east = Some(square_id);
+    cottage_entry.exits.east = Some(seed_uuid("oakvale:south_path"));
 
     // --- Cottage Interior (property template) ---
     let mut cottage_int = room(
@@ -273,7 +274,7 @@ fn seed_oakvale(db: &Db) -> Result<usize> {
         "East Road",
         "A well-maintained road paved with packed earth and gravel leads east toward the imposing silhouette of the Iron Keep. To the south a sturdy bank building stands, and the post office is just north. The village thins out here, giving way to open fields.",
     );
-    east_road.exits.west = Some(square_id);
+    east_road.exits.west = Some(seed_uuid("oakvale:market"));
     east_road.exits.east = Some(seed_uuid("ironkeep:approach"));
     east_road.exits.south = Some(seed_uuid("oakvale:bank"));
     east_road.exits.north = Some(seed_uuid("oakvale:post_office"));
@@ -297,11 +298,12 @@ fn seed_oakvale(db: &Db) -> Result<usize> {
         area,
         "oakvale:market",
         "Market Street",
-        "A busy stretch of cobblestone lined with merchant stalls and shop fronts. Vendors hawk their wares, from fresh produce to exotic trinkets. The general store's door stands open to the east, and the rhythmic clanging of the smithy echoes from the north.",
+        "A busy stretch of cobblestone lined with merchant stalls and shop fronts. Vendors hawk their wares, from fresh produce to exotic trinkets. The general store's door stands open to the south, the rhythmic clanging of the smithy echoes from the north, and a broad road runs eastward toward the distant silhouette of the Iron Keep.",
     );
     market.flags.city = true;
     market.exits.west = Some(square_id);
-    market.exits.east = Some(seed_uuid("oakvale:general_store"));
+    market.exits.east = Some(seed_uuid("oakvale:east_road"));
+    market.exits.south = Some(seed_uuid("oakvale:general_store"));
     market.exits.north = Some(seed_uuid("oakvale:smithy"));
 
     // Save all Oakvale rooms
@@ -463,7 +465,7 @@ fn seed_whisperwood(db: &Db) -> Result<usize> {
         "Brook Crossing",
         "A cheerful brook tumbles over mossy rocks, spanned by a simple wooden bridge of planks and rope. Ferns line both banks, and small fish dart in the shallows.",
     );
-    brook_crossing.exits.south = Some(seed_uuid("whisperwood:trail_entrance"));
+    brook_crossing.exits.west = Some(seed_uuid("whisperwood:trail_entrance"));
     brook_crossing.exits.north = Some(seed_uuid("whisperwood:grove"));
     brook_crossing.flags.dirt_floor = true;
 
@@ -487,7 +489,7 @@ fn seed_whisperwood(db: &Db) -> Result<usize> {
         "Forager's Camp",
         "A small campsite tucked under an overhanging rock. A ring of stones surrounds a fire pit with cold ashes, and a makeshift lean-to provides shelter. Bundles of dried herbs hang from the branches overhead.",
     );
-    forager_camp.exits.west = Some(seed_uuid("whisperwood:deep_trail"));
+    forager_camp.exits.east = Some(seed_uuid("whisperwood:deep_trail"));
     forager_camp.flags.dirt_floor = true;
 
     // Connect deep_trail west to forager_camp
@@ -734,6 +736,7 @@ fn seed_shadowfang(db: &Db) -> Result<usize> {
     );
     goblin_camp.exits.south = Some(seed_uuid("shadowfang:tunnel"));
     goblin_camp.exits.north = Some(seed_uuid("shadowfang:crossroads"));
+    goblin_camp.exits.up = Some(seed_uuid("shadowfang:upper_cave"));
     goblin_camp.flags.dark = true;
 
     let mut fungal_grotto = room(
@@ -830,10 +833,10 @@ fn seed_shadowfang(db: &Db) -> Result<usize> {
         area,
         "shadowfang:upper_cave",
         "Upper Caves",
-        "A natural cave with a higher ceiling than the tunnels below. A stone staircase, clearly man-made, leads upward toward the Iron Keep. The cave continues to the south, descending into the depths.",
+        "A natural cave with a higher ceiling than the tunnels below. A stone staircase, clearly man-made, leads upward toward the Iron Keep. A steep slope descends into the depths below.",
     );
     upper_cave.exits.up = Some(seed_uuid("ironkeep:dungeon_stairs"));
-    upper_cave.exits.south = Some(seed_uuid("shadowfang:goblin_camp"));
+    upper_cave.exits.down = Some(seed_uuid("shadowfang:goblin_camp"));
     upper_cave.flags.dark = true;
 
     let rooms = vec![
@@ -869,6 +872,7 @@ fn seed_hilltop(db: &Db) -> Result<usize> {
     );
     path.exits.west = Some(seed_uuid("oakvale:south_path"));
     path.exits.east = Some(seed_uuid("hilltop:farmyard"));
+    path.exits.south = Some(seed_uuid("hilltop:wheat_field"));
     path.flags.dirt_floor = true;
 
     let mut farmyard = room(
@@ -925,7 +929,7 @@ fn seed_hilltop(db: &Db) -> Result<usize> {
         "Garden Plots",
         "Neat rows of raised beds stretch across this section of the farm. Rich dark soil has been carefully tended, and wooden stakes mark where different crops grow. A water barrel and a collection of clay pots sit at the end of the rows.",
     );
-    garden_plots.exits.south = Some(seed_uuid("hilltop:farmyard"));
+    garden_plots.exits.down = Some(seed_uuid("hilltop:farmyard"));
     garden_plots.flags.garden = true;
     garden_plots.flags.dirt_floor = true;
 
@@ -939,7 +943,7 @@ fn seed_hilltop(db: &Db) -> Result<usize> {
         "Apple Orchard",
         "Rows of gnarled apple trees stretch across the hillside, their branches heavy with fruit in season. The grass beneath the trees is soft and dappled with shade. A few fallen apples dot the ground.",
     );
-    orchard.exits.north = Some(seed_uuid("hilltop:farmyard"));
+    orchard.exits.up = Some(seed_uuid("hilltop:farmyard"));
     orchard.flags.dirt_floor = true;
 
     // Connect farmyard south to orchard too (via east)
@@ -952,7 +956,7 @@ fn seed_hilltop(db: &Db) -> Result<usize> {
         "Wheat Field",
         "A broad field of wheat stretches before you, the stalks swaying gently in the breeze. A narrow path cuts through the middle, barely wide enough to walk single file. The field extends to the horizon.",
     );
-    wheat_field.exits.west = Some(seed_uuid("hilltop:path"));
+    wheat_field.exits.north = Some(seed_uuid("hilltop:path"));
     wheat_field.flags.dirt_floor = true;
     wheat_field.spring_desc = Some("Young green wheat shoots push up through the dark soil in orderly rows. The field has been freshly sown, and the earth smells of spring rain.".to_string());
     wheat_field.summer_desc = Some("The wheat stands tall and golden, nearly ready for harvest. The stalks rustle in the warm summer breeze, creating waves of gold across the hillside.".to_string());

@@ -444,12 +444,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     liquid_type: args?.liquid_type,
                     liquid_current: args?.liquid_current,
                     liquid_max: args?.liquid_max,
+                    liquid_effects: args?.liquid_effects,
                     medical_tier: args?.medical_tier,
                     medical_uses: args?.medical_uses,
                     treats_wound_types: args?.treats_wound_types,
                     food_nutrition: args?.food_nutrition,
                     food_spoil_duration: args?.food_spoil_duration,
                     food_effects: args?.food_effects,
+                    note_content: args?.note_content,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(item, null, 2) }],
@@ -470,8 +472,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     "attachment_slot", "attachment_accuracy_bonus", "attachment_noise_reduction",
                     "attachment_magazine_bonus", "plant_prototype_vnum", "fertilizer_duration",
                     "treats_infestation", "liquid_type", "liquid_current", "liquid_max",
+                    "liquid_effects",
                     "medical_tier", "medical_uses", "treats_wound_types",
                     "food_nutrition", "food_spoil_duration", "food_effects",
+                    "note_content",
                 ];
                 for (const field of itemFields) {
                     if (args?.[field] !== undefined) {

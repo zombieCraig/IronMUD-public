@@ -18,6 +18,7 @@ export declare const areaToolDefinitions: ({
             immigration_visual_profile?: undefined;
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
+            immigration_guard_chance?: undefined;
             area_id?: undefined;
         };
         required?: undefined;
@@ -45,6 +46,7 @@ export declare const areaToolDefinitions: ({
             immigration_visual_profile?: undefined;
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
+            immigration_guard_chance?: undefined;
             area_id?: undefined;
         };
         required: string[];
@@ -87,6 +89,7 @@ export declare const areaToolDefinitions: ({
             immigration_visual_profile?: undefined;
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
+            immigration_guard_chance?: undefined;
             area_id?: undefined;
         };
         required: string[];
@@ -149,6 +152,10 @@ export declare const areaToolDefinitions: ({
                 type: string;
                 description: string;
             };
+            immigration_guard_chance: {
+                type: string;
+                description: string;
+            };
             identifier?: undefined;
             area_id?: undefined;
         };
@@ -177,6 +184,7 @@ export declare const areaToolDefinitions: ({
             immigration_visual_profile?: undefined;
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
+            immigration_guard_chance?: undefined;
             area_id?: undefined;
         };
         required: string[];
@@ -205,6 +213,7 @@ export declare const areaToolDefinitions: ({
             immigration_visual_profile?: undefined;
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
+            immigration_guard_chance?: undefined;
         };
         required: string[];
     };

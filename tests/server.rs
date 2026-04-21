@@ -1297,6 +1297,100 @@ fn test_flag_editors_stay_in_sync_with_structs() {
 }
 
 #[test]
+fn test_seed_rooms_have_bidirectional_exits() {
+    use ironmud::types::RoomExits;
+    use std::collections::HashMap;
+    use uuid::Uuid;
+
+    // Cross-area exits are handled within the seed data; this test walks every
+    // seeded room and asserts that for each outgoing exit there is a matching
+    // reverse exit from the destination room.
+    let db_path = format!("test_seed_bidir_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(&db_path).expect("open DB");
+        ironmud::seed::seed_demo_world(&db).expect("seed_demo_world");
+
+        let rooms = db.list_all_rooms().expect("list_all_rooms");
+        let by_id: HashMap<Uuid, &ironmud::types::RoomData> = rooms.iter().map(|r| (r.id, r)).collect();
+
+        fn dir_exits(e: &RoomExits) -> [(&'static str, Option<Uuid>); 6] {
+            [
+                ("north", e.north),
+                ("east", e.east),
+                ("south", e.south),
+                ("west", e.west),
+                ("up", e.up),
+                ("down", e.down),
+            ]
+        }
+        fn opposite(d: &str) -> &'static str {
+            match d {
+                "north" => "south",
+                "south" => "north",
+                "east" => "west",
+                "west" => "east",
+                "up" => "down",
+                "down" => "up",
+                _ => "",
+            }
+        }
+        fn get_dir(e: &RoomExits, d: &str) -> Option<Uuid> {
+            match d {
+                "north" => e.north,
+                "east" => e.east,
+                "south" => e.south,
+                "west" => e.west,
+                "up" => e.up,
+                "down" => e.down,
+                _ => None,
+            }
+        }
+
+        let mut errors = Vec::new();
+        for room in &rooms {
+            // Skip property templates — cottage_interior has no exits by design.
+            if room.is_property_template {
+                continue;
+            }
+            for (dir, maybe_target) in dir_exits(&room.exits) {
+                let Some(target_id) = maybe_target else { continue };
+                let Some(target) = by_id.get(&target_id) else {
+                    errors.push(format!(
+                        "{} -> {} points at missing room {}",
+                        room.vnum.as_deref().unwrap_or("?"),
+                        dir,
+                        target_id
+                    ));
+                    continue;
+                };
+                let rev = opposite(dir);
+                match get_dir(&target.exits, rev) {
+                    Some(back) if back == room.id => {}
+                    other => errors.push(format!(
+                        "{} -> {} -> {} (vnum {}), but reverse {}: {:?}",
+                        room.vnum.as_deref().unwrap_or("?"),
+                        dir,
+                        target_id,
+                        target.vnum.as_deref().unwrap_or("?"),
+                        rev,
+                        other
+                    )),
+                }
+            }
+        }
+
+        assert!(errors.is_empty(), "Non-bidirectional exits:\n  {}", errors.join("\n  "));
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_seed_demo_world() {
     // Use a unique temp DB to avoid conflicts with other tests
     let db_path = format!("test_seed_{}.db", std::process::id());
