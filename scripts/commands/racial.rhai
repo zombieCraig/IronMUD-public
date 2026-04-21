@@ -78,7 +78,7 @@ fn format_ability_costs(a) {
 }
 
 fn get_cooldown_end(cooldowns, aid) {
-    if cooldowns.contains_key(aid) {
+    if aid in cooldowns {
         return cooldowns[aid];
     }
     return 0;

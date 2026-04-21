@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::mpsc;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 pub mod aging;
@@ -3072,6 +3072,16 @@ pub async fn run_server(state: SharedState, listener: TcpListener, shutdown_rx: 
             loop {
                 let (socket, addr) = listener.accept().await.unwrap();
                 info!("New connection: {}", addr);
+
+                // Cloud NATs (e.g. GCP VPC) silently drop idle TCP flows after ~10 min.
+                // Keepalive probes every 60s keep long-lived telnet sessions alive.
+                let ka = socket2::TcpKeepalive::new()
+                    .with_time(std::time::Duration::from_secs(60))
+                    .with_interval(std::time::Duration::from_secs(30));
+                if let Err(e) = socket2::SockRef::from(&socket).set_tcp_keepalive(&ka) {
+                    warn!("Failed to set TCP keepalive on {}: {}", addr, e);
+                }
+
                 let state = state.clone();
                 let connection_id = Uuid::new_v4();
                 tokio::spawn(async move {
