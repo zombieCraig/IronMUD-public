@@ -9,7 +9,7 @@ use tracing::{debug, error, warn};
 
 use ironmud::{
     CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, CombatZoneType, InputEvent, ItemData,
-    MobileData, RoomData, SharedConnections, WoundType, db, get_opposite_direction,
+    MobileData, RoomData, SharedConnections, WoundType, broadcast_to_builders, db, get_opposite_direction,
 };
 
 use super::broadcast::{
@@ -113,11 +113,42 @@ fn get_routine_exits(
     Ok(exits)
 }
 
-/// BFS pathfinding: find the next step direction and room to move toward a destination.
-/// Returns (direction, target_room_id) for the first step, or None if unreachable.
-fn bfs_next_step(db: &db::Db, from: uuid::Uuid, to: uuid::Uuid, mobile: &MobileData) -> Option<(String, uuid::Uuid)> {
+/// Render a room as `<vnum> "<title>"` (or `<uuid-prefix> "<title>"` if the
+/// room has no vnum, or `<uuid>` if the room is missing). Used only for log
+/// and builder-debug messages — not gameplay.
+fn describe_room(db: &db::Db, id: &uuid::Uuid) -> String {
+    match db.get_room_data(id) {
+        Ok(Some(room)) => {
+            let label = room.vnum.clone().unwrap_or_else(|| {
+                let s = id.to_string();
+                s[..8.min(s.len())].to_string()
+            });
+            format!("{} \"{}\"", label, room.title)
+        }
+        _ => id.to_string(),
+    }
+}
+
+/// Outcome of a BFS pathfinding attempt for routine movement.
+enum BfsOutcome {
+    /// Found a next step toward the destination.
+    Step { direction: String },
+    /// Source and destination are the same room.
+    AlreadyThere,
+    /// Explored the reachable graph but never found the destination. `explored`
+    /// is the number of distinct rooms that were reachable from `from`.
+    NoPath { explored: usize },
+    /// BFS hit the depth cap before finding the destination. `explored` counts
+    /// the rooms visited up to that depth.
+    TooFar { explored: usize },
+}
+
+/// BFS pathfinding: find the next step direction to move from `from` toward `to`.
+/// Returns a [`BfsOutcome`] so the caller can distinguish success, an unreachable
+/// destination, and a destination beyond [`MAX_BFS_DEPTH`].
+fn bfs_next_step(db: &db::Db, from: uuid::Uuid, to: uuid::Uuid, mobile: &MobileData) -> BfsOutcome {
     if from == to {
-        return None;
+        return BfsOutcome::AlreadyThere;
     }
 
     // Collect mobile's key IDs once for door checks
@@ -149,7 +180,7 @@ fn bfs_next_step(db: &db::Db, from: uuid::Uuid, to: uuid::Uuid, mobile: &MobileD
                 if !visited.contains(&target_id) {
                     visited.insert(target_id);
                     if target_id == to {
-                        return Some((dir, target_id));
+                        return BfsOutcome::Step { direction: dir };
                     }
                     queue.push_back((target_id, dir, target_id));
                 }
@@ -166,7 +197,7 @@ fn bfs_next_step(db: &db::Db, from: uuid::Uuid, to: uuid::Uuid, mobile: &MobileD
         if nodes_processed >= nodes_at_depth {
             depth += 1;
             if depth > MAX_BFS_DEPTH {
-                return None; // Too far
+                return BfsOutcome::TooFar { explored: visited.len() };
             }
             nodes_at_depth = queue.len();
             nodes_processed = 0;
@@ -184,7 +215,7 @@ fn bfs_next_step(db: &db::Db, from: uuid::Uuid, to: uuid::Uuid, mobile: &MobileD
                     if !visited.contains(&target_id) {
                         visited.insert(target_id);
                         if target_id == to {
-                            return Some((first_dir, first_room));
+                            return BfsOutcome::Step { direction: first_dir };
                         }
                         queue.push_back((target_id, first_dir.clone(), first_room));
                     }
@@ -193,7 +224,7 @@ fn bfs_next_step(db: &db::Db, from: uuid::Uuid, to: uuid::Uuid, mobile: &MobileD
         }
     }
 
-    None // Unreachable
+    BfsOutcome::NoPath { explored: visited.len() }
 }
 
 /// Handle opening/unlocking a door before a mobile moves through it.
@@ -420,8 +451,8 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
                 }
 
                 // BFS to find next step
-                if let Some((direction, _next_room)) = bfs_next_step(db, current_room_id, dest_room_id, &current_mobile)
-                {
+                let bfs_result = bfs_next_step(db, current_room_id, dest_room_id, &current_mobile);
+                if let BfsOutcome::Step { direction, .. } = bfs_result {
                     // Check for and handle door in this direction
                     let room = db.get_room_data(&current_room_id)?.unwrap();
                     let door_info = room.doors.get(&direction).map(|d| (d.is_closed, d.is_locked));
@@ -510,8 +541,32 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
 
                     debug!("Routine: {} stepped toward destination", current_mobile.name);
                 } else {
-                    // BFS found no path - destination unreachable, clear it
-                    warn!("Routine: {} cannot reach destination, clearing", current_mobile.name);
+                    // BFS found no path - destination unreachable, clear it.
+                    // Report in enough detail that a builder can troubleshoot
+                    // the offending routine/room without restarting the server.
+                    let reason = match &bfs_result {
+                        BfsOutcome::NoPath { explored } => {
+                            format!("no path found (explored {} reachable room{})", explored, if *explored == 1 { "" } else { "s" })
+                        }
+                        BfsOutcome::TooFar { explored } => format!(
+                            "destination more than {} rooms away (explored {} before giving up)",
+                            MAX_BFS_DEPTH, explored
+                        ),
+                        // AlreadyThere is handled above; Step is the success branch.
+                        BfsOutcome::AlreadyThere | BfsOutcome::Step { .. } => "unknown".to_string(),
+                    };
+                    let from_label = describe_room(db, &current_room_id);
+                    let dest_label = describe_room(db, &dest_room_id);
+                    let msg = format!(
+                        "Routine: {} cannot reach destination (activity '{}') — from {} to {}: {}. Clearing destination.",
+                        current_mobile.name,
+                        current_mobile.current_activity.to_display_string(),
+                        from_label,
+                        dest_label,
+                        reason
+                    );
+                    warn!("{}", msg);
+                    broadcast_to_builders(connections, &msg);
                     db.update_mobile(&current_mobile.id, |m| {
                         m.routine_destination_room = None;
                     })?;
