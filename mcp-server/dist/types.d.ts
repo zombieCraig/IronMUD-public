@@ -91,6 +91,13 @@ export interface AddMobileTriggerRequest {
     chance?: number;
     args?: string[];
 }
+export type ItemTriggerType = "on_get" | "on_drop" | "on_use" | "on_examine" | "on_prompt" | "get" | "drop" | "use" | "examine" | "prompt";
+export interface AddItemTriggerRequest {
+    trigger_type: ItemTriggerType;
+    script_name: string;
+    chance?: number;
+    args?: string[];
+}
 export interface ExtraDesc {
     keywords: string[];
     description: string;

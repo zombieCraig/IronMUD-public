@@ -523,6 +523,36 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [{ type: "text", text: JSON.stringify(item, null, 2) }],
         };
       }
+      case "add_item_trigger": {
+        const itemId = args?.item_id as string;
+        const triggerType = args?.trigger_type as string;
+        const scriptName = args?.script_name as string;
+        if (!itemId || !triggerType || !scriptName) {
+          throw new Error("item_id, trigger_type, and script_name are required");
+        }
+        const resolvedItemTriggerId = await resolveItemId(api, itemId);
+        const itemTriggerResult = await api.addItemTrigger(resolvedItemTriggerId, {
+          trigger_type: triggerType as any,
+          script_name: scriptName,
+          chance: args?.chance as number | undefined,
+          args: args?.args as string[] | undefined,
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(itemTriggerResult.data, null, 2) + formatRefreshSuffix(itemTriggerResult.refreshed_instances) }],
+        };
+      }
+      case "remove_item_trigger": {
+        const itemId = args?.item_id as string;
+        const index = args?.index as number;
+        if (!itemId || index === undefined) {
+          throw new Error("item_id and index are required");
+        }
+        const resolvedItemRmTriggerId = await resolveItemId(api, itemId);
+        const rmItemTriggerResult = await api.removeItemTrigger(resolvedItemRmTriggerId, index);
+        return {
+          content: [{ type: "text", text: JSON.stringify(rmItemTriggerResult.data, null, 2) + formatRefreshSuffix(rmItemTriggerResult.refreshed_instances) }],
+        };
+      }
 
       // Mobile tools
       case "list_mobiles": {

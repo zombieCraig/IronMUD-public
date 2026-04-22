@@ -1,4 +1,4 @@
-import type { Area, Room, Item, Mobile, SpawnPoint, Transport, PlantPrototype, ItemSummary, RoomSummary, MobileSummary, AreaOverview, CreateAreaRequest, CreateRoomRequest, CreateItemRequest, CreateMobileRequest, CreateSpawnPointRequest, CreateTransportRequest, CreatePlantPrototypeRequest, AddTransportStopRequest, SetExitRequest, AddDoorRequest, AddTriggerRequest, AddExtraDescRequest, AddDialogueRequest, AddMobileTriggerRequest, AddSpawnDependencyRequest, SpawnEntityRequest, BugReport, UpdateBugReportRequest, AddBugNoteRequest } from "./types.js";
+import type { Area, Room, Item, Mobile, SpawnPoint, Transport, PlantPrototype, ItemSummary, RoomSummary, MobileSummary, AreaOverview, CreateAreaRequest, CreateRoomRequest, CreateItemRequest, CreateMobileRequest, CreateSpawnPointRequest, CreateTransportRequest, CreatePlantPrototypeRequest, AddTransportStopRequest, SetExitRequest, AddDoorRequest, AddTriggerRequest, AddExtraDescRequest, AddDialogueRequest, AddMobileTriggerRequest, AddItemTriggerRequest, AddSpawnDependencyRequest, SpawnEntityRequest, BugReport, UpdateBugReportRequest, AddBugNoteRequest } from "./types.js";
 export declare class IronMUDApiClient {
     private client;
     constructor(baseUrl: string, apiKey: string);
@@ -48,6 +48,14 @@ export declare class IronMUDApiClient {
     }>;
     deleteItem(id: string): Promise<void>;
     spawnItem(vnum: string, data: SpawnEntityRequest): Promise<Item>;
+    addItemTrigger(itemId: string, data: AddItemTriggerRequest): Promise<{
+        data: Item;
+        refreshed_instances?: number;
+    }>;
+    removeItemTrigger(itemId: string, index: number): Promise<{
+        data: Item;
+        refreshed_instances?: number;
+    }>;
     listMobiles(limit?: number, offset?: number): Promise<Mobile[]>;
     listMobilePrototypes(): Promise<Mobile[]>;
     listMobilePrototypesSummary(vnumPrefix?: string): Promise<MobileSummary[]>;

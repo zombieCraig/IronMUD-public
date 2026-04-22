@@ -51,32 +51,52 @@ pub struct CreateRoomRequest {
     pub flags: RoomFlagsRequest,
 }
 
+/// Builder-facing subset of `RoomFlags`. Every field is optional so callers
+/// can send only the flags they want to change; unmentioned flags are
+/// preserved on update and default to `false` on create. `safe` is a
+/// shortcut that maps to `combat_zone = Some(CombatZoneType::Safe)`.
 #[derive(Deserialize, Default)]
 pub struct RoomFlagsRequest {
     #[serde(default)]
-    pub dark: bool,
+    pub dark: Option<bool>,
     #[serde(default)]
-    pub no_mob: bool,
+    pub no_mob: Option<bool>,
     #[serde(default)]
-    pub indoors: bool,
+    pub indoors: Option<bool>,
     #[serde(default)]
-    pub safe: bool,
+    pub safe: Option<bool>,
     #[serde(default)]
-    pub dirt_floor: bool,
+    pub underwater: Option<bool>,
     #[serde(default)]
-    pub garden: bool,
+    pub climate_controlled: Option<bool>,
     #[serde(default)]
-    pub climate_controlled: bool,
+    pub always_hot: Option<bool>,
     #[serde(default)]
-    pub city: bool,
+    pub always_cold: Option<bool>,
     #[serde(default)]
-    pub difficult_terrain: bool,
+    pub city: Option<bool>,
     #[serde(default)]
-    pub shallow_water: bool,
+    pub no_windows: Option<bool>,
     #[serde(default)]
-    pub deep_water: bool,
+    pub difficult_terrain: Option<bool>,
     #[serde(default)]
-    pub liveable: bool,
+    pub dirt_floor: Option<bool>,
+    #[serde(default)]
+    pub property_storage: Option<bool>,
+    #[serde(default)]
+    pub post_office: Option<bool>,
+    #[serde(default)]
+    pub bank: Option<bool>,
+    #[serde(default)]
+    pub garden: Option<bool>,
+    #[serde(default)]
+    pub spawn_point: Option<bool>,
+    #[serde(default)]
+    pub shallow_water: Option<bool>,
+    #[serde(default)]
+    pub deep_water: Option<bool>,
+    #[serde(default)]
+    pub liveable: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -406,7 +426,7 @@ async fn create_room(
         }
     }
 
-    let combat_zone = if req.flags.safe {
+    let combat_zone = if req.flags.safe.unwrap_or(false) {
         Some(CombatZoneType::Safe)
     } else {
         None
@@ -418,19 +438,26 @@ async fn create_room(
         description: req.description,
         exits: RoomExits::default(),
         flags: RoomFlags {
-            dark: req.flags.dark,
-            no_mob: req.flags.no_mob,
-            indoors: req.flags.indoors,
+            dark: req.flags.dark.unwrap_or(false),
+            no_mob: req.flags.no_mob.unwrap_or(false),
+            indoors: req.flags.indoors.unwrap_or(false),
             combat_zone,
-            dirt_floor: req.flags.dirt_floor,
-            garden: req.flags.garden,
-            climate_controlled: req.flags.climate_controlled,
-            city: req.flags.city,
-            difficult_terrain: req.flags.difficult_terrain,
-            shallow_water: req.flags.shallow_water,
-            deep_water: req.flags.deep_water,
-            liveable: req.flags.liveable,
-            ..Default::default()
+            underwater: req.flags.underwater.unwrap_or(false),
+            climate_controlled: req.flags.climate_controlled.unwrap_or(false),
+            always_hot: req.flags.always_hot.unwrap_or(false),
+            always_cold: req.flags.always_cold.unwrap_or(false),
+            city: req.flags.city.unwrap_or(false),
+            no_windows: req.flags.no_windows.unwrap_or(false),
+            difficult_terrain: req.flags.difficult_terrain.unwrap_or(false),
+            dirt_floor: req.flags.dirt_floor.unwrap_or(false),
+            property_storage: req.flags.property_storage.unwrap_or(false),
+            post_office: req.flags.post_office.unwrap_or(false),
+            bank: req.flags.bank.unwrap_or(false),
+            garden: req.flags.garden.unwrap_or(false),
+            spawn_point: req.flags.spawn_point.unwrap_or(false),
+            shallow_water: req.flags.shallow_water.unwrap_or(false),
+            deep_water: req.flags.deep_water.unwrap_or(false),
+            liveable: req.flags.liveable.unwrap_or(false),
         },
         vnum: req.vnum,
         area_id,
@@ -529,18 +556,28 @@ async fn update_room(
         room.area_id = Some(new_area_id);
     }
     if let Some(flags) = req.flags {
-        room.flags.dark = flags.dark;
-        room.flags.no_mob = flags.no_mob;
-        room.flags.indoors = flags.indoors;
-        room.flags.combat_zone = if flags.safe { Some(CombatZoneType::Safe) } else { None };
-        room.flags.dirt_floor = flags.dirt_floor;
-        room.flags.garden = flags.garden;
-        room.flags.climate_controlled = flags.climate_controlled;
-        room.flags.city = flags.city;
-        room.flags.difficult_terrain = flags.difficult_terrain;
-        room.flags.shallow_water = flags.shallow_water;
-        room.flags.deep_water = flags.deep_water;
-        room.flags.liveable = flags.liveable;
+        if let Some(v) = flags.dark { room.flags.dark = v; }
+        if let Some(v) = flags.no_mob { room.flags.no_mob = v; }
+        if let Some(v) = flags.indoors { room.flags.indoors = v; }
+        if let Some(v) = flags.safe {
+            room.flags.combat_zone = if v { Some(CombatZoneType::Safe) } else { None };
+        }
+        if let Some(v) = flags.underwater { room.flags.underwater = v; }
+        if let Some(v) = flags.climate_controlled { room.flags.climate_controlled = v; }
+        if let Some(v) = flags.always_hot { room.flags.always_hot = v; }
+        if let Some(v) = flags.always_cold { room.flags.always_cold = v; }
+        if let Some(v) = flags.city { room.flags.city = v; }
+        if let Some(v) = flags.no_windows { room.flags.no_windows = v; }
+        if let Some(v) = flags.difficult_terrain { room.flags.difficult_terrain = v; }
+        if let Some(v) = flags.dirt_floor { room.flags.dirt_floor = v; }
+        if let Some(v) = flags.property_storage { room.flags.property_storage = v; }
+        if let Some(v) = flags.post_office { room.flags.post_office = v; }
+        if let Some(v) = flags.bank { room.flags.bank = v; }
+        if let Some(v) = flags.garden { room.flags.garden = v; }
+        if let Some(v) = flags.spawn_point { room.flags.spawn_point = v; }
+        if let Some(v) = flags.shallow_water { room.flags.shallow_water = v; }
+        if let Some(v) = flags.deep_water { room.flags.deep_water = v; }
+        if let Some(v) = flags.liveable { room.flags.liveable = v; }
     }
     if let Some(cap) = req.living_capacity {
         room.living_capacity = cap.max(0);

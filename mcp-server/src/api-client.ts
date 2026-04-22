@@ -29,6 +29,7 @@ import type {
   AddExtraDescRequest,
   AddDialogueRequest,
   AddMobileTriggerRequest,
+  AddItemTriggerRequest,
   AddSpawnDependencyRequest,
   SpawnEntityRequest,
   BugReport,
@@ -328,6 +329,27 @@ export class IronMUDApiClient {
       "post",
       `/items/${encodeURIComponent(vnum)}/spawn`,
       data
+    );
+  }
+
+  async addItemTrigger(
+    itemId: string,
+    data: AddItemTriggerRequest
+  ): Promise<{ data: Item; refreshed_instances?: number }> {
+    return this.requestWithMeta<Item>(
+      "post",
+      `/items/${itemId}/triggers`,
+      data
+    );
+  }
+
+  async removeItemTrigger(
+    itemId: string,
+    index: number
+  ): Promise<{ data: Item; refreshed_instances?: number }> {
+    return this.requestWithMeta<Item>(
+      "delete",
+      `/items/${itemId}/triggers/${index}`
     );
   }
 

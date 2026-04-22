@@ -3,7 +3,7 @@
 use axum::{
     Json, Router,
     extract::{Extension, Path, Query, State},
-    routing::{get, post},
+    routing::{delete, get, post},
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -15,7 +15,7 @@ use super::{
     error::ApiError,
     notify_builders,
 };
-use crate::types::{EffectType, ItemEffect};
+use crate::types::{EffectType, ItemEffect, ItemTrigger, ItemTriggerType};
 use crate::{DamageType, ItemData, ItemFlags, ItemLocation, ItemType, LiquidType, WeaponSkill, WearLocation};
 
 const MAX_NOTE_BYTES: usize = 32 * 1024;
@@ -40,6 +40,8 @@ pub fn routes() -> Router<Arc<ApiState>> {
         .route("/prototypes/summary", get(list_prototypes_summary))
         .route("/:id", get(get_item).put(update_item).delete(delete_item))
         .route("/by-vnum/:vnum", get(get_item_by_vnum))
+        .route("/:id/triggers", post(add_trigger))
+        .route("/:id/triggers/:index", delete(remove_trigger))
         .route("/:vnum/spawn", post(spawn_item))
 }
 
@@ -145,28 +147,64 @@ pub struct CreateItemRequest {
     pub note_content: Option<String>,
 }
 
+/// Builder-facing subset of `ItemFlags`. Every field is optional so callers
+/// can send only the flags they want to change; unmentioned flags are
+/// preserved on update and default to `false` on create. Runtime-only
+/// corpse state is intentionally not exposed here.
 #[derive(Deserialize, Default)]
 pub struct ItemFlagsRequest {
     #[serde(default)]
-    pub no_drop: bool,
+    pub no_drop: Option<bool>,
     #[serde(default)]
-    pub no_get: bool,
+    pub no_get: Option<bool>,
     #[serde(default)]
-    pub invisible: bool,
+    pub no_remove: Option<bool>,
     #[serde(default)]
-    pub glow: bool,
+    pub invisible: Option<bool>,
     #[serde(default)]
-    pub hum: bool,
+    pub glow: Option<bool>,
     #[serde(default)]
-    pub plant_pot: bool,
+    pub hum: Option<bool>,
     #[serde(default)]
-    pub lockpick: bool,
+    pub no_sell: Option<bool>,
     #[serde(default)]
-    pub is_skinned: bool,
+    pub unique: Option<bool>,
     #[serde(default)]
-    pub boat: bool,
+    pub quest_item: Option<bool>,
     #[serde(default)]
-    pub medical_tool: bool,
+    pub vending: Option<bool>,
+    #[serde(default)]
+    pub provides_light: Option<bool>,
+    #[serde(default)]
+    pub fishing_rod: Option<bool>,
+    #[serde(default)]
+    pub bait: Option<bool>,
+    #[serde(default)]
+    pub foraging_tool: Option<bool>,
+    #[serde(default)]
+    pub waterproof: Option<bool>,
+    #[serde(default)]
+    pub provides_warmth: Option<bool>,
+    #[serde(default)]
+    pub reduces_glare: Option<bool>,
+    #[serde(default)]
+    pub medical_tool: Option<bool>,
+    #[serde(default)]
+    pub preserves_contents: Option<bool>,
+    #[serde(default)]
+    pub death_only: Option<bool>,
+    #[serde(default)]
+    pub atm: Option<bool>,
+    #[serde(default)]
+    pub broken: Option<bool>,
+    #[serde(default)]
+    pub plant_pot: Option<bool>,
+    #[serde(default)]
+    pub lockpick: Option<bool>,
+    #[serde(default)]
+    pub is_skinned: Option<bool>,
+    #[serde(default)]
+    pub boat: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -590,16 +628,32 @@ async fn create_item(
         armor_class: req.armor_class,
         protects: Vec::new(),
         flags: ItemFlags {
-            no_drop: req.flags.no_drop,
-            no_get: req.flags.no_get,
-            invisible: req.flags.invisible,
-            glow: req.flags.glow,
-            hum: req.flags.hum,
-            plant_pot: req.flags.plant_pot,
-            lockpick: req.flags.lockpick,
-            is_skinned: req.flags.is_skinned,
-            boat: req.flags.boat,
-            medical_tool: req.flags.medical_tool,
+            no_drop: req.flags.no_drop.unwrap_or(false),
+            no_get: req.flags.no_get.unwrap_or(false),
+            no_remove: req.flags.no_remove.unwrap_or(false),
+            invisible: req.flags.invisible.unwrap_or(false),
+            glow: req.flags.glow.unwrap_or(false),
+            hum: req.flags.hum.unwrap_or(false),
+            no_sell: req.flags.no_sell.unwrap_or(false),
+            unique: req.flags.unique.unwrap_or(false),
+            quest_item: req.flags.quest_item.unwrap_or(false),
+            vending: req.flags.vending.unwrap_or(false),
+            provides_light: req.flags.provides_light.unwrap_or(false),
+            fishing_rod: req.flags.fishing_rod.unwrap_or(false),
+            bait: req.flags.bait.unwrap_or(false),
+            foraging_tool: req.flags.foraging_tool.unwrap_or(false),
+            waterproof: req.flags.waterproof.unwrap_or(false),
+            provides_warmth: req.flags.provides_warmth.unwrap_or(false),
+            reduces_glare: req.flags.reduces_glare.unwrap_or(false),
+            medical_tool: req.flags.medical_tool.unwrap_or(false),
+            preserves_contents: req.flags.preserves_contents.unwrap_or(false),
+            death_only: req.flags.death_only.unwrap_or(false),
+            atm: req.flags.atm.unwrap_or(false),
+            broken: req.flags.broken.unwrap_or(false),
+            plant_pot: req.flags.plant_pot.unwrap_or(false),
+            lockpick: req.flags.lockpick.unwrap_or(false),
+            is_skinned: req.flags.is_skinned.unwrap_or(false),
+            boat: req.flags.boat.unwrap_or(false),
             ..Default::default()
         },
         damage_dice_count: req.damage_dice_count.unwrap_or(1),
@@ -795,16 +849,32 @@ async fn update_item(
         item.categories = categories;
     }
     if let Some(flags) = req.flags {
-        item.flags.no_drop = flags.no_drop;
-        item.flags.no_get = flags.no_get;
-        item.flags.invisible = flags.invisible;
-        item.flags.glow = flags.glow;
-        item.flags.hum = flags.hum;
-        item.flags.plant_pot = flags.plant_pot;
-        item.flags.lockpick = flags.lockpick;
-        item.flags.is_skinned = flags.is_skinned;
-        item.flags.boat = flags.boat;
-        item.flags.medical_tool = flags.medical_tool;
+        if let Some(v) = flags.no_drop { item.flags.no_drop = v; }
+        if let Some(v) = flags.no_get { item.flags.no_get = v; }
+        if let Some(v) = flags.no_remove { item.flags.no_remove = v; }
+        if let Some(v) = flags.invisible { item.flags.invisible = v; }
+        if let Some(v) = flags.glow { item.flags.glow = v; }
+        if let Some(v) = flags.hum { item.flags.hum = v; }
+        if let Some(v) = flags.no_sell { item.flags.no_sell = v; }
+        if let Some(v) = flags.unique { item.flags.unique = v; }
+        if let Some(v) = flags.quest_item { item.flags.quest_item = v; }
+        if let Some(v) = flags.vending { item.flags.vending = v; }
+        if let Some(v) = flags.provides_light { item.flags.provides_light = v; }
+        if let Some(v) = flags.fishing_rod { item.flags.fishing_rod = v; }
+        if let Some(v) = flags.bait { item.flags.bait = v; }
+        if let Some(v) = flags.foraging_tool { item.flags.foraging_tool = v; }
+        if let Some(v) = flags.waterproof { item.flags.waterproof = v; }
+        if let Some(v) = flags.provides_warmth { item.flags.provides_warmth = v; }
+        if let Some(v) = flags.reduces_glare { item.flags.reduces_glare = v; }
+        if let Some(v) = flags.medical_tool { item.flags.medical_tool = v; }
+        if let Some(v) = flags.preserves_contents { item.flags.preserves_contents = v; }
+        if let Some(v) = flags.death_only { item.flags.death_only = v; }
+        if let Some(v) = flags.atm { item.flags.atm = v; }
+        if let Some(v) = flags.broken { item.flags.broken = v; }
+        if let Some(v) = flags.plant_pot { item.flags.plant_pot = v; }
+        if let Some(v) = flags.lockpick { item.flags.lockpick = v; }
+        if let Some(v) = flags.is_skinned { item.flags.is_skinned = v; }
+        if let Some(v) = flags.boat { item.flags.boat = v; }
     }
     // Gardening fields
     if let Some(plant_prototype_vnum) = req.plant_prototype_vnum {
@@ -1004,6 +1074,117 @@ async fn delete_item(
         "success": true,
         "message": format!("Item '{}' deleted", item_name)
     })))
+}
+
+#[derive(Deserialize)]
+pub struct AddItemTriggerRequest {
+    /// One of: on_get, on_drop, on_use, on_examine, on_prompt (leading "on_" optional).
+    pub trigger_type: String,
+    /// Script filename without extension (e.g. "smart_watch"), or "@template" form.
+    pub script_name: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default = "default_item_trigger_chance")]
+    pub chance: i32,
+}
+
+fn default_item_trigger_chance() -> i32 {
+    100
+}
+
+fn parse_item_trigger_type(raw: &str) -> Result<ItemTriggerType, ApiError> {
+    match raw.to_lowercase().as_str() {
+        "get" | "on_get" => Ok(ItemTriggerType::OnGet),
+        "drop" | "on_drop" => Ok(ItemTriggerType::OnDrop),
+        "use" | "on_use" => Ok(ItemTriggerType::OnUse),
+        "examine" | "on_examine" => Ok(ItemTriggerType::OnExamine),
+        "prompt" | "on_prompt" => Ok(ItemTriggerType::OnPrompt),
+        _ => Err(ApiError::InvalidInput(format!(
+            "Invalid trigger type '{}'. Use: get, drop, use, examine, prompt",
+            raw
+        ))),
+    }
+}
+
+/// Add a trigger to an item prototype
+async fn add_trigger(
+    State(state): State<Arc<ApiState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(id): Path<String>,
+    Json(req): Json<AddItemTriggerRequest>,
+) -> Result<Json<ItemResponse>, ApiError> {
+    if !can_write(&user) {
+        return Err(ApiError::Forbidden("Write permission required".into()));
+    }
+
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+
+    let mut item = state
+        .db
+        .get_item_data(&uuid)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
+
+    let trigger_type = parse_item_trigger_type(&req.trigger_type)?;
+
+    item.triggers.push(ItemTrigger {
+        trigger_type,
+        script_name: req.script_name,
+        enabled: true,
+        chance: req.chance,
+        args: req.args,
+    });
+
+    state
+        .db
+        .save_item_data(item.clone())
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let refreshed = refresh_item_instances(&state.db, &item);
+
+    Ok(Json(ItemResponse {
+        success: true,
+        data: item,
+        refreshed_instances: Some(refreshed),
+    }))
+}
+
+/// Remove a trigger from an item prototype by index
+async fn remove_trigger(
+    State(state): State<Arc<ApiState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path((id, index)): Path<(String, usize)>,
+) -> Result<Json<ItemResponse>, ApiError> {
+    if !can_write(&user) {
+        return Err(ApiError::Forbidden("Write permission required".into()));
+    }
+
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+
+    let mut item = state
+        .db
+        .get_item_data(&uuid)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
+
+    if index >= item.triggers.len() {
+        return Err(ApiError::NotFound(format!("Trigger index {} not found", index)));
+    }
+
+    item.triggers.remove(index);
+
+    state
+        .db
+        .save_item_data(item.clone())
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let refreshed = refresh_item_instances(&state.db, &item);
+
+    Ok(Json(ItemResponse {
+        success: true,
+        data: item,
+        refreshed_instances: Some(refreshed),
+    }))
 }
 
 /// Spawn an item instance from a prototype

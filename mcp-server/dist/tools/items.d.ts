@@ -63,6 +63,12 @@ export declare const itemToolDefinitions: ({
             note_content?: undefined;
             id?: undefined;
             room_id?: undefined;
+            item_id?: undefined;
+            trigger_type?: undefined;
+            script_name?: undefined;
+            chance?: undefined;
+            args?: undefined;
+            index?: undefined;
         };
         required?: undefined;
     };
@@ -121,6 +127,12 @@ export declare const itemToolDefinitions: ({
             note_content?: undefined;
             id?: undefined;
             room_id?: undefined;
+            item_id?: undefined;
+            trigger_type?: undefined;
+            script_name?: undefined;
+            chance?: undefined;
+            args?: undefined;
+            index?: undefined;
         };
         required?: undefined;
     };
@@ -182,6 +194,12 @@ export declare const itemToolDefinitions: ({
             note_content?: undefined;
             id?: undefined;
             room_id?: undefined;
+            item_id?: undefined;
+            trigger_type?: undefined;
+            script_name?: undefined;
+            chance?: undefined;
+            args?: undefined;
+            index?: undefined;
         };
         required?: undefined;
     };
@@ -243,6 +261,12 @@ export declare const itemToolDefinitions: ({
             note_content?: undefined;
             id?: undefined;
             room_id?: undefined;
+            item_id?: undefined;
+            trigger_type?: undefined;
+            script_name?: undefined;
+            chance?: undefined;
+            args?: undefined;
+            index?: undefined;
         };
         required: string[];
     };
@@ -315,41 +339,99 @@ export declare const itemToolDefinitions: ({
                 description: string;
             };
             flags: {
-                type: string;
-                properties: {
-                    no_drop: {
-                        type: string;
+                readonly type: "object";
+                readonly description: "Builder flags. All optional — omit to leave unchanged. See ItemFlags in src/types/mod.rs for behaviour.";
+                readonly properties: {
+                    readonly no_drop: {
+                        readonly type: "boolean";
                     };
-                    no_get: {
-                        type: string;
+                    readonly no_get: {
+                        readonly type: "boolean";
                     };
-                    invisible: {
-                        type: string;
+                    readonly no_remove: {
+                        readonly type: "boolean";
                     };
-                    glow: {
-                        type: string;
+                    readonly invisible: {
+                        readonly type: "boolean";
                     };
-                    hum: {
-                        type: string;
+                    readonly glow: {
+                        readonly type: "boolean";
                     };
-                    plant_pot: {
-                        type: string;
+                    readonly hum: {
+                        readonly type: "boolean";
                     };
-                    lockpick: {
-                        type: string;
-                        description: string;
+                    readonly no_sell: {
+                        readonly type: "boolean";
                     };
-                    is_skinned: {
-                        type: string;
-                        description: string;
+                    readonly unique: {
+                        readonly type: "boolean";
                     };
-                    boat: {
-                        type: string;
-                        description: string;
+                    readonly quest_item: {
+                        readonly type: "boolean";
                     };
-                    medical_tool: {
-                        type: string;
-                        description: string;
+                    readonly vending: {
+                        readonly type: "boolean";
+                        readonly description: "Functions as a vending machine";
+                    };
+                    readonly provides_light: {
+                        readonly type: "boolean";
+                        readonly description: "Gives light when equipped/wielded";
+                    };
+                    readonly fishing_rod: {
+                        readonly type: "boolean";
+                    };
+                    readonly bait: {
+                        readonly type: "boolean";
+                    };
+                    readonly foraging_tool: {
+                        readonly type: "boolean";
+                    };
+                    readonly waterproof: {
+                        readonly type: "boolean";
+                        readonly description: "Protects from rain/water when worn";
+                    };
+                    readonly provides_warmth: {
+                        readonly type: "boolean";
+                        readonly description: "Radiates warmth (campfire) or insulates when worn";
+                    };
+                    readonly reduces_glare: {
+                        readonly type: "boolean";
+                        readonly description: "Reduces bright-light penalty (sunglasses)";
+                    };
+                    readonly medical_tool: {
+                        readonly type: "boolean";
+                        readonly description: "Can be used for medical treatment";
+                    };
+                    readonly preserves_contents: {
+                        readonly type: "boolean";
+                        readonly description: "Container preserves food inside (fridge/freezer)";
+                    };
+                    readonly death_only: {
+                        readonly type: "boolean";
+                        readonly description: "Only visible in corpse after death";
+                    };
+                    readonly atm: {
+                        readonly type: "boolean";
+                        readonly description: "Functions as an ATM for banking";
+                    };
+                    readonly broken: {
+                        readonly type: "boolean";
+                        readonly description: "Broken arrows/bolts cannot be used as ammo";
+                    };
+                    readonly plant_pot: {
+                        readonly type: "boolean";
+                    };
+                    readonly lockpick: {
+                        readonly type: "boolean";
+                        readonly description: "Can be used to pick locks";
+                    };
+                    readonly is_skinned: {
+                        readonly type: "boolean";
+                        readonly description: "Corpse has been butchered/skinned";
+                    };
+                    readonly boat: {
+                        readonly type: "boolean";
+                        readonly description: "Allows traversing deep_water rooms when in inventory";
                     };
                 };
             };
@@ -514,6 +596,12 @@ export declare const itemToolDefinitions: ({
             identifier?: undefined;
             id?: undefined;
             room_id?: undefined;
+            item_id?: undefined;
+            trigger_type?: undefined;
+            script_name?: undefined;
+            chance?: undefined;
+            args?: undefined;
+            index?: undefined;
         };
         required: string[];
     };
@@ -570,8 +658,101 @@ export declare const itemToolDefinitions: ({
                 description: string;
             };
             flags: {
-                type: string;
-                properties?: undefined;
+                readonly type: "object";
+                readonly description: "Builder flags. All optional — omit to leave unchanged. See ItemFlags in src/types/mod.rs for behaviour.";
+                readonly properties: {
+                    readonly no_drop: {
+                        readonly type: "boolean";
+                    };
+                    readonly no_get: {
+                        readonly type: "boolean";
+                    };
+                    readonly no_remove: {
+                        readonly type: "boolean";
+                    };
+                    readonly invisible: {
+                        readonly type: "boolean";
+                    };
+                    readonly glow: {
+                        readonly type: "boolean";
+                    };
+                    readonly hum: {
+                        readonly type: "boolean";
+                    };
+                    readonly no_sell: {
+                        readonly type: "boolean";
+                    };
+                    readonly unique: {
+                        readonly type: "boolean";
+                    };
+                    readonly quest_item: {
+                        readonly type: "boolean";
+                    };
+                    readonly vending: {
+                        readonly type: "boolean";
+                        readonly description: "Functions as a vending machine";
+                    };
+                    readonly provides_light: {
+                        readonly type: "boolean";
+                        readonly description: "Gives light when equipped/wielded";
+                    };
+                    readonly fishing_rod: {
+                        readonly type: "boolean";
+                    };
+                    readonly bait: {
+                        readonly type: "boolean";
+                    };
+                    readonly foraging_tool: {
+                        readonly type: "boolean";
+                    };
+                    readonly waterproof: {
+                        readonly type: "boolean";
+                        readonly description: "Protects from rain/water when worn";
+                    };
+                    readonly provides_warmth: {
+                        readonly type: "boolean";
+                        readonly description: "Radiates warmth (campfire) or insulates when worn";
+                    };
+                    readonly reduces_glare: {
+                        readonly type: "boolean";
+                        readonly description: "Reduces bright-light penalty (sunglasses)";
+                    };
+                    readonly medical_tool: {
+                        readonly type: "boolean";
+                        readonly description: "Can be used for medical treatment";
+                    };
+                    readonly preserves_contents: {
+                        readonly type: "boolean";
+                        readonly description: "Container preserves food inside (fridge/freezer)";
+                    };
+                    readonly death_only: {
+                        readonly type: "boolean";
+                        readonly description: "Only visible in corpse after death";
+                    };
+                    readonly atm: {
+                        readonly type: "boolean";
+                        readonly description: "Functions as an ATM for banking";
+                    };
+                    readonly broken: {
+                        readonly type: "boolean";
+                        readonly description: "Broken arrows/bolts cannot be used as ammo";
+                    };
+                    readonly plant_pot: {
+                        readonly type: "boolean";
+                    };
+                    readonly lockpick: {
+                        readonly type: "boolean";
+                        readonly description: "Can be used to pick locks";
+                    };
+                    readonly is_skinned: {
+                        readonly type: "boolean";
+                        readonly description: "Corpse has been butchered/skinned";
+                    };
+                    readonly boat: {
+                        readonly type: "boolean";
+                        readonly description: "Allows traversing deep_water rooms when in inventory";
+                    };
+                };
             };
             damage_dice_count: {
                 type: string;
@@ -753,6 +934,12 @@ export declare const itemToolDefinitions: ({
             vnum_prefix?: undefined;
             identifier?: undefined;
             room_id?: undefined;
+            item_id?: undefined;
+            trigger_type?: undefined;
+            script_name?: undefined;
+            chance?: undefined;
+            args?: undefined;
+            index?: undefined;
         };
         required: string[];
     };
@@ -814,6 +1001,12 @@ export declare const itemToolDefinitions: ({
             food_effects?: undefined;
             note_content?: undefined;
             room_id?: undefined;
+            item_id?: undefined;
+            trigger_type?: undefined;
+            script_name?: undefined;
+            chance?: undefined;
+            args?: undefined;
+            index?: undefined;
         };
         required: string[];
     };
@@ -878,6 +1071,165 @@ export declare const itemToolDefinitions: ({
             food_effects?: undefined;
             note_content?: undefined;
             id?: undefined;
+            item_id?: undefined;
+            trigger_type?: undefined;
+            script_name?: undefined;
+            chance?: undefined;
+            args?: undefined;
+            index?: undefined;
+        };
+        required: string[];
+    };
+} | {
+    name: string;
+    description: string;
+    inputSchema: {
+        type: string;
+        properties: {
+            item_id: {
+                type: string;
+                description: string;
+            };
+            trigger_type: {
+                type: string;
+                enum: string[];
+                description: string;
+            };
+            script_name: {
+                type: string;
+                description: string;
+            };
+            chance: {
+                type: string;
+                description: string;
+            };
+            args: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                description: string;
+            };
+            limit?: undefined;
+            offset?: undefined;
+            item_type?: undefined;
+            vnum_prefix?: undefined;
+            identifier?: undefined;
+            name?: undefined;
+            short_desc?: undefined;
+            long_desc?: undefined;
+            vnum?: undefined;
+            keywords?: undefined;
+            weight?: undefined;
+            value?: undefined;
+            categories?: undefined;
+            wear_location?: undefined;
+            damage_dice_count?: undefined;
+            damage_dice_sides?: undefined;
+            damage_type?: undefined;
+            armor_class?: undefined;
+            flags?: undefined;
+            caliber?: undefined;
+            ranged_type?: undefined;
+            magazine_size?: undefined;
+            fire_mode?: undefined;
+            supported_fire_modes?: undefined;
+            noise_level?: undefined;
+            two_handed?: undefined;
+            weapon_skill?: undefined;
+            ammo_count?: undefined;
+            ammo_damage_bonus?: undefined;
+            attachment_slot?: undefined;
+            attachment_accuracy_bonus?: undefined;
+            attachment_noise_reduction?: undefined;
+            attachment_magazine_bonus?: undefined;
+            plant_prototype_vnum?: undefined;
+            fertilizer_duration?: undefined;
+            treats_infestation?: undefined;
+            liquid_type?: undefined;
+            liquid_current?: undefined;
+            liquid_max?: undefined;
+            liquid_effects?: undefined;
+            medical_tier?: undefined;
+            medical_uses?: undefined;
+            treats_wound_types?: undefined;
+            food_nutrition?: undefined;
+            food_spoil_duration?: undefined;
+            food_effects?: undefined;
+            note_content?: undefined;
+            id?: undefined;
+            room_id?: undefined;
+            index?: undefined;
+        };
+        required: string[];
+    };
+} | {
+    name: string;
+    description: string;
+    inputSchema: {
+        type: string;
+        properties: {
+            item_id: {
+                type: string;
+                description: string;
+            };
+            index: {
+                type: string;
+                description: string;
+            };
+            limit?: undefined;
+            offset?: undefined;
+            item_type?: undefined;
+            vnum_prefix?: undefined;
+            identifier?: undefined;
+            name?: undefined;
+            short_desc?: undefined;
+            long_desc?: undefined;
+            vnum?: undefined;
+            keywords?: undefined;
+            weight?: undefined;
+            value?: undefined;
+            categories?: undefined;
+            wear_location?: undefined;
+            damage_dice_count?: undefined;
+            damage_dice_sides?: undefined;
+            damage_type?: undefined;
+            armor_class?: undefined;
+            flags?: undefined;
+            caliber?: undefined;
+            ranged_type?: undefined;
+            magazine_size?: undefined;
+            fire_mode?: undefined;
+            supported_fire_modes?: undefined;
+            noise_level?: undefined;
+            two_handed?: undefined;
+            weapon_skill?: undefined;
+            ammo_count?: undefined;
+            ammo_damage_bonus?: undefined;
+            attachment_slot?: undefined;
+            attachment_accuracy_bonus?: undefined;
+            attachment_noise_reduction?: undefined;
+            attachment_magazine_bonus?: undefined;
+            plant_prototype_vnum?: undefined;
+            fertilizer_duration?: undefined;
+            treats_infestation?: undefined;
+            liquid_type?: undefined;
+            liquid_current?: undefined;
+            liquid_max?: undefined;
+            liquid_effects?: undefined;
+            medical_tier?: undefined;
+            medical_uses?: undefined;
+            treats_wound_types?: undefined;
+            food_nutrition?: undefined;
+            food_spoil_duration?: undefined;
+            food_effects?: undefined;
+            note_content?: undefined;
+            id?: undefined;
+            room_id?: undefined;
+            trigger_type?: undefined;
+            script_name?: undefined;
+            chance?: undefined;
+            args?: undefined;
         };
         required: string[];
     };

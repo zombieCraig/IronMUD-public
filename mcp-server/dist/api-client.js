@@ -200,6 +200,12 @@ export class IronMUDApiClient {
     async spawnItem(vnum, data) {
         return this.request("post", `/items/${encodeURIComponent(vnum)}/spawn`, data);
     }
+    async addItemTrigger(itemId, data) {
+        return this.requestWithMeta("post", `/items/${itemId}/triggers`, data);
+    }
+    async removeItemTrigger(itemId, index) {
+        return this.requestWithMeta("delete", `/items/${itemId}/triggers/${index}`);
+    }
     // Mobiles
     async listMobiles(limit, offset) {
         const params = new URLSearchParams();

@@ -193,31 +193,34 @@ fn convert_routine_entries(entries: Vec<RoutineEntryRequest>) -> Vec<RoutineEntr
 }
 
 #[derive(Deserialize, Default)]
+/// Builder-facing `MobileFlags`. Every field is optional so callers can
+/// send only the flags they want to change; unmentioned flags are
+/// preserved on update and default to `false` on create.
 pub struct MobileFlagsRequest {
     #[serde(default)]
-    pub aggressive: bool,
+    pub aggressive: Option<bool>,
     #[serde(default)]
-    pub sentinel: bool,
+    pub sentinel: Option<bool>,
     #[serde(default)]
-    pub scavenger: bool,
+    pub scavenger: Option<bool>,
     #[serde(default)]
-    pub shopkeeper: bool,
+    pub shopkeeper: Option<bool>,
     #[serde(default)]
-    pub healer: bool,
+    pub healer: Option<bool>,
     #[serde(default)]
-    pub no_attack: bool,
+    pub no_attack: Option<bool>,
     #[serde(default)]
-    pub cowardly: bool,
+    pub cowardly: Option<bool>,
     #[serde(default)]
-    pub can_open_doors: bool,
+    pub can_open_doors: Option<bool>,
     #[serde(default)]
-    pub leasing_agent: bool,
+    pub leasing_agent: Option<bool>,
     #[serde(default)]
-    pub guard: bool,
+    pub guard: Option<bool>,
     #[serde(default)]
-    pub thief: bool,
+    pub thief: Option<bool>,
     #[serde(default)]
-    pub cant_swim: bool,
+    pub cant_swim: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -629,18 +632,18 @@ async fn create_mobile(
         scars: HashMap::new(),
         gold: 0,
         flags: MobileFlags {
-            aggressive: req.flags.aggressive,
-            sentinel: req.flags.sentinel,
-            scavenger: req.flags.scavenger,
-            shopkeeper: req.flags.shopkeeper,
-            healer: req.flags.healer,
-            no_attack: req.flags.no_attack,
-            cowardly: req.flags.cowardly,
-            can_open_doors: req.flags.can_open_doors,
-            leasing_agent: req.flags.leasing_agent,
-            guard: req.flags.guard,
-            thief: req.flags.thief,
-            cant_swim: req.flags.cant_swim,
+            aggressive: req.flags.aggressive.unwrap_or(false),
+            sentinel: req.flags.sentinel.unwrap_or(false),
+            scavenger: req.flags.scavenger.unwrap_or(false),
+            shopkeeper: req.flags.shopkeeper.unwrap_or(false),
+            healer: req.flags.healer.unwrap_or(false),
+            no_attack: req.flags.no_attack.unwrap_or(false),
+            cowardly: req.flags.cowardly.unwrap_or(false),
+            can_open_doors: req.flags.can_open_doors.unwrap_or(false),
+            leasing_agent: req.flags.leasing_agent.unwrap_or(false),
+            guard: req.flags.guard.unwrap_or(false),
+            thief: req.flags.thief.unwrap_or(false),
+            cant_swim: req.flags.cant_swim.unwrap_or(false),
         },
         dialogue: HashMap::new(),
         shop_stock: req.shop_stock.unwrap_or_default(),
@@ -763,18 +766,18 @@ async fn update_mobile(
         mobile.perception = perception;
     }
     if let Some(flags) = req.flags {
-        mobile.flags.aggressive = flags.aggressive;
-        mobile.flags.sentinel = flags.sentinel;
-        mobile.flags.scavenger = flags.scavenger;
-        mobile.flags.shopkeeper = flags.shopkeeper;
-        mobile.flags.healer = flags.healer;
-        mobile.flags.no_attack = flags.no_attack;
-        mobile.flags.cowardly = flags.cowardly;
-        mobile.flags.can_open_doors = flags.can_open_doors;
-        mobile.flags.leasing_agent = flags.leasing_agent;
-        mobile.flags.guard = flags.guard;
-        mobile.flags.thief = flags.thief;
-        mobile.flags.cant_swim = flags.cant_swim;
+        if let Some(v) = flags.aggressive { mobile.flags.aggressive = v; }
+        if let Some(v) = flags.sentinel { mobile.flags.sentinel = v; }
+        if let Some(v) = flags.scavenger { mobile.flags.scavenger = v; }
+        if let Some(v) = flags.shopkeeper { mobile.flags.shopkeeper = v; }
+        if let Some(v) = flags.healer { mobile.flags.healer = v; }
+        if let Some(v) = flags.no_attack { mobile.flags.no_attack = v; }
+        if let Some(v) = flags.cowardly { mobile.flags.cowardly = v; }
+        if let Some(v) = flags.can_open_doors { mobile.flags.can_open_doors = v; }
+        if let Some(v) = flags.leasing_agent { mobile.flags.leasing_agent = v; }
+        if let Some(v) = flags.guard { mobile.flags.guard = v; }
+        if let Some(v) = flags.thief { mobile.flags.thief = v; }
+        if let Some(v) = flags.cant_swim { mobile.flags.cant_swim = v; }
     }
     // Healer config
     if let Some(healer_type) = req.healer_type {

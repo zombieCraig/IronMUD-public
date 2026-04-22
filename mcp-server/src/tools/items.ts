@@ -1,3 +1,39 @@
+// Shared JSONSchema for builder-facing item flags. Every property is optional;
+// unmentioned flags are preserved on update_item and default to false on create_item.
+const itemFlagsSchema = {
+  type: "object",
+  description:
+    "Builder flags. All optional — omit to leave unchanged. See ItemFlags in src/types/mod.rs for behaviour.",
+  properties: {
+    no_drop: { type: "boolean" },
+    no_get: { type: "boolean" },
+    no_remove: { type: "boolean" },
+    invisible: { type: "boolean" },
+    glow: { type: "boolean" },
+    hum: { type: "boolean" },
+    no_sell: { type: "boolean" },
+    unique: { type: "boolean" },
+    quest_item: { type: "boolean" },
+    vending: { type: "boolean", description: "Functions as a vending machine" },
+    provides_light: { type: "boolean", description: "Gives light when equipped/wielded" },
+    fishing_rod: { type: "boolean" },
+    bait: { type: "boolean" },
+    foraging_tool: { type: "boolean" },
+    waterproof: { type: "boolean", description: "Protects from rain/water when worn" },
+    provides_warmth: { type: "boolean", description: "Radiates warmth (campfire) or insulates when worn" },
+    reduces_glare: { type: "boolean", description: "Reduces bright-light penalty (sunglasses)" },
+    medical_tool: { type: "boolean", description: "Can be used for medical treatment" },
+    preserves_contents: { type: "boolean", description: "Container preserves food inside (fridge/freezer)" },
+    death_only: { type: "boolean", description: "Only visible in corpse after death" },
+    atm: { type: "boolean", description: "Functions as an ATM for banking" },
+    broken: { type: "boolean", description: "Broken arrows/bolts cannot be used as ammo" },
+    plant_pot: { type: "boolean" },
+    lockpick: { type: "boolean", description: "Can be used to pick locks" },
+    is_skinned: { type: "boolean", description: "Corpse has been butchered/skinned" },
+    boat: { type: "boolean", description: "Allows traversing deep_water rooms when in inventory" },
+  },
+} as const;
+
 export const itemToolDefinitions = [
   {
     name: "list_items",
@@ -84,21 +120,7 @@ export const itemToolDefinitions = [
           enum: ["bludgeoning", "slashing", "piercing", "fire", "cold", "lightning", "poison", "acid"],
         },
         armor_class: { type: "number", description: "For armor: AC bonus" },
-        flags: {
-          type: "object",
-          properties: {
-            no_drop: { type: "boolean" },
-            no_get: { type: "boolean" },
-            invisible: { type: "boolean" },
-            glow: { type: "boolean" },
-            hum: { type: "boolean" },
-            plant_pot: { type: "boolean" },
-            lockpick: { type: "boolean", description: "Can be used to pick locks" },
-            is_skinned: { type: "boolean", description: "Corpse has been butchered/skinned" },
-            boat: { type: "boolean", description: "Allows traversing deep_water rooms when in inventory" },
-            medical_tool: { type: "boolean", description: "Can be used for medical treatment" },
-          },
-        },
+        flags: itemFlagsSchema,
         caliber: { type: "string", description: "Firearm caliber (e.g., '9mm', '5.56')" },
         ranged_type: { type: "string", description: "Ranged weapon type (e.g., 'pistol', 'rifle')" },
         magazine_size: { type: "number", description: "Magazine capacity" },
@@ -179,7 +201,7 @@ export const itemToolDefinitions = [
           items: { type: "string" },
           description: "Crafting / shop-filter categories. Passing this replaces the existing categories list.",
         },
-        flags: { type: "object" },
+        flags: itemFlagsSchema,
         damage_dice_count: { type: "number", description: "For weapons: dice count (e.g., 2 in 2d6)" },
         damage_dice_sides: { type: "number", description: "For weapons: dice sides (e.g., 6 in 2d6)" },
         damage_type: {
@@ -276,6 +298,41 @@ export const itemToolDefinitions = [
         room_id: { type: "string", description: "Target room UUID or vnum" },
       },
       required: ["vnum", "room_id"],
+    },
+  },
+  {
+    name: "add_item_trigger",
+    description:
+      "Add a trigger script to an item prototype (e.g. wire scripts/triggers/smart_watch.rhai to on_examine).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        item_id: { type: "string", description: "Item UUID or vnum" },
+        trigger_type: {
+          type: "string",
+          enum: ["on_get", "on_drop", "on_use", "on_examine", "on_prompt"],
+          description: "When the trigger fires",
+        },
+        script_name: {
+          type: "string",
+          description: "Script filename without extension (e.g., 'smart_watch'), or '@template' form",
+        },
+        chance: { type: "number", description: "Trigger probability 1-100 (default 100)" },
+        args: { type: "array", items: { type: "string" }, description: "Template arguments" },
+      },
+      required: ["item_id", "trigger_type", "script_name"],
+    },
+  },
+  {
+    name: "remove_item_trigger",
+    description: "Remove a trigger from an item prototype by index (see triggers[] in get_item).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        item_id: { type: "string", description: "Item UUID or vnum" },
+        index: { type: "number", description: "Zero-based index of the trigger to remove" },
+      },
+      required: ["item_id", "index"],
     },
   },
 ];
