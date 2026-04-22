@@ -123,6 +123,7 @@ fn is_subcommand(arg) {
     if cmd == "forage" { return true; }
     if cmd == "zone" { return true; }
     if cmd == "flags" { return true; }
+    if cmd == "default_flags" { return true; }
     if cmd == "immigration" { return true; }
     return false;
 }
@@ -251,6 +252,7 @@ fn run_command(args, connection_id) {
         output += "  aedit forage\n";
         output += "  aedit zone [pve|safe|pvp]\n";
         output += "  aedit flags [climate_controlled] [on|off]\n";
+        output += "  aedit default_flags [<flag>] [on|off]  (template flags for new rooms)\n";
         output += "  aedit immigration [...]  (migrant spawning config)";
 
         // Immigration summary block
@@ -487,6 +489,11 @@ fn run_command(args, connection_id) {
 
     if subcommand == "flags" {
         handle_flags_subcommand(area, remaining, connection_id);
+        return;
+    }
+
+    if subcommand == "default_flags" {
+        handle_default_room_flags_subcommand(area, remaining, connection_id);
         return;
     }
 
@@ -1139,4 +1146,89 @@ fn handle_flags_subcommand(area, args, connection_id) {
     }
 
     send_client_message(connection_id, "Unknown flag: " + flag_name + "\nAvailable flags: climate_controlled");
+}
+
+// === default_flags subcommand ===
+// RoomFlags template applied to every room newly-created in this area.
+// Existing rooms are not touched when this changes.
+//   aedit default_flags                     → show which defaults are on
+//   aedit default_flags <flag>              → toggle the default
+//   aedit default_flags <flag> on|off       → set the default
+fn known_default_room_flags() {
+    return [
+        "dark", "no_mob", "indoors", "underwater",
+        "climate_controlled", "always_hot", "always_cold", "city", "no_windows",
+        "difficult_terrain", "dirt_floor",
+        "property_storage", "post_office", "bank", "garden", "spawn_point",
+        "shallow_water", "deep_water", "liveable",
+    ];
+}
+
+fn show_area_default_room_flags(area, connection_id) {
+    let flags = area.default_room_flags;
+    let output = olc::c_header("=== Area Default Room Flags ===", connection_id) + "\n";
+    output += "New rooms created in this area start with these flags set.\n";
+    output += "Existing rooms are not updated when this changes.\n\n";
+
+    let on_list = [];
+    for name in known_default_room_flags() {
+        if get_area_default_room_flag(area.id, name) {
+            on_list.push(name);
+        }
+    }
+    if on_list.len() == 0 {
+        output += "  (all off)\n";
+    } else {
+        for name in on_list {
+            output += "  [ON] " + name + "\n";
+        }
+    }
+    output += "\nUsage: aedit default_flags <flag> [on|off]";
+    send_client_message(connection_id, output);
+}
+
+fn handle_default_room_flags_subcommand(area, args, connection_id) {
+    if args.len() < 1 {
+        show_area_default_room_flags(area, connection_id);
+        return;
+    }
+
+    let flag_name = args[0].to_lower();
+    let valid = false;
+    for name in known_default_room_flags() {
+        if flag_name == name { valid = true; }
+    }
+    if !valid {
+        let msg = "Unknown flag: " + flag_name + "\nAvailable flags: ";
+        let first = true;
+        for name in known_default_room_flags() {
+            if first { msg += name; first = false; }
+            else { msg += ", " + name; }
+        }
+        send_client_message(connection_id, msg);
+        return;
+    }
+
+    let new_value = false;
+    if args.len() < 2 {
+        // Toggle
+        new_value = !get_area_default_room_flag(area.id, flag_name);
+    } else {
+        let val = args[1].to_lower();
+        if !olc::is_on_value(val) && !olc::is_off_value(val) {
+            send_client_message(connection_id, "Usage: aedit default_flags " + flag_name + " [on|off]");
+            return;
+        }
+        new_value = olc::is_on_value(val);
+    }
+
+    if !set_area_default_room_flag(area.id, flag_name, new_value) {
+        send_client_message(connection_id, "Failed to set default flag.");
+        return;
+    }
+    send_client_message(
+        connection_id,
+        "Area default_flags." + flag_name + " set to " + bool_to_status(new_value) +
+        ".\nApplies to rooms created in this area from now on."
+    );
 }

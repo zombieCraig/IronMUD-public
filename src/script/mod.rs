@@ -605,6 +605,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 .collect::<Vec<_>>()
         })
         .register_get("flags", |a: &mut AreaData| a.flags.clone())
+        .register_get("default_room_flags", |a: &mut AreaData| a.default_room_flags.clone())
         // Migrant immigration system
         .register_get("immigration_enabled", |a: &mut AreaData| a.immigration_enabled)
         .register_get("immigration_room_vnum", |a: &mut AreaData| {

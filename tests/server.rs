@@ -1512,6 +1512,7 @@ mod migration_tests {
             underwater_forage_table: Vec::new(),
             combat_zone: CombatZoneType::Pve,
             flags: AreaFlags::default(),
+            default_room_flags: ironmud::types::RoomFlags::default(),
             immigration_enabled: true,
             immigration_room_vnum: format!("{}:gate", prefix),
             immigration_name_pool: "generic".to_string(),
@@ -3642,6 +3643,136 @@ fn test_item_note_content_persists() {
         db.save_item_data(cleared).expect("save cleared");
         let loaded2 = db.get_item_data(&item_id).expect("get").expect("present");
         assert!(loaded2.note_content.is_none(), "None persists");
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_area_default_room_flags_apply_to_new_rooms() {
+    use ironmud::db::Db;
+    use ironmud::types::{
+        AreaData, AreaFlags, AreaPermission, CombatZoneType, ImmigrationFamilyChance, ImmigrationVariationChances,
+        RoomData, RoomExits, RoomFlags, WaterType,
+    };
+    use std::collections::HashMap as StdHashMap;
+
+    let db_path = format!("test_area_default_flags_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        // Underground area with indoors + no_windows as defaults
+        let mut defaults = RoomFlags::default();
+        defaults.indoors = true;
+        defaults.no_windows = true;
+        defaults.dark = true;
+
+        let area = AreaData {
+            id: uuid::Uuid::new_v4(),
+            name: "Underground".into(),
+            prefix: "und".into(),
+            description: String::new(),
+            level_min: 0,
+            level_max: 0,
+            theme: String::new(),
+            owner: None,
+            permission_level: AreaPermission::AllBuilders,
+            trusted_builders: Vec::new(),
+            city_forage_table: Vec::new(),
+            wilderness_forage_table: Vec::new(),
+            shallow_water_forage_table: Vec::new(),
+            deep_water_forage_table: Vec::new(),
+            underwater_forage_table: Vec::new(),
+            combat_zone: CombatZoneType::default(),
+            flags: AreaFlags::default(),
+            default_room_flags: defaults.clone(),
+            immigration_enabled: false,
+            immigration_room_vnum: String::new(),
+            immigration_name_pool: String::new(),
+            immigration_visual_profile: String::new(),
+            migration_interval_days: 0,
+            migration_max_per_check: 0,
+            migrant_sim_defaults: None,
+            last_migration_check_day: None,
+            immigration_variation_chances: ImmigrationVariationChances::default(),
+            immigration_family_chance: ImmigrationFamilyChance::default(),
+        };
+        db.save_area_data(area.clone()).expect("save area");
+
+        // Reload the area (exercises the #[serde(default)] roundtrip) and
+        // build a fresh room using the area's defaults as the starting point.
+        let reloaded = db.get_area_data(&area.id).expect("get").expect("present");
+        assert!(reloaded.default_room_flags.indoors, "defaults survive save/load");
+        assert!(reloaded.default_room_flags.no_windows);
+        assert!(reloaded.default_room_flags.dark);
+
+        let mut flags = RoomFlags::default();
+        flags.merge_area_defaults(&reloaded.default_room_flags);
+        assert!(flags.indoors, "new room picks up indoors default");
+        assert!(flags.no_windows);
+        assert!(flags.dark);
+        assert!(!flags.liveable, "flags not in the defaults remain off");
+
+        // Scenario: an existing area predating this feature loads fine
+        // (serde defaults to all-false RoomFlags, so new rooms get no
+        // inheritance — matches prior behavior).
+        let blank_defaults = RoomFlags::default();
+        let mut flags2 = RoomFlags::default();
+        flags2.merge_area_defaults(&blank_defaults);
+        assert!(!flags2.indoors);
+        assert!(!flags2.no_windows);
+
+        // merge_area_defaults only ORs ON — it never clears a flag the
+        // caller already set.
+        let mut flags3 = RoomFlags::default();
+        flags3.city = true;
+        let mut sparse = RoomFlags::default();
+        sparse.indoors = true;
+        flags3.merge_area_defaults(&sparse);
+        assert!(flags3.city, "pre-set city stays on");
+        assert!(flags3.indoors, "default indoors applied");
+
+        // Sanity: a fresh RoomData using merged flags persists and loads.
+        let room = RoomData {
+            id: uuid::Uuid::new_v4(),
+            title: "Cave".into(),
+            description: String::new(),
+            exits: RoomExits::default(),
+            flags,
+            extra_descs: Vec::new(),
+            vnum: None,
+            area_id: Some(area.id),
+            triggers: Vec::new(),
+            doors: StdHashMap::new(),
+            spring_desc: None,
+            summer_desc: None,
+            autumn_desc: None,
+            winter_desc: None,
+            dynamic_desc: None,
+            water_type: WaterType::None,
+            catch_table: Vec::new(),
+            is_property_template: false,
+            property_template_id: None,
+            is_template_entrance: false,
+            property_lease_id: None,
+            property_entrance: false,
+            recent_departures: Vec::new(),
+            blood_trails: Vec::new(),
+            traps: Vec::new(),
+            living_capacity: 0,
+            residents: Vec::new(),
+        };
+        let room_id = room.id;
+        db.save_room_data(room).expect("save room");
+        let loaded = db.get_room_data(&room_id).expect("get").expect("present");
+        assert!(loaded.flags.indoors);
+        assert!(loaded.flags.no_windows);
+        assert!(loaded.flags.dark);
     }));
 
     let _ = std::fs::remove_dir_all(&db_path);

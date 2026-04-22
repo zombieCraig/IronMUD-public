@@ -1,4 +1,4 @@
-import type { Area, Room, Item, Mobile, SpawnPoint, Transport, PlantPrototype, ItemSummary, RoomSummary, MobileSummary, AreaOverview, CreateAreaRequest, CreateRoomRequest, CreateItemRequest, CreateMobileRequest, CreateSpawnPointRequest, CreateTransportRequest, CreatePlantPrototypeRequest, AddTransportStopRequest, SetExitRequest, AddDoorRequest, AddTriggerRequest, AddExtraDescRequest, AddDialogueRequest, AddMobileTriggerRequest, AddItemTriggerRequest, AddSpawnDependencyRequest, SpawnEntityRequest, BugReport, UpdateBugReportRequest, AddBugNoteRequest } from "./types.js";
+import type { Area, Room, Item, Mobile, SpawnPoint, Transport, PlantPrototype, ItemSummary, RoomSummary, MobileSummary, AreaOverview, CreateAreaRequest, UpdateAreaRequest, CreateRoomRequest, CreateItemRequest, CreateMobileRequest, CreateSpawnPointRequest, CreateTransportRequest, CreatePlantPrototypeRequest, AddTransportStopRequest, SetExitRequest, AddDoorRequest, AddTriggerRequest, AddExtraDescRequest, AddDialogueRequest, AddMobileTriggerRequest, AddItemTriggerRequest, AddSpawnDependencyRequest, SpawnEntityRequest, BugReport, UpdateBugReportRequest, AddBugNoteRequest } from "./types.js";
 export declare class IronMUDApiClient {
     private client;
     constructor(baseUrl: string, apiKey: string);
@@ -13,7 +13,7 @@ export declare class IronMUDApiClient {
     getArea(id: string): Promise<Area>;
     getAreaByPrefix(prefix: string): Promise<Area>;
     createArea(data: CreateAreaRequest): Promise<Area>;
-    updateArea(id: string, data: Partial<CreateAreaRequest>): Promise<Area>;
+    updateArea(id: string, data: UpdateAreaRequest): Promise<Area>;
     deleteArea(id: string): Promise<void>;
     resetArea(id: string): Promise<{
         message: string;

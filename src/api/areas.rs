@@ -18,7 +18,7 @@ use super::{
     error::ApiError,
     notify_builders,
 };
-use crate::{AreaData, AreaFlags, AreaPermission, CombatZoneType, RoomData, SpawnEntityType};
+use crate::{AreaData, AreaFlags, AreaPermission, CombatZoneType, RoomData, RoomFlags, SpawnEntityType};
 
 pub fn routes() -> Router<Arc<ApiState>> {
     Router::new()
@@ -61,6 +61,40 @@ pub struct UpdateAreaRequest {
     pub migration_interval_days: Option<u8>,
     pub migration_max_per_check: Option<u8>,
     pub immigration_guard_chance: Option<f32>,
+    /// Per-flag overrides for the area's default_room_flags template.
+    /// Absent keys preserve current state; unknown keys are ignored.
+    pub default_room_flags: Option<std::collections::HashMap<String, bool>>,
+}
+
+/// Apply a (flag_name -> bool) override map onto an area's default_room_flags.
+/// Unknown keys are silently ignored; absent keys preserve current state.
+/// `combat_zone` is not mutable through this surface (area has its own
+/// combat_zone field; room-level combat_zone is an override, not a default).
+fn apply_default_room_flag_overrides(flags: &mut RoomFlags, map: &std::collections::HashMap<String, bool>) {
+    for (k, v) in map {
+        match k.to_lowercase().as_str() {
+            "dark" => flags.dark = *v,
+            "no_mob" => flags.no_mob = *v,
+            "indoors" => flags.indoors = *v,
+            "underwater" => flags.underwater = *v,
+            "climate_controlled" => flags.climate_controlled = *v,
+            "always_hot" => flags.always_hot = *v,
+            "always_cold" => flags.always_cold = *v,
+            "city" => flags.city = *v,
+            "no_windows" => flags.no_windows = *v,
+            "difficult_terrain" => flags.difficult_terrain = *v,
+            "dirt_floor" => flags.dirt_floor = *v,
+            "property_storage" => flags.property_storage = *v,
+            "post_office" => flags.post_office = *v,
+            "bank" => flags.bank = *v,
+            "garden" => flags.garden = *v,
+            "spawn_point" => flags.spawn_point = *v,
+            "shallow_water" => flags.shallow_water = *v,
+            "deep_water" => flags.deep_water = *v,
+            "liveable" => flags.liveable = *v,
+            _ => {}
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -226,6 +260,7 @@ async fn create_area(
         underwater_forage_table: Vec::new(),
         combat_zone: CombatZoneType::default(),
         flags: AreaFlags::default(),
+        default_room_flags: RoomFlags::default(),
         immigration_enabled: false,
         immigration_room_vnum: String::new(),
         immigration_name_pool: String::new(),
@@ -317,6 +352,9 @@ async fn update_area(
     }
     if let Some(v) = req.immigration_guard_chance {
         area.immigration_variation_chances.guard = v.clamp(0.0, 1.0);
+    }
+    if let Some(map) = req.default_room_flags {
+        apply_default_room_flag_overrides(&mut area.default_room_flags, &map);
     }
 
     state

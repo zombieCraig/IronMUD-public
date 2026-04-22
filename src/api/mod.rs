@@ -52,11 +52,15 @@ pub fn create_router(state: Arc<ApiState>) -> Router {
         .with_state(state)
 }
 
+/// Build identifier exposed via `/health` and logs. Format: `<cargo_version>-<git_short_hash>`,
+/// with `-dirty` appended when the build tree had uncommitted changes.
+pub const BUILD_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("IRONMUD_GIT_HASH"));
+
 /// Health check endpoint
 async fn health_check() -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "status": "ok",
-        "version": env!("CARGO_PKG_VERSION")
+        "version": BUILD_VERSION
     }))
 }
 

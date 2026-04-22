@@ -135,11 +135,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     throw new Error("id is required");
                 const area = await api.updateArea(id, {
                     name: args?.name,
-                    prefix: args?.prefix,
                     description: args?.description,
                     level_min: args?.level_min,
                     level_max: args?.level_max,
                     theme: args?.theme,
+                    immigration_enabled: args?.immigration_enabled,
+                    immigration_room_vnum: args?.immigration_room_vnum,
+                    immigration_name_pool: args?.immigration_name_pool,
+                    immigration_visual_profile: args?.immigration_visual_profile,
+                    migration_interval_days: args?.migration_interval_days,
+                    migration_max_per_check: args?.migration_max_per_check,
+                    immigration_guard_chance: args?.immigration_guard_chance,
+                    default_room_flags: args?.default_room_flags,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(area, null, 2) }],

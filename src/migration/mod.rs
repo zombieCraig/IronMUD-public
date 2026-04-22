@@ -1431,6 +1431,7 @@ mod pair_housing_tests {
             underwater_forage_table: Vec::new(),
             combat_zone: CombatZoneType::default(),
             flags: AreaFlags::default(),
+            default_room_flags: RoomFlags::default(),
             immigration_enabled: false,
             immigration_room_vnum: String::new(),
             immigration_name_pool: String::new(),

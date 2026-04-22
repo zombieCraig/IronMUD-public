@@ -21,6 +21,8 @@ export interface Area {
   migration_max_per_check?: number;
   last_migration_check_day?: number | null;
   immigration_guard_chance?: number;
+  // Template RoomFlags copied into every newly-created room in this area.
+  default_room_flags?: RoomFlags;
 }
 
 export interface AreaFlags {
@@ -308,6 +310,24 @@ export interface CreateAreaRequest {
   level_min?: number;
   level_max?: number;
   theme?: string;
+}
+
+export interface UpdateAreaRequest {
+  name?: string;
+  description?: string;
+  level_min?: number;
+  level_max?: number;
+  theme?: string;
+  permission_level?: "owner_only" | "trusted" | "all_builders";
+  trusted_builders?: string[];
+  immigration_enabled?: boolean;
+  immigration_room_vnum?: string;
+  immigration_name_pool?: string;
+  immigration_visual_profile?: string;
+  migration_interval_days?: number;
+  migration_max_per_check?: number;
+  immigration_guard_chance?: number;
+  default_room_flags?: RoomFlags;
 }
 
 export interface CreateRoomRequest {

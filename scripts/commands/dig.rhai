@@ -110,6 +110,7 @@ fn run_command(args, connection_id) {
     let inherited_vnum = "";
     if room_area_id != "" {
         set_room_area(new_room_id, room_area_id);
+        apply_area_default_room_flags(new_room_id);
 
         // Only auto-generate vnum if a custom title was provided (not default)
         // and this is not a template room (template rooms don't need vnums)

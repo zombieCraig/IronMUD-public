@@ -14,6 +14,7 @@ import type {
   MobileSummary,
   AreaOverview,
   CreateAreaRequest,
+  UpdateAreaRequest,
   CreateRoomRequest,
   CreateItemRequest,
   CreateMobileRequest,
@@ -152,7 +153,7 @@ export class IronMUDApiClient {
 
   async updateArea(
     id: string,
-    data: Partial<CreateAreaRequest>
+    data: UpdateAreaRequest
   ): Promise<Area> {
     return this.request<Area>("put", `/areas/${id}`, data);
   }

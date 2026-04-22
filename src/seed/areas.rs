@@ -1,6 +1,8 @@
 use super::seed_uuid;
 use crate::db::Db;
-use crate::types::{AreaData, AreaFlags, AreaPermission, CombatZoneType, ForageEntry, ImmigrationVariationChances};
+use crate::types::{
+    AreaData, AreaFlags, AreaPermission, CombatZoneType, ForageEntry, ImmigrationVariationChances, RoomFlags,
+};
 use anyhow::Result;
 
 pub fn seed_areas(db: &Db) -> Result<()> {
@@ -25,6 +27,7 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             underwater_forage_table: Vec::new(),
             combat_zone: CombatZoneType::Safe,
             flags: AreaFlags::default(),
+            default_room_flags: RoomFlags::default(),
             immigration_enabled: false,
             immigration_room_vnum: String::new(),
             immigration_name_pool: String::new(),
@@ -57,6 +60,7 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             underwater_forage_table: Vec::new(),
             combat_zone: CombatZoneType::Pve,
             flags: AreaFlags::default(),
+            default_room_flags: RoomFlags::default(),
             immigration_enabled: false,
             immigration_room_vnum: String::new(),
             immigration_name_pool: String::new(),
@@ -86,6 +90,7 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             underwater_forage_table: Vec::new(),
             combat_zone: CombatZoneType::Safe,
             flags: AreaFlags::default(),
+            default_room_flags: RoomFlags::default(),
             immigration_enabled: false,
             immigration_room_vnum: String::new(),
             immigration_name_pool: String::new(),
@@ -117,6 +122,7 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             underwater_forage_table: Vec::new(),
             combat_zone: CombatZoneType::Pve,
             flags: AreaFlags::default(),
+            default_room_flags: RoomFlags::default(),
             immigration_enabled: false,
             immigration_room_vnum: String::new(),
             immigration_name_pool: String::new(),
@@ -148,6 +154,7 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             underwater_forage_table: Vec::new(),
             combat_zone: CombatZoneType::Safe,
             flags: AreaFlags::default(),
+            default_room_flags: RoomFlags::default(),
             immigration_enabled: false,
             immigration_room_vnum: String::new(),
             immigration_name_pool: String::new(),

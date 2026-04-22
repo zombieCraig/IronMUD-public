@@ -24,7 +24,7 @@ import {
   buildMobileContext,
   getDescriptionExamples,
 } from "./description-context.js";
-import type { ItemType, TriggerType } from "./types.js";
+import type { ItemType, RoomFlags, TriggerType } from "./types.js";
 
 // Helper to format auto-refresh info for MCP output
 function formatRefreshSuffix(refreshed?: number): string {
@@ -152,11 +152,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         if (!id) throw new Error("id is required");
         const area = await api.updateArea(id, {
           name: args?.name as string | undefined,
-          prefix: args?.prefix as string | undefined,
           description: args?.description as string | undefined,
           level_min: args?.level_min as number | undefined,
           level_max: args?.level_max as number | undefined,
           theme: args?.theme as string | undefined,
+          immigration_enabled: args?.immigration_enabled as boolean | undefined,
+          immigration_room_vnum: args?.immigration_room_vnum as string | undefined,
+          immigration_name_pool: args?.immigration_name_pool as string | undefined,
+          immigration_visual_profile: args?.immigration_visual_profile as string | undefined,
+          migration_interval_days: args?.migration_interval_days as number | undefined,
+          migration_max_per_check: args?.migration_max_per_check as number | undefined,
+          immigration_guard_chance: args?.immigration_guard_chance as number | undefined,
+          default_room_flags: args?.default_room_flags as RoomFlags | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(area, null, 2) }],

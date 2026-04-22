@@ -669,6 +669,7 @@ fn inherit_area_for_new_room(char, new_room_id, title) {
     if room_area_id == "" { return #{ vnum: "", area_id: "" }; }
 
     set_room_area(new_room_id, room_area_id);
+    apply_area_default_room_flags(new_room_id);
 
     // Only auto-generate vnum if a custom title was provided (not default)
     if title == "A New Room" { return #{ vnum: "", area_id: room_area_id }; }

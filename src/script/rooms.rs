@@ -50,6 +50,32 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         room
     });
 
+    // apply_area_default_room_flags(room_id) -> ORs the room's area's
+    // default_room_flags into its RoomFlags and saves. Meant to be called
+    // right after a freshly-created room is assigned to an area. Returns
+    // false if the room/area can't be loaded or the room has no area.
+    let cloned_db = db.clone();
+    engine.register_fn("apply_area_default_room_flags", move |room_id: String| {
+        let room_uuid = match uuid::Uuid::parse_str(&room_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let mut room = match cloned_db.get_room_data(&room_uuid) {
+            Ok(Some(r)) => r,
+            _ => return false,
+        };
+        let area_id = match room.area_id {
+            Some(id) => id,
+            None => return false,
+        };
+        let area = match cloned_db.get_area_data(&area_id) {
+            Ok(Some(a)) => a,
+            _ => return false,
+        };
+        room.flags.merge_area_defaults(&area.default_room_flags);
+        cloned_db.save_room_data(room).is_ok()
+    });
+
     // set_room_exit(room_id, direction, target_room_id) -> Sets exit on a room
     let cloned_db = db.clone();
     engine.register_fn(

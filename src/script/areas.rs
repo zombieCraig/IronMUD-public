@@ -72,6 +72,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             underwater_forage_table: Vec::new(),
             combat_zone: CombatZoneType::Pve,
             flags: crate::AreaFlags::default(),
+            default_room_flags: crate::RoomFlags::default(),
             immigration_enabled: false,
             immigration_room_vnum: String::new(),
             immigration_name_pool: String::new(),
@@ -112,6 +113,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 underwater_forage_table: Vec::new(),
                 combat_zone: CombatZoneType::Pve,
                 flags: crate::AreaFlags::default(),
+                default_room_flags: crate::RoomFlags::default(),
                 immigration_enabled: false,
                 immigration_room_vnum: String::new(),
                 immigration_name_pool: String::new(),
@@ -1143,6 +1145,82 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         }
         false
     });
+
+    // set_area_default_room_flag(area_id, flag_name, value) -> bool
+    // Mutates one bool on the area's default_room_flags template. New rooms
+    // created in this area OR these defaults into their flags at creation.
+    // Does not retroactively mutate existing rooms.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_area_default_room_flag",
+        move |area_id: String, flag_name: String, value: bool| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+                    let f = &mut area.default_room_flags;
+                    match flag_name.to_lowercase().as_str() {
+                        "dark" => f.dark = value,
+                        "no_mob" => f.no_mob = value,
+                        "indoors" => f.indoors = value,
+                        "underwater" => f.underwater = value,
+                        "climate_controlled" => f.climate_controlled = value,
+                        "always_hot" => f.always_hot = value,
+                        "always_cold" => f.always_cold = value,
+                        "city" => f.city = value,
+                        "no_windows" => f.no_windows = value,
+                        "difficult_terrain" => f.difficult_terrain = value,
+                        "dirt_floor" => f.dirt_floor = value,
+                        "property_storage" => f.property_storage = value,
+                        "post_office" => f.post_office = value,
+                        "bank" => f.bank = value,
+                        "garden" => f.garden = value,
+                        "spawn_point" => f.spawn_point = value,
+                        "shallow_water" => f.shallow_water = value,
+                        "deep_water" => f.deep_water = value,
+                        "liveable" => f.liveable = value,
+                        _ => return false,
+                    }
+                    return cloned_db.save_area_data(area).is_ok();
+                }
+            }
+            false
+        },
+    );
+
+    // get_area_default_room_flag(area_id, flag_name) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_area_default_room_flag",
+        move |area_id: String, flag_name: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                if let Ok(Some(area)) = cloned_db.get_area_data(&uuid) {
+                    let f = &area.default_room_flags;
+                    return match flag_name.to_lowercase().as_str() {
+                        "dark" => f.dark,
+                        "no_mob" => f.no_mob,
+                        "indoors" => f.indoors,
+                        "underwater" => f.underwater,
+                        "climate_controlled" => f.climate_controlled,
+                        "always_hot" => f.always_hot,
+                        "always_cold" => f.always_cold,
+                        "city" => f.city,
+                        "no_windows" => f.no_windows,
+                        "difficult_terrain" => f.difficult_terrain,
+                        "dirt_floor" => f.dirt_floor,
+                        "property_storage" => f.property_storage,
+                        "post_office" => f.post_office,
+                        "bank" => f.bank,
+                        "garden" => f.garden,
+                        "spawn_point" => f.spawn_point,
+                        "shallow_water" => f.shallow_water,
+                        "deep_water" => f.deep_water,
+                        "liveable" => f.liveable,
+                        _ => false,
+                    };
+                }
+            }
+            false
+        },
+    );
 
     // get_effective_climate_controlled(room_id) -> bool
     // Checks room flag first, then falls back to area flag

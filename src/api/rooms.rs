@@ -391,8 +391,9 @@ async fn create_room(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
 
-    // Parse area_id if provided
-    let area_id = if let Some(ref area_id_str) = req.area_id {
+    // Parse area_id if provided, and capture the area's default_room_flags
+    // so absent flag fields in the request fall back to the area's defaults.
+    let (area_id, area_defaults) = if let Some(ref area_id_str) = req.area_id {
         let uuid =
             Uuid::parse_str(area_id_str).map_err(|_| ApiError::InvalidInput("Invalid area_id UUID format".into()))?;
 
@@ -409,9 +410,10 @@ async fn create_room(
             ));
         }
 
-        Some(uuid)
+        let defaults = area.default_room_flags.clone();
+        (Some(uuid), defaults)
     } else {
-        None
+        (None, RoomFlags::default())
     };
 
     // Check vnum uniqueness if provided
@@ -438,26 +440,26 @@ async fn create_room(
         description: req.description,
         exits: RoomExits::default(),
         flags: RoomFlags {
-            dark: req.flags.dark.unwrap_or(false),
-            no_mob: req.flags.no_mob.unwrap_or(false),
-            indoors: req.flags.indoors.unwrap_or(false),
+            dark: req.flags.dark.unwrap_or(area_defaults.dark),
+            no_mob: req.flags.no_mob.unwrap_or(area_defaults.no_mob),
+            indoors: req.flags.indoors.unwrap_or(area_defaults.indoors),
             combat_zone,
-            underwater: req.flags.underwater.unwrap_or(false),
-            climate_controlled: req.flags.climate_controlled.unwrap_or(false),
-            always_hot: req.flags.always_hot.unwrap_or(false),
-            always_cold: req.flags.always_cold.unwrap_or(false),
-            city: req.flags.city.unwrap_or(false),
-            no_windows: req.flags.no_windows.unwrap_or(false),
-            difficult_terrain: req.flags.difficult_terrain.unwrap_or(false),
-            dirt_floor: req.flags.dirt_floor.unwrap_or(false),
-            property_storage: req.flags.property_storage.unwrap_or(false),
-            post_office: req.flags.post_office.unwrap_or(false),
-            bank: req.flags.bank.unwrap_or(false),
-            garden: req.flags.garden.unwrap_or(false),
-            spawn_point: req.flags.spawn_point.unwrap_or(false),
-            shallow_water: req.flags.shallow_water.unwrap_or(false),
-            deep_water: req.flags.deep_water.unwrap_or(false),
-            liveable: req.flags.liveable.unwrap_or(false),
+            underwater: req.flags.underwater.unwrap_or(area_defaults.underwater),
+            climate_controlled: req.flags.climate_controlled.unwrap_or(area_defaults.climate_controlled),
+            always_hot: req.flags.always_hot.unwrap_or(area_defaults.always_hot),
+            always_cold: req.flags.always_cold.unwrap_or(area_defaults.always_cold),
+            city: req.flags.city.unwrap_or(area_defaults.city),
+            no_windows: req.flags.no_windows.unwrap_or(area_defaults.no_windows),
+            difficult_terrain: req.flags.difficult_terrain.unwrap_or(area_defaults.difficult_terrain),
+            dirt_floor: req.flags.dirt_floor.unwrap_or(area_defaults.dirt_floor),
+            property_storage: req.flags.property_storage.unwrap_or(area_defaults.property_storage),
+            post_office: req.flags.post_office.unwrap_or(area_defaults.post_office),
+            bank: req.flags.bank.unwrap_or(area_defaults.bank),
+            garden: req.flags.garden.unwrap_or(area_defaults.garden),
+            spawn_point: req.flags.spawn_point.unwrap_or(area_defaults.spawn_point),
+            shallow_water: req.flags.shallow_water.unwrap_or(area_defaults.shallow_water),
+            deep_water: req.flags.deep_water.unwrap_or(area_defaults.deep_water),
+            liveable: req.flags.liveable.unwrap_or(area_defaults.liveable),
         },
         vnum: req.vnum,
         area_id,

@@ -740,6 +740,34 @@ pub struct RoomFlags {
     pub liveable: bool, // Migrant NPCs can claim this room as a home
 }
 
+impl RoomFlags {
+    /// OR each bool default on top of this RoomFlags. Only turns flags on —
+    /// anything the caller already set stays on. Used to apply an area's
+    /// `default_room_flags` to a newly-created room. `combat_zone` is left
+    /// alone (room-level override; area has its own `combat_zone`).
+    pub fn merge_area_defaults(&mut self, defaults: &RoomFlags) {
+        self.dark |= defaults.dark;
+        self.no_mob |= defaults.no_mob;
+        self.indoors |= defaults.indoors;
+        self.underwater |= defaults.underwater;
+        self.climate_controlled |= defaults.climate_controlled;
+        self.always_hot |= defaults.always_hot;
+        self.always_cold |= defaults.always_cold;
+        self.city |= defaults.city;
+        self.no_windows |= defaults.no_windows;
+        self.difficult_terrain |= defaults.difficult_terrain;
+        self.dirt_floor |= defaults.dirt_floor;
+        self.property_storage |= defaults.property_storage;
+        self.post_office |= defaults.post_office;
+        self.bank |= defaults.bank;
+        self.garden |= defaults.garden;
+        self.spawn_point |= defaults.spawn_point;
+        self.shallow_water |= defaults.shallow_water;
+        self.deep_water |= defaults.deep_water;
+        self.liveable |= defaults.liveable;
+    }
+}
+
 // === Stealth/Tracking System Structures ===
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1614,6 +1642,12 @@ pub struct AreaData {
     /// Area-wide flags that rooms can inherit
     #[serde(default)]
     pub flags: AreaFlags,
+    /// Template RoomFlags copied into every newly-created room in this area.
+    /// Applies at room-creation time only; existing rooms are not retroactively
+    /// updated when this changes. Per-room flags still own runtime behavior,
+    /// so builders can toggle a default off on a specific room.
+    #[serde(default)]
+    pub default_room_flags: RoomFlags,
 
     // === Migrant immigration system ===
     /// When true, the migration tick will attempt to spawn migrants in this area.

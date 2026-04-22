@@ -19,6 +19,7 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            default_room_flags?: undefined;
             area_id?: undefined;
         };
         required?: undefined;
@@ -47,6 +48,7 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            default_room_flags?: undefined;
             area_id?: undefined;
         };
         required: string[];
@@ -90,6 +92,7 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            default_room_flags?: undefined;
             area_id?: undefined;
         };
         required: string[];
@@ -156,6 +159,70 @@ export declare const areaToolDefinitions: ({
                 type: string;
                 description: string;
             };
+            default_room_flags: {
+                type: string;
+                description: string;
+                properties: {
+                    dark: {
+                        type: string;
+                    };
+                    no_mob: {
+                        type: string;
+                    };
+                    indoors: {
+                        type: string;
+                    };
+                    underwater: {
+                        type: string;
+                    };
+                    climate_controlled: {
+                        type: string;
+                    };
+                    always_hot: {
+                        type: string;
+                    };
+                    always_cold: {
+                        type: string;
+                    };
+                    city: {
+                        type: string;
+                    };
+                    no_windows: {
+                        type: string;
+                    };
+                    difficult_terrain: {
+                        type: string;
+                    };
+                    dirt_floor: {
+                        type: string;
+                    };
+                    property_storage: {
+                        type: string;
+                    };
+                    post_office: {
+                        type: string;
+                    };
+                    bank: {
+                        type: string;
+                    };
+                    garden: {
+                        type: string;
+                    };
+                    spawn_point: {
+                        type: string;
+                    };
+                    shallow_water: {
+                        type: string;
+                    };
+                    deep_water: {
+                        type: string;
+                    };
+                    liveable: {
+                        type: string;
+                    };
+                };
+                additionalProperties: boolean;
+            };
             identifier?: undefined;
             area_id?: undefined;
         };
@@ -185,6 +252,7 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            default_room_flags?: undefined;
             area_id?: undefined;
         };
         required: string[];
@@ -214,6 +282,7 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            default_room_flags?: undefined;
         };
         required: string[];
     };
