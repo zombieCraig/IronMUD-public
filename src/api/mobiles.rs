@@ -78,6 +78,20 @@ pub struct CreateMobileRequest {
     #[serde(default)]
     pub shop_buys_types: Option<Vec<String>>,
     #[serde(default)]
+    pub shop_buys_categories: Option<Vec<String>>,
+    #[serde(default)]
+    pub shop_min_value: Option<i32>,
+    #[serde(default)]
+    pub shop_max_value: Option<i32>,
+    #[serde(default)]
+    pub shop_extra_types: Option<Vec<String>>,
+    #[serde(default)]
+    pub shop_extra_categories: Option<Vec<String>>,
+    #[serde(default)]
+    pub shop_deny_types: Option<Vec<String>>,
+    #[serde(default)]
+    pub shop_deny_categories: Option<Vec<String>>,
+    #[serde(default)]
     pub shop_stock: Option<Vec<String>>,
     #[serde(default)]
     pub shop_preset_vnum: Option<String>,
@@ -247,6 +261,20 @@ pub struct UpdateMobileRequest {
     pub shop_buy_rate: Option<i32>,
     #[serde(default)]
     pub shop_buys_types: Option<Vec<String>>,
+    #[serde(default)]
+    pub shop_buys_categories: Option<Vec<String>>,
+    #[serde(default)]
+    pub shop_min_value: Option<i32>,
+    #[serde(default)]
+    pub shop_max_value: Option<i32>,
+    #[serde(default)]
+    pub shop_extra_types: Option<Vec<String>>,
+    #[serde(default)]
+    pub shop_extra_categories: Option<Vec<String>>,
+    #[serde(default)]
+    pub shop_deny_types: Option<Vec<String>>,
+    #[serde(default)]
+    pub shop_deny_categories: Option<Vec<String>>,
     #[serde(default)]
     pub shop_stock: Option<Vec<String>>,
     #[serde(default)]
@@ -627,14 +655,14 @@ async fn create_mobile(
         transport_route: None,
         property_templates: Vec::new(),
         leasing_area_id: None,
-        shop_buys_categories: Vec::new(),
+        shop_buys_categories: req.shop_buys_categories.unwrap_or_default(),
         shop_preset_vnum: req.shop_preset_vnum.unwrap_or_default(),
-        shop_extra_types: Vec::new(),
-        shop_extra_categories: Vec::new(),
-        shop_deny_types: Vec::new(),
-        shop_deny_categories: Vec::new(),
-        shop_min_value: 0,
-        shop_max_value: 0,
+        shop_extra_types: req.shop_extra_types.unwrap_or_default(),
+        shop_extra_categories: req.shop_extra_categories.unwrap_or_default(),
+        shop_deny_types: req.shop_deny_types.unwrap_or_default(),
+        shop_deny_categories: req.shop_deny_categories.unwrap_or_default(),
+        shop_min_value: req.shop_min_value.unwrap_or(0),
+        shop_max_value: req.shop_max_value.unwrap_or(0),
         is_unconscious: false,
         bleedout_rounds_remaining: 0,
         pursuit_target_name: String::new(),
@@ -767,6 +795,27 @@ async fn update_mobile(
     }
     if let Some(shop_buys_types) = req.shop_buys_types {
         mobile.shop_buys_types = shop_buys_types;
+    }
+    if let Some(shop_buys_categories) = req.shop_buys_categories {
+        mobile.shop_buys_categories = shop_buys_categories;
+    }
+    if let Some(shop_min_value) = req.shop_min_value {
+        mobile.shop_min_value = shop_min_value;
+    }
+    if let Some(shop_max_value) = req.shop_max_value {
+        mobile.shop_max_value = shop_max_value;
+    }
+    if let Some(shop_extra_types) = req.shop_extra_types {
+        mobile.shop_extra_types = shop_extra_types;
+    }
+    if let Some(shop_extra_categories) = req.shop_extra_categories {
+        mobile.shop_extra_categories = shop_extra_categories;
+    }
+    if let Some(shop_deny_types) = req.shop_deny_types {
+        mobile.shop_deny_types = shop_deny_types;
+    }
+    if let Some(shop_deny_categories) = req.shop_deny_categories {
+        mobile.shop_deny_categories = shop_deny_categories;
     }
     if let Some(shop_stock) = req.shop_stock {
         mobile.shop_stock = shop_stock;

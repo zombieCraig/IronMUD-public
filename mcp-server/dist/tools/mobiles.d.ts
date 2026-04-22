@@ -31,6 +31,13 @@ export declare const mobileToolDefinitions: ({
             shop_sell_rate?: undefined;
             shop_buy_rate?: undefined;
             shop_buys_types?: undefined;
+            shop_buys_categories?: undefined;
+            shop_min_value?: undefined;
+            shop_max_value?: undefined;
+            shop_extra_types?: undefined;
+            shop_extra_categories?: undefined;
+            shop_deny_types?: undefined;
+            shop_deny_categories?: undefined;
             shop_stock?: undefined;
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
@@ -85,6 +92,13 @@ export declare const mobileToolDefinitions: ({
             shop_sell_rate?: undefined;
             shop_buy_rate?: undefined;
             shop_buys_types?: undefined;
+            shop_buys_categories?: undefined;
+            shop_min_value?: undefined;
+            shop_max_value?: undefined;
+            shop_extra_types?: undefined;
+            shop_extra_categories?: undefined;
+            shop_deny_types?: undefined;
+            shop_deny_categories?: undefined;
             shop_stock?: undefined;
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
@@ -142,6 +156,13 @@ export declare const mobileToolDefinitions: ({
             shop_sell_rate?: undefined;
             shop_buy_rate?: undefined;
             shop_buys_types?: undefined;
+            shop_buys_categories?: undefined;
+            shop_min_value?: undefined;
+            shop_max_value?: undefined;
+            shop_extra_types?: undefined;
+            shop_extra_categories?: undefined;
+            shop_deny_types?: undefined;
+            shop_deny_categories?: undefined;
             shop_stock?: undefined;
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
@@ -199,6 +220,13 @@ export declare const mobileToolDefinitions: ({
             shop_sell_rate?: undefined;
             shop_buy_rate?: undefined;
             shop_buys_types?: undefined;
+            shop_buys_categories?: undefined;
+            shop_min_value?: undefined;
+            shop_max_value?: undefined;
+            shop_extra_types?: undefined;
+            shop_extra_categories?: undefined;
+            shop_deny_types?: undefined;
+            shop_deny_categories?: undefined;
             shop_stock?: undefined;
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
@@ -348,6 +376,49 @@ export declare const mobileToolDefinitions: ({
                 description: string;
             };
             shop_buys_types: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                description: string;
+            };
+            shop_buys_categories: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                description: string;
+            };
+            shop_min_value: {
+                type: string;
+                description: string;
+            };
+            shop_max_value: {
+                type: string;
+                description: string;
+            };
+            shop_extra_types: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                description: string;
+            };
+            shop_extra_categories: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                description: string;
+            };
+            shop_deny_types: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                description: string;
+            };
+            shop_deny_categories: {
                 type: string;
                 items: {
                     type: string;
@@ -609,6 +680,49 @@ export declare const mobileToolDefinitions: ({
                 };
                 description?: undefined;
             };
+            shop_buys_categories: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                description: string;
+            };
+            shop_min_value: {
+                type: string;
+                description: string;
+            };
+            shop_max_value: {
+                type: string;
+                description: string;
+            };
+            shop_extra_types: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                description?: undefined;
+            };
+            shop_extra_categories: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                description?: undefined;
+            };
+            shop_deny_types: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                description?: undefined;
+            };
+            shop_deny_categories: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                description?: undefined;
+            };
             shop_stock: {
                 type: string;
                 items: {
@@ -765,6 +879,13 @@ export declare const mobileToolDefinitions: ({
             shop_sell_rate?: undefined;
             shop_buy_rate?: undefined;
             shop_buys_types?: undefined;
+            shop_buys_categories?: undefined;
+            shop_min_value?: undefined;
+            shop_max_value?: undefined;
+            shop_extra_types?: undefined;
+            shop_extra_categories?: undefined;
+            shop_deny_types?: undefined;
+            shop_deny_categories?: undefined;
             shop_stock?: undefined;
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
@@ -830,6 +951,13 @@ export declare const mobileToolDefinitions: ({
             shop_sell_rate?: undefined;
             shop_buy_rate?: undefined;
             shop_buys_types?: undefined;
+            shop_buys_categories?: undefined;
+            shop_min_value?: undefined;
+            shop_max_value?: undefined;
+            shop_extra_types?: undefined;
+            shop_extra_categories?: undefined;
+            shop_deny_types?: undefined;
+            shop_deny_categories?: undefined;
             shop_stock?: undefined;
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
@@ -889,6 +1017,13 @@ export declare const mobileToolDefinitions: ({
             shop_sell_rate?: undefined;
             shop_buy_rate?: undefined;
             shop_buys_types?: undefined;
+            shop_buys_categories?: undefined;
+            shop_min_value?: undefined;
+            shop_max_value?: undefined;
+            shop_extra_types?: undefined;
+            shop_extra_categories?: undefined;
+            shop_deny_types?: undefined;
+            shop_deny_categories?: undefined;
             shop_stock?: undefined;
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
@@ -969,6 +1104,13 @@ export declare const mobileToolDefinitions: ({
             shop_sell_rate?: undefined;
             shop_buy_rate?: undefined;
             shop_buys_types?: undefined;
+            shop_buys_categories?: undefined;
+            shop_min_value?: undefined;
+            shop_max_value?: undefined;
+            shop_extra_types?: undefined;
+            shop_extra_categories?: undefined;
+            shop_deny_types?: undefined;
+            shop_deny_categories?: undefined;
             shop_stock?: undefined;
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
@@ -1024,6 +1166,13 @@ export declare const mobileToolDefinitions: ({
             shop_sell_rate?: undefined;
             shop_buy_rate?: undefined;
             shop_buys_types?: undefined;
+            shop_buys_categories?: undefined;
+            shop_min_value?: undefined;
+            shop_max_value?: undefined;
+            shop_extra_types?: undefined;
+            shop_extra_categories?: undefined;
+            shop_deny_types?: undefined;
+            shop_deny_categories?: undefined;
             shop_stock?: undefined;
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
@@ -1083,6 +1232,13 @@ export declare const mobileToolDefinitions: ({
             shop_sell_rate?: undefined;
             shop_buy_rate?: undefined;
             shop_buys_types?: undefined;
+            shop_buys_categories?: undefined;
+            shop_min_value?: undefined;
+            shop_max_value?: undefined;
+            shop_extra_types?: undefined;
+            shop_extra_categories?: undefined;
+            shop_deny_types?: undefined;
+            shop_deny_categories?: undefined;
             shop_stock?: undefined;
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
@@ -1167,6 +1323,13 @@ export declare const mobileToolDefinitions: ({
             shop_sell_rate?: undefined;
             shop_buy_rate?: undefined;
             shop_buys_types?: undefined;
+            shop_buys_categories?: undefined;
+            shop_min_value?: undefined;
+            shop_max_value?: undefined;
+            shop_extra_types?: undefined;
+            shop_extra_categories?: undefined;
+            shop_deny_types?: undefined;
+            shop_deny_categories?: undefined;
             shop_stock?: undefined;
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;

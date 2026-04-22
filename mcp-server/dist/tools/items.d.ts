@@ -26,6 +26,7 @@ export declare const itemToolDefinitions: ({
             keywords?: undefined;
             weight?: undefined;
             value?: undefined;
+            categories?: undefined;
             wear_location?: undefined;
             damage_dice_count?: undefined;
             damage_dice_sides?: undefined;
@@ -83,6 +84,7 @@ export declare const itemToolDefinitions: ({
             keywords?: undefined;
             weight?: undefined;
             value?: undefined;
+            categories?: undefined;
             wear_location?: undefined;
             damage_dice_count?: undefined;
             damage_dice_sides?: undefined;
@@ -143,6 +145,7 @@ export declare const itemToolDefinitions: ({
             keywords?: undefined;
             weight?: undefined;
             value?: undefined;
+            categories?: undefined;
             wear_location?: undefined;
             damage_dice_count?: undefined;
             damage_dice_sides?: undefined;
@@ -203,6 +206,7 @@ export declare const itemToolDefinitions: ({
             keywords?: undefined;
             weight?: undefined;
             value?: undefined;
+            categories?: undefined;
             wear_location?: undefined;
             damage_dice_count?: undefined;
             damage_dice_sides?: undefined;
@@ -282,6 +286,13 @@ export declare const itemToolDefinitions: ({
             value: {
                 type: string;
                 default: number;
+            };
+            categories: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                description: string;
             };
             wear_location: {
                 type: string;
@@ -551,6 +562,13 @@ export declare const itemToolDefinitions: ({
                 type: string;
                 default?: undefined;
             };
+            categories: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                description: string;
+            };
             flags: {
                 type: string;
                 properties?: undefined;
@@ -760,6 +778,7 @@ export declare const itemToolDefinitions: ({
             keywords?: undefined;
             weight?: undefined;
             value?: undefined;
+            categories?: undefined;
             wear_location?: undefined;
             damage_dice_count?: undefined;
             damage_dice_sides?: undefined;
@@ -823,6 +842,7 @@ export declare const itemToolDefinitions: ({
             keywords?: undefined;
             weight?: undefined;
             value?: undefined;
+            categories?: undefined;
             wear_location?: undefined;
             damage_dice_count?: undefined;
             damage_dice_sides?: undefined;

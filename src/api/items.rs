@@ -64,6 +64,8 @@ pub struct CreateItemRequest {
     #[serde(default)]
     pub value: i32,
     #[serde(default)]
+    pub categories: Option<Vec<String>>,
+    #[serde(default)]
     pub wear_location: Option<String>,
     // Weapon stats
     #[serde(default)]
@@ -186,6 +188,8 @@ pub struct UpdateItemRequest {
     pub item_type: Option<String>,
     pub weight: Option<i32>,
     pub value: Option<i32>,
+    #[serde(default)]
+    pub categories: Option<Vec<String>>,
     pub flags: Option<ItemFlagsRequest>,
     // Firearm fields
     #[serde(default)]
@@ -574,7 +578,7 @@ async fn create_item(
         vnum: Some(req.vnum.clone()),
         keywords: req.keywords,
         item_type,
-        categories: Vec::new(),
+        categories: req.categories.clone().unwrap_or_default(),
         teaches_recipe: None,
         teaches_spell: None,
         note_content: req.note_content.map(normalize_note_input).transpose()?.flatten(),
@@ -786,6 +790,9 @@ async fn update_item(
     }
     if let Some(value) = req.value {
         item.value = value;
+    }
+    if let Some(categories) = req.categories {
+        item.categories = categories;
     }
     if let Some(flags) = req.flags {
         item.flags.no_drop = flags.no_drop;

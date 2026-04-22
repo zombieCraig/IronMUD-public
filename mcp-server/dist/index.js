@@ -418,6 +418,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     item_type: args?.item_type,
                     weight: args?.weight,
                     value: args?.value,
+                    categories: args?.categories,
                     wear_location: args?.wear_location,
                     damage_dice_count: args?.damage_dice_count,
                     damage_dice_sides: args?.damage_dice_sides,
@@ -464,7 +465,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 const resolvedItemId = await resolveItemId(api, id);
                 const updateData = {};
                 const itemFields = [
-                    "name", "short_desc", "long_desc", "vnum", "item_type", "keywords", "weight", "value", "flags",
+                    "name", "short_desc", "long_desc", "vnum", "item_type", "keywords", "weight", "value", "categories", "flags",
                     "damage_dice_count", "damage_dice_sides", "damage_type", "armor_class",
                     "wear_location", "weapon_skill",
                     "caliber", "ranged_type", "magazine_size", "fire_mode", "supported_fire_modes",
@@ -562,6 +563,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     shop_sell_rate: args?.shop_sell_rate,
                     shop_buy_rate: args?.shop_buy_rate,
                     shop_buys_types: args?.shop_buys_types,
+                    shop_buys_categories: args?.shop_buys_categories,
+                    shop_min_value: args?.shop_min_value,
+                    shop_max_value: args?.shop_max_value,
+                    shop_extra_types: args?.shop_extra_types,
+                    shop_extra_categories: args?.shop_extra_categories,
+                    shop_deny_types: args?.shop_deny_types,
+                    shop_deny_categories: args?.shop_deny_categories,
                     shop_stock: args?.shop_stock,
                     shop_preset_vnum: args?.shop_preset_vnum,
                     daily_routine: args?.daily_routine,
@@ -580,7 +588,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 const mobileFields = [
                     "name", "short_desc", "long_desc", "vnum", "keywords", "level", "max_hp", "armor_class", "gold", "flags",
                     "healer_type", "healing_free", "healing_cost_multiplier",
-                    "shop_sell_rate", "shop_buy_rate", "shop_buys_types", "shop_stock", "shop_preset_vnum",
+                    "shop_sell_rate", "shop_buy_rate", "shop_buys_types", "shop_buys_categories",
+                    "shop_min_value", "shop_max_value",
+                    "shop_extra_types", "shop_extra_categories", "shop_deny_types", "shop_deny_categories",
+                    "shop_stock", "shop_preset_vnum",
                     "daily_routine", "simulation", "remove_simulation",
                 ];
                 for (const field of mobileFields) {

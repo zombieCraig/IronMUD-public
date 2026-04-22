@@ -63,6 +63,11 @@ export const itemToolDefinitions = [
                 },
                 weight: { type: "number", default: 1 },
                 value: { type: "number", default: 0 },
+                categories: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Crafting / shop-filter categories (e.g., 'flowers', 'herbs', 'leather'). Used by shopkeepers' shop_buys_categories filter and by crafting recipes.",
+                },
                 wear_location: {
                     type: "string",
                     enum: ["head", "neck", "shoulders", "back", "torso", "waist", "ears",
@@ -169,6 +174,11 @@ export const itemToolDefinitions = [
                 keywords: { type: "array", items: { type: "string" } },
                 weight: { type: "number" },
                 value: { type: "number" },
+                categories: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Crafting / shop-filter categories. Passing this replaces the existing categories list.",
+                },
                 flags: { type: "object" },
                 damage_dice_count: { type: "number", description: "For weapons: dice count (e.g., 2 in 2d6)" },
                 damage_dice_sides: { type: "number", description: "For weapons: dice sides (e.g., 6 in 2d6)" },

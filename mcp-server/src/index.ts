@@ -435,6 +435,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           item_type: args?.item_type as string,
           weight: args?.weight as number | undefined,
           value: args?.value as number | undefined,
+          categories: args?.categories as string[] | undefined,
           wear_location: args?.wear_location as string | undefined,
           damage_dice_count: args?.damage_dice_count as number | undefined,
           damage_dice_sides: args?.damage_dice_sides as number | undefined,
@@ -480,7 +481,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const resolvedItemId = await resolveItemId(api, id);
         const updateData: Record<string, unknown> = {};
         const itemFields = [
-          "name", "short_desc", "long_desc", "vnum", "item_type", "keywords", "weight", "value", "flags",
+          "name", "short_desc", "long_desc", "vnum", "item_type", "keywords", "weight", "value", "categories", "flags",
           "damage_dice_count", "damage_dice_sides", "damage_type", "armor_class",
           "wear_location", "weapon_skill",
           "caliber", "ranged_type", "magazine_size", "fire_mode", "supported_fire_modes",
@@ -580,6 +581,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           shop_sell_rate: args?.shop_sell_rate as number | undefined,
           shop_buy_rate: args?.shop_buy_rate as number | undefined,
           shop_buys_types: args?.shop_buys_types as string[] | undefined,
+          shop_buys_categories: args?.shop_buys_categories as string[] | undefined,
+          shop_min_value: args?.shop_min_value as number | undefined,
+          shop_max_value: args?.shop_max_value as number | undefined,
+          shop_extra_types: args?.shop_extra_types as string[] | undefined,
+          shop_extra_categories: args?.shop_extra_categories as string[] | undefined,
+          shop_deny_types: args?.shop_deny_types as string[] | undefined,
+          shop_deny_categories: args?.shop_deny_categories as string[] | undefined,
           shop_stock: args?.shop_stock as string[] | undefined,
           shop_preset_vnum: args?.shop_preset_vnum as string | undefined,
           daily_routine: args?.daily_routine as any[] | undefined,
@@ -597,7 +605,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const mobileFields = [
           "name", "short_desc", "long_desc", "vnum", "keywords", "level", "max_hp", "armor_class", "gold", "flags",
           "healer_type", "healing_free", "healing_cost_multiplier",
-          "shop_sell_rate", "shop_buy_rate", "shop_buys_types", "shop_stock", "shop_preset_vnum",
+          "shop_sell_rate", "shop_buy_rate", "shop_buys_types", "shop_buys_categories",
+          "shop_min_value", "shop_max_value",
+          "shop_extra_types", "shop_extra_categories", "shop_deny_types", "shop_deny_categories",
+          "shop_stock", "shop_preset_vnum",
           "daily_routine", "simulation", "remove_simulation",
         ];
         for (const field of mobileFields) {

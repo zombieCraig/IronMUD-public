@@ -244,6 +244,7 @@ export interface CreateItemRequest {
     item_type: string;
     weight?: number;
     value?: number;
+    categories?: string[];
     wear_location?: string;
     damage_dice_count?: number;
     damage_dice_sides?: number;
@@ -305,6 +306,13 @@ export interface CreateMobileRequest {
     shop_sell_rate?: number;
     shop_buy_rate?: number;
     shop_buys_types?: string[];
+    shop_buys_categories?: string[];
+    shop_min_value?: number;
+    shop_max_value?: number;
+    shop_extra_types?: string[];
+    shop_extra_categories?: string[];
+    shop_deny_types?: string[];
+    shop_deny_categories?: string[];
     shop_stock?: string[];
     shop_preset_vnum?: string;
     daily_routine?: RoutineEntry[];
