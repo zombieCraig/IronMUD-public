@@ -18,7 +18,7 @@ use super::{
     error::ApiError,
     notify_builders,
 };
-use crate::{AreaData, AreaFlags, AreaPermission, CombatZoneType, RoomData, RoomFlags, SpawnEntityType};
+use crate::{AreaData, AreaFlags, AreaPermission, CombatZoneType, ForageEntry, RoomData, RoomFlags, SpawnEntityType};
 
 pub fn routes() -> Router<Arc<ApiState>> {
     Router::new()
@@ -28,6 +28,8 @@ pub fn routes() -> Router<Arc<ApiState>> {
         .route("/:id/rooms", get(list_area_rooms))
         .route("/:id/overview", get(area_overview))
         .route("/:id/reset", post(reset_area))
+        .route("/:id/forage", get(list_forage_tables).post(add_forage_entry))
+        .route("/:id/forage/:forage_type/:vnum", axum::routing::delete(remove_forage_entry))
 }
 
 #[derive(Deserialize)]
@@ -673,4 +675,208 @@ async fn reset_area(
             "spawned_count": spawned_count
         }
     })))
+}
+
+// ==========================================================================
+// Forage tables
+// ==========================================================================
+
+/// Which of the five per-area forage tables an entry targets.
+/// Accepts case-insensitive strings matching the room-flag family that
+/// triggers the table in `scripts/commands/forage.rhai`.
+fn parse_forage_type(s: &str) -> Result<&'static str, ApiError> {
+    match s.to_lowercase().as_str() {
+        "city" => Ok("city"),
+        "wilderness" => Ok("wilderness"),
+        "shallow_water" => Ok("shallow_water"),
+        "deep_water" => Ok("deep_water"),
+        "underwater" => Ok("underwater"),
+        _ => Err(ApiError::InvalidInput(format!(
+            "Invalid forage_type '{}'. Valid: city, wilderness, shallow_water, deep_water, underwater",
+            s
+        ))),
+    }
+}
+
+fn parse_rarity(s: &str) -> Result<String, ApiError> {
+    let lower = s.to_lowercase();
+    match lower.as_str() {
+        "common" | "uncommon" | "rare" | "legendary" => Ok(lower),
+        _ => Err(ApiError::InvalidInput(format!(
+            "Invalid rarity '{}'. Valid: common, uncommon, rare, legendary",
+            s
+        ))),
+    }
+}
+
+fn forage_table_mut<'a>(area: &'a mut AreaData, forage_type: &str) -> &'a mut Vec<ForageEntry> {
+    match forage_type {
+        "city" => &mut area.city_forage_table,
+        "wilderness" => &mut area.wilderness_forage_table,
+        "shallow_water" => &mut area.shallow_water_forage_table,
+        "deep_water" => &mut area.deep_water_forage_table,
+        "underwater" => &mut area.underwater_forage_table,
+        _ => unreachable!("parse_forage_type guards this"),
+    }
+}
+
+#[derive(Serialize)]
+struct ForageTablesResponse {
+    success: bool,
+    data: ForageTables,
+}
+
+#[derive(Serialize)]
+struct ForageTables {
+    city: Vec<ForageEntry>,
+    wilderness: Vec<ForageEntry>,
+    shallow_water: Vec<ForageEntry>,
+    deep_water: Vec<ForageEntry>,
+    underwater: Vec<ForageEntry>,
+}
+
+#[derive(Deserialize)]
+pub struct AddForageEntryRequest {
+    /// city | wilderness | shallow_water | deep_water | underwater
+    pub forage_type: String,
+    /// Item vnum to spawn (must exist as a prototype at forage-time)
+    pub vnum: String,
+    /// Minimum foraging skill required (0-10)
+    #[serde(default)]
+    pub min_skill: i32,
+    /// common | uncommon | rare | legendary
+    pub rarity: String,
+}
+
+async fn list_forage_tables(
+    State(state): State<Arc<ApiState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(id): Path<String>,
+) -> Result<Json<ForageTablesResponse>, ApiError> {
+    if !can_read(&user) {
+        return Err(ApiError::Forbidden("Read permission required".into()));
+    }
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let area = state
+        .db
+        .get_area_data(&uuid)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound(format!("Area '{}' not found", id)))?;
+
+    Ok(Json(ForageTablesResponse {
+        success: true,
+        data: ForageTables {
+            city: area.city_forage_table,
+            wilderness: area.wilderness_forage_table,
+            shallow_water: area.shallow_water_forage_table,
+            deep_water: area.deep_water_forage_table,
+            underwater: area.underwater_forage_table,
+        },
+    }))
+}
+
+async fn add_forage_entry(
+    State(state): State<Arc<ApiState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(id): Path<String>,
+    Json(req): Json<AddForageEntryRequest>,
+) -> Result<Json<AreaResponse>, ApiError> {
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let mut area = state
+        .db
+        .get_area_data(&uuid)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound(format!("Area '{}' not found", id)))?;
+
+    if !can_edit_area(&user, &area) {
+        return Err(ApiError::Forbidden(
+            "You don't have permission to edit this area".into(),
+        ));
+    }
+
+    let forage_type = parse_forage_type(&req.forage_type)?;
+    let rarity = parse_rarity(&req.rarity)?;
+    let min_skill = req.min_skill.clamp(0, 10);
+
+    if req.vnum.trim().is_empty() {
+        return Err(ApiError::InvalidInput("vnum is required".into()));
+    }
+
+    let table = forage_table_mut(&mut area, forage_type);
+    if let Some(existing) = table.iter_mut().find(|e| e.vnum == req.vnum) {
+        existing.min_skill = min_skill;
+        existing.rarity = rarity;
+    } else {
+        table.push(ForageEntry {
+            vnum: req.vnum.clone(),
+            min_skill,
+            rarity,
+        });
+    }
+
+    state
+        .db
+        .save_area_data(area.clone())
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    notify_builders(
+        &state.connections,
+        &format!(
+            "[API] {} forage entry '{}' added to area '{}' by {}",
+            forage_type, req.vnum, area.name, user.api_key.name
+        ),
+    );
+
+    Ok(Json(AreaResponse {
+        success: true,
+        data: area,
+    }))
+}
+
+async fn remove_forage_entry(
+    State(state): State<Arc<ApiState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path((id, forage_type, vnum)): Path<(String, String, String)>,
+) -> Result<Json<AreaResponse>, ApiError> {
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let mut area = state
+        .db
+        .get_area_data(&uuid)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound(format!("Area '{}' not found", id)))?;
+
+    if !can_edit_area(&user, &area) {
+        return Err(ApiError::Forbidden(
+            "You don't have permission to edit this area".into(),
+        ));
+    }
+
+    let ft = parse_forage_type(&forage_type)?;
+    let table = forage_table_mut(&mut area, ft);
+    let before = table.len();
+    table.retain(|e| e.vnum != vnum);
+    if table.len() == before {
+        return Err(ApiError::NotFound(format!(
+            "No entry with vnum '{}' in {} forage table",
+            vnum, ft
+        )));
+    }
+
+    state
+        .db
+        .save_area_data(area.clone())
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    notify_builders(
+        &state.connections,
+        &format!(
+            "[API] {} forage entry '{}' removed from area '{}' by {}",
+            ft, vnum, area.name, user.api_key.name
+        ),
+    );
+
+    Ok(Json(AreaResponse {
+        success: true,
+        data: area,
+    }))
 }

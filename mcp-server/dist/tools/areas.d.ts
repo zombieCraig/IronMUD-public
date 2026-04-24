@@ -21,6 +21,10 @@ export declare const areaToolDefinitions: ({
             immigration_guard_chance?: undefined;
             default_room_flags?: undefined;
             area_id?: undefined;
+            forage_type?: undefined;
+            vnum?: undefined;
+            min_skill?: undefined;
+            rarity?: undefined;
         };
         required?: undefined;
     };
@@ -50,6 +54,10 @@ export declare const areaToolDefinitions: ({
             immigration_guard_chance?: undefined;
             default_room_flags?: undefined;
             area_id?: undefined;
+            forage_type?: undefined;
+            vnum?: undefined;
+            min_skill?: undefined;
+            rarity?: undefined;
         };
         required: string[];
     };
@@ -94,6 +102,10 @@ export declare const areaToolDefinitions: ({
             immigration_guard_chance?: undefined;
             default_room_flags?: undefined;
             area_id?: undefined;
+            forage_type?: undefined;
+            vnum?: undefined;
+            min_skill?: undefined;
+            rarity?: undefined;
         };
         required: string[];
     };
@@ -225,6 +237,10 @@ export declare const areaToolDefinitions: ({
             };
             identifier?: undefined;
             area_id?: undefined;
+            forage_type?: undefined;
+            vnum?: undefined;
+            min_skill?: undefined;
+            rarity?: undefined;
         };
         required: string[];
     };
@@ -254,6 +270,10 @@ export declare const areaToolDefinitions: ({
             immigration_guard_chance?: undefined;
             default_room_flags?: undefined;
             area_id?: undefined;
+            forage_type?: undefined;
+            vnum?: undefined;
+            min_skill?: undefined;
+            rarity?: undefined;
         };
         required: string[];
     };
@@ -283,6 +303,97 @@ export declare const areaToolDefinitions: ({
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
             default_room_flags?: undefined;
+            forage_type?: undefined;
+            vnum?: undefined;
+            min_skill?: undefined;
+            rarity?: undefined;
+        };
+        required: string[];
+    };
+} | {
+    name: string;
+    description: string;
+    inputSchema: {
+        type: string;
+        properties: {
+            area_id: {
+                type: string;
+                description: string;
+            };
+            forage_type: {
+                type: string;
+                enum: string[];
+                description: string;
+            };
+            vnum: {
+                type: string;
+                description: string;
+            };
+            min_skill: {
+                type: string;
+                description: string;
+            };
+            rarity: {
+                type: string;
+                enum: string[];
+                description: string;
+            };
+            identifier?: undefined;
+            name?: undefined;
+            prefix?: undefined;
+            description?: undefined;
+            level_min?: undefined;
+            level_max?: undefined;
+            theme?: undefined;
+            id?: undefined;
+            immigration_enabled?: undefined;
+            immigration_room_vnum?: undefined;
+            immigration_name_pool?: undefined;
+            immigration_visual_profile?: undefined;
+            migration_interval_days?: undefined;
+            migration_max_per_check?: undefined;
+            immigration_guard_chance?: undefined;
+            default_room_flags?: undefined;
+        };
+        required: string[];
+    };
+} | {
+    name: string;
+    description: string;
+    inputSchema: {
+        type: string;
+        properties: {
+            area_id: {
+                type: string;
+                description: string;
+            };
+            forage_type: {
+                type: string;
+                enum: string[];
+                description?: undefined;
+            };
+            vnum: {
+                type: string;
+                description: string;
+            };
+            identifier?: undefined;
+            name?: undefined;
+            prefix?: undefined;
+            description?: undefined;
+            level_min?: undefined;
+            level_max?: undefined;
+            theme?: undefined;
+            id?: undefined;
+            immigration_enabled?: undefined;
+            immigration_room_vnum?: undefined;
+            immigration_name_pool?: undefined;
+            immigration_visual_profile?: undefined;
+            migration_interval_days?: undefined;
+            migration_max_per_check?: undefined;
+            immigration_guard_chance?: undefined;
+            default_room_flags?: undefined;
+            min_skill?: undefined;
+            rarity?: undefined;
         };
         required: string[];
     };

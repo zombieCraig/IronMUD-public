@@ -11,6 +11,7 @@ import { spawnPointToolDefinitions } from "./tools/spawn-points.js";
 import { transportToolDefinitions } from "./tools/transports.js";
 import { descriptionToolDefinitions } from "./tools/descriptions.js";
 import { plantToolDefinitions } from "./tools/plants.js";
+import { recipeToolDefinitions } from "./tools/recipes.js";
 import { bugToolDefinitions } from "./tools/bugs.js";
 import { buildRoomContext, buildItemContext, buildMobileContext, getDescriptionExamples, } from "./description-context.js";
 // Helper to format auto-refresh info for MCP output
@@ -79,6 +80,7 @@ const allTools = [
     ...transportToolDefinitions,
     ...descriptionToolDefinitions,
     ...plantToolDefinitions,
+    ...recipeToolDefinitions,
     ...bugToolDefinitions,
 ];
 // Handle list tools request
@@ -1025,6 +1027,102 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 await api.deletePlantPrototype(id);
                 return {
                     content: [{ type: "text", text: `Plant prototype ${id} deleted successfully` }],
+                };
+            }
+            // Recipe tools
+            case "list_recipes": {
+                const recipes = await api.listRecipes();
+                return {
+                    content: [{ type: "text", text: JSON.stringify(recipes, null, 2) }],
+                };
+            }
+            case "get_recipe": {
+                const vnum = args?.vnum;
+                if (!vnum)
+                    throw new Error("vnum is required");
+                const recipe = await api.getRecipe(vnum);
+                return {
+                    content: [{ type: "text", text: JSON.stringify(recipe, null, 2) }],
+                };
+            }
+            case "create_recipe": {
+                const recipe = await api.createRecipe({
+                    vnum: args?.vnum,
+                    name: args?.name,
+                    skill: args?.skill,
+                    skill_required: args?.skill_required,
+                    auto_learn: args?.auto_learn,
+                    ingredients: args?.ingredients,
+                    tools: args?.tools,
+                    output_vnum: args?.output_vnum,
+                    output_quantity: args?.output_quantity,
+                    base_xp: args?.base_xp,
+                    difficulty: args?.difficulty,
+                });
+                return {
+                    content: [{ type: "text", text: JSON.stringify(recipe, null, 2) }],
+                };
+            }
+            case "update_recipe": {
+                const vnum = args?.vnum;
+                if (!vnum)
+                    throw new Error("vnum is required");
+                const updateData = {};
+                const fields = [
+                    "name", "skill", "skill_required", "auto_learn",
+                    "ingredients", "tools", "output_vnum", "output_quantity",
+                    "base_xp", "difficulty",
+                ];
+                for (const field of fields) {
+                    if (args?.[field] !== undefined) {
+                        updateData[field] = args[field];
+                    }
+                }
+                const recipe = await api.updateRecipe(vnum, updateData);
+                return {
+                    content: [{ type: "text", text: JSON.stringify(recipe, null, 2) }],
+                };
+            }
+            case "delete_recipe": {
+                const vnum = args?.vnum;
+                if (!vnum)
+                    throw new Error("vnum is required");
+                await api.deleteRecipe(vnum);
+                return {
+                    content: [{ type: "text", text: `Recipe ${vnum} deleted successfully` }],
+                };
+            }
+            // Forage table tools
+            case "list_forage_tables": {
+                const areaId = args?.area_id;
+                if (!areaId)
+                    throw new Error("area_id is required");
+                const tables = await api.listForageTables(areaId);
+                return {
+                    content: [{ type: "text", text: JSON.stringify(tables, null, 2) }],
+                };
+            }
+            case "add_forage_entry": {
+                const areaId = args?.area_id;
+                if (!areaId)
+                    throw new Error("area_id is required");
+                const area = await api.addForageEntry(areaId, {
+                    forage_type: args?.forage_type,
+                    vnum: args?.vnum,
+                    min_skill: args?.min_skill,
+                    rarity: args?.rarity,
+                });
+                return {
+                    content: [{ type: "text", text: JSON.stringify(area, null, 2) }],
+                };
+            }
+            case "remove_forage_entry": {
+                const areaId = args?.area_id;
+                if (!areaId)
+                    throw new Error("area_id is required");
+                const area = await api.removeForageEntry(areaId, args?.forage_type, args?.vnum);
+                return {
+                    content: [{ type: "text", text: JSON.stringify(area, null, 2) }],
                 };
             }
             // Description context tools

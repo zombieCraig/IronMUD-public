@@ -482,6 +482,88 @@ export interface PlantPrototype {
     multi_harvest: boolean;
     is_prototype: boolean;
 }
+export interface RecipeIngredient {
+    vnum?: string | null;
+    category?: string | null;
+    quantity: number;
+}
+export interface RecipeTool {
+    vnum?: string | null;
+    category?: string | null;
+    /** "Inventory" | "Room" | "Either" — sled serializes the enum variant name */
+    location: string;
+}
+export interface Recipe {
+    /** Recipe vnum (e.g. "smith:iron_sword"); canonical id. */
+    id: string;
+    name: string;
+    /** "crafting" | "cooking" */
+    skill: string;
+    skill_required: number;
+    auto_learn: boolean;
+    ingredients: RecipeIngredient[];
+    tools: RecipeTool[];
+    output_vnum: string;
+    output_quantity: number;
+    base_xp: number;
+    difficulty: number;
+}
+export interface RecipeIngredientRequest {
+    vnum?: string;
+    category?: string;
+    quantity?: number;
+}
+export interface RecipeToolRequest {
+    vnum?: string;
+    category?: string;
+    /** "inv" | "inventory" | "room" | "either" — default "inventory" */
+    location?: string;
+}
+export interface CreateRecipeRequest {
+    vnum: string;
+    name: string;
+    skill: string;
+    skill_required?: number;
+    auto_learn?: boolean;
+    ingredients?: RecipeIngredientRequest[];
+    tools?: RecipeToolRequest[];
+    output_vnum: string;
+    output_quantity?: number;
+    base_xp?: number;
+    difficulty?: number;
+}
+export interface UpdateRecipeRequest {
+    name?: string;
+    skill?: string;
+    skill_required?: number;
+    auto_learn?: boolean;
+    ingredients?: RecipeIngredientRequest[];
+    tools?: RecipeToolRequest[];
+    output_vnum?: string;
+    output_quantity?: number;
+    base_xp?: number;
+    difficulty?: number;
+}
+export type ForageType = "city" | "wilderness" | "shallow_water" | "deep_water" | "underwater";
+export interface ForageEntry {
+    vnum: string;
+    min_skill: number;
+    /** "common" | "uncommon" | "rare" | "legendary" */
+    rarity: string;
+}
+export interface ForageTables {
+    city: ForageEntry[];
+    wilderness: ForageEntry[];
+    shallow_water: ForageEntry[];
+    deep_water: ForageEntry[];
+    underwater: ForageEntry[];
+}
+export interface AddForageEntryRequest {
+    forage_type: ForageType;
+    vnum: string;
+    min_skill?: number;
+    rarity: string;
+}
 export interface CreatePlantPrototypeRequest {
     name: string;
     vnum: string;

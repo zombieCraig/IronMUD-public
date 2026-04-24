@@ -335,6 +335,32 @@ export class IronMUDApiClient {
     async deletePlantPrototype(id) {
         await this.request("delete", `/plants/${id}`);
     }
+    // Recipes (crafting & cooking)
+    async listRecipes() {
+        return this.listRequest("/recipes");
+    }
+    async getRecipe(vnum) {
+        return this.request("get", `/recipes/${encodeURIComponent(vnum)}`);
+    }
+    async createRecipe(data) {
+        return this.request("post", "/recipes", data);
+    }
+    async updateRecipe(vnum, data) {
+        return this.request("put", `/recipes/${encodeURIComponent(vnum)}`, data);
+    }
+    async deleteRecipe(vnum) {
+        await this.request("delete", `/recipes/${encodeURIComponent(vnum)}`);
+    }
+    // Area forage tables
+    async listForageTables(areaId) {
+        return this.request("get", `/areas/${areaId}/forage`);
+    }
+    async addForageEntry(areaId, data) {
+        return this.request("post", `/areas/${areaId}/forage`, data);
+    }
+    async removeForageEntry(areaId, forageType, vnum) {
+        return this.request("delete", `/areas/${areaId}/forage/${forageType}/${encodeURIComponent(vnum)}`);
+    }
     // Bug Reports (approved only - see admin approval gate)
     async listBugReports(status) {
         const params = new URLSearchParams();

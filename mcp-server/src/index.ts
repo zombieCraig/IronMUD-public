@@ -17,6 +17,7 @@ import { spawnPointToolDefinitions } from "./tools/spawn-points.js";
 import { transportToolDefinitions } from "./tools/transports.js";
 import { descriptionToolDefinitions } from "./tools/descriptions.js";
 import { plantToolDefinitions } from "./tools/plants.js";
+import { recipeToolDefinitions } from "./tools/recipes.js";
 import { bugToolDefinitions } from "./tools/bugs.js";
 import {
   buildRoomContext,
@@ -96,6 +97,7 @@ const allTools = [
   ...transportToolDefinitions,
   ...descriptionToolDefinitions,
   ...plantToolDefinitions,
+  ...recipeToolDefinitions,
   ...bugToolDefinitions,
 ];
 
@@ -1033,6 +1035,102 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         await api.deletePlantPrototype(id);
         return {
           content: [{ type: "text", text: `Plant prototype ${id} deleted successfully` }],
+        };
+      }
+
+      // Recipe tools
+      case "list_recipes": {
+        const recipes = await api.listRecipes();
+        return {
+          content: [{ type: "text", text: JSON.stringify(recipes, null, 2) }],
+        };
+      }
+      case "get_recipe": {
+        const vnum = args?.vnum as string;
+        if (!vnum) throw new Error("vnum is required");
+        const recipe = await api.getRecipe(vnum);
+        return {
+          content: [{ type: "text", text: JSON.stringify(recipe, null, 2) }],
+        };
+      }
+      case "create_recipe": {
+        const recipe = await api.createRecipe({
+          vnum: args?.vnum as string,
+          name: args?.name as string,
+          skill: args?.skill as string,
+          skill_required: args?.skill_required as number | undefined,
+          auto_learn: args?.auto_learn as boolean | undefined,
+          ingredients: args?.ingredients as any[] | undefined,
+          tools: args?.tools as any[] | undefined,
+          output_vnum: args?.output_vnum as string,
+          output_quantity: args?.output_quantity as number | undefined,
+          base_xp: args?.base_xp as number | undefined,
+          difficulty: args?.difficulty as number | undefined,
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(recipe, null, 2) }],
+        };
+      }
+      case "update_recipe": {
+        const vnum = args?.vnum as string;
+        if (!vnum) throw new Error("vnum is required");
+        const updateData: Record<string, unknown> = {};
+        const fields = [
+          "name", "skill", "skill_required", "auto_learn",
+          "ingredients", "tools", "output_vnum", "output_quantity",
+          "base_xp", "difficulty",
+        ];
+        for (const field of fields) {
+          if (args?.[field] !== undefined) {
+            updateData[field] = args[field];
+          }
+        }
+        const recipe = await api.updateRecipe(vnum, updateData);
+        return {
+          content: [{ type: "text", text: JSON.stringify(recipe, null, 2) }],
+        };
+      }
+      case "delete_recipe": {
+        const vnum = args?.vnum as string;
+        if (!vnum) throw new Error("vnum is required");
+        await api.deleteRecipe(vnum);
+        return {
+          content: [{ type: "text", text: `Recipe ${vnum} deleted successfully` }],
+        };
+      }
+
+      // Forage table tools
+      case "list_forage_tables": {
+        const areaId = args?.area_id as string;
+        if (!areaId) throw new Error("area_id is required");
+        const tables = await api.listForageTables(areaId);
+        return {
+          content: [{ type: "text", text: JSON.stringify(tables, null, 2) }],
+        };
+      }
+      case "add_forage_entry": {
+        const areaId = args?.area_id as string;
+        if (!areaId) throw new Error("area_id is required");
+        const area = await api.addForageEntry(areaId, {
+          forage_type: args?.forage_type as any,
+          vnum: args?.vnum as string,
+          min_skill: args?.min_skill as number | undefined,
+          rarity: args?.rarity as string,
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(area, null, 2) }],
+        };
+      }
+      case "remove_forage_entry": {
+        const areaId = args?.area_id as string;
+        if (!areaId) throw new Error("area_id is required");
+        const area = await api.removeForageEntry(
+          areaId,
+          args?.forage_type as any,
+          args?.vnum as string
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(area, null, 2) }],
         };
       }
 

@@ -10,6 +10,7 @@ pub mod error;
 pub mod items;
 pub mod mobiles;
 pub mod plants;
+pub mod recipes;
 pub mod rooms;
 pub mod spawn;
 pub mod transports;
@@ -38,6 +39,7 @@ pub fn create_router(state: Arc<ApiState>) -> Router {
         .nest("/spawn-points", spawn::routes())
         .nest("/transports", transports::routes())
         .nest("/plants", plants::routes())
+        .nest("/recipes", recipes::routes())
         .nest("/bugs", bugs::routes())
         .route("/health", get(health_check))
         .layer(middleware::from_fn_with_state(state.clone(), auth::auth_middleware));

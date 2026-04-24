@@ -1,4 +1,4 @@
-import type { Area, Room, Item, Mobile, SpawnPoint, Transport, PlantPrototype, ItemSummary, RoomSummary, MobileSummary, AreaOverview, CreateAreaRequest, UpdateAreaRequest, CreateRoomRequest, CreateItemRequest, CreateMobileRequest, CreateSpawnPointRequest, CreateTransportRequest, CreatePlantPrototypeRequest, AddTransportStopRequest, SetExitRequest, AddDoorRequest, AddTriggerRequest, AddExtraDescRequest, AddDialogueRequest, AddMobileTriggerRequest, AddItemTriggerRequest, AddSpawnDependencyRequest, SpawnEntityRequest, BugReport, UpdateBugReportRequest, AddBugNoteRequest } from "./types.js";
+import type { Area, Room, Item, Mobile, SpawnPoint, Transport, PlantPrototype, Recipe, CreateRecipeRequest, UpdateRecipeRequest, ForageTables, AddForageEntryRequest, ForageType, ItemSummary, RoomSummary, MobileSummary, AreaOverview, CreateAreaRequest, UpdateAreaRequest, CreateRoomRequest, CreateItemRequest, CreateMobileRequest, CreateSpawnPointRequest, CreateTransportRequest, CreatePlantPrototypeRequest, AddTransportStopRequest, SetExitRequest, AddDoorRequest, AddTriggerRequest, AddExtraDescRequest, AddDialogueRequest, AddMobileTriggerRequest, AddItemTriggerRequest, AddSpawnDependencyRequest, SpawnEntityRequest, BugReport, UpdateBugReportRequest, AddBugNoteRequest } from "./types.js";
 export declare class IronMUDApiClient {
     private client;
     constructor(baseUrl: string, apiKey: string);
@@ -121,6 +121,14 @@ export declare class IronMUDApiClient {
     createPlantPrototype(data: CreatePlantPrototypeRequest): Promise<PlantPrototype>;
     updatePlantPrototype(id: string, data: Partial<CreatePlantPrototypeRequest>): Promise<PlantPrototype>;
     deletePlantPrototype(id: string): Promise<void>;
+    listRecipes(): Promise<Recipe[]>;
+    getRecipe(vnum: string): Promise<Recipe>;
+    createRecipe(data: CreateRecipeRequest): Promise<Recipe>;
+    updateRecipe(vnum: string, data: UpdateRecipeRequest): Promise<Recipe>;
+    deleteRecipe(vnum: string): Promise<void>;
+    listForageTables(areaId: string): Promise<ForageTables>;
+    addForageEntry(areaId: string, data: AddForageEntryRequest): Promise<Area>;
+    removeForageEntry(areaId: string, forageType: ForageType, vnum: string): Promise<Area>;
     listBugReports(status?: string): Promise<BugReport[]>;
     getBugReport(id: string): Promise<BugReport>;
     getBugReportByTicket(num: number): Promise<BugReport>;

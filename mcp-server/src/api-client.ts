@@ -9,6 +9,12 @@ import type {
   SpawnPoint,
   Transport,
   PlantPrototype,
+  Recipe,
+  CreateRecipeRequest,
+  UpdateRecipeRequest,
+  ForageTables,
+  AddForageEntryRequest,
+  ForageType,
   ItemSummary,
   RoomSummary,
   MobileSummary,
@@ -633,6 +639,54 @@ export class IronMUDApiClient {
 
   async deletePlantPrototype(id: string): Promise<void> {
     await this.request("delete", `/plants/${id}`);
+  }
+
+  // Recipes (crafting & cooking)
+  async listRecipes(): Promise<Recipe[]> {
+    return this.listRequest<Recipe>("/recipes");
+  }
+
+  async getRecipe(vnum: string): Promise<Recipe> {
+    return this.request<Recipe>("get", `/recipes/${encodeURIComponent(vnum)}`);
+  }
+
+  async createRecipe(data: CreateRecipeRequest): Promise<Recipe> {
+    return this.request<Recipe>("post", "/recipes", data);
+  }
+
+  async updateRecipe(vnum: string, data: UpdateRecipeRequest): Promise<Recipe> {
+    return this.request<Recipe>(
+      "put",
+      `/recipes/${encodeURIComponent(vnum)}`,
+      data
+    );
+  }
+
+  async deleteRecipe(vnum: string): Promise<void> {
+    await this.request("delete", `/recipes/${encodeURIComponent(vnum)}`);
+  }
+
+  // Area forage tables
+  async listForageTables(areaId: string): Promise<ForageTables> {
+    return this.request<ForageTables>("get", `/areas/${areaId}/forage`);
+  }
+
+  async addForageEntry(
+    areaId: string,
+    data: AddForageEntryRequest
+  ): Promise<Area> {
+    return this.request<Area>("post", `/areas/${areaId}/forage`, data);
+  }
+
+  async removeForageEntry(
+    areaId: string,
+    forageType: ForageType,
+    vnum: string
+  ): Promise<Area> {
+    return this.request<Area>(
+      "delete",
+      `/areas/${areaId}/forage/${forageType}/${encodeURIComponent(vnum)}`
+    );
   }
 
   // Bug Reports (approved only - see admin approval gate)

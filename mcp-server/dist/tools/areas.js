@@ -164,5 +164,58 @@ export const areaToolDefinitions = [
             required: ["identifier"],
         },
     },
+    {
+        name: "list_forage_tables",
+        description: "Show all five forage tables for an area (city, wilderness, shallow_water, deep_water, underwater). Each table is an ordered list of { vnum, min_skill, rarity } entries consulted when a player forages in a room whose flags match.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                area_id: { type: "string", description: "Area UUID" },
+            },
+            required: ["area_id"],
+        },
+    },
+    {
+        name: "add_forage_entry",
+        description: "Add (or upsert) an item entry to one of an area's forage tables. If the vnum is already in the chosen table, min_skill and rarity are overwritten. The forage_type must match the room-flag tier the player forages in (e.g. 'shallow_water' rooms roll against the shallow_water table).",
+        inputSchema: {
+            type: "object",
+            properties: {
+                area_id: { type: "string", description: "Area UUID" },
+                forage_type: {
+                    type: "string",
+                    enum: ["city", "wilderness", "shallow_water", "deep_water", "underwater"],
+                    description: "Which forage table to update",
+                },
+                vnum: { type: "string", description: "Item prototype vnum to potentially spawn" },
+                min_skill: {
+                    type: "number",
+                    description: "Minimum foraging skill (0-10) before this entry can roll. Default 0.",
+                },
+                rarity: {
+                    type: "string",
+                    enum: ["common", "uncommon", "rare", "legendary"],
+                    description: "Drop rarity — drives XP multiplier and pick weight",
+                },
+            },
+            required: ["area_id", "forage_type", "vnum", "rarity"],
+        },
+    },
+    {
+        name: "remove_forage_entry",
+        description: "Remove an item entry from one of an area's forage tables.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                area_id: { type: "string", description: "Area UUID" },
+                forage_type: {
+                    type: "string",
+                    enum: ["city", "wilderness", "shallow_water", "deep_water", "underwater"],
+                },
+                vnum: { type: "string", description: "Item prototype vnum to remove" },
+            },
+            required: ["area_id", "forage_type", "vnum"],
+        },
+    },
 ];
 //# sourceMappingURL=areas.js.map
