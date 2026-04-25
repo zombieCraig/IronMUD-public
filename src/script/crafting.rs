@@ -7,6 +7,74 @@ use crate::{ItemData, ItemLocation, ItemType, Recipe, RecipeIngredient, RecipeTo
 use rhai::Engine;
 use std::sync::Arc;
 
+/// Build a freshly-crafted item from a prototype, copying the prototype-defined
+/// fields (identity, type, flags, food/liquid/ammo/note properties) and stamping
+/// the requested quality tier + inventory ownership. The caller is responsible
+/// for persisting the returned ItemData.
+pub fn build_crafted_item_from_prototype(prototype: &ItemData, char_name: &str, quality_tier: i64) -> ItemData {
+    let mut item = ItemData::new(
+        prototype.name.clone(),
+        prototype.short_desc.clone(),
+        prototype.long_desc.clone(),
+    );
+    item.vnum = prototype.vnum.clone();
+    item.keywords = prototype.keywords.clone();
+    item.item_type = prototype.item_type.clone();
+    item.value = prototype.value;
+    item.weight = prototype.weight;
+    item.flags = prototype.flags.clone();
+    item.wear_locations = prototype.wear_locations.clone();
+    item.categories = prototype.categories.clone();
+
+    // Food properties
+    item.food_nutrition = prototype.food_nutrition;
+    item.food_effects = prototype.food_effects.clone();
+    item.food_spoil_duration = prototype.food_spoil_duration;
+
+    // Liquid container properties (poison vials, water flasks, etc.)
+    item.liquid_type = prototype.liquid_type.clone();
+    item.liquid_max = prototype.liquid_max;
+    item.liquid_current = prototype.liquid_current;
+    item.liquid_poisoned = prototype.liquid_poisoned;
+    item.liquid_effects = prototype.liquid_effects.clone();
+
+    // Readable note body
+    item.note_content = prototype.note_content.clone();
+
+    // Ammo properties (special arrows, imbued bolts, etc.)
+    item.caliber = prototype.caliber.clone();
+    item.ammo_count = prototype.ammo_count;
+    item.ammo_damage_bonus = prototype.ammo_damage_bonus;
+    item.ammo_effect_type = prototype.ammo_effect_type.clone();
+    item.ammo_effect_duration = prototype.ammo_effect_duration;
+    item.ammo_effect_damage = prototype.ammo_effect_damage;
+    item.loaded_ammo_effect_type = prototype.loaded_ammo_effect_type.clone();
+    item.loaded_ammo_effect_duration = prototype.loaded_ammo_effect_duration;
+    item.loaded_ammo_effect_damage = prototype.loaded_ammo_effect_damage;
+
+    item.triggers = prototype.triggers.clone();
+
+    item.quality = match quality_tier {
+        0 => 25,
+        1 => 50,
+        2 => 75,
+        _ => 100,
+    };
+
+    if item.food_nutrition > 0 {
+        let multiplier = match quality_tier {
+            0 => 0.7,
+            1 => 1.0,
+            2 => 1.2,
+            _ => 1.5,
+        };
+        item.food_nutrition = (item.food_nutrition as f64 * multiplier) as i32;
+    }
+
+    item.location = ItemLocation::Inventory(char_name.to_lowercase());
+    item
+}
+
 /// Register crafting-related functions
 pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // ========== Crafting/Cooking Recipe Functions ==========
@@ -349,58 +417,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     engine.register_fn(
         "spawn_crafted_item",
         move |vnum: String, char_name: String, quality_tier: i64| -> rhai::Dynamic {
-            // Find prototype
             let prototype = match cloned_db.get_item_by_vnum(&vnum) {
                 Ok(Some(p)) => p,
                 _ => return rhai::Dynamic::UNIT,
             };
-
-            // Create new item from prototype
-            let mut item = ItemData::new(
-                prototype.name.clone(),
-                prototype.short_desc.clone(),
-                prototype.long_desc.clone(),
-            );
-            item.vnum = prototype.vnum.clone();
-            item.keywords = prototype.keywords.clone();
-            item.item_type = prototype.item_type.clone();
-            item.value = prototype.value;
-            item.weight = prototype.weight;
-            item.flags = prototype.flags.clone();
-            item.wear_locations = prototype.wear_locations.clone();
-            item.categories = prototype.categories.clone();
-
-            // Copy food properties if applicable
-            item.food_nutrition = prototype.food_nutrition;
-            item.food_effects = prototype.food_effects.clone();
-            item.food_spoil_duration = prototype.food_spoil_duration;
-
-            // Copy other relevant properties
-            item.triggers = prototype.triggers.clone();
-
-            // Set quality based on tier
-            item.quality = match quality_tier {
-                0 => 25,  // Poor
-                1 => 50,  // Normal
-                2 => 75,  // Good
-                _ => 100, // Excellent (3+)
-            };
-
-            // Apply quality multiplier to food nutrition if applicable
-            if item.food_nutrition > 0 {
-                let multiplier = match quality_tier {
-                    0 => 0.7,
-                    1 => 1.0,
-                    2 => 1.2,
-                    _ => 1.5,
-                };
-                item.food_nutrition = (item.food_nutrition as f64 * multiplier) as i32;
-            }
-
-            // Set item location to character inventory
-            item.location = ItemLocation::Inventory(char_name.to_lowercase());
-
-            // Save the item
+            let item = build_crafted_item_from_prototype(&prototype, &char_name, quality_tier);
             match cloned_db.save_item_data(item.clone()) {
                 Ok(_) => rhai::Dynamic::from(item),
                 Err(_) => rhai::Dynamic::UNIT,

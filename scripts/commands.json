@@ -687,6 +687,14 @@
     "access": "user",
     "description": "Apply poison from a vial to your wielded weapon (thievery 4+)"
   },
+  "poison": {
+    "access": "user",
+    "description": "Lace a piece of food or a drink with poison (anyone can try; thievery 3+ to do it cleanly)"
+  },
+  "imbue": {
+    "access": "user",
+    "description": "Coat a stack of ammunition with poison from a vial (thievery 4+)"
+  },
   "settrap": {
     "access": "user",
     "description": "Place a trap in the room using a trap kit (thievery 3+)"

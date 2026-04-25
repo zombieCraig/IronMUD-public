@@ -3652,6 +3652,60 @@ fn test_item_note_content_persists() {
 }
 
 #[test]
+fn test_spawn_crafted_item_copies_liquid_ammo_and_note_fields() {
+    use ironmud::ItemData;
+    use ironmud::script::build_crafted_item_from_prototype;
+    use ironmud::types::{EffectType, ItemEffect, ItemType, LiquidType};
+
+    let mut prototype = ItemData::new(
+        "poison vial".to_string(),
+        "a small vial of dark liquid".to_string(),
+        "A glass vial filled with a sickly green poison.".to_string(),
+    );
+    prototype.vnum = Some("test:poison_vial".to_string());
+    prototype.item_type = ItemType::LiquidContainer;
+    prototype.liquid_type = LiquidType::Poison;
+    prototype.liquid_max = 5;
+    prototype.liquid_current = 5;
+    prototype.liquid_poisoned = true;
+    prototype.liquid_effects = vec![ItemEffect {
+        effect_type: EffectType::Poison,
+        magnitude: 3,
+        duration: 3,
+        script_callback: None,
+    }];
+    prototype.note_content = Some("warning: do not drink".to_string());
+    prototype.caliber = Some("arrow".to_string());
+    prototype.ammo_count = 10;
+    prototype.ammo_damage_bonus = 2;
+    prototype.ammo_effect_type = "poison".to_string();
+    prototype.ammo_effect_duration = 3;
+    prototype.ammo_effect_damage = 3;
+
+    let crafted = build_crafted_item_from_prototype(&prototype, "TestChar", 1);
+
+    assert_eq!(crafted.liquid_type, LiquidType::Poison, "liquid_type copied");
+    assert_eq!(crafted.liquid_max, 5, "liquid_max copied");
+    assert_eq!(crafted.liquid_current, 5, "liquid_current copied (vial spawns full)");
+    assert!(crafted.liquid_poisoned, "liquid_poisoned copied");
+    assert_eq!(crafted.liquid_effects.len(), 1, "liquid_effects copied");
+    assert_eq!(crafted.liquid_effects[0].effect_type, EffectType::Poison);
+    assert_eq!(crafted.liquid_effects[0].magnitude, 3);
+    assert_eq!(crafted.liquid_effects[0].duration, 3);
+
+    assert_eq!(crafted.note_content.as_deref(), Some("warning: do not drink"));
+
+    assert_eq!(crafted.caliber.as_deref(), Some("arrow"));
+    assert_eq!(crafted.ammo_count, 10);
+    assert_eq!(crafted.ammo_damage_bonus, 2);
+    assert_eq!(crafted.ammo_effect_type, "poison");
+    assert_eq!(crafted.ammo_effect_duration, 3);
+    assert_eq!(crafted.ammo_effect_damage, 3);
+
+    assert_eq!(crafted.quality, 50, "Normal quality tier yields quality=50");
+}
+
+#[test]
 fn test_area_default_room_flags_apply_to_new_rooms() {
     use ironmud::db::Db;
     use ironmud::types::{

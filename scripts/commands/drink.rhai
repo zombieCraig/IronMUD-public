@@ -85,7 +85,7 @@ fn apply_effect(char, effect, connection_id, source) {
 
     // Instant effects
     if etype == "heal" { return apply_heal(char, magnitude, connection_id); }
-    if etype == "poison" { return apply_poison(char, magnitude, connection_id); }
+    if etype == "poison" { return apply_poison(char, magnitude, duration, connection_id); }
     if etype == "stamina_restore" { return apply_stamina(char, magnitude, connection_id); }
     if etype == "mana_restore" { return apply_mana(magnitude, connection_id); }
     if etype == "quenched" { return apply_quenched(magnitude, connection_id); }
@@ -109,15 +109,12 @@ fn apply_heal(char, magnitude, connection_id) {
     }
 }
 
-fn apply_poison(char, magnitude, connection_id) {
-    char.hp = char.hp - magnitude;
-    if char.hp < 0 { char.hp = 0; }
-    save_character_data(char);
-    set_player_character(connection_id, char);
-    send_client_message(connection_id, "\x1b[1;31mYou feel sick! (" + magnitude + " poison damage)\x1b[0m");
-    if char.hp <= 0 {
-        send_client_message(connection_id, "\x1b[1;31mThe poison overwhelms you!\x1b[0m");
-    }
+fn apply_poison(char, magnitude, duration, connection_id) {
+    // magnitude = damage-per-round; duration = number of rounds (defaults to 3 if unset).
+    let rounds = duration;
+    if rounds <= 0 { rounds = 3; }
+    apply_ongoing_effect(char.name, "poison", rounds, magnitude, "torso");
+    send_client_message(connection_id, "\x1b[1;31mYou feel sick as the poison takes hold!\x1b[0m");
 }
 
 fn apply_stamina(char, magnitude, connection_id) {
