@@ -260,6 +260,11 @@ export interface MobileFlags {
   guard?: boolean;
   thief?: boolean;
   cant_swim?: boolean;
+  poisonous?: boolean;
+  fiery?: boolean;
+  chilling?: boolean;
+  corrosive?: boolean;
+  shocking?: boolean;
 }
 
 export interface SpawnPoint {

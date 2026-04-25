@@ -221,6 +221,16 @@ pub struct MobileFlagsRequest {
     pub thief: Option<bool>,
     #[serde(default)]
     pub cant_swim: Option<bool>,
+    #[serde(default)]
+    pub poisonous: Option<bool>,
+    #[serde(default)]
+    pub fiery: Option<bool>,
+    #[serde(default)]
+    pub chilling: Option<bool>,
+    #[serde(default)]
+    pub corrosive: Option<bool>,
+    #[serde(default)]
+    pub shocking: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -402,6 +412,21 @@ impl MobileSummary {
         }
         if mobile.flags.cant_swim {
             flags.push("cant_swim".to_string());
+        }
+        if mobile.flags.poisonous {
+            flags.push("poisonous".to_string());
+        }
+        if mobile.flags.fiery {
+            flags.push("fiery".to_string());
+        }
+        if mobile.flags.chilling {
+            flags.push("chilling".to_string());
+        }
+        if mobile.flags.corrosive {
+            flags.push("corrosive".to_string());
+        }
+        if mobile.flags.shocking {
+            flags.push("shocking".to_string());
         }
 
         MobileSummary {
@@ -644,6 +669,11 @@ async fn create_mobile(
             guard: req.flags.guard.unwrap_or(false),
             thief: req.flags.thief.unwrap_or(false),
             cant_swim: req.flags.cant_swim.unwrap_or(false),
+            poisonous: req.flags.poisonous.unwrap_or(false),
+            fiery: req.flags.fiery.unwrap_or(false),
+            chilling: req.flags.chilling.unwrap_or(false),
+            corrosive: req.flags.corrosive.unwrap_or(false),
+            shocking: req.flags.shocking.unwrap_or(false),
         },
         dialogue: HashMap::new(),
         shop_stock: req.shop_stock.unwrap_or_default(),
@@ -778,6 +808,11 @@ async fn update_mobile(
         if let Some(v) = flags.guard { mobile.flags.guard = v; }
         if let Some(v) = flags.thief { mobile.flags.thief = v; }
         if let Some(v) = flags.cant_swim { mobile.flags.cant_swim = v; }
+        if let Some(v) = flags.poisonous { mobile.flags.poisonous = v; }
+        if let Some(v) = flags.fiery { mobile.flags.fiery = v; }
+        if let Some(v) = flags.chilling { mobile.flags.chilling = v; }
+        if let Some(v) = flags.corrosive { mobile.flags.corrosive = v; }
+        if let Some(v) = flags.shocking { mobile.flags.shocking = v; }
     }
     // Healer config
     if let Some(healer_type) = req.healer_type {

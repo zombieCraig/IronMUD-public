@@ -27,7 +27,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         can_open_doors,
         guard,
         thief,
-        cant_swim
+        cant_swim,
+        poisonous,
+        fiery,
+        chilling,
+        corrosive,
+        shocking
     );
 
     // Register MobileData type with getters

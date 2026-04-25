@@ -526,7 +526,7 @@ fn handle_flag_subcommand(mobile_id, parts, connection_id) {
     // Validate all names before changing anything.
     for name in flag_names {
         if get_mobile_flag_value(mobile, name) == () {
-            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim");
+            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim, poisonous, fiery, chilling, corrosive, shocking");
             return;
         }
     }
@@ -560,6 +560,11 @@ fn get_mobile_flag_value(mobile, flag_name) {
     if flag_name == "guard" { return flags.guard; }
     if flag_name == "thief" { return flags.thief; }
     if flag_name == "cant_swim" || flag_name == "cantswim" { return flags.cant_swim; }
+    if flag_name == "poisonous" { return flags.poisonous; }
+    if flag_name == "fiery" { return flags.fiery; }
+    if flag_name == "chilling" { return flags.chilling; }
+    if flag_name == "corrosive" { return flags.corrosive; }
+    if flag_name == "shocking" { return flags.shocking; }
     return ();
 }
 
@@ -737,6 +742,11 @@ fn build_flags_display(mobile) {
     if flags.guard { flag_str += "guard "; }
     if flags.thief { flag_str += "thief "; }
     if flags.cant_swim { flag_str += "cant_swim "; }
+    if flags.poisonous { flag_str += "poisonous "; }
+    if flags.fiery { flag_str += "fiery "; }
+    if flags.chilling { flag_str += "chilling "; }
+    if flags.corrosive { flag_str += "corrosive "; }
+    if flags.shocking { flag_str += "shocking "; }
     if flag_str == "" { flag_str = "(none)"; }
     output += flag_str + "\n";
     return output;
@@ -870,6 +880,11 @@ fn show_mobile_flags(mobile, mobile_id, connection_id) {
     output += build_flag_line("guard", flags.guard, "Enhanced perception, responds to nearby theft", display_id, connection_id);
     output += build_flag_line("thief", flags.thief, "Steals gold from players", display_id, connection_id);
     output += build_flag_line("cant_swim", flags.cant_swim, "Cannot enter water rooms, takes damage in water", display_id, connection_id);
+    output += build_flag_line("poisonous", flags.poisonous, "Melee hits apply a poison DoT", display_id, connection_id);
+    output += build_flag_line("fiery", flags.fiery, "Melee hits apply a fire DoT", display_id, connection_id);
+    output += build_flag_line("chilling", flags.chilling, "Melee hits apply a cold DoT", display_id, connection_id);
+    output += build_flag_line("corrosive", flags.corrosive, "Melee hits apply an acid DoT", display_id, connection_id);
+    output += build_flag_line("shocking", flags.shocking, "Melee hits apply a lightning DoT", display_id, connection_id);
 
     send_mxp_message(connection_id, output);
 }

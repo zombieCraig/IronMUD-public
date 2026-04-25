@@ -606,10 +606,11 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
     spider.max_hp = 40;
     spider.current_hp = 40;
     spider.damage_dice = "1d8+2".to_string();
-    spider.damage_type = DamageType::Poison;
+    spider.damage_type = DamageType::Bite;
     spider.armor_class = 7;
     spider.stat_dex = 14;
     spider.flags.aggressive = true;
+    spider.flags.poisonous = true;
     mobiles.push(spider);
 
     // Shadow Drake — boss mob

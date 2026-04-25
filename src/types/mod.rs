@@ -2951,6 +2951,16 @@ pub struct MobileFlags {
     pub thief: bool, // Steals gold from players
     #[serde(default)]
     pub cant_swim: bool, // Cannot enter water rooms, takes damage if in water
+    #[serde(default)]
+    pub poisonous: bool, // Melee hits apply a poison DoT
+    #[serde(default)]
+    pub fiery: bool, // Melee hits apply a fire DoT
+    #[serde(default)]
+    pub chilling: bool, // Melee hits apply a cold DoT
+    #[serde(default)]
+    pub corrosive: bool, // Melee hits apply an acid DoT
+    #[serde(default)]
+    pub shocking: bool, // Melee hits apply a lightning DoT
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

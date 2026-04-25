@@ -3780,3 +3780,70 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
         std::panic::resume_unwind(e);
     }
 }
+
+#[test]
+fn test_mobile_dot_flags_apply_on_hit() {
+    use ironmud::script::apply_mobile_on_hit_dots;
+    use ironmud::{MobileData, OngoingEffect};
+
+    fn collect_kinds(effects: &[OngoingEffect]) -> Vec<&str> {
+        effects.iter().map(|e| e.effect_type.as_str()).collect()
+    }
+
+    // Level 1 poisonous snake: 3 rounds of 1 damage poison
+    let mut snake = MobileData::new("a strand snake".to_string());
+    snake.level = 1;
+    snake.flags.poisonous = true;
+    let mut effects: Vec<OngoingEffect> = Vec::new();
+    apply_mobile_on_hit_dots(&snake, &mut effects, "body");
+    assert_eq!(effects.len(), 1, "one DoT for poisonous flag");
+    assert_eq!(effects[0].effect_type, "poison");
+    assert_eq!(effects[0].rounds_remaining, 3);
+    assert_eq!(effects[0].damage_per_round, 1, "level/2 floored to min 1");
+    assert_eq!(effects[0].body_part, "body");
+
+    // Level 4 spider: damage scales with level (level/2 = 2)
+    let mut spider = MobileData::new("a cave spider".to_string());
+    spider.level = 4;
+    spider.flags.poisonous = true;
+    let mut spider_effects: Vec<OngoingEffect> = Vec::new();
+    apply_mobile_on_hit_dots(&spider, &mut spider_effects, "left leg");
+    assert_eq!(spider_effects[0].damage_per_round, 2, "level 4 → 2 dmg/round");
+    assert_eq!(spider_effects[0].body_part, "left leg");
+
+    // Compose: a hellhound that is both fiery and poisonous applies both DoTs
+    let mut hellhound = MobileData::new("a hellhound".to_string());
+    hellhound.level = 6;
+    hellhound.flags.fiery = true;
+    hellhound.flags.poisonous = true;
+    let mut combo_effects: Vec<OngoingEffect> = Vec::new();
+    apply_mobile_on_hit_dots(&hellhound, &mut combo_effects, "body");
+    assert_eq!(combo_effects.len(), 2);
+    let kinds = collect_kinds(&combo_effects);
+    assert!(kinds.contains(&"poison"));
+    assert!(kinds.contains(&"fire"));
+    assert!(combo_effects.iter().all(|e| e.damage_per_round == 3));
+
+    // All five elements
+    let mut elemental = MobileData::new("a chimera".to_string());
+    elemental.level = 10;
+    elemental.flags.poisonous = true;
+    elemental.flags.fiery = true;
+    elemental.flags.chilling = true;
+    elemental.flags.corrosive = true;
+    elemental.flags.shocking = true;
+    let mut all_effects: Vec<OngoingEffect> = Vec::new();
+    apply_mobile_on_hit_dots(&elemental, &mut all_effects, "body");
+    let all_kinds = collect_kinds(&all_effects);
+    assert_eq!(all_effects.len(), 5);
+    for kind in &["poison", "fire", "cold", "acid", "lightning"] {
+        assert!(all_kinds.contains(kind), "missing element: {}", kind);
+    }
+
+    // No flags = no effects
+    let mut plain = MobileData::new("a rat".to_string());
+    plain.level = 1;
+    let mut plain_effects: Vec<OngoingEffect> = Vec::new();
+    apply_mobile_on_hit_dots(&plain, &mut plain_effects, "body");
+    assert!(plain_effects.is_empty(), "no flags → no on-hit DoTs");
+}

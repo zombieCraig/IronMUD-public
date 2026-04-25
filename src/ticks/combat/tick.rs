@@ -196,6 +196,7 @@ fn process_character_combat_round(db: &db::Db, connections: &SharedConnections, 
                     "cold" => format!("The frostbite spreads! ({} damage)", effect_dmg),
                     "poison" => format!("The poison courses through your veins! ({} damage)", effect_dmg),
                     "acid" => format!("The acid eats into your flesh! ({} damage)", effect_dmg),
+                    "lightning" => format!("Static surges through your nerves! ({} damage)", effect_dmg),
                     _ => format!("You suffer ongoing damage! ({} damage)", effect_dmg),
                 };
                 send_message_to_character(connections, char_name, &msg);
@@ -1083,6 +1084,10 @@ fn process_mobile_combat_round(
                         mobile.name, effect.damage_per_round
                     ),
                     "acid" => format!("Acid eats into {}! ({} damage)", mobile.name, effect.damage_per_round),
+                    "lightning" => format!(
+                        "Static surges through {}! ({} damage)",
+                        mobile.name, effect.damage_per_round
+                    ),
                     _ => format!(
                         "{} suffers ongoing damage! ({} damage)",
                         mobile.name, effect.damage_per_round
@@ -1532,6 +1537,10 @@ fn process_mobile_attacks_player(
 
     // Apply damage
     char.hp -= damage;
+
+    // Apply on-hit DoT effects from mobile flags (poisonous, fiery, chilling, corrosive, shocking)
+    ironmud::script::apply_mobile_on_hit_dots(mobile, &mut char.ongoing_effects, "body");
+
     db.save_character_data(char.clone())?;
 
     // Sync updated character to session so prompt shows correct HP

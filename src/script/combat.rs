@@ -3,8 +3,8 @@
 
 use crate::db::Db;
 use crate::{
-    BodyPart, CombatDistance, CombatState, CombatTarget, CombatTargetType, CombatZoneType, OngoingEffect, WeaponSkill,
-    Wound, WoundLevel, WoundType,
+    BodyPart, CombatDistance, CombatState, CombatTarget, CombatTargetType, CombatZoneType, MobileData, OngoingEffect,
+    WeaponSkill, Wound, WoundLevel, WoundType,
 };
 use crate::{ItemData, ItemFlags, ItemLocation, ItemType, LiquidType, STARTING_ROOM_ID, WearLocation};
 use rand::Rng;
@@ -12,6 +12,37 @@ use rhai::{Dynamic, Engine, Map};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
+
+/// Append on-hit DoT effects driven by mobile flags. Each enabled flag pushes a 3-round
+/// `OngoingEffect` of the matching element with `damage_per_round = max(1, mobile.level / 2)`.
+/// Flags compose — a mobile with both `poisonous` and `fiery` applies both DoTs.
+pub fn apply_mobile_on_hit_dots(mobile: &MobileData, effects: &mut Vec<OngoingEffect>, body_part: &str) {
+    let dpr = (mobile.level / 2).max(1);
+    let rounds = 3;
+    let mut push = |kind: &str| {
+        effects.push(OngoingEffect {
+            effect_type: kind.to_string(),
+            rounds_remaining: rounds,
+            damage_per_round: dpr,
+            body_part: body_part.to_string(),
+        });
+    };
+    if mobile.flags.poisonous {
+        push("poison");
+    }
+    if mobile.flags.fiery {
+        push("fire");
+    }
+    if mobile.flags.chilling {
+        push("cold");
+    }
+    if mobile.flags.corrosive {
+        push("acid");
+    }
+    if mobile.flags.shocking {
+        push("lightning");
+    }
+}
 
 /// Register combat-related functions
 pub fn register(engine: &mut Engine, db: Arc<Db>) {

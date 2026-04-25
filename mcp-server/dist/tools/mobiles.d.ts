@@ -349,6 +349,26 @@ export declare const mobileToolDefinitions: ({
                         type: string;
                         description: string;
                     };
+                    poisonous: {
+                        type: string;
+                        description: string;
+                    };
+                    fiery: {
+                        type: string;
+                        description: string;
+                    };
+                    chilling: {
+                        type: string;
+                        description: string;
+                    };
+                    corrosive: {
+                        type: string;
+                        description: string;
+                    };
+                    shocking: {
+                        type: string;
+                        description: string;
+                    };
                 };
             };
             perception: {
@@ -644,6 +664,26 @@ export declare const mobileToolDefinitions: ({
                         description?: undefined;
                     };
                     cant_swim: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    poisonous: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    fiery: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    chilling: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    corrosive: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    shocking: {
                         type: string;
                         description?: undefined;
                     };
