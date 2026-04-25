@@ -333,6 +333,11 @@ pub const MOBILE_FLAGS: &[&str] = &[
     "guard",
     "thief",
     "cant_swim",
+    "poisonous",
+    "fiery",
+    "chilling",
+    "corrosive",
+    "shocking",
 ];
 
 /// Routine subcommands

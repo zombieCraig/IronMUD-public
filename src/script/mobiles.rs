@@ -591,6 +591,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "guard" => mobile.flags.guard = value,
                         "thief" => mobile.flags.thief = value,
                         "cant_swim" | "cantswim" => mobile.flags.cant_swim = value,
+                        "poisonous" => mobile.flags.poisonous = value,
+                        "fiery" => mobile.flags.fiery = value,
+                        "chilling" => mobile.flags.chilling = value,
+                        "corrosive" => mobile.flags.corrosive = value,
+                        "shocking" => mobile.flags.shocking = value,
                         _ => return false,
                     }
                     return cloned_db.save_mobile_data(mobile).is_ok();
