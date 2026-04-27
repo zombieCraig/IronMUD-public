@@ -1167,6 +1167,8 @@ pub enum SimGoal {
     SeekSleep,
     /// Need comfort - heading home
     SeekComfort,
+    /// Broke + jobless - heading to a bank room in the area for a handout
+    SeekBank,
     /// At work, working
     Working,
     /// In transit to workplace
@@ -1188,6 +1190,7 @@ impl SimGoal {
             SimGoal::SeekFood => "seek_food".to_string(),
             SimGoal::SeekSleep => "seek_sleep".to_string(),
             SimGoal::SeekComfort => "seek_comfort".to_string(),
+            SimGoal::SeekBank => "seek_bank".to_string(),
             SimGoal::Working => "working".to_string(),
             SimGoal::GoingToWork => "going_to_work".to_string(),
             SimGoal::GoingHome => "going_home".to_string(),
@@ -1200,6 +1203,7 @@ impl SimGoal {
             "seek_food" => SimGoal::SeekFood,
             "seek_sleep" => SimGoal::SeekSleep,
             "seek_comfort" => SimGoal::SeekComfort,
+            "seek_bank" => SimGoal::SeekBank,
             "working" => SimGoal::Working,
             "going_to_work" => SimGoal::GoingToWork,
             "going_home" => SimGoal::GoingHome,
@@ -1238,6 +1242,10 @@ pub struct NeedsState {
     /// broke, friendless mobile doesn't burn the helper every tick.
     #[serde(default)]
     pub last_relief_attempt: i64,
+    /// Unix timestamp of the last successful visit to a bank room for the
+    /// broke-jobless handout. Throttles repeat visits.
+    #[serde(default)]
+    pub last_bank_visit_attempt: i64,
 }
 
 impl Default for NeedsState {
@@ -1252,6 +1260,7 @@ impl Default for NeedsState {
             last_emote_tick: 0,
             tried_shops_this_cycle: Vec::new(),
             last_relief_attempt: 0,
+            last_bank_visit_attempt: 0,
         }
     }
 }

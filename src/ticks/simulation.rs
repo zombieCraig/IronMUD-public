@@ -128,7 +128,7 @@ fn process_simulated_npc(
     apply_consequences(mobile, &needs, connections);
 
     // Step 3: Run decision engine
-    let new_goal = decide_goal(db, mobile, &config, &needs, current_hour)?;
+    let new_goal = decide_goal(db, mobile, &config, &needs, current_hour, now)?;
     needs.current_goal = new_goal;
 
     // Step 4: Accumulate work wages for hours actually spent at work.
@@ -388,6 +388,7 @@ fn decide_goal(
     config: &SimulationConfig,
     needs: &NeedsState,
     current_hour: u8,
+    now: i64,
 ) -> Result<SimGoal> {
     let is_work = is_within_work_hours(current_hour, config.work_start_hour, config.work_end_hour);
     let has_food = db
@@ -459,6 +460,18 @@ fn decide_goal(
     // Tired enough to sleep
     if needs.energy <= 20 {
         return Ok(SimGoal::SeekSleep);
+    }
+
+    // Broke + jobless: head for a bank room in the area to pick up a handout.
+    // Sits above the hunger check so a migrant with empty pockets visits the
+    // bank first, then the next tick the SeekFood path can route them to a
+    // shop instead of forcing them home for the charity/forage fallback.
+    if mobile.gold <= 0
+        && now - needs.last_bank_visit_attempt >= BANK_VISIT_COOLDOWN_SECS
+        && is_jobless(db, mobile, config)?
+        && find_bank_room_in_area(db, mobile)?.is_some()
+    {
+        return Ok(SimGoal::SeekBank);
     }
 
     // Hungry: always try to address it. `set_destination` + `execute_arrival_actions`
@@ -569,6 +582,31 @@ fn execute_arrival_actions(
                 }
             }
         }
+        SimGoal::SeekBank => {
+            // Pay out the handout only once we've actually arrived at a bank
+            // room. Stamping the cooldown here (rather than at goal-pick) means
+            // a migrant who can't reach the bank — locked door, etc. — keeps
+            // retrying instead of waiting out the full cooldown.
+            if let Some(room_id) = mobile.current_room_id {
+                if let Some(room) = db.get_room_data(&room_id)? {
+                    if room.flags.bank {
+                        mobile.gold += BANK_RELIEF_AMOUNT;
+                        needs.last_bank_visit_attempt = now;
+                        broadcast_to_room_awake(
+                            connections,
+                            &room_id,
+                            &format!("{} visits the bank and counts out a small handout.", mobile.name),
+                        );
+                        debug!(
+                            "Simulation: {} received {} gold at bank (total gold now {})",
+                            mobile.name, BANK_RELIEF_AMOUNT, mobile.gold
+                        );
+                        needs.current_goal = SimGoal::Idle;
+                        mobile.routine_destination_room = None;
+                    }
+                }
+            }
+        }
         _ => {}
     }
     Ok(())
@@ -620,6 +658,68 @@ fn find_next_shop_room(db: &db::Db, mobile: &MobileData, tried: &[Uuid]) -> Resu
         }
     }
     Ok(None)
+}
+
+/// Find a `flags.bank` room in the same area as the mobile's current room.
+/// Used to route broke jobless migrants to a place where they can pick up a
+/// handout. Skips `no_mob` rooms so we don't send the NPC into an unreachable
+/// destination. Returns the first matching room id, or None.
+fn find_bank_room_in_area(db: &db::Db, mobile: &MobileData) -> Result<Option<Uuid>> {
+    let current_room_id = match mobile.current_room_id {
+        Some(id) => id,
+        None => return Ok(None),
+    };
+    let current_room = match db.get_room_data(&current_room_id)? {
+        Some(r) => r,
+        None => return Ok(None),
+    };
+    let area_id = match current_room.area_id {
+        Some(a) => a,
+        None => return Ok(None),
+    };
+    for room in db.get_rooms_in_area(&area_id)? {
+        if room.flags.bank && !room.flags.no_mob {
+            return Ok(Some(room.id));
+        }
+    }
+    Ok(None)
+}
+
+/// True if the mobile has no income source: no configured `work_room_vnum` AND
+/// no role wage *exists* in their resident area for any role flag they carry.
+/// Note we test the area's wage settings directly (not `role_hourly_wage`) so a
+/// scavenger who's currently parked at home — which suppresses pay this tick —
+/// isn't briefly classified as jobless.
+fn is_jobless(db: &db::Db, mobile: &MobileData, config: &SimulationConfig) -> Result<bool> {
+    if !config.work_room_vnum.is_empty() {
+        return Ok(false);
+    }
+    let resident_vnum = match mobile.resident_of.as_deref() {
+        Some(v) if !v.is_empty() => v,
+        _ => return Ok(true),
+    };
+    let home_room = match db.get_room_by_vnum(resident_vnum)? {
+        Some(r) => r,
+        None => return Ok(true),
+    };
+    let area_id = match home_room.area_id {
+        Some(a) => a,
+        None => return Ok(true),
+    };
+    let area = match db.get_area_data(&area_id)? {
+        Some(a) => a,
+        None => return Ok(true),
+    };
+    if mobile.flags.guard && area.guard_wage_per_hour > 0 {
+        return Ok(false);
+    }
+    if mobile.flags.healer && area.healer_wage_per_hour > 0 {
+        return Ok(false);
+    }
+    if mobile.flags.scavenger && area.scavenger_wage_per_hour > 0 {
+        return Ok(false);
+    }
+    Ok(true)
 }
 
 /// Apply the effects of eating a food item: hunger restoration, optional comfort
@@ -778,6 +878,11 @@ const COHABITANT_CHARITY_RESERVE: i32 = 20;
 const COHABITANT_CHARITY_AMOUNT: i32 = 10;
 /// Probability a forage roll yields a meal at all (avoids guaranteed free food).
 const FORAGE_FALLBACK_CHANCE: f32 = 0.5;
+/// Flat gold a broke jobless migrant receives when they reach a `flags.bank` room.
+const BANK_RELIEF_AMOUNT: i32 = 5;
+/// Real-time seconds a migrant must wait between successful bank visits — long
+/// enough that the bank isn't a coin printer (~one game day at default cadence).
+const BANK_VISIT_COOLDOWN_SECS: i64 = 600;
 
 /// Charity + forage fallback fired when a hungry, broke NPC arrives home with
 /// no shop options left. Tries cohabitant charity first, then a one-shot forage
@@ -1066,6 +1171,20 @@ fn set_destination(db: &db::Db, mobile: &mut MobileData, config: &SimulationConf
             }
         }
         SimGoal::GoingToWork | SimGoal::Working => &config.work_room_vnum,
+        SimGoal::SeekBank => {
+            // Bank rooms are looked up by id from the area, not by vnum on the
+            // sim config — short-circuit the vnum resolve path below.
+            match find_bank_room_in_area(db, mobile)? {
+                Some(bank_id) => {
+                    let already_there = mobile.current_room_id == Some(bank_id);
+                    mobile.routine_destination_room = if already_there { None } else { Some(bank_id) };
+                }
+                None => {
+                    mobile.routine_destination_room = None;
+                }
+            }
+            return Ok(());
+        }
         SimGoal::Idle => {
             mobile.routine_destination_room = None;
             return Ok(());
@@ -1158,7 +1277,9 @@ fn update_activity_state(
                 ActivityState::OffDuty
             }
         }
-        SimGoal::SeekComfort | SimGoal::Idle | SimGoal::GoingHome => ActivityState::OffDuty,
+        SimGoal::SeekComfort | SimGoal::Idle | SimGoal::GoingHome | SimGoal::SeekBank => {
+            ActivityState::OffDuty
+        }
     };
 
     if old_activity != new_activity {
@@ -1717,11 +1838,11 @@ mod tests {
             comfort: 60,
             ..Default::default()
         };
-        let goal = decide_goal(&g.db, &mobile, &make_config(), &needs, 10).expect("decide");
+        let goal = decide_goal(&g.db, &mobile, &make_config(), &needs, 10, 0).expect("decide");
         assert_eq!(goal, SimGoal::GoingToWork, "broke + hungry + work hours -> GoingToWork");
 
         mobile.current_room_id = Some(work.id);
-        let goal = decide_goal(&g.db, &mobile, &make_config(), &needs, 10).expect("decide");
+        let goal = decide_goal(&g.db, &mobile, &make_config(), &needs, 10, 0).expect("decide");
         assert_eq!(goal, SimGoal::Working);
     }
 
@@ -1743,7 +1864,7 @@ mod tests {
             comfort: 60,
             ..Default::default()
         };
-        let goal = decide_goal(&g.db, &mobile, &make_config(), &needs, 22).expect("decide");
+        let goal = decide_goal(&g.db, &mobile, &make_config(), &needs, 22, 0).expect("decide");
         assert_eq!(
             goal,
             SimGoal::Idle,
@@ -1770,7 +1891,7 @@ mod tests {
             comfort: 80,
             ..Default::default()
         };
-        let goal = decide_goal(&g.db, &mobile, &make_config(), &needs, 22).expect("decide");
+        let goal = decide_goal(&g.db, &mobile, &make_config(), &needs, 22, 0).expect("decide");
         assert_ne!(
             goal,
             SimGoal::SeekSleep,
@@ -1799,7 +1920,7 @@ mod tests {
             comfort: 60,
             ..Default::default()
         };
-        let goal = decide_goal(&g.db, &mobile, &make_config(), &needs, 22).expect("decide");
+        let goal = decide_goal(&g.db, &mobile, &make_config(), &needs, 22, 0).expect("decide");
         assert_eq!(
             goal,
             SimGoal::SeekFood,
@@ -2014,6 +2135,239 @@ mod tests {
             m.relationships.iter().find(|r| r.other_id == other2).unwrap().kind,
             RelationshipKind::Cohabitant
         ));
+    }
+
+    /// Build + save an area with the given role wages, defaulting all other
+    /// immigration knobs. Returns the area id so callers can stamp it on rooms.
+    fn make_area_with_wages(db: &db::Db, prefix: &str, guard: i32, healer: i32, scavenger: i32) -> uuid::Uuid {
+        use ironmud::{
+            AreaData, AreaFlags, AreaPermission, CombatZoneType, GoldRange, ImmigrationFamilyChance,
+            ImmigrationVariationChances,
+        };
+        let area_id = uuid::Uuid::new_v4();
+        let area = AreaData {
+            id: area_id,
+            name: prefix.into(),
+            prefix: prefix.into(),
+            description: String::new(),
+            level_min: 0,
+            level_max: 0,
+            theme: String::new(),
+            owner: None,
+            permission_level: AreaPermission::AllBuilders,
+            trusted_builders: Vec::new(),
+            city_forage_table: Vec::new(),
+            wilderness_forage_table: Vec::new(),
+            shallow_water_forage_table: Vec::new(),
+            deep_water_forage_table: Vec::new(),
+            underwater_forage_table: Vec::new(),
+            combat_zone: CombatZoneType::Pve,
+            flags: AreaFlags::default(),
+            default_room_flags: RoomFlags::default(),
+            immigration_enabled: false,
+            immigration_room_vnum: String::new(),
+            immigration_name_pool: String::new(),
+            immigration_visual_profile: String::new(),
+            migration_interval_days: 0,
+            migration_max_per_check: 0,
+            migrant_sim_defaults: None,
+            last_migration_check_day: None,
+            immigration_variation_chances: ImmigrationVariationChances::default(),
+            immigration_family_chance: ImmigrationFamilyChance::default(),
+            migrant_starting_gold: GoldRange::default(),
+            guard_wage_per_hour: guard,
+            healer_wage_per_hour: healer,
+            scavenger_wage_per_hour: scavenger,
+        };
+        db.save_area_data(area).expect("save area");
+        area_id
+    }
+
+    /// Sim config for a jobless migrant: no work room, no shop, just a home.
+    fn make_jobless_config(home_vnum: &str) -> SimulationConfig {
+        SimulationConfig {
+            home_room_vnum: home_vnum.to_string(),
+            work_room_vnum: String::new(),
+            shop_room_vnum: String::new(),
+            preferred_food_vnum: String::new(),
+            work_pay: 0,
+            work_start_hour: 8,
+            work_end_hour: 17,
+            hunger_decay_rate: 0,
+            energy_decay_rate: 0,
+            comfort_decay_rate: 0,
+            low_gold_threshold: 10,
+        }
+    }
+
+    fn cooldown_elapsed_now() -> i64 {
+        BANK_VISIT_COOLDOWN_SECS + 1
+    }
+
+    fn satisfied_needs() -> NeedsState {
+        NeedsState {
+            hunger: 80,
+            energy: 80,
+            comfort: 80,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn decide_goal_picks_seek_bank_for_broke_jobless_migrant_with_bank_in_area() {
+        let g = open_db("seek_bank_picks");
+        let area_id = make_area_with_wages(&g.db, "bk1", 0, 0, 0);
+
+        let mut home = save_room(&g.db, "bk1:home");
+        home.area_id = Some(area_id);
+        g.db.save_room_data(home.clone()).expect("re-save home");
+
+        let mut bank = save_room(&g.db, "bk1:bank");
+        bank.area_id = Some(area_id);
+        bank.flags.bank = true;
+        g.db.save_room_data(bank.clone()).expect("re-save bank");
+
+        let mut mobile = MobileData::new("Pip".into());
+        mobile.gold = 0;
+        mobile.resident_of = Some("bk1:home".into());
+        mobile.current_room_id = Some(home.id);
+
+        let goal = decide_goal(
+            &g.db,
+            &mobile,
+            &make_jobless_config("bk1:home"),
+            &satisfied_needs(),
+            22,
+            cooldown_elapsed_now(),
+        )
+        .expect("decide");
+        assert_eq!(goal, SimGoal::SeekBank);
+    }
+
+    #[test]
+    fn decide_goal_skips_seek_bank_when_cooldown_active() {
+        let g = open_db("seek_bank_cooldown");
+        let area_id = make_area_with_wages(&g.db, "bk2", 0, 0, 0);
+
+        let mut home = save_room(&g.db, "bk2:home");
+        home.area_id = Some(area_id);
+        g.db.save_room_data(home.clone()).expect("re-save home");
+
+        let mut bank = save_room(&g.db, "bk2:bank");
+        bank.area_id = Some(area_id);
+        bank.flags.bank = true;
+        g.db.save_room_data(bank.clone()).expect("re-save bank");
+
+        let mut mobile = MobileData::new("Pip".into());
+        mobile.gold = 0;
+        mobile.resident_of = Some("bk2:home".into());
+        mobile.current_room_id = Some(home.id);
+
+        let now = 1_000_000;
+        let mut needs = satisfied_needs();
+        needs.last_bank_visit_attempt = now; // just visited
+
+        let goal = decide_goal(&g.db, &mobile, &make_jobless_config("bk2:home"), &needs, 22, now).expect("decide");
+        assert_ne!(goal, SimGoal::SeekBank, "cooldown should suppress SeekBank");
+    }
+
+    #[test]
+    fn decide_goal_skips_seek_bank_when_no_bank_room_exists() {
+        let g = open_db("seek_bank_no_room");
+        let area_id = make_area_with_wages(&g.db, "bk3", 0, 0, 0);
+
+        let mut home = save_room(&g.db, "bk3:home");
+        home.area_id = Some(area_id);
+        g.db.save_room_data(home.clone()).expect("re-save home");
+        // Note: no room with flags.bank in the area.
+
+        let mut mobile = MobileData::new("Pip".into());
+        mobile.gold = 0;
+        mobile.resident_of = Some("bk3:home".into());
+        mobile.current_room_id = Some(home.id);
+
+        let goal = decide_goal(
+            &g.db,
+            &mobile,
+            &make_jobless_config("bk3:home"),
+            &satisfied_needs(),
+            22,
+            cooldown_elapsed_now(),
+        )
+        .expect("decide");
+        assert_ne!(goal, SimGoal::SeekBank);
+    }
+
+    #[test]
+    fn decide_goal_skips_seek_bank_for_wage_earning_guard() {
+        let g = open_db("seek_bank_guard");
+        let area_id = make_area_with_wages(&g.db, "bk4", 25, 0, 0);
+
+        let mut home = save_room(&g.db, "bk4:home");
+        home.area_id = Some(area_id);
+        g.db.save_room_data(home.clone()).expect("re-save home");
+
+        let mut bank = save_room(&g.db, "bk4:bank");
+        bank.area_id = Some(area_id);
+        bank.flags.bank = true;
+        g.db.save_room_data(bank.clone()).expect("re-save bank");
+
+        let mut guard = MobileData::new("Garron".into());
+        guard.flags.guard = true;
+        guard.gold = 0;
+        guard.resident_of = Some("bk4:home".into());
+        guard.current_room_id = Some(home.id);
+
+        let goal = decide_goal(
+            &g.db,
+            &guard,
+            &make_jobless_config("bk4:home"),
+            &satisfied_needs(),
+            22,
+            cooldown_elapsed_now(),
+        )
+        .expect("decide");
+        assert_ne!(
+            goal,
+            SimGoal::SeekBank,
+            "wage-earning guard should not seek bank handouts"
+        );
+    }
+
+    #[test]
+    fn bank_arrival_grants_gold_and_clears_goal() {
+        use std::collections::HashMap;
+        use std::sync::{Arc, Mutex};
+
+        let g = open_db("seek_bank_arrival");
+        let area_id = make_area_with_wages(&g.db, "bk5", 0, 0, 0);
+
+        let mut home = save_room(&g.db, "bk5:home");
+        home.area_id = Some(area_id);
+        g.db.save_room_data(home.clone()).expect("re-save home");
+
+        let mut bank = save_room(&g.db, "bk5:bank");
+        bank.area_id = Some(area_id);
+        bank.flags.bank = true;
+        g.db.save_room_data(bank.clone()).expect("re-save bank");
+
+        let mut mobile = MobileData::new("Pip".into());
+        mobile.gold = 0;
+        mobile.resident_of = Some("bk5:home".into());
+        mobile.current_room_id = Some(bank.id); // arrived at the bank
+
+        let mut needs = satisfied_needs();
+        needs.current_goal = SimGoal::SeekBank;
+
+        let connections: SharedConnections = Arc::new(Mutex::new(HashMap::new()));
+        let now = 1_234_567;
+        execute_arrival_actions(&g.db, &connections, &mut mobile, &make_jobless_config("bk5:home"), &mut needs, now)
+            .expect("arrival");
+
+        assert_eq!(mobile.gold, BANK_RELIEF_AMOUNT, "bank should grant relief amount");
+        assert_eq!(needs.current_goal, SimGoal::Idle, "goal cleared after handout");
+        assert_eq!(needs.last_bank_visit_attempt, now, "cooldown stamp set");
+        assert!(mobile.routine_destination_room.is_none(), "destination cleared");
     }
 
     #[test]
