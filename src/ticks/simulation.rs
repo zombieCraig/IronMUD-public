@@ -438,14 +438,21 @@ fn execute_arrival_actions(
                 }
             } else {
                 let at_assigned_shop = is_at_room(db, mobile, &config.shop_room_vnum)?;
-                let here_has_shopkeeper = match mobile.current_room_id {
-                    Some(rid) => db
-                        .get_mobiles_in_room(&rid)?
-                        .iter()
-                        .any(|m| m.flags.shopkeeper && !m.is_prototype),
+                let here_has_food_shopkeeper = match mobile.current_room_id {
+                    Some(rid) => {
+                        let mobiles_here = db.get_mobiles_in_room(&rid)?;
+                        let mut found = false;
+                        for m in &mobiles_here {
+                            if m.flags.shopkeeper && !m.is_prototype && shopkeeper_sells_food(db, m)? {
+                                found = true;
+                                break;
+                            }
+                        }
+                        found
+                    }
                     None => false,
                 };
-                if at_assigned_shop || here_has_shopkeeper {
+                if at_assigned_shop || here_has_food_shopkeeper {
                     try_buy_food(db, connections, mobile, config, needs)?;
                 }
             }
@@ -490,8 +497,25 @@ fn execute_arrival_actions(
     Ok(())
 }
 
+/// True if the shopkeeper's stock list contains at least one food prototype.
+/// Used to filter out non-food shops (florists, tailors, bookshops, ...) when
+/// a hungry NPC is hunting for somewhere to eat.
+fn shopkeeper_sells_food(db: &db::Db, shopkeeper: &MobileData) -> Result<bool> {
+    for vnum in &shopkeeper.shop_stock {
+        if let Some(proto) = db.get_item_by_vnum(vnum)? {
+            if proto.item_type == ItemType::Food {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
 /// Find another shopkeeper room in the mobile's current area that hasn't been
-/// tried this hunger cycle. Returns None if no such room exists or if the
+/// tried this hunger cycle. Only considers shopkeepers that actually stock food
+/// — otherwise hungry NPCs cycle through florists/tailors that can never feed
+/// them, and the destination may be in an unreachable room (e.g. `no_mob`),
+/// causing routine BFS to fail. Returns None if no such room exists or if the
 /// mobile's current room has no area.
 fn find_next_shop_room(db: &db::Db, mobile: &MobileData, tried: &[Uuid]) -> Result<Option<Uuid>> {
     let current_room_id = match mobile.current_room_id {
@@ -512,8 +536,10 @@ fn find_next_shop_room(db: &db::Db, mobile: &MobileData, tried: &[Uuid]) -> Resu
             continue;
         }
         let mobiles_here = db.get_mobiles_in_room(&room.id)?;
-        if mobiles_here.iter().any(|m| m.flags.shopkeeper && !m.is_prototype) {
-            return Ok(Some(room.id));
+        for m in &mobiles_here {
+            if m.flags.shopkeeper && !m.is_prototype && shopkeeper_sells_food(db, m)? {
+                return Ok(Some(room.id));
+            }
         }
     }
     Ok(None)
@@ -838,16 +864,24 @@ fn update_activity_state(
         }
         SimGoal::SeekFood => {
             // Only show "Eating" when actually at a food source (our shop or
-            // any room with a shopkeeper in it). Otherwise they're just walking.
+            // any room with a food-stocking shopkeeper in it). Otherwise they're
+            // just walking — and a florist or tailor doesn't count as a food source.
             let at_shop = is_at_room(db, mobile, &config.shop_room_vnum)?;
-            let here_has_shop = match mobile.current_room_id {
-                Some(rid) => db
-                    .get_mobiles_in_room(&rid)?
-                    .iter()
-                    .any(|m| m.flags.shopkeeper && !m.is_prototype),
+            let here_has_food_shop = match mobile.current_room_id {
+                Some(rid) => {
+                    let mobiles_here = db.get_mobiles_in_room(&rid)?;
+                    let mut found = false;
+                    for m in &mobiles_here {
+                        if m.flags.shopkeeper && !m.is_prototype && shopkeeper_sells_food(db, m)? {
+                            found = true;
+                            break;
+                        }
+                    }
+                    found
+                }
                 None => false,
             };
-            if at_shop || here_has_shop {
+            if at_shop || here_has_food_shop {
                 ActivityState::Eating
             } else {
                 ActivityState::OffDuty
