@@ -545,7 +545,7 @@ pub const NOISE_LEVELS: &[&str] = &["silent", "quiet", "normal", "loud", "clear"
 /// Redit subcommands
 pub const REDIT_SUBCOMMANDS: &[&str] = &[
     "show", "title", "desc", "flags", "flag", "zone", "extra", "vnum", "area", "trigger", "door", "seasonal",
-    "dynamic", "water", "catch", "create",
+    "dynamic", "water", "catch", "capacity", "create",
 ];
 
 /// Room trigger actions
@@ -585,6 +585,7 @@ pub const ROOM_FLAGS: &[&str] = &[
     "spawn_point",
     "shallow_water",
     "deep_water",
+    "liveable",
 ];
 
 /// Combat zone types

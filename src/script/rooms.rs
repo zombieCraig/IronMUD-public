@@ -73,6 +73,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             _ => return false,
         };
         room.flags.merge_area_defaults(&area.default_room_flags);
+        if room.flags.liveable && room.living_capacity <= 0 {
+            room.living_capacity = 1;
+        }
         cloned_db.save_room_data(room).is_ok()
     });
 
@@ -620,6 +623,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     "deep_water" => room.flags.deep_water = value,
                     "liveable" | "livable" => room.flags.liveable = value,
                     _ => return false,
+                }
+                if room.flags.liveable && room.living_capacity <= 0 {
+                    room.living_capacity = 1;
                 }
                 if let Err(e) = cloned_db.save_room_data(room) {
                     tracing::error!("Failed to save room flag: {}", e);

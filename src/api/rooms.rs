@@ -434,7 +434,7 @@ async fn create_room(
         None
     };
 
-    let room = RoomData {
+    let mut room = RoomData {
         id: Uuid::new_v4(),
         title: req.title,
         description: req.description,
@@ -484,6 +484,10 @@ async fn create_room(
         living_capacity: 0,
         residents: Vec::new(),
     };
+
+    if room.flags.liveable && room.living_capacity <= 0 {
+        room.living_capacity = 1;
+    }
 
     state
         .db
@@ -580,6 +584,9 @@ async fn update_room(
         if let Some(v) = flags.shallow_water { room.flags.shallow_water = v; }
         if let Some(v) = flags.deep_water { room.flags.deep_water = v; }
         if let Some(v) = flags.liveable { room.flags.liveable = v; }
+    }
+    if room.flags.liveable && room.living_capacity <= 0 {
+        room.living_capacity = 1;
     }
     if let Some(cap) = req.living_capacity {
         room.living_capacity = cap.max(0);

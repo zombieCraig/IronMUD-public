@@ -137,6 +137,7 @@ fn handle_zone_subcommand(room_id, parts, connection_id) {
 //   dynamic <text|clear>    - Set temporary dynamic description
 //   water <none|freshwater|saltwater|magical> - Water type for fishing
 //   catch add/remove/list   - Manage fishing catch table
+//   capacity <n>            - Set living capacity (migrant slots)
 //
 // Trigger Types: enter, exit, look, periodic, on_time_change,
 //                on_weather_change, on_season_change, on_month_change
@@ -912,7 +913,9 @@ fn run_command(args, connection_id) {
         let cmd_water = mxp_or(mxp_send("redit water", "redit water"), "redit water", connection_id);
         output += "  " + cmd_water + "    - Configure water type for fishing\n";
         let cmd_catch = mxp_or(mxp_send("redit catch", "redit catch"), "redit catch", connection_id);
-        output += "  " + cmd_catch + "    - Configure catch table for fishing";
+        output += "  " + cmd_catch + "    - Configure catch table for fishing\n";
+        let cmd_capacity = mxp_or(mxp_send("redit capacity", "redit capacity"), "redit capacity", connection_id);
+        output += "  " + cmd_capacity + " <n> - Set living capacity (migrant slots; requires liveable flag)";
 
         send_mxp_message(connection_id, output);
         return;
