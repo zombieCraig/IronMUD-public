@@ -1,6 +1,13 @@
 // scripts/commands/recipes.rhai
-// recipes <skill> [search] - List known recipes for a skill
-// Usage: recipes cooking, recipes crafting, recipes cooking bread
+// recipes <skill> [search] - List recipes for a skill
+// Usage: recipes cooking, recipes crafting, recipes crafting sword
+//
+// Visibility:
+//   * Regular players see known recipes plus auto-learn recipes they
+//     haven't reached yet (skill progression preview).
+//   * Book-required (auto_learn=false) recipes the player hasn't learned
+//     are hidden — they're discovered in-world.
+//   * Builders/admins see everything, with a banner.
 
 fn get_ingredient_name(ingredient) {
     if ingredient.vnum != () { return ingredient.vnum; }
@@ -21,12 +28,15 @@ fn get_recipe_status(knows, auto_learn, has_skill) {
     return "[ ]";
 }
 
-fn should_swap(recipe_a, recipe_b) {
-    recipe_a.skill_required > recipe_b.skill_required
+fn pad_right(s, width) {
+    let out = s;
+    while out.len() < width {
+        out += " ";
+    }
+    return out;
 }
 
 fn sort_recipes_by_skill(recipes) {
-    // Simple selection sort by skill_required
     let n = recipes.len();
     if n <= 1 { return recipes; }
 
@@ -69,9 +79,6 @@ fn format_tools(recipe) {
         let name = get_tool_name(tool);
         parts.push(name);
     }
-    if parts.len() == 0 {
-        return "none";
-    }
     return parts.join(", ");
 }
 
@@ -82,7 +89,6 @@ fn run_command(args, connection_id) {
         return;
     }
 
-    // Parse arguments
     if args == "" {
         send_client_message(connection_id, "Usage: recipes <skill> [search]");
         send_client_message(connection_id, "Available skills: cooking, crafting");
@@ -91,12 +97,10 @@ fn run_command(args, connection_id) {
         return;
     }
 
-    // Split into skill and optional search term
     let parts = args.split(" ");
     let skill = parts[0].to_lower();
     let search = "";
     if parts.len() > 1 {
-        // Join remaining parts as search term
         let search_parts = [];
         for i in 1..parts.len() {
             search_parts.push(parts[i]);
@@ -104,17 +108,14 @@ fn run_command(args, connection_id) {
         search = search_parts.join(" ").to_lower();
     }
 
-    // Validate skill
     if skill != "cooking" && skill != "crafting" {
         send_client_message(connection_id, "Unknown skill: " + skill);
         send_client_message(connection_id, "Available skills: cooking, crafting");
         return;
     }
 
-    // Get all recipes for this skill
     let all_recipes = get_recipes_by_skill(skill);
 
-    // Filter by search term if provided
     let filtered_recipes = [];
     if search == "" {
         filtered_recipes = all_recipes;
@@ -128,57 +129,88 @@ fn run_command(args, connection_id) {
         }
     }
 
-    if filtered_recipes.len() == 0 {
-        if search == "" {
+    let can_see_all = char.is_builder || char.is_admin;
+
+    // Hide book-required, unlearned recipes from regular players.
+    let visible_recipes = [];
+    for recipe in filtered_recipes {
+        let knows = knows_recipe(char.name, recipe.id);
+        if can_see_all || knows || recipe.auto_learn {
+            visible_recipes.push(recipe);
+        }
+    }
+
+    if visible_recipes.len() == 0 {
+        if search != "" {
+            send_client_message(connection_id, "No " + skill + " recipes matching '" + search + "' found.");
+        } else if all_recipes.len() == 0 {
             send_client_message(connection_id, "No " + skill + " recipes found.");
         } else {
-            send_client_message(connection_id, "No " + skill + " recipes matching '" + search + "' found.");
+            send_client_message(connection_id, "You haven't learned any " + skill + " recipes yet.");
         }
         return;
     }
 
-    // Get current skill level
     let skill_level = get_skill_level(char.name, skill);
+    visible_recipes = sort_recipes_by_skill(visible_recipes);
 
-    // Build output
-    let skill_display = skill.sub_string(0, 1).to_upper() + skill.sub_string(1);
-    let output = "=== " + skill_display + " Recipes ===\n\n";
-
-    // Sort recipes by skill_required
-    filtered_recipes = sort_recipes_by_skill(filtered_recipes);
-
-    // Display each recipe
-    for recipe in filtered_recipes {
-        let knows = knows_recipe(char.name, recipe.id);
-        let has_skill = skill_level >= recipe.skill_required;
-
-        // Status indicator
-        let status = get_recipe_status(knows, recipe.auto_learn, has_skill);
-
-        // Name and skill requirement
-        output += status + " " + recipe.name + " (skill " + recipe.skill_required + ")";
-
-        // Show if character can't make it yet
-        if !has_skill && knows {
-            output += " [need skill " + recipe.skill_required + "]";
+    // Compute name padding width for column alignment.
+    let max_name_len = 0;
+    for recipe in visible_recipes {
+        if recipe.name.len() > max_name_len {
+            max_name_len = recipe.name.len();
         }
-
-        output += "\n";
-
-        // Show details
-        let ingredients_str = format_ingredients(recipe);
-        let tools_str = format_tools(recipe);
-
-        output += "    Ingredients: " + ingredients_str + "\n";
-        if tools_str != "none" {
-            output += "    Tools: " + tools_str + "\n";
-        }
-        output += "\n";
     }
 
-    // Legend
-    output += "---\n";
-    output += "[*] = known recipe  [ ] = not yet learned  [L] = requires recipe book\n";
+    let skill_display = skill.sub_string(0, 1).to_upper() + skill.sub_string(1);
+    let output = "=== " + skill_display + " Recipes (your skill: " + skill_level + ") ===\n";
+    if can_see_all {
+        output += "(builder view: showing all recipes, including unlearned book recipes)\n";
+    }
+    output += "\n";
+
+    let known_count = 0;
+    let to_learn_count = 0;
+    let book_count = 0;
+
+    for recipe in visible_recipes {
+        let knows = knows_recipe(char.name, recipe.id);
+        let has_skill = skill_level >= recipe.skill_required;
+        let status = get_recipe_status(knows, recipe.auto_learn, has_skill);
+
+        if status == "[*]" {
+            known_count += 1;
+        } else if status == "[L]" {
+            book_count += 1;
+        } else {
+            to_learn_count += 1;
+        }
+
+        let name_col = pad_right(recipe.name, max_name_len);
+        let line = status + " " + name_col + "  (" + recipe.skill_required + ")  " + format_ingredients(recipe);
+
+        let tools_str = format_tools(recipe);
+        if tools_str != "" {
+            line += "  [tools: " + tools_str + "]";
+        }
+
+        if knows && !has_skill {
+            line += "  [need skill " + recipe.skill_required + "]";
+        }
+
+        output += line + "\n";
+    }
+
+    output += "\n";
+    let summary = "" + known_count + " known, " + to_learn_count + " to learn";
+    if can_see_all && book_count > 0 {
+        summary += ", " + book_count + " book-only";
+    }
+    summary += ".  [*] known  [ ] not yet learned";
+    if can_see_all {
+        summary += "  [L] book-required";
+    }
+    output += summary;
 
     send_client_message(connection_id, output);
 }
