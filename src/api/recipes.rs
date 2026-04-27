@@ -23,10 +23,7 @@ use crate::{Recipe, RecipeIngredient, RecipeTool, ToolLocation};
 pub fn routes() -> Router<Arc<ApiState>> {
     Router::new()
         .route("/", get(list_recipes).post(create_recipe))
-        .route(
-            "/:vnum",
-            get(get_recipe).put(update_recipe).delete(delete_recipe),
-        )
+        .route("/:vnum", get(get_recipe).put(update_recipe).delete(delete_recipe))
 }
 
 #[derive(Deserialize)]
@@ -135,9 +132,7 @@ fn convert_ingredient(req: &IngredientRequest) -> Result<RecipeIngredient, ApiEr
         ));
     }
     if req.quantity < 1 {
-        return Err(ApiError::InvalidInput(
-            "Ingredient quantity must be >= 1".into(),
-        ));
+        return Err(ApiError::InvalidInput("Ingredient quantity must be >= 1".into()));
     }
     Ok(RecipeIngredient {
         vnum: req.vnum.clone(),
@@ -235,11 +230,7 @@ async fn create_recipe(
         .iter()
         .map(convert_ingredient)
         .collect::<Result<Vec<_>, _>>()?;
-    let tools = req
-        .tools
-        .iter()
-        .map(convert_tool)
-        .collect::<Result<Vec<_>, _>>()?;
+    let tools = req.tools.iter().map(convert_tool).collect::<Result<Vec<_>, _>>()?;
 
     let recipe = Recipe {
         id: req.vnum,
@@ -262,10 +253,7 @@ async fn create_recipe(
 
     notify_builders(
         &state.connections,
-        &format!(
-            "[API] Recipe '{}' created by {}",
-            recipe.name, user.api_key.name
-        ),
+        &format!("[API] Recipe '{}' created by {}", recipe.name, user.api_key.name),
     );
 
     Ok(Json(RecipeResponse {
@@ -335,10 +323,7 @@ async fn update_recipe(
 
     notify_builders(
         &state.connections,
-        &format!(
-            "[API] Recipe '{}' updated by {}",
-            recipe.name, user.api_key.name
-        ),
+        &format!("[API] Recipe '{}' updated by {}", recipe.name, user.api_key.name),
     );
 
     Ok(Json(RecipeResponse {
@@ -370,10 +355,7 @@ async fn delete_recipe(
 
     notify_builders(
         &state.connections,
-        &format!(
-            "[API] Recipe '{}' deleted by {}",
-            recipe.name, user.api_key.name
-        ),
+        &format!("[API] Recipe '{}' deleted by {}", recipe.name, user.api_key.name),
     );
 
     Ok(Json(serde_json::json!({

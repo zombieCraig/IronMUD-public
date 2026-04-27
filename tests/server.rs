@@ -3635,8 +3635,11 @@ fn test_item_note_content_persists() {
         db.save_item_data(item).expect("save");
 
         let loaded = db.get_item_data(&item_id).expect("get").expect("present");
-        assert_eq!(loaded.note_content.as_deref(), Some(body),
-            "body survives save/load and preserves whitespace + blank lines");
+        assert_eq!(
+            loaded.note_content.as_deref(),
+            Some(body),
+            "body survives save/load and preserves whitespace + blank lines"
+        );
 
         let mut cleared = loaded;
         cleared.note_content = None;

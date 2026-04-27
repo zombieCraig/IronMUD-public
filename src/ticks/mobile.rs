@@ -197,7 +197,9 @@ fn bfs_next_step(db: &db::Db, from: uuid::Uuid, to: uuid::Uuid, mobile: &MobileD
         if nodes_processed >= nodes_at_depth {
             depth += 1;
             if depth > MAX_BFS_DEPTH {
-                return BfsOutcome::TooFar { explored: visited.len() };
+                return BfsOutcome::TooFar {
+                    explored: visited.len(),
+                };
             }
             nodes_at_depth = queue.len();
             nodes_processed = 0;
@@ -224,7 +226,9 @@ fn bfs_next_step(db: &db::Db, from: uuid::Uuid, to: uuid::Uuid, mobile: &MobileD
         }
     }
 
-    BfsOutcome::NoPath { explored: visited.len() }
+    BfsOutcome::NoPath {
+        explored: visited.len(),
+    }
 }
 
 /// Handle opening/unlocking a door before a mobile moves through it.
@@ -546,7 +550,11 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
                     // the offending routine/room without restarting the server.
                     let reason = match &bfs_result {
                         BfsOutcome::NoPath { explored } => {
-                            format!("no path found (explored {} reachable room{})", explored, if *explored == 1 { "" } else { "s" })
+                            format!(
+                                "no path found (explored {} reachable room{})",
+                                explored,
+                                if *explored == 1 { "" } else { "s" }
+                            )
                         }
                         BfsOutcome::TooFar { explored } => format!(
                             "destination more than {} rooms away (explored {} before giving up)",

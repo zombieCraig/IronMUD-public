@@ -1603,9 +1603,8 @@ pub async fn handle_connection(
                         };
 
                         if saved {
-                            let _ = tx_client.send(
-                                if cleared { "Note cleared.\n" } else { "Note saved.\n" }.to_string(),
-                            );
+                            let _ =
+                                tx_client.send(if cleared { "Note cleared.\n" } else { "Note saved.\n" }.to_string());
                         } else {
                             let _ = tx_client.send("Error: could not save note.\n".to_string());
                         }

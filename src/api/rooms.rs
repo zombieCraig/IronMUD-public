@@ -562,28 +562,66 @@ async fn update_room(
         room.area_id = Some(new_area_id);
     }
     if let Some(flags) = req.flags {
-        if let Some(v) = flags.dark { room.flags.dark = v; }
-        if let Some(v) = flags.no_mob { room.flags.no_mob = v; }
-        if let Some(v) = flags.indoors { room.flags.indoors = v; }
+        if let Some(v) = flags.dark {
+            room.flags.dark = v;
+        }
+        if let Some(v) = flags.no_mob {
+            room.flags.no_mob = v;
+        }
+        if let Some(v) = flags.indoors {
+            room.flags.indoors = v;
+        }
         if let Some(v) = flags.safe {
             room.flags.combat_zone = if v { Some(CombatZoneType::Safe) } else { None };
         }
-        if let Some(v) = flags.underwater { room.flags.underwater = v; }
-        if let Some(v) = flags.climate_controlled { room.flags.climate_controlled = v; }
-        if let Some(v) = flags.always_hot { room.flags.always_hot = v; }
-        if let Some(v) = flags.always_cold { room.flags.always_cold = v; }
-        if let Some(v) = flags.city { room.flags.city = v; }
-        if let Some(v) = flags.no_windows { room.flags.no_windows = v; }
-        if let Some(v) = flags.difficult_terrain { room.flags.difficult_terrain = v; }
-        if let Some(v) = flags.dirt_floor { room.flags.dirt_floor = v; }
-        if let Some(v) = flags.property_storage { room.flags.property_storage = v; }
-        if let Some(v) = flags.post_office { room.flags.post_office = v; }
-        if let Some(v) = flags.bank { room.flags.bank = v; }
-        if let Some(v) = flags.garden { room.flags.garden = v; }
-        if let Some(v) = flags.spawn_point { room.flags.spawn_point = v; }
-        if let Some(v) = flags.shallow_water { room.flags.shallow_water = v; }
-        if let Some(v) = flags.deep_water { room.flags.deep_water = v; }
-        if let Some(v) = flags.liveable { room.flags.liveable = v; }
+        if let Some(v) = flags.underwater {
+            room.flags.underwater = v;
+        }
+        if let Some(v) = flags.climate_controlled {
+            room.flags.climate_controlled = v;
+        }
+        if let Some(v) = flags.always_hot {
+            room.flags.always_hot = v;
+        }
+        if let Some(v) = flags.always_cold {
+            room.flags.always_cold = v;
+        }
+        if let Some(v) = flags.city {
+            room.flags.city = v;
+        }
+        if let Some(v) = flags.no_windows {
+            room.flags.no_windows = v;
+        }
+        if let Some(v) = flags.difficult_terrain {
+            room.flags.difficult_terrain = v;
+        }
+        if let Some(v) = flags.dirt_floor {
+            room.flags.dirt_floor = v;
+        }
+        if let Some(v) = flags.property_storage {
+            room.flags.property_storage = v;
+        }
+        if let Some(v) = flags.post_office {
+            room.flags.post_office = v;
+        }
+        if let Some(v) = flags.bank {
+            room.flags.bank = v;
+        }
+        if let Some(v) = flags.garden {
+            room.flags.garden = v;
+        }
+        if let Some(v) = flags.spawn_point {
+            room.flags.spawn_point = v;
+        }
+        if let Some(v) = flags.shallow_water {
+            room.flags.shallow_water = v;
+        }
+        if let Some(v) = flags.deep_water {
+            room.flags.deep_water = v;
+        }
+        if let Some(v) = flags.liveable {
+            room.flags.liveable = v;
+        }
     }
     if room.flags.liveable && room.living_capacity <= 0 {
         room.living_capacity = 1;

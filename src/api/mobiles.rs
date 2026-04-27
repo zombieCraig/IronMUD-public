@@ -796,23 +796,57 @@ async fn update_mobile(
         mobile.perception = perception;
     }
     if let Some(flags) = req.flags {
-        if let Some(v) = flags.aggressive { mobile.flags.aggressive = v; }
-        if let Some(v) = flags.sentinel { mobile.flags.sentinel = v; }
-        if let Some(v) = flags.scavenger { mobile.flags.scavenger = v; }
-        if let Some(v) = flags.shopkeeper { mobile.flags.shopkeeper = v; }
-        if let Some(v) = flags.healer { mobile.flags.healer = v; }
-        if let Some(v) = flags.no_attack { mobile.flags.no_attack = v; }
-        if let Some(v) = flags.cowardly { mobile.flags.cowardly = v; }
-        if let Some(v) = flags.can_open_doors { mobile.flags.can_open_doors = v; }
-        if let Some(v) = flags.leasing_agent { mobile.flags.leasing_agent = v; }
-        if let Some(v) = flags.guard { mobile.flags.guard = v; }
-        if let Some(v) = flags.thief { mobile.flags.thief = v; }
-        if let Some(v) = flags.cant_swim { mobile.flags.cant_swim = v; }
-        if let Some(v) = flags.poisonous { mobile.flags.poisonous = v; }
-        if let Some(v) = flags.fiery { mobile.flags.fiery = v; }
-        if let Some(v) = flags.chilling { mobile.flags.chilling = v; }
-        if let Some(v) = flags.corrosive { mobile.flags.corrosive = v; }
-        if let Some(v) = flags.shocking { mobile.flags.shocking = v; }
+        if let Some(v) = flags.aggressive {
+            mobile.flags.aggressive = v;
+        }
+        if let Some(v) = flags.sentinel {
+            mobile.flags.sentinel = v;
+        }
+        if let Some(v) = flags.scavenger {
+            mobile.flags.scavenger = v;
+        }
+        if let Some(v) = flags.shopkeeper {
+            mobile.flags.shopkeeper = v;
+        }
+        if let Some(v) = flags.healer {
+            mobile.flags.healer = v;
+        }
+        if let Some(v) = flags.no_attack {
+            mobile.flags.no_attack = v;
+        }
+        if let Some(v) = flags.cowardly {
+            mobile.flags.cowardly = v;
+        }
+        if let Some(v) = flags.can_open_doors {
+            mobile.flags.can_open_doors = v;
+        }
+        if let Some(v) = flags.leasing_agent {
+            mobile.flags.leasing_agent = v;
+        }
+        if let Some(v) = flags.guard {
+            mobile.flags.guard = v;
+        }
+        if let Some(v) = flags.thief {
+            mobile.flags.thief = v;
+        }
+        if let Some(v) = flags.cant_swim {
+            mobile.flags.cant_swim = v;
+        }
+        if let Some(v) = flags.poisonous {
+            mobile.flags.poisonous = v;
+        }
+        if let Some(v) = flags.fiery {
+            mobile.flags.fiery = v;
+        }
+        if let Some(v) = flags.chilling {
+            mobile.flags.chilling = v;
+        }
+        if let Some(v) = flags.corrosive {
+            mobile.flags.corrosive = v;
+        }
+        if let Some(v) = flags.shocking {
+            mobile.flags.shocking = v;
+        }
     }
     // Healer config
     if let Some(healer_type) = req.healer_type {

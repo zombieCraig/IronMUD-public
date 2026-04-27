@@ -849,32 +849,84 @@ async fn update_item(
         item.categories = categories;
     }
     if let Some(flags) = req.flags {
-        if let Some(v) = flags.no_drop { item.flags.no_drop = v; }
-        if let Some(v) = flags.no_get { item.flags.no_get = v; }
-        if let Some(v) = flags.no_remove { item.flags.no_remove = v; }
-        if let Some(v) = flags.invisible { item.flags.invisible = v; }
-        if let Some(v) = flags.glow { item.flags.glow = v; }
-        if let Some(v) = flags.hum { item.flags.hum = v; }
-        if let Some(v) = flags.no_sell { item.flags.no_sell = v; }
-        if let Some(v) = flags.unique { item.flags.unique = v; }
-        if let Some(v) = flags.quest_item { item.flags.quest_item = v; }
-        if let Some(v) = flags.vending { item.flags.vending = v; }
-        if let Some(v) = flags.provides_light { item.flags.provides_light = v; }
-        if let Some(v) = flags.fishing_rod { item.flags.fishing_rod = v; }
-        if let Some(v) = flags.bait { item.flags.bait = v; }
-        if let Some(v) = flags.foraging_tool { item.flags.foraging_tool = v; }
-        if let Some(v) = flags.waterproof { item.flags.waterproof = v; }
-        if let Some(v) = flags.provides_warmth { item.flags.provides_warmth = v; }
-        if let Some(v) = flags.reduces_glare { item.flags.reduces_glare = v; }
-        if let Some(v) = flags.medical_tool { item.flags.medical_tool = v; }
-        if let Some(v) = flags.preserves_contents { item.flags.preserves_contents = v; }
-        if let Some(v) = flags.death_only { item.flags.death_only = v; }
-        if let Some(v) = flags.atm { item.flags.atm = v; }
-        if let Some(v) = flags.broken { item.flags.broken = v; }
-        if let Some(v) = flags.plant_pot { item.flags.plant_pot = v; }
-        if let Some(v) = flags.lockpick { item.flags.lockpick = v; }
-        if let Some(v) = flags.is_skinned { item.flags.is_skinned = v; }
-        if let Some(v) = flags.boat { item.flags.boat = v; }
+        if let Some(v) = flags.no_drop {
+            item.flags.no_drop = v;
+        }
+        if let Some(v) = flags.no_get {
+            item.flags.no_get = v;
+        }
+        if let Some(v) = flags.no_remove {
+            item.flags.no_remove = v;
+        }
+        if let Some(v) = flags.invisible {
+            item.flags.invisible = v;
+        }
+        if let Some(v) = flags.glow {
+            item.flags.glow = v;
+        }
+        if let Some(v) = flags.hum {
+            item.flags.hum = v;
+        }
+        if let Some(v) = flags.no_sell {
+            item.flags.no_sell = v;
+        }
+        if let Some(v) = flags.unique {
+            item.flags.unique = v;
+        }
+        if let Some(v) = flags.quest_item {
+            item.flags.quest_item = v;
+        }
+        if let Some(v) = flags.vending {
+            item.flags.vending = v;
+        }
+        if let Some(v) = flags.provides_light {
+            item.flags.provides_light = v;
+        }
+        if let Some(v) = flags.fishing_rod {
+            item.flags.fishing_rod = v;
+        }
+        if let Some(v) = flags.bait {
+            item.flags.bait = v;
+        }
+        if let Some(v) = flags.foraging_tool {
+            item.flags.foraging_tool = v;
+        }
+        if let Some(v) = flags.waterproof {
+            item.flags.waterproof = v;
+        }
+        if let Some(v) = flags.provides_warmth {
+            item.flags.provides_warmth = v;
+        }
+        if let Some(v) = flags.reduces_glare {
+            item.flags.reduces_glare = v;
+        }
+        if let Some(v) = flags.medical_tool {
+            item.flags.medical_tool = v;
+        }
+        if let Some(v) = flags.preserves_contents {
+            item.flags.preserves_contents = v;
+        }
+        if let Some(v) = flags.death_only {
+            item.flags.death_only = v;
+        }
+        if let Some(v) = flags.atm {
+            item.flags.atm = v;
+        }
+        if let Some(v) = flags.broken {
+            item.flags.broken = v;
+        }
+        if let Some(v) = flags.plant_pot {
+            item.flags.plant_pot = v;
+        }
+        if let Some(v) = flags.lockpick {
+            item.flags.lockpick = v;
+        }
+        if let Some(v) = flags.is_skinned {
+            item.flags.is_skinned = v;
+        }
+        if let Some(v) = flags.boat {
+            item.flags.boat = v;
+        }
     }
     // Gardening fields
     if let Some(plant_prototype_vnum) = req.plant_prototype_vnum {

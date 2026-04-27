@@ -2563,18 +2563,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
 
     // set_item_note_content(item_id, body) -> bool (empty body clears)
     let cloned_db = db.clone();
-    engine.register_fn(
-        "set_item_note_content",
-        move |item_id: String, body: String| -> bool {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
-                if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
-                    item.note_content = if body.is_empty() { None } else { Some(body) };
-                    return cloned_db.save_item_data(item).is_ok();
-                }
+    engine.register_fn("set_item_note_content", move |item_id: String, body: String| -> bool {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                item.note_content = if body.is_empty() { None } else { Some(body) };
+                return cloned_db.save_item_data(item).is_ok();
             }
-            false
-        },
-    );
+        }
+        false
+    });
 
     // get_item_by_vnum(vnum) -> ItemData or () (finds prototype by vnum)
     let cloned_db = db.clone();

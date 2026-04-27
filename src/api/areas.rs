@@ -29,7 +29,10 @@ pub fn routes() -> Router<Arc<ApiState>> {
         .route("/:id/overview", get(area_overview))
         .route("/:id/reset", post(reset_area))
         .route("/:id/forage", get(list_forage_tables).post(add_forage_entry))
-        .route("/:id/forage/:forage_type/:vnum", axum::routing::delete(remove_forage_entry))
+        .route(
+            "/:id/forage/:forage_type/:vnum",
+            axum::routing::delete(remove_forage_entry),
+        )
 }
 
 #[derive(Deserialize)]
