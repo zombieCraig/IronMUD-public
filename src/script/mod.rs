@@ -642,6 +642,17 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         })
         .register_get("immigration_family_sibling_pair_chance", |a: &mut AreaData| {
             a.immigration_family_chance.sibling_pair as f64
+        })
+        .register_get("migrant_starting_gold_min", |a: &mut AreaData| {
+            a.migrant_starting_gold.min as i64
+        })
+        .register_get("migrant_starting_gold_max", |a: &mut AreaData| {
+            a.migrant_starting_gold.max as i64
+        })
+        .register_get("guard_wage_per_hour", |a: &mut AreaData| a.guard_wage_per_hour as i64)
+        .register_get("healer_wage_per_hour", |a: &mut AreaData| a.healer_wage_per_hour as i64)
+        .register_get("scavenger_wage_per_hour", |a: &mut AreaData| {
+            a.scavenger_wage_per_hour as i64
         });
 
     // Register RoomData type with getters

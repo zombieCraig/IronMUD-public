@@ -1523,6 +1523,10 @@ mod migration_tests {
             last_migration_check_day: None,
             immigration_variation_chances: ironmud::types::ImmigrationVariationChances::default(),
             immigration_family_chance: ironmud::types::ImmigrationFamilyChance::default(),
+            migrant_starting_gold: ironmud::types::GoldRange::default(),
+            guard_wage_per_hour: 0,
+            healer_wage_per_hour: 0,
+            scavenger_wage_per_hour: 0,
         }
     }
 
@@ -3758,6 +3762,10 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
             last_migration_check_day: None,
             immigration_variation_chances: ImmigrationVariationChances::default(),
             immigration_family_chance: ImmigrationFamilyChance::default(),
+            migrant_starting_gold: ironmud::types::GoldRange::default(),
+            guard_wage_per_hour: 0,
+            healer_wage_per_hour: 0,
+            scavenger_wage_per_hour: 0,
         };
         db.save_area_data(area.clone()).expect("save area");
 

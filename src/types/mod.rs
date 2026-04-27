@@ -1233,6 +1233,11 @@ pub struct NeedsState {
     /// Cleared whenever the NPC successfully eats.
     #[serde(default)]
     pub tried_shops_this_cycle: Vec<Uuid>,
+    /// Unix timestamp of the last time the NPC tried home-relief (cohabitant
+    /// charity or forage scraps). Throttles fallback attempts so a hungry,
+    /// broke, friendless mobile doesn't burn the helper every tick.
+    #[serde(default)]
+    pub last_relief_attempt: i64,
 }
 
 impl Default for NeedsState {
@@ -1246,6 +1251,7 @@ impl Default for NeedsState {
             last_tick_hour: 0,
             last_emote_tick: 0,
             tried_shops_this_cycle: Vec::new(),
+            last_relief_attempt: 0,
         }
     }
 }
@@ -1567,6 +1573,17 @@ pub enum AreaPermission {
     AllBuilders,
 }
 
+/// Inclusive integer range used to roll a starting gold purse for new migrants.
+/// Default `{0, 0}` preserves legacy "broke at spawn" behavior so areas without
+/// the field set explicitly behave as before.
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
+pub struct GoldRange {
+    #[serde(default)]
+    pub min: i32,
+    #[serde(default)]
+    pub max: i32,
+}
+
 /// Per-role chances that a spawned migrant arrives as a specialized variation.
 /// Each field is a probability in [0.0, 1.0] applied independently in priority
 /// order (first match wins); 0.0 means "never". One field per role keeps the
@@ -1682,6 +1699,26 @@ pub struct AreaData {
     /// Per-form chances that a spawn slot resolves to a pre-linked family.
     #[serde(default)]
     pub immigration_family_chance: ImmigrationFamilyChance,
+    /// Inclusive range from which a new migrant's starting gold purse is rolled.
+    /// `{0, 0}` (the default) keeps legacy behavior: migrants spawn broke. Set a
+    /// realistic range (e.g. `{50, 150}`) so newcomers can buy a few meals before
+    /// their first paycheck or relief fallback.
+    #[serde(default)]
+    pub migrant_starting_gold: GoldRange,
+    /// Hourly area-treasury wages paid to migrant guards while in any room of
+    /// this area. Decoupled from `SimulationConfig.work_pay` so guards earn
+    /// without needing a configured `work_room_vnum` (they patrol everywhere).
+    /// Default 0 means guards earn no passive wage.
+    #[serde(default)]
+    pub guard_wage_per_hour: i32,
+    /// Hourly "patient visits" wage for migrant healers in any room of this area.
+    /// Default 0 disables.
+    #[serde(default)]
+    pub healer_wage_per_hour: i32,
+    /// Hourly scavenging wage for migrant scavengers, paid only while not at
+    /// their home room (they have to actually be out scrounging). Default 0.
+    #[serde(default)]
+    pub scavenger_wage_per_hour: i32,
 }
 
 // === Spawn Point System ===

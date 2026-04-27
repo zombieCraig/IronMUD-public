@@ -38,6 +38,10 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             last_migration_check_day: None,
             immigration_variation_chances: ImmigrationVariationChances::default(),
             immigration_family_chance: crate::types::ImmigrationFamilyChance::default(),
+            migrant_starting_gold: crate::types::GoldRange::default(),
+            guard_wage_per_hour: 0,
+            healer_wage_per_hour: 0,
+            scavenger_wage_per_hour: 0,
         },
         AreaData {
             id: seed_uuid("area:whisperwood"),
@@ -71,6 +75,10 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             last_migration_check_day: None,
             immigration_variation_chances: ImmigrationVariationChances::default(),
             immigration_family_chance: crate::types::ImmigrationFamilyChance::default(),
+            migrant_starting_gold: crate::types::GoldRange::default(),
+            guard_wage_per_hour: 0,
+            healer_wage_per_hour: 0,
+            scavenger_wage_per_hour: 0,
         },
         AreaData {
             id: seed_uuid("area:ironkeep"),
@@ -101,6 +109,10 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             last_migration_check_day: None,
             immigration_variation_chances: ImmigrationVariationChances::default(),
             immigration_family_chance: crate::types::ImmigrationFamilyChance::default(),
+            migrant_starting_gold: crate::types::GoldRange::default(),
+            guard_wage_per_hour: 0,
+            healer_wage_per_hour: 0,
+            scavenger_wage_per_hour: 0,
         },
         AreaData {
             id: seed_uuid("area:shadowfang"),
@@ -133,6 +145,10 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             last_migration_check_day: None,
             immigration_variation_chances: ImmigrationVariationChances::default(),
             immigration_family_chance: crate::types::ImmigrationFamilyChance::default(),
+            migrant_starting_gold: crate::types::GoldRange::default(),
+            guard_wage_per_hour: 0,
+            healer_wage_per_hour: 0,
+            scavenger_wage_per_hour: 0,
         },
         AreaData {
             id: seed_uuid("area:hilltop"),
@@ -165,6 +181,10 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             last_migration_check_day: None,
             immigration_variation_chances: ImmigrationVariationChances::default(),
             immigration_family_chance: crate::types::ImmigrationFamilyChance::default(),
+            migrant_starting_gold: crate::types::GoldRange::default(),
+            guard_wage_per_hour: 0,
+            healer_wage_per_hour: 0,
+            scavenger_wage_per_hour: 0,
         },
     ];
 

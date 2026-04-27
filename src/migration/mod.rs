@@ -343,6 +343,16 @@ pub fn random_gender<R: Rng>(rng: &mut R) -> &'static str {
     if rng.gen_bool(0.5) { "female" } else { "male" }
 }
 
+/// Roll a starting gold amount within the inclusive range. Negative values are
+/// floored to 0; an inverted range is treated as `[max, min]` so a misconfigured
+/// area still yields a deterministic non-negative purse instead of panicking.
+pub fn roll_starting_gold<R: Rng>(range: crate::types::GoldRange, rng: &mut R) -> i32 {
+    let lo = range.min.max(0);
+    let hi = range.max.max(0);
+    let (lo, hi) = if lo <= hi { (lo, hi) } else { (hi, lo) };
+    if lo == hi { lo } else { rng.gen_range(lo..=hi) }
+}
+
 /// Build a fully-populated migrant `MobileData` instance ready to save.
 /// Does not persist or place the mobile — callers handle that.
 pub fn build_migrant<R: Rng>(
@@ -374,7 +384,10 @@ pub fn build_migrant<R: Rng>(
     );
 
     // Simulation: inherit area defaults if set, override home_room_vnum.
-    let simulation = area
+    // Fall back to the immigration arrival room as an implicit "workplace" so
+    // common civilians earn wages without explicit aedit configuration —
+    // narratively they "work the plaza" / hang around the gate.
+    let mut simulation = area
         .migrant_sim_defaults
         .as_ref()
         .map(|defaults| {
@@ -382,21 +395,22 @@ pub fn build_migrant<R: Rng>(
             sim.home_room_vnum = home_room_vnum.to_string();
             sim
         })
-        .or_else(|| {
-            Some(SimulationConfig {
-                home_room_vnum: home_room_vnum.to_string(),
-                work_room_vnum: String::new(),
-                shop_room_vnum: String::new(),
-                preferred_food_vnum: String::new(),
-                work_pay: 50,
-                work_start_hour: 8,
-                work_end_hour: 17,
-                hunger_decay_rate: 0,
-                energy_decay_rate: 0,
-                comfort_decay_rate: 0,
-                low_gold_threshold: 10,
-            })
+        .unwrap_or_else(|| SimulationConfig {
+            home_room_vnum: home_room_vnum.to_string(),
+            work_room_vnum: String::new(),
+            shop_room_vnum: String::new(),
+            preferred_food_vnum: String::new(),
+            work_pay: 50,
+            work_start_hour: 8,
+            work_end_hour: 17,
+            hunger_decay_rate: 0,
+            energy_decay_rate: 0,
+            comfort_decay_rate: 0,
+            low_gold_threshold: 10,
         });
+    if simulation.work_room_vnum.is_empty() && !area.immigration_room_vnum.is_empty() {
+        simulation.work_room_vnum = area.immigration_room_vnum.clone();
+    }
 
     let mut mobile = MobileData::new(full_name.clone());
     mobile.is_prototype = false;
@@ -407,10 +421,11 @@ pub fn build_migrant<R: Rng>(
     mobile.long_desc = description;
     mobile.keywords = keywords;
     mobile.characteristics = Some(chars);
-    mobile.simulation = simulation;
+    mobile.simulation = Some(simulation);
     mobile.needs = Some(NeedsState::default());
     mobile.resident_of = Some(home_room_vnum.to_string());
     mobile.flags = MobileFlags::default();
+    mobile.gold = roll_starting_gold(area.migrant_starting_gold, rng);
 
     let variation = variations::pick_variation(area, rng);
     if let Some(tag) = variation.vnum_tag() {
@@ -1442,6 +1457,10 @@ mod pair_housing_tests {
             last_migration_check_day: None,
             immigration_variation_chances: ImmigrationVariationChances::default(),
             immigration_family_chance: crate::types::ImmigrationFamilyChance::default(),
+            migrant_starting_gold: crate::types::GoldRange::default(),
+            guard_wage_per_hour: 0,
+            healer_wage_per_hour: 0,
+            scavenger_wage_per_hour: 0,
         };
         db.save_area_data(area.clone()).expect("save area");
         area
@@ -1510,6 +1529,79 @@ mod pair_housing_tests {
             });
         })
         .unwrap();
+    }
+
+    #[test]
+    fn roll_starting_gold_respects_range() {
+        use crate::types::GoldRange;
+        use rand::SeedableRng;
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+        // Empty range yields 0.
+        let g = roll_starting_gold(GoldRange { min: 0, max: 0 }, &mut rng);
+        assert_eq!(g, 0);
+
+        // Fixed range yields its single value.
+        let g = roll_starting_gold(GoldRange { min: 50, max: 50 }, &mut rng);
+        assert_eq!(g, 50);
+
+        // Spread range stays inside the band over many samples.
+        for _ in 0..50 {
+            let g = roll_starting_gold(GoldRange { min: 25, max: 75 }, &mut rng);
+            assert!((25..=75).contains(&g), "rolled {} outside [25, 75]", g);
+        }
+
+        // Inverted range is normalized rather than panicking.
+        let g = roll_starting_gold(GoldRange { min: 80, max: 10 }, &mut rng);
+        assert!((10..=80).contains(&g), "inverted range normalized: rolled {}", g);
+    }
+
+    #[test]
+    fn build_migrant_seeds_gold_from_area() {
+        use crate::types::GoldRange;
+        let guard = open_db("build_gold");
+        let db = &guard.db;
+        let mut area = mk_area(db);
+        // Set a fixed range so we can assert the exact value.
+        area.migrant_starting_gold = GoldRange { min: 75, max: 75 };
+        area.immigration_name_pool = "test".to_string();
+        area.immigration_visual_profile = "test".to_string();
+        db.save_area_data(area.clone()).expect("save area");
+        mk_room(db, area.id, "home1", 1);
+
+        // Hand-built MigrationData so the test doesn't depend on scripts/data
+        // file layout.
+        let mut data = MigrationData::default();
+        data.name_pools.insert(
+            "test".to_string(),
+            NamePool {
+                male_first: vec!["Tarn".into()],
+                female_first: vec!["Mira".into()],
+                last: vec!["Vale".into()],
+            },
+        );
+        data.visual_profiles.insert(
+            "test".to_string(),
+            VisualProfile {
+                hair_colors: vec!["brown".into()],
+                hair_styles: vec!["short".into()],
+                eye_colors: vec!["green".into()],
+                skin_tones: vec!["fair".into()],
+                heights: vec!["medium".into()],
+                builds: vec!["lean".into()],
+                age_ranges: vec![AgeRange {
+                    label: "young adult".into(),
+                    min: 18,
+                    max: 30,
+                }],
+                marks: vec![],
+                mark_chance: 0.0,
+            },
+        );
+        let mut rng = rand::thread_rng();
+        let existing = std::collections::HashSet::new();
+        let migrant = build_migrant(&area, "home1", &data, &existing, &mut rng).expect("build");
+        assert_eq!(migrant.gold, 75, "build_migrant should seed gold from area range");
     }
 
     #[test]

@@ -66,6 +66,15 @@ pub struct UpdateAreaRequest {
     pub migration_interval_days: Option<u8>,
     pub migration_max_per_check: Option<u8>,
     pub immigration_guard_chance: Option<f32>,
+    /// Inclusive [min, max] range from which a new migrant's starting purse is rolled.
+    /// `{0, 0}` keeps legacy "broke at spawn" behavior.
+    pub migrant_starting_gold: Option<crate::types::GoldRange>,
+    /// Hourly area-treasury wage paid to migrant guards anywhere in this area.
+    pub guard_wage_per_hour: Option<i32>,
+    /// Hourly "patient visits" wage paid to migrant healers anywhere in this area.
+    pub healer_wage_per_hour: Option<i32>,
+    /// Hourly scrounging wage paid to migrant scavengers while away from home.
+    pub scavenger_wage_per_hour: Option<i32>,
     /// Per-flag overrides for the area's default_room_flags template.
     /// Absent keys preserve current state; unknown keys are ignored.
     pub default_room_flags: Option<std::collections::HashMap<String, bool>>,
@@ -276,6 +285,10 @@ async fn create_area(
         last_migration_check_day: None,
         immigration_variation_chances: crate::types::ImmigrationVariationChances::default(),
         immigration_family_chance: crate::types::ImmigrationFamilyChance::default(),
+        migrant_starting_gold: crate::types::GoldRange::default(),
+        guard_wage_per_hour: 0,
+        healer_wage_per_hour: 0,
+        scavenger_wage_per_hour: 0,
     };
 
     state
@@ -357,6 +370,21 @@ async fn update_area(
     }
     if let Some(v) = req.immigration_guard_chance {
         area.immigration_variation_chances.guard = v.clamp(0.0, 1.0);
+    }
+    if let Some(range) = req.migrant_starting_gold {
+        let lo = range.min.max(0);
+        let hi = range.max.max(0);
+        let (lo, hi) = if lo <= hi { (lo, hi) } else { (hi, lo) };
+        area.migrant_starting_gold = crate::types::GoldRange { min: lo, max: hi };
+    }
+    if let Some(v) = req.guard_wage_per_hour {
+        area.guard_wage_per_hour = v.max(0);
+    }
+    if let Some(v) = req.healer_wage_per_hour {
+        area.healer_wage_per_hour = v.max(0);
+    }
+    if let Some(v) = req.scavenger_wage_per_hour {
+        area.scavenger_wage_per_hour = v.max(0);
     }
     if let Some(map) = req.default_room_flags {
         apply_default_room_flag_overrides(&mut area.default_room_flags, &map);

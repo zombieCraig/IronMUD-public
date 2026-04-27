@@ -21,8 +21,17 @@ export interface Area {
   migration_max_per_check?: number;
   last_migration_check_day?: number | null;
   immigration_guard_chance?: number;
+  migrant_starting_gold?: GoldRange;
+  guard_wage_per_hour?: number;
+  healer_wage_per_hour?: number;
+  scavenger_wage_per_hour?: number;
   // Template RoomFlags copied into every newly-created room in this area.
   default_room_flags?: RoomFlags;
+}
+
+export interface GoldRange {
+  min: number;
+  max: number;
 }
 
 export interface AreaFlags {
@@ -332,6 +341,10 @@ export interface UpdateAreaRequest {
   migration_interval_days?: number;
   migration_max_per_check?: number;
   immigration_guard_chance?: number;
+  migrant_starting_gold?: GoldRange;
+  guard_wage_per_hour?: number;
+  healer_wage_per_hour?: number;
+  scavenger_wage_per_hour?: number;
   default_room_flags?: RoomFlags;
 }
 

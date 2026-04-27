@@ -49,6 +49,16 @@ pub fn build_social_cues(
         MoodState::Normal => {}
     }
 
+    // Poverty cue for simulated NPCs: surface "looks broke" so players (and
+    // builders) can see at a glance why a migrant is acting hungry. Tied to
+    // the same `low_gold_threshold` the simulation engine treats as the
+    // earnings priority floor.
+    if let Some(sim) = mobile.simulation.as_ref() {
+        if mobile.gold <= sim.low_gold_threshold {
+            cues.push("Their pockets look light — coins are scarce.".into());
+        }
+    }
+
     // Prefer a specific bereavement note ("mourning their father") when
     // we have one. Falls back to the generic "recent loss" line only if
     // the mourning window is active but we've lost the specific notes

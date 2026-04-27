@@ -515,6 +515,10 @@ fn run_command(args, connection_id) {
 //   aedit immigration max <n>
 //   aedit immigration workhours <start> <end>
 //   aedit immigration pay <gold>
+//   aedit immigration gold <min> <max>
+//   aedit immigration guardpay <gold/hour>
+//   aedit immigration healerpay <gold/hour>
+//   aedit immigration scavengerpay <gold/hour>
 //   aedit immigration clear_sim
 fn handle_immigration_subcommand(area, args, connection_id) {
     if args.len() < 1 {
@@ -528,6 +532,10 @@ fn handle_immigration_subcommand(area, args, connection_id) {
         let out7 = out6 + "max/check:  " + area.migration_max_per_check + "\n";
         let mcounts = count_migrants_in_area(area.prefix);
         let out8 = out7 + "current:    " + format_migrant_counts(mcounts) + "\n";
+        let gold_line = "starting gold: " + area.migrant_starting_gold_min + "-" + area.migrant_starting_gold_max + " gold\n";
+        let wages_line = "role wages/hr: guard=" + area.guard_wage_per_hour
+            + " healer=" + area.healer_wage_per_hour
+            + " scavenger=" + area.scavenger_wage_per_hour + "\n";
         let variations_summary = format_variations_summary(area);
         let usage = "\nSubcommands:\n" +
             "  immigration on|off\n" +
@@ -537,12 +545,16 @@ fn handle_immigration_subcommand(area, args, connection_id) {
             "  immigration interval <1-30>\n" +
             "  immigration max <n>\n" +
             "  immigration workhours <start> <end>\n" +
-            "  immigration pay <gold>\n" +
+            "  immigration pay <gold>          (per-shift wage at work_room)\n" +
+            "  immigration gold <min> <max>    (starting purse range for new migrants)\n" +
+            "  immigration guardpay <gold/hr>  (area-treasury wages for guard variation)\n" +
+            "  immigration healerpay <gold/hr> (patient visit income for healer variation)\n" +
+            "  immigration scavengerpay <gold/hr> (scrounging income for scavenger variation)\n" +
             "  immigration clear_sim\n" +
             "  immigration variations [...] (per-role spawn chances)\n" +
             "  immigration family_chances [...] (parent+child, sibling_pair)\n" +
             "  immigration list              (show migrants who've moved in)";
-        send_client_message(connection_id, out8 + variations_summary + usage);
+        send_client_message(connection_id, out8 + gold_line + wages_line + variations_summary + usage);
         return;
     }
 
@@ -659,6 +671,47 @@ fn handle_immigration_subcommand(area, args, connection_id) {
         let pay = parse_int(args[1]);
         set_area_migrant_sim_work_pay(area.id, pay);
         send_client_message(connection_id, "Migrant work pay set to " + pay + " gold.");
+        return;
+    }
+
+    if sub == "gold" {
+        if args.len() < 3 {
+            send_client_message(
+                connection_id,
+                "Usage: aedit immigration gold <min> <max>\n" +
+                "  Starting purse range. Set both to 0 for the legacy broke-on-arrival default."
+            );
+            return;
+        }
+        let lo = parse_int(args[1]);
+        let hi = parse_int(args[2]);
+        if lo < 0 || hi < 0 {
+            send_client_message(connection_id, "Gold values must be non-negative.");
+            return;
+        }
+        set_area_migrant_starting_gold(area.id, lo, hi);
+        send_client_message(connection_id, "Migrant starting gold range set to " + lo + "-" + hi + ".");
+        return;
+    }
+
+    if sub == "guardpay" || sub == "healerpay" || sub == "scavengerpay" {
+        let role = if sub == "guardpay" { "guard" } else if sub == "healerpay" { "healer" } else { "scavenger" };
+        if args.len() < 2 {
+            send_client_message(
+                connection_id,
+                "Usage: aedit immigration " + sub + " <gold/hour>\n" +
+                "  Hourly area-treasury wage for migrants of variation '" + role + "'.\n" +
+                "  Set to 0 to disable. Paid anywhere in this area (scavengers must be away from home)."
+            );
+            return;
+        }
+        let gold = parse_int(args[1]);
+        if gold < 0 {
+            send_client_message(connection_id, "Wage must be non-negative.");
+            return;
+        }
+        set_area_role_wage(area.id, role, gold);
+        send_client_message(connection_id, "Hourly " + role + " wage set to " + gold + " gold.");
         return;
     }
 

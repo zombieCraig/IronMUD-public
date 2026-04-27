@@ -83,6 +83,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             last_migration_check_day: None,
             immigration_variation_chances: crate::types::ImmigrationVariationChances::default(),
             immigration_family_chance: crate::types::ImmigrationFamilyChance::default(),
+            migrant_starting_gold: crate::types::GoldRange::default(),
+            guard_wage_per_hour: 0,
+            healer_wage_per_hour: 0,
+            scavenger_wage_per_hour: 0,
         };
         if let Err(e) = cloned_db.save_area_data(area.clone()) {
             tracing::error!("Failed to save new area: {}", e);
@@ -124,6 +128,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 last_migration_check_day: None,
                 immigration_variation_chances: crate::types::ImmigrationVariationChances::default(),
                 immigration_family_chance: crate::types::ImmigrationFamilyChance::default(),
+                migrant_starting_gold: crate::types::GoldRange::default(),
+                guard_wage_per_hour: 0,
+                healer_wage_per_hour: 0,
+                scavenger_wage_per_hour: 0,
             };
             if let Err(e) = cloned_db.save_area_data(area.clone()) {
                 tracing::error!("Failed to save new area: {}", e);
@@ -1476,6 +1484,49 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                     match shape.as_str() {
                         "parent_child" => area.immigration_family_chance.parent_child = c,
                         "sibling_pair" => area.immigration_family_chance.sibling_pair = c,
+                        _ => return false,
+                    }
+                    return cloned_db.save_area_data(area).is_ok();
+                }
+            }
+            false
+        },
+    );
+
+    // set_area_migrant_starting_gold(area_id, min, max) -> bool
+    // Inclusive range; the migration tick rolls within it for each new migrant.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_area_migrant_starting_gold",
+        move |area_id: String, min: i64, max: i64| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+                    let lo = (min.clamp(0, i32::MAX as i64)) as i32;
+                    let hi = (max.clamp(0, i32::MAX as i64)) as i32;
+                    let (lo, hi) = if lo <= hi { (lo, hi) } else { (hi, lo) };
+                    area.migrant_starting_gold = crate::types::GoldRange { min: lo, max: hi };
+                    return cloned_db.save_area_data(area).is_ok();
+                }
+            }
+            false
+        },
+    );
+
+    // set_area_role_wage(area_id, role, gold) -> bool
+    // role: "guard" | "healer" | "scavenger". Negative values clamped to 0.
+    // Adding a new role: append a match arm + AreaData field + getter in
+    // src/script/mod.rs.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_area_role_wage",
+        move |area_id: String, role: String, gold: i64| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+                    let v = gold.clamp(0, i32::MAX as i64) as i32;
+                    match role.as_str() {
+                        "guard" => area.guard_wage_per_hour = v,
+                        "healer" => area.healer_wage_per_hour = v,
+                        "scavenger" => area.scavenger_wage_per_hour = v,
                         _ => return false,
                     }
                     return cloned_db.save_area_data(area).is_ok();

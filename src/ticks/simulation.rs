@@ -136,7 +136,10 @@ fn process_simulated_npc(
     check_work_payment(db, mobile, &config, &mut needs, current_hour, connections)?;
 
     // Step 5: Execute arrived-at-destination actions
-    execute_arrival_actions(db, connections, mobile, &config, &mut needs)?;
+    execute_arrival_actions(db, connections, mobile, &config, &mut needs, now)?;
+
+    // Step 5a: Scavenger flavor — pick up loose items in non-shop, non-home rooms.
+    maybe_scavenge_pickup(db, connections, mobile, &config)?;
 
     // Step 5b: Regenerate HP while resting at home
     regenerate_hp(db, mobile, &config, &needs)?;
@@ -228,38 +231,106 @@ fn check_work_payment(
         needs.paid_this_shift = false;
     }
 
-    // Hourly payment: only when the game hour just changed, we're within work
-    // hours, and the mobile is actually Working at the work room.
+    // Both wage paths fire on game-hour boundaries only; otherwise migrants
+    // would earn a full hour's wage every tick (twice per real minute).
     let hour_changed = current_hour != needs.last_tick_hour;
-    if !hour_changed || !is_work {
-        return Ok(());
-    }
-    if needs.current_goal != SimGoal::Working {
-        return Ok(());
-    }
-    if !is_at_room(db, mobile, &config.work_room_vnum)? {
+    if !hour_changed {
         return Ok(());
     }
 
-    let hourly = hourly_wage(config.work_pay, config.work_start_hour, config.work_end_hour);
-    if hourly <= 0 {
-        return Ok(());
+    // Path 1: configured-workplace wage. Pays for being Working at the
+    // configured `work_room_vnum` during work hours.
+    let mut paid_this_tick = false;
+    if is_work && needs.current_goal == SimGoal::Working && is_at_room(db, mobile, &config.work_room_vnum)? {
+        let hourly = hourly_wage(config.work_pay, config.work_start_hour, config.work_end_hour);
+        if hourly > 0 {
+            mobile.gold += hourly;
+            needs.paid_this_shift = true;
+            paid_this_tick = true;
+            debug!(
+                "Simulation: {} earned {} gold for this hour of work (total gold now {})",
+                mobile.name, hourly, mobile.gold
+            );
+            if let Some(room_id) = mobile.current_room_id {
+                broadcast_to_room_awake(
+                    connections,
+                    &room_id,
+                    &format!("{} pockets an hour's wages.", mobile.name),
+                );
+            }
+        }
     }
-    mobile.gold += hourly;
-    needs.paid_this_shift = true;
-    debug!(
-        "Simulation: {} earned {} gold for this hour of work (total gold now {})",
-        mobile.name, hourly, mobile.gold
-    );
 
-    if let Some(room_id) = mobile.current_room_id {
-        broadcast_to_room_awake(
-            connections,
-            &room_id,
-            &format!("{} pockets an hour's wages.", mobile.name),
-        );
+    // Path 2: role wages from the area treasury. Lets migrant guards / healers /
+    // scavengers earn even when they have no `work_room_vnum` configured. Pays
+    // anywhere in their resident area (scavenger excluded at home — they have
+    // to actually be out scrounging). Does not double-pay if path 1 already fired.
+    if !paid_this_tick {
+        if let Some(amount) = role_hourly_wage(db, mobile)? {
+            if amount > 0 {
+                mobile.gold += amount;
+                debug!(
+                    "Simulation: {} earned {} gold in role wages (total gold now {})",
+                    mobile.name, amount, mobile.gold
+                );
+                if let Some(room_id) = mobile.current_room_id {
+                    broadcast_to_room_awake(
+                        connections,
+                        &room_id,
+                        &format!("{} tucks away a few coins from the day's labor.", mobile.name),
+                    );
+                }
+            }
+        }
     }
+
     Ok(())
+}
+
+/// Hourly area-treasury wage for a migrant variation, or None if the mobile
+/// doesn't qualify (no role flag, not in their resident area, scavenger at
+/// home, or area has the wage set to 0). Read-only — does not mutate.
+fn role_hourly_wage(db: &db::Db, mobile: &MobileData) -> Result<Option<i32>> {
+    let resident_vnum = match mobile.resident_of.as_deref() {
+        Some(v) if !v.is_empty() => v,
+        _ => return Ok(None),
+    };
+    let home_room = match db.get_room_by_vnum(resident_vnum)? {
+        Some(r) => r,
+        None => return Ok(None),
+    };
+    let area_id = match home_room.area_id {
+        Some(a) => a,
+        None => return Ok(None),
+    };
+    let cur_room_id = match mobile.current_room_id {
+        Some(id) => id,
+        None => return Ok(None),
+    };
+    let cur_area = match db.get_room_data(&cur_room_id)? {
+        Some(r) => r.area_id,
+        None => None,
+    };
+    if cur_area != Some(area_id) {
+        return Ok(None);
+    }
+    let area = match db.get_area_data(&area_id)? {
+        Some(a) => a,
+        None => return Ok(None),
+    };
+    if mobile.flags.guard && area.guard_wage_per_hour > 0 {
+        return Ok(Some(area.guard_wage_per_hour));
+    }
+    if mobile.flags.healer && area.healer_wage_per_hour > 0 {
+        return Ok(Some(area.healer_wage_per_hour));
+    }
+    if mobile.flags.scavenger && area.scavenger_wage_per_hour > 0 {
+        // Scavengers only earn while out (not parked at their home room).
+        if cur_room_id != home_room.id {
+            return Ok(Some(area.scavenger_wage_per_hour));
+        }
+    }
+    Ok(None)
 }
 
 fn is_within_work_hours(hour: u8, start: u8, end: u8) -> bool {
@@ -323,6 +394,9 @@ fn decide_goal(
         .get_items_in_mobile_inventory(&mobile.id)?
         .iter()
         .any(|i| i.item_type == ItemType::Food);
+    // `can_obtain_food` is only used for the "interrupt work" branch below;
+    // off-shift food-seeking is no longer gated on it because the home-relief
+    // fallback (`try_home_relief`) lets a broke NPC still acquire food.
     let can_obtain_food = has_food || mobile.gold > 0;
     let work_room_set = !config.work_room_vnum.is_empty();
 
@@ -387,14 +461,12 @@ fn decide_goal(
         return Ok(SimGoal::SeekSleep);
     }
 
-    // Hungry with means
-    if needs.hunger <= 30 && can_obtain_food {
+    // Hungry: always try to address it. `set_destination` + `execute_arrival_actions`
+    // know how to route the NPC — to a shop if they can pay, otherwise home for the
+    // charity / forage fallback in `try_home_relief`. The previous "broke + hungry
+    // → sleep" catch-22 trapped migrants in a hallway-pacing loop, so it's gone.
+    if needs.hunger <= 30 {
         return Ok(SimGoal::SeekFood);
-    }
-
-    // Hungry with no recourse: conserve by sleeping rather than starving awake
-    if needs.hunger <= 15 && !can_obtain_food {
-        return Ok(SimGoal::SeekSleep);
     }
 
     if needs.comfort <= 20 {
@@ -425,10 +497,12 @@ fn execute_arrival_actions(
     mobile: &mut MobileData,
     config: &SimulationConfig,
     needs: &mut NeedsState,
+    now: i64,
 ) -> Result<()> {
     match needs.current_goal {
         SimGoal::SeekFood => {
-            // Prefer eating food we already carry; otherwise (re)visit a shop.
+            // Prefer eating food we already carry; otherwise (re)visit a shop,
+            // or — if we're broke and at home — attempt charity / forage relief.
             let inventory = db.get_items_in_mobile_inventory(&mobile.id)?;
             let food = inventory.iter().find(|i| i.item_type == ItemType::Food).cloned();
 
@@ -454,6 +528,9 @@ fn execute_arrival_actions(
                 };
                 if at_assigned_shop || here_has_food_shopkeeper {
                     try_buy_food(db, connections, mobile, config, needs)?;
+                } else if is_at_room(db, mobile, &config.home_room_vnum)? {
+                    // Broke + hungry + at home: roll the charity / forage fallback.
+                    try_home_relief(db, connections, mobile, config, needs, now)?;
                 }
             }
         }
@@ -629,7 +706,7 @@ fn try_buy_food(
         Some(v) => v,
         None => {
             // Nothing affordable here. Try the next shop in this area; only give
-            // up the goal once we've exhausted every shop this hunger cycle.
+            // up shopping once we've exhausted every shop this hunger cycle.
             if !needs.tried_shops_this_cycle.contains(&room_id) {
                 needs.tried_shops_this_cycle.push(room_id);
             }
@@ -641,18 +718,23 @@ fn try_buy_food(
                 );
                 return Ok(());
             }
+            // All shops tried and nothing affordable. Head home so `try_home_relief`
+            // can attempt charity / forage. Goal stays SeekFood so the arrival
+            // handler runs the relief path; tried_shops_this_cycle resets only on
+            // a successful eat (so we don't bounce back into the same loop).
             broadcast_to_room_awake(
                 connections,
                 &room_id,
                 &format!("{} counts their coins and looks disappointed.", mobile.name),
             );
             debug!(
-                "Simulation: {} can't afford food at any shop (has {} gold)",
+                "Simulation: {} can't afford food at any shop (has {} gold), heading home",
                 mobile.name, mobile.gold
             );
-            needs.current_goal = SimGoal::Idle;
-            mobile.routine_destination_room = None;
-            needs.tried_shops_this_cycle.clear();
+            mobile.routine_destination_room = match db.get_room_by_vnum(&config.home_room_vnum)? {
+                Some(r) => Some(r.id),
+                None => None,
+            };
             return Ok(());
         }
     };
@@ -683,6 +765,188 @@ fn try_buy_food(
         eat_food_item(db, connections, mobile, needs, config, &spawned, room_id)?;
     }
 
+    Ok(())
+}
+
+/// Minimum real-time seconds between consecutive home-relief attempts for one
+/// NPC. Prevents the charity/forage fallback from firing every tick when the
+/// mobile is parked at home with hunger still under threshold.
+const HOME_RELIEF_COOLDOWN_SECS: i64 = 60;
+/// Cohabitant must have at least this much gold before they'll lend a hand.
+const COHABITANT_CHARITY_RESERVE: i32 = 20;
+/// How much gold a willing cohabitant transfers when charity fires.
+const COHABITANT_CHARITY_AMOUNT: i32 = 10;
+/// Probability a forage roll yields a meal at all (avoids guaranteed free food).
+const FORAGE_FALLBACK_CHANCE: f32 = 0.5;
+
+/// Charity + forage fallback fired when a hungry, broke NPC arrives home with
+/// no shop options left. Tries cohabitant charity first, then a one-shot forage
+/// roll against the area's city/wilderness table. On success the NPC eats
+/// immediately. On failure broadcasts a hungry emote and sets goal=Idle so the
+/// outer loop doesn't burn cycles re-trying every tick — `last_relief_attempt`
+/// + `HOME_RELIEF_COOLDOWN_SECS` provides additional throttle.
+fn try_home_relief(
+    db: &db::Db,
+    connections: &SharedConnections,
+    mobile: &mut MobileData,
+    config: &SimulationConfig,
+    needs: &mut NeedsState,
+    now: i64,
+) -> Result<()> {
+    if now - needs.last_relief_attempt < HOME_RELIEF_COOLDOWN_SECS {
+        return Ok(());
+    }
+    needs.last_relief_attempt = now;
+
+    let room_id = match mobile.current_room_id {
+        Some(id) => id,
+        None => return Ok(()),
+    };
+
+    // Step A: cohabitant charity. The cohabitant must be in this very room
+    // (i.e. they're home too) so the broadcast lands somewhere believable.
+    let cohab_id = mobile
+        .relationships
+        .iter()
+        .find(|r| r.kind == ironmud::RelationshipKind::Cohabitant)
+        .map(|r| r.other_id);
+    if let Some(cohab_id) = cohab_id {
+        if let Some(cohab) = db.get_mobile_data(&cohab_id)? {
+            let here = cohab.current_room_id == Some(room_id);
+            if here && !cohab.is_prototype && cohab.current_hp > 0 && cohab.gold >= COHABITANT_CHARITY_RESERVE {
+                db.update_mobile(&cohab_id, |m| {
+                    m.gold = (m.gold - COHABITANT_CHARITY_AMOUNT).max(0);
+                })?;
+                mobile.gold += COHABITANT_CHARITY_AMOUNT;
+                broadcast_to_room_awake(
+                    connections,
+                    &room_id,
+                    &format!("{} presses a few coins into {}'s hand.", cohab.name, mobile.name),
+                );
+                debug!(
+                    "Simulation: {} received {} gold from cohabitant {}",
+                    mobile.name, COHABITANT_CHARITY_AMOUNT, cohab.name
+                );
+                // Charity gave them coins — clear the tried-shops list so the next
+                // hunger cycle can revisit shops with the new budget.
+                needs.tried_shops_this_cycle.clear();
+                return Ok(());
+            }
+        }
+    }
+
+    // Step B: forage scraps from the area's city/wilderness table. Picks one
+    // entry uniformly; spawn + eat only if the entry resolves to a Food prototype.
+    let mut rng = rand::thread_rng();
+    if rng.r#gen::<f32>() < FORAGE_FALLBACK_CHANCE {
+        if let Some(food_item) = try_forage_food(db, mobile, room_id, &mut rng)? {
+            broadcast_to_room_awake(
+                connections,
+                &room_id,
+                &format!("{} scrounges up some {}.", mobile.name, food_item.name),
+            );
+            eat_food_item(db, connections, mobile, needs, config, &food_item, room_id)?;
+            return Ok(());
+        }
+    }
+
+    // Both fallbacks failed. Surface a hungry emote and stand down so we don't
+    // burn every tick re-running the relief path.
+    broadcast_to_room_awake(
+        connections,
+        &room_id,
+        &format!("{} eyes the empty cupboard with a hollow stomach.", mobile.name),
+    );
+    needs.current_goal = SimGoal::Idle;
+    mobile.routine_destination_room = None;
+    Ok(())
+}
+
+/// Roll one entry from the area's appropriate forage table (city by default,
+/// wilderness if the home room is wilderness-flagged). Returns the spawned food
+/// item placed in the mobile's inventory, or None if the table is empty / no
+/// entry resolves to a Food prototype.
+fn try_forage_food<R: Rng>(db: &db::Db, mobile: &MobileData, room_id: Uuid, rng: &mut R) -> Result<Option<ItemData>> {
+    let room = match db.get_room_data(&room_id)? {
+        Some(r) => r,
+        None => return Ok(None),
+    };
+    let area_id = match room.area_id {
+        Some(a) => a,
+        None => return Ok(None),
+    };
+    let area = match db.get_area_data(&area_id)? {
+        Some(a) => a,
+        None => return Ok(None),
+    };
+
+    // Wilderness rooms (dirt floor, etc.) draw from the wilderness table; default
+    // to the city table for everything else, including standard apartments.
+    let table = if room.flags.dirt_floor && !area.wilderness_forage_table.is_empty() {
+        &area.wilderness_forage_table
+    } else if !area.city_forage_table.is_empty() {
+        &area.city_forage_table
+    } else if !area.wilderness_forage_table.is_empty() {
+        &area.wilderness_forage_table
+    } else {
+        return Ok(None);
+    };
+
+    let entry = &table[rng.gen_range(0..table.len())];
+    let proto = match db.get_item_by_vnum(&entry.vnum)? {
+        Some(p) => p,
+        None => return Ok(None),
+    };
+    if proto.item_type != ItemType::Food {
+        return Ok(None);
+    }
+    let spawned = match db.spawn_item_from_prototype(&entry.vnum)? {
+        Some(item) => item,
+        None => return Ok(None),
+    };
+    db.move_item_to_mobile_inventory(&spawned.id, &mobile.id)?;
+    Ok(Some(spawned))
+}
+
+/// Per-tick chance for a scavenger NPC to pocket one item from their current
+/// room. Skips shopkeeper rooms (would be stealing) and the home room
+/// (housemates' belongings). Requires `flags.scavenger`.
+fn maybe_scavenge_pickup(
+    db: &db::Db,
+    connections: &SharedConnections,
+    mobile: &mut MobileData,
+    config: &SimulationConfig,
+) -> Result<()> {
+    if !mobile.flags.scavenger {
+        return Ok(());
+    }
+    let room_id = match mobile.current_room_id {
+        Some(id) => id,
+        None => return Ok(()),
+    };
+    if is_at_room(db, mobile, &config.home_room_vnum)? {
+        return Ok(());
+    }
+    let mobiles_here = db.get_mobiles_in_room(&room_id)?;
+    if mobiles_here.iter().any(|m| m.flags.shopkeeper && !m.is_prototype) {
+        return Ok(());
+    }
+    let items = db.get_items_in_room(&room_id)?;
+    if items.is_empty() {
+        return Ok(());
+    }
+    let mut rng = rand::thread_rng();
+    if rng.r#gen::<f32>() > 0.25 {
+        return Ok(());
+    }
+    let pick = &items[rng.gen_range(0..items.len())];
+    db.move_item_to_mobile_inventory(&pick.id, &mobile.id)?;
+    broadcast_to_room_awake(
+        connections,
+        &room_id,
+        &format!("{} pockets {}.", mobile.name, pick.name),
+    );
+    debug!("Simulation: scavenger {} picked up {}", mobile.name, pick.name);
     Ok(())
 }
 
@@ -777,6 +1041,10 @@ fn set_destination(db: &db::Db, mobile: &mut MobileData, config: &SimulationConf
                 .any(|i| i.item_type == ItemType::Food);
             if has_food {
                 &config.home_room_vnum
+            } else if mobile.gold <= 0 || config.shop_room_vnum.is_empty() {
+                // Broke or no assigned shop: head home for charity/forage fallback.
+                // Arrival actions run `try_home_relief` once we're there.
+                &config.home_room_vnum
             } else {
                 // If the assigned shop has already been tried this hunger cycle,
                 // route to the next untried shop in the area instead.
@@ -790,8 +1058,11 @@ fn set_destination(db: &db::Db, mobile: &mut MobileData, config: &SimulationConf
                         mobile.routine_destination_room = if already_there { None } else { Some(other) };
                         return Ok(());
                     }
+                    // All shops in the area are tried and unaffordable. Fall back home.
+                    &config.home_room_vnum
+                } else {
+                    &config.shop_room_vnum
                 }
-                &config.shop_room_vnum
             }
         }
         SimGoal::GoingToWork | SimGoal::Working => &config.work_room_vnum,
@@ -1505,6 +1776,163 @@ mod tests {
             SimGoal::SeekSleep,
             "energy 25 should no longer trigger sleep off-shift"
         );
+    }
+
+    #[test]
+    fn broke_off_shift_now_seeks_food_for_relief() {
+        // Regression: prior catch-22 sent broke+hungry off-shift NPCs to sleep,
+        // trapping them in a hallway-pacing loop. Now they pick SeekFood so
+        // set_destination can route them home for charity / forage relief.
+        let g = open_db("broke_off_seekfood");
+        save_room(&g.db, "test:home");
+        save_room(&g.db, "test:shop");
+        save_room(&g.db, "test:work");
+
+        let mut mobile = MobileData::new("Matilda".to_string());
+        mobile.gold = 0;
+        mobile.current_room_id = Some(uuid::Uuid::new_v4());
+        g.db.save_mobile_data(mobile.clone()).expect("save mob");
+
+        let needs = NeedsState {
+            hunger: 20,
+            energy: 70,
+            comfort: 60,
+            ..Default::default()
+        };
+        let goal = decide_goal(&g.db, &mobile, &make_config(), &needs, 22).expect("decide");
+        assert_eq!(
+            goal,
+            SimGoal::SeekFood,
+            "broke + hungry + off-shift now SeekFood (relief at home), no longer SeekSleep"
+        );
+    }
+
+    #[test]
+    fn role_hourly_wage_pays_guard_in_resident_area() {
+        use ironmud::{
+            AreaData, AreaFlags, AreaPermission, CombatZoneType, GoldRange, ImmigrationFamilyChance,
+            ImmigrationVariationChances,
+        };
+
+        let g = open_db("role_wage_guard");
+        // Set up an area with a guard wage configured.
+        let area_id = uuid::Uuid::new_v4();
+        let area = AreaData {
+            id: area_id,
+            name: "T".into(),
+            prefix: "t".into(),
+            description: String::new(),
+            level_min: 0,
+            level_max: 0,
+            theme: String::new(),
+            owner: None,
+            permission_level: AreaPermission::AllBuilders,
+            trusted_builders: Vec::new(),
+            city_forage_table: Vec::new(),
+            wilderness_forage_table: Vec::new(),
+            shallow_water_forage_table: Vec::new(),
+            deep_water_forage_table: Vec::new(),
+            underwater_forage_table: Vec::new(),
+            combat_zone: CombatZoneType::Pve,
+            flags: AreaFlags::default(),
+            default_room_flags: RoomFlags::default(),
+            immigration_enabled: false,
+            immigration_room_vnum: String::new(),
+            immigration_name_pool: String::new(),
+            immigration_visual_profile: String::new(),
+            migration_interval_days: 0,
+            migration_max_per_check: 0,
+            migrant_sim_defaults: None,
+            last_migration_check_day: None,
+            immigration_variation_chances: ImmigrationVariationChances::default(),
+            immigration_family_chance: ImmigrationFamilyChance::default(),
+            migrant_starting_gold: GoldRange::default(),
+            guard_wage_per_hour: 25,
+            healer_wage_per_hour: 0,
+            scavenger_wage_per_hour: 0,
+        };
+        g.db.save_area_data(area).expect("save area");
+
+        // Home + a separate patrol room, both in the area.
+        let mut home = save_room(&g.db, "t:home");
+        home.area_id = Some(area_id);
+        g.db.save_room_data(home.clone()).expect("re-save home");
+        let mut patrol = save_room(&g.db, "t:street");
+        patrol.area_id = Some(area_id);
+        g.db.save_room_data(patrol.clone()).expect("re-save patrol");
+
+        // Guard mobile patrolling away from home, in their resident area.
+        let mut guard = MobileData::new("Garron".into());
+        guard.flags.guard = true;
+        guard.resident_of = Some("t:home".into());
+        guard.current_room_id = Some(patrol.id);
+        guard.gold = 0;
+
+        let wage = role_hourly_wage(&g.db, &guard).expect("role wage").expect("paid");
+        assert_eq!(wage, 25, "guard should earn area treasury wage");
+
+        // Same guard standing in a non-resident room earns nothing.
+        let outside = save_room(&g.db, "elsewhere:room");
+        guard.current_room_id = Some(outside.id);
+        let wage = role_hourly_wage(&g.db, &guard).expect("role wage outside");
+        assert!(wage.is_none(), "guard outside resident area earns nothing");
+    }
+
+    #[test]
+    fn role_hourly_wage_excludes_scavenger_at_home() {
+        use ironmud::{
+            AreaData, AreaFlags, AreaPermission, CombatZoneType, GoldRange, ImmigrationFamilyChance,
+            ImmigrationVariationChances,
+        };
+
+        let g = open_db("role_wage_scav");
+        let area_id = uuid::Uuid::new_v4();
+        let area = AreaData {
+            id: area_id,
+            name: "T".into(),
+            prefix: "t".into(),
+            description: String::new(),
+            level_min: 0,
+            level_max: 0,
+            theme: String::new(),
+            owner: None,
+            permission_level: AreaPermission::AllBuilders,
+            trusted_builders: Vec::new(),
+            city_forage_table: Vec::new(),
+            wilderness_forage_table: Vec::new(),
+            shallow_water_forage_table: Vec::new(),
+            deep_water_forage_table: Vec::new(),
+            underwater_forage_table: Vec::new(),
+            combat_zone: CombatZoneType::Pve,
+            flags: AreaFlags::default(),
+            default_room_flags: RoomFlags::default(),
+            immigration_enabled: false,
+            immigration_room_vnum: String::new(),
+            immigration_name_pool: String::new(),
+            immigration_visual_profile: String::new(),
+            migration_interval_days: 0,
+            migration_max_per_check: 0,
+            migrant_sim_defaults: None,
+            last_migration_check_day: None,
+            immigration_variation_chances: ImmigrationVariationChances::default(),
+            immigration_family_chance: ImmigrationFamilyChance::default(),
+            migrant_starting_gold: GoldRange::default(),
+            guard_wage_per_hour: 0,
+            healer_wage_per_hour: 0,
+            scavenger_wage_per_hour: 7,
+        };
+        g.db.save_area_data(area).expect("save area");
+        let mut home = save_room(&g.db, "t:home2");
+        home.area_id = Some(area_id);
+        g.db.save_room_data(home.clone()).expect("re-save home");
+
+        let mut scav = MobileData::new("Sif".into());
+        scav.flags.scavenger = true;
+        scav.resident_of = Some("t:home2".into());
+        scav.current_room_id = Some(home.id);
+
+        let wage = role_hourly_wage(&g.db, &scav).expect("role wage at home");
+        assert!(wage.is_none(), "scavenger at home does not earn");
     }
 
     #[test]
