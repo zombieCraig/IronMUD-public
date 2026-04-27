@@ -17,7 +17,7 @@ jobs:
     name: fmt + test
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         # Pin to 1.91 — matrix-sdk 0.16 hits a query-depth regression on
@@ -45,7 +45,7 @@ jobs:
     name: cargo audit
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
