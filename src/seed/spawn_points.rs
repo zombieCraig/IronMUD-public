@@ -25,6 +25,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     // Merchant in the general store
@@ -40,6 +41,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     // Priestess in the temple
@@ -55,6 +57,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     // Barkeeper in the tavern
@@ -70,6 +73,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     // Postmaster in the post office
@@ -85,6 +89,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     // Banker in the bank
@@ -100,6 +105,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     // Leasing agent at cottage lane
@@ -115,6 +121,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     // Village guard — patrols, spawns at town square
@@ -131,6 +138,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     // ── Iron Keep NPCs ───────────────────────────────────────────
@@ -148,6 +156,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     // Keep knight at gatehouse — spawns with the gate key equipped
@@ -168,6 +177,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
             count: 1,
             chance: 100,
         }],
+        bury_on_spawn: false,
     });
 
     // ── Whispering Woods Enemies ─────────────────────────────────
@@ -185,6 +195,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     // Wolf #2 on the deep trail
@@ -200,6 +211,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     // ── Shadowfang Caves Enemies ─────────────────────────────────
@@ -217,6 +229,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     // Goblin #2 in twisting tunnels
@@ -232,6 +245,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     // Cave spider in the spider nest
@@ -247,6 +261,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     // Shadow Drake in the drake lair — boss, long respawn, chance to drop shadow blade
@@ -275,6 +290,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
                 chance: 100,
             },
         ],
+        bury_on_spawn: false,
     });
 
     // ── Hilltop Farm NPCs ────────────────────────────────────────
@@ -292,6 +308,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     // ── Static Item Spawns ───────────────────────────────────────
@@ -309,6 +326,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     // Glowing mushroom in the fungal grotto
@@ -324,6 +342,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     // Torch at the cave entrance
@@ -339,6 +358,7 @@ pub fn seed_spawn_points(db: &Db) -> Result<()> {
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: false,
     });
 
     for spawn in spawns {

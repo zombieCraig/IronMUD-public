@@ -3912,3 +3912,151 @@ fn test_mobile_dot_flags_apply_on_hit() {
     apply_mobile_on_hit_dots(&plain, &mut plain_effects, "body");
     assert!(plain_effects.is_empty(), "no flags → no on-hit DoTs");
 }
+
+#[test]
+fn test_buried_flag_and_lock_vnums_round_trip() {
+    use ironmud::ItemData;
+    use ironmud::db::Db;
+    use ironmud::types::DoorState;
+
+    let db_path = format!("test_buried_lock_vnums_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        // Buried + can_dig + detect_buried flag persistence
+        let mut chest = ItemData::new(
+            "chest".to_string(),
+            "a battered iron chest".to_string(),
+            "A battered iron chest is half-buried in the dirt.".to_string(),
+        );
+        chest.flags.buried = true;
+        chest.container_locked = true;
+        chest.container_key_vnum = Some("pirate:pirate_key".to_string());
+        let chest_id = chest.id;
+        db.save_item_data(chest).expect("save chest");
+
+        let loaded = db.get_item_data(&chest_id).expect("get").expect("present");
+        assert!(loaded.flags.buried, "buried flag persists");
+        assert!(loaded.container_locked, "locked persists");
+        assert_eq!(
+            loaded.container_key_vnum.as_deref(),
+            Some("pirate:pirate_key"),
+            "container key vnum persists",
+        );
+
+        // can_dig and detect_buried persist
+        let mut shovel = ItemData::new(
+            "shovel".to_string(),
+            "a sturdy iron shovel".to_string(),
+            "A sturdy iron shovel.".to_string(),
+        );
+        shovel.flags.can_dig = true;
+        let shovel_id = shovel.id;
+        db.save_item_data(shovel).expect("save shovel");
+        let loaded_shovel = db.get_item_data(&shovel_id).expect("get").expect("present");
+        assert!(loaded_shovel.flags.can_dig, "can_dig persists");
+
+        let mut detector = ItemData::new(
+            "detector".to_string(),
+            "a humming brass detector".to_string(),
+            "A brass detector hums softly.".to_string(),
+        );
+        detector.flags.detect_buried = true;
+        let detector_id = detector.id;
+        db.save_item_data(detector).expect("save detector");
+        let loaded_det = db.get_item_data(&detector_id).expect("get").expect("present");
+        assert!(loaded_det.flags.detect_buried, "detect_buried persists");
+
+        // Door key_vnum persistence: construct DoorState directly and verify it serdes
+        let door = DoorState {
+            name: "iron-bound door".to_string(),
+            is_closed: true,
+            is_locked: true,
+            key_vnum: Some("pirate:pirate_key".to_string()),
+            description: None,
+            keywords: vec!["door".to_string()],
+        };
+        let json = serde_json::to_string(&door).expect("serialize door");
+        assert!(
+            json.contains("pirate:pirate_key"),
+            "key_vnum is in the serialized form: {}",
+            json
+        );
+        let round_tripped: DoorState = serde_json::from_str(&json).expect("deserialize door");
+        assert_eq!(
+            round_tripped.key_vnum.as_deref(),
+            Some("pirate:pirate_key"),
+            "door key_vnum survives round-trip"
+        );
+        // Old serialized form (with key_id field) should default to None thanks to #[serde(default)]
+        let legacy = "{\"name\":\"old door\",\"is_closed\":true,\"is_locked\":true,\"keywords\":[]}";
+        let legacy_door: DoorState = serde_json::from_str(legacy).expect("legacy deser");
+        assert!(legacy_door.key_vnum.is_none(), "missing key_vnum defaults to None");
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_spawn_point_bury_on_spawn_field_persists() {
+    use ironmud::db::Db;
+    use ironmud::types::{SpawnEntityType, SpawnPointData};
+    use uuid::Uuid;
+
+    let db_path = format!("test_spawn_point_bury_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let sp = SpawnPointData {
+            id: Uuid::new_v4(),
+            area_id: Uuid::new_v4(),
+            room_id: Uuid::new_v4(),
+            entity_type: SpawnEntityType::Item,
+            vnum: "pirate:pirate_chest".to_string(),
+            max_count: 1,
+            respawn_interval_secs: 300,
+            enabled: true,
+            last_spawn_time: 0,
+            spawned_entities: Vec::new(),
+            dependencies: Vec::new(),
+            bury_on_spawn: true,
+        };
+        let sp_id = sp.id;
+        db.save_spawn_point(sp).expect("save spawn point");
+
+        let loaded = db.get_spawn_point(&sp_id).expect("get").expect("present");
+        assert!(loaded.bury_on_spawn, "bury_on_spawn persists across save/load");
+
+        // Default value (false) when not set explicitly via serde default fallback
+        let sp_no_bury = SpawnPointData {
+            id: Uuid::new_v4(),
+            area_id: Uuid::new_v4(),
+            room_id: Uuid::new_v4(),
+            entity_type: SpawnEntityType::Mobile,
+            vnum: "test:rat".to_string(),
+            max_count: 1,
+            respawn_interval_secs: 300,
+            enabled: true,
+            last_spawn_time: 0,
+            spawned_entities: Vec::new(),
+            dependencies: Vec::new(),
+            bury_on_spawn: false,
+        };
+        let sp_no_id = sp_no_bury.id;
+        db.save_spawn_point(sp_no_bury).expect("save");
+        let loaded_no = db.get_spawn_point(&sp_no_id).expect("get").expect("present");
+        assert!(!loaded_no.bury_on_spawn, "bury_on_spawn=false persists",);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}

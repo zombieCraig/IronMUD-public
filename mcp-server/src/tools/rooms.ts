@@ -143,7 +143,7 @@ export const roomToolDefinitions = [
         name: { type: "string", description: "Door name (e.g., 'wooden door')" },
         is_closed: { type: "boolean", default: true },
         is_locked: { type: "boolean", default: false },
-        key_id: { type: "string", description: "UUID of key that unlocks door" },
+        key_vnum: { type: "string", description: "Vnum of the key item that unlocks this door. Any spawned copy of that prototype works." },
         keywords: { type: "array", items: { type: "string" } },
         description: { type: "string" },
       },

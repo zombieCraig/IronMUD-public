@@ -28,6 +28,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_get("spawned_count", |sp: &mut SpawnPointData| {
             sp.spawned_entities.len() as i64
         })
+        .register_get("bury_on_spawn", |sp: &mut SpawnPointData| sp.bury_on_spawn)
         .register_get("dependency_count", |sp: &mut SpawnPointData| {
             sp.dependencies.len() as i64
         });
@@ -77,6 +78,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         last_spawn_time: 0,
                         spawned_entities: Vec::new(),
                         dependencies: Vec::new(),
+                        bury_on_spawn: false,
                     };
                     if cloned_db.save_spawn_point(sp.clone()).is_ok() {
                         rhai::Dynamic::from(sp)
@@ -165,6 +167,21 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             if let Ok(uuid) = uuid::Uuid::parse_str(&spawn_point_id) {
                 if let Ok(Some(mut sp)) = cloned_db.get_spawn_point(&uuid) {
                     sp.respawn_interval_secs = interval_secs;
+                    return cloned_db.save_spawn_point(sp).is_ok();
+                }
+            }
+            false
+        },
+    );
+
+    // set_spawn_point_bury_on_spawn(spawn_point_id, buried) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_spawn_point_bury_on_spawn",
+        move |spawn_point_id: String, buried: bool| {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&spawn_point_id) {
+                if let Ok(Some(mut sp)) = cloned_db.get_spawn_point(&uuid) {
+                    sp.bury_on_spawn = buried;
                     return cloned_db.save_spawn_point(sp).is_ok();
                 }
             }

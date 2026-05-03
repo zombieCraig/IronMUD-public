@@ -1343,8 +1343,8 @@ fn get_door_status_text(door) {
 fn format_door_list_entry(direction, door) {
     let status = get_door_status_text(door);
     let key_info = "";
-    if door.key_id != "" {
-        key_info = " (key required)";
+    if door.key_vnum != "" {
+        key_info = " (key: " + door.key_vnum + ")";
     }
     return "  " + direction + ": " + door.name + " [" + status + "]" + key_info + "\n";
 }
@@ -1462,7 +1462,7 @@ fn handle_door_key(room_id, parts, connection_id) {
     }
     let key_lower = key_arg.to_lower();
     if key_lower == "clear" || key_lower == "none" {
-        if set_door_key_by_vnum(room_id, direction, "") {
+        if set_door_key(room_id, direction, "") {
             send_client_message(connection_id, "Key requirement cleared from door.");
         } else {
             send_client_message(connection_id, "Failed to clear key requirement.");
@@ -1471,13 +1471,13 @@ fn handle_door_key(room_id, parts, connection_id) {
     }
     let item = get_item_by_vnum(key_arg);
     if item == () {
-        send_client_message(connection_id, "Item not found with vnum: " + key_arg);
+        send_client_message(connection_id, "Item prototype not found with vnum: " + key_arg);
         return;
     }
     if !item.is_key {
         send_client_message(connection_id, "Warning: " + item.name + " is not a key-type item (but setting it anyway).");
     }
-    if set_door_key_by_vnum(room_id, direction, key_arg) {
+    if set_door_key(room_id, direction, key_arg) {
         send_client_message(connection_id, "Door now requires key: " + item.name + " (vnum: " + key_arg + ")");
     } else {
         send_client_message(connection_id, "Failed to set key requirement.");
@@ -1539,9 +1539,9 @@ fn handle_door_sync(room_id, parts, connection_id) {
     if desc != "" {
         set_door_description(target_room_id, opposite, desc);
     }
-    let key_id = door.key_id;
-    if key_id != "" {
-        set_door_key(target_room_id, opposite, key_id);
+    let key_vnum = door.key_vnum;
+    if key_vnum != "" {
+        set_door_key(target_room_id, opposite, key_vnum);
     }
     set_door_closed(target_room_id, opposite, door.is_closed);
     set_door_locked(target_room_id, opposite, door.is_locked);

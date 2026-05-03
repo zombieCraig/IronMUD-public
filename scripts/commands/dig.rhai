@@ -1,6 +1,6 @@
 // scripts/commands/dig.rhai
-// Usage: dig <direction> [title]
-// Creates a new room and connects it bidirectionally
+// Player usage: dig                       (unearth buried items in a dirt_floor room)
+// Builder usage: dig <direction> [title]  (creates a new linked room)
 
 fn get_opposite_direction(dir) {
     if dir == "north" { return "south"; }
@@ -23,6 +23,54 @@ fn normalize_direction(dir) {
     return d;
 }
 
+fn can_player_dig(char) {
+    let r = char.race.to_lower();
+    if r == "canine" || r == "gnoll" || r == "kobold" {
+        return #{ ok: true, source: "your claws" };
+    }
+    let inv = get_items_in_inventory(char.name);
+    for item in inv {
+        if item.flags.can_dig {
+            return #{ ok: true, source: item.short_desc };
+        }
+    }
+    let eq = get_equipped_items(char.name);
+    for item in eq {
+        if item.flags.can_dig {
+            return #{ ok: true, source: item.short_desc };
+        }
+    }
+    return #{ ok: false, source: "" };
+}
+
+fn run_treasure_dig(char, connection_id) {
+    let room = get_room_data(char.current_room_id);
+    if room == () {
+        send_client_message(connection_id, "Error: You're not in a valid room.");
+        return;
+    }
+    if !room.flags.dirt_floor {
+        send_client_message(connection_id, "The ground here is too hard to dig.");
+        return;
+    }
+    let gate = can_player_dig(char);
+    if !gate.ok {
+        send_client_message(connection_id, "You need something to dig with.");
+        return;
+    }
+    let buried = get_buried_items_in_room(char.current_room_id);
+    if buried.len() == 0 {
+        send_client_message(connection_id, "You dig around with " + gate.source + " but find nothing.");
+        broadcast_to_room_except(char.current_room_id, connection_id, char.name + " digs around in the dirt.");
+        return;
+    }
+    for item in buried {
+        set_item_buried(item.id, false);
+        send_client_message(connection_id, "You unearth " + item.short_desc + "!");
+        broadcast_to_room_except(char.current_room_id, connection_id, char.name + " digs up " + item.short_desc + ".");
+    }
+}
+
 fn run_command(args, connection_id) {
     let char = get_player_character(connection_id);
     if char == () {
@@ -30,27 +78,22 @@ fn run_command(args, connection_id) {
         return;
     }
 
-    // Parse arguments: direction [title...]
     let parts = args.split(" ");
-    if parts.len() < 1 || parts[0] == "" {
-        send_client_message(connection_id, "Usage: dig <direction> [title]\nExample: dig north The Dark Forest");
-        return;
-    }
-
-    let direction = normalize_direction(parts[0]);
+    let first = "";
+    if parts.len() >= 1 { first = normalize_direction(parts[0]); }
     let valid_dirs = ["north", "south", "east", "west", "up", "down"];
-
-    let is_valid = false;
+    let is_dir = false;
     for v in valid_dirs {
-        if direction == v {
-            is_valid = true;
-        }
+        if first == v { is_dir = true; }
     }
 
-    if !is_valid {
-        send_client_message(connection_id, "Invalid direction. Use: north, south, east, west, up, down (or n, s, e, w, u, d)");
+    // No-arg or non-direction arg: route to treasure dig
+    if !is_dir {
+        run_treasure_dig(char, connection_id);
         return;
     }
+
+    let direction = first;
 
     // Get current room
     let current_room = get_room_data(char.current_room_id);

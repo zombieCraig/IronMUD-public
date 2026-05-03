@@ -140,8 +140,15 @@ fn process_spawn_points(db: &db::Db, connections: &SharedConnections) -> Result<
                     Some(mobile.id)
                 }),
                 SpawnEntityType::Item => db.spawn_item_from_prototype(&sp.vnum)?.and_then(|item| {
-                    db.move_item_to_room(&item.id, &sp.room_id).ok();
-                    Some(item.id)
+                    let item_id = item.id;
+                    db.move_item_to_room(&item_id, &sp.room_id).ok();
+                    if sp.bury_on_spawn {
+                        if let Ok(Some(mut spawned)) = db.get_item_data(&item_id) {
+                            spawned.flags.buried = true;
+                            let _ = db.save_item_data(spawned);
+                        }
+                    }
+                    Some(item_id)
                 }),
             }
         } else {

@@ -123,7 +123,7 @@ pub struct SetDoorRequest {
     #[serde(default)]
     pub is_locked: bool,
     #[serde(default)]
-    pub key_id: Option<String>,
+    pub key_vnum: Option<String>,
     #[serde(default)]
     pub keywords: Vec<String>,
 }
@@ -882,19 +882,12 @@ async fn set_door(
         }
     };
 
-    let key_id = req
-        .key_id
-        .as_ref()
-        .map(|s| Uuid::parse_str(s))
-        .transpose()
-        .map_err(|_| ApiError::InvalidInput("Invalid key_id UUID format".into()))?;
-
     let door = DoorState {
         name: req.name,
         description: req.description,
         is_closed: req.is_closed,
         is_locked: req.is_locked,
-        key_id,
+        key_vnum: req.key_vnum,
         keywords: req.keywords,
     };
 

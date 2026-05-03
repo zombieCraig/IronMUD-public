@@ -185,7 +185,45 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "buried" {
+        let ctx = parse_filter_context(parts, 1, char.current_room_id);
+        let filter_type = ctx[0];
+        let offset = ctx[1];
+        let room_id = ctx[2];
+        let spawns = get_filtered_spawns(area, filter_type, room_id);
+        handle_buried(spawns, parts, 1 + offset, connection_id);
+        return;
+    }
+
     show_usage(connection_id);
+}
+
+fn handle_buried(spawns, parts, idx_pos, connection_id) {
+    if parts.len() < idx_pos + 2 {
+        send_client_message(connection_id, "Usage: spedit buried [filter] <index> <on|off>");
+        return;
+    }
+    let idx = parse_int(parts[idx_pos]);
+    if idx == () { send_client_message(connection_id, "Invalid index."); return; }
+    let zero_idx = idx - 1;
+    if zero_idx < 0 || zero_idx >= spawns.len() {
+        send_client_message(connection_id, "Index out of range.");
+        return;
+    }
+    let sp = spawns[zero_idx];
+    if sp.entity_type != "Item" {
+        send_client_message(connection_id, "buried only applies to item spawn points.");
+        return;
+    }
+    let val = parts[idx_pos + 1].to_lower();
+    let buried = val == "on" || val == "true" || val == "1" || val == "yes";
+    if set_spawn_point_bury_on_spawn(sp.id, buried) {
+        let status = "off";
+        if buried { status = "on"; }
+        send_client_message(connection_id, "Spawn " + sp.vnum + " bury_on_spawn: " + status);
+    } else {
+        send_client_message(connection_id, "Failed to update spawn point.");
+    }
 }
 
 fn show_usage(connection_id) {
@@ -200,7 +238,8 @@ fn show_usage(connection_id) {
     msg += "  spedit disable [filter] <index> - Disable spawn point\n";
     msg += "  spedit max [filter] <index> <count> - Set max count\n";
     msg += "  spedit interval [filter] <index> <secs> - Set interval\n";
-    msg += "  spedit dep [filter] <action> <index> ...\n\n";
+    msg += "  spedit dep [filter] <action> <index> ...\n";
+    msg += "  spedit buried [filter] <index> <on|off> - Items spawn buried\n\n";
     msg += "Filters (default: current room):\n";
     msg += "  (none)      - Current room only\n";
     msg += "  all         - All spawns in area\n";
@@ -290,7 +329,11 @@ fn format_spawn_entry(sp, idx, conn_id) {
     output += "    " + olc::c_label("Room: ", conn_id) + olc::c_value(room_name, conn_id);
     output += "  " + olc::c_label("Max: ", conn_id) + olc::c_value("" + sp.max_count, conn_id);
     output += "  " + olc::c_label("Interval: ", conn_id) + olc::c_value(sp.respawn_interval_secs + "s", conn_id);
-    output += "  " + olc::c_label("Active: ", conn_id) + olc::c_value(sp.spawned_count + "/" + sp.max_count, conn_id) + "\n";
+    output += "  " + olc::c_label("Active: ", conn_id) + olc::c_value(sp.spawned_count + "/" + sp.max_count, conn_id);
+    if sp.entity_type == "Item" && sp.bury_on_spawn {
+        output += "  " + olc::c_label("Buried: ", conn_id) + olc::c_value("yes", conn_id);
+    }
+    output += "\n";
 
     // Show inline dependencies
     output += format_inline_deps(sp, conn_id);

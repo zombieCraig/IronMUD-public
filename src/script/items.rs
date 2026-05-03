@@ -72,7 +72,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         plant_pot,
         lockpick,
         is_skinned,
-        boat
+        boat,
+        buried,
+        can_dig,
+        detect_buried
     );
 
     // Register ItemData type with getters
@@ -134,8 +137,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_get("container_max_weight", |i: &mut ItemData| i.container_max_weight as i64)
         .register_get("container_closed", |i: &mut ItemData| i.container_closed)
         .register_get("container_locked", |i: &mut ItemData| i.container_locked)
-        .register_get("container_key_id", |i: &mut ItemData| {
-            i.container_key_id.map(|u| u.to_string()).unwrap_or_default()
+        .register_get("container_key_vnum", |i: &mut ItemData| {
+            i.container_key_vnum.clone().unwrap_or_default()
         })
         .register_get("is_container", |i: &mut ItemData| i.item_type == ItemType::Container)
         .register_get("is_key", |i: &mut ItemData| i.item_type == ItemType::Key)
@@ -425,7 +428,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             .collect::<Vec<_>>()
     });
 
-    // get_items_in_room(room_id) -> Array of ItemData
+    // get_items_in_room(room_id) -> Array of ItemData (excludes buried items)
     let cloned_db = db.clone();
     engine.register_fn("get_items_in_room", move |room_id: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&room_id) {
@@ -433,6 +436,23 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 .get_items_in_room(&uuid)
                 .unwrap_or_default()
                 .into_iter()
+                .filter(|i| !i.flags.buried)
+                .map(rhai::Dynamic::from)
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        }
+    });
+
+    // get_buried_items_in_room(room_id) -> Array of ItemData (only buried items)
+    let cloned_db = db.clone();
+    engine.register_fn("get_buried_items_in_room", move |room_id: String| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&room_id) {
+            cloned_db
+                .get_items_in_room(&uuid)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|i| i.flags.buried)
                 .map(rhai::Dynamic::from)
                 .collect::<Vec<_>>()
         } else {
@@ -2101,15 +2121,45 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         false
     });
 
-    // set_container_key(item_id, key_item_id) -> bool (empty string to clear)
+    // set_item_buried(item_id, buried) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("set_container_key", move |item_id: String, key_item_id: String| {
+    engine.register_fn("set_item_buried", move |item_id: String, buried: bool| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
             if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
-                item.container_key_id = if key_item_id.is_empty() {
+                item.flags.buried = buried;
+                return cloned_db.save_item_data(item).is_ok();
+            }
+        }
+        false
+    });
+
+    // find_detector(char_name) -> ItemData or ()
+    // Returns the first item in inventory or equipped that has flags.detect_buried.
+    let cloned_db = db.clone();
+    engine.register_fn("find_detector", move |char_name: String| {
+        if let Ok(items) = cloned_db.get_items_in_inventory(&char_name) {
+            if let Some(item) = items.into_iter().find(|i| i.flags.detect_buried) {
+                return rhai::Dynamic::from(item);
+            }
+        }
+        if let Ok(items) = cloned_db.get_equipped_items(&char_name) {
+            if let Some(item) = items.into_iter().find(|i| i.flags.detect_buried) {
+                return rhai::Dynamic::from(item);
+            }
+        }
+        rhai::Dynamic::UNIT
+    });
+
+    // set_container_key_vnum(item_id, vnum) -> bool (empty / "clear" / "none" clears)
+    let cloned_db = db.clone();
+    engine.register_fn("set_container_key_vnum", move |item_id: String, key_vnum: String| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                let trimmed = key_vnum.to_lowercase();
+                item.container_key_vnum = if key_vnum.is_empty() || trimmed == "clear" || trimmed == "none" {
                     None
                 } else {
-                    uuid::Uuid::parse_str(&key_item_id).ok()
+                    Some(key_vnum)
                 };
                 return cloned_db.save_item_data(item).is_ok();
             }
@@ -2774,6 +2824,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "lockpick" => item.flags.lockpick = value,
                         "is_skinned" | "skinned" => item.flags.is_skinned = value,
                         "boat" => item.flags.boat = value,
+                        "buried" => item.flags.buried = value,
+                        "can_dig" | "candig" => item.flags.can_dig = value,
+                        "detect_buried" | "detectburied" => item.flags.detect_buried = value,
                         _ => return false,
                     }
                     return cloned_db.save_item_data(item).is_ok();
@@ -2813,6 +2866,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                     "lockpick" => item.flags.lockpick,
                     "is_skinned" | "skinned" => item.flags.is_skinned,
                     "boat" => item.flags.boat,
+                    "buried" => item.flags.buried,
+                    "can_dig" | "candig" => item.flags.can_dig,
+                    "detect_buried" | "detectburied" => item.flags.detect_buried,
                     _ => false,
                 };
             }
@@ -3057,6 +3113,28 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         rhai::Dynamic::UNIT
     });
 
+    // find_inventory_item_by_vnum(char_name, vnum) -> ItemData or ()
+    // Returns the first non-prototype inventory item whose prototype vnum matches.
+    let db_clone = db.clone();
+    engine.register_fn("find_inventory_item_by_vnum", move |char_name: String, vnum: String| {
+        if vnum.is_empty() {
+            return rhai::Dynamic::UNIT;
+        }
+        let items = match db_clone.get_items_in_inventory(&char_name) {
+            Ok(items) => items,
+            Err(_) => return rhai::Dynamic::UNIT,
+        };
+        for item in items {
+            if item.is_prototype {
+                continue;
+            }
+            if item.vnum.as_deref() == Some(vnum.as_str()) {
+                return rhai::Dynamic::from(item);
+            }
+        }
+        rhai::Dynamic::UNIT
+    });
+
     // find_item_in_room(room_id, keyword) -> ItemData or ()
     // Convenience function to find item in a room
     // Supports N.keyword syntax (e.g., "2.corpse" returns the 2nd matching corpse)
@@ -3074,7 +3152,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         };
         let mut match_count: usize = 0;
         for item in items {
-            if item.is_prototype {
+            if item.is_prototype || item.flags.buried {
                 continue;
             }
             if item_matches_keyword(&item.name, &item.keywords, &kw_lower) {

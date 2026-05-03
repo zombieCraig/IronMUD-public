@@ -31,6 +31,9 @@ const itemFlagsSchema = {
     lockpick: { type: "boolean", description: "Can be used to pick locks" },
     is_skinned: { type: "boolean", description: "Corpse has been butchered/skinned" },
     boat: { type: "boolean", description: "Allows traversing deep_water rooms when in inventory" },
+    buried: { type: "boolean", description: "Hidden in a dirt_floor room until dug up" },
+    can_dig: { type: "boolean", description: "Held/equipped item lets the player dig in dirt_floor rooms" },
+    detect_buried: { type: "boolean", description: "Surfaces a hint when buried items are in the room" },
   },
 } as const;
 
@@ -177,6 +180,7 @@ export const itemToolDefinitions = [
           },
         },
         note_content: { type: "string", description: "Long-form readable body (use \\n for line breaks). Any item with this becomes readable via the `read` command; ANSI and whitespace are preserved. Max 32 KB." },
+        container_key_vnum: { type: "string", description: "For containers: vnum of the key item that unlocks it. Any spawned copy of that prototype works." },
       },
       required: ["name", "short_desc", "long_desc", "vnum", "item_type"],
     },
@@ -273,6 +277,7 @@ export const itemToolDefinitions = [
           },
         },
         note_content: { type: "string", description: "Long-form readable body (use \\n for line breaks). Any item with this becomes readable via the `read` command; ANSI and whitespace are preserved. Empty string clears. Max 32 KB." },
+        container_key_vnum: { type: "string", description: "For containers: vnum of the key item that unlocks it. Empty string clears. Any spawned copy of that prototype works." },
       },
       required: ["id"],
     },

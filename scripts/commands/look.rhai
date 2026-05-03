@@ -216,6 +216,15 @@ fn run_command(args, connection_id) {
     // Display the room
     display_room(room_id, connection_id, char.name);
 
+    // Surface buried-treasure hint if the player is carrying a detector
+    let detector = find_detector(char.name);
+    if detector != () {
+        let buried = get_buried_items_in_room(room_id);
+        if buried.len() > 0 {
+            send_client_message(connection_id, "Your " + detector.short_desc + " hums - something is buried here.");
+        }
+    }
+
     // Check for vision penalty and warn player
     let vision_penalty = get_vision_penalty(room_id, connection_id);
     if vision_penalty > 0 && vision_penalty < 100 {

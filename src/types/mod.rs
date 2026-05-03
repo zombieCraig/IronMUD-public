@@ -631,7 +631,8 @@ pub struct DoorState {
     pub name: String, // "door", "gate", "hatch", etc.
     pub is_closed: bool,
     pub is_locked: bool,
-    pub key_id: Option<Uuid>,
+    #[serde(default)]
+    pub key_vnum: Option<String>,
     pub description: Option<String>,
     #[serde(default)]
     pub keywords: Vec<String>, // Additional keywords like "wooden", "iron"
@@ -1786,6 +1787,9 @@ pub struct SpawnPointData {
     /// Item dependencies to spawn alongside the main entity
     #[serde(default)]
     pub dependencies: Vec<SpawnDependency>,
+    /// When true (and entity_type is Item), spawned items have flags.buried set.
+    #[serde(default)]
+    pub bury_on_spawn: bool,
 }
 
 // === Item System ===
@@ -2644,6 +2648,13 @@ pub struct ItemFlags {
     // Water system flags
     #[serde(default)]
     pub boat: bool, // Allows traversing deep_water rooms when in inventory
+    // Buried treasure system
+    #[serde(default)]
+    pub buried: bool, // Hidden in a dirt_floor room until dug up
+    #[serde(default)]
+    pub can_dig: bool, // Held/equipped item allows player to dig
+    #[serde(default)]
+    pub detect_buried: bool, // Surfaces a hint when buried items are nearby
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -2719,7 +2730,7 @@ pub struct ItemData {
     #[serde(default)]
     pub container_locked: bool,
     #[serde(default)]
-    pub container_key_id: Option<Uuid>,
+    pub container_key_vnum: Option<String>,
     // Weight reduction when worn (0-100 percent, e.g., 50 = contents weigh 50% when worn)
     #[serde(default)]
     pub weight_reduction: i32,
@@ -2895,7 +2906,7 @@ impl ItemData {
             container_max_weight: 0,
             container_closed: false,
             container_locked: false,
-            container_key_id: None,
+            container_key_vnum: None,
             weight_reduction: 0,
             // Liquid container fields
             liquid_type: LiquidType::default(),

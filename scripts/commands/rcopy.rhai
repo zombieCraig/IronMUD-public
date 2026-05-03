@@ -124,8 +124,8 @@ fn copy_single_door(source_id, target_id, direction) {
     if door.keywords.len() > 0 {
         set_door_keywords(target_id, direction, door.keywords);
     }
-    if door.key_id != "" {
-        set_door_key(target_id, direction, door.key_id);
+    if door.key_vnum != "" {
+        set_door_key(target_id, direction, door.key_vnum);
     }
 
     set_door_closed(target_id, direction, door.is_closed);

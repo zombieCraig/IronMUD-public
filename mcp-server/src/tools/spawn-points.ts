@@ -46,6 +46,11 @@ export const spawnPointToolDefinitions = [
           description: "Seconds between respawns",
         },
         enabled: { type: "boolean", default: true },
+        bury_on_spawn: {
+          type: "boolean",
+          default: false,
+          description: "For item spawns: spawned items appear buried (must be a dirt_floor room and dug up to access).",
+        },
       },
       required: ["area_id", "room_id", "entity_type", "vnum"],
     },
@@ -60,6 +65,10 @@ export const spawnPointToolDefinitions = [
         max_count: { type: "number" },
         respawn_interval_secs: { type: "number" },
         enabled: { type: "boolean" },
+        bury_on_spawn: {
+          type: "boolean",
+          description: "For item spawns: whether spawned items appear buried.",
+        },
       },
       required: ["id"],
     },

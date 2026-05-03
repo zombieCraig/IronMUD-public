@@ -52,7 +52,7 @@ enum DoorAction {
 fn get_routine_exits(
     db: &db::Db,
     room: &RoomData,
-    mobile_key_ids: &HashSet<uuid::Uuid>,
+    mobile_key_vnums: &HashSet<String>,
     can_open_doors: bool,
     cant_swim: bool,
 ) -> Result<Vec<(String, uuid::Uuid, Option<DoorAction>)>> {
@@ -78,15 +78,15 @@ fn get_routine_exits(
                         continue; // Can't pass through closed door
                     }
                     if door.is_locked {
-                        // Check if mobile has the key
-                        if let Some(key_id) = door.key_id {
-                            if mobile_key_ids.contains(&key_id) {
+                        // Check if mobile has the key (matched by prototype vnum)
+                        if let Some(key_vnum) = door.key_vnum.as_ref() {
+                            if mobile_key_vnums.contains(key_vnum) {
                                 door_action = Some(DoorAction::UnlockAndOpen);
                             } else {
                                 continue; // Locked and no key
                             }
                         } else {
-                            continue; // Locked with no key_id defined
+                            continue; // Locked with no key vnum defined
                         }
                     } else {
                         door_action = Some(DoorAction::Open);
@@ -151,12 +151,12 @@ fn bfs_next_step(db: &db::Db, from: uuid::Uuid, to: uuid::Uuid, mobile: &MobileD
         return BfsOutcome::AlreadyThere;
     }
 
-    // Collect mobile's key IDs once for door checks
-    let mobile_key_ids: HashSet<uuid::Uuid> = if mobile.flags.can_open_doors {
+    // Collect mobile's key vnums once for door checks
+    let mobile_key_vnums: HashSet<String> = if mobile.flags.can_open_doors {
         db.get_items_in_mobile_inventory(&mobile.id)
             .unwrap_or_default()
             .iter()
-            .map(|item| item.id)
+            .filter_map(|item| item.vnum.clone())
             .collect()
     } else {
         HashSet::new()
@@ -172,7 +172,7 @@ fn bfs_next_step(db: &db::Db, from: uuid::Uuid, to: uuid::Uuid, mobile: &MobileD
         if let Ok(exits) = get_routine_exits(
             db,
             &start_room,
-            &mobile_key_ids,
+            &mobile_key_vnums,
             mobile.flags.can_open_doors,
             mobile.flags.cant_swim,
         ) {
@@ -209,7 +209,7 @@ fn bfs_next_step(db: &db::Db, from: uuid::Uuid, to: uuid::Uuid, mobile: &MobileD
             if let Ok(exits) = get_routine_exits(
                 db,
                 &room,
-                &mobile_key_ids,
+                &mobile_key_vnums,
                 mobile.flags.can_open_doors,
                 mobile.flags.cant_swim,
             ) {

@@ -250,7 +250,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         name,
                         is_closed: true, // Doors start closed by default
                         is_locked: false,
-                        key_id: None,
+                        key_vnum: None,
                         description: None,
                         keywords: Vec::new(),
                     },
@@ -274,61 +274,23 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         false
     });
 
-    // set_door_key(room_id, direction, key_item_id) -> bool (empty string to clear)
+    // set_door_key(room_id, direction, key_vnum) -> bool
+    // Empty / "clear" / "none" clears the key. Otherwise stores the vnum directly.
     let cloned_db = db.clone();
     engine.register_fn(
         "set_door_key",
-        move |room_id: String, direction: String, key_item_id: String| {
+        move |room_id: String, direction: String, key_vnum: String| {
             if let Ok(uuid) = uuid::Uuid::parse_str(&room_id) {
                 if let Ok(Some(mut room)) = cloned_db.get_room_data(&uuid) {
                     let dir = direction.to_lowercase();
                     if let Some(door) = room.doors.get_mut(&dir) {
-                        door.key_id = if key_item_id.is_empty() {
+                        let trimmed = key_vnum.to_lowercase();
+                        door.key_vnum = if key_vnum.is_empty() || trimmed == "clear" || trimmed == "none" {
                             None
                         } else {
-                            uuid::Uuid::parse_str(&key_item_id).ok()
+                            Some(key_vnum)
                         };
                         return cloned_db.save_room_data(room).is_ok();
-                    }
-                }
-            }
-            false
-        },
-    );
-
-    // set_door_key_by_vnum(room_id, direction, vnum) -> bool (builder-friendly, looks up item by vnum)
-    let cloned_db = db.clone();
-    engine.register_fn(
-        "set_door_key_by_vnum",
-        move |room_id: String, direction: String, vnum: String| {
-            if vnum.is_empty() || vnum.to_lowercase() == "clear" || vnum.to_lowercase() == "none" {
-                // Clear the key
-                if let Ok(uuid) = uuid::Uuid::parse_str(&room_id) {
-                    if let Ok(Some(mut room)) = cloned_db.get_room_data(&uuid) {
-                        let dir = direction.to_lowercase();
-                        if let Some(door) = room.doors.get_mut(&dir) {
-                            door.key_id = None;
-                            return cloned_db.save_room_data(room).is_ok();
-                        }
-                    }
-                }
-                return false;
-            }
-            // Look up item by vnum
-            if let Ok(items) = cloned_db.list_all_items() {
-                for item in items {
-                    if item.vnum.as_deref() == Some(&vnum) {
-                        // Found the item, set it as the key
-                        if let Ok(uuid) = uuid::Uuid::parse_str(&room_id) {
-                            if let Ok(Some(mut room)) = cloned_db.get_room_data(&uuid) {
-                                let dir = direction.to_lowercase();
-                                if let Some(door) = room.doors.get_mut(&dir) {
-                                    door.key_id = Some(item.id);
-                                    return cloned_db.save_room_data(room).is_ok();
-                                }
-                            }
-                        }
-                        return false;
                     }
                 }
             }
@@ -1214,9 +1176,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 }
             }
 
-            // Items in room (yellow, skip invisible) - show generic if dark/blind
+            // Items in room (yellow, skip invisible/buried) - show generic if dark/blind
             if let Ok(items) = cloned_db.get_items_in_room(&room_uuid) {
-                let visible_items: Vec<_> = items.iter().filter(|i| !i.flags.invisible).collect();
+                let visible_items: Vec<_> = items.iter().filter(|i| !i.flags.invisible && !i.flags.buried).collect();
                 if !visible_items.is_empty() {
                     output.push('\n');
                     for item in visible_items {

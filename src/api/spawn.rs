@@ -45,6 +45,8 @@ pub struct CreateSpawnPointRequest {
     pub respawn_interval_secs: i64,
     #[serde(default = "default_enabled")]
     pub enabled: bool,
+    #[serde(default)]
+    pub bury_on_spawn: bool,
 }
 
 fn default_max_count() -> i32 {
@@ -62,6 +64,7 @@ pub struct UpdateSpawnPointRequest {
     pub max_count: Option<i32>,
     pub respawn_interval_secs: Option<i64>,
     pub enabled: Option<bool>,
+    pub bury_on_spawn: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -236,6 +239,7 @@ async fn create_spawn_point(
         last_spawn_time: 0,
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
+        bury_on_spawn: req.bury_on_spawn,
     };
 
     state
@@ -291,6 +295,9 @@ async fn update_spawn_point(
     }
     if let Some(enabled) = req.enabled {
         spawn_point.enabled = enabled;
+    }
+    if let Some(bury_on_spawn) = req.bury_on_spawn {
+        spawn_point.bury_on_spawn = bury_on_spawn;
     }
 
     state

@@ -68,7 +68,7 @@ export interface DoorState {
   name: string;
   is_closed: boolean;
   is_locked: boolean;
-  key_id?: string;
+  key_vnum?: string;
   keywords: string[];
   description?: string;
 }
@@ -209,6 +209,9 @@ export interface ItemFlags {
   is_skinned?: boolean;
   boat?: boolean;
   medical_tool?: boolean;
+  buried?: boolean;
+  can_dig?: boolean;
+  detect_buried?: boolean;
 }
 
 export interface Mobile {
@@ -288,6 +291,7 @@ export interface SpawnPoint {
   last_spawn_time: number;
   spawned_entities: string[];
   dependencies: SpawnDependency[];
+  bury_on_spawn?: boolean;
 }
 
 export interface SpawnDependency {
@@ -463,6 +467,7 @@ export interface CreateSpawnPointRequest {
   max_count?: number;
   respawn_interval_secs?: number;
   enabled?: boolean;
+  bury_on_spawn?: boolean;
 }
 
 export interface SetExitRequest {
@@ -473,7 +478,7 @@ export interface AddDoorRequest {
   name: string;
   is_closed?: boolean;
   is_locked?: boolean;
-  key_id?: string;
+  key_vnum?: string;
   keywords?: string[];
   description?: string;
 }

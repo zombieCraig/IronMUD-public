@@ -1277,9 +1277,7 @@ fn update_activity_state(
                 ActivityState::OffDuty
             }
         }
-        SimGoal::SeekComfort | SimGoal::Idle | SimGoal::GoingHome | SimGoal::SeekBank => {
-            ActivityState::OffDuty
-        }
+        SimGoal::SeekComfort | SimGoal::Idle | SimGoal::GoingHome | SimGoal::SeekBank => ActivityState::OffDuty,
     };
 
     if old_activity != new_activity {
@@ -2361,8 +2359,15 @@ mod tests {
 
         let connections: SharedConnections = Arc::new(Mutex::new(HashMap::new()));
         let now = 1_234_567;
-        execute_arrival_actions(&g.db, &connections, &mut mobile, &make_jobless_config("bk5:home"), &mut needs, now)
-            .expect("arrival");
+        execute_arrival_actions(
+            &g.db,
+            &connections,
+            &mut mobile,
+            &make_jobless_config("bk5:home"),
+            &mut needs,
+            now,
+        )
+        .expect("arrival");
 
         assert_eq!(mobile.gold, BANK_RELIEF_AMOUNT, "bank should grant relief amount");
         assert_eq!(needs.current_goal, SimGoal::Idle, "goal cleared after handout");

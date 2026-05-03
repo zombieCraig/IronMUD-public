@@ -506,9 +506,7 @@ fn execute_mobile_idle_trigger(
         .register_get("name", |d: &mut DoorState| d.name.clone())
         .register_get("is_closed", |d: &mut DoorState| d.is_closed)
         .register_get("is_locked", |d: &mut DoorState| d.is_locked)
-        .register_get("key_id", |d: &mut DoorState| {
-            d.key_id.map(|u: uuid::Uuid| u.to_string()).unwrap_or_default()
-        })
+        .register_get("key_vnum", |d: &mut DoorState| d.key_vnum.clone().unwrap_or_default())
         .register_get("description", |d: &mut DoorState| {
             d.description.clone().unwrap_or_default()
         })

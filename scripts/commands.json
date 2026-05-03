@@ -72,8 +72,12 @@
     "description": "Shout a message that carries to adjacent rooms"
   },
   "dig": {
-    "access": "builder",
-    "description": "Create a new room in a direction"
+    "access": "user",
+    "description": "Unearth buried items, or (builders) dig a new room in a direction"
+  },
+  "bury": {
+    "access": "user",
+    "description": "Bury an item in a dirt-floor room"
   },
   "link": {
     "access": "builder",

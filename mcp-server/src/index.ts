@@ -320,7 +320,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           name: doorName,
           is_closed: args?.is_closed as boolean | undefined,
           is_locked: args?.is_locked as boolean | undefined,
-          key_id: args?.key_id as string | undefined,
+          key_vnum: args?.key_vnum as string | undefined,
           keywords: args?.keywords as string[] | undefined,
           description: args?.description as string | undefined,
         });
@@ -797,6 +797,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           max_count: args?.max_count as number | undefined,
           respawn_interval_secs: args?.respawn_interval_secs as number | undefined,
           enabled: args?.enabled as boolean | undefined,
+          bury_on_spawn: args?.bury_on_spawn as boolean | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(spawnPoint, null, 2) }],
@@ -809,6 +810,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           max_count: args?.max_count as number | undefined,
           respawn_interval_secs: args?.respawn_interval_secs as number | undefined,
           enabled: args?.enabled as boolean | undefined,
+          bury_on_spawn: args?.bury_on_spawn as boolean | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(spawnPoint, null, 2) }],

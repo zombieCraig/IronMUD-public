@@ -145,6 +145,8 @@ pub struct CreateItemRequest {
     pub food_effects: Option<Vec<FoodEffectRequest>>,
     #[serde(default)]
     pub note_content: Option<String>,
+    #[serde(default)]
+    pub container_key_vnum: Option<String>,
 }
 
 /// Builder-facing subset of `ItemFlags`. Every field is optional so callers
@@ -205,6 +207,12 @@ pub struct ItemFlagsRequest {
     pub is_skinned: Option<bool>,
     #[serde(default)]
     pub boat: Option<bool>,
+    #[serde(default)]
+    pub buried: Option<bool>,
+    #[serde(default)]
+    pub can_dig: Option<bool>,
+    #[serde(default)]
+    pub detect_buried: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -303,6 +311,8 @@ pub struct UpdateItemRequest {
     pub food_effects: Option<Vec<FoodEffectRequest>>,
     #[serde(default)]
     pub note_content: Option<String>,
+    #[serde(default)]
+    pub container_key_vnum: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -654,6 +664,9 @@ async fn create_item(
             lockpick: req.flags.lockpick.unwrap_or(false),
             is_skinned: req.flags.is_skinned.unwrap_or(false),
             boat: req.flags.boat.unwrap_or(false),
+            buried: req.flags.buried.unwrap_or(false),
+            can_dig: req.flags.can_dig.unwrap_or(false),
+            detect_buried: req.flags.detect_buried.unwrap_or(false),
             ..Default::default()
         },
         damage_dice_count: req.damage_dice_count.unwrap_or(1),
@@ -666,7 +679,7 @@ async fn create_item(
         container_max_weight: 0,
         container_closed: false,
         container_locked: false,
-        container_key_id: None,
+        container_key_vnum: req.container_key_vnum.clone(),
         weight_reduction: 0,
         liquid_type: req
             .liquid_type
@@ -816,6 +829,9 @@ async fn update_item(
     if let Some(note_content) = req.note_content {
         item.note_content = normalize_note_input(note_content)?;
     }
+    if let Some(key_vnum) = req.container_key_vnum {
+        item.container_key_vnum = if key_vnum.is_empty() { None } else { Some(key_vnum) };
+    }
     if let Some(ref new_vnum) = req.vnum {
         // Check vnum uniqueness (allow keeping the same vnum)
         let current_vnum = item.vnum.as_deref().unwrap_or("");
@@ -926,6 +942,15 @@ async fn update_item(
         }
         if let Some(v) = flags.boat {
             item.flags.boat = v;
+        }
+        if let Some(v) = flags.buried {
+            item.flags.buried = v;
+        }
+        if let Some(v) = flags.can_dig {
+            item.flags.can_dig = v;
+        }
+        if let Some(v) = flags.detect_buried {
+            item.flags.detect_buried = v;
         }
     }
     // Gardening fields

@@ -1180,7 +1180,8 @@ fn is_valid_item_flag(name) {
         "medical_tool", "medicaltool", "medical",
         "preserves_contents", "preservescontents", "preserves",
         "death_only", "deathonly", "atm", "lockpick",
-        "is_skinned", "skinned", "boat"];
+        "is_skinned", "skinned", "boat",
+        "buried", "can_dig", "candig", "detect_buried", "detectburied"];
     for f in valid { if f == name { return true; } }
     return false;
 }
@@ -1209,7 +1210,7 @@ fn handle_flag_subcommand(item_id, parts, connection_id) {
     // Validate all names before changing anything.
     for name in flag_names {
         if !is_valid_item_flag(name) {
-            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: no_drop, no_get, no_remove, invisible, glow, hum, no_sell, unique, quest_item, vending, provides_light, fishing_rod, bait, foraging_tool, waterproof, provides_warmth, reduces_glare, medical_tool, preserves_contents, death_only, atm, broken, plant_pot, lockpick, is_skinned, boat");
+            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: no_drop, no_get, no_remove, invisible, glow, hum, no_sell, unique, quest_item, vending, provides_light, fishing_rod, bait, foraging_tool, waterproof, provides_warmth, reduces_glare, medical_tool, preserves_contents, death_only, atm, broken, plant_pot, lockpick, is_skinned, boat, buried, can_dig, detect_buried");
             return;
         }
     }
@@ -1567,8 +1568,8 @@ fn handle_spawn_subcommand(item, char, connection_id) {
         set_container_capacity(new_item.id, item.container_max_items, item.container_max_weight);
         set_container_closed(new_item.id, item.container_closed);
         set_container_locked(new_item.id, item.container_locked);
-        if item.container_key_id != () && item.container_key_id != "" {
-            set_container_key(new_item.id, item.container_key_id);
+        if item.container_key_vnum != () && item.container_key_vnum != "" {
+            set_container_key_vnum(new_item.id, item.container_key_vnum);
         }
         // Copy weight reduction for worn containers
         if item.weight_reduction > 0 {
@@ -1701,6 +1702,9 @@ fn copy_item_flags(item, new_item_id) {
     if item.flags.lockpick { set_item_flag(new_item_id, "lockpick", true); }
     if item.flags.is_skinned { set_item_flag(new_item_id, "is_skinned", true); }
     if item.flags.boat { set_item_flag(new_item_id, "boat", true); }
+    if item.flags.buried { set_item_flag(new_item_id, "buried", true); }
+    if item.flags.can_dig { set_item_flag(new_item_id, "can_dig", true); }
+    if item.flags.detect_buried { set_item_flag(new_item_id, "detect_buried", true); }
 }
 
 // === Container Subcommands ===
@@ -1754,22 +1758,24 @@ fn handle_locked_subcommand(item_id, parts, connection_id) {
 
 fn handle_key_subcommand(item_id, parts, connection_id) {
     if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: oedit " + item_id + " key <key_item_id|none>");
+        send_client_message(connection_id, "Usage: oedit " + item_id + " key <key_vnum|none>");
         return;
     }
     let key_val = parts[2].to_lower();
     if key_val == "none" || key_val == "clear" {
-        set_container_key(item_id, "");
+        set_container_key_vnum(item_id, "");
         send_client_message(connection_id, "Container key cleared.");
     } else {
-        // Verify key exists
-        let key_item = get_item_data(parts[2]);
-        if key_item == () {
-            send_client_message(connection_id, "Key item not found: " + parts[2]);
+        let proto = get_item_by_vnum(parts[2]);
+        if proto == () {
+            send_client_message(connection_id, "Item prototype not found with vnum: " + parts[2]);
             return;
         }
-        set_container_key(item_id, parts[2]);
-        send_client_message(connection_id, "Container key set to: " + key_item.name + " (" + parts[2] + ")");
+        if !proto.is_key {
+            send_client_message(connection_id, "Warning: " + proto.name + " is not a key-type item (but setting it anyway).");
+        }
+        set_container_key_vnum(item_id, parts[2]);
+        send_client_message(connection_id, "Container key set to: " + proto.name + " (vnum: " + parts[2] + ")");
     }
 }
 
@@ -2298,6 +2304,9 @@ fn build_flags_display(item) {
     if flags.lockpick { flag_str += "lockpick "; }
     if flags.is_skinned { flag_str += "is_skinned "; }
     if flags.boat { flag_str += "boat "; }
+    if flags.buried { flag_str += "buried "; }
+    if flags.can_dig { flag_str += "can_dig "; }
+    if flags.detect_buried { flag_str += "detect_buried "; }
     if flag_str == "" { flag_str = "(none)"; }
     output += flag_str + "\n";
     return output;
@@ -2355,12 +2364,12 @@ fn build_container_display(item) {
 }
 
 fn build_key_display(item) {
-    if item.container_key_id != () && item.container_key_id != "" {
-        let key_item = get_item_data(item.container_key_id);
-        if key_item != () {
-            return "Key: " + key_item.name + " (" + item.container_key_id + ")\n";
+    if item.container_key_vnum != () && item.container_key_vnum != "" {
+        let proto = get_item_by_vnum(item.container_key_vnum);
+        if proto != () {
+            return "Key: " + proto.name + " (vnum: " + item.container_key_vnum + ")\n";
         } else {
-            return "Key: " + item.container_key_id + " (not found)\n";
+            return "Key: " + item.container_key_vnum + " (prototype not found)\n";
         }
     }
     return "Key: (none)\n";
@@ -2642,6 +2651,9 @@ fn show_item_flags(item, item_id, connection_id) {
     output += build_flag_line("lockpick", flags.lockpick, "Can be used to pick locks", display_id, connection_id);
     output += build_flag_line("is_skinned", flags.is_skinned, "Corpse has been butchered/skinned", display_id, connection_id);
     output += build_flag_line("boat", flags.boat, "Allows traversing deep_water rooms when in inventory", display_id, connection_id);
+    output += build_flag_line("buried", flags.buried, "Hidden in a dirt_floor room until dug up", display_id, connection_id);
+    output += build_flag_line("can_dig", flags.can_dig, "Held/equipped, lets the player dig", display_id, connection_id);
+    output += build_flag_line("detect_buried", flags.detect_buried, "Hints at buried items in the room when held", display_id, connection_id);
 
     send_mxp_message(connection_id, output);
 }

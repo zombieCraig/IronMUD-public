@@ -65,19 +65,14 @@ fn check_key_and_unlock_door(char, room_id, direction, door, connection_id) {
         return true;
     }
 
-    let key_id = door.key_id;
-    if key_id != "" {
-        let key_item = get_item_data(key_id);
-        if key_item == () {
-            send_client_message(connection_id, "The key for this doesn't exist.");
-            return false;
-        }
-        let player_key = find_item_in_inventory(char.name, key_id);
+    let key_vnum = door.key_vnum;
+    if key_vnum != "" {
+        let player_key = find_inventory_item_by_vnum(char.name, key_vnum);
         if player_key == () {
-            send_client_message(connection_id, "You don't have the key.");
+            send_client_message(connection_id, "You don't have the right key.");
             return false;
         }
-        send_client_message(connection_id, "You unlock the " + door.name + " with " + key_item.name + ".");
+        send_client_message(connection_id, "You unlock the " + door.name + " with " + player_key.name + ".");
     } else {
         send_client_message(connection_id, "You unlock the " + door.name + ".");
     }
@@ -159,19 +154,14 @@ fn run_command(args, connection_id) {
     }
 
     // Check if container has a key requirement
-    let key_id = item.container_key_id;
-    if key_id != () && key_id != "" {
-        let key_item = get_item_data(key_id);
-        if key_item == () {
-            send_client_message(connection_id, "The key for this doesn't exist.");
-            return;
-        }
-        let player_key = find_item_in_inventory(char.name, key_id);
+    let key_vnum = item.container_key_vnum;
+    if key_vnum != () && key_vnum != "" {
+        let player_key = find_inventory_item_by_vnum(char.name, key_vnum);
         if player_key == () {
-            send_client_message(connection_id, "You don't have the key.");
+            send_client_message(connection_id, "You don't have the right key.");
             return;
         }
-        send_client_message(connection_id, "You unlock " + item.name + " with " + key_item.name + ".");
+        send_client_message(connection_id, "You unlock " + item.name + " with " + player_key.name + ".");
     } else {
         send_client_message(connection_id, "You unlock " + item.name + ".");
     }

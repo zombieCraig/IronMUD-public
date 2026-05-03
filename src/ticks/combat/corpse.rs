@@ -78,7 +78,7 @@ impl CorpseBuilder {
             container_max_weight: 10000,
             container_closed: false,
             container_locked: false,
-            container_key_id: None,
+            container_key_vnum: None,
             weight_reduction: 0,
             // Liquid container fields
             liquid_type: LiquidType::default(),

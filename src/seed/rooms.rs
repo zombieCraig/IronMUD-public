@@ -547,7 +547,7 @@ fn seed_ironkeep(db: &Db) -> Result<usize> {
             name: "iron gate".to_string(),
             is_closed: true,
             is_locked: true,
-            key_id: Some(seed_uuid("oakvale:gate_key")),
+            key_vnum: Some("oakvale:gate_key".to_string()),
             description: Some(
                 "A heavy iron gate reinforced with thick crossbars. It looks like it requires a key to open."
                     .to_string(),
@@ -819,7 +819,7 @@ fn seed_shadowfang(db: &Db) -> Result<usize> {
             name: "iron-bound door".to_string(),
             is_closed: true,
             is_locked: true,
-            key_id: Some(seed_uuid("shadowfang:treasure_key")),
+            key_vnum: Some("shadowfang:treasure_key".to_string()),
             description: Some(
                 "A heavy door reinforced with iron bands. A large keyhole suggests it requires a specific key."
                     .to_string(),
