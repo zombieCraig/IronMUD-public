@@ -89,6 +89,21 @@ pub enum FlagAction {
         #[serde(default)]
         info: Option<String>,
     },
+    /// Push a permanent `ActiveBuff` onto the imported mob's `active_buffs`.
+    /// Used for AFF_* affects that translate to existing IronMUD buff effects
+    /// (e.g. AFF_SANCTUARY → DamageReduction). Mob-only.
+    AddBuff {
+        effect_type: String,
+        magnitude: i32,
+        #[serde(default = "default_remaining_secs")]
+        remaining_secs: i32,
+        #[serde(default)]
+        source: String,
+    },
+}
+
+fn default_remaining_secs() -> i32 {
+    -1
 }
 
 /// Action keyed by lowercase CircleMUD specproc name in
@@ -867,6 +882,14 @@ fn map_room(zone: &IrZone, area_prefix: &str, room: &IrRoom, opts: &MappingOptio
                     format!("mapping uses an item-only action for ROOM_{flag}; ignored on rooms"),
                 ));
             }
+            Some(FlagAction::AddBuff { .. }) => {
+                warnings.push(Warning::new(
+                    WarningKind::UnsupportedFlag,
+                    Severity::Warn,
+                    room.source.clone(),
+                    format!("mapping uses add_buff for ROOM_{flag}; ignored (buffs apply to mobs only)"),
+                ));
+            }
             None => warnings.push(Warning::new(
                 WarningKind::UnknownFlag,
                 Severity::Warn,
@@ -1050,6 +1073,7 @@ fn map_mob(
     let _ = zone;
     let mut warnings = Vec::new();
     let mut flags = MobileFlags::default();
+    let mut active_buffs: Vec<crate::types::ActiveBuff> = Vec::new();
 
     // MOB_* bits
     let (known_mob, unknown_mob) = super::engines::circle::flags::decode_mob_flags(mob.mob_flag_bits);
@@ -1090,6 +1114,27 @@ fn map_mob(
                     format!("mapping uses an item-only action for MOB_{flag}; ignored on mobs"),
                 ));
             }
+            Some(FlagAction::AddBuff {
+                effect_type,
+                magnitude,
+                remaining_secs,
+                source,
+            }) => match crate::types::EffectType::from_str(effect_type) {
+                Some(et) => {
+                    active_buffs.push(crate::types::ActiveBuff {
+                        effect_type: et,
+                        magnitude: *magnitude,
+                        remaining_secs: *remaining_secs,
+                        source: source.clone(),
+                    });
+                }
+                None => warnings.push(Warning::new(
+                    WarningKind::UnsupportedFlag,
+                    Severity::Warn,
+                    mob.source.clone(),
+                    format!("MOB_{flag}: unknown effect_type `{effect_type}` for add_buff action"),
+                )),
+            },
             None => warnings.push(Warning::new(
                 WarningKind::UnknownFlag,
                 Severity::Warn,
@@ -1148,6 +1193,27 @@ fn map_mob(
                     format!("mapping uses an item-only action for AFF_{flag}; ignored on mobs"),
                 ));
             }
+            Some(FlagAction::AddBuff {
+                effect_type,
+                magnitude,
+                remaining_secs,
+                source,
+            }) => match crate::types::EffectType::from_str(effect_type) {
+                Some(et) => {
+                    active_buffs.push(crate::types::ActiveBuff {
+                        effect_type: et,
+                        magnitude: *magnitude,
+                        remaining_secs: *remaining_secs,
+                        source: source.clone(),
+                    });
+                }
+                None => warnings.push(Warning::new(
+                    WarningKind::UnsupportedFlag,
+                    Severity::Warn,
+                    mob.source.clone(),
+                    format!("AFF_{flag}: unknown effect_type `{effect_type}` for add_buff action"),
+                )),
+            },
             None => warnings.push(Warning::new(
                 WarningKind::UnsupportedFlag,
                 Severity::Warn,
@@ -1223,6 +1289,7 @@ fn map_mob(
             gold,
             flags,
             world_max_count: None,
+            active_buffs,
             source: mob.source.clone(),
         },
         warnings,
@@ -1355,7 +1422,8 @@ fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &MappingOptio
             Some(FlagAction::Drop { .. }) => {}
             Some(FlagAction::SetCombatZone { .. })
             | Some(FlagAction::SetStat { .. })
-            | Some(FlagAction::SetArmorClass { .. }) => {
+            | Some(FlagAction::SetArmorClass { .. })
+            | Some(FlagAction::AddBuff { .. }) => {
                 warnings.push(Warning::new(
                     WarningKind::UnsupportedFlag,
                     Severity::Warn,
@@ -1479,7 +1547,8 @@ fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &MappingOptio
             }
             Some(FlagAction::Drop { .. }) => {}
             Some(FlagAction::SetFlag { .. })
-            | Some(FlagAction::SetCombatZone { .. }) => {
+            | Some(FlagAction::SetCombatZone { .. })
+            | Some(FlagAction::AddBuff { .. }) => {
                 warnings.push(Warning::new(
                     WarningKind::UnsupportedFlag,
                     Severity::Warn,

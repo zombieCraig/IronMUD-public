@@ -575,6 +575,9 @@ pub struct PlannedMobile {
     /// World-wide cap derived from accumulated max(circle_max) across all
     /// M-resets for this vnum. None = unlimited.
     pub world_max_count: Option<i32>,
+    /// Permanent buffs stamped onto every spawn (e.g. AFF_SANCTUARY →
+    /// `DamageReduction`). Cloned through the prototype at spawn time.
+    pub active_buffs: Vec<crate::types::ActiveBuff>,
     pub source: SourceLoc,
 }
 

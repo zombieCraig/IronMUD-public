@@ -4156,3 +4156,81 @@ fn test_mobile_world_max_count_caps_spawn() {
         std::panic::resume_unwind(e);
     }
 }
+
+#[test]
+fn test_sanctuary_buff_on_prototype_carries_to_spawn() {
+    use ironmud::db::Db;
+    use ironmud::types::{ActiveBuff, EffectType, MobileData};
+
+    let db_path = format!("test_sanctuary_proto_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut proto = MobileData::new("a glowing wisp".to_string());
+        proto.is_prototype = true;
+        proto.vnum = "test:wisp".to_string();
+        proto.active_buffs.push(ActiveBuff {
+            effect_type: EffectType::DamageReduction,
+            magnitude: 50,
+            remaining_secs: -1,
+            source: "innate sanctuary".to_string(),
+        });
+        db.save_mobile_data(proto).expect("save proto");
+
+        let spawned = db
+            .spawn_mobile_from_prototype("test:wisp")
+            .expect("spawn ok")
+            .expect("spawn produced an instance");
+
+        assert!(!spawned.is_prototype, "spawned mob is an instance");
+        let buff = spawned
+            .active_buffs
+            .iter()
+            .find(|b| b.effect_type == EffectType::DamageReduction)
+            .expect("DamageReduction buff carried over");
+        assert_eq!(buff.magnitude, 50);
+        assert_eq!(buff.remaining_secs, -1);
+        assert_eq!(buff.source, "innate sanctuary");
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_damage_reduction_effect_type_round_trips() {
+    use ironmud::types::EffectType;
+
+    assert_eq!(
+        EffectType::from_str("damage_reduction"),
+        Some(EffectType::DamageReduction),
+    );
+    assert_eq!(
+        EffectType::from_str("sanctuary"),
+        Some(EffectType::DamageReduction),
+        "the `sanctuary` alias resolves to DamageReduction",
+    );
+    assert_eq!(EffectType::DamageReduction.to_display_string(), "damage_reduction");
+}
+
+#[test]
+fn test_sanctuary_spell_definition_loads() {
+    use std::fs;
+
+    let json = fs::read_to_string("scripts/data/spells_fantasy.json").expect("read spells_fantasy");
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+    let spell = parsed
+        .get("sanctuary")
+        .expect("sanctuary entry present")
+        .as_object()
+        .expect("sanctuary is an object");
+
+    assert_eq!(spell.get("buff_effect").and_then(|v| v.as_str()), Some("damage_reduction"));
+    assert_eq!(spell.get("buff_magnitude").and_then(|v| v.as_i64()), Some(50));
+    assert_eq!(spell.get("buff_duration_secs").and_then(|v| v.as_i64()), Some(120));
+    assert_eq!(spell.get("target_type").and_then(|v| v.as_str()), Some("self_or_friendly"));
+}

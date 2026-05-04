@@ -480,6 +480,10 @@ fn examine_show_mobile(mobile, connection_id) {
     output += examine_mobile_scars(mobile);
     output += examine_mobile_equipment(mobile);
 
+    if mobile_has_buff(mobile.id, "damage_reduction") {
+        output += "\n\n" + mobile.name + " is surrounded by a faint white aura.";
+    }
+
     // Visual cues for simulated NPCs
     if is_npc_simulated(mobile.id) {
         let cues = get_npc_visual_cues(mobile.id);

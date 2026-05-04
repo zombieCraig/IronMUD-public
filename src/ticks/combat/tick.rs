@@ -170,27 +170,24 @@ fn process_character_combat_round(db: &db::Db, connections: &SharedConnections, 
         }
         poison_mod = poison_mod.max(10); // minimum 10% damage
 
-        let ongoing_damage: i32 = char
+        let per_effect_damage: Vec<i32> = char
             .ongoing_effects
             .iter()
             .map(|e| {
-                if e.effect_type == "poison" {
+                let raw = if e.effect_type == "poison" {
                     (e.damage_per_round * poison_mod / 100).max(1)
                 } else {
                     e.damage_per_round
-                }
+                };
+                ironmud::script::apply_damage_reduction(raw, &char.active_buffs)
             })
-            .sum();
+            .collect();
+        let ongoing_damage: i32 = per_effect_damage.iter().sum();
         if ongoing_damage > 0 {
             char.hp -= ongoing_damage;
 
             // Build message from active effects
-            for effect in &char.ongoing_effects {
-                let effect_dmg = if effect.effect_type == "poison" {
-                    (effect.damage_per_round * poison_mod / 100).max(1)
-                } else {
-                    effect.damage_per_round
-                };
+            for (effect, &effect_dmg) in char.ongoing_effects.iter().zip(per_effect_damage.iter()) {
                 let msg = match effect.effect_type.as_str() {
                     "fire" => format!("You continue to burn! ({} damage)", effect_dmg),
                     "cold" => format!("The frostbite spreads! ({} damage)", effect_dmg),
@@ -1081,6 +1078,7 @@ fn process_character_attacks_mobile(
         }
 
         // Apply damage
+        damage = ironmud::script::apply_damage_reduction(damage, &mobile.active_buffs);
         mobile.current_hp -= damage;
         db.save_mobile_data(mobile.clone())?;
 
@@ -1371,33 +1369,23 @@ fn process_mobile_combat_round(
 
     // Apply ongoing effects (burn, frost, poison, acid)
     if !mobile.ongoing_effects.is_empty() {
-        let ongoing_damage: i32 = mobile.ongoing_effects.iter().map(|e| e.damage_per_round).sum();
+        let per_effect_damage: Vec<i32> = mobile
+            .ongoing_effects
+            .iter()
+            .map(|e| ironmud::script::apply_damage_reduction(e.damage_per_round, &mobile.active_buffs))
+            .collect();
+        let ongoing_damage: i32 = per_effect_damage.iter().sum();
         if ongoing_damage > 0 {
             mobile.current_hp -= ongoing_damage;
 
-            for effect in &mobile.ongoing_effects {
+            for (effect, &dmg) in mobile.ongoing_effects.iter().zip(per_effect_damage.iter()) {
                 let msg = match effect.effect_type.as_str() {
-                    "fire" => format!(
-                        "{} continues to burn! ({} damage)",
-                        mobile.name, effect.damage_per_round
-                    ),
-                    "cold" => format!(
-                        "Frostbite spreads across {}! ({} damage)",
-                        mobile.name, effect.damage_per_round
-                    ),
-                    "poison" => format!(
-                        "Poison courses through {}! ({} damage)",
-                        mobile.name, effect.damage_per_round
-                    ),
-                    "acid" => format!("Acid eats into {}! ({} damage)", mobile.name, effect.damage_per_round),
-                    "lightning" => format!(
-                        "Static surges through {}! ({} damage)",
-                        mobile.name, effect.damage_per_round
-                    ),
-                    _ => format!(
-                        "{} suffers ongoing damage! ({} damage)",
-                        mobile.name, effect.damage_per_round
-                    ),
+                    "fire" => format!("{} continues to burn! ({} damage)", mobile.name, dmg),
+                    "cold" => format!("Frostbite spreads across {}! ({} damage)", mobile.name, dmg),
+                    "poison" => format!("Poison courses through {}! ({} damage)", mobile.name, dmg),
+                    "acid" => format!("Acid eats into {}! ({} damage)", mobile.name, dmg),
+                    "lightning" => format!("Static surges through {}! ({} damage)", mobile.name, dmg),
+                    _ => format!("{} suffers ongoing damage! ({} damage)", mobile.name, dmg),
                 };
                 broadcast_to_room_awake(connections, &room_id, &msg);
             }
@@ -1842,6 +1830,7 @@ fn process_mobile_attacks_player(
     }
 
     // Apply damage
+    damage = ironmud::script::apply_damage_reduction(damage, &char.active_buffs);
     char.hp -= damage;
 
     // Apply on-hit DoT effects from mobile flags (poisonous, fiery, chilling, corrosive, shocking)

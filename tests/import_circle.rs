@@ -167,12 +167,20 @@ fn parses_mobiles_into_plan() {
     assert!(!beast.flags.sentinel);
     assert!(!beast.flags.aggressive);
 
-    // The wisp's AFF_SANCTUARY should produce a warn carrying "SANCTUARY".
-    let sanctuary_warn = warnings
+    // The wisp's AFF_SANCTUARY should stamp a permanent DamageReduction buff
+    // on the planned prototype (no warn).
+    let wisp = plan.mobiles.iter().find(|m| m.source_vnum == 9003).expect("wisp");
+    let sanctuary_buff = wisp
+        .active_buffs
         .iter()
-        .find(|w| w.message.contains("AFF_SANCTUARY"))
-        .expect("sanctuary warn surfaced");
-    assert_eq!(sanctuary_warn.severity, Severity::Warn);
+        .find(|b| b.effect_type == ironmud::types::EffectType::DamageReduction)
+        .expect("sanctuary stamped a DamageReduction buff");
+    assert_eq!(sanctuary_buff.magnitude, 50);
+    assert_eq!(sanctuary_buff.remaining_secs, -1);
+    assert!(
+        !warnings.iter().any(|w| w.message.contains("AFF_SANCTUARY")),
+        "AFF_SANCTUARY should no longer warn",
+    );
 
     // BareHandAttack should warn exactly once across the import (the beast
     // is the only carrier in this fixture, but we still exercise the

@@ -22,7 +22,7 @@
   },
   "aff_flag_actions": {
     "INVISIBLE":     { "action": "warn", "message": "permanent AFF_INVISIBLE not modeled; player invisibility uses buffs only." },
-    "SANCTUARY":     { "action": "warn", "message": "permanent AFF_SANCTUARY (50% damage reduction) not modeled at prototype level." },
+    "SANCTUARY":     { "action": "add_buff", "effect_type": "damage_reduction", "magnitude": 50, "remaining_secs": -1, "source": "innate sanctuary" },
     "POISON":        { "action": "warn", "message": "permanent AFF_POISON not modeled (different from on-hit MobileFlags.poisonous)." },
     "GROUP":         { "action": "drop", "info": "transient runtime flag — never set on a prototype" },
     "CHARM":         { "action": "drop", "info": "transient runtime flag — never set on a prototype" }

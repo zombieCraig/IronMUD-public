@@ -144,7 +144,8 @@ fn process_character_bleeding(db: &db::Db, connections: &SharedConnections) -> R
         // Hemophiliac trait: +30% bleed damage
         let has_hemophiliac = char.traits.iter().any(|t| t == "hemophiliac");
         let bleed_mod = if has_hemophiliac { 130 } else { 100 };
-        let adjusted_bleeding = (bleeding * bleed_mod / 100).max(1);
+        let mut adjusted_bleeding = (bleeding * bleed_mod / 100).max(1);
+        adjusted_bleeding = ironmud::script::apply_damage_reduction(adjusted_bleeding, &char.active_buffs);
 
         let Some(mut char) = db.update_character(&char_name, |c| {
             c.hp -= adjusted_bleeding;
@@ -203,10 +204,11 @@ fn process_mobile_bleeding(db: &db::Db, connections: &SharedConnections) -> Resu
             None => continue,
         };
 
-        let bleeding: i32 = mobile.wounds.iter().map(|w| w.bleeding_severity).sum();
-        if bleeding <= 0 {
+        let raw_bleeding: i32 = mobile.wounds.iter().map(|w| w.bleeding_severity).sum();
+        if raw_bleeding <= 0 {
             continue;
         }
+        let bleeding = ironmud::script::apply_damage_reduction(raw_bleeding, &mobile.active_buffs);
 
         let after = db.update_mobile(&mobile.id, |m| {
             m.current_hp -= bleeding;

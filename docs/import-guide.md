@@ -193,12 +193,13 @@ warn-only (see the [Zone reset commands](#zone-reset-commands) section).
 
 ### AFF_* affected-by bits
 
-Stock affects are persistent buffs/debuffs on the mob. IronMUD's buff
-system applies via `active_buffs` at runtime; we don't pre-stamp
-prototypes with buffs. Most AFF_* therefore become advisory **Warn**
-entries (`permanent AFF_X not modeled at prototype level`); the
-particularly impactful ones (`SANCTUARY`, `INVISIBLE`, `POISON`) carry
-custom messages so they stand out in the report.
+Stock affects are persistent buffs/debuffs on the mob. The mapping
+table now supports an `add_buff` action that stamps a permanent
+`ActiveBuff` onto the imported prototype's `active_buffs`; the
+spawn-time clone in `db::spawn_mobile_from_prototype` carries it to
+every instance for free. `AFF_SANCTUARY` uses this path
+(`damage_reduction`, magnitude 50, permanent). Other AFF_* without an
+existing IronMUD `EffectType` still become advisory **Warn** entries.
 
 `AFF_GROUP` and `AFF_CHARM` are transient runtime flags (never
 authored) and are silently dropped.
@@ -815,14 +816,17 @@ ranked below.
   never / when nobody's there / always) has no IronMUD analogue and is
   silently dropped.
 
-### Mobile flags — High priority
-
-- **`AFF_SANCTUARY`** — 50% damage reduction. Stock paladins, lawful
-  bosses, and several mid-tier zones use this; without it those mobs
-  melt. Likely shape: a permanent `ActiveBuff` stamped at spawn time, or
-  a `MobileFlags.sanctuary: bool` consulted by the damage path.
-
 ### Mobile flags — Implemented (May 2026)
+
+- **`AFF_SANCTUARY`** → permanent `EffectType::DamageReduction` buff
+  (`magnitude=50`, `remaining_secs=-1`) stamped onto the imported
+  prototype's `active_buffs`. The buff carries to every spawn via the
+  existing prototype-clone path. Damage paths (melee, spell, DoT,
+  bleeding) consult `apply_damage_reduction` and halve incoming damage;
+  drowning is intentionally excluded. The same effect powers the new
+  player-castable `sanctuary` spell, and an aura cue is shown in
+  examine and the room mobile listing for any target with the buff
+  active.
 
 - **`MOB_HELPER`** → `MobileFlags.helper`. The helper system scans the
   current room each combat tick and pulls any standing, alive,

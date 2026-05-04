@@ -3,8 +3,8 @@
 
 use crate::db::Db;
 use crate::{
-    BodyPart, CombatDistance, CombatState, CombatTarget, CombatTargetType, CombatZoneType, MobileData, OngoingEffect,
-    WeaponSkill, Wound, WoundLevel, WoundType,
+    ActiveBuff, BodyPart, CombatDistance, CombatState, CombatTarget, CombatTargetType, CombatZoneType, EffectType,
+    MobileData, OngoingEffect, WeaponSkill, Wound, WoundLevel, WoundType,
 };
 use crate::{ItemData, ItemFlags, ItemLocation, ItemType, LiquidType, STARTING_ROOM_ID, WearLocation};
 use rand::Rng;
@@ -41,6 +41,76 @@ pub fn apply_mobile_on_hit_dots(mobile: &MobileData, effects: &mut Vec<OngoingEf
     }
     if mobile.flags.shocking {
         push("lightning");
+    }
+}
+
+/// Returns `damage` reduced by the highest-magnitude active `DamageReduction` buff,
+/// or unchanged if none. Floors at 1 to preserve the "you got hit" feedback.
+/// Magnitude is treated as a percentage (0..=95 expected).
+pub fn apply_damage_reduction(damage: i32, buffs: &[ActiveBuff]) -> i32 {
+    if damage <= 0 {
+        return damage;
+    }
+    let mag = buffs
+        .iter()
+        .filter(|b| b.effect_type == EffectType::DamageReduction)
+        .map(|b| b.magnitude.clamp(0, 95))
+        .max()
+        .unwrap_or(0);
+    if mag == 0 {
+        return damage;
+    }
+    ((damage as i64 * (100 - mag) as i64) / 100).max(1) as i32
+}
+
+#[cfg(test)]
+mod damage_reduction_tests {
+    use super::*;
+
+    fn buff(mag: i32) -> ActiveBuff {
+        ActiveBuff {
+            effect_type: EffectType::DamageReduction,
+            magnitude: mag,
+            remaining_secs: -1,
+            source: "test".to_string(),
+        }
+    }
+
+    #[test]
+    fn no_buffs_returns_damage_unchanged() {
+        assert_eq!(apply_damage_reduction(20, &[]), 20);
+    }
+
+    #[test]
+    fn unrelated_buff_does_nothing() {
+        let b = ActiveBuff {
+            effect_type: EffectType::Haste,
+            magnitude: 50,
+            remaining_secs: -1,
+            source: "test".to_string(),
+        };
+        assert_eq!(apply_damage_reduction(20, &[b]), 20);
+    }
+
+    #[test]
+    fn fifty_percent_halves_damage() {
+        assert_eq!(apply_damage_reduction(20, &[buff(50)]), 10);
+    }
+
+    #[test]
+    fn highest_magnitude_wins() {
+        assert_eq!(apply_damage_reduction(100, &[buff(25), buff(50)]), 50);
+    }
+
+    #[test]
+    fn floors_at_one() {
+        assert_eq!(apply_damage_reduction(1, &[buff(95)]), 1);
+    }
+
+    #[test]
+    fn magnitude_above_95_clamps() {
+        // magnitude clamped to 95, so 100 dmg * 5% = 5
+        assert_eq!(apply_damage_reduction(100, &[buff(120)]), 5);
     }
 }
 
@@ -1882,12 +1952,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     let cloned_db = db.clone();
     engine.register_fn("apply_bleeding_damage", move |char_name: String| -> i64 {
         if let Ok(Some(mut char)) = cloned_db.get_character_data(&char_name) {
-            let bleeding: i32 = char.wounds.iter().map(|w| w.bleeding_severity).sum();
-            if bleeding > 0 {
+            let raw: i32 = char.wounds.iter().map(|w| w.bleeding_severity).sum();
+            if raw > 0 {
+                let bleeding = apply_damage_reduction(raw, &char.active_buffs);
                 char.hp -= bleeding;
                 let _ = cloned_db.save_character_data(char);
+                return bleeding as i64;
             }
-            return bleeding as i64;
         }
         0
     });
@@ -1901,12 +1972,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         };
 
         if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&mid) {
-            let bleeding: i32 = mobile.wounds.iter().map(|w| w.bleeding_severity).sum();
-            if bleeding > 0 {
+            let raw: i32 = mobile.wounds.iter().map(|w| w.bleeding_severity).sum();
+            if raw > 0 {
+                let bleeding = apply_damage_reduction(raw, &mobile.active_buffs);
                 mobile.current_hp -= bleeding;
                 let _ = cloned_db.save_mobile_data(mobile);
+                return bleeding as i64;
             }
-            return bleeding as i64;
         }
         0
     });
@@ -2913,7 +2985,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     let cloned_db = db.clone();
     engine.register_fn("process_ongoing_effects_tick", move |char_name: String| -> i64 {
         if let Ok(Some(mut char)) = cloned_db.get_character_data(&char_name) {
-            let total_damage: i32 = char.ongoing_effects.iter().map(|e| e.damage_per_round).sum();
+            let raw: i32 = char.ongoing_effects.iter().map(|e| e.damage_per_round).sum();
+            let total_damage = apply_damage_reduction(raw, &char.active_buffs);
             if total_damage > 0 {
                 char.hp -= total_damage;
             }
@@ -2936,7 +3009,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             Err(_) => return 0,
         };
         if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&mid) {
-            let total_damage: i32 = mobile.ongoing_effects.iter().map(|e| e.damage_per_round).sum();
+            let raw: i32 = mobile.ongoing_effects.iter().map(|e| e.damage_per_round).sum();
+            let total_damage = apply_damage_reduction(raw, &mobile.active_buffs);
             if total_damage > 0 {
                 mobile.current_hp -= total_damage;
             }

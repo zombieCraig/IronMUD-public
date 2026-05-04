@@ -2208,6 +2208,7 @@ pub enum EffectType {
     MagicLight,
     Disguise,
     WaterBreathing,
+    DamageReduction,
 }
 
 impl EffectType {
@@ -2240,6 +2241,7 @@ impl EffectType {
             "magic_light" | "magiclight" | "light" => Some(EffectType::MagicLight),
             "disguise" => Some(EffectType::Disguise),
             "water_breathing" | "waterbreathing" | "aqua_breath" => Some(EffectType::WaterBreathing),
+            "damage_reduction" | "damagereduction" | "sanctuary" => Some(EffectType::DamageReduction),
             _ => None,
         }
     }
@@ -2269,6 +2271,7 @@ impl EffectType {
             EffectType::MagicLight => "magic_light",
             EffectType::Disguise => "disguise",
             EffectType::WaterBreathing => "water_breathing",
+            EffectType::DamageReduction => "damage_reduction",
         }
     }
 
@@ -2297,6 +2300,7 @@ impl EffectType {
             "magic_light",
             "disguise",
             "water_breathing",
+            "damage_reduction",
         ]
     }
 }

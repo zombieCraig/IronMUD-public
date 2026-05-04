@@ -33,7 +33,7 @@ mod utilities;
 
 pub use ai::{set_chat_sender, set_claude_sender, set_gemini_sender};
 pub use areas::check_build_mode;
-pub use combat::apply_mobile_on_hit_dots;
+pub use combat::{apply_damage_reduction, apply_mobile_on_hit_dots};
 pub use crafting::build_crafted_item_from_prototype;
 pub use macros::parse_uuid_or_none;
 pub use triggers::execute_room_template;

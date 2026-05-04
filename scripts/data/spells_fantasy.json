@@ -83,6 +83,21 @@
     "target_type": "self",
     "xp_award": 8
   },
+  "sanctuary": {
+    "id": "sanctuary",
+    "name": "Sanctuary",
+    "description": "Wraps the target in a faint white aura, halving all damage they take.",
+    "skill_required": 7,
+    "scroll_only": false,
+    "mana_cost": 50,
+    "cooldown_secs": 180,
+    "spell_type": "buff",
+    "buff_effect": "damage_reduction",
+    "buff_magnitude": 50,
+    "buff_duration_secs": 120,
+    "target_type": "self_or_friendly",
+    "xp_award": 12
+  },
   "invisibility": {
     "id": "invisibility",
     "name": "Invisibility",

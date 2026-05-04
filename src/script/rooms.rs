@@ -1196,11 +1196,20 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     for mobile in mobiles {
                         if effectively_dark || is_blind {
                             output.push_str(&color("Someone is here.", ANSI_GREEN));
-                        } else if mobile.current_activity == crate::ActivityState::Sleeping {
-                            let sleeping_desc = format!("{} is here, sleeping.", mobile.name);
-                            output.push_str(&color(&sleeping_desc, ANSI_GREEN));
                         } else {
-                            output.push_str(&color(&mobile.short_desc, ANSI_GREEN));
+                            let mut line = if mobile.current_activity == crate::ActivityState::Sleeping {
+                                format!("{} is here, sleeping.", mobile.name)
+                            } else {
+                                mobile.short_desc.clone()
+                            };
+                            if mobile
+                                .active_buffs
+                                .iter()
+                                .any(|b| b.effect_type == crate::EffectType::DamageReduction)
+                            {
+                                line.push_str(" (glowing with a faint white aura)");
+                            }
+                            output.push_str(&color(&line, ANSI_GREEN));
                         }
                         output.push('\n');
                     }

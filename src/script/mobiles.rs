@@ -2,7 +2,7 @@
 // Mobile/NPC system functions
 
 use crate::db::Db;
-use crate::{ActivityState, DamageType, MobileData, MobileFlags, RoutineEntry, find_active_entry};
+use crate::{ActivityState, DamageType, EffectType, MobileData, MobileFlags, RoutineEntry, find_active_entry};
 use rhai::Engine;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -657,6 +657,24 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         }
         String::new()
     });
+
+    // mobile_has_buff(mobile_id, effect_type_str) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "mobile_has_buff",
+        move |mobile_id: String, effect_type_str: String| -> bool {
+            let effect_type = match EffectType::from_str(&effect_type_str) {
+                Some(et) => et,
+                None => return false,
+            };
+            if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+                if let Ok(Some(mobile)) = cloned_db.get_mobile_data(&uuid) {
+                    return mobile.active_buffs.iter().any(|b| b.effect_type == effect_type);
+                }
+            }
+            false
+        },
+    );
 
     // count_mobiles_by_vnum(vnum) -> i64 (counts non-prototype mobiles with vnum)
     let cloned_db = db.clone();

@@ -1069,6 +1069,7 @@ fn get_buff_expiry_message(effect_type: EffectType) -> String {
         EffectType::DetectInvisible => "Your enhanced sight returns to normal.".to_string(),
         EffectType::Regeneration => "The regeneration effect wears off.".to_string(),
         EffectType::WaterBreathing => "The water breathing magic fades.".to_string(),
+        EffectType::DamageReduction => "The protective aura around you fades.".to_string(),
         _ => String::new(),
     }
 }
