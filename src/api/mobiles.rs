@@ -103,6 +103,9 @@ pub struct CreateMobileRequest {
     pub simulation: Option<SimulationConfigRequest>,
     #[serde(default)]
     pub world_max_count: Option<i32>,
+    /// Helper-system faction tag. None/empty falls back to Circle-stock semantics.
+    #[serde(default)]
+    pub faction: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -220,6 +223,8 @@ pub struct MobileFlagsRequest {
     #[serde(default)]
     pub guard: Option<bool>,
     #[serde(default)]
+    pub helper: Option<bool>,
+    #[serde(default)]
     pub thief: Option<bool>,
     #[serde(default)]
     pub cant_swim: Option<bool>,
@@ -307,6 +312,9 @@ pub struct UpdateMobileRequest {
     pub remove_simulation: Option<bool>,
     #[serde(default)]
     pub world_max_count: Option<i32>,
+    /// Helper-system faction tag. Empty string clears to None.
+    #[serde(default)]
+    pub faction: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -412,6 +420,9 @@ impl MobileSummary {
         }
         if mobile.flags.guard {
             flags.push("guard".to_string());
+        }
+        if mobile.flags.helper {
+            flags.push("helper".to_string());
         }
         if mobile.flags.thief {
             flags.push("thief".to_string());
@@ -674,6 +685,7 @@ async fn create_mobile(
             can_open_doors: req.flags.can_open_doors.unwrap_or(false),
             leasing_agent: req.flags.leasing_agent.unwrap_or(false),
             guard: req.flags.guard.unwrap_or(false),
+            helper: req.flags.helper.unwrap_or(false),
             thief: req.flags.thief.unwrap_or(false),
             cant_swim: req.flags.cant_swim.unwrap_or(false),
             poisonous: req.flags.poisonous.unwrap_or(false),
@@ -720,6 +732,7 @@ async fn create_mobile(
         needs: None,
         characteristics: None,
         household_id: None,
+        faction: req.faction.clone().filter(|s| !s.is_empty()),
         relationships: Vec::new(),
         resident_of: None,
         social: None,
@@ -834,6 +847,9 @@ async fn update_mobile(
         if let Some(v) = flags.guard {
             mobile.flags.guard = v;
         }
+        if let Some(v) = flags.helper {
+            mobile.flags.helper = v;
+        }
         if let Some(v) = flags.thief {
             mobile.flags.thief = v;
         }
@@ -861,6 +877,9 @@ async fn update_mobile(
     }
     if let Some(world_max) = req.world_max_count {
         mobile.world_max_count = if world_max <= 0 { None } else { Some(world_max) };
+    }
+    if let Some(faction) = req.faction {
+        mobile.faction = if faction.is_empty() { None } else { Some(faction) };
     }
     // Healer config
     if let Some(healer_type) = req.healer_type {

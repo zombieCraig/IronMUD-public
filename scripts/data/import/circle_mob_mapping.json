@@ -13,7 +13,7 @@
     "AGGR_GOOD":    { "action": "warn", "message": "alignment-conditional aggression not modeled (no alignment system)." },
     "AGGR_NEUTRAL": { "action": "warn", "message": "alignment-conditional aggression not modeled (no alignment system)." },
     "MEMORY":       { "action": "warn", "message": "MOB_MEMORY (remembers attackers) not modeled." },
-    "HELPER":       { "action": "warn", "message": "MOB_HELPER (assists groupmates) not modeled." },
+    "HELPER":       { "action": "set_flag", "ironmud_flag": "helper" },
     "NOCHARM":      { "action": "warn", "message": "MOB_NOCHARM not modeled." },
     "NOSUMMON":     { "action": "warn", "message": "MOB_NOSUMMON not modeled." },
     "NOSLEEP":      { "action": "warn", "message": "MOB_NOSLEEP not modeled." },

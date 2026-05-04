@@ -237,6 +237,7 @@ export interface Mobile {
   is_prototype: boolean;
   current_room_id?: string;
   flags: MobileFlags;
+  faction?: string;
   dialogue: Record<string, string>;
   triggers: MobileTrigger[];
   simulation?: SimulationConfig;
@@ -277,6 +278,7 @@ export interface MobileFlags {
   can_open_doors?: boolean;
   leasing_agent?: boolean;
   guard?: boolean;
+  helper?: boolean;
   thief?: boolean;
   cant_swim?: boolean;
   poisonous?: boolean;
@@ -460,6 +462,8 @@ export interface CreateMobileRequest {
   remove_simulation?: boolean;
   // World-wide cap on live (non-prototype) instances of this vnum (0 = unlimited)
   world_max_count?: number;
+  // Helper-system ally tag. Empty = Circle-stock fallback.
+  faction?: string;
 }
 
 export interface RoutineEntry {

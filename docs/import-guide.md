@@ -187,7 +187,7 @@ warn-only (see the [Zone reset commands](#zone-reset-commands) section).
 | `STAY_ZONE` | **Warn**: zone-bound wandering not modeled |
 | `AGGR_EVIL`, `AGGR_GOOD`, `AGGR_NEUTRAL` | **Warn**: blocked on alignment system |
 | `MEMORY` | **Warn**: persistent enmity not modeled |
-| `HELPER` | **Warn**: assist-groupmates not modeled |
+| `HELPER` | sets `helper` (faction left empty → Circle-stock semantics: any NPC defends any other NPC against PCs) |
 | `NOCHARM`, `NOSUMMON`, `NOSLEEP`, `NOBASH`, `NOBLIND` | **Warn**: status immunities not modeled |
 | Bits ≥ 18 | **Warn** (`unrecognised mob flag`): patched flag — surface for review |
 
@@ -817,15 +817,26 @@ ranked below.
 
 ### Mobile flags — High priority
 
-- **`MOB_HELPER`** — assists groupmates / faction allies. Stock zone
-  designers rely on this for boss fights and gang encounters. Likely
-  shape: a perception-radius scan in the combat tick that joins any
-  combat targeting another mob with `helper = true` and a matching
-  faction tag.
 - **`AFF_SANCTUARY`** — 50% damage reduction. Stock paladins, lawful
   bosses, and several mid-tier zones use this; without it those mobs
   melt. Likely shape: a permanent `ActiveBuff` stamped at spawn time, or
   a `MobileFlags.sanctuary: bool` consulted by the damage path.
+
+### Mobile flags — Implemented (May 2026)
+
+- **`MOB_HELPER`** → `MobileFlags.helper`. The helper system scans the
+  current room each combat tick and pulls any standing, alive,
+  non-engaged HELPER mobile into combat against a PC who is attacking
+  one of its allies. Allies are identified via the optional
+  `MobileData.faction: Option<String>` tag (case-insensitive equality).
+  An empty/None faction falls back to Circle-stock semantics: any
+  unfactioned HELPER defends any other unfactioned NPC. A tagged
+  faction explicitly opts a mob *out* of the generic pool, so
+  authored factions can coexist with stock content. Engagement is
+  same-room and PC-attackers only; helper-vs-NPC and adjacent-room
+  rescue are deliberate non-features for now. Builders set the tag via
+  `medit <id> faction <string|clear>`. Stock CircleMUD imports leave
+  faction empty so existing zones work unchanged.
 
 ### Mobile flags — Medium priority
 

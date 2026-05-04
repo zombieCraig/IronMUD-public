@@ -3034,6 +3034,8 @@ pub struct MobileFlags {
     #[serde(default)]
     pub guard: bool, // Enhanced perception, responds to nearby theft
     #[serde(default)]
+    pub helper: bool, // Joins combat to defend faction allies (or any NPC if faction is empty) attacked by a player
+    #[serde(default)]
     pub thief: bool, // Steals gold from players
     #[serde(default)]
     pub cant_swim: bool, // Cannot enter water rooms, takes damage if in water
@@ -3227,6 +3229,12 @@ pub struct MobileData {
     /// Optional household grouping (reserved for future family/partner mechanics).
     #[serde(default)]
     pub household_id: Option<Uuid>,
+    /// Free-form ally tag for the helper system. None/empty falls back to
+    /// Circle-stock semantics (any NPC defends any other NPC against a PC).
+    /// A tagged faction opts the mob *out* of that generic pool — only
+    /// matching tags ally.
+    #[serde(default)]
+    pub faction: Option<String>,
     /// Declared relationships to other mobiles (future: families, partners, rivals).
     #[serde(default)]
     pub relationships: Vec<Relationship>,
@@ -3351,6 +3359,7 @@ impl MobileData {
             needs: None,
             characteristics: None,
             household_id: None,
+            faction: None,
             relationships: Vec::new(),
             resident_of: None,
             social: None,

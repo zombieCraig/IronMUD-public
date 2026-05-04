@@ -26,6 +26,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         cowardly,
         can_open_doors,
         guard,
+        helper,
         thief,
         cant_swim,
         poisonous,
@@ -59,6 +60,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_get("vnum", |m: &mut MobileData| m.vnum.clone())
         .register_get("world_max_count", |m: &mut MobileData| m.world_max_count.unwrap_or(0) as i64)
         .register_get("has_world_max_count", |m: &mut MobileData| m.world_max_count.is_some())
+        .register_get("faction", |m: &mut MobileData| m.faction.clone().unwrap_or_default())
         .register_get("level", |m: &mut MobileData| m.level as i64)
         .register_get("max_hp", |m: &mut MobileData| m.max_hp as i64)
         .register_get("current_hp", |m: &mut MobileData| m.current_hp as i64)
@@ -631,6 +633,29 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             }
         }
         false
+    });
+
+    // set_mobile_faction(mobile_id, value) -> bool. Empty string clears to None.
+    let cloned_db = db.clone();
+    engine.register_fn("set_mobile_faction", move |mobile_id: String, value: String| -> bool {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+            if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
+                mobile.faction = if value.is_empty() { None } else { Some(value) };
+                return cloned_db.save_mobile_data(mobile).is_ok();
+            }
+        }
+        false
+    });
+
+    // get_mobile_faction(mobile_id) -> String (empty if None)
+    let cloned_db = db.clone();
+    engine.register_fn("get_mobile_faction", move |mobile_id: String| -> String {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+            if let Ok(Some(mobile)) = cloned_db.get_mobile_data(&uuid) {
+                return mobile.faction.unwrap_or_default();
+            }
+        }
+        String::new()
     });
 
     // count_mobiles_by_vnum(vnum) -> i64 (counts non-prototype mobiles with vnum)

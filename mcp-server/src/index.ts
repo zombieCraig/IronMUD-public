@@ -638,6 +638,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           daily_routine: args?.daily_routine as any[] | undefined,
           simulation: args?.simulation as any | undefined,
           world_max_count: args?.world_max_count as number | undefined,
+          faction: args?.faction as string | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(mobile, null, 2) }],
@@ -656,6 +657,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           "shop_extra_types", "shop_extra_categories", "shop_deny_types", "shop_deny_categories",
           "shop_stock", "shop_preset_vnum",
           "daily_routine", "simulation", "remove_simulation", "world_max_count",
+          "faction",
         ];
         for (const field of mobileFields) {
           if (args?.[field] !== undefined) {

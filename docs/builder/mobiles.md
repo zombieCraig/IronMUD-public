@@ -94,6 +94,7 @@ Flag shopkeeper set to: ON
 | `cowardly` | Flees when sniped or HP < 25% |
 | `can_open_doors` | Can open/unlock doors during routine pathfinding |
 | `guard` | Enhanced perception, responds to nearby theft |
+| `helper` | Joins combat to defend faction allies attacked by a player (see Helper System below) |
 | `thief` | Steals gold from players |
 
 Mobiles produced by the [immigration system](areas.md#immigration-migrant-spawning) carry `migrant:<role>:<prefix>` vnums and are tagged with role-specific flags (guard, healer, scavenger). They're attached to a liveable room via `resident_of` and released when they die.
@@ -102,6 +103,30 @@ Mobiles produced by the [immigration system](areas.md#immigration-migrant-spawni
 > medit guard flag sentinel on
 Flag 'sentinel' set to: ON
 ```
+
+## Helper System
+
+Mobiles flagged `helper` join combat to defend allies who are being attacked by a player. The scan runs once per round on the same room only; helpers do not chase across rooms or intervene in NPC-vs-NPC combat.
+
+| Subcommand | Usage | Description |
+|------------|-------|-------------|
+| `faction` | `medit <id> faction <tag\|clear>` | Set or clear the helper-system ally tag |
+
+**Ally rule:**
+- Both mobs share the same `faction` string (case-insensitive) → ally.
+- Both `faction`s are empty → ally (Circle-stock fallback: any unfactioned NPC defends any other unfactioned NPC).
+- One side has a faction and the other does not → **not** ally. Tagging a mob with a faction explicitly opts it out of the generic pool.
+
+```
+> medit goblin_warrior flag helper on
+> medit goblin_warrior faction goblin_clan
+> medit goblin_shaman flag helper on
+> medit goblin_shaman faction goblin_clan
+```
+
+Now attacking either goblin pulls both into the fight. A nearby `town_guard` with `faction = town_guard` ignores the goblin brawl entirely.
+
+CircleMUD imports leave `faction` empty so stock content (goblins in goblin caves, guards in barracks rooms) Just Works via the fallback.
 
 ## Dialogue System
 

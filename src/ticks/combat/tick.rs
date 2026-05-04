@@ -313,9 +313,315 @@ fn process_character_combat_round(db: &db::Db, connections: &SharedConnections, 
         }
     }
 
+    // After the swing, scan for HELPER mobiles in the room that should join
+    // combat to defend a factional ally the PC is attacking.
+    if matches!(target.target_type, CombatTargetType::Mobile) {
+        if let Err(e) = process_helper_joins(db, connections, &char, &room_id) {
+            debug!("Helper join scan error for {}: {}", char_name, e);
+        }
+    }
+
     db.save_character_data(char.clone())?;
     sync_character_to_session(connections, &char);
     Ok(())
+}
+
+/// Scan the PC's room for HELPER mobiles that should join combat against the PC
+/// to defend an ally currently being attacked. Same room only.
+///
+/// Ally match: faction strings compared case-insensitively. Both empty/None =
+/// ally (Circle-stock fallback). One side tagged and the other empty = NOT ally —
+/// a tagged faction explicitly opts out of the generic pool.
+fn process_helper_joins(
+    db: &db::Db,
+    connections: &SharedConnections,
+    attacker: &CharacterData,
+    room_id: &uuid::Uuid,
+) -> Result<()> {
+    let victim_ids: Vec<uuid::Uuid> = attacker
+        .combat
+        .targets
+        .iter()
+        .filter(|t| t.target_type == CombatTargetType::Mobile)
+        .map(|t| t.target_id)
+        .collect();
+    if victim_ids.is_empty() {
+        return Ok(());
+    }
+
+    let victims: Vec<MobileData> = victim_ids
+        .iter()
+        .filter_map(|id| db.get_mobile_data(id).ok().flatten())
+        .filter(|m| m.current_room_id.as_ref() == Some(room_id))
+        .collect();
+    if victims.is_empty() {
+        return Ok(());
+    }
+
+    let candidates = db.get_mobiles_in_room(room_id)?;
+    for candidate in candidates {
+        if !candidate.flags.helper {
+            continue;
+        }
+        if candidate.combat.in_combat {
+            continue;
+        }
+        if candidate.flags.no_attack {
+            continue;
+        }
+        if candidate.current_hp <= 0 || candidate.is_unconscious {
+            continue;
+        }
+        if victim_ids.contains(&candidate.id) {
+            continue;
+        }
+
+        let Some(ally_name) = victims
+            .iter()
+            .find(|v| factions_match(&candidate.faction, &v.faction))
+            .map(|v| v.name.clone())
+        else {
+            continue;
+        };
+
+        let player_target_id = uuid::Uuid::nil();
+        let _ = db.update_mobile(&candidate.id, |m| {
+            m.combat.in_combat = true;
+            if !m
+                .combat
+                .targets
+                .iter()
+                .any(|t| t.target_type == CombatTargetType::Player)
+            {
+                m.combat.targets.push(CombatTarget {
+                    target_type: CombatTargetType::Player,
+                    target_id: player_target_id,
+                });
+            }
+            m.combat.distances.insert(player_target_id, CombatDistance::Melee);
+        });
+
+        broadcast_to_room_awake(
+            connections,
+            room_id,
+            &format!("{} rushes to {}'s aid!", candidate.name, ally_name),
+        );
+    }
+
+    Ok(())
+}
+
+/// Helper-system ally match. Both sides empty/None = ally (Circle-stock
+/// fallback). One side tagged and the other empty = NOT ally. Both tagged =
+/// ally iff case-insensitive equal.
+fn factions_match(a: &Option<String>, b: &Option<String>) -> bool {
+    let a_empty = a.as_deref().map(str::is_empty).unwrap_or(true);
+    let b_empty = b.as_deref().map(str::is_empty).unwrap_or(true);
+    match (a_empty, b_empty) {
+        (true, true) => true,
+        (true, false) | (false, true) => false,
+        (false, false) => a.as_deref().unwrap().eq_ignore_ascii_case(b.as_deref().unwrap()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ironmud::CharacterPosition;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+    use uuid::Uuid;
+
+    #[test]
+    fn factions_both_none_is_ally() {
+        assert!(factions_match(&None, &None));
+    }
+
+    #[test]
+    fn factions_both_empty_string_is_ally() {
+        assert!(factions_match(&Some(String::new()), &Some(String::new())));
+        assert!(factions_match(&Some(String::new()), &None));
+    }
+
+    #[test]
+    fn factions_one_tagged_one_empty_is_not_ally() {
+        assert!(!factions_match(&Some("guard".into()), &None));
+        assert!(!factions_match(&None, &Some("guard".into())));
+        assert!(!factions_match(&Some("guard".into()), &Some(String::new())));
+    }
+
+    #[test]
+    fn factions_matching_tags_are_ally_case_insensitive() {
+        assert!(factions_match(&Some("Goblin_Clan".into()), &Some("goblin_clan".into())));
+    }
+
+    #[test]
+    fn factions_mismatched_tags_are_not_ally() {
+        assert!(!factions_match(&Some("guard".into()), &Some("goblin".into())));
+    }
+
+    fn empty_connections() -> SharedConnections {
+        Arc::new(Mutex::new(HashMap::new()))
+    }
+
+    fn mk_char(name: &str, room: Uuid, victim_id: Uuid) -> CharacterData {
+        let mut char: CharacterData = serde_json::from_value(serde_json::json!({
+            "name": name,
+            "password_hash": "",
+            "current_room_id": room,
+        }))
+        .expect("build character");
+        char.position = CharacterPosition::Standing;
+        char.combat.in_combat = true;
+        char.combat.targets.push(CombatTarget {
+            target_type: CombatTargetType::Mobile,
+            target_id: victim_id,
+        });
+        char
+    }
+
+    fn mk_mobile(
+        db: &db::Db,
+        name: &str,
+        room: Uuid,
+        helper: bool,
+        faction: Option<&str>,
+    ) -> MobileData {
+        let mut m = MobileData::new(name.to_string());
+        m.is_prototype = false;
+        m.current_room_id = Some(room);
+        m.flags.helper = helper;
+        m.faction = faction.map(|s| s.to_string());
+        db.save_mobile_data(m.clone()).expect("save mobile");
+        m
+    }
+
+    fn fresh_db(label: &str) -> (db::Db, String) {
+        let path = format!("/tmp/test_helper_{}_{}.db", label, std::process::id());
+        let _ = std::fs::remove_dir_all(&path);
+        let db = db::Db::open(&path).expect("open db");
+        (db, path)
+    }
+
+    fn run_with_db(label: &str, body: impl FnOnce(&db::Db)) {
+        let (db, path) = fresh_db(label);
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| body(&db)));
+        let _ = std::fs::remove_dir_all(&path);
+        if let Err(e) = outcome {
+            std::panic::resume_unwind(e);
+        }
+    }
+
+    #[test]
+    fn helper_joins_when_pc_attacks_faction_ally() {
+        run_with_db("faction_ally", |db| {
+            let room = Uuid::new_v4();
+            let victim = mk_mobile(db, "goblin warrior", room, true, Some("goblin_clan"));
+            let helper = mk_mobile(db, "goblin shaman", room, true, Some("goblin_clan"));
+
+            let attacker = mk_char("hero", room, victim.id);
+            process_helper_joins(db, &empty_connections(), &attacker, &room).expect("scan ok");
+
+            let h = db.get_mobile_data(&helper.id).expect("load helper").expect("exists");
+            assert!(h.combat.in_combat, "helper should have entered combat");
+            assert!(
+                h.combat
+                    .targets
+                    .iter()
+                    .any(|t| t.target_type == CombatTargetType::Player),
+                "helper should target the player"
+            );
+        });
+    }
+
+    #[test]
+    fn helper_joins_when_both_factions_empty_circle_fallback() {
+        run_with_db("both_empty", |db| {
+            let room = Uuid::new_v4();
+            let victim = mk_mobile(db, "stray dog", room, true, None);
+            let helper = mk_mobile(db, "stray cat", room, true, None);
+
+            let attacker = mk_char("hero", room, victim.id);
+            process_helper_joins(db, &empty_connections(), &attacker, &room).expect("scan ok");
+
+            let h = db.get_mobile_data(&helper.id).expect("load").expect("exists");
+            assert!(h.combat.in_combat, "Circle-stock fallback should engage helper");
+        });
+    }
+
+    #[test]
+    fn helper_skips_when_factions_differ() {
+        run_with_db("factions_differ", |db| {
+            let room = Uuid::new_v4();
+            let victim = mk_mobile(db, "goblin warrior", room, true, Some("goblin_clan"));
+            let bystander = mk_mobile(db, "town guard", room, true, Some("town_guard"));
+
+            let attacker = mk_char("hero", room, victim.id);
+            process_helper_joins(db, &empty_connections(), &attacker, &room).expect("scan ok");
+
+            let b = db.get_mobile_data(&bystander.id).expect("load").expect("exists");
+            assert!(!b.combat.in_combat, "guard must not defend a goblin");
+        });
+    }
+
+    #[test]
+    fn helper_skips_when_one_faction_empty() {
+        run_with_db("one_empty", |db| {
+            let room = Uuid::new_v4();
+            let victim = mk_mobile(db, "wandering hermit", room, true, None);
+            let bystander = mk_mobile(db, "town guard", room, true, Some("town_guard"));
+
+            let attacker = mk_char("hero", room, victim.id);
+            process_helper_joins(db, &empty_connections(), &attacker, &room).expect("scan ok");
+
+            let b = db.get_mobile_data(&bystander.id).expect("load").expect("exists");
+            assert!(
+                !b.combat.in_combat,
+                "tagged faction must opt out of generic pool — guard should not defend an unfactioned hermit"
+            );
+        });
+    }
+
+    #[test]
+    fn helper_skips_when_already_in_combat_or_dead_or_no_attack() {
+        run_with_db("skip_predicates", |db| {
+            let room = Uuid::new_v4();
+            let victim = mk_mobile(db, "goblin warrior", room, true, Some("goblin_clan"));
+
+            // Already in combat — skipped.
+            let mut already = mk_mobile(db, "goblin elder", room, true, Some("goblin_clan"));
+            already.combat.in_combat = true;
+            db.save_mobile_data(already.clone()).expect("save already-fighting");
+
+            // Dead (hp <= 0) — skipped.
+            let mut dead = mk_mobile(db, "goblin corpse", room, true, Some("goblin_clan"));
+            dead.current_hp = 0;
+            db.save_mobile_data(dead.clone()).expect("save dead");
+
+            // no_attack — skipped.
+            let mut peaceful = mk_mobile(db, "goblin oracle", room, true, Some("goblin_clan"));
+            peaceful.flags.no_attack = true;
+            db.save_mobile_data(peaceful.clone()).expect("save peaceful");
+
+            // Helper without flag — skipped.
+            let no_flag = mk_mobile(db, "goblin grunt", room, false, Some("goblin_clan"));
+
+            let attacker = mk_char("hero", room, victim.id);
+            process_helper_joins(db, &empty_connections(), &attacker, &room).expect("scan ok");
+
+            let after_no_flag = db.get_mobile_data(&no_flag.id).unwrap().unwrap();
+            assert!(
+                !after_no_flag.combat.in_combat,
+                "mob without helper flag must not join"
+            );
+
+            let after_dead = db.get_mobile_data(&dead.id).unwrap().unwrap();
+            assert!(!after_dead.combat.in_combat, "dead helper must not join");
+
+            let after_peaceful = db.get_mobile_data(&peaceful.id).unwrap().unwrap();
+            assert!(!after_peaceful.combat.in_combat, "no_attack helper must not join");
+        });
+    }
 }
 
 /// Process a character attacking a mobile

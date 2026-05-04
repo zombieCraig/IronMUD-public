@@ -84,6 +84,7 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
         needs: None,
         characteristics: None,
         household_id: None,
+        faction: None,
         relationships: Vec::new(),
         resident_of: None,
         social: None,

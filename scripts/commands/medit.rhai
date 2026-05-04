@@ -248,6 +248,10 @@ fn dispatch_combat_subcommand(uuid, subcommand, parts, connection_id) {
         handle_world_max_subcommand(uuid, parts, connection_id);
         return true;
     }
+    if subcommand == "faction" {
+        handle_faction_subcommand(uuid, parts, connection_id);
+        return true;
+    }
     return false;
 }
 
@@ -439,6 +443,23 @@ fn handle_world_max_subcommand(mobile_id, parts, connection_id) {
     }
 }
 
+fn handle_faction_subcommand(mobile_id, parts, connection_id) {
+    if parts.len() < 3 {
+        let current = get_mobile_faction(mobile_id);
+        let shown = if current == "" { "(none — Circle-stock fallback applies)" } else { current };
+        send_client_message(connection_id, "Faction: " + shown + "\nUsage: medit " + mobile_id + " faction <tag|clear>");
+        return;
+    }
+    let value = parts[2];
+    if value.to_lower() == "clear" || value == "" {
+        set_mobile_faction(mobile_id, "");
+        send_client_message(connection_id, "Faction cleared (helper falls back to Circle-stock semantics).");
+        return;
+    }
+    set_mobile_faction(mobile_id, value);
+    send_client_message(connection_id, "Faction set to: " + value);
+}
+
 fn handle_damtype_subcommand(mobile_id, parts, connection_id) {
     if parts.len() < 3 {
         let all_types = get_all_damage_types();
@@ -580,6 +601,7 @@ fn get_mobile_flag_value(mobile, flag_name) {
     if flag_name == "cowardly" { return flags.cowardly; }
     if flag_name == "can_open_doors" || flag_name == "canopendoors" { return flags.can_open_doors; }
     if flag_name == "guard" { return flags.guard; }
+    if flag_name == "helper" { return flags.helper; }
     if flag_name == "thief" { return flags.thief; }
     if flag_name == "cant_swim" || flag_name == "cantswim" { return flags.cant_swim; }
     if flag_name == "poisonous" { return flags.poisonous; }
@@ -690,6 +712,9 @@ fn show_mobile_properties(mobile, mobile_id, connection_id) {
     if mobile.has_world_max_count {
         output += olc::c_label("World Max: ", connection_id) + olc::c_value("" + mobile.world_max_count + " live copies", connection_id) + "\n";
     }
+    if mobile.faction != "" {
+        output += olc::c_label("Faction: ", connection_id) + olc::c_value(mobile.faction, connection_id) + "\n";
+    }
 
     output += "\n" + olc::c_label("--- Attributes ---", connection_id) + "\n";
     output += olc::c_label("STR: ", connection_id) + olc::c_value("" + mobile.stat_str, connection_id) + "  " + olc::c_label("DEX: ", connection_id) + olc::c_value("" + mobile.stat_dex, connection_id) + "  " + olc::c_label("CON: ", connection_id) + olc::c_value("" + mobile.stat_con, connection_id) + "\n";
@@ -766,6 +791,7 @@ fn build_flags_display(mobile) {
     if flags.cowardly { flag_str += "cowardly "; }
     if flags.can_open_doors { flag_str += "can_open_doors "; }
     if flags.guard { flag_str += "guard "; }
+    if flags.helper { flag_str += "helper "; }
     if flags.thief { flag_str += "thief "; }
     if flags.cant_swim { flag_str += "cant_swim "; }
     if flags.poisonous { flag_str += "poisonous "; }
@@ -800,6 +826,7 @@ fn build_commands_help(mobile_id, mobile) {
     output += "  medit " + display_id + " gold <amount>            (gold dropped on death)\n";
     output += "  medit " + display_id + " perception <0-10>       (stealth detection ability)\n";
     output += "  medit " + display_id + " world_max <n>           (cap live copies world-wide; 0 = unlimited)\n";
+    output += "  medit " + display_id + " faction <tag|clear>     (helper system: matching tags ally; empty = Circle-stock)\n";
     output += "  medit " + display_id + " stat <str|dex|con|int|wis|cha> <value>\n";
     output += "  medit " + display_id + " flags\n";
     output += "  medit " + display_id + " flag <name> [on|off]\n";
@@ -906,6 +933,7 @@ fn show_mobile_flags(mobile, mobile_id, connection_id) {
     output += build_flag_line("cowardly", flags.cowardly, "Flees when sniped or HP below 25%", display_id, connection_id);
     output += build_flag_line("can_open_doors", flags.can_open_doors, "Can open/unlock doors during routine pathfinding", display_id, connection_id);
     output += build_flag_line("guard", flags.guard, "Enhanced perception, responds to nearby theft", display_id, connection_id);
+    output += build_flag_line("helper", flags.helper, "Joins combat to defend faction allies attacked by a player", display_id, connection_id);
     output += build_flag_line("thief", flags.thief, "Steals gold from players", display_id, connection_id);
     output += build_flag_line("cant_swim", flags.cant_swim, "Cannot enter water rooms, takes damage in water", display_id, connection_id);
     output += build_flag_line("poisonous", flags.poisonous, "Melee hits apply a poison DoT", display_id, connection_id);

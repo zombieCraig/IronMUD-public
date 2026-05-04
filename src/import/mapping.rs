@@ -995,6 +995,7 @@ fn apply_named_mob_flag(flags: &mut MobileFlags, name: &str) -> bool {
         "cowardly" => flags.cowardly = true,
         "can_open_doors" => flags.can_open_doors = true,
         "guard" => flags.guard = true,
+        "helper" => flags.helper = true,
         "thief" => flags.thief = true,
         "cant_swim" => flags.cant_swim = true,
         "poisonous" => flags.poisonous = true,

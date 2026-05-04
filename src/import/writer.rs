@@ -594,6 +594,7 @@ fn apply_named_mob_flag(flags: &mut crate::types::MobileFlags, name: &str) -> bo
         aggressive,
         cowardly,
         guard,
+        helper,
         healer,
         leasing_agent,
         shopkeeper,
