@@ -739,6 +739,17 @@ pub struct RoomFlags {
     // Migrant housing flag
     #[serde(default)]
     pub liveable: bool, // Migrant NPCs can claim this room as a home
+    // CircleMUD legacy parity flags
+    // (`private_room` rather than `private` because `private` is a reserved
+    // keyword in Rhai 1.x and can't be accessed via dot syntax in scripts.)
+    #[serde(default, alias = "private")]
+    pub private_room: bool, // Caps player occupancy at 2 (Circle ROOM_PRIVATE — inn rooms)
+    #[serde(default)]
+    pub tunnel: bool, // Caps player occupancy at 1 (Circle ROOM_TUNNEL — chokepoints)
+    #[serde(default)]
+    pub death: bool, // Instant-kill on player entry (Circle ROOM_DEATH — death traps)
+    #[serde(default)]
+    pub no_magic: bool, // Suppresses spellcasting from this room (Circle ROOM_NOMAGIC)
 }
 
 impl RoomFlags {
@@ -766,6 +777,10 @@ impl RoomFlags {
         self.shallow_water |= defaults.shallow_water;
         self.deep_water |= defaults.deep_water;
         self.liveable |= defaults.liveable;
+        self.private_room |= defaults.private_room;
+        self.tunnel |= defaults.tunnel;
+        self.death |= defaults.death;
+        self.no_magic |= defaults.no_magic;
     }
 }
 

@@ -89,12 +89,12 @@ What lands cleanly, what becomes a warning, and what is silently dropped.
 | `NOMOB` | sets `no_mob` |
 | `INDOORS` | sets `indoors` |
 | `PEACEFUL` | sets `combat_zone = safe` |
-| `DEATH` | **Warn**: not modeled — author a trap manually |
+| `DEATH` | sets `death` (instant-kill on player entry) |
 | `SOUNDPROOF` | **Warn**: not modeled |
 | `NOTRACK` | **Warn**: not modeled |
-| `NOMAGIC` | **Warn**: not modeled |
-| `TUNNEL` | **Warn**: 1-person rooms not modeled |
-| `PRIVATE` | **Warn**: teleport restriction not modeled |
+| `NOMAGIC` | sets `no_magic` (suppresses player spellcasting from the room) |
+| `TUNNEL` | sets `tunnel` (caps player occupancy at 1) |
+| `PRIVATE` | sets `private_room` (caps player occupancy at 2; user-facing alias `private`) |
 | `GODROOM` | **Warn**: rely on builder permissions |
 | `HOUSE` | **Warn**: legacy house system differs from IronMUD property |
 | `ATRIUM` | **Warn**: not modeled |
@@ -715,20 +715,15 @@ and as new engines are wired up.
 
 ### High priority
 
-- **`ROOM_PRIVATE`** — caps occupants at 2 and blocks summon/teleport in.
-  Used on every inn room in Midgaard and most stock zones. IronMUD has no
-  equivalent. Likely shape: a `RoomFlags.private: bool` plus an occupancy
-  check in the movement / summon paths.
-- **`ROOM_DEATH`** — instant-kill rooms. Stock Drow City and sewer zones
-  use these as gameplay gates. Closest IronMUD analogue is the room-trap
-  system but it's not a one-shot death zone. Consider a dedicated flag or
-  a "death" trap variant that fires unconditionally on entry.
-- **`ROOM_TUNNEL`** — single-occupant rooms (narrow passages). Affects
-  1-tile chokepoints in mines, sewers, dungeons. Likely shape: a per-room
-  `max_occupants: i32` with `0` meaning unlimited.
-- **`ROOM_NOMAGIC`** — suppresses spellcasting in the room. No IronMUD
-  equivalent. Likely shape: `RoomFlags.no_magic` consulted in the
-  spellcast path.
+*(All previously high-priority CircleMUD room flags now have IronMUD
+equivalents — see the [Room flags](#room-flags) coverage table.
+`ROOM_PRIVATE`, `ROOM_TUNNEL`, `ROOM_DEATH`, and `ROOM_NOMAGIC` map to
+`private_room`, `tunnel`, `death`, and `no_magic` respectively
+(`private_room` rather than `private` because Rhai 1.x reserves
+`private` as a keyword). Caveat: PRIVATE's stock semantic also blocks
+summon/teleport into the room; the IronMUD port currently models this
+only via the 2-occupant cap that walking-in already respects. Revisit
+if/when summon/teleport spells land.)*
 
 ### Medium priority
 
@@ -1141,7 +1136,9 @@ glyphs.
 didn't see. Either include that zone's `.wld` / `.zon` in the source tree
 or accept the dropped exit (you can re-link it manually with `redit`).
 
-**Room flag warnings on every room** — Stock CircleMUD's `ROOM_PRIVATE`
-flag isn't modeled; expect a warn for every PRIVATE-flagged room. Use the
-mapping JSON to suppress (`"action": "drop"`) if you don't want them in
-the report.
+**Room flag warnings on every room** — `ROOM_PRIVATE`, `ROOM_TUNNEL`,
+`ROOM_DEATH`, and `ROOM_NOMAGIC` all import as first-class IronMUD flags
+now (silent). The remaining warn-on-import flags are `SOUNDPROOF`,
+`NOTRACK`, `GODROOM`, `HOUSE`, and `ATRIUM` — use the mapping JSON to
+swap `"action": "warn"` for `"action": "drop"` per flag if you don't
+want them in the report.

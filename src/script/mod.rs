@@ -506,7 +506,14 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         .register_get("shallow_water", |f: &mut RoomFlags| f.shallow_water)
         .register_get("deep_water", |f: &mut RoomFlags| f.deep_water)
         // Migrant housing
-        .register_get("liveable", |f: &mut RoomFlags| f.liveable);
+        .register_get("liveable", |f: &mut RoomFlags| f.liveable)
+        // CircleMUD parity flags
+        // (Field is `private_room`, not `private` — `private` is a Rhai 1.x
+        // reserved keyword and can't be used as a property accessor.)
+        .register_get("private_room", |f: &mut RoomFlags| f.private_room)
+        .register_get("tunnel", |f: &mut RoomFlags| f.tunnel)
+        .register_get("death", |f: &mut RoomFlags| f.death)
+        .register_get("no_magic", |f: &mut RoomFlags| f.no_magic);
 
     // Register ExtraDesc type with getters
     engine

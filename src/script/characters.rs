@@ -2447,6 +2447,38 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         }
     });
 
+    // apply_room_death(connection_id) -> bool
+    // Kills the connected player at their current room (drops corpse, respawns
+    // at bound spawn point). Used by go.rhai when a player enters a ROOM_DEATH room.
+    let cloned_db = db.clone();
+    let conns = connections.clone();
+    engine.register_fn("apply_room_death", move |connection_id: String| -> bool {
+        let conn_uuid = match uuid::Uuid::parse_str(&connection_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let (mut char, room_id) = {
+            let conns_guard = conns.lock().unwrap();
+            let session = match conns_guard.get(&conn_uuid) {
+                Some(s) => s,
+                None => return false,
+            };
+            let char = match session.character.as_ref() {
+                Some(c) => c.clone(),
+                None => return false,
+            };
+            let room_id = char.current_room_id;
+            (char, room_id)
+        };
+        match crate::session::kill_player_at_room(&cloned_db, &conns, &mut char, &room_id, &connection_id) {
+            Ok(()) => true,
+            Err(e) => {
+                tracing::error!("apply_room_death failed for {}: {}", char.name, e);
+                false
+            }
+        }
+    });
+
     // add_drunk(char_name, amount) -> i64 (returns new drunk_level)
     let cloned_db = db.clone();
     let conns = connections.clone();

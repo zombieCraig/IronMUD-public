@@ -989,6 +989,10 @@ fn apply_named_room_flag(flags: &mut RoomFlags, name: &str) -> bool {
         "shallow_water" => flags.shallow_water = true,
         "deep_water" => flags.deep_water = true,
         "liveable" => flags.liveable = true,
+        "private" | "private_room" => flags.private_room = true,
+        "tunnel" => flags.tunnel = true,
+        "death" => flags.death = true,
+        "no_magic" => flags.no_magic = true,
         _ => return false,
     }
     true

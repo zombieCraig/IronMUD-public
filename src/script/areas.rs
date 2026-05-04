@@ -1185,6 +1185,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "shallow_water" => f.shallow_water = value,
                         "deep_water" => f.deep_water = value,
                         "liveable" => f.liveable = value,
+                        "private" | "private_room" => f.private_room = value,
+                        "tunnel" => f.tunnel = value,
+                        "death" => f.death = value,
+                        "no_magic" => f.no_magic = value,
                         _ => return false,
                     }
                     return cloned_db.save_area_data(area).is_ok();
@@ -1222,6 +1226,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "shallow_water" => f.shallow_water,
                         "deep_water" => f.deep_water,
                         "liveable" => f.liveable,
+                        "private" | "private_room" => f.private_room,
+                        "tunnel" => f.tunnel,
+                        "death" => f.death,
+                        "no_magic" => f.no_magic,
                         _ => false,
                     };
                 }

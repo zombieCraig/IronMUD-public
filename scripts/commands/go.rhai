@@ -197,6 +197,29 @@ fn run_command(args, connection_id) {
         }
     }
 
+    // Single-occupant (tunnel) and 2-occupant (private) caps. Players only
+    // — mobs in private inn rooms keep working. god_mode + build_mode bypass.
+    if !char.god_mode && !is_in_build_mode(char.name, target_room_id) {
+        let cap_room = get_room_data(target_room_id);
+        if cap_room != () {
+            let cap = 0;
+            let label = "";
+            if cap_room.flags.tunnel { cap = 1; label = "narrow"; }
+            else if cap_room.flags.private_room { cap = 2; label = "private"; }
+            if cap > 0 {
+                let occupants = get_characters_in_room(target_room_id);
+                if occupants.len() >= cap {
+                    if cap == 1 {
+                        send_client_message(connection_id, "The passage is too " + label + " for another to enter.");
+                    } else {
+                        send_client_message(connection_id, "That room is too " + label + " — there's no space for you.");
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
     let old_room_id = char.current_room_id;
 
     // Fire on_exit trigger - can cancel movement
@@ -461,6 +484,13 @@ fn run_command(args, connection_id) {
 
     // Display the room
     display_room(target_room_id, connection_id, char.name);
+
+    // ROOM_DEATH: instant kill on entry. god_mode + build_mode bypass.
+    if new_room.flags.death && !char.god_mode && !is_in_build_mode(char.name, target_room_id) {
+        send_client_message(connection_id, "\x1b[1;31mA terrible fate befalls you here!\x1b[0m");
+        apply_room_death(connection_id);
+        return;
+    }
 
     // Swimming position and wet status from water
     if (is_shallow || is_deep || is_underwater) && !char.god_mode {

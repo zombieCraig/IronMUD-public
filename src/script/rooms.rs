@@ -584,6 +584,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     "shallow_water" => room.flags.shallow_water = value,
                     "deep_water" => room.flags.deep_water = value,
                     "liveable" | "livable" => room.flags.liveable = value,
+                    "private" | "private_room" => room.flags.private_room = value,
+                    "tunnel" => room.flags.tunnel = value,
+                    "death" => room.flags.death = value,
+                    "no_magic" | "nomagic" => room.flags.no_magic = value,
                     _ => return false,
                 }
                 if room.flags.liveable && room.living_capacity <= 0 {
@@ -625,6 +629,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 "shallow_water" => room.flags.shallow_water,
                 "deep_water" => room.flags.deep_water,
                 "liveable" | "livable" => room.flags.liveable,
+                "private" | "private_room" => room.flags.private_room,
+                "tunnel" => room.flags.tunnel,
+                "death" => room.flags.death,
+                "no_magic" | "nomagic" => room.flags.no_magic,
                 _ => false,
             }
         } else {

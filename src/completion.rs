@@ -586,6 +586,11 @@ pub const ROOM_FLAGS: &[&str] = &[
     "shallow_water",
     "deep_water",
     "liveable",
+    "private",
+    "private_room",
+    "tunnel",
+    "death",
+    "no_magic",
 ];
 
 /// Combat zone types

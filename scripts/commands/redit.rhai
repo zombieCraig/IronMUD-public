@@ -830,6 +830,10 @@ fn run_command(args, connection_id) {
         if flags.shallow_water { flag_str += "shallow_water "; }
         if flags.deep_water { flag_str += "deep_water "; }
         if flags.liveable { flag_str += "liveable "; }
+        if flags.private_room { flag_str += "private "; }
+        if flags.tunnel { flag_str += "tunnel "; }
+        if flags.death { flag_str += "death "; }
+        if flags.no_magic { flag_str += "no_magic "; }
 
         if flag_str == "" {
             output += "  (none)\n";
@@ -1037,6 +1041,22 @@ fn run_command(args, connection_id) {
         let liveable_plain = if flags.liveable { "ON" } else { "off" };
         let liveable_toggle = mxp_or(mxp_send("redit flag liveable", liveable_text), liveable_plain, connection_id);
 
+        let private_text = if flags.private_room { "[ON]" } else { "[off]" };
+        let private_plain = if flags.private_room { "ON" } else { "off" };
+        let private_toggle = mxp_or(mxp_send("redit flag private", private_text), private_plain, connection_id);
+
+        let tunnel_text = if flags.tunnel { "[ON]" } else { "[off]" };
+        let tunnel_plain = if flags.tunnel { "ON" } else { "off" };
+        let tunnel_toggle = mxp_or(mxp_send("redit flag tunnel", tunnel_text), tunnel_plain, connection_id);
+
+        let death_text = if flags.death { "[ON]" } else { "[off]" };
+        let death_plain = if flags.death { "ON" } else { "off" };
+        let death_toggle = mxp_or(mxp_send("redit flag death", death_text), death_plain, connection_id);
+
+        let no_magic_text = if flags.no_magic { "[ON]" } else { "[off]" };
+        let no_magic_plain = if flags.no_magic { "ON" } else { "off" };
+        let no_magic_toggle = mxp_or(mxp_send("redit flag no_magic", no_magic_text), no_magic_plain, connection_id);
+
         output += "Combat Zone:         " + zone_toggle + "  (cycles: inherit->pve->safe->pvp)\n\n";
         output += "  dark:              " + dark_toggle + "  (room is too dark to see without light)\n";
         output += "  no_mob:            " + nomob_toggle + "  (NPCs cannot enter)\n";
@@ -1053,6 +1073,10 @@ fn run_command(args, connection_id) {
         output += "  garden:            " + garden_toggle + "  (thematic garden flag for look output)\n";
         output += "  spawn_point:       " + spawn_point_toggle + "  (players can bind spawn here - inns, safe rooms)\n";
         output += "  liveable:          " + liveable_toggle + "  (migrants can reside here)\n";
+        output += "  private:           " + private_toggle + "  (caps player occupancy at 2 - inn rooms)\n";
+        output += "  tunnel:            " + tunnel_toggle + "  (caps player occupancy at 1 - chokepoints)\n";
+        output += "  death:             " + death_toggle + "  (instant-kill on entry - death traps)\n";
+        output += "  no_magic:          " + no_magic_toggle + "  (suppresses spellcasting from this room)\n";
         output += "\nClick a flag to toggle, or use 'redit flag <name> [on|off]'.";
         output += "\nUse 'redit zone [pve|safe|pvp|inherit]' for combat zone.";
 
@@ -1072,7 +1096,7 @@ fn run_command(args, connection_id) {
             return;
         }
 
-        let valid_flags = ["dark", "no_mob", "nomob", "indoors", "underwater", "shallow_water", "deep_water", "city", "no_windows", "nowindows", "difficult_terrain", "dirt_floor", "post_office", "bank", "garden", "spawn_point", "liveable", "livable"];
+        let valid_flags = ["dark", "no_mob", "nomob", "indoors", "underwater", "shallow_water", "deep_water", "city", "no_windows", "nowindows", "difficult_terrain", "dirt_floor", "post_office", "bank", "garden", "spawn_point", "liveable", "livable", "private", "private_room", "tunnel", "death", "no_magic", "nomagic"];
 
         // Split into flag names and optional trailing on/off value.
         let flag_names = [];

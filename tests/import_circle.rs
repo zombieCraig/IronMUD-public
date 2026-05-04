@@ -1063,3 +1063,74 @@ fn missing_spec_assign_is_info_only() {
     assert!(non_info.is_empty(), "no Warn/Block from missing src/");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn maps_high_priority_room_flag_bits() {
+    use ironmud::import::{ImportIR, IrRoom, IrZone, SourceLoc};
+
+    // CircleMUD bit layout:
+    //   DEATH=1, NOMAGIC=7, TUNNEL=8, PRIVATE=9
+    let bits = (1u64 << 1) | (1u64 << 7) | (1u64 << 8) | (1u64 << 9);
+
+    let zone = IrZone {
+        vnum: 42,
+        name: "Flag Test Zone".into(),
+        description: None,
+        vnum_range: Some((4200, 4299)),
+        default_respawn_secs: None,
+        source: SourceLoc::default(),
+        rooms: vec![IrRoom {
+            vnum: 4200,
+            name: "Flag Test Room".into(),
+            description: "A room used to verify high-priority flag bits map cleanly.".into(),
+            sector: 0, // INSIDE
+            flag_bits: bits,
+            unknown_flag_names: Vec::new(),
+            exits: Vec::new(),
+            extras: Vec::new(),
+            source: SourceLoc::default(),
+        }],
+        mobiles: Vec::new(),
+        items: Vec::new(),
+        shops: Vec::new(),
+        resets: Vec::new(),
+        deferred: Vec::new(),
+    };
+    let ir = ImportIR {
+        zones: vec![zone],
+        triggers: Vec::new(),
+    };
+
+    let opts = MappingOptions {
+        circle: mapping::CircleMappingTable::load_default(),
+        existing_area_prefixes: Vec::new(),
+        existing_room_vnums: Vec::new(),
+        existing_mobile_vnums: Vec::new(),
+        existing_item_vnums: Vec::new(),
+    };
+    let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
+
+    assert_eq!(plan.rooms.len(), 1);
+    let room = &plan.rooms[0];
+    assert!(room.flags.death, "DEATH bit must set RoomFlags.death");
+    assert!(room.flags.no_magic, "NOMAGIC bit must set RoomFlags.no_magic");
+    assert!(room.flags.tunnel, "TUNNEL bit must set RoomFlags.tunnel");
+    assert!(room.flags.private_room, "PRIVATE bit must set RoomFlags.private_room");
+
+    // None of the four high-priority flags should produce Warn/Block any more.
+    let flag_warns: Vec<_> = warnings
+        .iter()
+        .filter(|w| {
+            w.severity != Severity::Info
+                && (w.message.contains("ROOM_DEATH")
+                    || w.message.contains("ROOM_NOMAGIC")
+                    || w.message.contains("ROOM_TUNNEL")
+                    || w.message.contains("ROOM_PRIVATE"))
+        })
+        .collect();
+    assert!(
+        flag_warns.is_empty(),
+        "high-priority flags must import silently: {:?}",
+        flag_warns
+    );
+}

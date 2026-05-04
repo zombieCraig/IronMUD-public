@@ -106,6 +106,10 @@ fn apply_default_room_flag_overrides(flags: &mut RoomFlags, map: &std::collectio
             "shallow_water" => flags.shallow_water = *v,
             "deep_water" => flags.deep_water = *v,
             "liveable" => flags.liveable = *v,
+            "private" | "private_room" => flags.private_room = *v,
+            "tunnel" => flags.tunnel = *v,
+            "death" => flags.death = *v,
+            "no_magic" => flags.no_magic = *v,
             _ => {}
         }
     }

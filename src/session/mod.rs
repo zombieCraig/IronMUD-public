@@ -4,8 +4,10 @@
 //! - Connection management (login, logout, messaging)
 //! - Broadcasting messages to players (room, global, conditional)
 
-mod broadcast;
-mod connection;
+pub mod broadcast;
+pub mod connection;
+pub mod death;
 
 pub use broadcast::*;
 pub use connection::*;
+pub use death::kill_player_at_room;

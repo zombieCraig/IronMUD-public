@@ -909,6 +909,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                                     "difficult_terrain" => room.flags.difficult_terrain = value,
                                     "dirt_floor" => room.flags.dirt_floor = value,
                                     "spawn_point" => room.flags.spawn_point = value,
+                                    "private" | "private_room" => room.flags.private_room = value,
+                                    "tunnel" => room.flags.tunnel = value,
+                                    "death" => room.flags.death = value,
+                                    "no_magic" => room.flags.no_magic = value,
                                     _ => return,
                                 }
                                 let _ = db_for_flag.save_room_data(room);

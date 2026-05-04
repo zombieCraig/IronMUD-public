@@ -305,6 +305,15 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // ROOM_NOMAGIC: suppress spellcasting from this room. god_mode bypasses.
+    if !char.god_mode {
+        let here = get_room_data(char.current_room_id);
+        if here != () && here.flags.no_magic {
+            send_client_message(connection_id, "Magic will not function here.");
+            return;
+        }
+    }
+
     if args == "" {
         send_client_message(connection_id, "Cast what spell? Try 'spells' to see available spells.");
         return;

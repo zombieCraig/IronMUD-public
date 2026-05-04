@@ -79,6 +79,10 @@ export interface RoomFlags {
   indoors?: boolean;
   safe?: boolean;
   private?: boolean;
+  private_room?: boolean;
+  tunnel?: boolean;
+  death?: boolean;
+  no_magic?: boolean;
   death_trap?: boolean;
   no_recall?: boolean;
   shallow_water?: boolean;

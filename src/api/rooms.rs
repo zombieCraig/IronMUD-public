@@ -97,6 +97,14 @@ pub struct RoomFlagsRequest {
     pub deep_water: Option<bool>,
     #[serde(default)]
     pub liveable: Option<bool>,
+    #[serde(default, alias = "private")]
+    pub private_room: Option<bool>,
+    #[serde(default)]
+    pub tunnel: Option<bool>,
+    #[serde(default)]
+    pub death: Option<bool>,
+    #[serde(default)]
+    pub no_magic: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -460,6 +468,10 @@ async fn create_room(
             shallow_water: req.flags.shallow_water.unwrap_or(area_defaults.shallow_water),
             deep_water: req.flags.deep_water.unwrap_or(area_defaults.deep_water),
             liveable: req.flags.liveable.unwrap_or(area_defaults.liveable),
+            private_room: req.flags.private_room.unwrap_or(area_defaults.private_room),
+            tunnel: req.flags.tunnel.unwrap_or(area_defaults.tunnel),
+            death: req.flags.death.unwrap_or(area_defaults.death),
+            no_magic: req.flags.no_magic.unwrap_or(area_defaults.no_magic),
         },
         vnum: req.vnum,
         area_id,
@@ -621,6 +633,18 @@ async fn update_room(
         }
         if let Some(v) = flags.liveable {
             room.flags.liveable = v;
+        }
+        if let Some(v) = flags.private_room {
+            room.flags.private_room = v;
+        }
+        if let Some(v) = flags.tunnel {
+            room.flags.tunnel = v;
+        }
+        if let Some(v) = flags.death {
+            room.flags.death = v;
+        }
+        if let Some(v) = flags.no_magic {
+            room.flags.no_magic = v;
         }
     }
     if room.flags.liveable && room.living_capacity <= 0 {

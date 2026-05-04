@@ -142,6 +142,10 @@ Room flags control special behaviors:
 | `bank` | Allows banking commands |
 | `spawn_point` | Players can bind spawn here (inns, safe rooms) |
 | `liveable` | Migrants can claim this room as their residence |
+| `private_room` (alias `private`) | Caps player occupancy at 2 (CircleMUD `ROOM_PRIVATE` parity — inn rooms) |
+| `tunnel` | Caps player occupancy at 1 (CircleMUD `ROOM_TUNNEL` parity — narrow chokepoints) |
+| `death` | Instant-kill on player entry (CircleMUD `ROOM_DEATH` parity — death traps). Bypassed by god mode and build mode. |
+| `no_magic` | Suppresses player spellcasting from this room (CircleMUD `ROOM_NOMAGIC` parity). Bypassed by god mode. |
 
 Toggle flags with:
 ```
