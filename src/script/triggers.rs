@@ -913,6 +913,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                                     "tunnel" => room.flags.tunnel = value,
                                     "death" => room.flags.death = value,
                                     "no_magic" => room.flags.no_magic = value,
+                                    "soundproof" => room.flags.soundproof = value,
+                                    "notrack" | "no_track" => room.flags.notrack = value,
                                     _ => return,
                                 }
                                 let _ = db_for_flag.save_room_data(room);

@@ -553,6 +553,7 @@ fn seed_ironkeep(db: &Db) -> Result<usize> {
                     .to_string(),
             ),
             keywords: vec!["gate".to_string(), "iron".to_string()],
+            pickproof: false,
         },
     );
 
@@ -825,6 +826,7 @@ fn seed_shadowfang(db: &Db) -> Result<usize> {
                     .to_string(),
             ),
             keywords: vec!["door".to_string(), "iron".to_string()],
+            pickproof: false,
         },
     );
 

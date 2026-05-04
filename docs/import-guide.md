@@ -90,8 +90,8 @@ What lands cleanly, what becomes a warning, and what is silently dropped.
 | `INDOORS` | sets `indoors` |
 | `PEACEFUL` | sets `combat_zone = safe` |
 | `DEATH` | sets `death` (instant-kill on player entry) |
-| `SOUNDPROOF` | **Warn**: not modeled |
-| `NOTRACK` | **Warn**: not modeled |
+| `SOUNDPROOF` | sets `soundproof` (blocks shouts from leaking in or out) |
+| `NOTRACK` | sets `notrack` (defeats the track skill in this room) |
 | `NOMAGIC` | sets `no_magic` (suppresses player spellcasting from the room) |
 | `TUNNEL` | sets `tunnel` (caps player occupancy at 1) |
 | `PRIVATE` | sets `private_room` (caps player occupancy at 2; user-facing alias `private`) |
@@ -108,7 +108,7 @@ What lands cleanly, what becomes a warning, and what is silently dropped.
 | `ISDOOR` | creates a `DoorState` keyed by direction |
 | `CLOSED` | `is_closed = true` |
 | `LOCKED` | `is_locked = true` |
-| `PICKPROOF` | **Warn**: pickproofing not modeled — treated as locked |
+| `PICKPROOF` | sets `pickproof` on the door (lockpick skill cannot defeat it) |
 | Door key vnums | rewritten to the prefixed IronMUD vnum (`<area>_<src_vnum>`) |
 
 ### Extra descriptions
@@ -720,17 +720,15 @@ equivalents — see the [Room flags](#room-flags) coverage table.
 `ROOM_PRIVATE`, `ROOM_TUNNEL`, `ROOM_DEATH`, and `ROOM_NOMAGIC` map to
 `private_room`, `tunnel`, `death`, and `no_magic` respectively
 (`private_room` rather than `private` because Rhai 1.x reserves
-`private` as a keyword). Caveat: PRIVATE's stock semantic also blocks
-summon/teleport into the room; the IronMUD port currently models this
-only via the 2-occupant cap that walking-in already respects. Revisit
-if/when summon/teleport spells land.)*
+`private` as a keyword). The medium-priority `ROOM_SOUNDPROOF` and
+`ROOM_NOTRACK` map to `soundproof` and `notrack`, and the exit-level
+`EX_PICKPROOF` maps to `DoorState.pickproof`. Caveat: PRIVATE's stock
+semantic also blocks summon/teleport into the room; the IronMUD port
+currently models this only via the 2-occupant cap that walking-in
+already respects. Revisit if/when summon/teleport spells land.)*
 
 ### Medium priority
 
-- **`ROOM_SOUNDPROOF`** — blocks shouts/gossip from leaking in or out.
-  Used in temples and meditation chambers.
-- **`ROOM_NOTRACK`** — defeats the track skill. IronMUD's tracking always
-  works; would need a per-room override.
 - **`ROOM_GODROOM`** — immortal-only access. IronMUD relies on builder
   permissions, which are coarser than per-room gating.
 - **`ROOM_ATRIUM`** — gates entry to a `ROOM_HOUSE`. Tied to the house
@@ -744,12 +742,6 @@ if/when summon/teleport spells land.)*
   (template + instance, time-limited leases). Direct conversion isn't
   possible without a deliberate compatibility layer; in the meantime,
   stock CircleMUD houses just import as ordinary rooms with a warning.
-
-### Exit-level
-
-- **`EX_PICKPROOF`** — locks that can never be picked, regardless of
-  skill. Currently imported as locked-only with a warning. Likely shape:
-  `DoorState.pickproof: bool` consulted by the lockpick command.
 
 ### Sector-level
 
@@ -1137,8 +1129,8 @@ didn't see. Either include that zone's `.wld` / `.zon` in the source tree
 or accept the dropped exit (you can re-link it manually with `redit`).
 
 **Room flag warnings on every room** — `ROOM_PRIVATE`, `ROOM_TUNNEL`,
-`ROOM_DEATH`, and `ROOM_NOMAGIC` all import as first-class IronMUD flags
-now (silent). The remaining warn-on-import flags are `SOUNDPROOF`,
-`NOTRACK`, `GODROOM`, `HOUSE`, and `ATRIUM` — use the mapping JSON to
-swap `"action": "warn"` for `"action": "drop"` per flag if you don't
-want them in the report.
+`ROOM_DEATH`, `ROOM_NOMAGIC`, `ROOM_SOUNDPROOF`, and `ROOM_NOTRACK` all
+import as first-class IronMUD flags now (silent). The remaining
+warn-on-import flags are `GODROOM`, `HOUSE`, and `ATRIUM` — use the
+mapping JSON to swap `"action": "warn"` for `"action": "drop"` per flag
+if you don't want them in the report.

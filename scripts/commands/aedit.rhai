@@ -1215,6 +1215,7 @@ fn known_default_room_flags() {
         "property_storage", "post_office", "bank", "garden", "spawn_point",
         "shallow_water", "deep_water", "liveable",
         "private_room", "tunnel", "death", "no_magic",
+        "soundproof", "notrack",
     ];
 }
 

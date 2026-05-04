@@ -1057,6 +1057,14 @@ fn run_command(args, connection_id) {
         let no_magic_plain = if flags.no_magic { "ON" } else { "off" };
         let no_magic_toggle = mxp_or(mxp_send("redit flag no_magic", no_magic_text), no_magic_plain, connection_id);
 
+        let soundproof_text = if flags.soundproof { "[ON]" } else { "[off]" };
+        let soundproof_plain = if flags.soundproof { "ON" } else { "off" };
+        let soundproof_toggle = mxp_or(mxp_send("redit flag soundproof", soundproof_text), soundproof_plain, connection_id);
+
+        let notrack_text = if flags.notrack { "[ON]" } else { "[off]" };
+        let notrack_plain = if flags.notrack { "ON" } else { "off" };
+        let notrack_toggle = mxp_or(mxp_send("redit flag notrack", notrack_text), notrack_plain, connection_id);
+
         output += "Combat Zone:         " + zone_toggle + "  (cycles: inherit->pve->safe->pvp)\n\n";
         output += "  dark:              " + dark_toggle + "  (room is too dark to see without light)\n";
         output += "  no_mob:            " + nomob_toggle + "  (NPCs cannot enter)\n";
@@ -1077,6 +1085,8 @@ fn run_command(args, connection_id) {
         output += "  tunnel:            " + tunnel_toggle + "  (caps player occupancy at 1 - chokepoints)\n";
         output += "  death:             " + death_toggle + "  (instant-kill on entry - death traps)\n";
         output += "  no_magic:          " + no_magic_toggle + "  (suppresses spellcasting from this room)\n";
+        output += "  soundproof:        " + soundproof_toggle + "  (blocks shouts from leaking in or out)\n";
+        output += "  notrack:           " + notrack_toggle + "  (defeats the track skill in this room)\n";
         output += "\nClick a flag to toggle, or use 'redit flag <name> [on|off]'.";
         output += "\nUse 'redit zone [pve|safe|pvp|inherit]' for combat zone.";
 
@@ -1096,7 +1106,7 @@ fn run_command(args, connection_id) {
             return;
         }
 
-        let valid_flags = ["dark", "no_mob", "nomob", "indoors", "underwater", "shallow_water", "deep_water", "city", "no_windows", "nowindows", "difficult_terrain", "dirt_floor", "post_office", "bank", "garden", "spawn_point", "liveable", "livable", "private", "private_room", "tunnel", "death", "no_magic", "nomagic"];
+        let valid_flags = ["dark", "no_mob", "nomob", "indoors", "underwater", "shallow_water", "deep_water", "city", "no_windows", "nowindows", "difficult_terrain", "dirt_floor", "post_office", "bank", "garden", "spawn_point", "liveable", "livable", "private", "private_room", "tunnel", "death", "no_magic", "nomagic", "soundproof", "notrack", "no_track"];
 
         // Split into flag names and optional trailing on/off value.
         let flag_names = [];
@@ -1370,7 +1380,8 @@ fn format_door_list_entry(direction, door) {
     if door.key_vnum != "" {
         key_info = " (key: " + door.key_vnum + ")";
     }
-    return "  " + direction + ": " + door.name + " [" + status + "]" + key_info + "\n";
+    let pp_tag = if door.pickproof { " [pickproof]" } else { "" };
+    return "  " + direction + ": " + door.name + " [" + status + "]" + pp_tag + key_info + "\n";
 }
 
 fn build_door_list(room_id) {
@@ -1569,7 +1580,39 @@ fn handle_door_sync(room_id, parts, connection_id) {
     }
     set_door_closed(target_room_id, opposite, door.is_closed);
     set_door_locked(target_room_id, opposite, door.is_locked);
+    set_door_pickproof(target_room_id, opposite, door.pickproof);
     send_client_message(connection_id, "Door synced to connected room (" + opposite + " exit).");
+}
+
+fn handle_door_pickproof(room_id, parts, connection_id) {
+    if parts.len() < 3 {
+        send_client_message(connection_id, "Usage: redit door pickproof <direction> [on|off]");
+        return;
+    }
+    let direction = normalize_direction(parts[2]);
+    let door = get_door(room_id, direction);
+    if door == () {
+        send_client_message(connection_id, "No door in that direction.");
+        return;
+    }
+    let target_val = !door.pickproof;
+    if parts.len() >= 4 {
+        let v = parts[3].to_lower();
+        if v == "on" || v == "true" || v == "yes" || v == "1" {
+            target_val = true;
+        } else if v == "off" || v == "false" || v == "no" || v == "0" {
+            target_val = false;
+        } else {
+            send_client_message(connection_id, "Usage: redit door pickproof <direction> [on|off]");
+            return;
+        }
+    }
+    if set_door_pickproof(room_id, direction, target_val) {
+        let label = if target_val { "enabled" } else { "disabled" };
+        send_client_message(connection_id, "Pickproof " + label + " on the " + door.name + ".");
+    } else {
+        send_client_message(connection_id, "Failed to update pickproof flag.");
+    }
 }
 
 fn show_door_help(room_id, connection_id) {
@@ -1587,6 +1630,7 @@ fn show_door_help(room_id, connection_id) {
     output += "  redit door lock <direction>         - Force lock door\n";
     output += "  redit door unlock <direction>       - Force unlock door\n";
     output += "  redit door sync <direction>         - Copy door to connected room\n";
+    output += "  redit door pickproof <direction> [on|off] - Make door immune to lockpicking\n";
     send_mxp_message(connection_id, output);
 }
 
@@ -2052,6 +2096,7 @@ fn handle_door_subcommand(connection_id, room, parts) {
     if door_cmd == "lock" { handle_door_force_state(room.id, parts, "lock", connection_id); return; }
     if door_cmd == "unlock" { handle_door_force_state(room.id, parts, "unlock", connection_id); return; }
     if door_cmd == "sync" { handle_door_sync(room.id, parts, connection_id); return; }
+    if door_cmd == "pickproof" { handle_door_pickproof(room.id, parts, connection_id); return; }
 
     send_client_message(connection_id, "Unknown door subcommand: " + door_cmd + "\nUse 'redit door' for help.");
 }

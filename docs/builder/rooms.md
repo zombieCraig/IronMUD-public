@@ -146,6 +146,8 @@ Room flags control special behaviors:
 | `tunnel` | Caps player occupancy at 1 (CircleMUD `ROOM_TUNNEL` parity — narrow chokepoints) |
 | `death` | Instant-kill on player entry (CircleMUD `ROOM_DEATH` parity — death traps). Bypassed by god mode and build mode. |
 | `no_magic` | Suppresses player spellcasting from this room (CircleMUD `ROOM_NOMAGIC` parity). Bypassed by god mode. |
+| `soundproof` | Blocks `shout` from leaking in or out (CircleMUD `ROOM_SOUNDPROOF` parity). Local `say` still works. Bypassed by god mode. |
+| `notrack` | Defeats the `track` skill in this room (CircleMUD `ROOM_NOTRACK` parity). Bypassed by god mode. |
 
 Toggle flags with:
 ```
@@ -229,12 +231,14 @@ Door synced to connected room (south exit).
 | `door open/close` | `redit door open <dir>` | Force door state |
 | `door lock/unlock` | `redit door lock <dir>` | Force lock state |
 | `door sync` | `redit door sync <dir>` | Copy to connected room |
+| `door pickproof` | `redit door pickproof <dir> [on\|off]` | Toggle whether the lock can be picked |
 
 ### Door States
 
 - **open** - Players can pass through
 - **closed** - Blocks movement, must open first
 - **locked** - Requires correct key to unlock
+- **pickproof** - Independent of lock state; when set, the `pick` (lockpick) command refuses to attempt the door regardless of skill. Doors can still be unlocked with the matching key.
 
 ### Player Interaction
 

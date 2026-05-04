@@ -45,6 +45,8 @@ fn run_command(args, connection_id) {
     // Show to shouter (show original)
     send_client_message(connection_id, "You shout: " + args + "!");
 
+    let source_soundproof = room.flags.soundproof && !char.god_mode;
+
     // Broadcast per-listener in current room with ear garbling
     let chars_in_room = get_characters_in_room(room_id);
     for listener_name in chars_in_room {
@@ -55,6 +57,11 @@ fn run_command(args, connection_id) {
         let ear_penalty = get_ear_wound_penalty(listener_name);
         if ear_penalty > 0 { heard = garble_hearing(heard, ear_penalty); }
         send_client_message(listener_conn, char_name + " shouts: " + heard + "!");
+    }
+
+    if source_soundproof {
+        send_client_message(connection_id, "Your shout dies in the silence of this place.");
+        return;
     }
 
     // Broadcast to connected rooms (anonymous, per-listener ear garbling)
@@ -68,6 +75,8 @@ fn run_command(args, connection_id) {
     if exits.down != "" { adj_rooms.push(exits.down); }
 
     for adj_room in adj_rooms {
+        let adj_room_data = get_room_data(adj_room);
+        if adj_room_data != () && adj_room_data.flags.soundproof { continue; }
         let adj_chars = get_characters_in_room(adj_room);
         for listener_name in adj_chars {
             let listener_conn = find_player_connection_by_name(listener_name);

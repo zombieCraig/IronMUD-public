@@ -1134,3 +1134,157 @@ fn maps_high_priority_room_flag_bits() {
         flag_warns
     );
 }
+
+#[test]
+fn maps_medium_priority_room_flag_bits() {
+    use ironmud::import::{ImportIR, IrRoom, IrZone, SourceLoc};
+
+    // CircleMUD bit layout: SOUNDPROOF=5, NOTRACK=6
+    let bits = (1u64 << 5) | (1u64 << 6);
+
+    let zone = IrZone {
+        vnum: 43,
+        name: "Medium Flag Zone".into(),
+        description: None,
+        vnum_range: Some((4300, 4399)),
+        default_respawn_secs: None,
+        source: SourceLoc::default(),
+        rooms: vec![IrRoom {
+            vnum: 4300,
+            name: "Quiet Room".into(),
+            description: "Verifies SOUNDPROOF and NOTRACK map cleanly.".into(),
+            sector: 0,
+            flag_bits: bits,
+            unknown_flag_names: Vec::new(),
+            exits: Vec::new(),
+            extras: Vec::new(),
+            source: SourceLoc::default(),
+        }],
+        mobiles: Vec::new(),
+        items: Vec::new(),
+        shops: Vec::new(),
+        resets: Vec::new(),
+        deferred: Vec::new(),
+    };
+    let ir = ImportIR {
+        zones: vec![zone],
+        triggers: Vec::new(),
+    };
+
+    let opts = MappingOptions {
+        circle: mapping::CircleMappingTable::load_default(),
+        existing_area_prefixes: Vec::new(),
+        existing_room_vnums: Vec::new(),
+        existing_mobile_vnums: Vec::new(),
+        existing_item_vnums: Vec::new(),
+    };
+    let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
+
+    assert_eq!(plan.rooms.len(), 1);
+    let room = &plan.rooms[0];
+    assert!(room.flags.soundproof, "SOUNDPROOF bit must set RoomFlags.soundproof");
+    assert!(room.flags.notrack, "NOTRACK bit must set RoomFlags.notrack");
+
+    let flag_warns: Vec<_> = warnings
+        .iter()
+        .filter(|w| {
+            w.severity != ironmud::import::Severity::Info
+                && (w.message.contains("ROOM_SOUNDPROOF") || w.message.contains("ROOM_NOTRACK"))
+        })
+        .collect();
+    assert!(
+        flag_warns.is_empty(),
+        "medium-priority flags must import silently: {:?}",
+        flag_warns
+    );
+}
+
+#[test]
+fn imports_pickproof_doors() {
+    use ironmud::import::{ImportIR, IrExit, IrRoom, IrZone, SourceLoc};
+
+    // EX_ISDOOR=0, EX_CLOSED=1, EX_LOCKED=2, EX_PICKPROOF=3 → bits 0|2|3 = 0xD
+    let door_flags: u32 = (1 << 0) | (1 << 2) | (1 << 3);
+
+    let zone = IrZone {
+        vnum: 44,
+        name: "Pickproof Zone".into(),
+        description: None,
+        vnum_range: Some((4400, 4499)),
+        default_respawn_secs: None,
+        source: SourceLoc::default(),
+        rooms: vec![
+            IrRoom {
+                vnum: 4400,
+                name: "Vault Antechamber".into(),
+                description: "A heavy vault door blocks the way north.".into(),
+                sector: 0,
+                flag_bits: 0,
+                unknown_flag_names: Vec::new(),
+                exits: vec![IrExit {
+                    direction: "north".into(),
+                    general_description: Some("A massive iron-bound vault door.".into()),
+                    keyword: Some("vault door".into()),
+                    door_flags,
+                    unknown_door_flags: Vec::new(),
+                    key_vnum: None,
+                    to_room_vnum: 4401,
+                }],
+                extras: Vec::new(),
+                source: SourceLoc::default(),
+            },
+            IrRoom {
+                vnum: 4401,
+                name: "Vault Interior".into(),
+                description: "Inside the vault.".into(),
+                sector: 0,
+                flag_bits: 0,
+                unknown_flag_names: Vec::new(),
+                exits: Vec::new(),
+                extras: Vec::new(),
+                source: SourceLoc::default(),
+            },
+        ],
+        mobiles: Vec::new(),
+        items: Vec::new(),
+        shops: Vec::new(),
+        resets: Vec::new(),
+        deferred: Vec::new(),
+    };
+    let ir = ImportIR {
+        zones: vec![zone],
+        triggers: Vec::new(),
+    };
+
+    let opts = MappingOptions {
+        circle: mapping::CircleMappingTable::load_default(),
+        existing_area_prefixes: Vec::new(),
+        existing_room_vnums: Vec::new(),
+        existing_mobile_vnums: Vec::new(),
+        existing_item_vnums: Vec::new(),
+    };
+    let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
+
+    let antechamber = plan
+        .rooms
+        .iter()
+        .find(|r| r.source_vnum == 4400)
+        .expect("antechamber room mapped");
+    assert_eq!(antechamber.doors.len(), 1, "one door expected");
+    let door = &antechamber.doors[0];
+    assert_eq!(door.direction, "north");
+    assert!(door.is_locked, "LOCKED bit still drives is_locked");
+    assert!(door.pickproof, "PICKPROOF bit must set DoorState.pickproof");
+
+    let pickproof_warns: Vec<_> = warnings
+        .iter()
+        .filter(|w| {
+            w.severity != ironmud::import::Severity::Info && w.message.contains("pickproof")
+        })
+        .collect();
+    assert!(
+        pickproof_warns.is_empty(),
+        "PICKPROOF must import silently: {:?}",
+        pickproof_warns
+    );
+}

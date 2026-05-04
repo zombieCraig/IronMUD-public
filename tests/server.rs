@@ -3977,6 +3977,7 @@ fn test_buried_flag_and_lock_vnums_round_trip() {
             key_vnum: Some("pirate:pirate_key".to_string()),
             description: None,
             keywords: vec!["door".to_string()],
+            pickproof: false,
         };
         let json = serde_json::to_string(&door).expect("serialize door");
         assert!(

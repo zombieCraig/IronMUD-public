@@ -1189,6 +1189,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "tunnel" => f.tunnel = value,
                         "death" => f.death = value,
                         "no_magic" => f.no_magic = value,
+                        "soundproof" => f.soundproof = value,
+                        "notrack" | "no_track" => f.notrack = value,
                         _ => return false,
                     }
                     return cloned_db.save_area_data(area).is_ok();
@@ -1230,6 +1232,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "tunnel" => f.tunnel,
                         "death" => f.death,
                         "no_magic" => f.no_magic,
+                        "soundproof" => f.soundproof,
+                        "notrack" | "no_track" => f.notrack,
                         _ => false,
                     };
                 }

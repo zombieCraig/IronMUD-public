@@ -253,6 +253,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         key_vnum: None,
                         description: None,
                         keywords: Vec::new(),
+                        pickproof: false,
                     },
                 );
                 return cloned_db.save_room_data(room).is_ok();
@@ -348,6 +349,24 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     let dir = direction.to_lowercase();
                     if let Some(door) = room.doors.get_mut(&dir) {
                         door.keywords = keywords.into_iter().filter_map(|d| d.try_cast::<String>()).collect();
+                        return cloned_db.save_room_data(room).is_ok();
+                    }
+                }
+            }
+            false
+        },
+    );
+
+    // set_door_pickproof(room_id, direction, pickproof) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_door_pickproof",
+        move |room_id: String, direction: String, pickproof: bool| {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&room_id) {
+                if let Ok(Some(mut room)) = cloned_db.get_room_data(&uuid) {
+                    let dir = direction.to_lowercase();
+                    if let Some(door) = room.doors.get_mut(&dir) {
+                        door.pickproof = pickproof;
                         return cloned_db.save_room_data(room).is_ok();
                     }
                 }
@@ -588,6 +607,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     "tunnel" => room.flags.tunnel = value,
                     "death" => room.flags.death = value,
                     "no_magic" | "nomagic" => room.flags.no_magic = value,
+                    "soundproof" => room.flags.soundproof = value,
+                    "notrack" | "no_track" => room.flags.notrack = value,
                     _ => return false,
                 }
                 if room.flags.liveable && room.living_capacity <= 0 {
@@ -633,6 +654,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 "tunnel" => room.flags.tunnel,
                 "death" => room.flags.death,
                 "no_magic" | "nomagic" => room.flags.no_magic,
+                "soundproof" => room.flags.soundproof,
+                "notrack" | "no_track" => room.flags.notrack,
                 _ => false,
             }
         } else {

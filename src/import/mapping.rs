@@ -846,20 +846,13 @@ fn map_room(zone: &IrZone, area_prefix: &str, room: &IrRoom, opts: &MappingOptio
         let mut is_door = false;
         let mut is_closed = false;
         let mut is_locked = false;
+        let mut pickproof = false;
         for f in &door_known {
             match *f {
                 "ISDOOR" => is_door = true,
                 "CLOSED" => is_closed = true,
                 "LOCKED" => is_locked = true,
-                "PICKPROOF" => warnings.push(Warning::new(
-                    WarningKind::UnsupportedDoorFlag,
-                    Severity::Warn,
-                    room.source.clone(),
-                    format!(
-                        "exit {} pickproof flag not modeled; treating as locked door",
-                        ex.direction
-                    ),
-                )),
+                "PICKPROOF" => pickproof = true,
                 _ => {}
             }
         }
@@ -871,7 +864,7 @@ fn map_room(zone: &IrZone, area_prefix: &str, room: &IrRoom, opts: &MappingOptio
                 format!("exit {} unknown door flag bit {u}", ex.direction),
             ));
         }
-        if !is_door && !is_closed && !is_locked {
+        if !is_door && !is_closed && !is_locked && !pickproof {
             continue;
         }
         let (name, keywords) = match &ex.keyword {
@@ -894,6 +887,7 @@ fn map_room(zone: &IrZone, area_prefix: &str, room: &IrRoom, opts: &MappingOptio
             description: ex.general_description.clone(),
             is_closed,
             is_locked,
+            pickproof,
             key_source_vnum: ex.key_vnum,
         });
     }
@@ -993,6 +987,8 @@ fn apply_named_room_flag(flags: &mut RoomFlags, name: &str) -> bool {
         "tunnel" => flags.tunnel = true,
         "death" => flags.death = true,
         "no_magic" => flags.no_magic = true,
+        "soundproof" => flags.soundproof = true,
+        "notrack" | "no_track" => flags.notrack = true,
         _ => return false,
     }
     true

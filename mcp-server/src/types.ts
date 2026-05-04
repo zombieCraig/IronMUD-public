@@ -71,6 +71,7 @@ export interface DoorState {
   key_vnum?: string;
   keywords: string[];
   description?: string;
+  pickproof?: boolean;
 }
 
 export interface RoomFlags {
@@ -88,6 +89,8 @@ export interface RoomFlags {
   shallow_water?: boolean;
   deep_water?: boolean;
   liveable?: boolean;
+  soundproof?: boolean;
+  notrack?: boolean;
 }
 
 export interface RoomTrigger {
@@ -485,6 +488,7 @@ export interface AddDoorRequest {
   key_vnum?: string;
   keywords?: string[];
   description?: string;
+  pickproof?: boolean;
 }
 
 export interface AddTriggerRequest {

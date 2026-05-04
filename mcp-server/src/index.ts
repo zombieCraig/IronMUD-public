@@ -323,6 +323,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           key_vnum: args?.key_vnum as string | undefined,
           keywords: args?.keywords as string[] | undefined,
           description: args?.description as string | undefined,
+          pickproof: args?.pickproof as boolean | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(room, null, 2) }],

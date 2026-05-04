@@ -68,6 +68,11 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if door.pickproof && !char.god_mode {
+        send_client_message(connection_id, "The lock on the " + door.name + " resists all your attempts. It cannot be picked.");
+        return;
+    }
+
     // Consume stamina
     if !char.god_mode {
         char.stamina = char.stamina - 10;

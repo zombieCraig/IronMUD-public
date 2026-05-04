@@ -110,6 +110,8 @@ fn apply_default_room_flag_overrides(flags: &mut RoomFlags, map: &std::collectio
             "tunnel" => flags.tunnel = *v,
             "death" => flags.death = *v,
             "no_magic" => flags.no_magic = *v,
+            "soundproof" => flags.soundproof = *v,
+            "notrack" | "no_track" => flags.notrack = *v,
             _ => {}
         }
     }

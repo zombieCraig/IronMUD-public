@@ -105,6 +105,10 @@ pub struct RoomFlagsRequest {
     pub death: Option<bool>,
     #[serde(default)]
     pub no_magic: Option<bool>,
+    #[serde(default)]
+    pub soundproof: Option<bool>,
+    #[serde(default, alias = "no_track")]
+    pub notrack: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -134,6 +138,8 @@ pub struct SetDoorRequest {
     pub key_vnum: Option<String>,
     #[serde(default)]
     pub keywords: Vec<String>,
+    #[serde(default)]
+    pub pickproof: bool,
 }
 
 fn default_true() -> bool {
@@ -472,6 +478,8 @@ async fn create_room(
             tunnel: req.flags.tunnel.unwrap_or(area_defaults.tunnel),
             death: req.flags.death.unwrap_or(area_defaults.death),
             no_magic: req.flags.no_magic.unwrap_or(area_defaults.no_magic),
+            soundproof: req.flags.soundproof.unwrap_or(area_defaults.soundproof),
+            notrack: req.flags.notrack.unwrap_or(area_defaults.notrack),
         },
         vnum: req.vnum,
         area_id,
@@ -645,6 +653,12 @@ async fn update_room(
         }
         if let Some(v) = flags.no_magic {
             room.flags.no_magic = v;
+        }
+        if let Some(v) = flags.soundproof {
+            room.flags.soundproof = v;
+        }
+        if let Some(v) = flags.notrack {
+            room.flags.notrack = v;
         }
     }
     if room.flags.liveable && room.living_capacity <= 0 {
@@ -913,6 +927,7 @@ async fn set_door(
         is_locked: req.is_locked,
         key_vnum: req.key_vnum,
         keywords: req.keywords,
+        pickproof: req.pickproof,
     };
 
     room.doors.insert(dir_key.to_string(), door);

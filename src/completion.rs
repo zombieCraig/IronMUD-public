@@ -591,6 +591,8 @@ pub const ROOM_FLAGS: &[&str] = &[
     "tunnel",
     "death",
     "no_magic",
+    "soundproof",
+    "notrack",
 ];
 
 /// Combat zone types

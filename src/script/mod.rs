@@ -513,7 +513,9 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         .register_get("private_room", |f: &mut RoomFlags| f.private_room)
         .register_get("tunnel", |f: &mut RoomFlags| f.tunnel)
         .register_get("death", |f: &mut RoomFlags| f.death)
-        .register_get("no_magic", |f: &mut RoomFlags| f.no_magic);
+        .register_get("no_magic", |f: &mut RoomFlags| f.no_magic)
+        .register_get("soundproof", |f: &mut RoomFlags| f.soundproof)
+        .register_get("notrack", |f: &mut RoomFlags| f.notrack);
 
     // Register ExtraDesc type with getters
     engine
@@ -778,7 +780,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 .iter()
                 .map(|s: &String| rhai::Dynamic::from(s.clone()))
                 .collect::<Vec<_>>()
-        });
+        })
+        .register_get("pickproof", |d: &mut DoorState| d.pickproof);
 
     // Register OnlinePlayer type with getters
     engine

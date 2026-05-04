@@ -636,6 +636,8 @@ pub struct DoorState {
     pub description: Option<String>,
     #[serde(default)]
     pub keywords: Vec<String>, // Additional keywords like "wooden", "iron"
+    #[serde(default)]
+    pub pickproof: bool, // Locks that lockpick skill cannot defeat (Circle EX_PICKPROOF)
 }
 
 // === Fishing System - Water Types ===
@@ -750,6 +752,10 @@ pub struct RoomFlags {
     pub death: bool, // Instant-kill on player entry (Circle ROOM_DEATH — death traps)
     #[serde(default)]
     pub no_magic: bool, // Suppresses spellcasting from this room (Circle ROOM_NOMAGIC)
+    #[serde(default)]
+    pub soundproof: bool, // Blocks shouts from leaking in/out (Circle ROOM_SOUNDPROOF)
+    #[serde(default)]
+    pub notrack: bool, // Defeats the track skill (Circle ROOM_NOTRACK)
 }
 
 impl RoomFlags {
@@ -781,6 +787,8 @@ impl RoomFlags {
         self.tunnel |= defaults.tunnel;
         self.death |= defaults.death;
         self.no_magic |= defaults.no_magic;
+        self.soundproof |= defaults.soundproof;
+        self.notrack |= defaults.notrack;
     }
 }
 

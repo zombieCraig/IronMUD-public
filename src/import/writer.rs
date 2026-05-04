@@ -520,6 +520,7 @@ fn build_door_state(d: &PlannedDoor, key_lookup: impl Fn(i32) -> Option<String>)
         key_vnum: d.key_source_vnum.and_then(key_lookup),
         description: d.description.clone(),
         keywords: d.keywords.clone(),
+        pickproof: d.pickproof,
     }
 }
 

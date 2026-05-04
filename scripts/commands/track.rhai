@@ -54,6 +54,12 @@ fn run_command(args, connection_id) {
     let room_id = char.current_room_id;
     let target_name = args;
 
+    let room = get_room_data(room_id);
+    if room != () && room.flags.notrack && !char.god_mode {
+        send_client_message(connection_id, "The ground here yields no trails.");
+        return;
+    }
+
     // Get departure records for this room
     let departures = get_recent_departures(room_id, tracking_skill);
     let target_lower = target_name.to_lower();

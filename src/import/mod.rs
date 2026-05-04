@@ -536,6 +536,7 @@ pub struct PlannedDoor {
     pub description: Option<String>,
     pub is_closed: bool,
     pub is_locked: bool,
+    pub pickproof: bool,
     pub key_source_vnum: Option<i32>,
 }
 
