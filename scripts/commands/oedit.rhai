@@ -271,6 +271,11 @@ fn handle_subcommand(item, item_id, subcommand, parts, char, connection_id) {
         return;
     }
 
+    if subcommand == "world_max" || subcommand == "worldmax" || subcommand == "world_max_count" {
+        handle_world_max_subcommand(uuid, parts, connection_id);
+        return;
+    }
+
     if subcommand == "flags" {
         show_item_flags(item, uuid, connection_id);
         return;
@@ -735,6 +740,24 @@ fn handle_value_subcommand(item_id, parts, connection_id) {
     }
     set_item_value(item_id, val);
     send_client_message(connection_id, "Value set to: " + val + " gold");
+}
+
+fn handle_world_max_subcommand(item_id, parts, connection_id) {
+    if parts.len() < 3 {
+        send_client_message(connection_id, "Usage: oedit " + item_id + " world_max <n>  (0 = unlimited)");
+        return;
+    }
+    let n = parse_int(parts[2]);
+    if n == () {
+        send_client_message(connection_id, "Cap must be a whole number (0 to clear).");
+        return;
+    }
+    set_item_world_max_count(item_id, n);
+    if n <= 0 {
+        send_client_message(connection_id, "World cap cleared (unlimited copies).");
+    } else {
+        send_client_message(connection_id, "World cap set to " + n + " live copies.");
+    }
 }
 
 fn handle_damage_subcommand(item_id, parts, connection_id) {
@@ -1560,6 +1583,9 @@ fn handle_spawn_subcommand(item, char, connection_id) {
     }
     set_item_weight(new_item.id, item.weight);
     set_item_value(new_item.id, item.value);
+    if item.has_world_max_count {
+        set_item_world_max_count(new_item.id, item.world_max_count);
+    }
     // Copy flags
     copy_item_flags(item, new_item.id);
 
@@ -2113,6 +2139,9 @@ fn show_item_properties(item, item_id, connection_id) {
 
     output += olc::c_label("Weight: ", connection_id) + olc::c_value("" + item.weight, connection_id) + "\n";
     output += olc::c_label("Value: ", connection_id) + olc::c_value("" + item.value + " gold", connection_id) + "\n";
+    if item.has_world_max_count {
+        output += olc::c_label("World Max: ", connection_id) + olc::c_value("" + item.world_max_count + " live copies", connection_id) + "\n";
+    }
 
     // Recipe-related properties
     let categories = get_item_categories(item.id);
@@ -2478,6 +2507,7 @@ fn build_commands_help(item_id, item) {
     output += "  oedit " + display_id + " flag <name> [on|off]\n";
     output += "  oedit " + display_id + " weight <value>\n";
     output += "  oedit " + display_id + " value <gold>\n";
+    output += "  oedit " + display_id + " world_max <n>              (cap live copies world-wide; 0 = unlimited)\n";
     output += "  oedit " + display_id + " level <value>\n";
     output += "  oedit " + display_id + " stat <str|dex|con|int|wis|cha> <value>\n";
     output += "  oedit " + display_id + " category                    (recipe category management)\n";

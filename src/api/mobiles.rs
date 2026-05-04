@@ -101,6 +101,8 @@ pub struct CreateMobileRequest {
     // Needs simulation
     #[serde(default)]
     pub simulation: Option<SimulationConfigRequest>,
+    #[serde(default)]
+    pub world_max_count: Option<i32>,
 }
 
 #[derive(Deserialize)]
@@ -231,6 +233,8 @@ pub struct MobileFlagsRequest {
     pub corrosive: Option<bool>,
     #[serde(default)]
     pub shocking: Option<bool>,
+    #[serde(default)]
+    pub unique: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -301,6 +305,8 @@ pub struct UpdateMobileRequest {
     /// Set to true to remove simulation config
     #[serde(default)]
     pub remove_simulation: Option<bool>,
+    #[serde(default)]
+    pub world_max_count: Option<i32>,
 }
 
 #[derive(Deserialize)]
@@ -635,6 +641,7 @@ async fn create_mobile(
         vnum: req.vnum.clone(),
         keywords: req.keywords,
         is_prototype: true,
+        world_max_count: req.world_max_count,
         current_room_id: None,
         max_hp: req.max_hp,
         current_hp: req.max_hp,
@@ -674,6 +681,7 @@ async fn create_mobile(
             chilling: req.flags.chilling.unwrap_or(false),
             corrosive: req.flags.corrosive.unwrap_or(false),
             shocking: req.flags.shocking.unwrap_or(false),
+            unique: req.flags.unique.unwrap_or(false),
         },
         dialogue: HashMap::new(),
         shop_stock: req.shop_stock.unwrap_or_default(),
@@ -847,6 +855,12 @@ async fn update_mobile(
         if let Some(v) = flags.shocking {
             mobile.flags.shocking = v;
         }
+        if let Some(v) = flags.unique {
+            mobile.flags.unique = v;
+        }
+    }
+    if let Some(world_max) = req.world_max_count {
+        mobile.world_max_count = if world_max <= 0 { None } else { Some(world_max) };
     }
     // Healer config
     if let Some(healer_type) = req.healer_type {

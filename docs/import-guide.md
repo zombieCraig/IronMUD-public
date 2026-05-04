@@ -493,13 +493,13 @@ intentionally not modelled at import time — that's the spawn tick's job
 
 | CircleMUD reset | IronMUD result |
 |---|---|
-| `M if mob max room` | New `SpawnPointData` (entity_type=Mobile). `max_count = max`, `respawn_interval_secs = zone.lifespan × 60`. Sets the G/E anchor. |
-| `O if obj max room` | New `SpawnPointData` (entity_type=Item). Same cadence. If the item is a Container, sets the P anchor. |
+| `M if mob max room` | New `SpawnPointData` (entity_type=Mobile). `max_count = max`, `respawn_interval_secs = zone.lifespan × 60`. Sets the G/E anchor. The largest `max` seen across all M-resets for this vnum is also rolled up into the prototype's `world_max_count` (or `flags.unique` if `max == 1`) so Circle's world-wide cap semantics carry over. |
+| `O if obj max room` | New `SpawnPointData` (entity_type=Item). Same cadence + same prototype-level world cap rollup as M. If the item is a Container, sets the P anchor. |
 | `G if=1 obj max` | `SpawnDependency { destination: Inventory }` on the anchor mob's spawn point. `if=0` or no anchor → **Warn** + drop. |
 | `E if=1 obj max wear_loc` | `SpawnDependency { destination: Equipped(loc) }`; `wear_loc` 0..17 mapped via the table below. `if=0` or no anchor → **Warn** + drop. |
 | `P if=1 obj max container_vnum` | `SpawnDependency { destination: Container }` on the anchor item's spawn point. Anchor missing or `container_vnum` mismatch → **Warn** + drop. |
 | `D if room dir state` | Mutates the matching `PlannedDoor`: state 0 → open, 1 → closed, 2 → closed+locked. Missing room or door → **Warn** + drop. |
-| `R if room obj` | **Warn** (no IronMUD analogue — see [Zone resets backlog](#zone-resets-backlog)). |
+| `R if room obj` | **Skipped silently.** Circle's `R` exists to dedupe room contents across resets; IronMUD's spawn tick + area reset already cap by (room, vnum), so `R` is redundant. See [Zone resets backlog](#zone-resets-backlog). |
 
 ### CircleMUD `E` wear-slot index → `WearLocation`
 
@@ -760,15 +760,21 @@ Histogram from stock CircleMUD 3.1 (across all `.zon` files): **1098 M /
 cleanly today, P translates in the common case, R is warn-only. Gaps
 ranked below.
 
+#### Intentionally not imported
+
+- **`R` (remove obj from room)** — 80 occurrences. CircleMUD `R` clears
+  named objects from a room before each reset because Circle's loader
+  has no per-(room, vnum) dedupe — without `R` you'd pile up N copies of
+  the floor-mat each cycle. IronMUD's spawn tick
+  (`src/ticks/spawn.rs:118-133`) and `trigger_area_reset`
+  (`src/script/spawn.rs:218-238`) already cap by (room, vnum) using
+  `max_count`, so `R` is redundant in steady-state. The only edge case
+  is re-importing onto an already-populated DB; treat that as an
+  operational concern (clean DB or run a one-off dedupe pass) rather
+  than a runtime gap.
+
 #### High priority
 
-- **`R` (remove obj from room)** — 80 occurrences. Stock zones use this
-  to clear room state before re-loading objects on a reset, preventing
-  stack-up across resets. IronMUD's spawn tick already deduplicates by
-  vnum (`src/ticks/spawn.rs:99-133`) so the day-to-day case is fine, but
-  re-imports against an already-populated DB risk visible duplicates.
-  Likely shape: a one-shot "purge_on_first_reset" flag on
-  `SpawnPointData`, or a writer-side dedupe pass keyed on (room, vnum).
 - **P cross-block container chaining** — ~10 of 77 `P` resets (zone 25
   is the worst offender) reference containers declared in earlier reset
   blocks rather than the immediately-prior `O`. The current importer
@@ -778,18 +784,23 @@ ranked below.
 
 #### Medium priority
 
-- **Max-count semantics divergence** — Circle's `max` is "stop reloading
-  if the world has N already"; IronMUD's `max_count` is per-spawn-point.
-  When the same vnum appears in N M-resets across different rooms, the
-  imported world can carry up to N×max copies world-wide. Acceptable
-  approximation for stock content (most M-resets have `max=1`); surface
-  a dry-run note when the same mob vnum has multiple M-resets with
-  `max>1`.
 - **WEAR_LIGHT (slot 0)** — no IronMUD hold-light slot. The spawn point
   for the parent mob is still produced; the `E` is dropped with a warn.
 - **NECK_1 + NECK_2 collision** — both Circle neck slots collapse to
   IronMUD's single `Neck`; the second item per mob is dropped (warn-once
   per mob).
+
+#### Resolved
+
+- **Max-count semantics** — Circle's `max` ("stop reloading when the
+  world has N already") is now imported into IronMUD's prototype-level
+  `world_max_count: Option<i32>` (or `flags.unique` when `max == 1`).
+  The mapper accumulates `max(circle_max)` per resolved vnum across all
+  M/O reset blocks and applies the cap to the planned mob/item
+  prototype. Enforcement lives in `db.spawn_*_from_prototype`, so spawn
+  tick / area reset / `ospawn` / `mspawn` / migration all share one
+  chokepoint. Per-spawn-point `max_count` still controls the per-room
+  cap independently.
 
 #### Low priority
 

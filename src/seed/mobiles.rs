@@ -25,6 +25,7 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
         current_room_id: None,
         is_prototype: true,
         vnum: vnum.to_string(),
+        world_max_count: None,
         level: 1,
         max_hp: 10,
         current_hp: 10,

@@ -2806,6 +2806,11 @@ pub struct ItemData {
     pub is_prototype: bool,
     #[serde(default)]
     pub vnum: Option<String>,
+    // World-wide cap on live (non-prototype) instances of this vnum.
+    // None = unlimited. Some(n) = refuse spawn when count >= n.
+    // `flags.unique` is sugar for Some(1).
+    #[serde(default)]
+    pub world_max_count: Option<i32>,
     // Item triggers
     #[serde(default)]
     pub triggers: Vec<ItemTrigger>,
@@ -2955,6 +2960,7 @@ impl ItemData {
             insulation: 0,
             is_prototype: false,
             vnum: None,
+            world_max_count: None,
             triggers: Vec::new(),
             // Vending machine fields
             vending_stock: Vec::new(),
@@ -3041,6 +3047,8 @@ pub struct MobileFlags {
     pub corrosive: bool, // Melee hits apply an acid DoT
     #[serde(default)]
     pub shocking: bool, // Melee hits apply a lightning DoT
+    #[serde(default)]
+    pub unique: bool, // Only one live (non-prototype) instance of this vnum allowed in the world
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3062,6 +3070,11 @@ pub struct MobileData {
     pub is_prototype: bool,
     #[serde(default)]
     pub vnum: String, // "goblin_guard"
+    // World-wide cap on live (non-prototype) instances of this vnum.
+    // None = unlimited. Some(n) = refuse spawn when count >= n.
+    // `flags.unique` is sugar for Some(1).
+    #[serde(default)]
+    pub world_max_count: Option<i32>,
 
     // Base stats (for future combat)
     #[serde(default)]
@@ -3275,6 +3288,7 @@ impl MobileData {
             current_room_id: None,
             is_prototype: true,
             vnum: String::new(),
+            world_max_count: None,
             level: 1,
             max_hp: 10,
             current_hp: 10,

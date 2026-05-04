@@ -484,6 +484,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           food_spoil_duration: args?.food_spoil_duration as number | undefined,
           food_effects: args?.food_effects as { effect_type: string; magnitude: number; duration: number }[] | undefined,
           note_content: args?.note_content as string | undefined,
+          world_max_count: args?.world_max_count as number | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(item, null, 2) }],
@@ -506,7 +507,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           "liquid_effects",
           "medical_tier", "medical_uses", "treats_wound_types",
           "food_nutrition", "food_spoil_duration", "food_effects",
-          "note_content",
+          "note_content", "world_max_count",
         ];
         for (const field of itemFields) {
           if (args?.[field] !== undefined) {
@@ -636,6 +637,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           shop_preset_vnum: args?.shop_preset_vnum as string | undefined,
           daily_routine: args?.daily_routine as any[] | undefined,
           simulation: args?.simulation as any | undefined,
+          world_max_count: args?.world_max_count as number | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(mobile, null, 2) }],
@@ -653,7 +655,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           "shop_min_value", "shop_max_value",
           "shop_extra_types", "shop_extra_categories", "shop_deny_types", "shop_deny_categories",
           "shop_stock", "shop_preset_vnum",
-          "daily_routine", "simulation", "remove_simulation",
+          "daily_routine", "simulation", "remove_simulation", "world_max_count",
         ];
         for (const field of mobileFields) {
           if (args?.[field] !== undefined) {

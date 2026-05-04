@@ -147,6 +147,8 @@ pub struct CreateItemRequest {
     pub note_content: Option<String>,
     #[serde(default)]
     pub container_key_vnum: Option<String>,
+    #[serde(default)]
+    pub world_max_count: Option<i32>,
 }
 
 /// Builder-facing subset of `ItemFlags`. Every field is optional so callers
@@ -313,6 +315,8 @@ pub struct UpdateItemRequest {
     pub note_content: Option<String>,
     #[serde(default)]
     pub container_key_vnum: Option<String>,
+    #[serde(default)]
+    pub world_max_count: Option<i32>,
 }
 
 #[derive(Deserialize)]
@@ -633,6 +637,7 @@ async fn create_item(
         weight: req.weight,
         value: req.value,
         is_prototype: true,
+        world_max_count: req.world_max_count,
         location: ItemLocation::Nowhere,
         wear_locations,
         armor_class: req.armor_class,
@@ -831,6 +836,9 @@ async fn update_item(
     }
     if let Some(key_vnum) = req.container_key_vnum {
         item.container_key_vnum = if key_vnum.is_empty() { None } else { Some(key_vnum) };
+    }
+    if let Some(world_max) = req.world_max_count {
+        item.world_max_count = if world_max <= 0 { None } else { Some(world_max) };
     }
     if let Some(ref new_vnum) = req.vnum {
         // Check vnum uniqueness (allow keeping the same vnum)

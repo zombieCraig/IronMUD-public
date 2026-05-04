@@ -284,6 +284,7 @@ export interface MobileFlags {
   chilling?: boolean;
   corrosive?: boolean;
   shocking?: boolean;
+  unique?: boolean;
 }
 
 export interface SpawnPoint {
@@ -419,6 +420,8 @@ export interface CreateItemRequest {
   food_effects?: { effect_type: string; magnitude: number; duration: number }[];
   // Readable body (any item with this becomes readable via `read`)
   note_content?: string;
+  // World-wide cap on live (non-prototype) instances of this vnum (0 = unlimited)
+  world_max_count?: number;
 }
 
 export interface CreateMobileRequest {
@@ -455,6 +458,8 @@ export interface CreateMobileRequest {
   // Needs simulation
   simulation?: Partial<SimulationConfig> & { home_room_vnum: string; work_room_vnum: string };
   remove_simulation?: boolean;
+  // World-wide cap on live (non-prototype) instances of this vnum (0 = unlimited)
+  world_max_count?: number;
 }
 
 export interface RoutineEntry {

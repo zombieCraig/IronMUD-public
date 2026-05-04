@@ -509,6 +509,7 @@ fn build_mobile(p: &PlannedMobile) -> MobileData {
     m.armor_class = p.armor_class;
     m.gold = p.gold;
     m.flags = p.flags.clone();
+    m.world_max_count = p.world_max_count;
     m
 }
 

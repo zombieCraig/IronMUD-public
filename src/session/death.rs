@@ -83,6 +83,7 @@ fn build_player_corpse(name: &str, room_id: Uuid, gold: i64) -> ItemData {
         insulation: 0,
         is_prototype: false,
         vnum: None,
+        world_max_count: None,
         triggers: vec![],
         vending_stock: vec![],
         vending_sell_rate: 150,

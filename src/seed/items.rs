@@ -66,6 +66,7 @@ fn item(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str, ite
         // Prototype
         is_prototype: true,
         vnum: Some(vnum.to_string()),
+        world_max_count: None,
         // Triggers
         triggers: Vec::new(),
         // Vending

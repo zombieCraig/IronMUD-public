@@ -597,6 +597,10 @@ impl Db {
         Ok(count)
     }
 
+    pub fn count_non_prototype_mobiles_by_vnum(&self, vnum: &str) -> Result<usize> {
+        Ok(self.get_mobile_instances_by_vnum(vnum)?.len())
+    }
+
     /// Get all items in a room
     pub fn get_items_in_room(&self, room_id: &Uuid) -> Result<Vec<ItemData>> {
         let mut items = Vec::new();
@@ -1232,6 +1236,15 @@ impl Db {
     /// Spawn a mobile from a prototype (creates a copy with is_prototype=false)
     pub fn spawn_mobile_from_prototype(&self, vnum: &str) -> Result<Option<MobileData>> {
         if let Some(prototype) = self.get_mobile_by_vnum(vnum)? {
+            let cap = prototype
+                .world_max_count
+                .or_else(|| if prototype.flags.unique { Some(1) } else { None });
+            if let Some(max) = cap {
+                let live = self.get_mobile_instances_by_vnum(vnum)?.len() as i32;
+                if live >= max {
+                    return Ok(None);
+                }
+            }
             let mut spawned = prototype.clone();
             spawned.id = Uuid::new_v4();
             spawned.is_prototype = false;
@@ -1311,6 +1324,15 @@ impl Db {
         if let Some(prototype) = self.get_item_by_vnum(vnum)? {
             if !prototype.is_prototype {
                 return Ok(None); // Not a prototype
+            }
+            let cap = prototype
+                .world_max_count
+                .or_else(|| if prototype.flags.unique { Some(1) } else { None });
+            if let Some(max) = cap {
+                let live = self.get_item_instances_by_vnum(vnum)?.len() as i32;
+                if live >= max {
+                    return Ok(None);
+                }
             }
             let mut spawned = prototype.clone();
             spawned.id = Uuid::new_v4();

@@ -360,6 +360,12 @@ pub fn ir_to_plan(ir: &ImportIR, opts: &MappingOptions) -> (Plan, Vec<Warning>) 
         }
     }
 
+    // Walk all planned spawns to derive per-prototype world caps from
+    // accumulated max(circle_max). Circle's `max` on M/O is "stop reloading
+    // when the world has N already" — world-wide, not per-spawn-point — so
+    // we collapse all M/O occurrences of a vnum to the largest authored cap.
+    apply_world_caps_from_spawns(&mut plan);
+
     // Specproc / trigger overlays. spec_assign.c is one tree-wide file, so
     // these live on `ir.triggers` (not per-zone). Resolve each binding via
     // the global mob/item/room indexes and emit a `PlannedTriggerOverlay`
@@ -376,6 +382,44 @@ pub fn ir_to_plan(ir: &ImportIR, opts: &MappingOptions) -> (Plan, Vec<Warning>) 
     }
 
     (plan, warnings)
+}
+
+/// Walk all PlannedSpawns, accumulate the largest authored CircleMUD `max`
+/// per resolved vnum, then apply that cap to the matching planned mob/item
+/// prototype. `max == 1` becomes `flags.unique = true`; larger caps populate
+/// `world_max_count`. Idempotent: running again with the same spawns has
+/// the same effect.
+fn apply_world_caps_from_spawns(plan: &mut Plan) {
+    let mut mob_caps: HashMap<String, i32> = HashMap::new();
+    let mut item_caps: HashMap<String, i32> = HashMap::new();
+    for sp in &plan.spawns {
+        let bucket = match sp.entity_type {
+            SpawnEntityType::Mobile => &mut mob_caps,
+            SpawnEntityType::Item => &mut item_caps,
+        };
+        let entry = bucket.entry(sp.vnum.clone()).or_insert(0);
+        if sp.max_count > *entry {
+            *entry = sp.max_count;
+        }
+    }
+    for m in &mut plan.mobiles {
+        if let Some(&cap) = mob_caps.get(&m.vnum) {
+            if cap == 1 {
+                m.flags.unique = true;
+            } else if cap > 1 {
+                m.world_max_count = Some(cap);
+            }
+        }
+    }
+    for it in &mut plan.items {
+        if let Some(&cap) = item_caps.get(&it.vnum) {
+            if cap == 1 {
+                it.data.flags.unique = true;
+            } else if cap > 1 {
+                it.data.world_max_count = Some(cap);
+            }
+        }
+    }
 }
 
 /// Door state change requested by a CircleMUD `D` reset. Applied after
@@ -725,17 +769,18 @@ fn map_resets(
                 });
             }
             IrResetKind::RemoveObj { room_vnum, vnum } => {
-                warnings.push(
-                    Warning::new(
-                        WarningKind::DeferredFeature,
-                        Severity::Warn,
-                        reset.source.clone(),
-                        format!(
-                            "R reset (remove obj #{vnum} from room #{room_vnum}) has no IronMUD analogue — drop"
-                        ),
-                    )
-                    .with_suggestion("revisit if a per-room cleanup hook lands; see import-guide backlog"),
-                );
+                // CircleMUD `R` exists to dedupe room contents across resets;
+                // IronMUD's spawn tick + area reset already cap by (room, vnum)
+                // via `max_count`, so `R` is redundant. Keep an Info note in
+                // the report so importers can still see it was authored.
+                warnings.push(Warning::new(
+                    WarningKind::DeferredFeature,
+                    Severity::Info,
+                    reset.source.clone(),
+                    format!(
+                        "R reset (remove obj #{vnum} from room #{room_vnum}) skipped — superseded by per-(room,vnum) dedupe in spawn tick"
+                    ),
+                ));
             }
         }
     }
@@ -1176,6 +1221,7 @@ fn map_mob(
             armor_class: mob.ac,
             gold,
             flags,
+            world_max_count: None,
             source: mob.source.clone(),
         },
         warnings,

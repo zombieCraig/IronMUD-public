@@ -32,7 +32,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         fiery,
         chilling,
         corrosive,
-        shocking
+        shocking,
+        unique
     );
 
     // Register MobileData type with getters
@@ -56,6 +57,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         })
         .register_get("is_prototype", |m: &mut MobileData| m.is_prototype)
         .register_get("vnum", |m: &mut MobileData| m.vnum.clone())
+        .register_get("world_max_count", |m: &mut MobileData| m.world_max_count.unwrap_or(0) as i64)
+        .register_get("has_world_max_count", |m: &mut MobileData| m.world_max_count.is_some())
         .register_get("level", |m: &mut MobileData| m.level as i64)
         .register_get("max_hp", |m: &mut MobileData| m.max_hp as i64)
         .register_get("current_hp", |m: &mut MobileData| m.current_hp as i64)
@@ -596,6 +599,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "chilling" => mobile.flags.chilling = value,
                         "corrosive" => mobile.flags.corrosive = value,
                         "shocking" => mobile.flags.shocking = value,
+                        "unique" => mobile.flags.unique = value,
                         _ => return false,
                     }
                     return cloned_db.save_mobile_data(mobile).is_ok();
@@ -615,6 +619,27 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             }
         }
         false
+    });
+
+    // set_mobile_world_max_count(mobile_id, n) -> bool (n <= 0 clears the cap)
+    let cloned_db = db.clone();
+    engine.register_fn("set_mobile_world_max_count", move |mobile_id: String, n: i64| -> bool {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+            if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
+                mobile.world_max_count = if n <= 0 { None } else { Some(n as i32) };
+                return cloned_db.save_mobile_data(mobile).is_ok();
+            }
+        }
+        false
+    });
+
+    // count_mobiles_by_vnum(vnum) -> i64 (counts non-prototype mobiles with vnum)
+    let cloned_db = db.clone();
+    engine.register_fn("count_mobiles_by_vnum", move |vnum: String| -> i64 {
+        match cloned_db.count_non_prototype_mobiles_by_vnum(&vnum) {
+            Ok(count) => count as i64,
+            Err(_) => 0,
+        }
     });
 
     // set_mobile_prototype(mobile_id, is_prototype) -> bool

@@ -244,6 +244,10 @@ fn dispatch_combat_subcommand(uuid, subcommand, parts, connection_id) {
     if subcommand == "autostats" { handle_autostats_subcommand(uuid, parts, connection_id); return true; }
     if subcommand == "gold" { handle_gold_subcommand(uuid, parts, connection_id); return true; }
     if subcommand == "perception" { handle_perception_subcommand(uuid, parts, connection_id); return true; }
+    if subcommand == "world_max" || subcommand == "worldmax" || subcommand == "world_max_count" {
+        handle_world_max_subcommand(uuid, parts, connection_id);
+        return true;
+    }
     return false;
 }
 
@@ -417,6 +421,24 @@ fn handle_perception_subcommand(mobile_id, parts, connection_id) {
     send_client_message(connection_id, "Perception set to: " + value);
 }
 
+fn handle_world_max_subcommand(mobile_id, parts, connection_id) {
+    if parts.len() < 3 {
+        send_client_message(connection_id, "Usage: medit " + mobile_id + " world_max <n>  (0 = unlimited)");
+        return;
+    }
+    let n = parse_int(parts[2]);
+    if n == () {
+        send_client_message(connection_id, "Cap must be a whole number (0 to clear).");
+        return;
+    }
+    set_mobile_world_max_count(mobile_id, n);
+    if n <= 0 {
+        send_client_message(connection_id, "World cap cleared (unlimited copies).");
+    } else {
+        send_client_message(connection_id, "World cap set to " + n + " live copies.");
+    }
+}
+
 fn handle_damtype_subcommand(mobile_id, parts, connection_id) {
     if parts.len() < 3 {
         let all_types = get_all_damage_types();
@@ -526,7 +548,7 @@ fn handle_flag_subcommand(mobile_id, parts, connection_id) {
     // Validate all names before changing anything.
     for name in flag_names {
         if get_mobile_flag_value(mobile, name) == () {
-            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim, poisonous, fiery, chilling, corrosive, shocking");
+            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim, poisonous, fiery, chilling, corrosive, shocking, unique");
             return;
         }
     }
@@ -565,6 +587,7 @@ fn get_mobile_flag_value(mobile, flag_name) {
     if flag_name == "chilling" { return flags.chilling; }
     if flag_name == "corrosive" { return flags.corrosive; }
     if flag_name == "shocking" { return flags.shocking; }
+    if flag_name == "unique" { return flags.unique; }
     return ();
 }
 
@@ -664,6 +687,9 @@ fn show_mobile_properties(mobile, mobile_id, connection_id) {
     output += olc::c_label("Hit Modifier: ", connection_id) + olc::c_value("" + mobile.hit_modifier, connection_id) + "\n";
     output += olc::c_label("Perception: ", connection_id) + olc::c_value("" + mobile.perception, connection_id) + "\n";
     output += olc::c_label("Gold: ", connection_id) + olc::c_value("" + mobile.gold, connection_id) + "\n";
+    if mobile.has_world_max_count {
+        output += olc::c_label("World Max: ", connection_id) + olc::c_value("" + mobile.world_max_count + " live copies", connection_id) + "\n";
+    }
 
     output += "\n" + olc::c_label("--- Attributes ---", connection_id) + "\n";
     output += olc::c_label("STR: ", connection_id) + olc::c_value("" + mobile.stat_str, connection_id) + "  " + olc::c_label("DEX: ", connection_id) + olc::c_value("" + mobile.stat_dex, connection_id) + "  " + olc::c_label("CON: ", connection_id) + olc::c_value("" + mobile.stat_con, connection_id) + "\n";
@@ -747,6 +773,7 @@ fn build_flags_display(mobile) {
     if flags.chilling { flag_str += "chilling "; }
     if flags.corrosive { flag_str += "corrosive "; }
     if flags.shocking { flag_str += "shocking "; }
+    if flags.unique { flag_str += "unique "; }
     if flag_str == "" { flag_str = "(none)"; }
     output += flag_str + "\n";
     return output;
@@ -772,6 +799,7 @@ fn build_commands_help(mobile_id, mobile) {
     output += "  medit " + display_id + " ac <value>\n";
     output += "  medit " + display_id + " gold <amount>            (gold dropped on death)\n";
     output += "  medit " + display_id + " perception <0-10>       (stealth detection ability)\n";
+    output += "  medit " + display_id + " world_max <n>           (cap live copies world-wide; 0 = unlimited)\n";
     output += "  medit " + display_id + " stat <str|dex|con|int|wis|cha> <value>\n";
     output += "  medit " + display_id + " flags\n";
     output += "  medit " + display_id + " flag <name> [on|off]\n";
@@ -885,6 +913,7 @@ fn show_mobile_flags(mobile, mobile_id, connection_id) {
     output += build_flag_line("chilling", flags.chilling, "Melee hits apply a cold DoT", display_id, connection_id);
     output += build_flag_line("corrosive", flags.corrosive, "Melee hits apply an acid DoT", display_id, connection_id);
     output += build_flag_line("shocking", flags.shocking, "Melee hits apply a lightning DoT", display_id, connection_id);
+    output += build_flag_line("unique", flags.unique, "Only one live (non-prototype) instance allowed in the world", display_id, connection_id);
 
     send_mxp_message(connection_id, output);
 }

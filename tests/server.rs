@@ -4061,3 +4061,98 @@ fn test_spawn_point_bury_on_spawn_field_persists() {
         std::panic::resume_unwind(e);
     }
 }
+
+#[test]
+fn test_item_unique_flag_caps_spawn_at_one() {
+    use ironmud::ItemData;
+    use ironmud::db::Db;
+
+    let db_path = format!("test_item_unique_cap_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut proto = ItemData::new(
+            "the crown of Sigil".to_string(),
+            "the crown of Sigil rests here".to_string(),
+            "An ancient crown radiates faint light.".to_string(),
+        );
+        proto.is_prototype = true;
+        proto.vnum = Some("test:unique_crown".to_string());
+        proto.flags.unique = true;
+        db.save_item_data(proto).expect("save proto");
+
+        let first = db
+            .spawn_item_from_prototype("test:unique_crown")
+            .expect("first spawn ok");
+        assert!(first.is_some(), "first spawn succeeds under unique cap");
+
+        let second = db
+            .spawn_item_from_prototype("test:unique_crown")
+            .expect("second spawn ok");
+        assert!(second.is_none(), "second spawn refused — unique cap of 1");
+
+        // After deleting the first instance, a fresh spawn is allowed.
+        let first_id = first.unwrap().id;
+        db.delete_item(&first_id).expect("delete first");
+        let third = db
+            .spawn_item_from_prototype("test:unique_crown")
+            .expect("third spawn ok");
+        assert!(third.is_some(), "deletion frees the cap");
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_mobile_world_max_count_caps_spawn() {
+    use ironmud::db::Db;
+    use ironmud::types::MobileData;
+
+    let db_path = format!("test_mob_world_cap_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut proto = MobileData::new("a captain of the guard".to_string());
+        proto.is_prototype = true;
+        proto.vnum = "test:guard_captain".to_string();
+        proto.world_max_count = Some(3);
+        db.save_mobile_data(proto).expect("save proto");
+
+        let mut spawned = Vec::new();
+        for i in 0..3 {
+            let m = db
+                .spawn_mobile_from_prototype("test:guard_captain")
+                .expect(&format!("spawn {i} ok"));
+            assert!(m.is_some(), "spawn {i} succeeds (cap=3)");
+            spawned.push(m.unwrap().id);
+        }
+
+        let fourth = db
+            .spawn_mobile_from_prototype("test:guard_captain")
+            .expect("fourth spawn call ok");
+        assert!(fourth.is_none(), "fourth spawn refused — cap reached");
+
+        // unique on a mobile is sugar for cap=1, even with no world_max_count.
+        let mut proto2 = MobileData::new("the warden".to_string());
+        proto2.is_prototype = true;
+        proto2.vnum = "test:warden_unique".to_string();
+        proto2.flags.unique = true;
+        db.save_mobile_data(proto2).expect("save warden proto");
+        let w1 = db.spawn_mobile_from_prototype("test:warden_unique").expect("warden 1");
+        assert!(w1.is_some(), "first warden spawns");
+        let w2 = db.spawn_mobile_from_prototype("test:warden_unique").expect("warden 2 call");
+        assert!(w2.is_none(), "second warden refused under unique flag");
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}

@@ -116,6 +116,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_set("weight", |i: &mut ItemData, v: i64| i.weight = v as i32)
         .register_get("value", |i: &mut ItemData| i.value as i64)
         .register_set("value", |i: &mut ItemData, v: i64| i.value = v as i32)
+        .register_get("world_max_count", |i: &mut ItemData| i.world_max_count.unwrap_or(0) as i64)
+        .register_get("has_world_max_count", |i: &mut ItemData| i.world_max_count.is_some())
         // Weapon properties
         .register_get("damage_dice_count", |i: &mut ItemData| i.damage_dice_count as i64)
         .register_get("damage_dice_sides", |i: &mut ItemData| i.damage_dice_sides as i64)
@@ -2617,6 +2619,18 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
             if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
                 item.note_content = if body.is_empty() { None } else { Some(body) };
+                return cloned_db.save_item_data(item).is_ok();
+            }
+        }
+        false
+    });
+
+    // set_item_world_max_count(item_id, n) -> bool (n <= 0 clears the cap)
+    let cloned_db = db.clone();
+    engine.register_fn("set_item_world_max_count", move |item_id: String, n: i64| -> bool {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                item.world_max_count = if n <= 0 { None } else { Some(n as i32) };
                 return cloned_db.save_item_data(item).is_ok();
             }
         }

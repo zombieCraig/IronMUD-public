@@ -572,6 +572,9 @@ pub struct PlannedMobile {
     pub armor_class: i32,
     pub gold: i32,
     pub flags: crate::types::MobileFlags,
+    /// World-wide cap derived from accumulated max(circle_max) across all
+    /// M-resets for this vnum. None = unlimited.
+    pub world_max_count: Option<i32>,
     pub source: SourceLoc,
 }
 
