@@ -1,0 +1,46 @@
+#9001
+The Test Square~
+   This is the central plaza of the test fixture village. The cobbled
+square stretches off in every direction, and a stout wooden gate stands
+to the east, sealing off a private courtyard.
+~
+0 c 1
+D0
+A dusty road winds north out of the square.
+~
+~
+0 -1 9002
+D1
+A heavy wooden gate blocks the way east.
+~
+gate wooden~
+3 9100 9003
+E
+square plaza~
+The flagstones are worn smooth by generations of test mobs.
+~
+S
+#9002
+A Dusty Road~
+   The road runs north out of town, narrowing as it climbs into the hills.
+~
+0 0 4
+D2
+The square lies south.
+~
+~
+0 -1 9001
+S
+#9003
+A Private Courtyard~
+   You stand inside the small private courtyard. The wooden gate is to
+the west.
+~
+0 ad 1
+D3
+The wooden gate stands here.
+~
+gate wooden~
+3 9100 9001
+S
+$

@@ -1,0 +1,28 @@
+{
+  "_comment": "Default CircleMUD -> IronMUD shop mapping. Translates Circle ITEM_TYPE buy_types tokens (FOOD, LIQ CONTAINER, WEAPON, ...) into IronMUD ItemType strings used by shop_buys_types. Tokens with no IronMUD analogue surface as 'warn' (e.g. FIRE WEAPON, MISSILE — unimplemented in stock Circle). Edit to suppress noise (use 'drop') or add aliases. See docs/import-guide.md.",
+  "buy_type_actions": {
+    "LIGHT":         { "action": "set_flag", "ironmud_flag": "misc" },
+    "SCROLL":        { "action": "set_flag", "ironmud_flag": "misc" },
+    "WAND":          { "action": "set_flag", "ironmud_flag": "misc" },
+    "STAFF":         { "action": "set_flag", "ironmud_flag": "misc" },
+    "WEAPON":        { "action": "set_flag", "ironmud_flag": "weapon" },
+    "FIRE WEAPON":   { "action": "warn", "message": "FIRE WEAPON unimplemented in stock CircleMUD; shop won't accept this type." },
+    "MISSILE":       { "action": "warn", "message": "MISSILE unimplemented in stock CircleMUD; shop won't accept this type." },
+    "TREASURE":      { "action": "set_flag", "ironmud_flag": "misc" },
+    "ARMOR":         { "action": "set_flag", "ironmud_flag": "armor" },
+    "POTION":        { "action": "set_flag", "ironmud_flag": "liquid_container" },
+    "WORN":          { "action": "set_flag", "ironmud_flag": "misc" },
+    "OTHER":         { "action": "set_flag", "ironmud_flag": "misc" },
+    "TRASH":         { "action": "set_flag", "ironmud_flag": "misc" },
+    "TRAP":          { "action": "warn", "message": "TRAP unimplemented in stock CircleMUD; shop won't accept this type." },
+    "CONTAINER":     { "action": "set_flag", "ironmud_flag": "container" },
+    "NOTE":          { "action": "set_flag", "ironmud_flag": "misc" },
+    "LIQ CONTAINER": { "action": "set_flag", "ironmud_flag": "liquid_container" },
+    "KEY":           { "action": "set_flag", "ironmud_flag": "key" },
+    "FOOD":          { "action": "set_flag", "ironmud_flag": "food" },
+    "MONEY":         { "action": "set_flag", "ironmud_flag": "gold" },
+    "PEN":           { "action": "set_flag", "ironmud_flag": "misc" },
+    "BOAT":          { "action": "set_flag", "ironmud_flag": "misc" },
+    "FOUNTAIN":      { "action": "set_flag", "ironmud_flag": "liquid_container" }
+  }
+}

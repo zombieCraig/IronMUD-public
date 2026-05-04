@@ -1,0 +1,37 @@
+#9001
+test wanderer~
+the test wanderer~
+A test wanderer paces back and forth.
+~
+The test wanderer is a small simulated NPC that exists only to satisfy the
+importer's mobile fixture.
+~
+bf 0 0 S
+3 18 7 2d6+10 1d6+1
+50 0
+8 8 1
+#9002
+fixture beast~
+the fixture beast~
+A scruffy fixture beast prowls here.
+~
+A small four-legged creature, included to exercise the E-format parser.
+~
+0 0 0 E
+2 19 8 1d8+5 1d4+0
+0 0
+8 8 0
+BareHandAttack: 4
+E
+#9003
+glowing wisp~
+a glowing wisp~
+A glowing wisp drifts in mid-air.
+~
+A pale spectral wisp, surrounded by a faint protective shimmer.
+~
+0 h 0 S
+1 20 9 1d4+2 1d3+0
+0 0
+8 8 0
+$

@@ -1,0 +1,30 @@
+{
+  "_comment": "Default CircleMUD -> IronMUD mobile mapping. Most MOB_*/AFF_* flags have no IronMUD equivalent — those are 'warn' so unsupported behavior surfaces in the dry-run report. Edit to suppress noise (use 'drop') or wire new translations once IronMUD systems exist. See docs/import-guide.md.",
+  "mob_flag_actions": {
+    "SPEC":         { "action": "warn", "message": "MOB_SPEC special procedures not modeled; replace with a Rhai trigger after import." },
+    "SENTINEL":     { "action": "set_flag", "ironmud_flag": "sentinel" },
+    "SCAVENGER":    { "action": "set_flag", "ironmud_flag": "scavenger" },
+    "ISNPC":        { "action": "drop", "info": "implicit on every imported mob" },
+    "AWARE":        { "action": "warn", "message": "MOB_AWARE (auto-detect hidden) not modeled per-mob." },
+    "AGGRESSIVE":   { "action": "set_flag", "ironmud_flag": "aggressive" },
+    "STAY_ZONE":    { "action": "warn", "message": "MOB_STAY_ZONE not modeled; mobs wander freely between zones." },
+    "WIMPY":        { "action": "set_flag", "ironmud_flag": "cowardly" },
+    "AGGR_EVIL":    { "action": "warn", "message": "alignment-conditional aggression not modeled (no alignment system)." },
+    "AGGR_GOOD":    { "action": "warn", "message": "alignment-conditional aggression not modeled (no alignment system)." },
+    "AGGR_NEUTRAL": { "action": "warn", "message": "alignment-conditional aggression not modeled (no alignment system)." },
+    "MEMORY":       { "action": "warn", "message": "MOB_MEMORY (remembers attackers) not modeled." },
+    "HELPER":       { "action": "warn", "message": "MOB_HELPER (assists groupmates) not modeled." },
+    "NOCHARM":      { "action": "warn", "message": "MOB_NOCHARM not modeled." },
+    "NOSUMMON":     { "action": "warn", "message": "MOB_NOSUMMON not modeled." },
+    "NOSLEEP":      { "action": "warn", "message": "MOB_NOSLEEP not modeled." },
+    "NOBASH":       { "action": "warn", "message": "MOB_NOBASH not modeled." },
+    "NOBLIND":      { "action": "warn", "message": "MOB_NOBLIND not modeled." }
+  },
+  "aff_flag_actions": {
+    "INVISIBLE":     { "action": "warn", "message": "permanent AFF_INVISIBLE not modeled; player invisibility uses buffs only." },
+    "SANCTUARY":     { "action": "warn", "message": "permanent AFF_SANCTUARY (50% damage reduction) not modeled at prototype level." },
+    "POISON":        { "action": "warn", "message": "permanent AFF_POISON not modeled (different from on-hit MobileFlags.poisonous)." },
+    "GROUP":         { "action": "drop", "info": "transient runtime flag — never set on a prototype" },
+    "CHARM":         { "action": "drop", "info": "transient runtime flag — never set on a prototype" }
+  }
+}

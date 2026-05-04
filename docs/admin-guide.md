@@ -68,6 +68,9 @@ ironmud-admin world info
 ironmud-admin world clear
 ```
 
+To bring legacy MUD content (CircleMUD, etc.) into IronMUD, use the
+`ironmud-import` utility — see the [Import Guide](import-guide.md).
+
 ### Server Settings
 
 ```bash

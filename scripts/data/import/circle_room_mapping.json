@@ -1,0 +1,33 @@
+{
+  "_comment": "Default CircleMUD -> IronMUD room mapping. Edit to tune how legacy sectors and flags translate. See docs/import-guide.md for the full schema.",
+  "sector_to_flags": {
+    "INSIDE":       { "set_flags": ["indoors"] },
+    "CITY":         { "set_flags": ["city"] },
+    "FIELD":        { "set_flags": ["dirt_floor"] },
+    "FOREST":       { "set_flags": ["dirt_floor"] },
+    "HILLS":        { "set_flags": ["dirt_floor", "difficult_terrain"] },
+    "MOUNTAIN":     { "set_flags": ["difficult_terrain"] },
+    "WATER_SWIM":   { "set_flags": ["shallow_water"] },
+    "WATER_NOSWIM": { "set_flags": ["deep_water"] },
+    "FLYING":       { "set_flags": [], "info": "no IronMUD flag for flying terrain" },
+    "UNDERWATER":   { "set_flags": ["underwater", "deep_water"] }
+  },
+  "room_flag_actions": {
+    "DARK":        { "action": "set_flag", "ironmud_flag": "dark" },
+    "DEATH":       { "action": "warn", "message": "ROOM_DEATH not modeled; consider redit trap." },
+    "NOMOB":       { "action": "set_flag", "ironmud_flag": "no_mob" },
+    "INDOORS":     { "action": "set_flag", "ironmud_flag": "indoors" },
+    "PEACEFUL":    { "action": "set_combat_zone", "value": "safe" },
+    "SOUNDPROOF":  { "action": "warn", "message": "ROOM_SOUNDPROOF not modeled in IronMUD." },
+    "NOTRACK":     { "action": "warn", "message": "ROOM_NOTRACK not modeled; tracking always works in IronMUD." },
+    "NOMAGIC":     { "action": "warn", "message": "ROOM_NOMAGIC not modeled; magic always works." },
+    "TUNNEL":      { "action": "warn", "message": "ROOM_TUNNEL (1-person rooms) not modeled." },
+    "PRIVATE":     { "action": "warn", "message": "ROOM_PRIVATE not modeled; teleport restrictions absent." },
+    "GODROOM":     { "action": "warn", "message": "ROOM_GODROOM not modeled; rely on builder permissions instead." },
+    "HOUSE":       { "action": "warn", "message": "Stock CircleMUD house system differs from IronMUD property; manual conversion needed." },
+    "HOUSE_CRASH": { "action": "drop", "info": "runtime flag — ignored on import" },
+    "ATRIUM":      { "action": "warn", "message": "ROOM_ATRIUM not modeled." },
+    "OLC":         { "action": "drop", "info": "editor flag — ignored" },
+    "BFS_MARK":    { "action": "drop", "info": "runtime BFS marker — ignored" }
+  }
+}

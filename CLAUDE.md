@@ -27,6 +27,7 @@ cargo test --test server       # Integration tests only
 | [Builder Guide](docs/builder-guide.md) | OLC system overview |
 | [Builder Details](docs/builder/) | Detailed editor docs (rooms, items, mobiles, etc.) |
 | [Admin Guide](docs/admin-guide.md) | Server administration |
+| [Import Guide](docs/import-guide.md) | Importing legacy MUD content (CircleMUD, ...) |
 | [Installation](docs/installation.md) | Setup and configuration |
 
 ## Architecture Overview

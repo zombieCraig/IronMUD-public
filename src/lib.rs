@@ -21,6 +21,7 @@ pub mod db;
 pub mod discord;
 pub mod game;
 pub mod gemini;
+pub mod import;
 pub mod init;
 pub mod matrix;
 pub mod migration;

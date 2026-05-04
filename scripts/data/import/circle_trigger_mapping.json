@@ -1,0 +1,70 @@
+{
+  "_comment": "Default CircleMUD -> IronMUD specproc/trigger mapping. Translates each ASSIGN(MOB|OBJ|ROOM)(vnum, fname) binding from spec_assign.c (and castle_mob_spec from castle.c) into either a MobileFlags bit (set_mob_flag), a *Trigger struct push (add_mob_trigger / add_item_trigger / add_room_trigger), a builder-facing 'warn' note, or a silent 'drop'. Specprocs not listed here surface as a default 'warn' so the importer never silently loses a binding. Per-specproc 'warn' actions targeting >=3 vnums are collapsed to a single dedup line in the dry-run report. See docs/import-guide.md.",
+  "trigger_actions": {
+    "cityguard":     { "action": "set_mob_flag", "ironmud_flag": "guard" },
+    "fido":          { "action": "set_mob_flag", "ironmud_flag": "scavenger" },
+    "janitor":       { "action": "set_mob_flag", "ironmud_flag": "scavenger" },
+    "snake":         { "action": "set_mob_flag", "ironmud_flag": "aggressive" },
+    "thief":         { "action": "set_mob_flag", "ironmud_flag": "aggressive" },
+    "receptionist":  { "action": "set_mob_flag", "ironmud_flag": "leasing_agent" },
+
+    "puff": {
+      "action": "add_mob_trigger",
+      "trigger_type": "on_idle",
+      "script_name": "@say_random",
+      "interval_secs": 30,
+      "chance": 25,
+      "fallback_args": ["My god!  It's full of stars!"]
+    },
+    "mayor": {
+      "action": "add_mob_trigger",
+      "trigger_type": "on_always",
+      "script_name": "@emote",
+      "interval_secs": 30,
+      "chance": 10,
+      "fallback_args": ["The mayor strolls thoughtfully through the streets."]
+    },
+
+    "gen_board": {
+      "action": "add_item_trigger",
+      "trigger_type": "on_examine",
+      "script_name": "@message",
+      "chance": 100,
+      "fallback_args": ["The board is full of postings."]
+    },
+    "bank": {
+      "action": "add_item_trigger",
+      "trigger_type": "on_use",
+      "script_name": "@message",
+      "chance": 100,
+      "fallback_args": ["The ATM beeps and refuses your card."]
+    },
+
+    "dump": {
+      "action": "add_room_trigger",
+      "trigger_type": "periodic",
+      "script_name": "@room_message",
+      "interval_secs": 60,
+      "chance": 100,
+      "fallback_args": ["The garbage is consumed by an unseen force."]
+    },
+
+    "postmaster":   { "action": "warn", "message": "postmaster (mail system) has no IronMUD analog" },
+    "cryogenicist": { "action": "warn", "message": "cryogenicist (long-term rent storage) has no IronMUD analog" },
+    "magic_user":   { "action": "warn", "message": "magic_user casts random offensive spells in combat — replace with a custom OnAttack trigger" },
+    "guild":        { "action": "warn", "message": "guild (class-specific practice) — replace with mobile dialogue" },
+    "guild_guard":  { "action": "warn", "message": "guild_guard blocks wrong-class players from entering — no IronMUD analog" },
+    "pet_shops":    { "action": "warn", "message": "pet_shops purchase needs a custom dialogue + spawn rules" },
+
+    "king_welmar":     { "action": "warn", "message": "king_welmar (King's Castle) has a bespoke C body — re-author manually" },
+    "training_master": { "action": "warn", "message": "training_master (King's Castle) has a bespoke C body — re-author manually" },
+    "tom":             { "action": "warn", "message": "tom (King's Castle bodyguard) has a bespoke C body — re-author manually" },
+    "tim":             { "action": "warn", "message": "tim (King's Castle bodyguard) has a bespoke C body — re-author manually" },
+    "peter":           { "action": "warn", "message": "peter (King's Castle pageboy) has a bespoke C body — re-author manually" },
+    "jerry":           { "action": "warn", "message": "jerry (King's Castle pageboy) has a bespoke C body — re-author manually" },
+    "james":           { "action": "warn", "message": "james (King's Castle butler) has a bespoke C body — re-author manually" },
+    "cleaning":        { "action": "warn", "message": "cleaning (King's Castle servants) has a bespoke C body — re-author manually" },
+    "castleguard":     { "action": "warn", "message": "CastleGuard has a bespoke C body — re-author manually" },
+    "dickndavid":      { "action": "warn", "message": "DicknDavid (King's Castle twin guards) has a bespoke C body — re-author manually" }
+  }
+}

@@ -1,0 +1,75 @@
+#9010
+sword test long~
+a fine test sword~
+A fine test sword has been left here.~
+~
+5 a 8193
+0 1 8 3
+8 600 10
+A
+19 2
+#9011
+plate test armor~
+a glowing test plate~
+A glowing test breastplate lies here.~
+~
+9 a 9
+3 0 0 0
+40 5000 1000
+A
+17 -3
+A
+1 1
+#9012
+chest wooden test~
+a wooden chest~
+A sturdy wooden chest stands here.~
+~
+15 0 1
+50 12 9013 0
+20 100 10
+#9013
+key brass test~
+a small brass key~
+A small brass key lies here.~
+~
+18 c 16385
+0 0 0 0
+1 0 0
+#9014
+waybread test~
+a waybread loaf~
+A loaf of waybread has been left here.~
+~
+19 0 1
+24 0 0 1
+1 50 50
+E
+waybread bread~
+The waybread is the traditional feed of test elves.
+~
+#9015
+barrel test ale~
+a small ale barrel~
+A small ale barrel rests here.~
+~
+17 0 1
+50 50 3 0
+65 300 100
+#9016
+torch test~
+a flickering torch~
+A flickering torch rests against the wall.~
+~
+1 0 16385
+0 0 24 0
+3 50 5
+#9017
+amulet test cursed~
+a cursed amulet~
+A cursed amulet hangs here.~
+~
+12 hj 5
+0 0 0 0
+1 0 0
+$

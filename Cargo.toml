@@ -37,3 +37,7 @@ regex = "1.10"
 [[bin]]
 name = "ironmud-admin"
 path = "src/bin/ironmud-admin.rs"
+
+[[bin]]
+name = "ironmud-import"
+path = "src/bin/ironmud-import.rs"
