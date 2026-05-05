@@ -467,7 +467,7 @@ spec parsing is never a hard error.
 | `magic_user` | 93 mobs | Sets `MobileData.combat_spells = [magic_missile, frost_bolt, firebolt, lightning_bolt]` + `combat_spell_chance = 50`; combat tick rolls per round to cast a random spell instead of swinging |
 | `guild` | 4 mobs | **Warn** (collapsed) — "class-specific practice; replace with mobile dialogue" |
 | `guild_guard` | 5 mobs | **Warn** (collapsed) — "blocks wrong-class players; no IronMUD analog" |
-| `postmaster` | 2 mobs | **Warn** — "mail system not modeled" |
+| `postmaster` | 2 mobs | Sets `RoomFlags.post_office = true` on every room the postmaster mob is M-reset into — IronMUD's mail system is room-keyed, so the existing `mail` command set works at the imported post offices |
 | `cryogenicist` | 1 mob | **Warn** — "long-term rent storage has no IronMUD analog" |
 | `pet_shops` | 1 room | **Warn** — "pet purchase needs custom dialogue + spawn rules" |
 | `puff` (any others) | — | unrecognised → default Warn ("no mapping for specproc `X`") |
@@ -1129,11 +1129,6 @@ warn-only. Gaps ranked below.
 
 #### Medium priority
 
-- **`postmaster` mail system** — 2 mobs (Midgaard + Immortal Inn).
-  Players type `mail <recipient>`, write a body, the postmaster
-  charges 50 gold. No IronMUD mail subsystem exists. Likely shape:
-  a `MobileFlags.postmaster` + a `mail` command that queues messages
-  on `CharacterData.unread_mail: Vec<MailMessage>`.
 - **`gen_board` bulletin boards** — 4 items (social/freeze/immortal/
   mortal). Players read/write/remove posts via `look board` /
   `write <subject>`. Today imports as a `Misc` item with an OnExamine

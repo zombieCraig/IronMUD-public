@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use uuid::Uuid;
 
 use crate::db::Db;
+use crate::import::mapping::apply_named_room_flag;
 use crate::import::{AttachType, Plan, PlannedDoor, PlannedMobile, Severity, TriggerMutation, Warning};
 use crate::types::{
     AreaData, AreaFlags, AreaPermission, CombatZoneType, DoorState, GoldRange, ImmigrationFamilyChance,
@@ -467,6 +468,9 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
                     TriggerMutation::AddRoomTrigger(t) => {
                         room.triggers.push(t.clone());
                         true
+                    }
+                    TriggerMutation::SetRoomFlag { ironmud_flag } => {
+                        apply_named_room_flag(&mut room.flags, ironmud_flag)
                     }
                     _ => false,
                 };

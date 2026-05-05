@@ -62,11 +62,16 @@ fn parses_fixture_into_plan() {
         .filter(|w| matches!(w.kind, ironmud::import::WarningKind::DeferredFeature))
         .count();
     assert!(deferred >= 1, "expected at least one deferred-feature warning");
-    // The fixture's lone M reset should produce exactly one mob spawn point.
-    assert_eq!(plan.spawns.len(), 1, "M reset translated to spawn point");
-    assert_eq!(plan.spawns[0].vnum, "test_fixture_village_9001");
-    assert_eq!(plan.spawns[0].room_vnum, "test_fixture_village_9001");
-    assert_eq!(plan.spawns[0].respawn_interval_secs, 30 * 60);
+    // Fixture has two M resets: wanderer 9001 → room 9001, postmaster
+    // 9004 → room 9003.
+    assert_eq!(plan.spawns.len(), 2, "M resets translated to spawn points");
+    let wanderer_spawn = plan
+        .spawns
+        .iter()
+        .find(|s| s.vnum == "test_fixture_village_9001")
+        .expect("wanderer spawn");
+    assert_eq!(wanderer_spawn.room_vnum, "test_fixture_village_9001");
+    assert_eq!(wanderer_spawn.respawn_interval_secs, 30 * 60);
     // Fixture uses no PEACEFUL/HOUSE/etc. — no Block warnings expected.
     let blocks = warnings.iter().filter(|w| w.severity == Severity::Block).count();
     assert_eq!(blocks, 0);
@@ -133,7 +138,7 @@ fn parses_mobiles_into_plan() {
     let (ir, parse_warnings) = CircleEngine.parse(&fixture_root()).expect("parse");
     assert_eq!(parse_warnings.len(), 0);
     let zone = &ir.zones[0];
-    assert_eq!(zone.mobiles.len(), 3, "three fixture mobs");
+    assert_eq!(zone.mobiles.len(), 4, "four fixture mobs");
 
     let opts = MappingOptions {
         circle: mapping::CircleMappingTable::load_default(),
@@ -143,7 +148,7 @@ fn parses_mobiles_into_plan() {
         existing_item_vnums: Vec::new(),
     };
     let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
-    assert_eq!(plan.mobiles.len(), 3);
+    assert_eq!(plan.mobiles.len(), 4);
 
     let wanderer = plan.mobiles.iter().find(|m| m.source_vnum == 9001).expect("wanderer");
     assert_eq!(wanderer.vnum, "test_fixture_village_9001");
@@ -274,8 +279,8 @@ fn applies_mobiles_to_tmp_db() {
         };
         let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
         let summary = writer::apply(&db, &plan, &warnings).expect("apply");
-        assert_eq!(summary.written_mobiles, 3);
-        assert_eq!(summary.planned_mobiles, 3);
+        assert_eq!(summary.written_mobiles, 4);
+        assert_eq!(summary.planned_mobiles, 4);
 
         let wanderer = db
             .get_mobile_by_vnum("test_fixture_village_9001")
@@ -1058,14 +1063,15 @@ fn tmpdir(prefix: &str) -> PathBuf {
 #[test]
 fn parses_specprocs_into_ir() {
     let (ir, _) = CircleEngine.parse(&fixture_root()).expect("parse");
-    // 5 from spec_assign.c (cityguard 9001, puff 9002, magic_user 9003,
-    // cityguard 99999 orphan, bank 9010, dump 9001) + 1 from castle.c
-    // (king_welmar 9002).
-    assert_eq!(ir.triggers.len(), 7, "all literal ASSIGN/castle bindings parsed");
+    // 6 from spec_assign.c (cityguard 9001, puff 9002, magic_user 9003,
+    // postmaster 9004, cityguard 99999 orphan, bank 9010, dump 9001) + 1
+    // from castle.c (king_welmar 9002).
+    assert_eq!(ir.triggers.len(), 8, "all literal ASSIGN/castle bindings parsed");
     let names: Vec<&str> = ir.triggers.iter().map(|t| t.specproc_name.as_str()).collect();
     assert!(names.contains(&"cityguard"));
     assert!(names.contains(&"puff"));
     assert!(names.contains(&"magic_user"));
+    assert!(names.contains(&"postmaster"));
     assert!(names.contains(&"bank"));
     assert!(names.contains(&"dump"));
     assert!(names.contains(&"king_welmar"));
@@ -1097,19 +1103,19 @@ fn applies_specprocs_to_tmp_db() {
         };
         let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
 
-        // 5 overlays expected: cityguard → guard flag, puff → mob trigger,
+        // 6 overlays expected: cityguard → guard flag, puff → mob trigger,
         // bank → item trigger, dump → room trigger, magic_user → combat
-        // spell list. king_welmar warns rather than overlays; 99999 orphan
-        // drops.
+        // spell list, postmaster → fan-out room flag overlay (one room).
+        // king_welmar warns rather than overlays; 99999 orphan drops.
         assert_eq!(
             plan.trigger_overlays.len(),
-            5,
-            "cityguard, puff, bank, dump, magic_user → 5 overlays; king_welmar warn-only; 99999 orphan dropped"
+            6,
+            "cityguard, puff, bank, dump, magic_user, postmaster → 6 overlays; king_welmar warn-only; 99999 orphan dropped"
         );
 
         // Apply.
         let summary = writer::apply(&db, &plan, &warnings).expect("apply");
-        assert_eq!(summary.applied_triggers, 5);
+        assert_eq!(summary.applied_triggers, 6);
 
         // Verify cityguard set the guard flag on mob 9001.
         let cityguard = db
@@ -1167,6 +1173,17 @@ fn applies_specprocs_to_tmp_db() {
         );
         assert!(mage.combat_spells.contains(&"magic_missile".to_string()));
         assert!(mage.combat_spell_chance > 0 && mage.combat_spell_chance <= 100);
+
+        // Verify postmaster fan-out stamped post_office on the room mob
+        // 9004 was M-reset into (room 9003, the courtyard).
+        let post_office_room = db
+            .get_room_by_vnum("test_fixture_village_9003")
+            .unwrap()
+            .expect("postmaster spawn room");
+        assert!(
+            post_office_room.flags.post_office,
+            "postmaster → RoomFlags.post_office on the room hosting mob 9004"
+        );
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -1205,6 +1222,128 @@ fn magic_user_imports_combat_spell_list() {
         1,
         "exactly one SetMobCombatSpells overlay for the fixture's magic_user binding"
     );
+}
+
+#[test]
+fn postmaster_imports_post_office_flag() {
+    let (ir, _) = CircleEngine.parse(&fixture_root()).expect("parse");
+    let opts = MappingOptions {
+        circle: mapping::CircleMappingTable::load_default(),
+        existing_area_prefixes: Vec::new(),
+        existing_room_vnums: Vec::new(),
+        existing_mobile_vnums: Vec::new(),
+        existing_item_vnums: Vec::new(),
+    };
+    let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
+
+    // No more warn-only collapse for postmaster — it now fans out into a
+    // SetRoomFlag overlay on each room the postmaster is M-reset into.
+    let postmaster_warns: Vec<_> = warnings
+        .iter()
+        .filter(|w| w.message.contains("postmaster"))
+        .collect();
+    assert!(
+        postmaster_warns.is_empty(),
+        "postmaster no longer warns: {:?}",
+        postmaster_warns
+    );
+
+    // Exactly one room overlay flipping post_office for the fixture's
+    // single postmaster M-reset.
+    let post_office_overlays: Vec<_> = plan
+        .trigger_overlays
+        .iter()
+        .filter(|ov| {
+            ov.specproc_name == "postmaster"
+                && matches!(
+                    &ov.mutation,
+                    ironmud::import::TriggerMutation::SetRoomFlag { ironmud_flag } if ironmud_flag == "post_office"
+                )
+        })
+        .collect();
+    assert_eq!(
+        post_office_overlays.len(),
+        1,
+        "exactly one SetRoomFlag(post_office) overlay for the fixture's postmaster binding"
+    );
+    assert_eq!(post_office_overlays[0].target_vnum, "test_fixture_village_9003");
+    assert!(matches!(
+        post_office_overlays[0].attach_type,
+        ironmud::import::AttachType::Room
+    ));
+}
+
+#[test]
+fn postmaster_with_no_spawn_warns() {
+    // Synthetic minimal fixture: a postmaster mob with NO M-reset placing
+    // it. The fan-out should produce zero overlays and one Warn line.
+    let dir = tmpdir("ironmud-import-pm-orphan");
+    let world = dir.join("lib").join("world");
+    std::fs::create_dir_all(world.join("wld")).unwrap();
+    std::fs::create_dir_all(world.join("zon")).unwrap();
+    std::fs::create_dir_all(world.join("mob")).unwrap();
+    std::fs::create_dir_all(world.join("obj")).unwrap();
+    std::fs::create_dir_all(world.join("shp")).unwrap();
+    std::fs::create_dir_all(dir.join("src")).unwrap();
+    // Single room.
+    std::fs::write(
+        world.join("wld").join("90.wld"),
+        "#9001\nLonely Room~\n   A lonely room.\n~\n0 0 0\nS\n$\n",
+    )
+    .unwrap();
+    // Single mob, no M-reset for it.
+    std::fs::write(
+        world.join("mob").join("90.mob"),
+        "#9100\norphan postmaster~\nthe orphan postmaster~\nA bespectacled clerk waits behind a counter.\n~\nUnplaced fixture postmaster.\n~\nb 0 0 S\n5 15 5 4d6+20 0d0+0\n0 0\n8 8 1\n$\n",
+    )
+    .unwrap();
+    std::fs::write(world.join("obj").join("90.obj"), "$\n").unwrap();
+    std::fs::write(world.join("shp").join("90.shp"), "$~\n").unwrap();
+    // Zone with NO M-reset for mob 9100 (intentional).
+    std::fs::write(
+        world.join("zon").join("90.zon"),
+        "#90\nOrphan Zone~\n9000 9099 30 2\nS\n$\n",
+    )
+    .unwrap();
+    // spec_assign binding the orphan mob to postmaster.
+    std::fs::write(
+        dir.join("src").join("spec_assign.c"),
+        "void assign_mobiles(void) {\n  ASSIGNMOB(9100, postmaster);\n}\n",
+    )
+    .unwrap();
+
+    let (ir, _) = CircleEngine.parse(&dir).expect("parse");
+    let opts = MappingOptions {
+        circle: mapping::CircleMappingTable::load_default(),
+        existing_area_prefixes: Vec::new(),
+        existing_room_vnums: Vec::new(),
+        existing_mobile_vnums: Vec::new(),
+        existing_item_vnums: Vec::new(),
+    };
+    let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
+
+    let post_office_overlays: Vec<_> = plan
+        .trigger_overlays
+        .iter()
+        .filter(|ov| matches!(&ov.mutation, ironmud::import::TriggerMutation::SetRoomFlag { .. }))
+        .collect();
+    assert!(
+        post_office_overlays.is_empty(),
+        "no spawn → no overlay: {:?}",
+        post_office_overlays.iter().map(|o| &o.target_vnum).collect::<Vec<_>>()
+    );
+    let warns: Vec<_> = warnings
+        .iter()
+        .filter(|w| w.message.contains("postmaster") && w.message.contains("no zone reset"))
+        .collect();
+    assert_eq!(
+        warns.len(),
+        1,
+        "postmaster with no spawn → one explanatory warn line: all warnings = {:?}",
+        warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
+    );
+
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

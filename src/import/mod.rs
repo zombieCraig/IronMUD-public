@@ -416,6 +416,11 @@ pub enum TriggerMutation {
     /// Replace the mob's combat-spell list and per-round cast chance.
     /// CircleMUD `magic_user` specproc analog.
     SetMobCombatSpells { spells: Vec<String>, chance: u8 },
+    /// Set a single bool field on `RoomFlags` by snake_case name. Used by
+    /// the `set_room_flag_on_mob_spawn_rooms` mapping fan-out so e.g. the
+    /// CircleMUD `postmaster` specproc can stamp `post_office` on every
+    /// room where the postmaster mob is M-reset.
+    SetRoomFlag { ironmud_flag: String },
 }
 
 /// Catch-all for engine features we parsed but won't try to translate in

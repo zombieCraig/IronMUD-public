@@ -191,6 +191,14 @@ pub enum TriggerAction {
         #[serde(default)]
         chance: Option<u8>,
     },
+    /// Mob-attached binding that fans out into one room overlay per room
+    /// the mob is M-reset into, each setting `flag` (snake_case) on
+    /// `RoomFlags`. CircleMUD's `postmaster` specproc uses this to stamp
+    /// `post_office` on the rooms where the postmaster mob spawns —
+    /// IronMUD's mail system is room-keyed, not mob-keyed. Rejected for
+    /// OBJ/ROOM bindings (warn instead). Emits a Warn if no zone reset
+    /// places the mob in any room.
+    SetRoomFlagOnMobSpawnRooms { flag: String },
     /// Surface as a Warn so a builder can re-author the behavior in Rhai.
     /// Multiple bindings of the same specproc collapse to one dedup line.
     Warn { message: String },
@@ -436,7 +444,7 @@ pub fn ir_to_plan(ir: &ImportIR, opts: &MappingOptions) -> (Plan, Vec<Warning>) 
             .iter()
             .map(|r| (r.source_vnum, r.vnum.clone()))
             .collect();
-        let (overlays, trig_warnings) = map_triggers(&ir.triggers, &mob_index, &item_index, &room_index, opts);
+        let (overlays, trig_warnings) = map_triggers(&ir.triggers, &mob_index, &item_index, &room_index, &plan.spawns, opts);
         plan.trigger_overlays.extend(overlays);
         warnings.extend(trig_warnings);
     }
@@ -1089,7 +1097,7 @@ fn apply_named_mob_flag(flags: &mut MobileFlags, name: &str) -> bool {
     true
 }
 
-fn apply_named_room_flag(flags: &mut RoomFlags, name: &str) -> bool {
+pub(super) fn apply_named_room_flag(flags: &mut RoomFlags, name: &str) -> bool {
     match name {
         "dark" => flags.dark = true,
         "no_mob" => flags.no_mob = true,
@@ -1886,6 +1894,7 @@ fn map_triggers(
     mob_index: &HashMap<i32, String>,
     item_index: &HashMap<i32, String>,
     room_index: &HashMap<i32, String>,
+    spawns: &[PlannedSpawn],
     opts: &MappingOptions,
 ) -> (Vec<PlannedTriggerOverlay>, Vec<Warning>) {
     let mut overlays: Vec<PlannedTriggerOverlay> = Vec::new();
@@ -2096,6 +2105,51 @@ fn map_triggers(
                         chance: chance.unwrap_or(50).min(100),
                     })
                 }
+            }
+            Some(TriggerAction::SetRoomFlagOnMobSpawnRooms { flag }) => {
+                if trig.attach_type != AttachType::Mob {
+                    warnings.push(Warning::new(
+                        WarningKind::UnsupportedFlag,
+                        Severity::Warn,
+                        trig.source.clone(),
+                        format!(
+                            "specproc `{}` mapping uses set_room_flag_on_mob_spawn_rooms but binding attaches to {:?}; ignored",
+                            trig.specproc_name, trig.attach_type
+                        ),
+                    ));
+                } else {
+                    let mut rooms: Vec<String> = spawns
+                        .iter()
+                        .filter(|s| s.entity_type == SpawnEntityType::Mobile && s.vnum == target_vnum)
+                        .map(|s| s.room_vnum.clone())
+                        .collect();
+                    rooms.sort();
+                    rooms.dedup();
+                    if rooms.is_empty() {
+                        warnings.push(Warning::new(
+                            WarningKind::UnsupportedFlag,
+                            Severity::Warn,
+                            trig.source.clone(),
+                            format!(
+                                "specproc `{}` for mob `{}` requested room flag `{}` but no zone reset places this mob in a room; flag not applied",
+                                trig.specproc_name, target_vnum, flag
+                            ),
+                        ));
+                    } else {
+                        for room_vnum in rooms {
+                            overlays.push(PlannedTriggerOverlay {
+                                attach_type: AttachType::Room,
+                                target_vnum: room_vnum,
+                                specproc_name: trig.specproc_name.clone(),
+                                mutation: TriggerMutation::SetRoomFlag {
+                                    ironmud_flag: flag.clone(),
+                                },
+                                source: trig.source.clone(),
+                            });
+                        }
+                    }
+                }
+                None
             }
             Some(TriggerAction::Warn { message }) => {
                 let bucket = warn_buckets

@@ -34,4 +34,18 @@ nopqr abdehjko 0 S
 1 20 9 1d4+2 1d3+0
 0 0
 8 8 0
+#9004
+village postmaster~
+the village postmaster~
+The village postmaster sorts letters behind a small wooden counter.
+~
+A small bespectacled figure who handles the village mail. The mob itself
+is decoration; the importer flips `RoomFlags.post_office` on the room it
+spawns in so IronMUD's existing room-keyed mail system works at imported
+post offices.
+~
+b 0 0 S
+5 15 5 4d6+20 0d0+0
+0 0
+8 8 1
 $

@@ -49,7 +49,7 @@
       "fallback_args": ["The garbage is consumed by an unseen force."]
     },
 
-    "postmaster":   { "action": "warn", "message": "postmaster (mail system) has no IronMUD analog" },
+    "postmaster":   { "action": "set_room_flag_on_mob_spawn_rooms", "flag": "post_office" },
     "cryogenicist": { "action": "warn", "message": "cryogenicist (long-term rent storage) has no IronMUD analog" },
     "magic_user":   { "action": "set_mob_combat_spells", "spells": ["magic_missile", "frost_bolt", "firebolt", "lightning_bolt"], "chance": 50 },
     "guild":        { "action": "warn", "message": "guild (class-specific practice) — replace with mobile dialogue" },
