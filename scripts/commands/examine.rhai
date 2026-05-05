@@ -486,6 +486,15 @@ fn examine_show_mobile(mobile, connection_id) {
     if mobile_has_buff(mobile.id, "damage_reduction") {
         output += "\n\n" + mobile.name + " is surrounded by a faint white aura.";
     }
+    if mobile_has_buff(mobile.id, "sleep") {
+        output += "\n" + mobile.name + " is fast asleep.";
+    }
+    if mobile_has_buff(mobile.id, "blind") {
+        output += "\n" + mobile.name + "'s eyes are clouded and unseeing.";
+    }
+    if mobile_has_buff(mobile.id, "curse") {
+        output += "\n" + mobile.name + " is wreathed in a faint shadow of ill fortune.";
+    }
 
     let charm_master = mobile_charm_master(mobile.id);
     if charm_master != "" {

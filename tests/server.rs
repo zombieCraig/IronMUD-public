@@ -4875,6 +4875,78 @@ fn test_charmed_effect_type_round_trips_via_serde() {
 }
 
 #[test]
+fn test_curse_effect_type_round_trips_via_serde() {
+    use ironmud::types::EffectType;
+
+    assert_eq!(EffectType::from_str("curse"), Some(EffectType::Curse));
+    assert_eq!(EffectType::from_str("cursed"), Some(EffectType::Curse));
+    assert_eq!(EffectType::Curse.to_display_string(), "curse");
+    assert!(EffectType::all().contains(&"curse"));
+
+    let json = serde_json::to_string(&EffectType::Curse).expect("serialize");
+    assert_eq!(json, "\"curse\"");
+    let back: EffectType = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(back, EffectType::Curse);
+}
+
+#[test]
+fn test_permanent_aff_buffs_persist_on_mobile() {
+    use ironmud::db::Db;
+    use ironmud::types::{ActiveBuff, EffectType, MobileData};
+
+    let db_path = format!("test_permanent_aff_buffs_persist_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut mob = MobileData::new("a cursed sleeper".to_string());
+        mob.is_prototype = false;
+        for (et, mag) in [
+            (EffectType::Blind, 50),
+            (EffectType::Sleep, 0),
+            (EffectType::Curse, 10),
+        ] {
+            mob.active_buffs.push(ActiveBuff {
+                effect_type: et,
+                magnitude: mag,
+                remaining_secs: -1,
+                source: "innate".to_string(),
+            });
+        }
+        let id = mob.id;
+        db.save_mobile_data(mob).expect("save");
+
+        let loaded = db.get_mobile_data(&id).expect("read").expect("present");
+        let blind = loaded
+            .active_buffs
+            .iter()
+            .find(|b| b.effect_type == EffectType::Blind)
+            .expect("blind buff present");
+        assert_eq!(blind.magnitude, 50);
+        assert_eq!(blind.remaining_secs, -1);
+        let sleep = loaded
+            .active_buffs
+            .iter()
+            .find(|b| b.effect_type == EffectType::Sleep)
+            .expect("sleep buff present");
+        assert_eq!(sleep.remaining_secs, -1);
+        let curse = loaded
+            .active_buffs
+            .iter()
+            .find(|b| b.effect_type == EffectType::Curse)
+            .expect("curse buff present");
+        assert_eq!(curse.magnitude, 10);
+        assert_eq!(curse.remaining_secs, -1);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_charm_stay_and_follow_persist() {
     use ironmud::db::Db;
     use ironmud::types::MobileData;

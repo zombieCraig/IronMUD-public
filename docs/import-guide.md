@@ -915,6 +915,21 @@ ranked below.
   shopkeepers, healers, and guards can't be pulled out of place.
   ROOM_NOMAGIC on the caster's room blocks the cast through the
   existing source-room gate.
+- **`AFF_BLIND` / `AFF_SLEEP` / `AFF_CURSE`** → permanent buffs stamped
+  onto the imported prototype's `active_buffs`, riding the same
+  `add_buff` path as `AFF_SANCTUARY`. `AFF_BLIND` applies the existing
+  `EffectType::Blind` (magnitude 50 = −50% to-hit), reusing the
+  combat-tick handling that the player-castable `blind` spell already
+  exercises. `AFF_SLEEP` applies the existing `EffectType::Sleep`,
+  which the combat tick honors by skipping the mob's turn and clearing
+  the buff on first damage; on respawn the prototype-stamped buff is
+  cloned again, so the mob is asleep until disturbed each life. New
+  `EffectType::Curse` (`AFF_CURSE`) subtracts its magnitude (default
+  10 = −10%) from hit chance in both player-attack and mob-attack
+  paths, alongside Blind. Each carries a cosmetic examine cue
+  ("fast asleep" / "eyes are clouded" / "wreathed in a faint shadow
+  of ill fortune"). With this landing, only `AFF_POISON` remains as a
+  warn-only AFF row — see the note below.
 - **`MOB_NOCHARM`** → `MobileFlags.no_charm`. Hard-immunity gate
   over the new player-castable `charm` spell (skill 4, mana 35,
   90s cooldown, 5min duration). Charm targets an in-room NPC and
@@ -955,8 +970,11 @@ ranked below.
 
 ### Mobile flags — Low priority
 
-- **`AFF_BLIND` / `SLEEP` / `CURSE` / `POISON`** — permanent affects on
-  prototypes. Once buff stamping at spawn lands, these become trivial.
+- **`AFF_POISON`** — permanent self-DoT on prototype. Deliberately not
+  modeled: IronMUD's `MobileFlags.poisonous` already covers the "this
+  creature is venomous on hit" case, and "spawn already poisoned with
+  a self-DoT" is rare flavor that isn't worth the complexity. Importer
+  warns and continues.
 - **`MOB_WIMPY`** — currently maps to `cowardly`, but Circle's wimpy is
   HP-threshold-driven (≤ 30% HP) where IronMUD's `cowardly` flees on
   any sniping or low-HP. Close enough for now; revisit if behavior

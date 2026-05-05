@@ -2218,6 +2218,7 @@ pub enum EffectType {
     WaterBreathing,
     DamageReduction,
     Charmed,
+    Curse,
 }
 
 impl EffectType {
@@ -2256,6 +2257,7 @@ impl EffectType {
             "water_breathing" | "waterbreathing" | "aqua_breath" => Some(EffectType::WaterBreathing),
             "damage_reduction" | "damagereduction" | "sanctuary" => Some(EffectType::DamageReduction),
             "charm" | "charmed" => Some(EffectType::Charmed),
+            "curse" | "cursed" => Some(EffectType::Curse),
             _ => None,
         }
     }
@@ -2291,6 +2293,7 @@ impl EffectType {
             EffectType::WaterBreathing => "water_breathing",
             EffectType::DamageReduction => "damage_reduction",
             EffectType::Charmed => "charmed",
+            EffectType::Curse => "curse",
         }
     }
 
@@ -2325,6 +2328,7 @@ impl EffectType {
             "water_breathing",
             "damage_reduction",
             "charmed",
+            "curse",
         ]
     }
 }

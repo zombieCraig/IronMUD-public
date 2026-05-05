@@ -953,6 +953,14 @@ fn process_character_attacks_mobile(
         base_hit_chance = (base_hit_chance - blind.magnitude).clamp(5, 95);
     }
 
+    if let Some(curse) = char
+        .active_buffs
+        .iter()
+        .find(|b| b.effect_type == EffectType::Curse)
+    {
+        base_hit_chance = (base_hit_chance - curse.magnitude).clamp(5, 95);
+    }
+
     // Broadcast gunshot noise to adjacent rooms for loud ranged weapons
     if is_ranged_attack {
         if let Some(wid) = get_character_wielded_weapon_id(db, char) {
@@ -1786,6 +1794,14 @@ fn process_mobile_attacks_player(
         .find(|b| b.effect_type == EffectType::Blind)
     {
         hit_chance = (hit_chance - blind.magnitude).clamp(5, 95);
+    }
+
+    if let Some(curse) = mobile
+        .active_buffs
+        .iter()
+        .find(|b| b.effect_type == EffectType::Curse)
+    {
+        hit_chance = (hit_chance - curse.magnitude).clamp(5, 95);
     }
 
     let roll = rng.gen_range(1..=100);

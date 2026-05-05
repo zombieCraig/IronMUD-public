@@ -185,14 +185,17 @@ fn parses_mobiles_into_plan() {
         "AFF_SANCTUARY should no longer warn",
     );
 
-    // The wisp also has AFF_INVISIBLE (b), DETECT_INVIS (d), DETECT_MAGIC (e),
-    // INFRAVISION (k) — each one should stamp the matching permanent buff
-    // on the prototype.
+    // The wisp also has AFF_BLIND (a), INVISIBLE (b), DETECT_INVIS (d),
+    // DETECT_MAGIC (e), CURSE (j), INFRAVISION (k), SLEEP (o) — each one
+    // should stamp the matching permanent buff on the prototype.
     for et in [
         ironmud::types::EffectType::Invisibility,
         ironmud::types::EffectType::DetectInvisible,
         ironmud::types::EffectType::DetectMagic,
         ironmud::types::EffectType::NightVision,
+        ironmud::types::EffectType::Blind,
+        ironmud::types::EffectType::Sleep,
+        ironmud::types::EffectType::Curse,
     ] {
         let buff = wisp
             .active_buffs
@@ -201,12 +204,27 @@ fn parses_mobiles_into_plan() {
             .unwrap_or_else(|| panic!("expected {:?} buff stamped on wisp", et));
         assert_eq!(buff.remaining_secs, -1);
     }
+    let blind_buff = wisp
+        .active_buffs
+        .iter()
+        .find(|b| b.effect_type == ironmud::types::EffectType::Blind)
+        .unwrap();
+    assert_eq!(blind_buff.magnitude, 50);
+    let curse_buff = wisp
+        .active_buffs
+        .iter()
+        .find(|b| b.effect_type == ironmud::types::EffectType::Curse)
+        .unwrap();
+    assert_eq!(curse_buff.magnitude, 10);
     assert!(
         !warnings.iter().any(|w| w.message.contains("AFF_INVISIBLE")
             || w.message.contains("AFF_DETECT_INVIS")
             || w.message.contains("AFF_DETECT_MAGIC")
-            || w.message.contains("AFF_INFRAVISION")),
-        "AFF_INVISIBLE/DETECT_INVIS/DETECT_MAGIC/INFRAVISION should no longer warn",
+            || w.message.contains("AFF_INFRAVISION")
+            || w.message.contains("AFF_BLIND")
+            || w.message.contains("AFF_SLEEP")
+            || w.message.contains("AFF_CURSE")),
+        "permanent AFF buffs should no longer warn",
     );
 
     // The wisp's MOB flags nopqr cover NOCHARM (13), NOSUMMON (14),

@@ -26,7 +26,10 @@
     "DETECT_MAGIC":  { "action": "add_buff", "effect_type": "detect_magic", "magnitude": 0, "remaining_secs": -1, "source": "innate detect magic" },
     "INFRAVISION":   { "action": "add_buff", "effect_type": "night_vision", "magnitude": 0, "remaining_secs": -1, "source": "innate night vision" },
     "SANCTUARY":     { "action": "add_buff", "effect_type": "damage_reduction", "magnitude": 50, "remaining_secs": -1, "source": "innate sanctuary" },
-    "POISON":        { "action": "warn", "message": "permanent AFF_POISON not modeled (different from on-hit MobileFlags.poisonous)." },
+    "BLIND":         { "action": "add_buff", "effect_type": "blind",            "magnitude": 50, "remaining_secs": -1, "source": "innate blindness" },
+    "SLEEP":         { "action": "add_buff", "effect_type": "sleep",            "magnitude": 0,  "remaining_secs": -1, "source": "innate slumber" },
+    "CURSE":         { "action": "add_buff", "effect_type": "curse",            "magnitude": 10, "remaining_secs": -1, "source": "innate curse" },
+    "POISON":        { "action": "warn", "message": "permanent AFF_POISON intentionally not modeled — use MobileFlags.poisonous for on-hit poison." },
     "GROUP":         { "action": "drop", "info": "transient runtime flag — never set on a prototype" },
     "CHARM":         { "action": "drop", "info": "transient runtime flag — never set on a prototype" }
   }
