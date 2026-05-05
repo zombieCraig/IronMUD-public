@@ -351,6 +351,10 @@ pub struct PlannedShopOverlay {
     /// (CircleMUD's `0 28 0 0` default) — the writer leaves the keeper's
     /// existing routine untouched in that case.
     pub daily_routine: Vec<crate::types::RoutineEntry>,
+    /// CircleMUD shop bitvector bit 0 (`WILL_START_FIGHT`). The writer
+    /// stamps this onto `MobileFlags.hostile_on_steal` so a caught
+    /// theft attempt triggers combat instead of a silent alarm.
+    pub hostile_on_steal: bool,
     pub source: SourceLoc,
 }
 

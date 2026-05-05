@@ -624,8 +624,17 @@ fn parses_shops_into_plan() {
     assert_eq!(messages, 2, "every shop with non-empty messages warns once");
     let temper = shop_warns.iter().any(|w| w.message.contains("temper=2"));
     assert!(temper, "temper warn surfaced");
-    let bitvec = shop_warns.iter().any(|w| w.message.contains("bitvector=3"));
-    assert!(bitvec, "bitvector warn surfaced");
+    // bitvector=3 = WILL_START_FIGHT (translated) + WILL_BANK_MONEY (still warn).
+    let bank_warn = shop_warns.iter().any(|w| w.message.contains("WILL_BANK_MONEY"));
+    assert!(bank_warn, "WILL_BANK_MONEY warn surfaced");
+    let stale_combined = shop_warns.iter().any(|w| w.message.contains("WILL_START_FIGHT/WILL_BANK_MONEY"));
+    assert!(
+        !stale_combined,
+        "WILL_START_FIGHT should be translated, not warned"
+    );
+    // Shop #9002 has bitvector=3 → bit 0 → hostile_on_steal=true.
+    assert!(s2.hostile_on_steal, "WILL_START_FIGHT decoded onto overlay");
+    assert!(!s1.hostile_on_steal, "shop without WILL_START_FIGHT stays passive");
     let with_who = shop_warns.iter().any(|w| w.message.contains("with_who=8"));
     assert!(with_who, "with_who warn surfaced");
 
@@ -698,6 +707,10 @@ fn applies_shops_to_tmp_db() {
         );
         // Default-hours wanderer keeps an empty routine (always Working).
         assert!(wanderer.daily_routine.is_empty());
+        // WILL_START_FIGHT (bit 0 of bitvector=3) on shop #9002 stamps
+        // the keeper's hostile_on_steal flag; #9001 (bitvector=0) stays clean.
+        assert!(beast.flags.hostile_on_steal);
+        assert!(!wanderer.flags.hostile_on_steal);
     }
     let _ = std::fs::remove_dir_all(&dir);
 }

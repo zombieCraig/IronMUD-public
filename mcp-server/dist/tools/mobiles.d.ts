@@ -417,6 +417,10 @@ export declare const mobileToolDefinitions: ({
                         type: string;
                         description: string;
                     };
+                    hostile_on_steal: {
+                        type: string;
+                        description: string;
+                    };
                 };
             };
             perception: {
@@ -780,6 +784,10 @@ export declare const mobileToolDefinitions: ({
                         description?: undefined;
                     };
                     no_charm: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    hostile_on_steal: {
                         type: string;
                         description?: undefined;
                     };

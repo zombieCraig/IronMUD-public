@@ -1792,14 +1792,31 @@ fn map_shop(
             format!("shop #{} temper={} dropped (no IronMUD analogue)", shop.vnum, shop.temper),
         ));
     }
-    if shop.bitvector != 0 {
+    // CircleMUD shop bitvector: bit 0 = WILL_START_FIGHT (translated),
+    // bit 1 = WILL_BANK_MONEY (still warn-only — IronMUD has no shop-bank
+    // link). Higher bits are unused in stock Circle.
+    let hostile_on_steal = shop.bitvector & 0b01 != 0;
+    let will_bank_money = shop.bitvector & 0b10 != 0;
+    let unknown_bits = shop.bitvector & !0b11;
+    if will_bank_money {
         warnings.push(Warning::new(
             WarningKind::UnsupportedFlag,
             Severity::Warn,
             shop.source.clone(),
             format!(
-                "shop #{} bitvector={} (WILL_START_FIGHT/WILL_BANK_MONEY) not modeled",
-                shop.vnum, shop.bitvector
+                "shop #{} WILL_BANK_MONEY not modeled (no IronMUD shop-bank link)",
+                shop.vnum
+            ),
+        ));
+    }
+    if unknown_bits != 0 {
+        warnings.push(Warning::new(
+            WarningKind::UnknownFlag,
+            Severity::Warn,
+            shop.source.clone(),
+            format!(
+                "shop #{} bitvector has unknown bits 0x{:x} (only WILL_START_FIGHT and WILL_BANK_MONEY are recognised)",
+                shop.vnum, unknown_bits
             ),
         ));
     }
@@ -1838,6 +1855,7 @@ fn map_shop(
             sell_rate,
             buys_types,
             daily_routine,
+            hostile_on_steal,
             source: shop.source.clone(),
         }),
         warnings,

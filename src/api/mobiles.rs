@@ -256,6 +256,8 @@ pub struct MobileFlagsRequest {
     pub no_summon: Option<bool>,
     #[serde(default)]
     pub no_charm: Option<bool>,
+    #[serde(default)]
+    pub hostile_on_steal: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -727,6 +729,7 @@ async fn create_mobile(
             no_bash: req.flags.no_bash.unwrap_or(false),
             no_summon: req.flags.no_summon.unwrap_or(false),
             no_charm: req.flags.no_charm.unwrap_or(false),
+            hostile_on_steal: req.flags.hostile_on_steal.unwrap_or(false),
         },
         dialogue: HashMap::new(),
         shop_stock: req.shop_stock.unwrap_or_default(),
@@ -934,6 +937,9 @@ async fn update_mobile(
         }
         if let Some(v) = flags.no_charm {
             mobile.flags.no_charm = v;
+        }
+        if let Some(v) = flags.hostile_on_steal {
+            mobile.flags.hostile_on_steal = v;
         }
     }
     if let Some(world_max) = req.world_max_count {

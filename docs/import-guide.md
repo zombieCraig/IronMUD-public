@@ -397,6 +397,7 @@ warning. Shops can reference keepers in *any* imported zone, so the
 | `profit_sell` (float, e.g. 0.5) | `shop_buy_rate` (i32, e.g. 50) | shop's *buy-from-player* multiplier × 100, rounded |
 | `buy_types` token list | `shop_buys_types` | mapped via JSON; deduped; lowercase IronMUD `ItemType` strings |
 | `open1/close1/open2/close2` | keeper's `daily_routine` | each open window emits a `Working` entry at the open hour and `OffDuty` at the close hour; hours are taken `mod 24` so wrap-around windows (e.g. 20-04) work transparently. Default `0 28 0 0` ("always open") leaves the routine empty so the keeper stays Working 24/7. Existing routines on the keeper are preserved on re-import. |
+| `bitvector` bit 0 (`WILL_START_FIGHT`) | keeper's `flags.hostile_on_steal` | makes the keeper attack a thief caught stealing instead of just raising the alarm. The flag itself is general-purpose — any mob can carry it, not just shopkeepers. |
 
 ### Buy-type translation (`v0`) → IronMUD `ItemType`
 
@@ -421,7 +422,8 @@ warning. Shops can reference keepers in *any* imported zone, so the
   message_buy, message_sell) — IronMUD has no per-shop messaging, so
   shops with any non-empty messages emit a single Warn.
 - **`temper`** — Info note (no analogue).
-- **`bitvector`** (WILL_START_FIGHT, WILL_BANK_MONEY) — Warn (no analogue).
+- **`bitvector` bit 1** (`WILL_BANK_MONEY`) — Warn (no shop-bank link in
+  IronMUD). Bit 0 (`WILL_START_FIGHT`) is translated above.
 - **`with_who`** (TRADE_NO* alignment/class trade gates) — Warn (no
   analogue; the imported shop will trade with anyone).
 - **`bank_account`** — silently dropped (runtime-only field).
@@ -1070,16 +1072,6 @@ below for what's next.)
   to `ActiveBuff` stamps for cleaner state management.
 - **Equipment / inventory from zone resets** — `G`/`E`/`P` reset
   commands. Already covered under [Zone resets](#zone-resets-whole-subsystem).
-
-### Shop subsystems — High priority
-
-Histogram numbers below are from a clean dry-run against stock CircleMUD 3.1
-(8 `.shp` files yielding 46 shop overlays).
-
-- **`WILL_START_FIGHT`** — Circle's anti-theft response: shopkeepers
-  attack on detected steal. ~10 of 46 stock shops set this bit. Likely
-  shape: a per-mob `MobileFlags.hostile_on_steal` consulted by the
-  `steal` skill path, or a `start_fight_on_theft` shop field.
 
 ### Shop subsystems — Medium priority
 

@@ -3199,6 +3199,8 @@ pub struct MobileFlags {
     pub no_summon: bool, // Immune to the summon spell (CircleMUD MOB_NOSUMMON)
     #[serde(default)]
     pub no_charm: bool, // Immune to the charm spell (CircleMUD MOB_NOCHARM)
+    #[serde(default)]
+    pub hostile_on_steal: bool, // Attacks the thief when a steal attempt is caught (CircleMUD shop WILL_START_FIGHT)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

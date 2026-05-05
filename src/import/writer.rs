@@ -335,6 +335,9 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
             continue;
         };
         mobile.flags.shopkeeper = true;
+        if overlay.hostile_on_steal {
+            mobile.flags.hostile_on_steal = true;
+        }
         mobile.shop_stock = overlay.stock_vnums.clone();
         mobile.shop_buy_rate = overlay.buy_rate;
         mobile.shop_sell_rate = overlay.sell_rate;

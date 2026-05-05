@@ -173,7 +173,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         no_blind,
         no_bash,
         no_summon,
-        no_charm
+        no_charm,
+        hostile_on_steal
     );
 
     // Register MobileData type with getters
@@ -952,6 +953,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "no_bash" | "nobash" => mobile.flags.no_bash = value,
                         "no_summon" | "nosummon" => mobile.flags.no_summon = value,
                         "no_charm" | "nocharm" => mobile.flags.no_charm = value,
+                        "hostile_on_steal" | "hostileonsteal" => mobile.flags.hostile_on_steal = value,
                         _ => return false,
                     }
                     return cloned_db.save_mobile_data(mobile).is_ok();

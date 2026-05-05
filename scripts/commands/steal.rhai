@@ -175,9 +175,20 @@ fn run_command(args, connection_id) {
         } else {
             send_client_message(connection_id, "You fumble the attempt and " + target_mobile_name + " catches you!");
             broadcast_to_room_awake(room_id, target_mobile_name + " catches " + char.name + " trying to steal!", char.name);
-            // Mobile enters combat with thief
-            enter_combat(char.name, "mobile", target_mobile_id);
-            enter_mobile_combat(target_mobile_id, "player", char.name);
+            // Hostile mobs (shopkeepers with WILL_START_FIGHT, guards, the
+            // explicitly aggressive) attack the thief; passive mobs just
+            // raise the alarm.
+            let target_mob = get_mobile_data(target_mobile_id);
+            let attacks = false;
+            if target_mob != () {
+                if target_mob.flags.hostile_on_steal { attacks = true; }
+                else if target_mob.flags.guard { attacks = true; }
+                else if target_mob.flags.aggressive { attacks = true; }
+            }
+            if attacks {
+                enter_combat(char.name, "mobile", target_mobile_id);
+                enter_mobile_combat(target_mobile_id, "player", char.name);
+            }
         }
 
         // Award small XP on failure to allow progression from level 0
