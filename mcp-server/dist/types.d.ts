@@ -18,7 +18,15 @@ export interface Area {
     migration_max_per_check?: number;
     last_migration_check_day?: number | null;
     immigration_guard_chance?: number;
+    migrant_starting_gold?: GoldRange;
+    guard_wage_per_hour?: number;
+    healer_wage_per_hour?: number;
+    scavenger_wage_per_hour?: number;
     default_room_flags?: RoomFlags;
+}
+export interface GoldRange {
+    min: number;
+    max: number;
 }
 export interface AreaFlags {
     always_climate?: boolean;
@@ -50,9 +58,10 @@ export interface DoorState {
     name: string;
     is_closed: boolean;
     is_locked: boolean;
-    key_id?: string;
+    key_vnum?: string;
     keywords: string[];
     description?: string;
+    pickproof?: boolean;
 }
 export interface RoomFlags {
     dark?: boolean;
@@ -60,11 +69,17 @@ export interface RoomFlags {
     indoors?: boolean;
     safe?: boolean;
     private?: boolean;
+    private_room?: boolean;
+    tunnel?: boolean;
+    death?: boolean;
+    no_magic?: boolean;
     death_trap?: boolean;
     no_recall?: boolean;
     shallow_water?: boolean;
     deep_water?: boolean;
     liveable?: boolean;
+    soundproof?: boolean;
+    notrack?: boolean;
 }
 export interface RoomTrigger {
     trigger_type: TriggerType;
@@ -120,6 +135,7 @@ export interface Item {
     damage_dice_sides?: number;
     damage_type?: DamageType;
     flags: ItemFlags;
+    extra_descs?: ExtraDesc[];
 }
 export type ItemType = "misc" | "armor" | "weapon" | "container" | "liquid_container" | "food" | "key" | "gold";
 export type WearLocation = "head" | "neck" | "shoulders" | "back" | "torso" | "waist" | "ears" | "wielded" | "offhand" | "ready" | "leftarm" | "rightarm" | "leftwrist" | "rightwrist" | "lefthand" | "righthand" | "leftfinger" | "rightfinger" | "leftleg" | "rightleg" | "leftankle" | "rightankle" | "leftfoot" | "rightfoot";
@@ -130,6 +146,8 @@ export interface ItemFlags {
     invisible?: boolean;
     glow?: boolean;
     hum?: boolean;
+    magical?: boolean;
+    night_vision?: boolean;
     no_sell?: boolean;
     unique?: boolean;
     plant_pot?: boolean;
@@ -137,6 +155,9 @@ export interface ItemFlags {
     is_skinned?: boolean;
     boat?: boolean;
     medical_tool?: boolean;
+    buried?: boolean;
+    can_dig?: boolean;
+    detect_buried?: boolean;
 }
 export interface Mobile {
     id: string;
@@ -154,6 +175,7 @@ export interface Mobile {
     is_prototype: boolean;
     current_room_id?: string;
     flags: MobileFlags;
+    faction?: string;
     dialogue: Record<string, string>;
     triggers: MobileTrigger[];
     simulation?: SimulationConfig;
@@ -191,6 +213,7 @@ export interface MobileFlags {
     can_open_doors?: boolean;
     leasing_agent?: boolean;
     guard?: boolean;
+    helper?: boolean;
     thief?: boolean;
     cant_swim?: boolean;
     poisonous?: boolean;
@@ -198,6 +221,15 @@ export interface MobileFlags {
     chilling?: boolean;
     corrosive?: boolean;
     shocking?: boolean;
+    unique?: boolean;
+    stay_zone?: boolean;
+    aware?: boolean;
+    memory?: boolean;
+    no_sleep?: boolean;
+    no_blind?: boolean;
+    no_bash?: boolean;
+    no_summon?: boolean;
+    no_charm?: boolean;
 }
 export interface SpawnPoint {
     id: string;
@@ -211,6 +243,7 @@ export interface SpawnPoint {
     last_spawn_time: number;
     spawned_entities: string[];
     dependencies: SpawnDependency[];
+    bury_on_spawn?: boolean;
 }
 export interface SpawnDependency {
     item_vnum: string;
@@ -256,6 +289,10 @@ export interface UpdateAreaRequest {
     migration_interval_days?: number;
     migration_max_per_check?: number;
     immigration_guard_chance?: number;
+    migrant_starting_gold?: GoldRange;
+    guard_wage_per_hour?: number;
+    healer_wage_per_hour?: number;
+    scavenger_wage_per_hour?: number;
     default_room_flags?: RoomFlags;
 }
 export interface CreateRoomRequest {
@@ -317,6 +354,8 @@ export interface CreateItemRequest {
         duration: number;
     }[];
     note_content?: string;
+    world_max_count?: number;
+    extra_descs?: ExtraDesc[];
 }
 export interface CreateMobileRequest {
     name: string;
@@ -351,6 +390,8 @@ export interface CreateMobileRequest {
         work_room_vnum: string;
     };
     remove_simulation?: boolean;
+    world_max_count?: number;
+    faction?: string;
 }
 export interface RoutineEntry {
     start_hour: number;
@@ -368,6 +409,7 @@ export interface CreateSpawnPointRequest {
     max_count?: number;
     respawn_interval_secs?: number;
     enabled?: boolean;
+    bury_on_spawn?: boolean;
 }
 export interface SetExitRequest {
     target_room_id: string;
@@ -376,9 +418,10 @@ export interface AddDoorRequest {
     name: string;
     is_closed?: boolean;
     is_locked?: boolean;
-    key_id?: string;
+    key_vnum?: string;
     keywords?: string[];
     description?: string;
+    pickproof?: boolean;
 }
 export interface AddTriggerRequest {
     trigger_type: TriggerType;

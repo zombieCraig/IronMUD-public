@@ -61,6 +61,9 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            container_key_vnum?: undefined;
+            world_max_count?: undefined;
+            extra_descs?: undefined;
             id?: undefined;
             room_id?: undefined;
             item_id?: undefined;
@@ -69,6 +72,8 @@ export declare const itemToolDefinitions: ({
             chance?: undefined;
             args?: undefined;
             index?: undefined;
+            description?: undefined;
+            keyword?: undefined;
         };
         required?: undefined;
     };
@@ -125,6 +130,9 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            container_key_vnum?: undefined;
+            world_max_count?: undefined;
+            extra_descs?: undefined;
             id?: undefined;
             room_id?: undefined;
             item_id?: undefined;
@@ -133,6 +141,8 @@ export declare const itemToolDefinitions: ({
             chance?: undefined;
             args?: undefined;
             index?: undefined;
+            description?: undefined;
+            keyword?: undefined;
         };
         required?: undefined;
     };
@@ -192,6 +202,9 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            container_key_vnum?: undefined;
+            world_max_count?: undefined;
+            extra_descs?: undefined;
             id?: undefined;
             room_id?: undefined;
             item_id?: undefined;
@@ -200,6 +213,8 @@ export declare const itemToolDefinitions: ({
             chance?: undefined;
             args?: undefined;
             index?: undefined;
+            description?: undefined;
+            keyword?: undefined;
         };
         required?: undefined;
     };
@@ -259,6 +274,9 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            container_key_vnum?: undefined;
+            world_max_count?: undefined;
+            extra_descs?: undefined;
             id?: undefined;
             room_id?: undefined;
             item_id?: undefined;
@@ -267,6 +285,8 @@ export declare const itemToolDefinitions: ({
             chance?: undefined;
             args?: undefined;
             index?: undefined;
+            description?: undefined;
+            keyword?: undefined;
         };
         required: string[];
     };
@@ -297,6 +317,7 @@ export declare const itemToolDefinitions: ({
                 items: {
                     type: string;
                 };
+                description?: undefined;
             };
             item_type: {
                 type: string;
@@ -360,6 +381,10 @@ export declare const itemToolDefinitions: ({
                     readonly hum: {
                         readonly type: "boolean";
                     };
+                    readonly magical: {
+                        readonly type: "boolean";
+                        readonly description: "Reveals (magical aura) cue when viewer has detect_magic";
+                    };
                     readonly no_sell: {
                         readonly type: "boolean";
                     };
@@ -376,6 +401,10 @@ export declare const itemToolDefinitions: ({
                     readonly provides_light: {
                         readonly type: "boolean";
                         readonly description: "Gives light when equipped/wielded";
+                    };
+                    readonly night_vision: {
+                        readonly type: "boolean";
+                        readonly description: "Grants night vision when equipped (CircleMUD AFF_INFRAVISION)";
                     };
                     readonly fishing_rod: {
                         readonly type: "boolean";
@@ -432,6 +461,18 @@ export declare const itemToolDefinitions: ({
                     readonly boat: {
                         readonly type: "boolean";
                         readonly description: "Allows traversing deep_water rooms when in inventory";
+                    };
+                    readonly buried: {
+                        readonly type: "boolean";
+                        readonly description: "Hidden in a dirt_floor room until dug up";
+                    };
+                    readonly can_dig: {
+                        readonly type: "boolean";
+                        readonly description: "Held/equipped item lets the player dig in dirt_floor rooms";
+                    };
+                    readonly detect_buried: {
+                        readonly type: "boolean";
+                        readonly description: "Surfaces a hint when buried items are in the room";
                     };
                 };
             };
@@ -590,6 +631,33 @@ export declare const itemToolDefinitions: ({
                 type: string;
                 description: string;
             };
+            container_key_vnum: {
+                type: string;
+                description: string;
+            };
+            world_max_count: {
+                type: string;
+                description: string;
+            };
+            extra_descs: {
+                type: string;
+                description: string;
+                items: {
+                    type: string;
+                    properties: {
+                        keywords: {
+                            type: string;
+                            items: {
+                                type: string;
+                            };
+                        };
+                        description: {
+                            type: string;
+                        };
+                    };
+                    required: string[];
+                };
+            };
             limit?: undefined;
             offset?: undefined;
             vnum_prefix?: undefined;
@@ -602,6 +670,8 @@ export declare const itemToolDefinitions: ({
             chance?: undefined;
             args?: undefined;
             index?: undefined;
+            description?: undefined;
+            keyword?: undefined;
         };
         required: string[];
     };
@@ -641,6 +711,7 @@ export declare const itemToolDefinitions: ({
                 items: {
                     type: string;
                 };
+                description?: undefined;
             };
             weight: {
                 type: string;
@@ -679,6 +750,10 @@ export declare const itemToolDefinitions: ({
                     readonly hum: {
                         readonly type: "boolean";
                     };
+                    readonly magical: {
+                        readonly type: "boolean";
+                        readonly description: "Reveals (magical aura) cue when viewer has detect_magic";
+                    };
                     readonly no_sell: {
                         readonly type: "boolean";
                     };
@@ -695,6 +770,10 @@ export declare const itemToolDefinitions: ({
                     readonly provides_light: {
                         readonly type: "boolean";
                         readonly description: "Gives light when equipped/wielded";
+                    };
+                    readonly night_vision: {
+                        readonly type: "boolean";
+                        readonly description: "Grants night vision when equipped (CircleMUD AFF_INFRAVISION)";
                     };
                     readonly fishing_rod: {
                         readonly type: "boolean";
@@ -751,6 +830,18 @@ export declare const itemToolDefinitions: ({
                     readonly boat: {
                         readonly type: "boolean";
                         readonly description: "Allows traversing deep_water rooms when in inventory";
+                    };
+                    readonly buried: {
+                        readonly type: "boolean";
+                        readonly description: "Hidden in a dirt_floor room until dug up";
+                    };
+                    readonly can_dig: {
+                        readonly type: "boolean";
+                        readonly description: "Held/equipped item lets the player dig in dirt_floor rooms";
+                    };
+                    readonly detect_buried: {
+                        readonly type: "boolean";
+                        readonly description: "Surfaces a hint when buried items are in the room";
                     };
                 };
             };
@@ -929,6 +1020,33 @@ export declare const itemToolDefinitions: ({
                 type: string;
                 description: string;
             };
+            container_key_vnum: {
+                type: string;
+                description: string;
+            };
+            world_max_count: {
+                type: string;
+                description: string;
+            };
+            extra_descs: {
+                type: string;
+                description: string;
+                items: {
+                    type: string;
+                    properties: {
+                        keywords: {
+                            type: string;
+                            items: {
+                                type: string;
+                            };
+                        };
+                        description: {
+                            type: string;
+                        };
+                    };
+                    required: string[];
+                };
+            };
             limit?: undefined;
             offset?: undefined;
             vnum_prefix?: undefined;
@@ -940,6 +1058,8 @@ export declare const itemToolDefinitions: ({
             chance?: undefined;
             args?: undefined;
             index?: undefined;
+            description?: undefined;
+            keyword?: undefined;
         };
         required: string[];
     };
@@ -1000,6 +1120,9 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            container_key_vnum?: undefined;
+            world_max_count?: undefined;
+            extra_descs?: undefined;
             room_id?: undefined;
             item_id?: undefined;
             trigger_type?: undefined;
@@ -1007,6 +1130,8 @@ export declare const itemToolDefinitions: ({
             chance?: undefined;
             args?: undefined;
             index?: undefined;
+            description?: undefined;
+            keyword?: undefined;
         };
         required: string[];
     };
@@ -1070,6 +1195,9 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            container_key_vnum?: undefined;
+            world_max_count?: undefined;
+            extra_descs?: undefined;
             id?: undefined;
             item_id?: undefined;
             trigger_type?: undefined;
@@ -1077,6 +1205,8 @@ export declare const itemToolDefinitions: ({
             chance?: undefined;
             args?: undefined;
             index?: undefined;
+            description?: undefined;
+            keyword?: undefined;
         };
         required: string[];
     };
@@ -1157,9 +1287,14 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            container_key_vnum?: undefined;
+            world_max_count?: undefined;
+            extra_descs?: undefined;
             id?: undefined;
             room_id?: undefined;
             index?: undefined;
+            description?: undefined;
+            keyword?: undefined;
         };
         required: string[];
     };
@@ -1224,12 +1359,172 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            container_key_vnum?: undefined;
+            world_max_count?: undefined;
+            extra_descs?: undefined;
             id?: undefined;
             room_id?: undefined;
             trigger_type?: undefined;
             script_name?: undefined;
             chance?: undefined;
             args?: undefined;
+            description?: undefined;
+            keyword?: undefined;
+        };
+        required: string[];
+    };
+} | {
+    name: string;
+    description: string;
+    inputSchema: {
+        type: string;
+        properties: {
+            item_id: {
+                type: string;
+                description: string;
+            };
+            keywords: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                description: string;
+            };
+            description: {
+                type: string;
+            };
+            limit?: undefined;
+            offset?: undefined;
+            item_type?: undefined;
+            vnum_prefix?: undefined;
+            identifier?: undefined;
+            name?: undefined;
+            short_desc?: undefined;
+            long_desc?: undefined;
+            vnum?: undefined;
+            weight?: undefined;
+            value?: undefined;
+            categories?: undefined;
+            wear_location?: undefined;
+            damage_dice_count?: undefined;
+            damage_dice_sides?: undefined;
+            damage_type?: undefined;
+            armor_class?: undefined;
+            flags?: undefined;
+            caliber?: undefined;
+            ranged_type?: undefined;
+            magazine_size?: undefined;
+            fire_mode?: undefined;
+            supported_fire_modes?: undefined;
+            noise_level?: undefined;
+            two_handed?: undefined;
+            weapon_skill?: undefined;
+            ammo_count?: undefined;
+            ammo_damage_bonus?: undefined;
+            attachment_slot?: undefined;
+            attachment_accuracy_bonus?: undefined;
+            attachment_noise_reduction?: undefined;
+            attachment_magazine_bonus?: undefined;
+            plant_prototype_vnum?: undefined;
+            fertilizer_duration?: undefined;
+            treats_infestation?: undefined;
+            liquid_type?: undefined;
+            liquid_current?: undefined;
+            liquid_max?: undefined;
+            liquid_effects?: undefined;
+            medical_tier?: undefined;
+            medical_uses?: undefined;
+            treats_wound_types?: undefined;
+            food_nutrition?: undefined;
+            food_spoil_duration?: undefined;
+            food_effects?: undefined;
+            note_content?: undefined;
+            container_key_vnum?: undefined;
+            world_max_count?: undefined;
+            extra_descs?: undefined;
+            id?: undefined;
+            room_id?: undefined;
+            trigger_type?: undefined;
+            script_name?: undefined;
+            chance?: undefined;
+            args?: undefined;
+            index?: undefined;
+            keyword?: undefined;
+        };
+        required: string[];
+    };
+} | {
+    name: string;
+    description: string;
+    inputSchema: {
+        type: string;
+        properties: {
+            item_id: {
+                type: string;
+                description: string;
+            };
+            keyword: {
+                type: string;
+                description: string;
+            };
+            limit?: undefined;
+            offset?: undefined;
+            item_type?: undefined;
+            vnum_prefix?: undefined;
+            identifier?: undefined;
+            name?: undefined;
+            short_desc?: undefined;
+            long_desc?: undefined;
+            vnum?: undefined;
+            keywords?: undefined;
+            weight?: undefined;
+            value?: undefined;
+            categories?: undefined;
+            wear_location?: undefined;
+            damage_dice_count?: undefined;
+            damage_dice_sides?: undefined;
+            damage_type?: undefined;
+            armor_class?: undefined;
+            flags?: undefined;
+            caliber?: undefined;
+            ranged_type?: undefined;
+            magazine_size?: undefined;
+            fire_mode?: undefined;
+            supported_fire_modes?: undefined;
+            noise_level?: undefined;
+            two_handed?: undefined;
+            weapon_skill?: undefined;
+            ammo_count?: undefined;
+            ammo_damage_bonus?: undefined;
+            attachment_slot?: undefined;
+            attachment_accuracy_bonus?: undefined;
+            attachment_noise_reduction?: undefined;
+            attachment_magazine_bonus?: undefined;
+            plant_prototype_vnum?: undefined;
+            fertilizer_duration?: undefined;
+            treats_infestation?: undefined;
+            liquid_type?: undefined;
+            liquid_current?: undefined;
+            liquid_max?: undefined;
+            liquid_effects?: undefined;
+            medical_tier?: undefined;
+            medical_uses?: undefined;
+            treats_wound_types?: undefined;
+            food_nutrition?: undefined;
+            food_spoil_duration?: undefined;
+            food_effects?: undefined;
+            note_content?: undefined;
+            container_key_vnum?: undefined;
+            world_max_count?: undefined;
+            extra_descs?: undefined;
+            id?: undefined;
+            room_id?: undefined;
+            trigger_type?: undefined;
+            script_name?: undefined;
+            chance?: undefined;
+            args?: undefined;
+            index?: undefined;
+            description?: undefined;
         };
         required: string[];
     };

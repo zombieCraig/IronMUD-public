@@ -73,6 +73,7 @@ fn build_player_corpse(name: &str, room_id: Uuid, gold: i64) -> ItemData {
         teaches_recipe: None,
         teaches_spell: None,
         note_content: None,
+        extra_descs: Vec::new(),
         wear_locations: vec![],
         armor_class: None,
         protects: vec![],

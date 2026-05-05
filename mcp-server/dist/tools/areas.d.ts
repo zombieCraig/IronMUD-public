@@ -19,6 +19,10 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            migrant_starting_gold?: undefined;
+            guard_wage_per_hour?: undefined;
+            healer_wage_per_hour?: undefined;
+            scavenger_wage_per_hour?: undefined;
             default_room_flags?: undefined;
             area_id?: undefined;
             forage_type?: undefined;
@@ -52,6 +56,10 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            migrant_starting_gold?: undefined;
+            guard_wage_per_hour?: undefined;
+            healer_wage_per_hour?: undefined;
+            scavenger_wage_per_hour?: undefined;
             default_room_flags?: undefined;
             area_id?: undefined;
             forage_type?: undefined;
@@ -100,6 +108,10 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            migrant_starting_gold?: undefined;
+            guard_wage_per_hour?: undefined;
+            healer_wage_per_hour?: undefined;
+            scavenger_wage_per_hour?: undefined;
             default_room_flags?: undefined;
             area_id?: undefined;
             forage_type?: undefined;
@@ -168,6 +180,33 @@ export declare const areaToolDefinitions: ({
                 description: string;
             };
             immigration_guard_chance: {
+                type: string;
+                description: string;
+            };
+            migrant_starting_gold: {
+                type: string;
+                description: string;
+                properties: {
+                    min: {
+                        type: string;
+                        description: string;
+                    };
+                    max: {
+                        type: string;
+                        description: string;
+                    };
+                };
+                additionalProperties: boolean;
+            };
+            guard_wage_per_hour: {
+                type: string;
+                description: string;
+            };
+            healer_wage_per_hour: {
+                type: string;
+                description: string;
+            };
+            scavenger_wage_per_hour: {
                 type: string;
                 description: string;
             };
@@ -268,6 +307,10 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            migrant_starting_gold?: undefined;
+            guard_wage_per_hour?: undefined;
+            healer_wage_per_hour?: undefined;
+            scavenger_wage_per_hour?: undefined;
             default_room_flags?: undefined;
             area_id?: undefined;
             forage_type?: undefined;
@@ -302,6 +345,10 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            migrant_starting_gold?: undefined;
+            guard_wage_per_hour?: undefined;
+            healer_wage_per_hour?: undefined;
+            scavenger_wage_per_hour?: undefined;
             default_room_flags?: undefined;
             forage_type?: undefined;
             vnum?: undefined;
@@ -353,6 +400,10 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            migrant_starting_gold?: undefined;
+            guard_wage_per_hour?: undefined;
+            healer_wage_per_hour?: undefined;
+            scavenger_wage_per_hour?: undefined;
             default_room_flags?: undefined;
         };
         required: string[];
@@ -391,6 +442,10 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            migrant_starting_gold?: undefined;
+            guard_wage_per_hour?: undefined;
+            healer_wage_per_hour?: undefined;
+            scavenger_wage_per_hour?: undefined;
             default_room_flags?: undefined;
             min_skill?: undefined;
             rarity?: undefined;

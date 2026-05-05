@@ -184,6 +184,18 @@ export const itemToolDefinitions = [
         note_content: { type: "string", description: "Long-form readable body (use \\n for line breaks). Any item with this becomes readable via the `read` command; ANSI and whitespace are preserved. Max 32 KB." },
         container_key_vnum: { type: "string", description: "For containers: vnum of the key item that unlocks it. Any spawned copy of that prototype works." },
         world_max_count: { type: "number", description: "Cap on live (non-prototype) instances of this vnum world-wide. Omit or 0 = unlimited. `flags.unique` is sugar for 1." },
+        extra_descs: {
+          type: "array",
+          description: "Sub-keyword lore revealed via `look <keyword>` against this item (e.g. `look letters` on a brass lantern). Use `add_item_extra_desc` / `remove_item_extra_desc` to mutate after creation.",
+          items: {
+            type: "object",
+            properties: {
+              keywords: { type: "array", items: { type: "string" } },
+              description: { type: "string" },
+            },
+            required: ["keywords", "description"],
+          },
+        },
       },
       required: ["name", "short_desc", "long_desc", "vnum", "item_type"],
     },
@@ -282,6 +294,18 @@ export const itemToolDefinitions = [
         note_content: { type: "string", description: "Long-form readable body (use \\n for line breaks). Any item with this becomes readable via the `read` command; ANSI and whitespace are preserved. Empty string clears. Max 32 KB." },
         container_key_vnum: { type: "string", description: "For containers: vnum of the key item that unlocks it. Empty string clears. Any spawned copy of that prototype works." },
         world_max_count: { type: "number", description: "Cap on live (non-prototype) instances of this vnum world-wide. 0 or negative clears the cap (unlimited). `flags.unique` is sugar for 1." },
+        extra_descs: {
+          type: "array",
+          description: "Sub-keyword lore revealed via `look <keyword>` against this item. Passing this REPLACES the existing extra_descs list. Prefer `add_item_extra_desc` / `remove_item_extra_desc` for incremental edits.",
+          items: {
+            type: "object",
+            properties: {
+              keywords: { type: "array", items: { type: "string" } },
+              description: { type: "string" },
+            },
+            required: ["keywords", "description"],
+          },
+        },
       },
       required: ["id"],
     },
@@ -342,6 +366,35 @@ export const itemToolDefinitions = [
         index: { type: "number", description: "Zero-based index of the trigger to remove" },
       },
       required: ["item_id", "index"],
+    },
+  },
+  {
+    name: "add_item_extra_desc",
+    description: "Add an extra description (sub-keyword lore) to an item, revealed when a player types `look <keyword>` against the item.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        item_id: { type: "string", description: "Item UUID or vnum" },
+        keywords: {
+          type: "array",
+          items: { type: "string" },
+          description: "Keywords that trigger the description",
+        },
+        description: { type: "string" },
+      },
+      required: ["item_id", "keywords", "description"],
+    },
+  },
+  {
+    name: "remove_item_extra_desc",
+    description: "Remove an extra description from an item by keyword.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        item_id: { type: "string", description: "Item UUID or vnum" },
+        keyword: { type: "string", description: "Keyword to remove" },
+      },
+      required: ["item_id", "keyword"],
     },
   },
 ];

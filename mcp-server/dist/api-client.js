@@ -206,6 +206,12 @@ export class IronMUDApiClient {
     async removeItemTrigger(itemId, index) {
         return this.requestWithMeta("delete", `/items/${itemId}/triggers/${index}`);
     }
+    async addItemExtraDesc(itemId, data) {
+        return this.requestWithMeta("post", `/items/${itemId}/extra`, data);
+    }
+    async removeItemExtraDesc(itemId, keyword) {
+        return this.requestWithMeta("delete", `/items/${itemId}/extra/${encodeURIComponent(keyword)}`);
+    }
     // Mobiles
     async listMobiles(limit, offset) {
         const params = new URLSearchParams();

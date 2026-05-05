@@ -3617,6 +3617,56 @@ mod migration_tests {
 }
 
 #[test]
+fn test_item_extra_descs_persist() {
+    use ironmud::ItemData;
+    use ironmud::db::Db;
+    use ironmud::types::ExtraDesc;
+
+    let db_path = format!("test_item_extra_descs_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut item = ItemData::new(
+            "lantern".to_string(),
+            "a brass lantern".to_string(),
+            "A hooded brass lantern hangs here.".to_string(),
+        );
+        assert!(item.extra_descs.is_empty(), "new items start with no extras");
+
+        item.extra_descs.push(ExtraDesc {
+            keywords: vec!["letters".to_string(), "inscription".to_string()],
+            description: "Tiny letters scratched into the side read: 'press the latch firmly'.".to_string(),
+        });
+        item.extra_descs.push(ExtraDesc {
+            keywords: vec!["latch".to_string()],
+            description: "A small brass latch sits on the side.".to_string(),
+        });
+        let item_id = item.id;
+        db.save_item_data(item).expect("save");
+
+        let loaded = db.get_item_data(&item_id).expect("get").expect("present");
+        assert_eq!(loaded.extra_descs.len(), 2, "two extras persisted");
+        assert_eq!(loaded.extra_descs[0].keywords, vec!["letters", "inscription"]);
+        assert!(loaded.extra_descs[0].description.contains("press the latch"));
+
+        // Mutate: drop one, save, reload.
+        let mut updated = loaded;
+        updated.extra_descs.retain(|e| !e.keywords.iter().any(|k| k == "latch"));
+        db.save_item_data(updated).expect("save");
+        let loaded2 = db.get_item_data(&item_id).expect("get").expect("present");
+        assert_eq!(loaded2.extra_descs.len(), 1, "one extra after removal");
+        assert_eq!(loaded2.extra_descs[0].keywords, vec!["letters", "inscription"]);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_item_note_content_persists() {
     use ironmud::ItemData;
     use ironmud::db::Db;

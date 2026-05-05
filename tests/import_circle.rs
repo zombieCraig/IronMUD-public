@@ -358,20 +358,21 @@ fn parses_items_into_plan() {
     let key = plan.items.iter().find(|i| i.source_vnum == 9013).expect("key");
     assert_eq!(key.data.item_type, ItemType::Key);
 
-    // Food: nutrition=24, poisoned=true, has an E-block which should produce
-    // a single DeferredFeature warning (no extra_descs target on items).
+    // Food: nutrition=24, poisoned=true, has an E-block which now copies
+    // 1:1 onto ItemData.extra_descs.
     let food = plan.items.iter().find(|i| i.source_vnum == 9014).expect("food");
     assert_eq!(food.data.item_type, ItemType::Food);
     assert_eq!(food.data.food_nutrition, 24);
     assert!(food.data.food_poisoned);
-    let extra_warn = warnings
-        .iter()
-        .find(|w| {
-            matches!(w.kind, ironmud::import::WarningKind::DeferredFeature)
-                && w.message.contains("extra description")
-        })
-        .expect("E-block warning surfaced");
-    assert_eq!(extra_warn.severity, Severity::Warn);
+    assert_eq!(food.data.extra_descs.len(), 1, "food fixture has one E-block");
+    assert!(!food.data.extra_descs[0].keywords.is_empty());
+    assert!(!food.data.extra_descs[0].description.is_empty());
+    // The DeferredFeature warning for item E-blocks should no longer fire.
+    let extra_warn = warnings.iter().find(|w| {
+        matches!(w.kind, ironmud::import::WarningKind::DeferredFeature)
+            && w.message.contains("extra description")
+    });
+    assert!(extra_warn.is_none(), "item E-block deferred warning should be gone");
 
     // Liquid container: ale, 50/50, not poisoned.
     let barrel = plan.items.iter().find(|i| i.source_vnum == 9015).expect("barrel");

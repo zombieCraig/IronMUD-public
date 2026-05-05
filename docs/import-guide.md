@@ -336,15 +336,22 @@ entries.
 | `SAVING_*` | **Warn**: no saving-throw system |
 | `CLASS`, `LEVEL`, `GOLD`, `EXP` | silently dropped (unimplemented in stock Circle) |
 
-### Extra descriptions (`E`) and value semantics
+### Extra descriptions (`E`)
 
-`E`-blocks on objects (lore-text keyed to a sub-keyword) have no
-`ItemData` analogue today — the mapper emits a single `DeferredFeature`
-warning per item that has any. Roughly 200 stock objects rely on these
-for "you see X letters scratched into the side" reveals; see the
-backlog below.
+`E` blocks copy 1:1 to `ItemData.extra_descs`. Each E-block becomes an
+`ExtraDesc { keywords, description }`; players reveal it via
+`look <keyword>` against the item in inventory, equipment, or the room
+(e.g. `look letters` on the brass lantern surfaces its usage
+instructions). Mirrors the room-side handling — see [Extra
+descriptions](#extra-descriptions) above.
 
-Several CircleMUD value semantics are also lossy (light burn-time,
+Builders can mutate the list post-import via `oedit <id> extra
+<list|add|edit|remove>` or the `add_item_extra_desc` /
+`remove_item_extra_desc` MCP tools.
+
+### Value semantics
+
+Several CircleMUD value semantics are lossy (light burn-time,
 scroll/wand spell lists, fountain infinite-fill, blank-note language) —
 each surfaces as an `UnsupportedValueSemantic` warning so the dropped
 data is auditable.
@@ -1025,13 +1032,6 @@ ranked below.
 Histogram numbers below are from a clean dry-run against stock CircleMUD 3.1
 (30 zones, 679 imported items).
 
-- **Item extra descriptions (`E`-blocks)** — ~200 stock items carry lore
-  keyed to a sub-keyword (`look letters` on the brass lantern surfaces
-  usage instructions; `look sigils` on a magical sword reveals its
-  origin). `ItemData` has no `extra_descs` field today, so every such
-  item gets a single `DeferredFeature` warning and the lore is dropped.
-  Likely shape: copy `RoomData.extra_descs: Vec<ExtraDesc>` onto
-  `ItemData` and surface in `examine`/`look in`.
 - **`APPLY_HITROLL` / `APPLY_DAMROLL`** — magic weapons set these to
   carry their `+N to hit` / `+N to damage` bonuses (~22 + ~21 stock
   occurrences). No item-level fields exist; consider adding

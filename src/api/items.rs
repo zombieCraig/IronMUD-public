@@ -15,8 +15,10 @@ use super::{
     error::ApiError,
     notify_builders,
 };
-use crate::types::{EffectType, ItemEffect, ItemTrigger, ItemTriggerType};
+use crate::types::{EffectType, ExtraDesc, ItemEffect, ItemTrigger, ItemTriggerType};
 use crate::{DamageType, ItemData, ItemFlags, ItemLocation, ItemType, LiquidType, WeaponSkill, WearLocation};
+
+use super::rooms::AddExtraDescRequest;
 
 const MAX_NOTE_BYTES: usize = 32 * 1024;
 
@@ -42,6 +44,8 @@ pub fn routes() -> Router<Arc<ApiState>> {
         .route("/by-vnum/:vnum", get(get_item_by_vnum))
         .route("/:id/triggers", post(add_trigger))
         .route("/:id/triggers/:index", delete(remove_trigger))
+        .route("/:id/extra", post(add_extra_desc))
+        .route("/:id/extra/:keyword", delete(remove_extra_desc))
         .route("/:vnum/spawn", post(spawn_item))
 }
 
@@ -149,6 +153,8 @@ pub struct CreateItemRequest {
     pub container_key_vnum: Option<String>,
     #[serde(default)]
     pub world_max_count: Option<i32>,
+    #[serde(default)]
+    pub extra_descs: Option<Vec<ExtraDescRequest>>,
 }
 
 /// Builder-facing subset of `ItemFlags`. Every field is optional so callers
@@ -321,6 +327,15 @@ pub struct UpdateItemRequest {
     pub container_key_vnum: Option<String>,
     #[serde(default)]
     pub world_max_count: Option<i32>,
+    #[serde(default)]
+    pub extra_descs: Option<Vec<ExtraDescRequest>>,
+}
+
+/// API-facing extra description payload (mirrors `ExtraDesc`).
+#[derive(Deserialize)]
+pub struct ExtraDescRequest {
+    pub keywords: Vec<String>,
+    pub description: String,
 }
 
 #[derive(Deserialize)]
@@ -638,6 +653,17 @@ async fn create_item(
         teaches_recipe: None,
         teaches_spell: None,
         note_content: req.note_content.map(normalize_note_input).transpose()?.flatten(),
+        extra_descs: req
+            .extra_descs
+            .map(|v| {
+                v.into_iter()
+                    .map(|e| ExtraDesc {
+                        keywords: e.keywords,
+                        description: e.description,
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
         weight: req.weight,
         value: req.value,
         is_prototype: true,
@@ -839,6 +865,15 @@ async fn update_item(
     }
     if let Some(note_content) = req.note_content {
         item.note_content = normalize_note_input(note_content)?;
+    }
+    if let Some(extras) = req.extra_descs {
+        item.extra_descs = extras
+            .into_iter()
+            .map(|e| ExtraDesc {
+                keywords: e.keywords,
+                description: e.description,
+            })
+            .collect();
     }
     if let Some(key_vnum) = req.container_key_vnum {
         item.container_key_vnum = if key_vnum.is_empty() { None } else { Some(key_vnum) };
@@ -1269,6 +1304,92 @@ async fn remove_trigger(
     }
 
     item.triggers.remove(index);
+
+    state
+        .db
+        .save_item_data(item.clone())
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let refreshed = refresh_item_instances(&state.db, &item);
+
+    Ok(Json(ItemResponse {
+        success: true,
+        data: item,
+        refreshed_instances: Some(refreshed),
+    }))
+}
+
+/// Add an extra description (sub-keyword lore) to an item
+async fn add_extra_desc(
+    State(state): State<Arc<ApiState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(id): Path<String>,
+    Json(req): Json<AddExtraDescRequest>,
+) -> Result<Json<ItemResponse>, ApiError> {
+    if !can_write(&user) {
+        return Err(ApiError::Forbidden("Write permission required".into()));
+    }
+
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+
+    let mut item = state
+        .db
+        .get_item_data(&uuid)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
+
+    if req.keywords.is_empty() {
+        return Err(ApiError::InvalidInput("keywords must not be empty".into()));
+    }
+
+    item.extra_descs.push(ExtraDesc {
+        keywords: req.keywords,
+        description: req.description,
+    });
+
+    state
+        .db
+        .save_item_data(item.clone())
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    let refreshed = refresh_item_instances(&state.db, &item);
+
+    Ok(Json(ItemResponse {
+        success: true,
+        data: item,
+        refreshed_instances: Some(refreshed),
+    }))
+}
+
+/// Remove an extra description by keyword
+async fn remove_extra_desc(
+    State(state): State<Arc<ApiState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path((id, keyword)): Path<(String, String)>,
+) -> Result<Json<ItemResponse>, ApiError> {
+    if !can_write(&user) {
+        return Err(ApiError::Forbidden("Write permission required".into()));
+    }
+
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+
+    let mut item = state
+        .db
+        .get_item_data(&uuid)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
+
+    let keyword_lower = keyword.to_lowercase();
+    let original_len = item.extra_descs.len();
+    item.extra_descs
+        .retain(|ed| !ed.keywords.iter().any(|k| k.to_lowercase() == keyword_lower));
+
+    if item.extra_descs.len() == original_len {
+        return Err(ApiError::NotFound(format!(
+            "Extra description with keyword '{}' not found",
+            keyword
+        )));
+    }
 
     state
         .db

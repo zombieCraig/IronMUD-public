@@ -15,6 +15,7 @@ export declare const spawnPointToolDefinitions: ({
             max_count?: undefined;
             respawn_interval_secs?: undefined;
             enabled?: undefined;
+            bury_on_spawn?: undefined;
             spawn_point_id?: undefined;
             item_vnum?: undefined;
             destination?: undefined;
@@ -41,6 +42,7 @@ export declare const spawnPointToolDefinitions: ({
             max_count?: undefined;
             respawn_interval_secs?: undefined;
             enabled?: undefined;
+            bury_on_spawn?: undefined;
             spawn_point_id?: undefined;
             item_vnum?: undefined;
             destination?: undefined;
@@ -87,6 +89,11 @@ export declare const spawnPointToolDefinitions: ({
                 type: string;
                 default: boolean;
             };
+            bury_on_spawn: {
+                type: string;
+                default: boolean;
+                description: string;
+            };
             id?: undefined;
             spawn_point_id?: undefined;
             item_vnum?: undefined;
@@ -119,6 +126,11 @@ export declare const spawnPointToolDefinitions: ({
             };
             enabled: {
                 type: string;
+                default?: undefined;
+            };
+            bury_on_spawn: {
+                type: string;
+                description: string;
                 default?: undefined;
             };
             area_id?: undefined;
@@ -169,6 +181,7 @@ export declare const spawnPointToolDefinitions: ({
             max_count?: undefined;
             respawn_interval_secs?: undefined;
             enabled?: undefined;
+            bury_on_spawn?: undefined;
             index?: undefined;
         };
         required: string[];
@@ -195,6 +208,7 @@ export declare const spawnPointToolDefinitions: ({
             max_count?: undefined;
             respawn_interval_secs?: undefined;
             enabled?: undefined;
+            bury_on_spawn?: undefined;
             item_vnum?: undefined;
             destination?: undefined;
             wear_location?: undefined;

@@ -148,6 +148,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     migration_interval_days: args?.migration_interval_days,
                     migration_max_per_check: args?.migration_max_per_check,
                     immigration_guard_chance: args?.immigration_guard_chance,
+                    migrant_starting_gold: args?.migrant_starting_gold,
+                    guard_wage_per_hour: args?.guard_wage_per_hour,
+                    healer_wage_per_hour: args?.healer_wage_per_hour,
+                    scavenger_wage_per_hour: args?.scavenger_wage_per_hour,
                     default_room_flags: args?.default_room_flags,
                 });
                 return {
@@ -304,9 +308,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     name: doorName,
                     is_closed: args?.is_closed,
                     is_locked: args?.is_locked,
-                    key_id: args?.key_id,
+                    key_vnum: args?.key_vnum,
                     keywords: args?.keywords,
                     description: args?.description,
+                    pickproof: args?.pickproof,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(room, null, 2) }],
@@ -462,6 +467,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     food_spoil_duration: args?.food_spoil_duration,
                     food_effects: args?.food_effects,
                     note_content: args?.note_content,
+                    world_max_count: args?.world_max_count,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(item, null, 2) }],
@@ -485,7 +491,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     "liquid_effects",
                     "medical_tier", "medical_uses", "treats_wound_types",
                     "food_nutrition", "food_spoil_duration", "food_effects",
-                    "note_content",
+                    "note_content", "world_max_count",
                 ];
                 for (const field of itemFields) {
                     if (args?.[field] !== undefined) {
@@ -546,6 +552,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 const rmItemTriggerResult = await api.removeItemTrigger(resolvedItemRmTriggerId, index);
                 return {
                     content: [{ type: "text", text: JSON.stringify(rmItemTriggerResult.data, null, 2) + formatRefreshSuffix(rmItemTriggerResult.refreshed_instances) }],
+                };
+            }
+            case "add_item_extra_desc": {
+                const itemId = args?.item_id;
+                const keywords = args?.keywords;
+                const description = args?.description;
+                if (!itemId || !keywords || description === undefined) {
+                    throw new Error("item_id, keywords, and description are required");
+                }
+                const resolvedItemExtraId = await resolveItemId(api, itemId);
+                const addExtraResult = await api.addItemExtraDesc(resolvedItemExtraId, { keywords, description });
+                return {
+                    content: [{ type: "text", text: JSON.stringify(addExtraResult.data, null, 2) + formatRefreshSuffix(addExtraResult.refreshed_instances) }],
+                };
+            }
+            case "remove_item_extra_desc": {
+                const itemId = args?.item_id;
+                const keyword = args?.keyword;
+                if (!itemId || !keyword) {
+                    throw new Error("item_id and keyword are required");
+                }
+                const resolvedItemRmExtraId = await resolveItemId(api, itemId);
+                const rmExtraResult = await api.removeItemExtraDesc(resolvedItemRmExtraId, keyword);
+                return {
+                    content: [{ type: "text", text: JSON.stringify(rmExtraResult.data, null, 2) + formatRefreshSuffix(rmExtraResult.refreshed_instances) }],
                 };
             }
             // Mobile tools
@@ -613,6 +644,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     shop_preset_vnum: args?.shop_preset_vnum,
                     daily_routine: args?.daily_routine,
                     simulation: args?.simulation,
+                    world_max_count: args?.world_max_count,
+                    faction: args?.faction,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(mobile, null, 2) }],
@@ -631,7 +664,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     "shop_min_value", "shop_max_value",
                     "shop_extra_types", "shop_extra_categories", "shop_deny_types", "shop_deny_categories",
                     "shop_stock", "shop_preset_vnum",
-                    "daily_routine", "simulation", "remove_simulation",
+                    "daily_routine", "simulation", "remove_simulation", "world_max_count",
+                    "faction",
                 ];
                 for (const field of mobileFields) {
                     if (args?.[field] !== undefined) {
@@ -778,6 +812,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     max_count: args?.max_count,
                     respawn_interval_secs: args?.respawn_interval_secs,
                     enabled: args?.enabled,
+                    bury_on_spawn: args?.bury_on_spawn,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(spawnPoint, null, 2) }],
@@ -791,6 +826,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     max_count: args?.max_count,
                     respawn_interval_secs: args?.respawn_interval_secs,
                     enabled: args?.enabled,
+                    bury_on_spawn: args?.bury_on_spawn,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(spawnPoint, null, 2) }],

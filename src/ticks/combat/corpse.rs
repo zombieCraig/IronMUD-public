@@ -52,6 +52,7 @@ impl CorpseBuilder {
             teaches_recipe: None,
             teaches_spell: None,
             note_content: None,
+            extra_descs: Vec::new(),
             wear_locations: vec![],
             armor_class: None,
             protects: vec![],

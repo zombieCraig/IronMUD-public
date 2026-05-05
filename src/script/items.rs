@@ -96,6 +96,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_set("note_content", |i: &mut ItemData, v: String| {
             i.note_content = if v.is_empty() { None } else { Some(v) };
         })
+        .register_get("extra_descs", |i: &mut ItemData| {
+            i.extra_descs.clone()
+        })
         .register_get("keywords", |i: &mut ItemData| {
             i.keywords
                 .iter()
@@ -2622,6 +2625,79 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
                 item.note_content = if body.is_empty() { None } else { Some(body) };
                 return cloned_db.save_item_data(item).is_ok();
+            }
+        }
+        false
+    });
+
+    // get_item_extra_desc(item_id, keyword) -> Gets extra description by keyword
+    let cloned_db = db.clone();
+    engine.register_fn("get_item_extra_desc", move |item_id: String, keyword: String| -> String {
+        let item_uuid = match uuid::Uuid::parse_str(&item_id) {
+            Ok(u) => u,
+            Err(_) => return String::new(),
+        };
+        if let Ok(Some(item)) = cloned_db.get_item_data(&item_uuid) {
+            let keyword_lower = keyword.to_lowercase();
+            for extra in &item.extra_descs {
+                for kw in &extra.keywords {
+                    if kw.to_lowercase() == keyword_lower {
+                        return extra.description.clone();
+                    }
+                }
+            }
+        }
+        String::new()
+    });
+
+    // add_item_extra_desc(item_id, keywords, description) -> bool
+    // keywords is a space-separated string of keywords
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "add_item_extra_desc",
+        move |item_id: String, keywords: String, description: String| -> bool {
+            let item_uuid = match uuid::Uuid::parse_str(&item_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&item_uuid) {
+                let keyword_vec: Vec<String> =
+                    keywords.split_whitespace().map(|s| s.to_string()).collect();
+                if keyword_vec.is_empty() {
+                    return false;
+                }
+                item.extra_descs.push(crate::ExtraDesc {
+                    keywords: keyword_vec,
+                    description,
+                });
+                if let Err(e) = cloned_db.save_item_data(item) {
+                    tracing::error!("Failed to save item after adding extra desc: {}", e);
+                    return false;
+                }
+                return true;
+            }
+            false
+        },
+    );
+
+    // remove_item_extra_desc(item_id, keyword) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn("remove_item_extra_desc", move |item_id: String, keyword: String| -> bool {
+        let item_uuid = match uuid::Uuid::parse_str(&item_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        if let Ok(Some(mut item)) = cloned_db.get_item_data(&item_uuid) {
+            let keyword_lower = keyword.to_lowercase();
+            let original_len = item.extra_descs.len();
+            item.extra_descs
+                .retain(|extra| !extra.keywords.iter().any(|kw| kw.to_lowercase() == keyword_lower));
+            if item.extra_descs.len() < original_len {
+                if let Err(e) = cloned_db.save_item_data(item) {
+                    tracing::error!("Failed to save item after removing extra desc: {}", e);
+                    return false;
+                }
+                return true;
             }
         }
         false

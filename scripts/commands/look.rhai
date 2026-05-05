@@ -152,6 +152,20 @@ fn run_command(args, connection_id) {
             return;
         }
 
+        // Then, check for item-level extra descriptions (sub-keyword lore on
+        // items in inventory, equipment, or this room).
+        let item_extra_sources = [];
+        for it in get_items_in_inventory(char.name) { item_extra_sources.push(it); }
+        for it in get_equipped_items(char.name) { item_extra_sources.push(it); }
+        for it in get_items_in_room(room_id) { item_extra_sources.push(it); }
+        for it in item_extra_sources {
+            let it_extra = get_item_extra_desc(it.id, target);
+            if it_extra != "" {
+                send_client_message(connection_id, wrap_text(it_extra, term_width));
+                return;
+            }
+        }
+
         // Check for mobiles in the room (filter invisible ones the looker can't see)
         let mobiles = filter_visible_mobiles(get_mobiles_in_room(room_id), char.name);
         let mobile = find_mobile_by_keyword(target, mobiles);

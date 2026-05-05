@@ -78,6 +78,18 @@ export const areaToolDefinitions = [
                 migration_interval_days: { type: "number", description: "Game-days between migration checks (1-30)" },
                 migration_max_per_check: { type: "number", description: "Max migrants spawned per check" },
                 immigration_guard_chance: { type: "number", description: "Per-spawn chance (0.0-1.0) that an immigrant arrives as a town guard" },
+                migrant_starting_gold: {
+                    type: "object",
+                    description: "Inclusive [min, max] range for a new migrant's starting purse. {min:0,max:0} reverts to legacy 'broke at spawn' behavior.",
+                    properties: {
+                        min: { type: "number", description: "Minimum starting gold (>= 0)" },
+                        max: { type: "number", description: "Maximum starting gold (>= min)" },
+                    },
+                    additionalProperties: false,
+                },
+                guard_wage_per_hour: { type: "number", description: "Hourly area-treasury wage paid to migrant guards anywhere in this area. 0 disables." },
+                healer_wage_per_hour: { type: "number", description: "Hourly 'patient visits' wage paid to migrant healers anywhere in this area. 0 disables." },
+                scavenger_wage_per_hour: { type: "number", description: "Hourly scrounging wage paid to migrant scavengers while away from home. 0 disables." },
                 default_room_flags: {
                     type: "object",
                     description: "Template RoomFlags copied into every newly-created room in this area. Existing rooms are not retroactively updated. Absent keys preserve current state.",

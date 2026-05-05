@@ -25,8 +25,9 @@ export declare const roomToolDefinitions: ({
             name?: undefined;
             is_closed?: undefined;
             is_locked?: undefined;
-            key_id?: undefined;
+            key_vnum?: undefined;
             keywords?: undefined;
+            pickproof?: undefined;
             trigger_type?: undefined;
             script_name?: undefined;
             enabled?: undefined;
@@ -62,8 +63,9 @@ export declare const roomToolDefinitions: ({
             name?: undefined;
             is_closed?: undefined;
             is_locked?: undefined;
-            key_id?: undefined;
+            key_vnum?: undefined;
             keywords?: undefined;
+            pickproof?: undefined;
             trigger_type?: undefined;
             script_name?: undefined;
             enabled?: undefined;
@@ -122,6 +124,30 @@ export declare const roomToolDefinitions: ({
                         type: string;
                         description: string;
                     };
+                    private_room: {
+                        type: string;
+                        description: string;
+                    };
+                    tunnel: {
+                        type: string;
+                        description: string;
+                    };
+                    death: {
+                        type: string;
+                        description: string;
+                    };
+                    no_magic: {
+                        type: string;
+                        description: string;
+                    };
+                    soundproof: {
+                        type: string;
+                        description: string;
+                    };
+                    notrack: {
+                        type: string;
+                        description: string;
+                    };
                 };
             };
             vnum_prefix?: undefined;
@@ -134,8 +160,9 @@ export declare const roomToolDefinitions: ({
             name?: undefined;
             is_closed?: undefined;
             is_locked?: undefined;
-            key_id?: undefined;
+            key_vnum?: undefined;
             keywords?: undefined;
+            pickproof?: undefined;
             trigger_type?: undefined;
             script_name?: undefined;
             enabled?: undefined;
@@ -183,8 +210,9 @@ export declare const roomToolDefinitions: ({
             name?: undefined;
             is_closed?: undefined;
             is_locked?: undefined;
-            key_id?: undefined;
+            key_vnum?: undefined;
             keywords?: undefined;
+            pickproof?: undefined;
             trigger_type?: undefined;
             script_name?: undefined;
             enabled?: undefined;
@@ -220,8 +248,9 @@ export declare const roomToolDefinitions: ({
             name?: undefined;
             is_closed?: undefined;
             is_locked?: undefined;
-            key_id?: undefined;
+            key_vnum?: undefined;
             keywords?: undefined;
+            pickproof?: undefined;
             trigger_type?: undefined;
             script_name?: undefined;
             enabled?: undefined;
@@ -264,8 +293,9 @@ export declare const roomToolDefinitions: ({
             name?: undefined;
             is_closed?: undefined;
             is_locked?: undefined;
-            key_id?: undefined;
+            key_vnum?: undefined;
             keywords?: undefined;
+            pickproof?: undefined;
             trigger_type?: undefined;
             script_name?: undefined;
             enabled?: undefined;
@@ -305,8 +335,9 @@ export declare const roomToolDefinitions: ({
             name?: undefined;
             is_closed?: undefined;
             is_locked?: undefined;
-            key_id?: undefined;
+            key_vnum?: undefined;
             keywords?: undefined;
+            pickproof?: undefined;
             trigger_type?: undefined;
             script_name?: undefined;
             enabled?: undefined;
@@ -345,7 +376,7 @@ export declare const roomToolDefinitions: ({
                 type: string;
                 default: boolean;
             };
-            key_id: {
+            key_vnum: {
                 type: string;
                 description: string;
             };
@@ -359,6 +390,11 @@ export declare const roomToolDefinitions: ({
             description: {
                 type: string;
                 description?: undefined;
+            };
+            pickproof: {
+                type: string;
+                default: boolean;
+                description: string;
             };
             area_id?: undefined;
             vnum_prefix?: undefined;
@@ -408,8 +444,9 @@ export declare const roomToolDefinitions: ({
             name?: undefined;
             is_closed?: undefined;
             is_locked?: undefined;
-            key_id?: undefined;
+            key_vnum?: undefined;
             keywords?: undefined;
+            pickproof?: undefined;
             trigger_type?: undefined;
             script_name?: undefined;
             enabled?: undefined;
@@ -471,8 +508,9 @@ export declare const roomToolDefinitions: ({
             name?: undefined;
             is_closed?: undefined;
             is_locked?: undefined;
-            key_id?: undefined;
+            key_vnum?: undefined;
             keywords?: undefined;
+            pickproof?: undefined;
             index?: undefined;
             keyword?: undefined;
         };
@@ -506,8 +544,9 @@ export declare const roomToolDefinitions: ({
             name?: undefined;
             is_closed?: undefined;
             is_locked?: undefined;
-            key_id?: undefined;
+            key_vnum?: undefined;
             keywords?: undefined;
+            pickproof?: undefined;
             trigger_type?: undefined;
             script_name?: undefined;
             enabled?: undefined;
@@ -552,7 +591,8 @@ export declare const roomToolDefinitions: ({
             name?: undefined;
             is_closed?: undefined;
             is_locked?: undefined;
-            key_id?: undefined;
+            key_vnum?: undefined;
+            pickproof?: undefined;
             trigger_type?: undefined;
             script_name?: undefined;
             enabled?: undefined;
@@ -592,8 +632,9 @@ export declare const roomToolDefinitions: ({
             name?: undefined;
             is_closed?: undefined;
             is_locked?: undefined;
-            key_id?: undefined;
+            key_vnum?: undefined;
             keywords?: undefined;
+            pickproof?: undefined;
             trigger_type?: undefined;
             script_name?: undefined;
             enabled?: undefined;

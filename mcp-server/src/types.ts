@@ -173,6 +173,7 @@ export interface Item {
   damage_dice_sides?: number;
   damage_type?: DamageType;
   flags: ItemFlags;
+  extra_descs?: ExtraDesc[];
 }
 
 export type ItemType =
@@ -434,6 +435,8 @@ export interface CreateItemRequest {
   note_content?: string;
   // World-wide cap on live (non-prototype) instances of this vnum (0 = unlimited)
   world_max_count?: number;
+  // Sub-keyword lore revealed via `look <keyword>` against this item
+  extra_descs?: ExtraDesc[];
 }
 
 export interface CreateMobileRequest {

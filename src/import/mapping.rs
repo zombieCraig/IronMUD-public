@@ -1575,20 +1575,16 @@ fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &MappingOptio
         }
     }
 
-    // Extra descriptions: ItemData has no `extra_descs` field today. Surface
-    // a single warning per item rather than per-block to keep the report
-    // readable on real Circle imports (most named items have at least one).
-    if !item.extra_descs.is_empty() {
-        warnings.push(Warning::new(
-            WarningKind::DeferredFeature,
-            Severity::Warn,
-            item.source.clone(),
-            format!(
-                "{} extra description(s) on item not imported (no ItemData.extra_descs target yet)",
-                item.extra_descs.len()
-            ),
-        ));
-    }
+    // Extra descriptions: copy 1:1 to ItemData.extra_descs (mirrors room handling
+    // at map_room above). Surfaced via `look <keyword>` against the item.
+    data.extra_descs = item
+        .extra_descs
+        .iter()
+        .map(|e| ExtraDesc {
+            keywords: e.keywords.clone(),
+            description: e.description.clone(),
+        })
+        .collect();
 
     (
         PlannedItem {

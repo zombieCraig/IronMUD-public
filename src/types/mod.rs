@@ -2750,6 +2750,9 @@ pub struct ItemData {
     // Authored via `oedit <id> note` multi-line editor; surfaced by `read`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note_content: Option<String>,
+    // Sub-keyword lore revealed via `look <keyword>` against this item.
+    #[serde(default)]
+    pub extra_descs: Vec<ExtraDesc>,
     #[serde(default)]
     pub wear_locations: Vec<WearLocation>,
     #[serde(default)]
@@ -2951,6 +2954,7 @@ impl ItemData {
             teaches_recipe: None,
             teaches_spell: None,
             note_content: None,
+            extra_descs: Vec::new(),
             wear_locations: Vec::new(),
             armor_class: None,
             protects: Vec::new(),

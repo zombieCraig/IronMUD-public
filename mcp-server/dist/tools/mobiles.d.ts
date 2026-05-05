@@ -25,6 +25,8 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             perception?: undefined;
+            world_max_count?: undefined;
+            faction?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -86,6 +88,8 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             perception?: undefined;
+            world_max_count?: undefined;
+            faction?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -150,6 +154,8 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             perception?: undefined;
+            world_max_count?: undefined;
+            faction?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -214,6 +220,8 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             perception?: undefined;
+            world_max_count?: undefined;
+            faction?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -341,6 +349,10 @@ export declare const mobileToolDefinitions: ({
                         type: string;
                         description: string;
                     };
+                    helper: {
+                        type: string;
+                        description: string;
+                    };
                     thief: {
                         type: string;
                         description: string;
@@ -369,9 +381,53 @@ export declare const mobileToolDefinitions: ({
                         type: string;
                         description: string;
                     };
+                    unique: {
+                        type: string;
+                        description: string;
+                    };
+                    stay_zone: {
+                        type: string;
+                        description: string;
+                    };
+                    aware: {
+                        type: string;
+                        description: string;
+                    };
+                    memory: {
+                        type: string;
+                        description: string;
+                    };
+                    no_sleep: {
+                        type: string;
+                        description: string;
+                    };
+                    no_blind: {
+                        type: string;
+                        description: string;
+                    };
+                    no_bash: {
+                        type: string;
+                        description: string;
+                    };
+                    no_summon: {
+                        type: string;
+                        description: string;
+                    };
+                    no_charm: {
+                        type: string;
+                        description: string;
+                    };
                 };
             };
             perception: {
+                type: string;
+                description: string;
+            };
+            world_max_count: {
+                type: string;
+                description: string;
+            };
+            faction: {
                 type: string;
                 description: string;
             };
@@ -659,6 +715,10 @@ export declare const mobileToolDefinitions: ({
                         type: string;
                         description?: undefined;
                     };
+                    helper: {
+                        type: string;
+                        description?: undefined;
+                    };
                     thief: {
                         type: string;
                         description?: undefined;
@@ -687,11 +747,55 @@ export declare const mobileToolDefinitions: ({
                         type: string;
                         description?: undefined;
                     };
+                    unique: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    stay_zone: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    aware: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    memory: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    no_sleep: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    no_blind: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    no_bash: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    no_summon: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    no_charm: {
+                        type: string;
+                        description?: undefined;
+                    };
                 };
             };
             perception: {
                 type: string;
                 description?: undefined;
+            };
+            world_max_count: {
+                type: string;
+                description: string;
+            };
+            faction: {
+                type: string;
+                description: string;
             };
             healer_type: {
                 type: string;
@@ -913,6 +1017,8 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             perception?: undefined;
+            world_max_count?: undefined;
+            faction?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -985,6 +1091,8 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             perception?: undefined;
+            world_max_count?: undefined;
+            faction?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -1051,6 +1159,8 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             perception?: undefined;
+            world_max_count?: undefined;
+            faction?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -1138,6 +1248,8 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             perception?: undefined;
+            world_max_count?: undefined;
+            faction?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -1200,6 +1312,8 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             perception?: undefined;
+            world_max_count?: undefined;
+            faction?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -1266,6 +1380,8 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             perception?: undefined;
+            world_max_count?: undefined;
+            faction?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -1357,6 +1473,8 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             perception?: undefined;
+            world_max_count?: undefined;
+            faction?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;

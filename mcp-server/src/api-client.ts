@@ -360,6 +360,27 @@ export class IronMUDApiClient {
     );
   }
 
+  async addItemExtraDesc(
+    itemId: string,
+    data: AddExtraDescRequest
+  ): Promise<{ data: Item; refreshed_instances?: number }> {
+    return this.requestWithMeta<Item>(
+      "post",
+      `/items/${itemId}/extra`,
+      data
+    );
+  }
+
+  async removeItemExtraDesc(
+    itemId: string,
+    keyword: string
+  ): Promise<{ data: Item; refreshed_instances?: number }> {
+    return this.requestWithMeta<Item>(
+      "delete",
+      `/items/${itemId}/extra/${encodeURIComponent(keyword)}`
+    );
+  }
+
   // Mobiles
   async listMobiles(limit?: number, offset?: number): Promise<Mobile[]> {
     const params = new URLSearchParams();

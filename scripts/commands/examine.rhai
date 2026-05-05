@@ -106,6 +106,18 @@ fn run_command(args, connection_id) {
         output += "(You could read this.)\n";
     }
 
+    let extras = item.extra_descs;
+    if extras.len() > 0 {
+        let kw_summary = "";
+        for ex in extras {
+            for kw in ex.keywords {
+                if kw_summary != "" { kw_summary += ", "; }
+                kw_summary += kw;
+            }
+        }
+        output += "(There are details you can look at: " + kw_summary + ".)\n";
+    }
+
     // Item type
     output += "\nType: " + item.item_type;
 

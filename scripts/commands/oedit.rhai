@@ -311,6 +311,11 @@ fn handle_subcommand(item, item_id, subcommand, parts, char, connection_id) {
         return;
     }
 
+    if subcommand == "extra" {
+        handle_extra_subcommand(item, uuid, parts, connection_id);
+        return;
+    }
+
     if subcommand == "spawn" {
         handle_spawn_subcommand(item, char, connection_id);
         return;
@@ -1531,6 +1536,154 @@ fn handle_note_subcommand(item_id, parts, connection_id) {
     send_client_message(connection_id, output);
 }
 
+// Local extra-desc helpers (inlined to avoid cross-script imports).
+fn fmt_extra_keywords(kws) {
+    let result = "";
+    for kw in kws {
+        if result != "" { result += ", "; }
+        result += kw;
+    }
+    return result;
+}
+
+fn fmt_extra_list(extras) {
+    if extras.len() == 0 {
+        return "  (none)\n";
+    }
+    let output = "";
+    let idx = 1;
+    for extra in extras {
+        output += idx + ". " + fmt_extra_keywords(extra.keywords) + "\n";
+        idx += 1;
+    }
+    return output;
+}
+
+fn fmt_extra_buffer_lines(lines) {
+    let output = "";
+    for i in 0..lines.len() {
+        let n = i + 1;
+        let prefix = if n < 10 { "  " } else if n < 100 { " " } else { "" };
+        output += prefix + n + ": " + lines[i] + "\n";
+    }
+    return output;
+}
+
+fn collect_extra_keywords(parts, start_idx) {
+    let keywords = [];
+    for i in start_idx..parts.len() {
+        keywords.push(parts[i].to_lower());
+    }
+    return keywords;
+}
+
+fn find_item_extra_by_keyword(extras, keyword) {
+    for extra in extras {
+        for kw in extra.keywords {
+            if kw.to_lower() == keyword {
+                return extra;
+            }
+        }
+    }
+    return ();
+}
+
+fn handle_extra_subcommand(item, item_id, parts, connection_id) {
+    if parts.len() < 3 {
+        let output = olc::c_header("=== Extra Descriptions ===", connection_id) + "\n";
+        output += fmt_extra_list(item.extra_descs);
+        output += "\nUsage: oedit <id> extra <list|add|edit|remove>";
+        send_client_message(connection_id, output);
+        return;
+    }
+
+    let extra_cmd = parts[2].to_lower();
+
+    if extra_cmd == "list" {
+        let output = olc::c_header("=== Extra Descriptions ===", connection_id) + "\n";
+        output += fmt_extra_list(item.extra_descs);
+        output += "\nUse 'look <keyword>' to view, 'oedit <id> extra edit <keyword>' to edit.";
+        send_client_message(connection_id, output);
+        return;
+    }
+
+    if extra_cmd == "add" {
+        if parts.len() < 4 {
+            send_client_message(connection_id, "Usage: oedit <id> extra add <keyword1> [keyword2] ...");
+            return;
+        }
+        let keywords = collect_extra_keywords(parts, 3);
+        set_olc_mode(connection_id, "collecting_extra_desc");
+        set_olc_edit_item(connection_id, item_id);
+        clear_olc_buffer(connection_id);
+        set_olc_extra_keywords(connection_id, keywords);
+        let kw_str = fmt_extra_keywords(keywords);
+        let output = "Adding extra description for: " + kw_str + "\n";
+        output += "(empty)\n";
+        output += "\nCommands: .h help | .l list | .s /old/new/ | . save | @ cancel\n";
+        output += "Or type text to append new lines.";
+        send_client_message(connection_id, output);
+        return;
+    }
+
+    if extra_cmd == "edit" {
+        if parts.len() < 4 {
+            send_client_message(connection_id, "Usage: oedit <id> extra edit <keyword>");
+            return;
+        }
+        let keyword = parts[3].to_lower();
+        let found_extra = find_item_extra_by_keyword(item.extra_descs, keyword);
+        if found_extra == () {
+            send_client_message(connection_id, "No extra description found for: " + keyword);
+            return;
+        }
+        let found_keywords = found_extra.keywords;
+
+        // Remove the old extra description (we'll save the new one on completion).
+        remove_item_extra_desc(item_id, keyword);
+
+        let existing_desc = found_extra.description;
+        let lines = [];
+        if existing_desc != "" {
+            lines = existing_desc.split("\n");
+        }
+
+        set_olc_mode(connection_id, "collecting_extra_desc");
+        set_olc_edit_item(connection_id, item_id);
+        set_olc_buffer(connection_id, lines);
+        set_olc_extra_keywords(connection_id, found_keywords);
+
+        let kw_str = fmt_extra_keywords(found_keywords);
+        let output = "Editing extra description for: " + kw_str + "\n";
+        if lines.len() == 0 {
+            output += "(empty)\n";
+        } else {
+            output += fmt_extra_buffer_lines(lines);
+        }
+        output += "\nCommands: .h help | .l list | .s /old/new/ | . save | @ cancel\n";
+        output += "Or type text to append new lines.";
+        send_client_message(connection_id, output);
+        return;
+    }
+
+    if extra_cmd == "remove" {
+        if parts.len() < 4 {
+            send_client_message(connection_id, "Usage: oedit <id> extra remove <keyword>");
+            return;
+        }
+        let keyword = parts[3].to_lower();
+        let removed = remove_item_extra_desc(item_id, keyword);
+        if removed {
+            send_client_message(connection_id, "Extra description removed for: " + keyword);
+        } else {
+            send_client_message(connection_id, "No extra description for: " + keyword);
+        }
+        return;
+    }
+
+    send_client_message(connection_id, "Usage: oedit <id> extra <list|add|edit|remove>");
+}
+
 fn handle_spawn_subcommand(item, char, connection_id) {
     // Check unique flag - prevent duplicate spawns
     if item.flags.unique && item.vnum != () && item.vnum != "" {
@@ -1680,6 +1833,17 @@ fn handle_spawn_subcommand(item, char, connection_id) {
     let note_body = get_item_note_content(item.id);
     if note_body != "" {
         set_item_note_content(new_item.id, note_body);
+    }
+    // Copy extra descriptions (sub-keyword lore)
+    for ex in item.extra_descs {
+        let kw_str = "";
+        for kw in ex.keywords {
+            if kw_str != "" { kw_str += " "; }
+            kw_str += kw;
+        }
+        if kw_str != "" {
+            add_item_extra_desc(new_item.id, kw_str, ex.description);
+        }
     }
 
     // Copy triggers
@@ -2177,6 +2341,21 @@ fn show_item_properties(item, item_id, connection_id) {
         let line_count = note_body.split("\n").len();
         let suffix = if line_count == 1 { " line" } else { " lines" };
         output += olc::c_label("Note: ", connection_id) + olc::c_value("" + line_count + suffix + " (oedit <id> note to edit)", connection_id) + "\n";
+    }
+
+    // Extra descriptions (sub-keyword lore revealed via `look <keyword>`)
+    let extras = item.extra_descs;
+    if extras.len() > 0 {
+        let kw_summary = "";
+        for ex in extras {
+            for kw in ex.keywords {
+                if kw_summary != "" { kw_summary += ", "; }
+                kw_summary += kw;
+            }
+        }
+        let count = extras.len();
+        let suffix = if count == 1 { " extra desc" } else { " extra descs" };
+        output += olc::c_label("Extras: ", connection_id) + olc::c_value("" + count + suffix + " [" + kw_summary + "] (oedit <id> extra to edit)", connection_id) + "\n";
     }
 
     // Transport link (for status signs)

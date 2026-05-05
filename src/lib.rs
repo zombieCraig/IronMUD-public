@@ -1665,17 +1665,33 @@ pub async fn handle_connection(
                     let _ = tx_client.send(msg);
                 }
                 EditorCommandResult::Save(content) => {
-                    // Mode-specific save: add extra description to room
-                    let (edit_room_id, keywords) = {
+                    // Mode-specific save: add extra description to either the room
+                    // or the item being edited (item path takes precedence when set).
+                    let (edit_room_id, edit_item_id, keywords) = {
                         let conns = connections.lock().unwrap();
                         if let Some(session) = conns.get(&connection_id) {
-                            (session.olc_edit_room, session.olc_extra_keywords.clone())
+                            (
+                                session.olc_edit_room,
+                                session.olc_edit_item,
+                                session.olc_extra_keywords.clone(),
+                            )
                         } else {
-                            (None, Vec::new())
+                            (None, None, Vec::new())
                         }
                     };
 
-                    if let Some(room_id) = edit_room_id {
+                    if let Some(item_id) = edit_item_id {
+                        let world = state.lock().unwrap();
+                        if let Ok(Some(mut item)) = world.db.get_item_data(&item_id) {
+                            item.extra_descs.push(ExtraDesc {
+                                keywords,
+                                description: content,
+                            });
+                            let _ = world.db.save_item_data(item);
+                        }
+                        drop(world);
+                        let _ = tx_client.send("Extra description saved.\n".to_string());
+                    } else if let Some(room_id) = edit_room_id {
                         let world = state.lock().unwrap();
                         if let Ok(Some(mut room)) = world.db.get_room_data(&room_id) {
                             room.extra_descs.push(ExtraDesc {
@@ -1687,7 +1703,7 @@ pub async fn handle_connection(
                         drop(world);
                         let _ = tx_client.send("Extra description saved.\n".to_string());
                     } else {
-                        let _ = tx_client.send("Error: No room being edited.\n".to_string());
+                        let _ = tx_client.send("Error: No room or item being edited.\n".to_string());
                     }
 
                     // Clear OLC mode and buffer
@@ -1697,6 +1713,7 @@ pub async fn handle_connection(
                             session.olc_mode = None;
                             session.olc_buffer.clear();
                             session.olc_edit_room = None;
+                            session.olc_edit_item = None;
                             session.olc_extra_keywords.clear();
                             session.olc_undo_buffer = None;
                         }
@@ -1710,6 +1727,7 @@ pub async fn handle_connection(
                             session.olc_mode = None;
                             session.olc_buffer.clear();
                             session.olc_edit_room = None;
+                            session.olc_edit_item = None;
                             session.olc_extra_keywords.clear();
                             session.olc_undo_buffer = None;
                         }

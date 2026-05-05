@@ -56,6 +56,14 @@ export declare class IronMUDApiClient {
         data: Item;
         refreshed_instances?: number;
     }>;
+    addItemExtraDesc(itemId: string, data: AddExtraDescRequest): Promise<{
+        data: Item;
+        refreshed_instances?: number;
+    }>;
+    removeItemExtraDesc(itemId: string, keyword: string): Promise<{
+        data: Item;
+        refreshed_instances?: number;
+    }>;
     listMobiles(limit?: number, offset?: number): Promise<Mobile[]>;
     listMobilePrototypes(): Promise<Mobile[]>;
     listMobilePrototypesSummary(vnumPrefix?: string): Promise<MobileSummary[]>;

@@ -10,11 +10,13 @@ const itemFlagsSchema = {
         invisible: { type: "boolean" },
         glow: { type: "boolean" },
         hum: { type: "boolean" },
+        magical: { type: "boolean", description: "Reveals (magical aura) cue when viewer has detect_magic" },
         no_sell: { type: "boolean" },
         unique: { type: "boolean" },
         quest_item: { type: "boolean" },
         vending: { type: "boolean", description: "Functions as a vending machine" },
         provides_light: { type: "boolean", description: "Gives light when equipped/wielded" },
+        night_vision: { type: "boolean", description: "Grants night vision when equipped (CircleMUD AFF_INFRAVISION)" },
         fishing_rod: { type: "boolean" },
         bait: { type: "boolean" },
         foraging_tool: { type: "boolean" },
@@ -30,6 +32,9 @@ const itemFlagsSchema = {
         lockpick: { type: "boolean", description: "Can be used to pick locks" },
         is_skinned: { type: "boolean", description: "Corpse has been butchered/skinned" },
         boat: { type: "boolean", description: "Allows traversing deep_water rooms when in inventory" },
+        buried: { type: "boolean", description: "Hidden in a dirt_floor room until dug up" },
+        can_dig: { type: "boolean", description: "Held/equipped item lets the player dig in dirt_floor rooms" },
+        detect_buried: { type: "boolean", description: "Surfaces a hint when buried items are in the room" },
     },
 };
 export const itemToolDefinitions = [
@@ -175,6 +180,20 @@ export const itemToolDefinitions = [
                     },
                 },
                 note_content: { type: "string", description: "Long-form readable body (use \\n for line breaks). Any item with this becomes readable via the `read` command; ANSI and whitespace are preserved. Max 32 KB." },
+                container_key_vnum: { type: "string", description: "For containers: vnum of the key item that unlocks it. Any spawned copy of that prototype works." },
+                world_max_count: { type: "number", description: "Cap on live (non-prototype) instances of this vnum world-wide. Omit or 0 = unlimited. `flags.unique` is sugar for 1." },
+                extra_descs: {
+                    type: "array",
+                    description: "Sub-keyword lore revealed via `look <keyword>` against this item (e.g. `look letters` on a brass lantern). Use `add_item_extra_desc` / `remove_item_extra_desc` to mutate after creation.",
+                    items: {
+                        type: "object",
+                        properties: {
+                            keywords: { type: "array", items: { type: "string" } },
+                            description: { type: "string" },
+                        },
+                        required: ["keywords", "description"],
+                    },
+                },
             },
             required: ["name", "short_desc", "long_desc", "vnum", "item_type"],
         },
@@ -271,6 +290,20 @@ export const itemToolDefinitions = [
                     },
                 },
                 note_content: { type: "string", description: "Long-form readable body (use \\n for line breaks). Any item with this becomes readable via the `read` command; ANSI and whitespace are preserved. Empty string clears. Max 32 KB." },
+                container_key_vnum: { type: "string", description: "For containers: vnum of the key item that unlocks it. Empty string clears. Any spawned copy of that prototype works." },
+                world_max_count: { type: "number", description: "Cap on live (non-prototype) instances of this vnum world-wide. 0 or negative clears the cap (unlimited). `flags.unique` is sugar for 1." },
+                extra_descs: {
+                    type: "array",
+                    description: "Sub-keyword lore revealed via `look <keyword>` against this item. Passing this REPLACES the existing extra_descs list. Prefer `add_item_extra_desc` / `remove_item_extra_desc` for incremental edits.",
+                    items: {
+                        type: "object",
+                        properties: {
+                            keywords: { type: "array", items: { type: "string" } },
+                            description: { type: "string" },
+                        },
+                        required: ["keywords", "description"],
+                    },
+                },
             },
             required: ["id"],
         },
@@ -330,6 +363,35 @@ export const itemToolDefinitions = [
                 index: { type: "number", description: "Zero-based index of the trigger to remove" },
             },
             required: ["item_id", "index"],
+        },
+    },
+    {
+        name: "add_item_extra_desc",
+        description: "Add an extra description (sub-keyword lore) to an item, revealed when a player types `look <keyword>` against the item.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                item_id: { type: "string", description: "Item UUID or vnum" },
+                keywords: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Keywords that trigger the description",
+                },
+                description: { type: "string" },
+            },
+            required: ["item_id", "keywords", "description"],
+        },
+    },
+    {
+        name: "remove_item_extra_desc",
+        description: "Remove an extra description from an item by keyword.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                item_id: { type: "string", description: "Item UUID or vnum" },
+                keyword: { type: "string", description: "Keyword to remove" },
+            },
+            required: ["item_id", "keyword"],
         },
     },
 ];

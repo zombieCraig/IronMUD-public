@@ -568,6 +568,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [{ type: "text", text: JSON.stringify(rmItemTriggerResult.data, null, 2) + formatRefreshSuffix(rmItemTriggerResult.refreshed_instances) }],
         };
       }
+      case "add_item_extra_desc": {
+        const itemId = args?.item_id as string;
+        const keywords = args?.keywords as string[];
+        const description = args?.description as string;
+        if (!itemId || !keywords || description === undefined) {
+          throw new Error("item_id, keywords, and description are required");
+        }
+        const resolvedItemExtraId = await resolveItemId(api, itemId);
+        const addExtraResult = await api.addItemExtraDesc(resolvedItemExtraId, { keywords, description });
+        return {
+          content: [{ type: "text", text: JSON.stringify(addExtraResult.data, null, 2) + formatRefreshSuffix(addExtraResult.refreshed_instances) }],
+        };
+      }
+      case "remove_item_extra_desc": {
+        const itemId = args?.item_id as string;
+        const keyword = args?.keyword as string;
+        if (!itemId || !keyword) {
+          throw new Error("item_id and keyword are required");
+        }
+        const resolvedItemRmExtraId = await resolveItemId(api, itemId);
+        const rmExtraResult = await api.removeItemExtraDesc(resolvedItemRmExtraId, keyword);
+        return {
+          content: [{ type: "text", text: JSON.stringify(rmExtraResult.data, null, 2) + formatRefreshSuffix(rmExtraResult.refreshed_instances) }],
+        };
+      }
 
       // Mobile tools
       case "list_mobiles": {
