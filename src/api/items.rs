@@ -88,6 +88,9 @@ pub struct CreateItemRequest {
     pub hit_bonus: Option<i32>,
     #[serde(default)]
     pub damage_bonus: Option<i32>,
+    // ITEM_LIGHT capacity hours: 0 = permanent, N>0 = burn time remaining when equipped lit.
+    #[serde(default)]
+    pub light_hours_remaining: Option<i32>,
     // Flags
     #[serde(default)]
     pub flags: ItemFlagsRequest,
@@ -296,6 +299,8 @@ pub struct UpdateItemRequest {
     pub hit_bonus: Option<i32>,
     #[serde(default)]
     pub damage_bonus: Option<i32>,
+    #[serde(default)]
+    pub light_hours_remaining: Option<i32>,
     #[serde(default)]
     pub wear_location: Option<String>,
     #[serde(default)]
@@ -682,6 +687,7 @@ async fn create_item(
         armor_class: req.armor_class,
         hit_bonus: req.hit_bonus.unwrap_or(0),
         damage_bonus: req.damage_bonus.unwrap_or(0),
+        light_hours_remaining: req.light_hours_remaining.unwrap_or(0).max(0),
         protects: Vec::new(),
         flags: ItemFlags {
             no_drop: req.flags.no_drop.unwrap_or(false),
@@ -1089,6 +1095,9 @@ async fn update_item(
     }
     if let Some(db) = req.damage_bonus {
         item.damage_bonus = db;
+    }
+    if let Some(lhr) = req.light_hours_remaining {
+        item.light_hours_remaining = lhr.max(0);
     }
     if let Some(ref loc_str) = req.wear_location {
         item.wear_locations = WearLocation::from_str(loc_str).map(|l| vec![l]).unwrap_or_default();

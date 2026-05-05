@@ -3712,6 +3712,56 @@ fn test_item_hit_damage_bonus_persist() {
 }
 
 #[test]
+fn test_item_light_hours_remaining_persists() {
+    use ironmud::ItemData;
+    use ironmud::db::Db;
+
+    let db_path = format!("test_light_hours_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut item = ItemData::new(
+            "torch".to_string(),
+            "a flickering torch".to_string(),
+            "A flickering torch lies here.".to_string(),
+        );
+        // Default: 0 (= permanent / no decay tracked).
+        assert_eq!(item.light_hours_remaining, 0);
+
+        item.flags.provides_light = true;
+        item.light_hours_remaining = 12;
+        let item_id = item.id;
+        db.save_item_data(item).expect("save");
+
+        let loaded = db.get_item_data(&item_id).expect("get").expect("present");
+        assert!(loaded.flags.provides_light);
+        assert_eq!(loaded.light_hours_remaining, 12);
+
+        // Drop to 1, save, then simulate burnout to 0.
+        let mut updated = loaded;
+        updated.light_hours_remaining = 1;
+        db.save_item_data(updated).expect("save");
+        let nearly = db.get_item_data(&item_id).expect("get").expect("present");
+        assert_eq!(nearly.light_hours_remaining, 1);
+
+        let mut burned = nearly;
+        burned.light_hours_remaining = 0;
+        burned.flags.provides_light = false;
+        db.save_item_data(burned).expect("save");
+        let final_state = db.get_item_data(&item_id).expect("get").expect("present");
+        assert_eq!(final_state.light_hours_remaining, 0);
+        assert!(!final_state.flags.provides_light, "burnout clears provides_light");
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_item_note_content_persists() {
     use ironmud::ItemData;
     use ironmud::db::Db;

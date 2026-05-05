@@ -89,6 +89,7 @@ fn build_identify_output(item, shopkeeper, cost) {
     output += build_level_section(item);
     output += build_insulation_section(item);
     output += build_all_stats(item);
+    output += build_light_section(item);
     output += build_flags_section(item);
     output += build_ranged_section(item);
     return output;
@@ -140,6 +141,14 @@ fn build_all_stats(item) {
         output += "  DAM: " + fmt_bonus(item.damage_bonus);
     }
     return output;
+}
+
+fn build_light_section(item) {
+    if !item.flags.provides_light { return ""; }
+    if item.light_hours_remaining > 0 {
+        return "\nLight: " + item.light_hours_remaining + " hour(s) of burn time remaining";
+    }
+    return "\nLight: this source burns indefinitely";
 }
 
 fn build_flags_section(item) {

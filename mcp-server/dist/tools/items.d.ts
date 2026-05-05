@@ -34,6 +34,7 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            light_hours_remaining?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -105,6 +106,7 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            light_hours_remaining?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -179,6 +181,7 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            light_hours_remaining?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -253,6 +256,7 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            light_hours_remaining?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -372,6 +376,10 @@ export declare const itemToolDefinitions: ({
                 description: string;
             };
             damage_bonus: {
+                type: string;
+                description: string;
+            };
+            light_hours_remaining: {
                 type: string;
                 description: string;
             };
@@ -882,6 +890,10 @@ export declare const itemToolDefinitions: ({
                 description: string;
             };
             damage_bonus: {
+                type: string;
+                description: string;
+            };
+            light_hours_remaining: {
                 type: string;
                 description: string;
             };
@@ -1117,6 +1129,7 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            light_hours_remaining?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -1194,6 +1207,7 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            light_hours_remaining?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -1288,6 +1302,7 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            light_hours_remaining?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -1362,6 +1377,7 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            light_hours_remaining?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -1444,6 +1460,7 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            light_hours_remaining?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -1521,6 +1538,7 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            light_hours_remaining?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;

@@ -228,7 +228,7 @@ commands](#zone-reset-commands)).
 
 | CircleMUD type | IronMUD result | Notes |
 |---|---|---|
-| `LIGHT` (1) | `Misc` + `flags.provides_light` | hours-of-burn (`v2`) **Warn** — not modeled |
+| `LIGHT` (1) | `Misc` + `flags.provides_light` + `light_hours_remaining = v2` | `v2 ≤ 0` (incl. `-1` permanent) → `0` (no decay); positive → game-hour countdown that flips `provides_light` off when it hits 0 |
 | `SCROLL` (2) | `Misc` | spell list (`v0..v3`) **Warn** — no `cast_spells_on_use` field |
 | `WAND` (3) | `Misc` | charges + spell **Warn** — same gap |
 | `STAFF` (4) | `Misc` | charges + spell **Warn** — same gap |
@@ -1033,10 +1033,6 @@ ranked below.
 Histogram numbers below are from a clean dry-run against stock CircleMUD 3.1
 (30 zones, 679 imported items).
 
-- **`ITEM_LIGHT` capacity hours** — every torch / lantern stores burn
-  time in `v2`. IronMUD lights are binary (on/off via `flags.provides_light`).
-  Likely shape: `light_hours_remaining: i32` on `ItemData` plus a tick
-  decrement when worn lit; `0` = burned out.
 - **Spell-bearing consumables** (`SCROLL`, `POTION`, `WAND`, `STAFF`)
   — `v0..v3` carry "cast spell N at level L on use" semantics. IronMUD
   has `teaches_spell` (different concept: learning the spell) but no

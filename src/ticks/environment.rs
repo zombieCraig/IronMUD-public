@@ -8,11 +8,12 @@ use tracing::{debug, error};
 
 use ironmud::session::broadcast_to_builders;
 use ironmud::{
-    BodyPart, CharacterData, GameTime, Season, SharedConnections, TemperatureCategory, TimeOfDay, TriggerType,
-    WeatherCondition, Wound, WoundLevel, WoundType, broadcast_to_all_players, broadcast_to_outdoor_players, db,
+    BodyPart, CharacterData, GameTime, ItemLocation, Season, SharedConnections, TemperatureCategory, TimeOfDay,
+    TriggerType, WeatherCondition, Wound, WoundLevel, WoundType, broadcast_to_all_players,
+    broadcast_to_outdoor_players, db,
 };
 
-use super::broadcast::broadcast_to_room_except;
+use super::broadcast::{broadcast_to_room, broadcast_to_room_except};
 use super::character::calculate_character_insulation;
 
 /// Time tick interval in seconds (2 real minutes = 1 game hour)
@@ -151,9 +152,76 @@ fn process_time_tick(db: &db::Db, connections: &SharedConnections) -> Result<()>
         }
     }
 
+    // Burn down equipped lit lights by 1 game hour each time tick.
+    if let Err(e) = decrement_light_burn_time(db, connections) {
+        error!("Light burn-time tick error: {}", e);
+    }
+
     game_time.last_time_tick = now;
     db.save_game_time(&game_time)?;
 
+    Ok(())
+}
+
+/// CircleMUD ITEM_LIGHT capacity hours: decrement `light_hours_remaining` for every
+/// equipped lit item once per game hour. When the counter reaches 0, clear
+/// `flags.provides_light` and notify the holder + their room.
+fn decrement_light_burn_time(db: &db::Db, connections: &SharedConnections) -> Result<()> {
+    let items = db.list_all_items()?;
+    for item in items {
+        if item.is_prototype || !item.flags.provides_light || item.light_hours_remaining <= 0 {
+            continue;
+        }
+        let owner = match &item.location {
+            ItemLocation::Equipped(o) => o.clone(),
+            _ => continue,
+        };
+        let mut updated = item.clone();
+        updated.light_hours_remaining -= 1;
+        let burned_out = updated.light_hours_remaining == 0;
+        if burned_out {
+            updated.flags.provides_light = false;
+        }
+        let item_name = updated.short_desc.clone();
+        db.save_item_data(updated)?;
+
+        if !burned_out {
+            continue;
+        }
+
+        // Try to resolve the owner as a player (Equipped(name)) and notify them + their room.
+        let mut notified_player = false;
+        if let Ok(conns) = connections.lock() {
+            for (_conn_id, session) in conns.iter() {
+                if let Some(ref char) = session.character {
+                    if char.name.to_lowercase() == owner.to_lowercase() {
+                        let _ = session
+                            .sender
+                            .send(format!("Your {} sputters and burns out.\n", item_name));
+                        let room_id = char.current_room_id;
+                        let msg = format!("{}'s {} sputters and burns out.\n", char.name, item_name);
+                        broadcast_to_room_except(connections, &room_id, &msg, &char.name);
+                        notified_player = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Mobile-equipped lights: owner is a Uuid string. Broadcast a generic message to the
+        // mobile's current room so onlookers see the light go out.
+        if !notified_player {
+            if let Ok(mobile_id) = uuid::Uuid::parse_str(&owner) {
+                if let Ok(Some(mobile)) = db.get_mobile_data(&mobile_id) {
+                    if let Some(room_id) = mobile.current_room_id {
+                        let msg = format!("{}'s {} sputters and burns out.\n", mobile.name, item_name);
+                        broadcast_to_room(connections, &room_id, &msg);
+                    }
+                }
+            }
+        }
+        debug!("Light item {} ({}) burned out (owner: {})", item_name, item.id, owner);
+    }
     Ok(())
 }
 

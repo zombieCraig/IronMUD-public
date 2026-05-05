@@ -127,6 +127,7 @@ export const itemToolDefinitions = [
         armor_class: { type: "number", description: "For armor: AC bonus" },
         hit_bonus: { type: "number", description: "Bonus to to-hit roll while equipped (CircleMUD APPLY_HITROLL parity); summed across all worn items" },
         damage_bonus: { type: "number", description: "Bonus to damage roll while equipped (CircleMUD APPLY_DAMROLL parity); summed across all worn items" },
+        light_hours_remaining: { type: "number", description: "ITEM_LIGHT capacity hours: 0 = permanent, N>0 = remaining hours of light when equipped lit (decrements per game hour, switches off at 0)" },
         flags: itemFlagsSchema,
         caliber: { type: "string", description: "Firearm caliber (e.g., '9mm', '5.56')" },
         ranged_type: { type: "string", description: "Ranged weapon type (e.g., 'pistol', 'rifle')" },
@@ -232,6 +233,7 @@ export const itemToolDefinitions = [
         armor_class: { type: "number", description: "For armor: AC bonus" },
         hit_bonus: { type: "number", description: "Bonus to to-hit roll while equipped (CircleMUD APPLY_HITROLL parity); summed across all worn items" },
         damage_bonus: { type: "number", description: "Bonus to damage roll while equipped (CircleMUD APPLY_DAMROLL parity); summed across all worn items" },
+        light_hours_remaining: { type: "number", description: "ITEM_LIGHT capacity hours: 0 = permanent, N>0 = remaining hours of light when equipped lit" },
         wear_location: {
           type: "string",
           enum: ["head", "neck", "shoulders", "back", "torso", "waist", "ears",

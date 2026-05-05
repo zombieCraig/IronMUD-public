@@ -23,6 +23,7 @@ fn item(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str, ite
         armor_class: None,
         hit_bonus: 0,
         damage_bonus: 0,
+        light_hours_remaining: 0,
         protects: Vec::new(),
         holes: 0,
         flags: ItemFlags::default(),

@@ -243,6 +243,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         // damage bonuses summed across all worn equipment in combat.
         .register_get("hit_bonus", |i: &mut ItemData| i.hit_bonus as i64)
         .register_get("damage_bonus", |i: &mut ItemData| i.damage_bonus as i64)
+        // CircleMUD ITEM_LIGHT capacity hours: 0 = permanent, N>0 = burn time left.
+        .register_get("light_hours_remaining", |i: &mut ItemData| i.light_hours_remaining as i64)
         // Insulation for temperature/weather system
         .register_get("insulation", |i: &mut ItemData| i.insulation as i64)
         .register_get("has_stats", |i: &mut ItemData| {
@@ -2569,6 +2571,18 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
             if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
                 item.damage_bonus = value as i32;
+                return cloned_db.save_item_data(item).is_ok();
+            }
+        }
+        false
+    });
+
+    // set_item_light_hours(item_id, value) -> bool — burn time in game hours; 0 = permanent
+    let cloned_db = db.clone();
+    engine.register_fn("set_item_light_hours", move |item_id: String, value: i64| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                item.light_hours_remaining = (value as i32).max(0);
                 return cloned_db.save_item_data(item).is_ok();
             }
         }

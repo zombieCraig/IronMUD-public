@@ -2763,6 +2763,11 @@ pub struct ItemData {
     /// CircleMUD APPLY_DAMROLL parity: flat damage bonus while equipped (any slot).
     #[serde(default)]
     pub damage_bonus: i32,
+    /// CircleMUD ITEM_LIGHT capacity hours: 0 = permanent (default), N>0 = hours of
+    /// burn time remaining while equipped lit. When the light tick decrements to 0,
+    /// `flags.provides_light` is cleared and the holder sees a "burns out" message.
+    #[serde(default)]
+    pub light_hours_remaining: i32,
     /// Body parts this armor protects (for armor items)
     #[serde(default)]
     pub protects: Vec<BodyPart>,
@@ -2965,6 +2970,7 @@ impl ItemData {
             armor_class: None,
             hit_bonus: 0,
             damage_bonus: 0,
+            light_hours_remaining: 0,
             protects: Vec::new(),
             holes: 0,
             flags: ItemFlags::default(),

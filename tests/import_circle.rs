@@ -382,15 +382,15 @@ fn parses_items_into_plan() {
     assert_eq!(barrel.data.liquid_type, LiquidType::Ale);
     assert!(!barrel.data.liquid_poisoned);
 
-    // Light: provides_light + capacity-hours warning.
+    // Light: provides_light + capacity-hours mapped onto light_hours_remaining.
     let torch = plan.items.iter().find(|i| i.source_vnum == 9016).expect("torch");
     assert_eq!(torch.data.item_type, ItemType::Misc);
     assert!(torch.data.flags.provides_light);
-    let light_warn = warnings
-        .iter()
-        .find(|w| w.message.contains("ITEM_LIGHT capacity"))
-        .expect("ITEM_LIGHT capacity warn surfaced");
-    assert_eq!(light_warn.severity, Severity::Warn);
+    assert_eq!(torch.data.light_hours_remaining, 24);
+    assert!(
+        !warnings.iter().any(|w| w.message.contains("ITEM_LIGHT capacity")),
+        "ITEM_LIGHT capacity hours should no longer warn"
+    );
 
     // Cursed amulet: NODROP set, ANTI_GOOD warns.
     let amulet = plan.items.iter().find(|i| i.source_vnum == 9017).expect("amulet");

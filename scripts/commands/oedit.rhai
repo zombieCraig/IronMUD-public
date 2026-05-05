@@ -436,6 +436,10 @@ fn handle_subcommand(item, item_id, subcommand, parts, char, connection_id) {
         handle_damage_bonus_subcommand(uuid, parts, connection_id);
         return;
     }
+    if subcommand == "light_hours" || subcommand == "burn_hours" || subcommand == "burn" {
+        handle_light_hours_subcommand(uuid, parts, connection_id);
+        return;
+    }
     if subcommand == "insulation" || subcommand == "insul" {
         handle_insulation_subcommand(uuid, parts, connection_id);
         return;
@@ -1891,6 +1895,7 @@ fn copy_item_flags(item, new_item_id) {
     if item.flags.quest_item { set_item_flag(new_item_id, "quest_item", true); }
     if item.flags.vending { set_item_flag(new_item_id, "vending", true); }
     if item.flags.provides_light { set_item_flag(new_item_id, "provides_light", true); }
+    if item.light_hours_remaining > 0 { set_item_light_hours(new_item_id, item.light_hours_remaining); }
     if item.flags.night_vision { set_item_flag(new_item_id, "night_vision", true); }
     if item.flags.fishing_rod { set_item_flag(new_item_id, "fishing_rod", true); }
     if item.flags.bait { set_item_flag(new_item_id, "bait", true); }
@@ -2861,6 +2866,13 @@ fn show_item_flags(item, item_id, connection_id) {
     output += build_flag_line("quest_item", flags.quest_item, "Special quest item", display_id, connection_id);
     output += build_flag_line("vending", flags.vending, "Functions as a vending machine (configure via 'vending' subcommand)", display_id, connection_id);
     output += build_flag_line("provides_light", flags.provides_light, "Provides light when equipped/wielded", display_id, connection_id);
+    if flags.provides_light {
+        if item.light_hours_remaining > 0 {
+            output += "  Burn time: " + item.light_hours_remaining + " game hour(s) remaining\n";
+        } else {
+            output += "  Burn time: permanent (no decay)\n";
+        }
+    }
     output += build_flag_line("night_vision", flags.night_vision, "Grants night vision when equipped (CircleMUD AFF_INFRAVISION)", display_id, connection_id);
     output += build_flag_line("fishing_rod", flags.fishing_rod, "Can be used for fishing when held", display_id, connection_id);
     output += build_flag_line("bait", flags.bait, "Can be used as fishing bait", display_id, connection_id);
@@ -2988,6 +3000,24 @@ fn handle_damage_bonus_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Damage-roll bonus set to: +" + value);
     } else {
         send_client_message(connection_id, "Damage-roll bonus set to: " + value);
+    }
+}
+
+fn handle_light_hours_subcommand(item_id, parts, connection_id) {
+    if parts.len() < 3 {
+        send_client_message(connection_id, "Usage: oedit " + item_id + " light_hours <value>  (0 = permanent)");
+        return;
+    }
+    let value = parse_int(parts[2]);
+    if value == () || value < 0 {
+        send_client_message(connection_id, "Invalid number (must be >= 0).");
+        return;
+    }
+    set_item_light_hours(item_id, value);
+    if value == 0 {
+        send_client_message(connection_id, "Burn time set to permanent (no decay).");
+    } else {
+        send_client_message(connection_id, "Burn time set to " + value + " hour(s) of light.");
     }
 }
 

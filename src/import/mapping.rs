@@ -2146,18 +2146,12 @@ fn apply_item_type(item: &IrItem, data: &mut ItemData, warnings: &mut Vec<Warnin
     let v = item.values;
     let type_name = super::engines::circle::flags::item_type_name(item.item_type);
     match item.item_type {
-        // ITEM_LIGHT — capacity hours discarded.
+        // ITEM_LIGHT — capacity hours map onto `light_hours_remaining`.
+        // CircleMUD convention: v[2] == -1 (or 0) means permanent torch; positive = hours.
         1 => {
             data.item_type = ItemType::Misc;
             data.flags.provides_light = true;
-            if v[2] != 0 {
-                warnings.push(Warning::new(
-                    WarningKind::UnsupportedValueSemantic,
-                    Severity::Warn,
-                    item.source.clone(),
-                    format!("ITEM_LIGHT capacity hours = {} discarded (no light-burn-time in IronMUD)", v[2]),
-                ));
-            }
+            data.light_hours_remaining = if v[2] > 0 { v[2] } else { 0 };
         }
         // ITEM_SCROLL / WAND / STAFF / POTION — spell-list semantics not modeled.
         2 | 3 | 4 => {

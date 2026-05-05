@@ -171,6 +171,7 @@ export interface Item {
   armor_class?: number;
   hit_bonus?: number;
   damage_bonus?: number;
+  light_hours_remaining?: number;
   damage_dice_count?: number;
   damage_dice_sides?: number;
   damage_type?: DamageType;
@@ -400,6 +401,7 @@ export interface CreateItemRequest {
   armor_class?: number;
   hit_bonus?: number;
   damage_bonus?: number;
+  light_hours_remaining?: number;
   flags?: Partial<ItemFlags>;
   // Firearm fields
   caliber?: string;
