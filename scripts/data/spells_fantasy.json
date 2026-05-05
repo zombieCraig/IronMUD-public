@@ -218,6 +218,38 @@
     "target_type": "self_or_friendly",
     "xp_award": 6
   },
+  "sleep": {
+    "id": "sleep",
+    "name": "Sleep",
+    "description": "Drops a target into magical slumber. They cannot act until the spell ends or they take damage.",
+    "skill_required": 3,
+    "scroll_only": false,
+    "mana_cost": 25,
+    "cooldown_secs": 30,
+    "spell_type": "debuff",
+    "buff_effect": "sleep",
+    "buff_magnitude": 0,
+    "buff_duration_secs": 60,
+    "target_type": "enemy",
+    "requires_combat": false,
+    "xp_award": 10
+  },
+  "blind": {
+    "id": "blind",
+    "name": "Blind",
+    "description": "Robs the target of sight, sharply reducing their accuracy in combat.",
+    "skill_required": 3,
+    "scroll_only": false,
+    "mana_cost": 25,
+    "cooldown_secs": 30,
+    "spell_type": "debuff",
+    "buff_effect": "blind",
+    "buff_magnitude": 50,
+    "buff_duration_secs": 90,
+    "target_type": "enemy",
+    "requires_combat": false,
+    "xp_award": 10
+  },
   "dispel_magic": {
     "id": "dispel_magic",
     "name": "Dispel Magic",

@@ -2198,6 +2198,8 @@ pub enum EffectType {
     CharismaBoost,
     Haste,
     Slow,
+    Sleep,
+    Blind,
     Invisibility,
     DetectInvisible,
     DetectMagic,
@@ -2233,6 +2235,8 @@ impl EffectType {
             "charisma_boost" | "charismaboost" | "cha_boost" | "charisma" => Some(EffectType::CharismaBoost),
             "haste" => Some(EffectType::Haste),
             "slow" => Some(EffectType::Slow),
+            "sleep" => Some(EffectType::Sleep),
+            "blind" | "blindness" => Some(EffectType::Blind),
             "invisibility" | "invis" => Some(EffectType::Invisibility),
             "detect_invisible" | "detectinvisible" | "detect_invis" => Some(EffectType::DetectInvisible),
             "detect_magic" | "detectmagic" => Some(EffectType::DetectMagic),
@@ -2265,6 +2269,8 @@ impl EffectType {
             EffectType::CharismaBoost => "charisma_boost",
             EffectType::Haste => "haste",
             EffectType::Slow => "slow",
+            EffectType::Sleep => "sleep",
+            EffectType::Blind => "blind",
             EffectType::Invisibility => "invisibility",
             EffectType::DetectInvisible => "detect_invisible",
             EffectType::DetectMagic => "detect_magic",
@@ -2296,6 +2302,8 @@ impl EffectType {
             "charisma_boost",
             "haste",
             "slow",
+            "sleep",
+            "blind",
             "invisibility",
             "detect_invisible",
             "detect_magic",
@@ -3073,6 +3081,12 @@ pub struct MobileFlags {
     pub aware: bool, // Sees through hidden / sneaking / invisibility
     #[serde(default)]
     pub memory: bool, // Remembers PC attackers and attacks on sight
+    #[serde(default)]
+    pub no_sleep: bool, // Immune to the sleep spell (CircleMUD MOB_NOSLEEP)
+    #[serde(default)]
+    pub no_blind: bool, // Immune to the blind spell (CircleMUD MOB_NOBLIND)
+    #[serde(default)]
+    pub no_bash: bool, // Immune to the bash skill's stun (CircleMUD MOB_NOBASH)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

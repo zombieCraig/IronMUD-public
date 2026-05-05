@@ -4564,3 +4564,84 @@ fn test_aff_infravision_imports_as_night_vision_buff() {
         std::panic::resume_unwind(e);
     }
 }
+
+#[test]
+fn test_sleep_blind_effect_type_roundtrip() {
+    use ironmud::types::EffectType;
+
+    assert_eq!(EffectType::from_str("sleep"), Some(EffectType::Sleep));
+    assert_eq!(EffectType::Sleep.to_display_string(), "sleep");
+    assert!(EffectType::all().contains(&"sleep"));
+
+    assert_eq!(EffectType::from_str("blind"), Some(EffectType::Blind));
+    assert_eq!(EffectType::from_str("blindness"), Some(EffectType::Blind));
+    assert_eq!(EffectType::Blind.to_display_string(), "blind");
+    assert!(EffectType::all().contains(&"blind"));
+}
+
+#[test]
+fn test_no_sleep_no_blind_no_bash_flags_persist() {
+    use ironmud::db::Db;
+    use ironmud::types::MobileData;
+
+    let db_path = format!("test_immunity_flags_persist_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut mob = MobileData::new("an iron golem".to_string());
+        mob.flags.no_sleep = true;
+        mob.flags.no_blind = true;
+        mob.flags.no_bash = true;
+        let id = mob.id;
+        db.save_mobile_data(mob).expect("save");
+
+        let loaded = db.get_mobile_data(&id).expect("read").expect("present");
+        assert!(loaded.flags.no_sleep);
+        assert!(loaded.flags.no_blind);
+        assert!(loaded.flags.no_bash);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_sleep_buff_persists_on_mobile() {
+    use ironmud::db::Db;
+    use ironmud::types::{ActiveBuff, EffectType, MobileData};
+
+    let db_path = format!("test_sleep_buff_persists_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut mob = MobileData::new("a slumbering ogre".to_string());
+        mob.active_buffs.push(ActiveBuff {
+            effect_type: EffectType::Sleep,
+            magnitude: 0,
+            remaining_secs: 60,
+            source: "Sleep".to_string(),
+        });
+        let id = mob.id;
+        db.save_mobile_data(mob).expect("save");
+
+        let loaded = db.get_mobile_data(&id).expect("read").expect("present");
+        assert!(
+            loaded
+                .active_buffs
+                .iter()
+                .any(|b| b.effect_type == EffectType::Sleep),
+            "Sleep buff missing after roundtrip"
+        );
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}

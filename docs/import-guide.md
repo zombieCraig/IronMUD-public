@@ -890,6 +890,21 @@ ranked below.
   "(magical aura)" cue in room listings and a "magical" property tag
   in examine when the viewer's buff is active. `ITEM_MAGIC` now
   imports straight to `flags.magical` instead of warning.
+- **`MOB_NOSLEEP` / `MOB_NOBLIND` / `MOB_NOBASH`** → `MobileFlags.no_sleep`,
+  `no_blind`, `no_bash`. Each acts as a hard-immunity gate over the
+  matching new ability: the player-castable `sleep` spell (skill 3,
+  mana 25, 60s duration), the player-castable `blind` spell (skill 3,
+  mana 25, 90s, magnitude=50 to-hit penalty), and the new `bash`
+  combat skill (15 stamina, 2-round stun on hit). All three abilities
+  use a new `debuff` `spell_type` (sleep/blind) or write directly to
+  `CombatState.stun_rounds_remaining` (bash). Sleep applies a
+  permanent-style `EffectType::Sleep` buff that makes the target skip
+  combat turns and is cleared automatically when the target takes
+  damage. Blind applies an `EffectType::Blind` buff that subtracts
+  `magnitude` percentage points from the attacker's hit chance and,
+  when applied to a player, also short-circuits room sight (mirrors
+  the `blindness` trait). `MOB_NOSUMMON` / `MOB_NOCHARM` remain
+  warn-only — those abilities aren't implemented yet.
 - **`MOB_HELPER`** → `MobileFlags.helper`. The helper system scans the
   current room each combat tick and pulls any standing, alive,
   non-engaged HELPER mobile into combat against a PC who is attacking
@@ -914,8 +929,10 @@ ranked below.
 
 ### Mobile flags — Low priority
 
-- **`MOB_NOSLEEP` / `NOBASH` / `NOBLIND` / `NOSUMMON` / `NOCHARM`** —
-  status-immunity flags. No equivalent player skills exist yet.
+- **`MOB_NOSUMMON` / `MOB_NOCHARM`** — status-immunity flags whose
+  matching abilities (offensive `summon`, `charm`) don't yet exist.
+  `NOSLEEP` / `NOBASH` / `NOBLIND` shipped May 2026 — see the
+  Implemented section above.
 - **`AFF_BLIND` / `SLEEP` / `CURSE` / `POISON`** — permanent affects on
   prototypes. Once buff stamping at spawn lands, these become trivial.
 - **`MOB_WIMPY`** — currently maps to `cowardly`, but Circle's wimpy is

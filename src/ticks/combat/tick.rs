@@ -149,6 +149,22 @@ fn process_character_combat_round(db: &db::Db, connections: &SharedConnections, 
         return Ok(());
     }
 
+    // Magical sleep — skip turn while the Sleep buff is active.
+    if char
+        .active_buffs
+        .iter()
+        .any(|b| b.effect_type == ironmud::EffectType::Sleep)
+    {
+        send_message_to_character(connections, char_name, "You sleep deeply and cannot act.");
+        broadcast_to_room_except(
+            connections,
+            &room_id,
+            &format!("{} sleeps peacefully.", char.name),
+            char_name,
+        );
+        return Ok(());
+    }
+
     // Apply ongoing effects (burn, frost, poison, acid)
     if !char.ongoing_effects.is_empty() {
         // Poison resistance traits
@@ -928,6 +944,15 @@ fn process_character_attacks_mobile(
         }
     }
 
+    // Blind buff slashes accuracy. Magnitude is the percentage points to subtract.
+    if let Some(blind) = char
+        .active_buffs
+        .iter()
+        .find(|b| b.effect_type == EffectType::Blind)
+    {
+        base_hit_chance = (base_hit_chance - blind.magnitude).clamp(5, 95);
+    }
+
     // Broadcast gunshot noise to adjacent rooms for loud ranged weapons
     if is_ranged_attack {
         if let Some(wid) = get_character_wielded_weapon_id(db, char) {
@@ -1111,8 +1136,25 @@ fn process_character_attacks_mobile(
         // Apply damage
         damage = ironmud::script::apply_damage_reduction(damage, &mobile.active_buffs);
         mobile.current_hp -= damage;
+        // Magical sleep breaks on any damage taken.
+        let was_sleeping = mobile
+            .active_buffs
+            .iter()
+            .any(|b| b.effect_type == ironmud::EffectType::Sleep);
+        if was_sleeping {
+            mobile
+                .active_buffs
+                .retain(|b| b.effect_type != ironmud::EffectType::Sleep);
+        }
         ironmud::script::record_mob_memory(&mut mobile, &char.name);
         db.save_mobile_data(mobile.clone())?;
+        if was_sleeping {
+            broadcast_to_room_awake(
+                connections,
+                &room_id,
+                &format!("{} jolts awake!", mobile.name),
+            );
+        }
 
         // Build message with crit text (yellow/bold)
         let crit_text = if is_crit {
@@ -1411,6 +1453,21 @@ fn process_mobile_combat_round(
             &format!("{} is stunned and cannot act!", mobile_name),
         );
         debug!("Mobile {} stun handling complete, returning", mobile_name);
+        return Ok(());
+    }
+
+    // Handle magical sleep — skip turn while the Sleep buff is active.
+    if mobile
+        .active_buffs
+        .iter()
+        .any(|b| b.effect_type == ironmud::EffectType::Sleep)
+    {
+        let mobile_name = mobile.name.clone();
+        broadcast_to_room_awake(
+            connections,
+            &room_id,
+            &format!("{} sleeps peacefully.", mobile_name),
+        );
         return Ok(());
     }
 
@@ -1722,6 +1779,15 @@ fn process_mobile_attacks_player(
         }
     }
 
+    // Blind buff slashes mob accuracy too. Magnitude is the percentage points to subtract.
+    if let Some(blind) = mobile
+        .active_buffs
+        .iter()
+        .find(|b| b.effect_type == EffectType::Blind)
+    {
+        hit_chance = (hit_chance - blind.magnitude).clamp(5, 95);
+    }
+
     let roll = rng.gen_range(1..=100);
 
     // Skip hit roll if target was sleeping (automatic hit)
@@ -1907,7 +1973,20 @@ fn process_mobile_attacks_player(
     // Apply on-hit DoT effects from mobile flags (poisonous, fiery, chilling, corrosive, shocking)
     ironmud::script::apply_mobile_on_hit_dots(mobile, &mut char.ongoing_effects, "body");
 
+    // Magical sleep breaks on any damage taken.
+    let player_was_sleeping = char
+        .active_buffs
+        .iter()
+        .any(|b| b.effect_type == ironmud::EffectType::Sleep);
+    if player_was_sleeping {
+        char.active_buffs
+            .retain(|b| b.effect_type != ironmud::EffectType::Sleep);
+    }
+
     db.save_character_data(char.clone())?;
+    if player_was_sleeping {
+        send_message_to_character(connections, &char.name, "You jolt awake!");
+    }
 
     // Sync updated character to session so prompt shows correct HP
     sync_character_to_session(connections, &char);

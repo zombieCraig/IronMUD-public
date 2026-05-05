@@ -970,7 +970,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                                     .iter()
                                     .any(|b| b.effect_type == crate::EffectType::NightVision)
                                 || equipped.iter().any(|item| item.flags.night_vision);
-                            let blind = char.traits.iter().any(|t| t == "blindness");
+                            let blind = char.traits.iter().any(|t| t == "blindness")
+                                || char
+                                    .active_buffs
+                                    .iter()
+                                    .any(|b| b.effect_type == crate::EffectType::Blind);
                             let light = equipped.iter().any(|item| item.flags.provides_light);
                             (nv, light, blind)
                         } else {

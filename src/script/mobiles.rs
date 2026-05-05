@@ -168,7 +168,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         unique,
         stay_zone,
         aware,
-        memory
+        memory,
+        no_sleep,
+        no_blind,
+        no_bash
     );
 
     // Register MobileData type with getters
@@ -736,6 +739,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "corrosive" => mobile.flags.corrosive = value,
                         "shocking" => mobile.flags.shocking = value,
                         "unique" => mobile.flags.unique = value,
+                        "no_sleep" | "nosleep" => mobile.flags.no_sleep = value,
+                        "no_blind" | "noblind" => mobile.flags.no_blind = value,
+                        "no_bash" | "nobash" => mobile.flags.no_bash = value,
                         _ => return false,
                     }
                     return cloned_db.save_mobile_data(mobile).is_ok();

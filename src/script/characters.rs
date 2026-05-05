@@ -1153,8 +1153,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             let conns_guard = conns.lock().unwrap();
             if let Some(session) = conns_guard.get(&uuid) {
                 if let Some(ref char) = session.character {
-                    // Check if they have the blindness trait
-                    return !char.traits.iter().any(|t| t == "blindness");
+                    // Check if they have the blindness trait or a Blind buff
+                    let blind = char.traits.iter().any(|t| t == "blindness")
+                        || char
+                            .active_buffs
+                            .iter()
+                            .any(|b| b.effect_type == EffectType::Blind);
+                    return !blind;
                 }
             }
         }
@@ -1371,8 +1376,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 return 0;
             }
 
-            // Check blindness trait first - severe penalty
-            if char.traits.iter().any(|t| t == "blindness") {
+            // Check blindness trait or active Blind buff first - severe penalty
+            if char.traits.iter().any(|t| t == "blindness")
+                || char
+                    .active_buffs
+                    .iter()
+                    .any(|b| b.effect_type == EffectType::Blind)
+            {
                 return 100;
             }
 
@@ -2197,6 +2207,66 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             } else {
                 false
             }
+        },
+    );
+
+    // apply_buff_to_mobile(mobile_id, effect_type_str, magnitude, duration_secs, source) -> bool
+    // Adds or replaces an ActiveBuff on a mobile instance. Replaces same-type buff with max magnitude.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "apply_buff_to_mobile",
+        move |mobile_id: String, effect_type_str: String, magnitude: i64, duration_secs: i64, source: String| -> bool {
+            let effect_type = match EffectType::from_str(&effect_type_str) {
+                Some(et) => et,
+                None => return false,
+            };
+            let uuid = match uuid::Uuid::parse_str(&mobile_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let mut mobile = match cloned_db.get_mobile_data(&uuid) {
+                Ok(Some(m)) => m,
+                _ => return false,
+            };
+            if let Some(existing) = mobile.active_buffs.iter_mut().find(|b| b.effect_type == effect_type) {
+                existing.magnitude = existing.magnitude.max(magnitude as i32);
+                existing.remaining_secs = duration_secs as i32;
+                existing.source = source;
+            } else {
+                mobile.active_buffs.push(ActiveBuff {
+                    effect_type,
+                    magnitude: magnitude as i32,
+                    remaining_secs: duration_secs as i32,
+                    source,
+                });
+            }
+            cloned_db.save_mobile_data(mobile).is_ok()
+        },
+    );
+
+    // remove_buff_from_mobile(mobile_id, effect_type_str) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "remove_buff_from_mobile",
+        move |mobile_id: String, effect_type_str: String| -> bool {
+            let effect_type = match EffectType::from_str(&effect_type_str) {
+                Some(et) => et,
+                None => return false,
+            };
+            let uuid = match uuid::Uuid::parse_str(&mobile_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let mut mobile = match cloned_db.get_mobile_data(&uuid) {
+                Ok(Some(m)) => m,
+                _ => return false,
+            };
+            let before = mobile.active_buffs.len();
+            mobile.active_buffs.retain(|b| b.effect_type != effect_type);
+            if mobile.active_buffs.len() == before {
+                return false;
+            }
+            cloned_db.save_mobile_data(mobile).is_ok()
         },
     );
 

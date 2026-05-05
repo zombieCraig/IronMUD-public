@@ -683,6 +683,10 @@
     "access": "user",
     "description": "Attack from hiding with a devastating strike (stealth 3+)"
   },
+  "bash": {
+    "access": "user",
+    "description": "Charge a target, dealing modest damage and stunning them on hit"
+  },
   "circle": {
     "access": "user",
     "description": "Flank your opponent mid-combat for a bonus attack (stealth 4+)"

@@ -1029,6 +1029,9 @@ fn apply_named_mob_flag(flags: &mut MobileFlags, name: &str) -> bool {
         "stay_zone" => flags.stay_zone = true,
         "aware" => flags.aware = true,
         "memory" => flags.memory = true,
+        "no_sleep" => flags.no_sleep = true,
+        "no_blind" => flags.no_blind = true,
+        "no_bash" => flags.no_bash = true,
         _ => return false,
     }
     true

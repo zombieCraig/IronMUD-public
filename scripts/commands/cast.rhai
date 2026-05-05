@@ -158,6 +158,59 @@ fn cast_damage(connection_id, char, spell, target_arg) {
     return true;
 }
 
+fn cast_debuff(connection_id, char, spell, target_arg) {
+    let room_id = char.current_room_id;
+    let mob_id = find_mob_target(char, target_arg, room_id);
+
+    if mob_id == "" {
+        send_client_message(connection_id, "Cast at whom?");
+        return false;
+    }
+
+    let mob = get_mobile_data(mob_id);
+    if type_of(mob) == "()" {
+        send_client_message(connection_id, "That target is no longer here.");
+        return false;
+    }
+
+    if mob.flags.no_attack {
+        send_client_message(connection_id, "You cannot attack " + mob.name + ".");
+        return false;
+    }
+
+    let effect = spell["buff_effect"];
+
+    // Hard-immunity gate: certain MOB_NO* flags fully resist matching debuffs.
+    let resisted = false;
+    if effect == "sleep" && mob.flags.no_sleep { resisted = true; }
+    if effect == "blind" && mob.flags.no_blind { resisted = true; }
+
+    // Initiate combat regardless of resist (cast was hostile and committed).
+    if !is_in_combat(char.name) {
+        enter_combat(char.name, mob_id, "mobile");
+    }
+    enter_mobile_combat(mob_id, "player", char.name);
+
+    if resisted {
+        send_client_message(connection_id, "You cast " + spell["name"] + " on " + mob.name + ", but " + mob.name + " resists your magic!");
+        broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + " on " + mob.name + ", but it has no effect.", char.name);
+        return true;
+    }
+
+    let magnitude = spell["buff_magnitude"];
+    let duration = spell["buff_duration_secs"];
+    apply_buff_to_mobile(mob_id, effect, magnitude, duration, spell["name"]);
+
+    let verb = if effect == "sleep" { "drops " + mob.name + " into a deep slumber!" }
+               else if effect == "blind" { "robs " + mob.name + " of sight!" }
+               else { "settles over " + mob.name + "." };
+
+    send_client_message(connection_id, "You cast " + spell["name"] + " — your magic " + verb);
+    broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + " — the magic " + verb, char.name);
+
+    return true;
+}
+
 fn get_damage_verb(dtype) {
     if dtype == "arcane" { return "strikes"; }
     if dtype == "fire" { return "scorches"; }
@@ -416,6 +469,9 @@ fn run_command(args, connection_id) {
     }
     if stype == "buff" {
         success = cast_buff(connection_id, char, spell, target_arg);
+    }
+    if stype == "debuff" {
+        success = cast_debuff(connection_id, char, spell, target_arg);
     }
     if stype == "heal" {
         success = cast_heal(connection_id, char, spell, target_arg);

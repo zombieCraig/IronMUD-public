@@ -292,6 +292,9 @@ export interface MobileFlags {
   stay_zone?: boolean;
   aware?: boolean;
   memory?: boolean;
+  no_sleep?: boolean;
+  no_blind?: boolean;
+  no_bash?: boolean;
 }
 
 export interface SpawnPoint {

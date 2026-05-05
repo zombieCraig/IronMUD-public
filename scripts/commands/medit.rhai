@@ -569,7 +569,7 @@ fn handle_flag_subcommand(mobile_id, parts, connection_id) {
     // Validate all names before changing anything.
     for name in flag_names {
         if get_mobile_flag_value(mobile, name) == () {
-            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim, poisonous, fiery, chilling, corrosive, shocking, unique, stay_zone, aware, memory");
+            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim, poisonous, fiery, chilling, corrosive, shocking, unique, stay_zone, aware, memory, no_sleep, no_blind, no_bash");
             return;
         }
     }
@@ -613,6 +613,9 @@ fn get_mobile_flag_value(mobile, flag_name) {
     if flag_name == "stay_zone" || flag_name == "stayzone" { return flags.stay_zone; }
     if flag_name == "aware" { return flags.aware; }
     if flag_name == "memory" { return flags.memory; }
+    if flag_name == "no_sleep" || flag_name == "nosleep" { return flags.no_sleep; }
+    if flag_name == "no_blind" || flag_name == "noblind" { return flags.no_blind; }
+    if flag_name == "no_bash" || flag_name == "nobash" { return flags.no_bash; }
     return ();
 }
 
@@ -806,6 +809,9 @@ fn build_flags_display(mobile) {
     if flags.stay_zone { flag_str += "stay_zone "; }
     if flags.aware { flag_str += "aware "; }
     if flags.memory { flag_str += "memory "; }
+    if flags.no_sleep { flag_str += "no_sleep "; }
+    if flags.no_blind { flag_str += "no_blind "; }
+    if flags.no_bash { flag_str += "no_bash "; }
     if flag_str == "" { flag_str = "(none)"; }
     output += flag_str + "\n";
     return output;
@@ -951,6 +957,9 @@ fn show_mobile_flags(mobile, mobile_id, connection_id) {
     output += build_flag_line("stay_zone", flags.stay_zone, "Wandering and pursuit stay inside the home area", display_id, connection_id);
     output += build_flag_line("aware", flags.aware, "Sees through hidden / sneaking / invisibility", display_id, connection_id);
     output += build_flag_line("memory", flags.memory, "Remembers PC attackers and attacks on sight", display_id, connection_id);
+    output += build_flag_line("no_sleep", flags.no_sleep, "Immune to the sleep spell (CircleMUD MOB_NOSLEEP)", display_id, connection_id);
+    output += build_flag_line("no_blind", flags.no_blind, "Immune to the blind spell (CircleMUD MOB_NOBLIND)", display_id, connection_id);
+    output += build_flag_line("no_bash", flags.no_bash, "Immune to the bash skill (CircleMUD MOB_NOBASH)", display_id, connection_id);
 
     send_mxp_message(connection_id, output);
 }

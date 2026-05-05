@@ -16,9 +16,9 @@
     "HELPER":       { "action": "set_flag", "ironmud_flag": "helper" },
     "NOCHARM":      { "action": "warn", "message": "MOB_NOCHARM not modeled." },
     "NOSUMMON":     { "action": "warn", "message": "MOB_NOSUMMON not modeled." },
-    "NOSLEEP":      { "action": "warn", "message": "MOB_NOSLEEP not modeled." },
-    "NOBASH":       { "action": "warn", "message": "MOB_NOBASH not modeled." },
-    "NOBLIND":      { "action": "warn", "message": "MOB_NOBLIND not modeled." }
+    "NOSLEEP":      { "action": "set_flag", "ironmud_flag": "no_sleep" },
+    "NOBASH":       { "action": "set_flag", "ironmud_flag": "no_bash" },
+    "NOBLIND":      { "action": "set_flag", "ironmud_flag": "no_blind" }
   },
   "aff_flag_actions": {
     "INVISIBLE":     { "action": "add_buff", "effect_type": "invisibility", "magnitude": 0, "remaining_secs": -1, "source": "innate invisibility" },
