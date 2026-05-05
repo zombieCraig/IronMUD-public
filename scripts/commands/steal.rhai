@@ -71,8 +71,8 @@ fn run_command(args, connection_id) {
         return;
     }
 
-    // Find target - check mobiles first
-    let mobiles = get_mobiles_in_room(room_id);
+    // Find target - check mobiles first (filter invisible ones the thief can't see)
+    let mobiles = filter_visible_mobiles(get_mobiles_in_room(room_id), char.name);
     let target_mobile_id = "";
     let target_mobile_name = "";
     let target_is_player = false;

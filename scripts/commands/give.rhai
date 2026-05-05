@@ -48,7 +48,7 @@ fn run_command(args, connection_id) {
     }
 
     if target_char == () {
-        let mobiles = get_mobiles_in_room(char.current_room_id);
+        let mobiles = filter_visible_mobiles(get_mobiles_in_room(char.current_room_id), char.name);
         target_mobile = find_mobile_by_keyword(parsed.target, mobiles);
     }
 
@@ -297,8 +297,8 @@ fn try_shorthand_syntax(char, args) {
         }
     }
 
-    // Mobile in current room?
-    let mobiles = get_mobiles_in_room(char.current_room_id);
+    // Mobile in current room? (filter invisible ones the giver can't see)
+    let mobiles = filter_visible_mobiles(get_mobiles_in_room(char.current_room_id), char.name);
     let mobile = find_mobile_by_keyword(potential_target, mobiles);
     if mobile != () {
         result.target = potential_target;

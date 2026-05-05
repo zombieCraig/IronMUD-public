@@ -31,7 +31,7 @@ fn run_command(args, connection_id) {
     let target_keyword = parts[1].to_lower();
 
     let room_id = char.current_room_id;
-    let mobiles = get_mobiles_in_room(room_id);
+    let mobiles = filter_visible_mobiles(get_mobiles_in_room(room_id), char.name);
     let subject = find_mobile_by_keyword(subject_keyword, mobiles);
 
     if subject == () {

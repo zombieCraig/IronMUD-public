@@ -16,8 +16,8 @@ use super::corpse::{CorpseBuilder, mobile_gold_with_variance};
 use super::wounds::{add_wound_bleeding, escalate_wound_to_severe};
 
 use crate::ticks::broadcast::{
-    broadcast_to_room_awake, broadcast_to_room_except, broadcast_to_room_except_awake, send_message_to_character,
-    sync_character_to_session,
+    broadcast_to_room_awake, broadcast_to_room_except, broadcast_to_room_except_awake,
+    broadcast_to_room_except_awake_per_viewer, send_message_to_character, sync_character_to_session,
 };
 use crate::ticks::mobile::{
     filter_exits_by_stay_zone, find_player_name_in_room, get_opposite_direction_rust, get_valid_wander_exits,
@@ -898,6 +898,22 @@ fn process_character_attacks_mobile(
 
     let mut base_hit_chance = (50 + skill * 5 + attacker_dex_mod - target_dex_mod - target_ac).clamp(5, 95);
 
+    // Invisible-target penalty: -30 to-hit when the attacker can't see
+    // their target (mob has Invisibility buff and the PC lacks
+    // DetectInvisible / admin god-mode).
+    let target_invisible = mobile
+        .active_buffs
+        .iter()
+        .any(|b| b.effect_type == EffectType::Invisibility);
+    let attacker_detects = char.is_admin
+        || char
+            .active_buffs
+            .iter()
+            .any(|b| b.effect_type == EffectType::DetectInvisible);
+    if target_invisible && !attacker_detects {
+        base_hit_chance = (base_hit_chance - 30).clamp(5, 95);
+    }
+
     // Arm wound hit penalty (melee attacks only, not bite)
     if !is_bite_attack && !is_ranged_attack {
         let arm_penalty = char
@@ -962,11 +978,18 @@ fn process_character_attacks_mobile(
                     &char.name,
                     &format!("You fire at {} but miss!", mobile.name),
                 );
-                broadcast_to_room_except_awake(
+                broadcast_to_room_except_awake_per_viewer(
                     connections,
                     &room_id,
-                    &format!("{} {} {} but misses!", char.name, ranged_miss_verb, mobile.name),
                     &char.name,
+                    |viewer| {
+                        format!(
+                            "{} {} {} but misses!",
+                            char.name,
+                            ranged_miss_verb,
+                            mob_display_name_for(viewer, &mobile, true)
+                        )
+                    },
                 );
             } else {
                 send_message_to_character(
@@ -974,11 +997,17 @@ fn process_character_attacks_mobile(
                     &char.name,
                     &format!("You swing at {} but miss!", mobile.name),
                 );
-                broadcast_to_room_except_awake(
+                broadcast_to_room_except_awake_per_viewer(
                     connections,
                     &room_id,
-                    &format!("{} swings at {} but misses!", char.name, mobile.name),
                     &char.name,
+                    |viewer| {
+                        format!(
+                            "{} swings at {} but misses!",
+                            char.name,
+                            mob_display_name_for(viewer, &mobile, true)
+                        )
+                    },
                 );
             }
             // For single shot, return after miss
@@ -1110,14 +1139,21 @@ fn process_character_attacks_mobile(
                     projectile, verb, mobile.name, body_part, damage, crit_text
                 ),
             );
-            broadcast_to_room_except_awake(
+            broadcast_to_room_except_awake_per_viewer(
                 connections,
                 &room_id,
-                &format!(
-                    "{}'s {} {} {}'s {} for {} damage!",
-                    char.name, projectile, verb, mobile.name, body_part, damage
-                ),
                 &char.name,
+                |viewer| {
+                    format!(
+                        "{}'s {} {} {}'s {} for {} damage!",
+                        char.name,
+                        projectile,
+                        verb,
+                        mob_display_name_for(viewer, &mobile, true),
+                        body_part,
+                        damage
+                    )
+                },
             );
         } else {
             send_message_to_character(
@@ -1125,11 +1161,18 @@ fn process_character_attacks_mobile(
                 &char.name,
                 &format!("You hit {} for {} damage!{}", mobile.name, damage, crit_text),
             );
-            broadcast_to_room_except_awake(
+            broadcast_to_room_except_awake_per_viewer(
                 connections,
                 &room_id,
-                &format!("{} hits {} for {} damage!", char.name, mobile.name, damage),
                 &char.name,
+                |viewer| {
+                    format!(
+                        "{} hits {} for {} damage!",
+                        char.name,
+                        mob_display_name_for(viewer, &mobile, true),
+                        damage
+                    )
+                },
             );
         }
 
@@ -1649,6 +1692,22 @@ fn process_mobile_attacks_player(
 
     let mut hit_chance = (50 + skill * 5 + attacker_dex_mod - target_dex_mod - target_ac).clamp(5, 95);
 
+    // Invisible-target penalty: -30 to-hit when the mobile can't see
+    // its target (PC has Invisibility and the mob lacks DetectInvisible
+    // and isn't AWARE).
+    let target_invisible = char
+        .active_buffs
+        .iter()
+        .any(|b| b.effect_type == EffectType::Invisibility);
+    let mob_detects = mobile.flags.aware
+        || mobile
+            .active_buffs
+            .iter()
+            .any(|b| b.effect_type == EffectType::DetectInvisible);
+    if target_invisible && !mob_detects {
+        hit_chance = (hit_chance - 30).clamp(5, 95);
+    }
+
     // Mobile arm wound hit penalty (non-bite attacks)
     if !is_bite_attack {
         let arm_penalty = mobile
@@ -1669,16 +1728,24 @@ fn process_mobile_attacks_player(
     if !was_sleeping && roll > hit_chance {
         // Miss
         let miss_verb = get_miss_verb(damage_type);
+        let target_attacker_name = mob_display_name_for(&char, mobile, false);
         send_message_to_character(
             connections,
             player_name,
-            &format!("{} {} you but misses!", mobile.name, miss_verb),
+            &format!("{} {} you but misses!", target_attacker_name, miss_verb),
         );
-        broadcast_to_room_except_awake(
+        broadcast_to_room_except_awake_per_viewer(
             connections,
             room_id,
-            &format!("{} {} {} but misses!", mobile.name, miss_verb, char.name),
             player_name,
+            |viewer| {
+                format!(
+                    "{} {} {} but misses!",
+                    mob_display_name_for(viewer, mobile, false),
+                    miss_verb,
+                    char.name
+                )
+            },
         );
         return Ok(());
     }
@@ -1858,19 +1925,28 @@ fn process_mobile_attacks_player(
 
     // Send messages (red for damage taken) - sleeping bystanders don't see combat
     let hit_verb = get_hit_verb(damage_type);
+    let target_attacker_name = mob_display_name_for(&char, mobile, false);
     send_message_to_character(
         connections,
         player_name,
         &format!(
             "\x1b[1;31m{} {} you for {} damage!{}\x1b[0m",
-            mobile.name, hit_verb, damage, crit_text
+            target_attacker_name, hit_verb, damage, crit_text
         ),
     );
-    broadcast_to_room_except_awake(
+    broadcast_to_room_except_awake_per_viewer(
         connections,
         room_id,
-        &format!("{} {} {} for {} damage!", mobile.name, hit_verb, char.name, damage),
         player_name,
+        |viewer| {
+            format!(
+                "{} {} {} for {} damage!",
+                mob_display_name_for(viewer, mobile, false),
+                hit_verb,
+                char.name,
+                damage
+            )
+        },
     );
 
     // Check if player died or went unconscious
@@ -2159,6 +2235,33 @@ fn get_miss_verb(damage_type: DamageType) -> &'static str {
         DamageType::Bite => "snaps at",
         DamageType::Ballistic => "fires at",
         DamageType::Arcane => "hurls magic at",
+    }
+}
+
+/// Returns the name a viewer should see when a mob is referenced in
+/// a combat message. If the mob has the Invisibility buff and the
+/// viewer lacks DetectInvisible (and isn't admin), returns
+/// "Something" or "something" depending on `lowered`. Otherwise
+/// returns the mob's actual name.
+fn mob_display_name_for(viewer: &CharacterData, mob: &MobileData, lowered: bool) -> String {
+    let mob_invisible = mob
+        .active_buffs
+        .iter()
+        .any(|b| b.effect_type == EffectType::Invisibility);
+    if !mob_invisible {
+        return mob.name.clone();
+    }
+    let viewer_detects = viewer.is_admin
+        || viewer
+            .active_buffs
+            .iter()
+            .any(|b| b.effect_type == EffectType::DetectInvisible);
+    if viewer_detects {
+        mob.name.clone()
+    } else if lowered {
+        "something".to_string()
+    } else {
+        "Something".to_string()
     }
 }
 

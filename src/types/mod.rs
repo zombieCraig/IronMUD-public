@@ -2200,6 +2200,7 @@ pub enum EffectType {
     Slow,
     Invisibility,
     DetectInvisible,
+    DetectMagic,
     Regeneration,
     Drunk,
     Satiated,
@@ -2233,6 +2234,7 @@ impl EffectType {
             "slow" => Some(EffectType::Slow),
             "invisibility" | "invis" => Some(EffectType::Invisibility),
             "detect_invisible" | "detectinvisible" | "detect_invis" => Some(EffectType::DetectInvisible),
+            "detect_magic" | "detectmagic" => Some(EffectType::DetectMagic),
             "regeneration" | "regen" => Some(EffectType::Regeneration),
             "drunk" => Some(EffectType::Drunk),
             "satiated" => Some(EffectType::Satiated),
@@ -2263,6 +2265,7 @@ impl EffectType {
             EffectType::Slow => "slow",
             EffectType::Invisibility => "invisibility",
             EffectType::DetectInvisible => "detect_invisible",
+            EffectType::DetectMagic => "detect_magic",
             EffectType::Regeneration => "regeneration",
             EffectType::Drunk => "drunk",
             EffectType::Satiated => "satiated",
@@ -2292,6 +2295,7 @@ impl EffectType {
             "slow",
             "invisibility",
             "detect_invisible",
+            "detect_magic",
             "regeneration",
             "drunk",
             "satiated",
@@ -2621,6 +2625,8 @@ pub struct ItemFlags {
     pub glow: bool,
     #[serde(default)]
     pub hum: bool,
+    #[serde(default)]
+    pub magical: bool, // Reveals "(magical aura)" cue when viewer has DetectMagic buff
     #[serde(default)]
     pub no_sell: bool,
     #[serde(default)]

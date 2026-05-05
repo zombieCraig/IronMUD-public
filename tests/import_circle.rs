@@ -185,6 +185,27 @@ fn parses_mobiles_into_plan() {
         "AFF_SANCTUARY should no longer warn",
     );
 
+    // The wisp also has AFF_INVISIBLE (b), DETECT_INVIS (d), DETECT_MAGIC (e)
+    // — each one should stamp the matching permanent buff on the prototype.
+    for et in [
+        ironmud::types::EffectType::Invisibility,
+        ironmud::types::EffectType::DetectInvisible,
+        ironmud::types::EffectType::DetectMagic,
+    ] {
+        let buff = wisp
+            .active_buffs
+            .iter()
+            .find(|b| b.effect_type == et)
+            .unwrap_or_else(|| panic!("expected {:?} buff stamped on wisp", et));
+        assert_eq!(buff.remaining_secs, -1);
+    }
+    assert!(
+        !warnings.iter().any(|w| w.message.contains("AFF_INVISIBLE")
+            || w.message.contains("AFF_DETECT_INVIS")
+            || w.message.contains("AFF_DETECT_MAGIC")),
+        "AFF_INVISIBLE/DETECT_INVIS/DETECT_MAGIC should no longer warn",
+    );
+
     // BareHandAttack should warn exactly once across the import (the beast
     // is the only carrier in this fixture, but we still exercise the
     // dedup path).
@@ -263,6 +284,7 @@ fn parses_items_into_plan() {
     assert_eq!(sword.data.damage_dice_sides, 8);
     assert_eq!(sword.data.damage_type, DamageType::Slashing);
     assert!(sword.data.flags.glow);
+    assert!(sword.data.flags.magical);
     assert!(sword.data.wear_locations.contains(&WearLocation::Wielded));
     assert_eq!(sword.data.value, 600);
     let damroll_warn = warnings

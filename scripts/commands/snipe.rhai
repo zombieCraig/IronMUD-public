@@ -69,7 +69,7 @@ fn execute_snipe(check, connection_id) {
     let target_room_id = check.target_room_id;
     let opposite_dir = opposite(direction);
 
-    let target_info = find_snipe_target(target_room_id, check.target_keyword, char.god_mode);
+    let target_info = find_snipe_target(target_room_id, check.target_keyword, char.god_mode, char.name);
     if target_info.target_type == "none" {
         if check.target_keyword != "" {
             send_client_message(connection_id, "You don't see '" + check.target_keyword + "' to the " + direction + ".");
@@ -427,9 +427,9 @@ fn do_noise_broadcast(noise_level, target_room_id, exclude_name) {
     }
 }
 
-fn find_snipe_target(room_id, keyword, god_mode) {
+fn find_snipe_target(room_id, keyword, god_mode, viewer_name) {
     let result = #{ "target_type": "none", "target_id": "", "target_name": "", "error": "" };
-    let mobiles = get_mobiles_in_room(room_id);
+    let mobiles = filter_visible_mobiles(get_mobiles_in_room(room_id), viewer_name);
     if keyword != "" {
         let mobile = find_mobile_by_keyword(keyword, mobiles);
         if mobile != () {

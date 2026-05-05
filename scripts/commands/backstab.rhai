@@ -60,8 +60,8 @@ fn run_command(args, connection_id) {
 
     let target_keyword = args.to_lower();
 
-    // Find target mobile
-    let mobiles = get_mobiles_in_room(room_id);
+    // Find target mobile (filter invisible ones the attacker can't see)
+    let mobiles = filter_visible_mobiles(get_mobiles_in_room(room_id), char.name);
     let target_id = "";
     let target_name = "";
     let target_type = "mobile";

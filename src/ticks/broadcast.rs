@@ -69,6 +69,33 @@ pub fn broadcast_to_room_except_awake(
     }
 }
 
+/// Broadcast to non-sleeping characters in a room (excludes one character by name),
+/// formatting the message per-recipient. Useful when message text depends on
+/// the viewer (e.g. invisible-mob attribution showing "Something" to viewers
+/// without DetectInvisible and the mob's name to viewers with it).
+pub fn broadcast_to_room_except_awake_per_viewer<F>(
+    connections: &SharedConnections,
+    room_id: &uuid::Uuid,
+    exclude: &str,
+    fmt: F,
+) where
+    F: Fn(&CharacterData) -> String,
+{
+    if let Ok(conns) = connections.lock() {
+        for (_, session) in conns.iter() {
+            if let Some(ref char) = session.character {
+                if char.current_room_id == *room_id
+                    && char.name.to_lowercase() != exclude.to_lowercase()
+                    && char.position != CharacterPosition::Sleeping
+                {
+                    let msg = fmt(char);
+                    let _ = session.sender.send(format!("{}\n", msg));
+                }
+            }
+        }
+    }
+}
+
 /// Broadcast to everyone in a room
 pub fn broadcast_to_room(connections: &SharedConnections, room_id: &uuid::Uuid, message: &str) {
     debug!("broadcast_to_room: acquiring connections lock");

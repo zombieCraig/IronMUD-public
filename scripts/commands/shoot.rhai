@@ -99,8 +99,8 @@ fn find_shoot_target(room_id, keyword, attacker_name, zone, god_mode) {
         "error": ""
     };
 
-    // Check mobiles
-    let mobiles = get_mobiles_in_room(room_id);
+    // Check mobiles (filter invisible ones the shooter can't see)
+    let mobiles = filter_visible_mobiles(get_mobiles_in_room(room_id), attacker_name);
     let mobile = find_mobile_by_keyword(keyword, mobiles);
     if mobile != () {
         if mobile.flags.no_attack && !god_mode {

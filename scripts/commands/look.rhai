@@ -152,8 +152,8 @@ fn run_command(args, connection_id) {
             return;
         }
 
-        // Check for mobiles in the room
-        let mobiles = get_mobiles_in_room(room_id);
+        // Check for mobiles in the room (filter invisible ones the looker can't see)
+        let mobiles = filter_visible_mobiles(get_mobiles_in_room(room_id), char.name);
         let mobile = find_mobile_by_keyword(target, mobiles);
         if mobile != () {
             show_mobile_description(mobile, term_width, connection_id);

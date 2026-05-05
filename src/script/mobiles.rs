@@ -888,6 +888,40 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         rhai::Dynamic::from(rhai::Map::new())
     });
 
+    // filter_visible_mobiles(mobiles_array, viewer_name) -> Array of MobileData
+    // Drops mobiles with the Invisibility buff unless the viewer has the
+    // DetectInvisible buff or is admin. Used to hide invisible mobs from
+    // player-facing target resolution (kill/look/examine/etc.).
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "filter_visible_mobiles",
+        move |mobiles: rhai::Array, viewer_name: String| -> rhai::Array {
+            let viewer = cloned_db.get_character_data(&viewer_name).ok().flatten();
+            let viewer_detects = viewer
+                .as_ref()
+                .map(|v| {
+                    v.is_admin
+                        || v.active_buffs
+                            .iter()
+                            .any(|b| b.effect_type == crate::EffectType::DetectInvisible)
+                })
+                .unwrap_or(false);
+            mobiles
+                .into_iter()
+                .filter(|mob_dyn| {
+                    if let Some(mobile) = mob_dyn.clone().try_cast::<MobileData>() {
+                        let invisible = mobile
+                            .active_buffs
+                            .iter()
+                            .any(|b| b.effect_type == crate::EffectType::Invisibility);
+                        return !invisible || viewer_detects;
+                    }
+                    true
+                })
+                .collect()
+        },
+    );
+
     // find_mobile_by_keyword(keyword, mobiles_array) -> MobileData or ()
     // Supports N.keyword syntax (e.g., "2.guard" returns the 2nd matching guard)
     engine.register_fn("find_mobile_by_keyword", |keyword: String, mobiles: rhai::Array| {

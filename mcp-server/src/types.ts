@@ -209,6 +209,7 @@ export interface ItemFlags {
   invisible?: boolean;
   glow?: boolean;
   hum?: boolean;
+  magical?: boolean;
   no_sell?: boolean;
   unique?: boolean;
   plant_pot?: boolean;

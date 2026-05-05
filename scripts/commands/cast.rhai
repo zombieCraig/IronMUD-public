@@ -59,7 +59,7 @@ fn resolve_spell_id(input, char_name) {
 }
 
 fn find_mob_target(char, target_arg, room_id) {
-    let mobs = get_mobiles_in_room(room_id);
+    let mobs = filter_visible_mobiles(get_mobiles_in_room(room_id), char.name);
 
     // If no target arg and in combat, use primary target
     if target_arg == "" {

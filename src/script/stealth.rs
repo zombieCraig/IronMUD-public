@@ -17,7 +17,8 @@ pub const PERCEPTION_PIERCE_THRESHOLD: i32 = 5;
 /// - Plain visible characters always return true.
 /// - Hidden or sneaking PCs are invisible to mobs unless the mob is `aware`
 ///   or its `perception >= PERCEPTION_PIERCE_THRESHOLD`.
-/// - Invisibility-buffed PCs are invisible to mobs unless the mob is `aware`.
+/// - Invisibility-buffed PCs are invisible to mobs unless the mob is `aware`
+///   or carries a `DetectInvisible` buff (matches AFF_DETECT_INVIS parity).
 ///   Perception alone does not pierce magical invisibility.
 pub fn is_player_visible_to_mob(character: &CharacterData, mob: &MobileData) -> bool {
     let invisible = character
@@ -35,8 +36,10 @@ pub fn is_player_visible_to_mob(character: &CharacterData, mob: &MobileData) -> 
     }
 
     if invisible {
-        // Magical invisibility is only pierced by AWARE.
-        return false;
+        return mob
+            .active_buffs
+            .iter()
+            .any(|b| b.effect_type == EffectType::DetectInvisible);
     }
 
     // Hidden / sneaking only — high perception pierces.
@@ -132,6 +135,25 @@ mod visibility_tests {
             aware: true,
             ..Default::default()
         };
+        assert!(is_player_visible_to_mob(&c, &m));
+    }
+
+    #[test]
+    fn detect_invisible_buff_pierces_invisibility() {
+        let mut c = base_char();
+        c.active_buffs.push(ActiveBuff {
+            effect_type: EffectType::Invisibility,
+            magnitude: 0,
+            remaining_secs: 100,
+            source: "test".to_string(),
+        });
+        let mut m = base_mob();
+        m.active_buffs.push(ActiveBuff {
+            effect_type: EffectType::DetectInvisible,
+            magnitude: 0,
+            remaining_secs: -1,
+            source: "test".to_string(),
+        });
         assert!(is_player_visible_to_mob(&c, &m));
     }
 

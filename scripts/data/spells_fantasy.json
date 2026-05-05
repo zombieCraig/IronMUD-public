@@ -188,6 +188,21 @@
     "target_type": "self",
     "xp_award": 8
   },
+  "detect_magic": {
+    "id": "detect_magic",
+    "name": "Detect Magic",
+    "description": "Reveals the magical aura surrounding enchanted objects.",
+    "skill_required": 2,
+    "scroll_only": false,
+    "mana_cost": 15,
+    "cooldown_secs": 60,
+    "spell_type": "buff",
+    "buff_effect": "detect_magic",
+    "buff_magnitude": 1,
+    "buff_duration_secs": 300,
+    "target_type": "self",
+    "xp_award": 6
+  },
   "dispel_magic": {
     "id": "dispel_magic",
     "name": "Dispel Magic",

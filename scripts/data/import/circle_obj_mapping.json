@@ -9,7 +9,7 @@
     "NORENT":       { "action": "drop", "info": "no rent system" },
     "NODONATE":     { "action": "drop", "info": "no donation system" },
     "NOINVIS":      { "action": "warn", "message": "ITEM_NOINVIS (cannot be made invisible) not modeled." },
-    "MAGIC":        { "action": "warn", "message": "ITEM_MAGIC tag not modeled — add category 'magical' manually if needed." },
+    "MAGIC":        { "action": "set_flag", "ironmud_flag": "magical" },
     "BLESS":        { "action": "warn", "message": "ITEM_BLESS not modeled (no alignment/blessing system)." },
     "ANTI_GOOD":    { "action": "warn", "message": "alignment-restricted use not modeled (no alignment system)." },
     "ANTI_EVIL":    { "action": "warn", "message": "alignment-restricted use not modeled (no alignment system)." },

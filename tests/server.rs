@@ -4398,3 +4398,106 @@ fn test_record_mob_memory_caps_at_ten_and_decays() {
     // Sanity-check the duration is the expected wall-clock window.
     assert_eq!(MEMORY_DURATION_SECS, 1800);
 }
+
+#[test]
+fn test_aff_buffs_carry_from_prototype_to_spawn() {
+    use ironmud::db::Db;
+    use ironmud::types::{ActiveBuff, EffectType, MobileData};
+
+    let db_path = format!("test_aff_buffs_spawn_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        // Prototype mirroring a Circle import of a mob with AFF_INVISIBLE +
+        // AFF_DETECT_INVIS + AFF_DETECT_MAGIC: three permanent buffs.
+        let mut proto = MobileData::new("a spectral wisp".to_string());
+        proto.is_prototype = true;
+        proto.vnum = "test:wisp".to_string();
+        for et in [
+            EffectType::Invisibility,
+            EffectType::DetectInvisible,
+            EffectType::DetectMagic,
+        ] {
+            proto.active_buffs.push(ActiveBuff {
+                effect_type: et,
+                magnitude: 0,
+                remaining_secs: -1,
+                source: "innate".to_string(),
+            });
+        }
+        db.save_mobile_data(proto).expect("save proto");
+
+        let spawned = db
+            .spawn_mobile_from_prototype("test:wisp")
+            .expect("spawn ok")
+            .expect("spawn produced an instance");
+        for et in [
+            EffectType::Invisibility,
+            EffectType::DetectInvisible,
+            EffectType::DetectMagic,
+        ] {
+            assert!(
+                spawned.active_buffs.iter().any(|b| b.effect_type == et),
+                "spawn instance missing {et:?} buff",
+            );
+        }
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_detect_magic_effect_type_roundtrip() {
+    use ironmud::types::EffectType;
+
+    assert_eq!(
+        EffectType::from_str("detect_magic"),
+        Some(EffectType::DetectMagic)
+    );
+    assert_eq!(
+        EffectType::from_str("detectmagic"),
+        Some(EffectType::DetectMagic)
+    );
+    assert_eq!(EffectType::DetectMagic.to_display_string(), "detect_magic");
+    assert!(EffectType::all().contains(&"detect_magic"));
+}
+
+#[test]
+fn test_mob_with_detect_invisible_buff_sees_invisible_pc() {
+    use ironmud::script::is_player_visible_to_mob;
+    use ironmud::types::{ActiveBuff, EffectType, MobileData};
+
+    // Build a CharacterData with the Invisibility buff (use serde to avoid
+    // pulling all the construction boilerplate).
+    let mut char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+        "name": "thief",
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+    }))
+    .expect("build character");
+    char.active_buffs.push(ActiveBuff {
+        effect_type: EffectType::Invisibility,
+        magnitude: 0,
+        remaining_secs: 100,
+        source: "spell".to_string(),
+    });
+
+    // Mob without DetectInvisible/AWARE: blind to invisible PC.
+    let plain = MobileData::new("guard".to_string());
+    assert!(!is_player_visible_to_mob(&char, &plain));
+
+    // Mob with DetectInvisible buff: sees the PC.
+    let mut detector = MobileData::new("seer".to_string());
+    detector.active_buffs.push(ActiveBuff {
+        effect_type: EffectType::DetectInvisible,
+        magnitude: 0,
+        remaining_secs: -1,
+        source: "innate".to_string(),
+    });
+    assert!(is_player_visible_to_mob(&char, &detector));
+}

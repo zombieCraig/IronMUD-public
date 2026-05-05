@@ -29,9 +29,9 @@ fn run_command(args, connection_id) {
         item = find_item_by_keyword(args, room_items);
     }
 
-    // Then mobiles in room
+    // Then mobiles in room (filter invisible ones the examiner can't see)
     if item == () {
-        let mobiles = get_mobiles_in_room(char.current_room_id);
+        let mobiles = filter_visible_mobiles(get_mobiles_in_room(char.current_room_id), char.name);
         let mobile = find_mobile_by_keyword(args, mobiles);
         if mobile != () {
             examine_show_mobile(mobile, connection_id);
@@ -169,6 +169,9 @@ fn run_command(args, connection_id) {
     if item.flags.waterproof { flag_str += "waterproof "; }
     if item.flags.provides_warmth { flag_str += "radiating warmth "; }
     if item.flags.medical_tool { flag_str += "medical tool "; }
+    if item.flags.magical && (has_buff(char.name, "detect_magic") || char.is_admin) {
+        flag_str += "magical ";
+    }
     if flag_str != "" {
         output += "\nProperties: " + flag_str;
     }

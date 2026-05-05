@@ -2389,6 +2389,7 @@ fn apply_named_item_flag(flags: &mut ItemFlags, name: &str) -> bool {
         "invisible" => flags.invisible = true,
         "glow" => flags.glow = true,
         "hum" => flags.hum = true,
+        "magical" => flags.magical = true,
         "no_sell" => flags.no_sell = true,
         "unique" => flags.unique = true,
         "quest_item" => flags.quest_item = true,

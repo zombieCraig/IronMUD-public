@@ -11,6 +11,7 @@ const itemFlagsSchema = {
     invisible: { type: "boolean" },
     glow: { type: "boolean" },
     hum: { type: "boolean" },
+    magical: { type: "boolean", description: "Reveals (magical aura) cue when viewer has detect_magic" },
     no_sell: { type: "boolean" },
     unique: { type: "boolean" },
     quest_item: { type: "boolean" },

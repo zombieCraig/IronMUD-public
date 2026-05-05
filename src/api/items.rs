@@ -170,6 +170,8 @@ pub struct ItemFlagsRequest {
     #[serde(default)]
     pub hum: Option<bool>,
     #[serde(default)]
+    pub magical: Option<bool>,
+    #[serde(default)]
     pub no_sell: Option<bool>,
     #[serde(default)]
     pub unique: Option<bool>,
@@ -649,6 +651,7 @@ async fn create_item(
             invisible: req.flags.invisible.unwrap_or(false),
             glow: req.flags.glow.unwrap_or(false),
             hum: req.flags.hum.unwrap_or(false),
+            magical: req.flags.magical.unwrap_or(false),
             no_sell: req.flags.no_sell.unwrap_or(false),
             unique: req.flags.unique.unwrap_or(false),
             quest_item: req.flags.quest_item.unwrap_or(false),
@@ -890,6 +893,9 @@ async fn update_item(
         }
         if let Some(v) = flags.hum {
             item.flags.hum = v;
+        }
+        if let Some(v) = flags.magical {
+            item.flags.magical = v;
         }
         if let Some(v) = flags.no_sell {
             item.flags.no_sell = v;

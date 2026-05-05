@@ -956,6 +956,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 has_light,
                 is_blind,
                 viewer_can_detect_invis,
+                viewer_can_detect_magic,
                 viewer_is_admin,
             ) = {
                 let conns_guard = conns.lock().unwrap();
@@ -981,6 +982,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                                     .any(|b| b.effect_type == crate::EffectType::DetectInvisible)
                             })
                             .unwrap_or(false);
+                        let detect_magic = session
+                            .character
+                            .as_ref()
+                            .map(|c| {
+                                c.active_buffs
+                                    .iter()
+                                    .any(|b| b.effect_type == crate::EffectType::DetectMagic)
+                            })
+                            .unwrap_or(false);
                         let is_admin = session.character.as_ref().map(|c| c.is_admin).unwrap_or(false);
                         (
                             session.colors_enabled,
@@ -991,6 +1001,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                             light_source,
                             blindness,
                             detect_invis,
+                            detect_magic,
                             is_admin,
                         )
                     }
@@ -1191,9 +1202,22 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
             // Mobiles in room (green) - show generic if dark/blind
             if let Ok(mobiles) = cloned_db.get_mobiles_in_room(&room_uuid) {
-                if !mobiles.is_empty() {
+                let visible_mobiles: Vec<_> = mobiles
+                    .into_iter()
+                    .filter(|m| {
+                        let is_invisible = m
+                            .active_buffs
+                            .iter()
+                            .any(|b| b.effect_type == crate::EffectType::Invisibility);
+                        if !is_invisible {
+                            return true;
+                        }
+                        viewer_can_detect_invis || viewer_is_admin
+                    })
+                    .collect();
+                if !visible_mobiles.is_empty() {
                     output.push('\n');
-                    for mobile in mobiles {
+                    for mobile in visible_mobiles {
                         if effectively_dark || is_blind {
                             output.push_str(&color("Someone is here.", ANSI_GREEN));
                         } else {
@@ -1208,6 +1232,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                                 .any(|b| b.effect_type == crate::EffectType::DamageReduction)
                             {
                                 line.push_str(" (glowing with a faint white aura)");
+                            }
+                            if mobile
+                                .active_buffs
+                                .iter()
+                                .any(|b| b.effect_type == crate::EffectType::Invisibility)
+                            {
+                                line.push_str(" (invisible)");
                             }
                             output.push_str(&color(&line, ANSI_GREEN));
                         }
@@ -1231,6 +1262,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                             }
                             if item.flags.hum {
                                 display_desc.push_str(" (humming)");
+                            }
+                            if item.flags.magical && (viewer_can_detect_magic || viewer_is_admin) {
+                                display_desc.push_str(" (magical aura)");
                             }
                             output.push_str(&color(&display_desc, ANSI_YELLOW));
                         }

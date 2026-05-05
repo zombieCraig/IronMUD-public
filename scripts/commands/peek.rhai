@@ -32,8 +32,8 @@ fn run_command(args, connection_id) {
     let room_id = char.current_room_id;
     let target_keyword = args.to_lower();
 
-    // Find target mobile
-    let mobiles = get_mobiles_in_room(room_id);
+    // Find target mobile (filter invisible ones the peeker can't see)
+    let mobiles = filter_visible_mobiles(get_mobiles_in_room(room_id), char.name);
     let target_mobile = find_mobile_by_keyword(target_keyword, mobiles);
     let target_mobile_id = "";
     let target_name = "";

@@ -114,8 +114,8 @@ fn find_stabilize_target(char, target_arg, connection_id) {
         }
     }
 
-    // Try to find a mobile in the room
-    let mobiles = get_mobiles_in_room(char.current_room_id);
+    // Try to find a mobile in the room (filter invisible ones the medic can't see)
+    let mobiles = filter_visible_mobiles(get_mobiles_in_room(char.current_room_id), char.name);
     let mobile = find_mobile_by_keyword(target_arg, mobiles);
     if mobile != () {
         result.name = mobile.name;

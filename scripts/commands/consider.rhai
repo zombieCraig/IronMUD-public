@@ -17,8 +17,8 @@ fn run_command(args, connection_id) {
     let room_id = char.current_room_id;
     let keyword = args.to_lower();
 
-    // Find target mobile in the room
-    let mobiles = get_mobiles_in_room(room_id);
+    // Find target mobile in the room (filter invisible ones the looker can't see)
+    let mobiles = filter_visible_mobiles(get_mobiles_in_room(room_id), char.name);
     let mobile = find_mobile_by_keyword(keyword, mobiles);
 
     if mobile == () {

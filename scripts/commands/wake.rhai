@@ -60,8 +60,8 @@ fn run_command(args, connection_id) {
         }
     }
 
-    // Try a mobile in the current room.
-    let mobiles = get_mobiles_in_room(char.current_room_id);
+    // Try a mobile in the current room (filter invisible ones the waker can't see)
+    let mobiles = filter_visible_mobiles(get_mobiles_in_room(char.current_room_id), char.name);
     let mobile = find_mobile_by_keyword(target_name, mobiles);
     if mobile != () {
         let activity = get_mobile_activity(mobile.id);

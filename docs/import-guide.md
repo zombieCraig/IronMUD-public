@@ -859,6 +859,25 @@ ranked below.
   prototype keeps an empty Vec, and `db::spawn_mobile_from_prototype`
   clones it.
 
+- **`AFF_INVISIBLE` / `AFF_DETECT_INVIS` / `AFF_DETECT_MAGIC`** →
+  permanent buffs stamped onto the imported prototype's `active_buffs`,
+  riding the same path as `AFF_SANCTUARY`. `AFF_INVISIBLE` adds a
+  permanent `EffectType::Invisibility` buff: room listings filter the
+  mob out for viewers without `EffectType::DetectInvisible` (or admin
+  god-mode), the resolver `filter_visible_mobiles` drops the mob from
+  player-facing keyword lookups (kill/look/examine/cast/etc.), and
+  combat broadcasts use a viewer-aware `mob_display_name_for` so
+  bystanders without detect see "Something hits you for X damage!"
+  instead of the mob's name. Pierced viewers see the regular name plus
+  a "(invisible)" cue in look. `AFF_DETECT_INVIS` adds the matching
+  buff so the mob can target invisible PCs (extends
+  `is_player_visible_to_mob` alongside the existing AWARE pierce).
+  `AFF_DETECT_MAGIC` introduces a new `EffectType::DetectMagic` and a
+  player-castable spell of the same name (skill 2, mana 15, 5 min
+  duration); items with the new `ItemFlags.magical` bit get a
+  "(magical aura)" cue in room listings and a "magical" property tag
+  in examine when the viewer's buff is active. `ITEM_MAGIC` now
+  imports straight to `flags.magical` instead of warning.
 - **`MOB_HELPER`** → `MobileFlags.helper`. The helper system scans the
   current room each combat tick and pulls any standing, alive,
   non-engaged HELPER mobile into combat against a PC who is attacking
@@ -878,11 +897,8 @@ ranked below.
 - **`MOB_AGGR_EVIL` / `AGGR_GOOD` / `AGGR_NEUTRAL`** — alignment-conditional
   aggression. Blocked on the alignment system below; degrades gracefully
   to non-aggressive in the meantime.
-- **`AFF_INVISIBLE`** — permanent invisibility on a mob. Without a
-  detect-invisible system this is cosmetic; pair with a player-side
-  detect skill to land safely.
-- **`AFF_DETECT_INVIS` / `DETECT_MAGIC` / `DETECT_ALIGN`** — paired
-  with the corresponding sense systems that don't exist yet.
+- **`AFF_DETECT_ALIGN`** — paired with an alignment system that doesn't
+  exist yet.
 - **`AFF_INFRAVISION`** — no light-level / dark-vision system to gate.
 
 ### Mobile flags — Low priority
