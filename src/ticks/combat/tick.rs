@@ -908,10 +908,11 @@ fn process_character_attacks_mobile(
     let skill = get_skill_level_for_character(char, &weapon_skill);
 
     // Calculate base hit chance: 50 + skill*5 + attacker_dex - target_dex - target_ac
-    let attacker_dex_mod = (char.stat_dex as i32 - 10) / 2;
-    let target_dex_mod = (mobile.stat_dex as i32 - 10) / 2;
+    let (eq_hit_bonus, eq_dam_bonus, eq_dex_bonus) = sum_equipment_combat_bonuses(db, &char.name);
+    let (_, _, mob_eq_dex_bonus) = sum_equipment_combat_bonuses_mobile(db, &mobile.id);
+    let attacker_dex_mod = (char.stat_dex as i32 + eq_dex_bonus - 10) / 2;
+    let target_dex_mod = (mobile.stat_dex as i32 + mob_eq_dex_bonus - 10) / 2;
     let target_ac = mobile.armor_class;
-    let (eq_hit_bonus, eq_dam_bonus) = sum_equipment_combat_bonuses(db, &char.name);
 
     let mut base_hit_chance = (50 + skill * 5 + attacker_dex_mod - target_dex_mod - target_ac + eq_hit_bonus).clamp(5, 95);
 
@@ -1744,8 +1745,11 @@ fn process_mobile_attacks_player(
     }
 
     // Calculate hit chance (automatic hit if target was sleeping)
-    let attacker_dex_mod = (mobile.stat_dex as i32 - 10) / 2;
-    let target_dex_mod = (char.stat_dex as i32 - 10) / 2;
+    let (_, _, char_eq_dex_bonus) = sum_equipment_combat_bonuses(db, &char.name);
+    let (mob_eq_hit_bonus, mob_eq_dam_bonus, mob_eq_dex_bonus) =
+        sum_equipment_combat_bonuses_mobile(db, &mobile.id);
+    let attacker_dex_mod = (mobile.stat_dex as i32 + mob_eq_dex_bonus - 10) / 2;
+    let target_dex_mod = (char.stat_dex as i32 + char_eq_dex_bonus - 10) / 2;
     // Calculate player AC from armor + ArmorClassBoost buffs
     let ac_buff_bonus: i32 = char
         .active_buffs
@@ -1755,7 +1759,6 @@ fn process_mobile_attacks_player(
         .sum();
     let target_ac = ac_buff_bonus;
     let skill = mobile.hit_modifier; // Mobile skill level based on difficulty
-    let (mob_eq_hit_bonus, mob_eq_dam_bonus) = sum_equipment_combat_bonuses_mobile(db, &mobile.id);
 
     let mut hit_chance = (50 + skill * 5 + attacker_dex_mod - target_dex_mod - target_ac + mob_eq_hit_bonus).clamp(5, 95);
 
@@ -2146,33 +2149,37 @@ pub fn parse_damage_dice(dice_str: &str) -> (i32, i32, i32) {
     (count, sides, 0)
 }
 
-/// Sum APPLY_HITROLL / APPLY_DAMROLL bonuses across all of a character's
-/// equipped items. CircleMUD parity: bonuses apply while worn in any slot,
-/// not just a wielded weapon.
-fn sum_equipment_combat_bonuses(db: &db::Db, name: &str) -> (i32, i32) {
+/// Sum APPLY_HITROLL / APPLY_DAMROLL / APPLY_DEX bonuses across all of a
+/// character's equipped items. CircleMUD parity: bonuses apply while worn
+/// in any slot, not just a wielded weapon. Returns (hit, dam, dex).
+fn sum_equipment_combat_bonuses(db: &db::Db, name: &str) -> (i32, i32, i32) {
     let mut hit = 0;
     let mut dam = 0;
+    let mut dex = 0;
     if let Ok(items) = db.get_equipped_items(name) {
         for item in &items {
             hit += item.hit_bonus;
             dam += item.damage_bonus;
+            dex += item.stat_dex;
         }
     }
-    (hit, dam)
+    (hit, dam, dex)
 }
 
-/// Mob counterpart to `sum_equipment_combat_bonuses` — sums hit/damage
-/// bonuses across all items equipped on a mobile.
-fn sum_equipment_combat_bonuses_mobile(db: &db::Db, mobile_id: &uuid::Uuid) -> (i32, i32) {
+/// Mob counterpart — sums hit/damage/dex bonuses across all items equipped
+/// on a mobile.
+fn sum_equipment_combat_bonuses_mobile(db: &db::Db, mobile_id: &uuid::Uuid) -> (i32, i32, i32) {
     let mut hit = 0;
     let mut dam = 0;
+    let mut dex = 0;
     if let Ok(items) = db.get_items_equipped_on_mobile(mobile_id) {
         for item in &items {
             hit += item.hit_bonus;
             dam += item.damage_bonus;
+            dex += item.stat_dex;
         }
     }
-    (hit, dam)
+    (hit, dam, dex)
 }
 
 /// Get weapon info for a character (skill, dice_count, dice_sides, damage_bonus)
