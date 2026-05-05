@@ -671,6 +671,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           simulation: args?.simulation as any | undefined,
           world_max_count: args?.world_max_count as number | undefined,
           faction: args?.faction as string | undefined,
+          combat_spells: args?.combat_spells as string[] | undefined,
+          combat_spell_chance: args?.combat_spell_chance as number | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(mobile, null, 2) }],
@@ -689,7 +691,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           "shop_extra_types", "shop_extra_categories", "shop_deny_types", "shop_deny_categories",
           "shop_stock", "shop_preset_vnum",
           "daily_routine", "simulation", "remove_simulation", "world_max_count",
-          "faction",
+          "faction", "combat_spells", "combat_spell_chance",
         ];
         for (const field of mobileFields) {
           if (args?.[field] !== undefined) {

@@ -7,7 +7,7 @@
 void assign_mobiles(void) {
   ASSIGNMOB(9001, cityguard);     /* maps to MobileFlags.guard */
   ASSIGNMOB(9002, puff);           /* OnIdle @say_random with extracted quotes */
-  ASSIGNMOB(9003, magic_user);     /* warn-only (no analog) */
+  ASSIGNMOB(9003, magic_user);     /* sets combat_spells: random offensive spells in combat */
   ASSIGNMOB(99999, cityguard);     /* orphan: vnum not in fixture */
   // ASSIGNMOB(8888, snake);       /* commented-out, must be ignored */
   /* ASSIGNMOB(7777, snake);       block-commented, must be ignored */

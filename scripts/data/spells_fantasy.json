@@ -33,6 +33,23 @@
     "requires_combat": false,
     "xp_award": 8
   },
+  "frost_bolt": {
+    "id": "frost_bolt",
+    "name": "Frost Bolt",
+    "description": "Hurls a shard of biting ice at your enemy.",
+    "skill_required": 2,
+    "scroll_only": false,
+    "mana_cost": 25,
+    "cooldown_secs": 5,
+    "spell_type": "damage",
+    "damage_base": 12,
+    "damage_per_skill": 4,
+    "damage_int_scaling": 3,
+    "damage_type": "cold",
+    "target_type": "enemy",
+    "requires_combat": false,
+    "xp_award": 8
+  },
   "lightning_bolt": {
     "id": "lightning_bolt",
     "name": "Lightning Bolt",

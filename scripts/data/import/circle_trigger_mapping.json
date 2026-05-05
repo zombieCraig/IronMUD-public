@@ -51,7 +51,7 @@
 
     "postmaster":   { "action": "warn", "message": "postmaster (mail system) has no IronMUD analog" },
     "cryogenicist": { "action": "warn", "message": "cryogenicist (long-term rent storage) has no IronMUD analog" },
-    "magic_user":   { "action": "warn", "message": "magic_user casts random offensive spells in combat — replace with a custom OnAttack trigger" },
+    "magic_user":   { "action": "set_mob_combat_spells", "spells": ["magic_missile", "frost_bolt", "firebolt", "lightning_bolt"], "chance": 50 },
     "guild":        { "action": "warn", "message": "guild (class-specific practice) — replace with mobile dialogue" },
     "guild_guard":  { "action": "warn", "message": "guild_guard blocks wrong-class players from entering — no IronMUD analog" },
     "pet_shops":    { "action": "warn", "message": "pet_shops purchase needs a custom dialogue + spawn rules" },

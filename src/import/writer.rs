@@ -423,6 +423,11 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
                         mobile.triggers.push(t.clone());
                         true
                     }
+                    TriggerMutation::SetMobCombatSpells { spells, chance } => {
+                        mobile.combat_spells = spells.clone();
+                        mobile.combat_spell_chance = *chance;
+                        true
+                    }
                     _ => false,
                 };
                 if changed {

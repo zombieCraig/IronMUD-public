@@ -106,6 +106,12 @@ pub struct CreateMobileRequest {
     /// Helper-system faction tag. None/empty falls back to Circle-stock semantics.
     #[serde(default)]
     pub faction: Option<String>,
+    /// Spell IDs the mob may cast in combat (CircleMUD `magic_user` analog).
+    #[serde(default)]
+    pub combat_spells: Option<Vec<String>>,
+    /// Per-round percent chance (0-100) to cast from `combat_spells`. Default 50.
+    #[serde(default)]
+    pub combat_spell_chance: Option<u8>,
 }
 
 #[derive(Deserialize)]
@@ -333,6 +339,12 @@ pub struct UpdateMobileRequest {
     /// Helper-system faction tag. Empty string clears to None.
     #[serde(default)]
     pub faction: Option<String>,
+    /// Replace combat spell list. Empty vec clears.
+    #[serde(default)]
+    pub combat_spells: Option<Vec<String>>,
+    /// Per-round percent chance (0-100). Out-of-range values are clamped.
+    #[serde(default)]
+    pub combat_spell_chance: Option<u8>,
 }
 
 #[derive(Deserialize)]
@@ -741,6 +753,8 @@ async fn create_mobile(
         healing_free: req.healing_free.unwrap_or(false),
         healing_cost_multiplier: req.healing_cost_multiplier.unwrap_or(100),
         triggers: Vec::new(),
+        combat_spells: req.combat_spells.clone().unwrap_or_default(),
+        combat_spell_chance: req.combat_spell_chance.unwrap_or(50).min(100),
         transport_route: None,
         property_templates: Vec::new(),
         leasing_area_id: None,
@@ -947,6 +961,12 @@ async fn update_mobile(
     }
     if let Some(faction) = req.faction {
         mobile.faction = if faction.is_empty() { None } else { Some(faction) };
+    }
+    if let Some(combat_spells) = req.combat_spells {
+        mobile.combat_spells = combat_spells;
+    }
+    if let Some(chance) = req.combat_spell_chance {
+        mobile.combat_spell_chance = chance.min(100);
     }
     // Healer config
     if let Some(healer_type) = req.healer_type {

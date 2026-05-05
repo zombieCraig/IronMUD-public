@@ -144,6 +144,7 @@ pub enum CompletionType {
     SpellName,
     SummonTarget,
     ImmigrationSubcommand,
+    CombatSpellsAction,
 }
 
 /// Context for command argument completion
@@ -314,6 +315,8 @@ pub const MEDIT_SUBCOMMANDS: &[&str] = &[
     "gold",
     "perception",
     "simulation",
+    "combat_spells",
+    "spells",
 ];
 
 /// Mobile transport route actions
@@ -414,6 +417,9 @@ pub const VENDING_SUBCOMMANDS: &[&str] = &["stock", "sellrate"];
 pub const TRIGGER_ACTIONS: &[&str] = &[
     "list", "add", "remove", "enable", "disable", "chance", "interval", "test", "view",
 ];
+
+/// Combat spells subcommand actions (medit <id> combat_spells <action>)
+pub const COMBAT_SPELLS_ACTIONS: &[&str] = &["add", "remove", "clear", "chance"];
 
 /// Trigger types
 pub const TRIGGER_TYPES: &[&str] = &["greet", "attack", "death", "say", "idle", "always", "flee"];
@@ -1016,6 +1022,7 @@ pub fn complete(
                             transport_vnums,
                             property_template_vnums,
                             shop_preset_vnums,
+                            spell_names,
                         );
                     }
                     // Default mobile vnum completion for mspawn, mdelete
@@ -1183,6 +1190,7 @@ fn complete_medit(
     transport_vnums: &[String],
     property_template_vnums: &[String],
     shop_preset_vnums: &[String],
+    spell_names: &[String],
 ) -> CompletionResult {
     let partial = get_partial(words, completing_word);
 
@@ -1362,6 +1370,36 @@ fn complete_medit(
         // medit <vnum> routine add <hour> <partial_activity> - complete activity state
         6 if completing_word && words[2].to_lowercase() == "routine" && words[3].to_lowercase() == "add" => {
             filter_static(ACTIVITY_STATES, &partial, CompletionType::ActivityState)
+        }
+        // medit <vnum> combat_spells - show all action keywords
+        3 if !completing_word
+            && (words[2].to_lowercase() == "combat_spells" || words[2].to_lowercase() == "spells") =>
+        {
+            all_static(COMBAT_SPELLS_ACTIONS, CompletionType::CombatSpellsAction)
+        }
+        // medit <vnum> combat_spells <partial_action>
+        4 if completing_word
+            && (words[2].to_lowercase() == "combat_spells" || words[2].to_lowercase() == "spells") =>
+        {
+            filter_static(COMBAT_SPELLS_ACTIONS, &partial, CompletionType::CombatSpellsAction)
+        }
+        // medit <vnum> combat_spells add | remove - show all spell names
+        4 if !completing_word
+            && (words[2].to_lowercase() == "combat_spells" || words[2].to_lowercase() == "spells")
+            && (words[3].to_lowercase() == "add"
+                || words[3].to_lowercase() == "remove"
+                || words[3].to_lowercase() == "rm") =>
+        {
+            all_dynamic(spell_names, CompletionType::SpellName)
+        }
+        // medit <vnum> combat_spells add | remove <partial_spell>
+        5 if completing_word
+            && (words[2].to_lowercase() == "combat_spells" || words[2].to_lowercase() == "spells")
+            && (words[3].to_lowercase() == "add"
+                || words[3].to_lowercase() == "remove"
+                || words[3].to_lowercase() == "rm") =>
+        {
+            filter_dynamic(spell_names, &partial, CompletionType::SpellName)
         }
         _ => CompletionResult::empty(),
     }

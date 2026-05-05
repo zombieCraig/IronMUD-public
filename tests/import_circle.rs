@@ -1097,19 +1097,19 @@ fn applies_specprocs_to_tmp_db() {
         };
         let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
 
-        // 5 overlays expected (4 resolvable bindings produce flags/triggers,
-        // king_welmar warns rather than overlays, magic_user warns,
-        // 99999 orphan drops). cityguard → guard flag, puff → trigger,
-        // bank → item trigger, dump → room trigger.
+        // 5 overlays expected: cityguard → guard flag, puff → mob trigger,
+        // bank → item trigger, dump → room trigger, magic_user → combat
+        // spell list. king_welmar warns rather than overlays; 99999 orphan
+        // drops.
         assert_eq!(
             plan.trigger_overlays.len(),
-            4,
-            "cityguard, puff, bank, dump → 4 overlays; magic_user/king_welmar warn-only; 99999 orphan dropped"
+            5,
+            "cityguard, puff, bank, dump, magic_user → 5 overlays; king_welmar warn-only; 99999 orphan dropped"
         );
 
         // Apply.
         let summary = writer::apply(&db, &plan, &warnings).expect("apply");
-        assert_eq!(summary.applied_triggers, 4);
+        assert_eq!(summary.applied_triggers, 5);
 
         // Verify cityguard set the guard flag on mob 9001.
         let cityguard = db
@@ -1155,12 +1155,24 @@ fn applies_specprocs_to_tmp_db() {
             .find(|t| matches!(t.trigger_type, TriggerType::Periodic))
             .expect("dump Periodic trigger");
         assert_eq!(dump_trig.script_name, "@room_message");
+
+        // Verify magic_user set a combat-spell rotation on mob 9003.
+        let mage = db
+            .get_mobile_by_vnum("test_fixture_village_9003")
+            .unwrap()
+            .expect("magic_user mob");
+        assert!(
+            !mage.combat_spells.is_empty(),
+            "magic_user → combat_spells populated"
+        );
+        assert!(mage.combat_spells.contains(&"magic_missile".to_string()));
+        assert!(mage.combat_spell_chance > 0 && mage.combat_spell_chance <= 100);
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
-fn magic_user_warns_dedup_with_count() {
+fn magic_user_imports_combat_spell_list() {
     let (ir, _) = CircleEngine.parse(&fixture_root()).expect("parse");
     let opts = MappingOptions {
         circle: mapping::CircleMappingTable::load_default(),
@@ -1169,17 +1181,29 @@ fn magic_user_warns_dedup_with_count() {
         existing_mobile_vnums: Vec::new(),
         existing_item_vnums: Vec::new(),
     };
-    let (_plan, warnings) = mapping::ir_to_plan(&ir, &opts);
+    let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
+
+    // No more warn-only collapse for magic_user — it now translates to a
+    // SetMobCombatSpells overlay so imported mobs cast in combat.
     let magic_warns: Vec<_> = warnings
         .iter()
         .filter(|w| w.message.contains("magic_user"))
         .collect();
-    // Even though there's only one magic_user binding in the fixture, the
-    // dedup pipeline still emits exactly one warn per specproc.
+    assert!(
+        magic_warns.is_empty(),
+        "magic_user no longer warns: {:?}",
+        magic_warns
+    );
+
+    let magic_overlays: Vec<_> = plan
+        .trigger_overlays
+        .iter()
+        .filter(|ov| matches!(ov.mutation, ironmud::import::TriggerMutation::SetMobCombatSpells { .. }))
+        .collect();
     assert_eq!(
-        magic_warns.len(),
+        magic_overlays.len(),
         1,
-        "magic_user collapses to a single dedup warn line"
+        "exactly one SetMobCombatSpells overlay for the fixture's magic_user binding"
     );
 }
 

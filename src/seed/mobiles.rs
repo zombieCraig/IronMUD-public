@@ -61,6 +61,8 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
         healing_free: false,
         healing_cost_multiplier: 100,
         triggers: Vec::new(),
+        combat_spells: Vec::new(),
+        combat_spell_chance: 50,
         transport_route: None,
         property_templates: Vec::new(),
         leasing_area_id: None,

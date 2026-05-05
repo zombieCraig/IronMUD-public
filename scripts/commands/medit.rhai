@@ -280,11 +280,12 @@ fn dispatch_role_subcommand(mobile, uuid, subcommand, parts, char, connection_id
     return false;
 }
 
-// Dispatch group 6: Advanced features (trigger, transport, leasing)
+// Dispatch group 6: Advanced features (trigger, transport, leasing, combat_spells)
 fn dispatch_advanced_subcommand(mobile, uuid, subcommand, parts, connection_id) {
     if subcommand == "trigger" { handle_trigger_subcommand(mobile, uuid, parts, connection_id); return true; }
     if subcommand == "transport" { handle_transport_subcommand(mobile, uuid, parts, connection_id); return true; }
     if subcommand == "leasing" { handle_leasing_subcommand(mobile, uuid, parts, connection_id); return true; }
+    if subcommand == "combat_spells" || subcommand == "spells" { handle_combat_spells_subcommand(mobile, uuid, parts, connection_id); return true; }
     return false;
 }
 
@@ -3435,3 +3436,99 @@ fn handle_pregnancy_set(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Failed. Mobile must have social state.");
     }
 }
+
+// === Combat spells (CircleMUD `magic_user` analog) ===
+
+fn show_combat_spells(mobile, connection_id) {
+    let spells = mobile.combat_spells;
+    let chance = mobile.combat_spell_chance;
+    if spells.len() == 0 {
+        send_client_message(connection_id, "Combat spells: (none) - mob fights melee-only.");
+    } else {
+        let line = "Combat spells (" + chance + "% per round): ";
+        let first = true;
+        for s in spells {
+            if first { line += s; first = false; }
+            else { line += ", " + s; }
+        }
+        send_client_message(connection_id, line);
+    }
+    send_client_message(connection_id, "Usage: medit <id> combat_spells [add|remove|clear|chance] [<spell_id>|<0-100>]");
+}
+
+fn handle_combat_spells_subcommand(mobile, mobile_id, parts, connection_id) {
+    // medit <id> combat_spells                       - show
+    // medit <id> combat_spells add <spell_id>
+    // medit <id> combat_spells remove <spell_id>
+    // medit <id> combat_spells clear
+    // medit <id> combat_spells chance <0-100>
+    if parts.len() < 3 {
+        show_combat_spells(mobile, connection_id);
+        return;
+    }
+    let action = parts[2].to_lower();
+
+    if action == "add" {
+        if parts.len() < 4 {
+            send_client_message(connection_id, "Usage: medit <id> combat_spells add <spell_id>");
+            return;
+        }
+        let spell_id = parts[3].to_lower();
+        let info = get_spell_info(spell_id);
+        if info.len() == 0 {
+            send_client_message(connection_id, "Unknown spell '" + spell_id + "'.");
+            return;
+        }
+        if add_mobile_combat_spell(mobile_id, spell_id) {
+            send_client_message(connection_id, "Added " + spell_id + " to combat spell list.");
+        } else {
+            send_client_message(connection_id, "Already on the list (or save failed).");
+        }
+        return;
+    }
+
+    if action == "remove" || action == "rm" {
+        if parts.len() < 4 {
+            send_client_message(connection_id, "Usage: medit <id> combat_spells remove <spell_id>");
+            return;
+        }
+        let spell_id = parts[3].to_lower();
+        if remove_mobile_combat_spell(mobile_id, spell_id) {
+            send_client_message(connection_id, "Removed " + spell_id + " from combat spell list.");
+        } else {
+            send_client_message(connection_id, spell_id + " was not on the list.");
+        }
+        return;
+    }
+
+    if action == "clear" {
+        if clear_mobile_combat_spells(mobile_id) {
+            send_client_message(connection_id, "Combat spell list cleared.");
+        } else {
+            send_client_message(connection_id, "Save failed.");
+        }
+        return;
+    }
+
+    if action == "chance" {
+        if parts.len() < 4 {
+            send_client_message(connection_id, "Usage: medit <id> combat_spells chance <0-100>");
+            return;
+        }
+        let chance = parse_int(parts[3]);
+        if chance == () {
+            send_client_message(connection_id, "Chance must be a number 0-100.");
+            return;
+        }
+        if set_mobile_combat_spell_chance(mobile_id, chance) {
+            let clamped = if chance < 0 { 0 } else if chance > 100 { 100 } else { chance };
+            send_client_message(connection_id, "Combat spell chance set to " + clamped + "%.");
+        } else {
+            send_client_message(connection_id, "Save failed.");
+        }
+        return;
+    }
+
+    send_client_message(connection_id, "Usage: medit <id> combat_spells [add|remove|clear|chance] [<spell_id>|<0-100>]");
+}
+

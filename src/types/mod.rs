@@ -3319,6 +3319,16 @@ pub struct MobileData {
     #[serde(default)]
     pub triggers: Vec<MobileTrigger>,
 
+    /// Spell IDs the mobile may cast in combat. When non-empty, each combat
+    /// round rolls `combat_spell_chance` to cast a random spell from the list
+    /// instead of melee. CircleMUD `magic_user` specproc analog.
+    #[serde(default)]
+    pub combat_spells: Vec<String>,
+    /// Per-round percent chance (0-100) to cast from `combat_spells` rather
+    /// than swinging. Default 50; ignored when `combat_spells` is empty.
+    #[serde(default = "default_combat_spell_chance")]
+    pub combat_spell_chance: u8,
+
     // Transport route (for NPCs that travel)
     #[serde(default)]
     pub transport_route: Option<TransportRoute>,
@@ -3462,6 +3472,10 @@ fn default_vending_sell_rate() -> i32 {
     150
 }
 
+fn default_combat_spell_chance() -> u8 {
+    50
+}
+
 impl MobileData {
     pub fn new(name: String) -> Self {
         MobileData {
@@ -3508,6 +3522,8 @@ impl MobileData {
             healing_free: false,
             healing_cost_multiplier: 100,
             triggers: Vec::new(),
+            combat_spells: Vec::new(),
+            combat_spell_chance: default_combat_spell_chance(),
             transport_route: None,
             property_templates: Vec::new(),
             leasing_area_id: None,

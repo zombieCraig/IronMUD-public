@@ -1643,7 +1643,34 @@ fn process_mobile_combat_round(
 
             let mobile_name = mobile.name.clone();
             debug!("Mobile {} attacking player {}", mobile_name, player_name);
-            process_mobile_attacks_player(db, connections, &mut mobile, &player_name, &room_id, state)?;
+
+            // CircleMUD `magic_user` analog: if the mob has a combat_spells list,
+            // roll combat_spell_chance to cast a random spell instead of swinging.
+            // Cast happens after the close-the-distance branch above, so a mob still
+            // spends its round closing if it isn't yet at melee range.
+            let mut cast_this_round = false;
+            if !mobile.combat_spells.is_empty() && mobile.combat_spell_chance > 0 {
+                use rand::Rng;
+                use rand::seq::SliceRandom;
+                let mut rng = rand::thread_rng();
+                let roll = rng.gen_range(1..=100);
+                if roll <= mobile.combat_spell_chance as i32 {
+                    if let Some(spell_id) = mobile.combat_spells.choose(&mut rng).cloned() {
+                        cast_this_round = mob_cast_spell_at_player(
+                            db,
+                            connections,
+                            &mut mobile,
+                            &player_name,
+                            &room_id,
+                            &spell_id,
+                            state,
+                        )?;
+                    }
+                }
+            }
+            if !cast_this_round {
+                process_mobile_attacks_player(db, connections, &mut mobile, &player_name, &room_id, state)?;
+            }
             debug!("Mobile {} attack complete, saving", mobile_name);
             db.save_mobile_data(mobile)?;
             debug!("Mobile {} save complete", mobile_name);
@@ -2099,6 +2126,219 @@ fn process_mobile_attacks_player(
     }
 
     Ok(())
+}
+
+/// CircleMUD `magic_user` analog. Resolve `spell_id` from the loaded spell
+/// definitions and apply its effect to `player_name`. Returns `Ok(true)` when
+/// a spell was actually cast (caller should skip the melee swing this round);
+/// `Ok(false)` when the spell is unknown or the target left the room (caller
+/// falls through to melee).
+fn mob_cast_spell_at_player(
+    db: &db::Db,
+    connections: &SharedConnections,
+    mobile: &mut MobileData,
+    player_name: &str,
+    room_id: &uuid::Uuid,
+    spell_id: &str,
+    state: &SharedState,
+) -> Result<bool> {
+    use ironmud::ActiveBuff;
+
+    // Snapshot the spell definition so we don't hold the World lock past here.
+    let spell = {
+        let world = state.lock().unwrap();
+        match world.spell_definitions.get(spell_id) {
+            Some(s) => s.clone(),
+            None => return Ok(false),
+        }
+    };
+
+    let mut char = match db.get_character_data(player_name)? {
+        Some(c) => c,
+        None => return Ok(false),
+    };
+    if char.current_room_id != *room_id {
+        mobile.combat.in_combat = false;
+        mobile.combat.targets.clear();
+        return Ok(false);
+    }
+
+    // Telegraph the cast (Circle's specprocs always announce the chant first).
+    send_message_to_character(
+        connections,
+        player_name,
+        &format!("\x1b[1;35m{} chants softly, weaving a spell at you!\x1b[0m", mobile.name),
+    );
+    broadcast_to_room_except_awake(
+        connections,
+        room_id,
+        &format!("{} chants softly, weaving a spell at {}!", mobile.name, char.name),
+        player_name,
+    );
+
+    // Reactive combat (mirror of process_mobile_attacks_player).
+    if !char.combat.in_combat || !char.combat.targets.iter().any(|t| t.target_id == mobile.id) {
+        char.combat.in_combat = true;
+        if !char.combat.targets.iter().any(|t| t.target_id == mobile.id) {
+            char.combat.targets.push(CombatTarget {
+                target_type: CombatTargetType::Mobile,
+                target_id: mobile.id,
+            });
+        }
+        db.save_character_data(char.clone())?;
+        sync_character_to_session(connections, &char);
+    }
+
+    match spell.spell_type.as_str() {
+        "damage" => {
+            // Damage formula mirrors cast.rhai's player-side roll, with mob.level
+            // standing in for the player's magic skill rank.
+            let int_bonus = (mobile.stat_int as i32 - 10).max(0);
+            let mut damage =
+                spell.damage_base + spell.damage_per_skill * mobile.level + spell.damage_int_scaling * int_bonus;
+
+            // Map damage_type string onto DamageType for resistance + flavor.
+            let damage_type = ironmud::DamageType::from_str(&spell.damage_type).unwrap_or(ironmud::DamageType::Arcane);
+
+            // Apply racial resistance.
+            {
+                let race_id = char.race.to_lowercase();
+                let dmg_type_str = damage_type.to_display_string();
+                let world = state.lock().unwrap();
+                if let Some(race) = world.race_definitions.get(&race_id) {
+                    if let Some(&resist_pct) = race.resistances.get(dmg_type_str) {
+                        damage = (damage * (100 - resist_pct)) / 100;
+                        if damage < 1 {
+                            damage = 1;
+                        }
+                    }
+                }
+            }
+
+            // DR buffs.
+            damage = ironmud::script::apply_damage_reduction(damage, &char.active_buffs);
+            if damage < 1 {
+                damage = 1;
+            }
+
+            char.hp -= damage;
+
+            // Magical sleep breaks on any damage taken.
+            let player_was_sleeping = char.active_buffs.iter().any(|b| b.effect_type == EffectType::Sleep);
+            if player_was_sleeping {
+                char.active_buffs.retain(|b| b.effect_type != EffectType::Sleep);
+            }
+
+            db.save_character_data(char.clone())?;
+            if player_was_sleeping {
+                send_message_to_character(connections, &char.name, "You jolt awake!");
+            }
+            sync_character_to_session(connections, &char);
+
+            let dtype_lower = spell.damage_type.to_lowercase();
+            send_message_to_character(
+                connections,
+                player_name,
+                &format!(
+                    "\x1b[1;31m{}'s {} strikes you for {} damage!\x1b[0m",
+                    mobile.name, spell.name, damage
+                ),
+            );
+            broadcast_to_room_except_awake(
+                connections,
+                room_id,
+                &format!(
+                    "{}'s {} strikes {} with {} energy!",
+                    mobile.name, spell.name, char.name, dtype_lower
+                ),
+                player_name,
+            );
+
+            // Death handling mirrors process_mobile_attacks_player.
+            if char.hp <= 0 {
+                if char.is_unconscious {
+                    process_player_death(db, connections, &mut char, room_id)?;
+                    mobile
+                        .combat
+                        .targets
+                        .retain(|t| t.target_type != CombatTargetType::Player);
+                    if mobile.combat.targets.is_empty() {
+                        mobile.combat.in_combat = false;
+                    }
+                } else {
+                    char.is_unconscious = true;
+                    char.bleedout_rounds_remaining = 5;
+                    let char_name_for_msg = char.name.clone();
+                    db.save_character_data(char.clone())?;
+                    sync_character_to_session(connections, &char);
+                    send_message_to_character(connections, player_name, "You collapse, unconscious!");
+                    broadcast_to_room_except_awake(
+                        connections,
+                        room_id,
+                        &format!("{} collapses, unconscious!", char_name_for_msg),
+                        player_name,
+                    );
+                    if mobile.flags.aggressive {
+                        if let Ok(Some(mut char)) = db.get_character_data(player_name) {
+                            process_player_death(db, connections, &mut char, room_id)?;
+                            mobile
+                                .combat
+                                .targets
+                                .retain(|t| t.target_type != CombatTargetType::Player);
+                            if mobile.combat.targets.is_empty() {
+                                mobile.combat.in_combat = false;
+                            }
+                        }
+                    }
+                }
+            }
+            Ok(true)
+        }
+        "debuff" => {
+            // Stamp an ActiveBuff onto the player for the spell's effect.
+            let effect_type = match EffectType::from_str(&spell.buff_effect) {
+                Some(e) => e,
+                None => return Ok(false),
+            };
+
+            let duration = if spell.buff_duration_secs > 0 {
+                spell.buff_duration_secs
+            } else {
+                60
+            };
+
+            // Replace any existing buff of the same type from this caster.
+            char.active_buffs
+                .retain(|b| b.effect_type != effect_type || b.source != mobile.name);
+            char.active_buffs.push(ActiveBuff {
+                effect_type,
+                magnitude: spell.buff_magnitude,
+                remaining_secs: duration,
+                source: mobile.name.clone(),
+            });
+            db.save_character_data(char.clone())?;
+            sync_character_to_session(connections, &char);
+
+            send_message_to_character(
+                connections,
+                player_name,
+                &format!(
+                    "\x1b[1;35m{}'s {} washes over you!\x1b[0m",
+                    mobile.name, spell.name
+                ),
+            );
+            broadcast_to_room_except_awake(
+                connections,
+                room_id,
+                &format!("{}'s {} washes over {}!", mobile.name, spell.name, char.name),
+                player_name,
+            );
+            Ok(true)
+        }
+        // Heal/buff/utility/etc. spells aren't meaningful as offensive picks.
+        // Falling through to melee is the safe default.
+        _ => Ok(false),
+    }
 }
 
 /// Roll dice (e.g., 2d6)

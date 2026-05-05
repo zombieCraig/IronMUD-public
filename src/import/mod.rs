@@ -413,6 +413,9 @@ pub enum TriggerMutation {
     AddItemTrigger(crate::types::ItemTrigger),
     /// Append a `RoomTrigger` to the room's `triggers` Vec.
     AddRoomTrigger(crate::types::RoomTrigger),
+    /// Replace the mob's combat-spell list and per-round cast chance.
+    /// CircleMUD `magic_user` specproc analog.
+    SetMobCombatSpells { spells: Vec<String>, chance: u8 },
 }
 
 /// Catch-all for engine features we parsed but won't try to translate in

@@ -182,6 +182,15 @@ pub enum TriggerAction {
         #[serde(default)]
         fallback_args: Vec<String>,
     },
+    /// Replace the mob's combat-spell list (and per-round cast chance) so
+    /// the combat tick rolls a random spell each round instead of swinging.
+    /// CircleMUD `magic_user` specproc analog. Rejected for OBJ/ROOM
+    /// bindings (warn instead).
+    SetMobCombatSpells {
+        spells: Vec<String>,
+        #[serde(default)]
+        chance: Option<u8>,
+    },
     /// Surface as a Warn so a builder can re-author the behavior in Rhai.
     /// Multiple bindings of the same specproc collapse to one dedup line.
     Warn { message: String },
@@ -2056,6 +2065,36 @@ fn map_triggers(
                         &trig.source,
                     ));
                     None
+                }
+            }
+            Some(TriggerAction::SetMobCombatSpells { spells, chance }) => {
+                if trig.attach_type != AttachType::Mob {
+                    warnings.push(Warning::new(
+                        WarningKind::UnsupportedFlag,
+                        Severity::Warn,
+                        trig.source.clone(),
+                        format!(
+                            "specproc `{}` mapping uses set_mob_combat_spells but binding attaches to {:?}; ignored",
+                            trig.specproc_name, trig.attach_type
+                        ),
+                    ));
+                    None
+                } else if spells.is_empty() {
+                    warnings.push(Warning::new(
+                        WarningKind::UnsupportedFlag,
+                        Severity::Warn,
+                        trig.source.clone(),
+                        format!(
+                            "specproc `{}` mapping has empty `spells` list; ignored",
+                            trig.specproc_name
+                        ),
+                    ));
+                    None
+                } else {
+                    Some(TriggerMutation::SetMobCombatSpells {
+                        spells: spells.clone(),
+                        chance: chance.unwrap_or(50).min(100),
+                    })
                 }
             }
             Some(TriggerAction::Warn { message }) => {

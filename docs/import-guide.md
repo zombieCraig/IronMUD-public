@@ -464,7 +464,7 @@ spec parsing is never a hard error.
 | `gen_board` | 4 items | OnExamine `@message` placeholder + Warn ("bulletin boards need a custom item type") |
 | `bank` | 2 items | OnUse `@message` placeholder + Warn ("banking not modeled") |
 | `dump` | 1 room | Periodic `@room_message` flavour trigger + Warn ("auto-disposal not modeled") |
-| `magic_user` | 93 mobs | **Warn** (collapsed) — "casts random offensive spells in combat — replace with custom OnAttack trigger" |
+| `magic_user` | 93 mobs | Sets `MobileData.combat_spells = [magic_missile, frost_bolt, firebolt, lightning_bolt]` + `combat_spell_chance = 50`; combat tick rolls per round to cast a random spell instead of swinging |
 | `guild` | 4 mobs | **Warn** (collapsed) — "class-specific practice; replace with mobile dialogue" |
 | `guild_guard` | 5 mobs | **Warn** (collapsed) — "blocks wrong-class players; no IronMUD analog" |
 | `postmaster` | 2 mobs | **Warn** — "mail system not modeled" |
@@ -1116,14 +1116,6 @@ warn-only. Gaps ranked below.
 
 #### High priority
 
-- **`magic_user` combat spell list** — 93 mobs in stock 3.1 (the most
-  common specproc by a wide margin). The C body picks a random offensive
-  spell each combat round (magic missile / chill touch / fireball /
-  lightning bolt scaling with mob level). Without it those mobs fight
-  with melee only and feel under-equipped. Likely shape: an
-  `OnAttack` trigger template (`@cast_random` with a configurable
-  spell list arg) plus a per-mob spell-list field, OR a generic
-  `MobileFlags.casts_spells` consulted by the combat tick.
 - **`mayor` daily walk path** — The only stock NPC with a hard-coded
   path (`open eastgate / move / unlock western gate / ...`). IronMUD's
   `daily_routine` system already supports paths; the importer could

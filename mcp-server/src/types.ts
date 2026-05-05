@@ -264,6 +264,8 @@ export interface Mobile {
   faction?: string;
   dialogue: Record<string, string>;
   triggers: MobileTrigger[];
+  combat_spells?: string[];
+  combat_spell_chance?: number;
   simulation?: SimulationConfig;
   needs?: NeedsState;
 }
@@ -506,6 +508,10 @@ export interface CreateMobileRequest {
   world_max_count?: number;
   // Helper-system ally tag. Empty = Circle-stock fallback.
   faction?: string;
+  // Spell IDs the mob may cast in combat (CircleMUD `magic_user` analog)
+  combat_spells?: string[];
+  // Per-round percent chance to cast (0-100). Default 50.
+  combat_spell_chance?: number;
 }
 
 export interface RoutineEntry {

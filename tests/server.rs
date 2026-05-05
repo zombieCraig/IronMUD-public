@@ -5550,3 +5550,95 @@ fn test_break_all_charms_clears_stay_follow_and_dangling_follow_targets() {
         std::panic::resume_unwind(e);
     }
 }
+
+/// `combat_spells` + `combat_spell_chance` round-trip through the DB.
+/// Default chance is 50, default list is empty.
+#[test]
+fn test_mobile_combat_spells_persist() {
+    use ironmud::db::Db;
+    use ironmud::types::MobileData;
+
+    let db_path = format!("test_combat_spells_persist_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut mob = MobileData::new("an apprentice mage".to_string());
+        assert!(mob.combat_spells.is_empty(), "defaults to empty list");
+        assert_eq!(mob.combat_spell_chance, 50, "default chance is 50");
+
+        mob.combat_spells = vec!["magic_missile".into(), "firebolt".into()];
+        mob.combat_spell_chance = 75;
+        let id = mob.id;
+        db.save_mobile_data(mob).expect("save");
+
+        let loaded = db.get_mobile_data(&id).expect("read").expect("present");
+        assert_eq!(loaded.combat_spells, vec!["magic_missile", "firebolt"]);
+        assert_eq!(loaded.combat_spell_chance, 75);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+/// `frost_bolt` is the cold-damage spell added so importer-translated
+/// `magic_user` mobs have a 4-element rotation matching CircleMUD's
+/// magic_missile / chill_touch / firebolt / lightning_bolt selection.
+#[test]
+fn test_frost_bolt_spell_definition_loads() {
+    use std::fs;
+
+    let json = fs::read_to_string("scripts/data/spells_fantasy.json").expect("read spells_fantasy");
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+    let spell = parsed
+        .get("frost_bolt")
+        .expect("frost_bolt entry present")
+        .as_object()
+        .expect("frost_bolt is an object");
+
+    assert_eq!(spell.get("spell_type").and_then(|v| v.as_str()), Some("damage"));
+    assert_eq!(spell.get("damage_type").and_then(|v| v.as_str()), Some("cold"));
+    assert_eq!(spell.get("target_type").and_then(|v| v.as_str()), Some("enemy"));
+    assert!(spell.get("damage_base").and_then(|v| v.as_i64()).unwrap_or(0) > 0);
+}
+
+/// The CircleMUD trigger mapping flips `magic_user` from a Warn to
+/// `set_mob_combat_spells` so all 93 stock magic_user mobs get a working
+/// spell rotation rather than silently degrading to melee-only post-import.
+#[test]
+fn test_magic_user_trigger_mapping_sets_combat_spells() {
+    use std::fs;
+
+    let json = fs::read_to_string("scripts/data/import/circle_trigger_mapping.json")
+        .expect("read circle_trigger_mapping");
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+    let entry = parsed
+        .get("trigger_actions")
+        .expect("trigger_actions section")
+        .get("magic_user")
+        .expect("magic_user entry present")
+        .as_object()
+        .expect("magic_user is an object");
+
+    assert_eq!(
+        entry.get("action").and_then(|v| v.as_str()),
+        Some("set_mob_combat_spells"),
+        "magic_user no longer warn-only"
+    );
+    let spells: Vec<&str> = entry
+        .get("spells")
+        .and_then(|v| v.as_array())
+        .expect("spells array")
+        .iter()
+        .filter_map(|v| v.as_str())
+        .collect();
+    assert!(spells.contains(&"magic_missile"));
+    assert!(spells.contains(&"frost_bolt"));
+    assert!(spells.contains(&"firebolt"));
+    assert!(spells.contains(&"lightning_bolt"));
+    let chance = entry.get("chance").and_then(|v| v.as_i64()).unwrap_or(0);
+    assert!((0..=100).contains(&chance), "chance {} out of range", chance);
+}

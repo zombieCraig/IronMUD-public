@@ -201,6 +201,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_get("world_max_count", |m: &mut MobileData| m.world_max_count.unwrap_or(0) as i64)
         .register_get("has_world_max_count", |m: &mut MobileData| m.world_max_count.is_some())
         .register_get("faction", |m: &mut MobileData| m.faction.clone().unwrap_or_default())
+        .register_get("combat_spells", |m: &mut MobileData| {
+            m.combat_spells
+                .iter()
+                .map(|s| rhai::Dynamic::from(s.clone()))
+                .collect::<Vec<_>>()
+        })
+        .register_get("combat_spell_chance", |m: &mut MobileData| m.combat_spell_chance as i64)
         .register_get("level", |m: &mut MobileData| m.level as i64)
         .register_get("max_hp", |m: &mut MobileData| m.max_hp as i64)
         .register_get("current_hp", |m: &mut MobileData| m.current_hp as i64)
@@ -1090,6 +1097,70 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         }
         false
     });
+
+    // === Combat spells (CircleMUD `magic_user` analog) ===
+
+    // add_mobile_combat_spell(mobile_id, spell_id) -> bool (false on dup or unknown mob)
+    let cloned_db = db.clone();
+    engine.register_fn("add_mobile_combat_spell", move |mobile_id: String, spell_id: String| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+            if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
+                let id = spell_id.to_lowercase();
+                if mobile.combat_spells.iter().any(|s| s == &id) {
+                    return false;
+                }
+                mobile.combat_spells.push(id);
+                return cloned_db.save_mobile_data(mobile).is_ok();
+            }
+        }
+        false
+    });
+
+    // remove_mobile_combat_spell(mobile_id, spell_id) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "remove_mobile_combat_spell",
+        move |mobile_id: String, spell_id: String| {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+                if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
+                    let id = spell_id.to_lowercase();
+                    let before = mobile.combat_spells.len();
+                    mobile.combat_spells.retain(|s| s != &id);
+                    if mobile.combat_spells.len() != before {
+                        return cloned_db.save_mobile_data(mobile).is_ok();
+                    }
+                }
+            }
+            false
+        },
+    );
+
+    // clear_mobile_combat_spells(mobile_id) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn("clear_mobile_combat_spells", move |mobile_id: String| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+            if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
+                mobile.combat_spells.clear();
+                return cloned_db.save_mobile_data(mobile).is_ok();
+            }
+        }
+        false
+    });
+
+    // set_mobile_combat_spell_chance(mobile_id, chance) -> bool. Clamps 0-100.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_mobile_combat_spell_chance",
+        move |mobile_id: String, chance: i64| {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+                if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
+                    mobile.combat_spell_chance = chance.clamp(0, 100) as u8;
+                    return cloned_db.save_mobile_data(mobile).is_ok();
+                }
+            }
+            false
+        },
+    );
 
     // get_all_mobile_dialogues(mobile_id) -> Map (keyword -> response)
     let cloned_db = db.clone();
