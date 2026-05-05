@@ -250,6 +250,19 @@
     "requires_combat": false,
     "xp_award": 10
   },
+  "summon": {
+    "id": "summon",
+    "name": "Summon",
+    "description": "Wrenches a creature from anywhere in the world to your side.",
+    "skill_required": 4,
+    "scroll_only": false,
+    "mana_cost": 40,
+    "cooldown_secs": 60,
+    "spell_type": "summon",
+    "target_type": "world_npc",
+    "requires_combat": false,
+    "xp_award": 15
+  },
   "dispel_magic": {
     "id": "dispel_magic",
     "name": "Dispel Magic",

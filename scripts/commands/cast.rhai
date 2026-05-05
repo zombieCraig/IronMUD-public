@@ -328,6 +328,92 @@ fn cast_light(connection_id, char, spell) {
     return true;
 }
 
+fn cast_summon(connection_id, char, spell, target_arg) {
+    if target_arg == "" {
+        send_client_message(connection_id, "Summon whom?");
+        return false;
+    }
+
+    let caster_room = char.current_room_id;
+
+    // PC branch first: try to resolve target as a logged-in player.
+    let target_conn = find_player_connection_by_name(target_arg);
+    if target_conn != "" {
+        let target_char = get_player_character(target_conn);
+        if type_of(target_char) == "()" {
+            send_client_message(connection_id, "You sense no such creature anywhere.");
+            return false;
+        }
+        if target_char.name.to_lower() == char.name.to_lower() {
+            send_client_message(connection_id, "You cannot summon yourself.");
+            return false;
+        }
+        if target_char.current_room_id == caster_room {
+            send_client_message(connection_id, target_char.name + " is already here.");
+            return false;
+        }
+        if !target_char.summonable {
+            send_client_message(connection_id, target_char.name + " is protected from summons.");
+            return true;
+        }
+
+        let old_room_id = target_char.current_room_id;
+
+        if is_in_combat(target_char.name) {
+            exit_combat(target_char.name);
+            let mobiles = get_mobiles_in_room(old_room_id);
+            for mobile in mobiles {
+                exit_mobile_combat(mobile.id);
+            }
+            send_client_message(target_conn, "Your combat has ended due to being summoned.");
+        }
+
+        broadcast_to_room(old_room_id, target_char.name + " vanishes in a swirl of mist!", target_char.name);
+
+        target_char.current_room_id = caster_room;
+        save_character_data(target_char);
+        set_player_character(target_conn, target_char);
+
+        broadcast_to_room_except(caster_room, connection_id, target_char.name + " arrives, wrenched from elsewhere!");
+
+        send_client_message(target_conn, "You feel a wrenching pull as " + char.name + " summons you!");
+        display_room(caster_room, target_conn, target_char.name);
+
+        send_client_message(connection_id, "You wrench " + target_char.name + " to your side!");
+        return true;
+    }
+
+    // Mob branch: world-wide non-prototype lookup.
+    let target = find_mobile_by_keyword_anywhere(target_arg);
+    if type_of(target) == "()" {
+        send_client_message(connection_id, "You sense no such creature anywhere.");
+        return false;
+    }
+    if target.current_room_id == caster_room {
+        send_client_message(connection_id, target.name + " is already here.");
+        return false;
+    }
+    if target.flags.no_summon {
+        send_client_message(connection_id, target.name + " resists your summons.");
+        return true;
+    }
+
+    let old_room_id = target.current_room_id;
+
+    if is_mobile_in_combat(target.id) {
+        exit_mobile_combat(target.id);
+    }
+
+    broadcast_to_room(old_room_id, target.short_desc + " vanishes in a swirl of mist!", "");
+
+    target.current_room_id = caster_room;
+    save_mobile_data(target);
+
+    broadcast_to_room_except(caster_room, connection_id, target.short_desc + " arrives, wrenched from elsewhere!");
+    send_client_message(connection_id, "You wrench " + target.short_desc + " into the room!");
+    return true;
+}
+
 fn cast_dispel(connection_id, char, spell, target_arg) {
     let room_id = char.current_room_id;
     let mob_id = find_mob_target(char, target_arg, room_id);
@@ -478,6 +564,9 @@ fn run_command(args, connection_id) {
     }
     if stype == "utility" {
         success = cast_utility(connection_id, char, spell, target_arg);
+    }
+    if stype == "summon" {
+        success = cast_summon(connection_id, char, spell, target_arg);
     }
 
     if !success {

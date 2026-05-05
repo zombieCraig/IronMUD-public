@@ -188,7 +188,8 @@ warn-only (see the [Zone reset commands](#zone-reset-commands) section).
 | `AGGR_EVIL`, `AGGR_GOOD`, `AGGR_NEUTRAL` | **Warn**: blocked on alignment system |
 | `MEMORY` | sets `memory` (remembers PC attackers for 30 min, FIFO cap 10; resets on respawn) |
 | `HELPER` | sets `helper` (faction left empty → Circle-stock semantics: any NPC defends any other NPC against PCs) |
-| `NOCHARM`, `NOSUMMON`, `NOSLEEP`, `NOBASH`, `NOBLIND` | **Warn**: status immunities not modeled |
+| `NOSLEEP`, `NOBASH`, `NOBLIND`, `NOSUMMON` | sets matching `MobileFlags.no_*` (hard-immunity gate over the paired spell/skill) |
+| `NOCHARM` | **Warn**: status immunity blocked on missing `charm` spell |
 | Bits ≥ 18 | **Warn** (`unrecognised mob flag`): patched flag — surface for review |
 
 ### AFF_* affected-by bits
@@ -903,8 +904,19 @@ ranked below.
   damage. Blind applies an `EffectType::Blind` buff that subtracts
   `magnitude` percentage points from the attacker's hit chance and,
   when applied to a player, also short-circuits room sight (mirrors
-  the `blindness` trait). `MOB_NOSUMMON` / `MOB_NOCHARM` remain
-  warn-only — those abilities aren't implemented yet.
+  the `blindness` trait). `MOB_NOCHARM` remains warn-only — its
+  paired `charm` spell isn't implemented yet.
+- **`MOB_NOSUMMON`** → `MobileFlags.no_summon`. Hard-immunity gate
+  over the new player-castable `summon` spell (skill 4, mana 40,
+  60s cooldown). The spell does world-wide name lookup; on success
+  it yanks the target (NPC or opt-in PC) to the caster's current
+  room, breaking any combat the target was in. PCs gate on a new
+  `CharacterData.summonable` consent flag (default off, opt in via
+  `set summonable on` — parallels CircleMUD's `PRF_SUMMONABLE`).
+  Admin / `no_attack` mobs are filtered from world-wide lookup so
+  shopkeepers, healers, and guards can't be pulled out of place.
+  ROOM_NOMAGIC on the caster's room blocks the cast through the
+  existing source-room gate.
 - **`MOB_HELPER`** → `MobileFlags.helper`. The helper system scans the
   current room each combat tick and pulls any standing, alive,
   non-engaged HELPER mobile into combat against a PC who is attacking
@@ -929,10 +941,10 @@ ranked below.
 
 ### Mobile flags — Low priority
 
-- **`MOB_NOSUMMON` / `MOB_NOCHARM`** — status-immunity flags whose
-  matching abilities (offensive `summon`, `charm`) don't yet exist.
-  `NOSLEEP` / `NOBASH` / `NOBLIND` shipped May 2026 — see the
-  Implemented section above.
+- **`MOB_NOCHARM`** — status-immunity flag whose matching `charm`
+  spell + mob-AI redirection doesn't yet exist. `NOSLEEP` / `NOBASH`
+  / `NOBLIND` / `NOSUMMON` shipped May 2026 — see the Implemented
+  section above.
 - **`AFF_BLIND` / `SLEEP` / `CURSE` / `POISON`** — permanent affects on
   prototypes. Once buff stamping at spawn lands, these become trivial.
 - **`MOB_WIMPY`** — currently maps to `cowardly`, but Circle's wimpy is

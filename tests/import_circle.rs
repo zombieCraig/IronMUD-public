@@ -209,16 +209,19 @@ fn parses_mobiles_into_plan() {
         "AFF_INVISIBLE/DETECT_INVIS/DETECT_MAGIC/INFRAVISION should no longer warn",
     );
 
-    // The wisp's MOB flags pqr cover NOSLEEP (15), NOBASH (16), NOBLIND (17).
-    // Each should land on the matching IronMUD MobileFlags bool, no warns.
+    // The wisp's MOB flags opqr cover NOSUMMON (14), NOSLEEP (15),
+    // NOBASH (16), NOBLIND (17). Each should land on the matching
+    // IronMUD MobileFlags bool, no warns.
+    assert!(wisp.flags.no_summon, "NOSUMMON should map to flags.no_summon");
     assert!(wisp.flags.no_sleep, "NOSLEEP should map to flags.no_sleep");
     assert!(wisp.flags.no_bash, "NOBASH should map to flags.no_bash");
     assert!(wisp.flags.no_blind, "NOBLIND should map to flags.no_blind");
     assert!(
-        !warnings.iter().any(|w| w.message.contains("MOB_NOSLEEP")
+        !warnings.iter().any(|w| w.message.contains("MOB_NOSUMMON")
+            || w.message.contains("MOB_NOSLEEP")
             || w.message.contains("MOB_NOBASH")
             || w.message.contains("MOB_NOBLIND")),
-        "MOB_NOSLEEP/NOBASH/NOBLIND should no longer warn",
+        "MOB_NOSUMMON/NOSLEEP/NOBASH/NOBLIND should no longer warn",
     );
 
     // BareHandAttack should warn exactly once across the import (the beast

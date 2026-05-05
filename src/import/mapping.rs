@@ -1032,6 +1032,7 @@ fn apply_named_mob_flag(flags: &mut MobileFlags, name: &str) -> bool {
         "no_sleep" => flags.no_sleep = true,
         "no_blind" => flags.no_blind = true,
         "no_bash" => flags.no_bash = true,
+        "no_summon" => flags.no_summon = true,
         _ => return false,
     }
     true

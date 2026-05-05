@@ -68,6 +68,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         .register_get("is_admin", |c: &mut CharacterData| c.is_admin)
         .register_get("god_mode", |c: &mut CharacterData| c.god_mode)
         .register_get("build_mode", |c: &mut CharacterData| c.build_mode)
+        .register_get("summonable", |c: &mut CharacterData| c.summonable)
+        .register_set("summonable", |c: &mut CharacterData, val: bool| c.summonable = val)
         .register_get("level", |c: &mut CharacterData| c.level as i64)
         .register_set("level", |c: &mut CharacterData, val: i64| c.level = val as i32)
         .register_get("gold", |c: &mut CharacterData| c.gold as i64)
@@ -412,6 +414,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 food_sick: false,
                 // Helpline channel subscription
                 helpline_enabled: false,
+                // Summonable consent flag (PRF_SUMMONABLE parity)
+                summonable: false,
                 // Property rental system
                 active_leases: std::collections::HashMap::new(),
                 escrow_ids: Vec::new(),

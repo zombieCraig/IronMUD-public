@@ -225,6 +225,10 @@ pub struct CharacterData {
     // Helpline channel subscription
     #[serde(default)]
     pub helpline_enabled: bool,
+    // Consent flag: when true, this character can be summoned by the
+    // `summon` spell (CircleMUD PRF_SUMMONABLE parity). Default off.
+    #[serde(default)]
+    pub summonable: bool,
     // Property rental system
     #[serde(default)]
     pub active_leases: HashMap<Uuid, Uuid>, // area_id -> lease_id (one per area)
@@ -3087,6 +3091,8 @@ pub struct MobileFlags {
     pub no_blind: bool, // Immune to the blind spell (CircleMUD MOB_NOBLIND)
     #[serde(default)]
     pub no_bash: bool, // Immune to the bash skill's stun (CircleMUD MOB_NOBASH)
+    #[serde(default)]
+    pub no_summon: bool, // Immune to the summon spell (CircleMUD MOB_NOSUMMON)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -295,6 +295,7 @@ export interface MobileFlags {
   no_sleep?: boolean;
   no_blind?: boolean;
   no_bash?: boolean;
+  no_summon?: boolean;
 }
 
 export interface SpawnPoint {

@@ -711,6 +711,7 @@ fn test_scripts_access_registered_properties() {
         ("get_item_by_id", "ItemData"),
         ("get_mobile_data", "MobileData"),
         ("get_mobile_by_id", "MobileData"),
+        ("find_mobile_by_keyword_anywhere", "MobileData"),
         ("get_room_data", "RoomData"),
         ("get_room_by_id", "RoomData"),
         ("get_character_data", "CharacterData"),
@@ -4638,6 +4639,87 @@ fn test_sleep_buff_persists_on_mobile() {
                 .any(|b| b.effect_type == EffectType::Sleep),
             "Sleep buff missing after roundtrip"
         );
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_summon_spell_definition_loads() {
+    use std::fs;
+
+    let json = fs::read_to_string("scripts/data/spells_fantasy.json").expect("read spells_fantasy");
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+    let spell = parsed
+        .get("summon")
+        .expect("summon entry present")
+        .as_object()
+        .expect("summon is an object");
+
+    assert_eq!(spell.get("spell_type").and_then(|v| v.as_str()), Some("summon"));
+    assert_eq!(spell.get("skill_required").and_then(|v| v.as_i64()), Some(4));
+    assert_eq!(spell.get("mana_cost").and_then(|v| v.as_i64()), Some(40));
+    assert_eq!(spell.get("target_type").and_then(|v| v.as_str()), Some("world_npc"));
+}
+
+#[test]
+fn test_no_summon_flag_persists() {
+    use ironmud::db::Db;
+    use ironmud::types::MobileData;
+
+    let db_path = format!("test_no_summon_persists_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut mob = MobileData::new("a stone sentinel".to_string());
+        mob.flags.no_summon = true;
+        let id = mob.id;
+        db.save_mobile_data(mob).expect("save");
+
+        let loaded = db.get_mobile_data(&id).expect("read").expect("present");
+        assert!(loaded.flags.no_summon);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_summonable_field_defaults_off_and_persists() {
+    use ironmud::db::Db;
+
+    let db_path = format!("test_summonable_persists_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        // Build a CharacterData via serde so missing fields take their
+        // serde defaults — proves `summonable` defaults to false.
+        let mut char: ironmud::types::CharacterData =
+            serde_json::from_value(serde_json::json!({
+                "name": "TestSummonee",
+                "password_hash": "",
+                "current_room_id": uuid::Uuid::nil(),
+            }))
+            .expect("build character");
+        assert!(!char.summonable, "summonable defaults to false");
+
+        char.summonable = true;
+        db.save_character_data(char.clone()).expect("save");
+
+        let loaded = db
+            .get_character_data(&char.name)
+            .expect("read")
+            .expect("present");
+        assert!(loaded.summonable, "summonable persists across roundtrip");
     }));
 
     let _ = std::fs::remove_dir_all(&db_path);

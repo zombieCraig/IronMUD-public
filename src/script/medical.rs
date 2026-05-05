@@ -163,6 +163,40 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         },
     );
 
+    // is_summonable(connection_id) -> bool
+    let conns = connections.clone();
+    engine.register_fn("is_summonable", move |connection_id: String| -> bool {
+        if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+            let conns_lock = conns.lock().unwrap();
+            if let Some(session) = conns_lock.get(&conn_id) {
+                if let Some(ref char) = session.character {
+                    return char.summonable;
+                }
+            }
+        }
+        false
+    });
+
+    // set_summonable(connection_id, enabled) -> bool
+    let conns = connections.clone();
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_summonable",
+        move |connection_id: String, enabled: bool| -> bool {
+            if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+                let mut conns_lock = conns.lock().unwrap();
+                if let Some(session) = conns_lock.get_mut(&conn_id) {
+                    if let Some(ref mut char) = session.character {
+                        char.summonable = enabled;
+                        let _ = cloned_db.save_character_data(char.clone());
+                        return true;
+                    }
+                }
+            }
+            false
+        },
+    );
+
     // broadcast_to_helpline(message, room_name, area_name) -> i64
     // Broadcasts a message to all players with helpline enabled. Returns count of recipients.
     let conns = connections.clone();

@@ -252,6 +252,8 @@ pub struct MobileFlagsRequest {
     pub no_blind: Option<bool>,
     #[serde(default)]
     pub no_bash: Option<bool>,
+    #[serde(default)]
+    pub no_summon: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -721,6 +723,7 @@ async fn create_mobile(
             no_sleep: req.flags.no_sleep.unwrap_or(false),
             no_blind: req.flags.no_blind.unwrap_or(false),
             no_bash: req.flags.no_bash.unwrap_or(false),
+            no_summon: req.flags.no_summon.unwrap_or(false),
         },
         dialogue: HashMap::new(),
         shop_stock: req.shop_stock.unwrap_or_default(),
@@ -920,6 +923,9 @@ async fn update_mobile(
         }
         if let Some(v) = flags.no_bash {
             mobile.flags.no_bash = v;
+        }
+        if let Some(v) = flags.no_summon {
+            mobile.flags.no_summon = v;
         }
     }
     if let Some(world_max) = req.world_max_count {

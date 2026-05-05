@@ -171,7 +171,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         memory,
         no_sleep,
         no_blind,
-        no_bash
+        no_bash,
+        no_summon
     );
 
     // Register MobileData type with getters
@@ -411,6 +412,42 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             .into_iter()
             .map(rhai::Dynamic::from)
             .collect::<Vec<_>>()
+    });
+
+    // find_mobile_by_keyword_anywhere(keyword) -> MobileData or ()
+    // World-wide non-prototype mob lookup. Skips prototypes, admin
+    // mobiles, and no_attack mobiles (shopkeepers / healers / guards
+    // shouldn't be summon targets). Returns the first match by name
+    // contains-keyword or any keyword starts-with-keyword.
+    let cloned_db = db.clone();
+    engine.register_fn("find_mobile_by_keyword_anywhere", move |keyword: String| {
+        let lower = keyword.to_lowercase();
+        if lower.is_empty() {
+            return rhai::Dynamic::UNIT;
+        }
+        let mobiles = match cloned_db.list_all_mobiles() {
+            Ok(m) => m,
+            Err(_) => return rhai::Dynamic::UNIT,
+        };
+        for mobile in mobiles {
+            if mobile.is_prototype {
+                continue;
+            }
+            if mobile.flags.no_attack {
+                continue;
+            }
+            if mobile.name.to_lowercase().contains(&lower) {
+                return rhai::Dynamic::from(mobile);
+            }
+            if mobile
+                .keywords
+                .iter()
+                .any(|kw| kw.to_lowercase().starts_with(&lower))
+            {
+                return rhai::Dynamic::from(mobile);
+            }
+        }
+        rhai::Dynamic::UNIT
     });
 
     // move_mobile_to_room(mobile_id, room_id) -> bool
@@ -742,6 +779,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "no_sleep" | "nosleep" => mobile.flags.no_sleep = value,
                         "no_blind" | "noblind" => mobile.flags.no_blind = value,
                         "no_bash" | "nobash" => mobile.flags.no_bash = value,
+                        "no_summon" | "nosummon" => mobile.flags.no_summon = value,
                         _ => return false,
                     }
                     return cloned_db.save_mobile_data(mobile).is_ok();
