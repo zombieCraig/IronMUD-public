@@ -329,7 +329,8 @@ entries.
 |---|---|
 | `STR`, `DEX`, `CON`, `INT`, `WIS`, `CHA` | adds modifier to `stat_str`/`_dex`/… |
 | `ARMOR` | adds `-modifier` to `armor_class` (sign-flipped) |
-| `HITROLL`, `DAMROLL` | **Warn**: no item-level hit/damage bonus field yet |
+| `HITROLL` | adds modifier to `hit_bonus` — flat to-hit bonus summed across all worn equipment in combat |
+| `DAMROLL` | adds modifier to `damage_bonus` — flat damage bonus summed across all worn equipment in combat |
 | `MAXHIT`, `MAXMANA` | **Warn**: no item-level HP / mana bonus |
 | `MAXMOVE` | **Warn**: no movement stat in IronMUD |
 | `AGE`, `CHAR_WEIGHT`, `CHAR_HEIGHT` | silently dropped (no aging, height/weight on chars) |
@@ -1032,11 +1033,6 @@ ranked below.
 Histogram numbers below are from a clean dry-run against stock CircleMUD 3.1
 (30 zones, 679 imported items).
 
-- **`APPLY_HITROLL` / `APPLY_DAMROLL`** — magic weapons set these to
-  carry their `+N to hit` / `+N to damage` bonuses (~22 + ~21 stock
-  occurrences). No item-level fields exist; consider adding
-  `hit_modifier: i32` / `damage_modifier: i32` on `ItemData` consulted
-  by the combat math when the item is wielded.
 - **`ITEM_LIGHT` capacity hours** — every torch / lantern stores burn
   time in `v2`. IronMUD lights are binary (on/off via `flags.provides_light`).
   Likely shape: `light_hours_remaining: i32` on `ItemData` plus a tick

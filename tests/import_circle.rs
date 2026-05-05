@@ -313,7 +313,7 @@ fn parses_items_into_plan() {
     assert_eq!(plan.items.len(), 8);
 
     // Sword: weapon, 1d8 slashing, GLOW (extra-bit `a` = bit 0), wearable
-    // wielded; APPLY_DAMROLL +2 → warn (no item-level damroll yet).
+    // wielded; APPLY_DAMROLL +2 → damage_bonus = 2 (CircleMUD APPLY_DAMROLL parity).
     let sword = plan.items.iter().find(|i| i.source_vnum == 9010).expect("sword");
     assert_eq!(sword.vnum, "test_fixture_village_9010");
     assert!(sword.data.is_prototype);
@@ -325,11 +325,11 @@ fn parses_items_into_plan() {
     assert!(sword.data.flags.magical);
     assert!(sword.data.wear_locations.contains(&WearLocation::Wielded));
     assert_eq!(sword.data.value, 600);
+    assert_eq!(sword.data.damage_bonus, 2, "APPLY_DAMROLL +2 lands on damage_bonus");
     let damroll_warn = warnings
         .iter()
-        .find(|w| w.message.contains("APPLY_DAMROLL"))
-        .expect("APPLY_DAMROLL surfaced");
-    assert_eq!(damroll_warn.severity, Severity::Warn);
+        .find(|w| w.message.contains("APPLY_DAMROLL"));
+    assert!(damroll_warn.is_none(), "APPLY_DAMROLL warn should be gone");
 
     // Armor: AC value v0=3 → armor_class +3 (no apply blocks bumping it
     // further), then APPLY_AC -3 sign-flips to +3 (added). APPLY_STR +1 →

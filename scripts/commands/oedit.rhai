@@ -428,6 +428,14 @@ fn handle_subcommand(item, item_id, subcommand, parts, char, connection_id) {
         handle_stat_subcommand(uuid, parts, connection_id);
         return;
     }
+    if subcommand == "hit_bonus" || subcommand == "hitroll" || subcommand == "hit" {
+        handle_hit_bonus_subcommand(uuid, parts, connection_id);
+        return;
+    }
+    if subcommand == "damage_bonus" || subcommand == "damroll" || subcommand == "dam" {
+        handle_damage_bonus_subcommand(uuid, parts, connection_id);
+        return;
+    }
     if subcommand == "insulation" || subcommand == "insul" {
         handle_insulation_subcommand(uuid, parts, connection_id);
         return;
@@ -2661,6 +2669,8 @@ fn build_stats_display(item) {
     if item.stat_int != 0 { output += " INT " + format_stat(item.stat_int); }
     if item.stat_wis != 0 { output += " WIS " + format_stat(item.stat_wis); }
     if item.stat_cha != 0 { output += " CHA " + format_stat(item.stat_cha); }
+    if item.hit_bonus != 0 { output += " HIT " + format_stat(item.hit_bonus); }
+    if item.damage_bonus != 0 { output += " DAM " + format_stat(item.damage_bonus); }
     if item.insulation != 0 { output += " Insulation: " + item.insulation; }
     output += "\n";
     return output;
@@ -2938,6 +2948,46 @@ fn handle_stat_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, full_name + " bonus set to: +" + value);
     } else {
         send_client_message(connection_id, full_name + " bonus set to: " + value);
+    }
+}
+
+fn handle_hit_bonus_subcommand(item_id, parts, connection_id) {
+    if parts.len() < 3 {
+        send_client_message(connection_id, "Usage: oedit " + item_id + " hit_bonus <value>");
+        return;
+    }
+    let value = parse_int(parts[2]);
+    if value == () {
+        send_client_message(connection_id, "Invalid number.");
+        return;
+    }
+    set_item_hit_bonus(item_id, value);
+    if value == 0 {
+        send_client_message(connection_id, "Hit-roll bonus removed.");
+    } else if value > 0 {
+        send_client_message(connection_id, "Hit-roll bonus set to: +" + value);
+    } else {
+        send_client_message(connection_id, "Hit-roll bonus set to: " + value);
+    }
+}
+
+fn handle_damage_bonus_subcommand(item_id, parts, connection_id) {
+    if parts.len() < 3 {
+        send_client_message(connection_id, "Usage: oedit " + item_id + " damage_bonus <value>");
+        return;
+    }
+    let value = parse_int(parts[2]);
+    if value == () {
+        send_client_message(connection_id, "Invalid number.");
+        return;
+    }
+    set_item_damage_bonus(item_id, value);
+    if value == 0 {
+        send_client_message(connection_id, "Damage-roll bonus removed.");
+    } else if value > 0 {
+        send_client_message(connection_id, "Damage-roll bonus set to: +" + value);
+    } else {
+        send_client_message(connection_id, "Damage-roll bonus set to: " + value);
     }
 }
 

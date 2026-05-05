@@ -21,6 +21,8 @@ fn item(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str, ite
         extra_descs: Vec::new(),
         wear_locations: Vec::new(),
         armor_class: None,
+        hit_bonus: 0,
+        damage_bonus: 0,
         protects: Vec::new(),
         holes: 0,
         flags: ItemFlags::default(),

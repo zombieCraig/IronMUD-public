@@ -83,6 +83,11 @@ pub struct CreateItemRequest {
     // Armor stats
     #[serde(default)]
     pub armor_class: Option<i32>,
+    // Equipment combat bonuses (CircleMUD APPLY_HITROLL/DAMROLL parity)
+    #[serde(default)]
+    pub hit_bonus: Option<i32>,
+    #[serde(default)]
+    pub damage_bonus: Option<i32>,
     // Flags
     #[serde(default)]
     pub flags: ItemFlagsRequest,
@@ -287,6 +292,10 @@ pub struct UpdateItemRequest {
     pub damage_type: Option<String>,
     #[serde(default)]
     pub armor_class: Option<i32>,
+    #[serde(default)]
+    pub hit_bonus: Option<i32>,
+    #[serde(default)]
+    pub damage_bonus: Option<i32>,
     #[serde(default)]
     pub wear_location: Option<String>,
     #[serde(default)]
@@ -671,6 +680,8 @@ async fn create_item(
         location: ItemLocation::Nowhere,
         wear_locations,
         armor_class: req.armor_class,
+        hit_bonus: req.hit_bonus.unwrap_or(0),
+        damage_bonus: req.damage_bonus.unwrap_or(0),
         protects: Vec::new(),
         flags: ItemFlags {
             no_drop: req.flags.no_drop.unwrap_or(false),
@@ -1072,6 +1083,12 @@ async fn update_item(
     }
     if let Some(ac) = req.armor_class {
         item.armor_class = Some(ac);
+    }
+    if let Some(hb) = req.hit_bonus {
+        item.hit_bonus = hb;
+    }
+    if let Some(db) = req.damage_bonus {
+        item.damage_bonus = db;
     }
     if let Some(ref loc_str) = req.wear_location {
         item.wear_locations = WearLocation::from_str(loc_str).map(|l| vec![l]).unwrap_or_default();

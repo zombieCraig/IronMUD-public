@@ -123,6 +123,8 @@ export const itemToolDefinitions = [
                     enum: ["bludgeoning", "slashing", "piercing", "fire", "cold", "lightning", "poison", "acid"],
                 },
                 armor_class: { type: "number", description: "For armor: AC bonus" },
+                hit_bonus: { type: "number", description: "Bonus to to-hit roll while equipped (CircleMUD APPLY_HITROLL parity); summed across all worn items" },
+                damage_bonus: { type: "number", description: "Bonus to damage roll while equipped (CircleMUD APPLY_DAMROLL parity); summed across all worn items" },
                 flags: itemFlagsSchema,
                 caliber: { type: "string", description: "Firearm caliber (e.g., '9mm', '5.56')" },
                 ranged_type: { type: "string", description: "Ranged weapon type (e.g., 'pistol', 'rifle')" },
@@ -226,6 +228,8 @@ export const itemToolDefinitions = [
                     enum: ["bludgeoning", "slashing", "piercing", "fire", "cold", "lightning", "poison", "acid"],
                 },
                 armor_class: { type: "number", description: "For armor: AC bonus" },
+                hit_bonus: { type: "number", description: "Bonus to to-hit roll while equipped (CircleMUD APPLY_HITROLL parity); summed across all worn items" },
+                damage_bonus: { type: "number", description: "Bonus to damage roll while equipped (CircleMUD APPLY_DAMROLL parity); summed across all worn items" },
                 wear_location: {
                     type: "string",
                     enum: ["head", "neck", "shoulders", "back", "torso", "waist", "ears",

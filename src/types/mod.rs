@@ -2757,6 +2757,12 @@ pub struct ItemData {
     pub wear_locations: Vec<WearLocation>,
     #[serde(default)]
     pub armor_class: Option<i32>,
+    /// CircleMUD APPLY_HITROLL parity: flat to-hit bonus while equipped (any slot).
+    #[serde(default)]
+    pub hit_bonus: i32,
+    /// CircleMUD APPLY_DAMROLL parity: flat damage bonus while equipped (any slot).
+    #[serde(default)]
+    pub damage_bonus: i32,
     /// Body parts this armor protects (for armor items)
     #[serde(default)]
     pub protects: Vec<BodyPart>,
@@ -2957,6 +2963,8 @@ impl ItemData {
             extra_descs: Vec::new(),
             wear_locations: Vec::new(),
             armor_class: None,
+            hit_bonus: 0,
+            damage_bonus: 0,
             protects: Vec::new(),
             holes: 0,
             flags: ItemFlags::default(),

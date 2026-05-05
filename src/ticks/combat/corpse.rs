@@ -55,6 +55,8 @@ impl CorpseBuilder {
             extra_descs: Vec::new(),
             wear_locations: vec![],
             armor_class: None,
+            hit_bonus: 0,
+            damage_bonus: 0,
             protects: vec![],
             flags: ItemFlags {
                 no_get: true,

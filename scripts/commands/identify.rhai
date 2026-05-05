@@ -135,6 +135,10 @@ fn build_all_stats(item) {
     output += "\n  INT: " + fmt_bonus(item.stat_int);
     output += "  WIS: " + fmt_bonus(item.stat_wis);
     output += "  CHA: " + fmt_bonus(item.stat_cha);
+    if item.hit_bonus != 0 || item.damage_bonus != 0 {
+        output += "\n  HIT: " + fmt_bonus(item.hit_bonus);
+        output += "  DAM: " + fmt_bonus(item.damage_bonus);
+    }
     return output;
 }
 

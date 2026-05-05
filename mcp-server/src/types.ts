@@ -169,6 +169,8 @@ export interface Item {
   is_prototype: boolean;
   wear_locations: WearLocation[];
   armor_class?: number;
+  hit_bonus?: number;
+  damage_bonus?: number;
   damage_dice_count?: number;
   damage_dice_sides?: number;
   damage_type?: DamageType;
@@ -396,6 +398,8 @@ export interface CreateItemRequest {
   damage_dice_sides?: number;
   damage_type?: string;
   armor_class?: number;
+  hit_bonus?: number;
+  damage_bonus?: number;
   flags?: Partial<ItemFlags>;
   // Firearm fields
   caliber?: string;

@@ -239,6 +239,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_get("stat_int", |i: &mut ItemData| i.stat_int as i64)
         .register_get("stat_wis", |i: &mut ItemData| i.stat_wis as i64)
         .register_get("stat_cha", |i: &mut ItemData| i.stat_cha as i64)
+        // CircleMUD APPLY_HITROLL / APPLY_DAMROLL parity: flat to-hit and
+        // damage bonuses summed across all worn equipment in combat.
+        .register_get("hit_bonus", |i: &mut ItemData| i.hit_bonus as i64)
+        .register_get("damage_bonus", |i: &mut ItemData| i.damage_bonus as i64)
         // Insulation for temperature/weather system
         .register_get("insulation", |i: &mut ItemData| i.insulation as i64)
         .register_get("has_stats", |i: &mut ItemData| {
@@ -248,6 +252,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 || i.stat_int != 0
                 || i.stat_wis != 0
                 || i.stat_cha != 0
+                || i.hit_bonus != 0
+                || i.damage_bonus != 0
         })
         // Prototype fields
         .register_get("is_prototype", |i: &mut ItemData| i.is_prototype)
@@ -2544,6 +2550,30 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             false
         },
     );
+
+    // set_item_hit_bonus(item_id, value) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn("set_item_hit_bonus", move |item_id: String, value: i64| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                item.hit_bonus = value as i32;
+                return cloned_db.save_item_data(item).is_ok();
+            }
+        }
+        false
+    });
+
+    // set_item_damage_bonus(item_id, value) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn("set_item_damage_bonus", move |item_id: String, value: i64| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                item.damage_bonus = value as i32;
+                return cloned_db.save_item_data(item).is_ok();
+            }
+        }
+        false
+    });
 
     // ========== Prototype Functions ==========
 

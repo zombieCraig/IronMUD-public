@@ -82,6 +82,12 @@ pub enum FlagAction {
         #[serde(default)]
         info: Option<String>,
     },
+    /// Add to `ItemData.hit_bonus` (APPLY_HITROLL). Modifier copied as-is
+    /// (positive = better to-hit). Item-only.
+    SetHitBonus,
+    /// Add to `ItemData.damage_bonus` (APPLY_DAMROLL). Modifier copied as-is
+    /// (positive = bonus damage). Item-only.
+    SetDamageBonus,
     /// Emit a warning (severity = Warn).
     Warn { message: String },
     /// Silently ignore this flag (e.g. CircleMUD runtime / editor flags).
@@ -874,7 +880,10 @@ fn map_room(zone: &IrZone, area_prefix: &str, room: &IrRoom, opts: &MappingOptio
                 ));
             }
             Some(FlagAction::Drop { .. }) => {}
-            Some(FlagAction::SetStat { .. }) | Some(FlagAction::SetArmorClass { .. }) => {
+            Some(FlagAction::SetStat { .. })
+            | Some(FlagAction::SetArmorClass { .. })
+            | Some(FlagAction::SetHitBonus)
+            | Some(FlagAction::SetDamageBonus) => {
                 warnings.push(Warning::new(
                     WarningKind::UnsupportedFlag,
                     Severity::Warn,
@@ -1114,7 +1123,10 @@ fn map_mob(
                 ));
             }
             Some(FlagAction::Drop { .. }) => {}
-            Some(FlagAction::SetStat { .. }) | Some(FlagAction::SetArmorClass { .. }) => {
+            Some(FlagAction::SetStat { .. })
+            | Some(FlagAction::SetArmorClass { .. })
+            | Some(FlagAction::SetHitBonus)
+            | Some(FlagAction::SetDamageBonus) => {
                 warnings.push(Warning::new(
                     WarningKind::UnsupportedFlag,
                     Severity::Warn,
@@ -1193,7 +1205,10 @@ fn map_mob(
                 ));
             }
             Some(FlagAction::Drop { .. }) => {}
-            Some(FlagAction::SetStat { .. }) | Some(FlagAction::SetArmorClass { .. }) => {
+            Some(FlagAction::SetStat { .. })
+            | Some(FlagAction::SetArmorClass { .. })
+            | Some(FlagAction::SetHitBonus)
+            | Some(FlagAction::SetDamageBonus) => {
                 warnings.push(Warning::new(
                     WarningKind::UnsupportedFlag,
                     Severity::Warn,
@@ -1431,6 +1446,8 @@ fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &MappingOptio
             Some(FlagAction::SetCombatZone { .. })
             | Some(FlagAction::SetStat { .. })
             | Some(FlagAction::SetArmorClass { .. })
+            | Some(FlagAction::SetHitBonus)
+            | Some(FlagAction::SetDamageBonus)
             | Some(FlagAction::AddBuff { .. }) => {
                 warnings.push(Warning::new(
                     WarningKind::UnsupportedFlag,
@@ -1545,6 +1562,12 @@ fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &MappingOptio
                 let prior = data.armor_class.unwrap_or(0);
                 data.armor_class = Some(prior + (-modifier));
             }
+            Some(FlagAction::SetHitBonus) => {
+                data.hit_bonus += modifier;
+            }
+            Some(FlagAction::SetDamageBonus) => {
+                data.damage_bonus += modifier;
+            }
             Some(FlagAction::Warn { message }) => {
                 warnings.push(Warning::new(
                     WarningKind::UnsupportedFlag,
@@ -1566,6 +1589,7 @@ fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &MappingOptio
                     ),
                 ));
             }
+            // SetHitBonus/SetDamageBonus handled above in their own arms.
             None => warnings.push(Warning::new(
                 WarningKind::UnsupportedFlag,
                 Severity::Warn,

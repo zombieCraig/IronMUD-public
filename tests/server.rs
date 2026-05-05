@@ -3667,6 +3667,51 @@ fn test_item_extra_descs_persist() {
 }
 
 #[test]
+fn test_item_hit_damage_bonus_persist() {
+    use ironmud::ItemData;
+    use ironmud::db::Db;
+
+    let db_path = format!("test_item_hd_bonus_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut item = ItemData::new(
+            "magic ring".to_string(),
+            "a glittering ring".to_string(),
+            "A glittering ring lies here.".to_string(),
+        );
+        // Defaults: zero, zero.
+        assert_eq!(item.hit_bonus, 0);
+        assert_eq!(item.damage_bonus, 0);
+
+        item.hit_bonus = 1;
+        item.damage_bonus = 2;
+        let item_id = item.id;
+        db.save_item_data(item).expect("save");
+
+        let loaded = db.get_item_data(&item_id).expect("get").expect("present");
+        assert_eq!(loaded.hit_bonus, 1, "hit_bonus survives round-trip");
+        assert_eq!(loaded.damage_bonus, 2, "damage_bonus survives round-trip");
+
+        // Mutate: clear hit, bump damage further.
+        let mut updated = loaded;
+        updated.hit_bonus = 0;
+        updated.damage_bonus = 5;
+        db.save_item_data(updated).expect("save");
+        let loaded2 = db.get_item_data(&item_id).expect("get").expect("present");
+        assert_eq!(loaded2.hit_bonus, 0);
+        assert_eq!(loaded2.damage_bonus, 5);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_item_note_content_persists() {
     use ironmud::ItemData;
     use ironmud::db::Db;

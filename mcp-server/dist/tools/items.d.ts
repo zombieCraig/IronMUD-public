@@ -32,6 +32,8 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
+            hit_bonus?: undefined;
+            damage_bonus?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -101,6 +103,8 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
+            hit_bonus?: undefined;
+            damage_bonus?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -173,6 +177,8 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
+            hit_bonus?: undefined;
+            damage_bonus?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -245,6 +251,8 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
+            hit_bonus?: undefined;
+            damage_bonus?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -356,6 +364,14 @@ export declare const itemToolDefinitions: ({
                 enum: string[];
             };
             armor_class: {
+                type: string;
+                description: string;
+            };
+            hit_bonus: {
+                type: string;
+                description: string;
+            };
+            damage_bonus: {
                 type: string;
                 description: string;
             };
@@ -858,6 +874,14 @@ export declare const itemToolDefinitions: ({
                 enum: string[];
             };
             armor_class: {
+                type: string;
+                description: string;
+            };
+            hit_bonus: {
+                type: string;
+                description: string;
+            };
+            damage_bonus: {
                 type: string;
                 description: string;
             };
@@ -1091,6 +1115,8 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
+            hit_bonus?: undefined;
+            damage_bonus?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -1166,6 +1192,8 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
+            hit_bonus?: undefined;
+            damage_bonus?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -1258,6 +1286,8 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
+            hit_bonus?: undefined;
+            damage_bonus?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -1330,6 +1360,8 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
+            hit_bonus?: undefined;
+            damage_bonus?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -1410,6 +1442,8 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
+            hit_bonus?: undefined;
+            damage_bonus?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -1485,6 +1519,8 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
+            hit_bonus?: undefined;
+            damage_bonus?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;

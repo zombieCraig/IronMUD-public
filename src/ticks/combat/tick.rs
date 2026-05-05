@@ -911,8 +911,9 @@ fn process_character_attacks_mobile(
     let attacker_dex_mod = (char.stat_dex as i32 - 10) / 2;
     let target_dex_mod = (mobile.stat_dex as i32 - 10) / 2;
     let target_ac = mobile.armor_class;
+    let (eq_hit_bonus, eq_dam_bonus) = sum_equipment_combat_bonuses(db, &char.name);
 
-    let mut base_hit_chance = (50 + skill * 5 + attacker_dex_mod - target_dex_mod - target_ac).clamp(5, 95);
+    let mut base_hit_chance = (50 + skill * 5 + attacker_dex_mod - target_dex_mod - target_ac + eq_hit_bonus).clamp(5, 95);
 
     // Invisible-target penalty: -30 to-hit when the attacker can't see
     // their target (mob has Invisibility buff and the PC lacks
@@ -1050,8 +1051,8 @@ fn process_character_attacks_mobile(
             continue;
         }
 
-        // Hit - calculate base damage (includes ammo bonus for ranged)
-        let mut damage = roll_dice(dice_count, dice_sides) + damage_bonus + ammo_bonus;
+        // Hit - calculate base damage (includes ammo bonus for ranged + APPLY_DAMROLL bonuses)
+        let mut damage = roll_dice(dice_count, dice_sides) + damage_bonus + ammo_bonus + eq_dam_bonus;
 
         // Apply underwater damage type modifier
         let (modified_damage, water_msg) =
@@ -1754,8 +1755,9 @@ fn process_mobile_attacks_player(
         .sum();
     let target_ac = ac_buff_bonus;
     let skill = mobile.hit_modifier; // Mobile skill level based on difficulty
+    let (mob_eq_hit_bonus, mob_eq_dam_bonus) = sum_equipment_combat_bonuses_mobile(db, &mobile.id);
 
-    let mut hit_chance = (50 + skill * 5 + attacker_dex_mod - target_dex_mod - target_ac).clamp(5, 95);
+    let mut hit_chance = (50 + skill * 5 + attacker_dex_mod - target_dex_mod - target_ac + mob_eq_hit_bonus).clamp(5, 95);
 
     // Invisible-target penalty: -30 to-hit when the mobile can't see
     // its target (PC has Invisibility and the mob lacks DetectInvisible
@@ -1832,8 +1834,8 @@ fn process_mobile_attacks_player(
         return Ok(());
     }
 
-    // Hit - calculate damage
-    let mut damage = roll_dice(count, sides) + bonus;
+    // Hit - calculate damage (includes APPLY_DAMROLL bonuses from equipped items)
+    let mut damage = roll_dice(count, sides) + bonus + mob_eq_dam_bonus;
 
     // Apply underwater damage type modifier
     let (modified_damage, _water_msg) = apply_underwater_modifier(db, room_id, damage, damage_type);
@@ -2142,6 +2144,35 @@ pub fn parse_damage_dice(dice_str: &str) -> (i32, i32, i32) {
 
     let sides: i32 = sides_and_bonus.parse().unwrap_or(4);
     (count, sides, 0)
+}
+
+/// Sum APPLY_HITROLL / APPLY_DAMROLL bonuses across all of a character's
+/// equipped items. CircleMUD parity: bonuses apply while worn in any slot,
+/// not just a wielded weapon.
+fn sum_equipment_combat_bonuses(db: &db::Db, name: &str) -> (i32, i32) {
+    let mut hit = 0;
+    let mut dam = 0;
+    if let Ok(items) = db.get_equipped_items(name) {
+        for item in &items {
+            hit += item.hit_bonus;
+            dam += item.damage_bonus;
+        }
+    }
+    (hit, dam)
+}
+
+/// Mob counterpart to `sum_equipment_combat_bonuses` — sums hit/damage
+/// bonuses across all items equipped on a mobile.
+fn sum_equipment_combat_bonuses_mobile(db: &db::Db, mobile_id: &uuid::Uuid) -> (i32, i32) {
+    let mut hit = 0;
+    let mut dam = 0;
+    if let Ok(items) = db.get_items_equipped_on_mobile(mobile_id) {
+        for item in &items {
+            hit += item.hit_bonus;
+            dam += item.damage_bonus;
+        }
+    }
+    (hit, dam)
 }
 
 /// Get weapon info for a character (skill, dice_count, dice_sides, damage_bonus)
