@@ -18,9 +18,9 @@ use crate::import::{
     TriggerMutation, Warning, WarningKind,
 };
 use crate::types::{
-    CastOnUse, CombatZoneType, DamageType, ExtraDesc, ItemData, ItemFlags, ItemTrigger, ItemTriggerType, ItemType,
-    LiquidType, MobileFlags, MobileTrigger, MobileTriggerType, RoomFlags, RoomTrigger, SpawnDestination,
-    SpawnEntityType, TriggerType, WearLocation,
+    ActivityState, CastOnUse, CombatZoneType, DamageType, ExtraDesc, ItemData, ItemFlags, ItemTrigger,
+    ItemTriggerType, ItemType, LiquidType, MobileFlags, MobileTrigger, MobileTriggerType, RoomFlags, RoomTrigger,
+    RoutineEntry, SpawnDestination, SpawnEntityType, TriggerType, WearLocation,
 };
 
 /// CircleMUD spell-number → IronMUD spell ID lookup, loaded lazily from
@@ -1826,17 +1826,7 @@ fn map_shop(
             ),
         ));
     }
-    if !is_default_hours(shop) {
-        warnings.push(Warning::new(
-            WarningKind::DeferredFeature,
-            Severity::Warn,
-            shop.source.clone(),
-            format!(
-                "shop #{} hours (open1={} close1={} open2={} close2={}) not translated — author a daily_routine on the keeper to gate trading",
-                shop.vnum, shop.open1, shop.close1, shop.open2, shop.close2
-            ),
-        ));
-    }
+    let daily_routine = synthesize_shop_routine(shop, &mut warnings);
 
     (
         Some(PlannedShopOverlay {
@@ -1847,6 +1837,7 @@ fn map_shop(
             buy_rate,
             sell_rate,
             buys_types,
+            daily_routine,
             source: shop.source.clone(),
         }),
         warnings,
@@ -2185,6 +2176,96 @@ fn is_default_hours(shop: &IrShop) -> bool {
     let always_first_shift = shop.open1 == 0 && shop.close1 >= 24;
     let no_second_shift = shop.open2 == 0 && shop.close2 == 0;
     always_first_shift && no_second_shift
+}
+
+/// Translate CircleMUD `open1/close1/open2/close2` into IronMUD
+/// `RoutineEntry`s. Each open window emits a `Working` entry at the open
+/// hour and an `OffDuty` entry at the close hour; together they partition
+/// the 24-hour day so `find_active_entry` flips the keeper between
+/// trading and not-trading. Returns an empty vec for "always open" shops
+/// (so the writer leaves the keeper's routine untouched). Wrap-around
+/// windows (e.g. open=20 close=4) need no special handling — entries
+/// are stored as `hour % 24` and `find_active_entry` already wraps past
+/// midnight via its `best.or(best_wrap)` fallback.
+fn synthesize_shop_routine(shop: &IrShop, warnings: &mut Vec<Warning>) -> Vec<RoutineEntry> {
+    if is_default_hours(shop) {
+        return Vec::new();
+    }
+
+    let mut shifts: Vec<(i32, i32, u8)> = Vec::new();
+    // A non-default shop always has a meaningful first shift.
+    shifts.push((shop.open1, shop.close1, 1));
+    if !(shop.open2 == 0 && shop.close2 == 0) {
+        shifts.push((shop.open2, shop.close2, 2));
+    }
+
+    let mut entries: Vec<RoutineEntry> = Vec::new();
+    for (open, close, idx) in shifts {
+        let open_h = open.rem_euclid(24) as u8;
+        let close_h = close.rem_euclid(24) as u8;
+        if open_h == close_h {
+            warnings.push(Warning::new(
+                WarningKind::DeferredFeature,
+                Severity::Warn,
+                shop.source.clone(),
+                format!(
+                    "shop #{} shift {} has open==close ({}/{}) after mod 24; window dropped",
+                    shop.vnum, idx, open, close
+                ),
+            ));
+            continue;
+        }
+        entries.push(routine_entry(open_h, ActivityState::Working));
+        entries.push(routine_entry(close_h, ActivityState::OffDuty));
+    }
+
+    if entries.is_empty() {
+        return entries;
+    }
+
+    // Sort, then collapse colliding start_hours preferring Working — if
+    // two shifts share a boundary (e.g. shift1 closes at the same hour
+    // shift2 opens), the keeper should be on duty, not off.
+    entries.sort_by_key(|e| e.start_hour);
+    let original_len = entries.len();
+    let mut deduped: Vec<RoutineEntry> = Vec::with_capacity(entries.len());
+    for entry in entries {
+        if let Some(last) = deduped.last_mut() {
+            if last.start_hour == entry.start_hour {
+                if matches!(entry.activity, ActivityState::Working) {
+                    *last = entry;
+                }
+                continue;
+            }
+        }
+        deduped.push(entry);
+    }
+    if deduped.len() != original_len {
+        warnings.push(Warning::new(
+            WarningKind::DeferredFeature,
+            Severity::Info,
+            shop.source.clone(),
+            format!(
+                "shop #{} has overlapping shifts after mod 24; collapsed to {} routine entr{}",
+                shop.vnum,
+                deduped.len(),
+                if deduped.len() == 1 { "y" } else { "ies" }
+            ),
+        ));
+    }
+
+    deduped
+}
+
+fn routine_entry(start_hour: u8, activity: ActivityState) -> RoutineEntry {
+    RoutineEntry {
+        start_hour,
+        activity,
+        destination_vnum: None,
+        transition_message: None,
+        suppress_wander: false,
+        dialogue_overrides: HashMap::new(),
+    }
 }
 
 /// Apply CircleMUD ITEM_TYPE-specific value semantics to `data`. Each branch
@@ -2558,5 +2639,112 @@ mod tests {
         assert_eq!(dice_max("2d6"), Some(12));
         assert_eq!(dice_max("4d6-3"), Some(21));
         assert_eq!(dice_max("garbage"), None);
+    }
+
+    fn shop_with_hours(open1: i32, close1: i32, open2: i32, close2: i32) -> IrShop {
+        IrShop {
+            vnum: 9000,
+            keeper_vnum: 0,
+            producing: Vec::new(),
+            profit_buy: 1.0,
+            profit_sell: 1.0,
+            buy_types: Vec::new(),
+            unknown_buy_types: Vec::new(),
+            messages: Default::default(),
+            temper: 0,
+            bitvector: 0,
+            with_who: 0,
+            rooms: Vec::new(),
+            open1,
+            close1,
+            open2,
+            close2,
+            source: SourceLoc::default(),
+        }
+    }
+
+    #[test]
+    fn synthesize_routine_default_hours_empty() {
+        let mut warnings = Vec::new();
+        let routine = synthesize_shop_routine(&shop_with_hours(0, 28, 0, 0), &mut warnings);
+        assert!(routine.is_empty());
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn synthesize_routine_single_shift() {
+        let mut warnings = Vec::new();
+        let routine = synthesize_shop_routine(&shop_with_hours(8, 18, 0, 0), &mut warnings);
+        assert_eq!(routine.len(), 2);
+        assert_eq!(routine[0].start_hour, 8);
+        assert_eq!(routine[0].activity, ActivityState::Working);
+        assert_eq!(routine[1].start_hour, 18);
+        assert_eq!(routine[1].activity, ActivityState::OffDuty);
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn synthesize_routine_dual_shift() {
+        let mut warnings = Vec::new();
+        let routine = synthesize_shop_routine(&shop_with_hours(8, 12, 14, 20), &mut warnings);
+        assert_eq!(routine.len(), 4);
+        let pairs: Vec<(u8, ActivityState)> = routine
+            .iter()
+            .map(|e| (e.start_hour, e.activity.clone()))
+            .collect();
+        assert_eq!(
+            pairs,
+            vec![
+                (8, ActivityState::Working),
+                (12, ActivityState::OffDuty),
+                (14, ActivityState::Working),
+                (20, ActivityState::OffDuty),
+            ]
+        );
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn synthesize_routine_wrap_around_normalizes_mod_24() {
+        // open=22, close=30 means 22:00 through 6:00 next day.
+        // After mod 24: Working@22, OffDuty@6 (sorted: OffDuty@6 first).
+        let mut warnings = Vec::new();
+        let routine = synthesize_shop_routine(&shop_with_hours(22, 30, 0, 0), &mut warnings);
+        assert_eq!(routine.len(), 2);
+        assert_eq!(routine[0].start_hour, 6);
+        assert_eq!(routine[0].activity, ActivityState::OffDuty);
+        assert_eq!(routine[1].start_hour, 22);
+        assert_eq!(routine[1].activity, ActivityState::Working);
+        assert!(warnings.is_empty());
+    }
+
+    #[test]
+    fn synthesize_routine_degenerate_window_warns_and_drops() {
+        // open1==close1 after mod 24 — entire window dropped, but the
+        // second valid shift still produces entries.
+        let mut warnings = Vec::new();
+        let routine = synthesize_shop_routine(&shop_with_hours(10, 10, 14, 18), &mut warnings);
+        assert_eq!(routine.len(), 2, "only the second shift survives");
+        assert_eq!(routine[0].start_hour, 14);
+        assert_eq!(routine[1].start_hour, 18);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].message.contains("open==close"));
+    }
+
+    #[test]
+    fn synthesize_routine_collapses_overlapping_boundary() {
+        // shift1 closes at 14, shift2 opens at 14 — same start_hour
+        // collides; we keep Working so the keeper stays on duty.
+        let mut warnings = Vec::new();
+        let routine = synthesize_shop_routine(&shop_with_hours(8, 14, 14, 20), &mut warnings);
+        assert_eq!(routine.len(), 3);
+        assert_eq!(routine[0].start_hour, 8);
+        assert_eq!(routine[0].activity, ActivityState::Working);
+        assert_eq!(routine[1].start_hour, 14);
+        assert_eq!(routine[1].activity, ActivityState::Working);
+        assert_eq!(routine[2].start_hour, 20);
+        assert_eq!(routine[2].activity, ActivityState::OffDuty);
+        assert_eq!(warnings.len(), 1);
+        assert_eq!(warnings[0].severity, Severity::Info);
     }
 }

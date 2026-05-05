@@ -346,6 +346,11 @@ pub struct PlannedShopOverlay {
     /// IronMUD `shop_buys_types` — already mapped to IronMUD `ItemType`
     /// display strings, deduped.
     pub buys_types: Vec<String>,
+    /// Synthesized `daily_routine` derived from the source `open1/close1/
+    /// open2/close2` hours. Empty when the source shop is "always open"
+    /// (CircleMUD's `0 28 0 0` default) — the writer leaves the keeper's
+    /// existing routine untouched in that case.
+    pub daily_routine: Vec<crate::types::RoutineEntry>,
     pub source: SourceLoc,
 }
 

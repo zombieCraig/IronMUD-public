@@ -396,6 +396,7 @@ warning. Shops can reference keepers in *any* imported zone, so the
 | `profit_buy` (float, e.g. 2.1) | `shop_sell_rate` (i32, e.g. 200) | shop's *sell-to-player* multiplier × 100, rounded |
 | `profit_sell` (float, e.g. 0.5) | `shop_buy_rate` (i32, e.g. 50) | shop's *buy-from-player* multiplier × 100, rounded |
 | `buy_types` token list | `shop_buys_types` | mapped via JSON; deduped; lowercase IronMUD `ItemType` strings |
+| `open1/close1/open2/close2` | keeper's `daily_routine` | each open window emits a `Working` entry at the open hour and `OffDuty` at the close hour; hours are taken `mod 24` so wrap-around windows (e.g. 20-04) work transparently. Default `0 28 0 0` ("always open") leaves the routine empty so the keeper stays Working 24/7. Existing routines on the keeper are preserved on re-import. |
 
 ### Buy-type translation (`v0`) → IronMUD `ItemType`
 
@@ -416,10 +417,6 @@ warning. Shops can reference keepers in *any* imported zone, so the
 - **`in_room` list (rooms)** — IronMUD shopkeepers travel with their
   shop, so multi-room operation surfaces a per-shop Warn. Single-room
   shops are silent.
-- **`open1/close1/open2/close2`** — IronMUD gates trading via the
-  keeper's `daily_routine` `ActivityState`, not per-shop hours. Any
-  non-default schedule (anything other than "always open") emits a Warn
-  suggesting the builder author a routine on the keeper.
 - **7 message strings** (no_such_item1/2, do_not_buy, missing_cash1/2,
   message_buy, message_sell) — IronMUD has no per-shop messaging, so
   shops with any non-empty messages emit a single Warn.
@@ -1079,16 +1076,6 @@ below for what's next.)
 Histogram numbers below are from a clean dry-run against stock CircleMUD 3.1
 (8 `.shp` files yielding 46 shop overlays).
 
-- **Shop daily-routine synthesis from `open1/close1/open2/close2`** —
-  Stock shops carry open hours (e.g. shop #12034 is open 8-18 then
-  18-22). IronMUD gates trading via the keeper's `daily_routine`
-  `ActivityState` (Working vs. OffDuty / Sleeping). The importer warns
-  per shop today; a future pass should synthesize a `daily_routine` on
-  the keeper that flips the keeper to `Working` during the open
-  window(s) and `OffDuty` otherwise. Dual-shift hours (open2/close2)
-  complicate the transform, but most stock shops are single-shift.
-  Without this, every imported shop is "always open" regardless of the
-  source schedule.
 - **`WILL_START_FIGHT`** — Circle's anti-theft response: shopkeepers
   attack on detected steal. ~10 of 46 stock shops set this bit. Likely
   shape: a per-mob `MobileFlags.hostile_on_steal` consulted by the

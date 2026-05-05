@@ -342,6 +342,12 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
         // buy list; an explicit empty list means "this shop sells but
         // doesn't buy back from players".
         mobile.shop_buys_types = overlay.buys_types.clone();
+        // Stamp the synthesized open-hours routine onto the keeper, but
+        // only if no routine has been authored yet — protects a hand-edited
+        // routine on a re-import.
+        if !overlay.daily_routine.is_empty() && mobile.daily_routine.is_empty() {
+            mobile.daily_routine = overlay.daily_routine.clone();
+        }
         db.save_mobile_data(mobile)
             .with_context(|| format!("saving keeper {}", overlay.keeper_vnum))?;
         overlaid_shops += 1;

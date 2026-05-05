@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use ironmud::db::Db;
 use ironmud::import::{MappingOptions, MudEngine, Severity, engines::circle::CircleEngine, mapping, writer};
-use ironmud::types::DoorState;
+use ironmud::types::{ActivityState, DoorState};
 
 fn fixture_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/circle")
@@ -586,8 +586,37 @@ fn parses_shops_into_plan() {
         .collect();
     let multi_room = shop_warns.iter().any(|w| w.message.contains("operates in 2 rooms"));
     assert!(multi_room, "multi-room warn surfaced");
-    let dual_shift = shop_warns.iter().any(|w| w.message.contains("hours (open1=8"));
-    assert!(dual_shift, "dual-shift hours warn surfaced");
+    // Shop hours are now translated rather than warned — assert no
+    // residual "not translated" message slipped through.
+    let stale_hours_warn = shop_warns
+        .iter()
+        .any(|w| w.message.contains("hours") && w.message.contains("not translated"));
+    assert!(
+        !stale_hours_warn,
+        "shop hours should be synthesized into a daily_routine, not warned"
+    );
+
+    // Default-hours shop (#9001: 0/28/0/0) leaves the routine empty so
+    // the keeper trades 24/7. Dual-shift shop (#9002: 8/12/14/20)
+    // yields four entries partitioning the day into Working/OffDuty
+    // windows.
+    assert!(s1.daily_routine.is_empty(), "always-open shop has no routine");
+    assert_eq!(s2.daily_routine.len(), 4, "dual-shift shop has 4 entries");
+    let pairs: Vec<(u8, ActivityState)> = s2
+        .daily_routine
+        .iter()
+        .map(|e| (e.start_hour, e.activity.clone()))
+        .collect();
+    assert_eq!(
+        pairs,
+        vec![
+            (8, ActivityState::Working),
+            (12, ActivityState::OffDuty),
+            (14, ActivityState::Working),
+            (20, ActivityState::OffDuty),
+        ]
+    );
+
     let messages = shop_warns
         .iter()
         .filter(|w| w.message.contains("custom message string"))
@@ -652,6 +681,23 @@ fn applies_shops_to_tmp_db() {
         assert!(beast.flags.shopkeeper);
         assert!(beast.shop_stock.is_empty());
         assert_eq!(beast.shop_buys_types, vec!["food".to_string()]);
+        // Synthesized hours (8-12, 14-20) landed on the keeper.
+        let beast_hours: Vec<(u8, ActivityState)> = beast
+            .daily_routine
+            .iter()
+            .map(|e| (e.start_hour, e.activity.clone()))
+            .collect();
+        assert_eq!(
+            beast_hours,
+            vec![
+                (8, ActivityState::Working),
+                (12, ActivityState::OffDuty),
+                (14, ActivityState::Working),
+                (20, ActivityState::OffDuty),
+            ]
+        );
+        // Default-hours wanderer keeps an empty routine (always Working).
+        assert!(wanderer.daily_routine.is_empty());
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
