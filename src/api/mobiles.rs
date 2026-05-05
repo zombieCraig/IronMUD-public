@@ -240,6 +240,12 @@ pub struct MobileFlagsRequest {
     pub shocking: Option<bool>,
     #[serde(default)]
     pub unique: Option<bool>,
+    #[serde(default)]
+    pub stay_zone: Option<bool>,
+    #[serde(default)]
+    pub aware: Option<bool>,
+    #[serde(default)]
+    pub memory: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -444,6 +450,15 @@ impl MobileSummary {
         }
         if mobile.flags.shocking {
             flags.push("shocking".to_string());
+        }
+        if mobile.flags.stay_zone {
+            flags.push("stay_zone".to_string());
+        }
+        if mobile.flags.aware {
+            flags.push("aware".to_string());
+        }
+        if mobile.flags.memory {
+            flags.push("memory".to_string());
         }
 
         MobileSummary {
@@ -694,6 +709,9 @@ async fn create_mobile(
             corrosive: req.flags.corrosive.unwrap_or(false),
             shocking: req.flags.shocking.unwrap_or(false),
             unique: req.flags.unique.unwrap_or(false),
+            stay_zone: req.flags.stay_zone.unwrap_or(false),
+            aware: req.flags.aware.unwrap_or(false),
+            memory: req.flags.memory.unwrap_or(false),
         },
         dialogue: HashMap::new(),
         shop_stock: req.shop_stock.unwrap_or_default(),
@@ -738,6 +756,8 @@ async fn create_mobile(
         social: None,
         active_buffs: Vec::new(),
         adoption_pending: false,
+        home_area_id: None,
+        remembered_enemies: Vec::new(),
     };
 
     state
@@ -873,6 +893,15 @@ async fn update_mobile(
         }
         if let Some(v) = flags.unique {
             mobile.flags.unique = v;
+        }
+        if let Some(v) = flags.stay_zone {
+            mobile.flags.stay_zone = v;
+        }
+        if let Some(v) = flags.aware {
+            mobile.flags.aware = v;
+        }
+        if let Some(v) = flags.memory {
+            mobile.flags.memory = v;
         }
     }
     if let Some(world_max) = req.world_max_count {

@@ -3055,6 +3055,19 @@ pub struct MobileFlags {
     pub shocking: bool, // Melee hits apply a lightning DoT
     #[serde(default)]
     pub unique: bool, // Only one live (non-prototype) instance of this vnum allowed in the world
+    #[serde(default)]
+    pub stay_zone: bool, // Wandering / pursuit stays inside home_area_id
+    #[serde(default)]
+    pub aware: bool, // Sees through hidden / sneaking / invisibility
+    #[serde(default)]
+    pub memory: bool, // Remembers PC attackers and attacks on sight
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RememberedEnemy {
+    pub name: String,
+    #[serde(default)]
+    pub expires_at_secs: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3259,6 +3272,15 @@ pub struct MobileData {
     /// adoption pass in the aging tick. Non-juveniles are never flagged.
     #[serde(default)]
     pub adoption_pending: bool,
+    /// Home zone for `MobileFlags.stay_zone`. Stamped at spawn-time from the
+    /// destination room's `area_id` when first None.
+    #[serde(default)]
+    pub home_area_id: Option<Uuid>,
+    /// PC names this mobile remembers as enemies (`MobileFlags.memory`).
+    /// Capped at MEMORY_CAP, FIFO eviction; entries expire after
+    /// MEMORY_DURATION_SECS.
+    #[serde(default)]
+    pub remembered_enemies: Vec<RememberedEnemy>,
 }
 
 fn default_mobile_hp() -> i32 {
@@ -3369,6 +3391,8 @@ impl MobileData {
             social: None,
             active_buffs: Vec::new(),
             adoption_pending: false,
+            home_area_id: None,
+            remembered_enemies: Vec::new(),
         }
     }
 }

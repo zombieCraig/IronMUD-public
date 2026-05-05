@@ -4234,3 +4234,167 @@ fn test_sanctuary_spell_definition_loads() {
     assert_eq!(spell.get("buff_duration_secs").and_then(|v| v.as_i64()), Some(120));
     assert_eq!(spell.get("target_type").and_then(|v| v.as_str()), Some("self_or_friendly"));
 }
+
+fn stay_zone_test_room(area_id: Option<uuid::Uuid>) -> ironmud::types::RoomData {
+    use ironmud::types::{RoomData, RoomExits, RoomFlags, WaterType};
+    use std::collections::HashMap;
+    RoomData {
+        id: uuid::Uuid::new_v4(),
+        title: "test room".to_string(),
+        description: String::new(),
+        exits: RoomExits::default(),
+        flags: RoomFlags::default(),
+        extra_descs: Vec::new(),
+        vnum: None,
+        area_id,
+        triggers: Vec::new(),
+        doors: HashMap::new(),
+        spring_desc: None,
+        summer_desc: None,
+        autumn_desc: None,
+        winter_desc: None,
+        dynamic_desc: None,
+        water_type: WaterType::None,
+        catch_table: Vec::new(),
+        is_property_template: false,
+        property_template_id: None,
+        is_template_entrance: false,
+        property_lease_id: None,
+        property_entrance: false,
+        recent_departures: Vec::new(),
+        blood_trails: Vec::new(),
+        traps: Vec::new(),
+        living_capacity: 0,
+        residents: Vec::new(),
+    }
+}
+
+#[test]
+fn test_home_area_id_is_stamped_on_first_room_placement() {
+    use ironmud::db::Db;
+    use ironmud::types::MobileData;
+
+    let db_path = format!("test_home_area_stamp_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let area_id = uuid::Uuid::new_v4();
+        let other_area_id = uuid::Uuid::new_v4();
+
+        let room = stay_zone_test_room(Some(area_id));
+        let room_id = room.id;
+        db.save_room_data(room).expect("save room");
+
+        let other = stay_zone_test_room(Some(other_area_id));
+        let other_id = other.id;
+        db.save_room_data(other).expect("save other room");
+
+        let mut mob = MobileData::new("a sentinel".to_string());
+        mob.is_prototype = false;
+        let mob_id = mob.id;
+        db.save_mobile_data(mob).expect("save mob");
+
+        assert!(db.move_mobile_to_room(&mob_id, &room_id).expect("move ok"));
+        let stamped = db.get_mobile_data(&mob_id).expect("get").expect("present");
+        assert_eq!(stamped.home_area_id, Some(area_id), "home_area_id stamped");
+
+        // Subsequent moves do NOT change home_area_id.
+        assert!(db.move_mobile_to_room(&mob_id, &other_id).expect("move ok"));
+        let after_move = db.get_mobile_data(&mob_id).expect("get").expect("present");
+        assert_eq!(
+            after_move.home_area_id,
+            Some(area_id),
+            "home_area_id is sticky across moves",
+        );
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_memory_resets_on_mob_respawn() {
+    use ironmud::db::Db;
+    use ironmud::types::{MobileData, RememberedEnemy};
+
+    let db_path = format!("test_memory_respawn_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        // Prototype with the memory flag and an empty enemies list — the
+        // expected stable state.
+        let mut proto = MobileData::new("an angry boar".to_string());
+        proto.is_prototype = true;
+        proto.vnum = "test:angry_boar".to_string();
+        proto.flags.memory = true;
+        db.save_mobile_data(proto).expect("save proto");
+
+        // Spawn an instance, give it a remembered enemy, persist.
+        let mut spawned = db
+            .spawn_mobile_from_prototype("test:angry_boar")
+            .expect("spawn ok")
+            .expect("spawn produced an instance");
+        spawned.remembered_enemies.push(RememberedEnemy {
+            name: "alice".to_string(),
+            expires_at_secs: i64::MAX,
+        });
+        db.save_mobile_data(spawned.clone()).expect("save instance");
+
+        // Respawning from prototype yields a fresh instance with empty memory.
+        let respawn = db
+            .spawn_mobile_from_prototype("test:angry_boar")
+            .expect("spawn ok")
+            .expect("respawn instance");
+        assert!(
+            respawn.remembered_enemies.is_empty(),
+            "respawn carries no remembered enemies (prototype is empty)",
+        );
+
+        // The original instance still holds its enemy until it's deleted.
+        let still = db.get_mobile_data(&spawned.id).expect("get").expect("present");
+        assert_eq!(still.remembered_enemies.len(), 1);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_record_mob_memory_caps_at_ten_and_decays() {
+    use ironmud::script::{MEMORY_CAP, MEMORY_DURATION_SECS, check_and_prune_memory, record_mob_memory};
+    use ironmud::types::MobileData;
+
+    let mut mob = MobileData::new("an angry boar".to_string());
+    mob.flags.memory = true;
+
+    // FIFO eviction at MEMORY_CAP.
+    for i in 0..(MEMORY_CAP + 4) {
+        record_mob_memory(&mut mob, &format!("foe{i}"));
+    }
+    assert_eq!(mob.remembered_enemies.len(), MEMORY_CAP);
+    assert_eq!(
+        mob.remembered_enemies[0].name, "foe4",
+        "oldest entries evicted FIFO when over cap",
+    );
+
+    // Decay: stamp an entry as already expired and confirm prune.
+    mob.remembered_enemies.clear();
+    mob.remembered_enemies.push(ironmud::types::RememberedEnemy {
+        name: "ghost".to_string(),
+        expires_at_secs: 1,
+    });
+    let (remembers, pruned) = check_and_prune_memory(&mut mob, "ghost");
+    assert!(!remembers);
+    assert!(pruned);
+
+    // Sanity-check the duration is the expected wall-clock window.
+    assert_eq!(MEMORY_DURATION_SECS, 1800);
+}

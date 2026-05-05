@@ -287,6 +287,9 @@ export interface MobileFlags {
   corrosive?: boolean;
   shocking?: boolean;
   unique?: boolean;
+  stay_zone?: boolean;
+  aware?: boolean;
+  memory?: boolean;
 }
 
 export interface SpawnPoint {

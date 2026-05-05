@@ -3,9 +3,152 @@
 
 use crate::SharedConnections;
 use crate::db::Db;
-use crate::{BodyPart, EffectType};
+use crate::{BodyPart, CharacterData, EffectType, MobileData};
 use rhai::Engine;
 use std::sync::Arc;
+
+/// Threshold above which a mobile's `perception` stat pierces hidden / sneak
+/// (but not invisibility — that still requires `flags.aware`).
+pub const PERCEPTION_PIERCE_THRESHOLD: i32 = 5;
+
+/// Returns true if `mob` can see `char` for the purposes of selecting an
+/// aggression / memory target. Encodes the MOB_AWARE rule:
+///
+/// - Plain visible characters always return true.
+/// - Hidden or sneaking PCs are invisible to mobs unless the mob is `aware`
+///   or its `perception >= PERCEPTION_PIERCE_THRESHOLD`.
+/// - Invisibility-buffed PCs are invisible to mobs unless the mob is `aware`.
+///   Perception alone does not pierce magical invisibility.
+pub fn is_player_visible_to_mob(character: &CharacterData, mob: &MobileData) -> bool {
+    let invisible = character
+        .active_buffs
+        .iter()
+        .any(|b| b.effect_type == EffectType::Invisibility);
+    let stealthed = character.is_hidden || character.is_sneaking;
+
+    if !invisible && !stealthed {
+        return true;
+    }
+
+    if mob.flags.aware {
+        return true;
+    }
+
+    if invisible {
+        // Magical invisibility is only pierced by AWARE.
+        return false;
+    }
+
+    // Hidden / sneaking only — high perception pierces.
+    mob.perception >= PERCEPTION_PIERCE_THRESHOLD
+}
+
+#[cfg(test)]
+mod visibility_tests {
+    use super::*;
+    use crate::{ActiveBuff, EffectType, MobileFlags};
+
+    fn base_char() -> CharacterData {
+        serde_json::from_value(serde_json::json!({
+            "name": "test",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character")
+    }
+
+    fn base_mob() -> MobileData {
+        MobileData::new("guard".to_string())
+    }
+
+    #[test]
+    fn visible_baseline_passes() {
+        let c = base_char();
+        let m = base_mob();
+        assert!(is_player_visible_to_mob(&c, &m));
+    }
+
+    #[test]
+    fn hidden_blocks_normal_mob() {
+        let mut c = base_char();
+        c.is_hidden = true;
+        let m = base_mob();
+        assert!(!is_player_visible_to_mob(&c, &m));
+    }
+
+    #[test]
+    fn sneaking_blocks_normal_mob() {
+        let mut c = base_char();
+        c.is_sneaking = true;
+        let m = base_mob();
+        assert!(!is_player_visible_to_mob(&c, &m));
+    }
+
+    #[test]
+    fn aware_pierces_hidden() {
+        let mut c = base_char();
+        c.is_hidden = true;
+        let mut m = base_mob();
+        m.flags = MobileFlags {
+            aware: true,
+            ..Default::default()
+        };
+        assert!(is_player_visible_to_mob(&c, &m));
+    }
+
+    #[test]
+    fn perception_pierces_sneak() {
+        let mut c = base_char();
+        c.is_sneaking = true;
+        let mut m = base_mob();
+        m.perception = 5;
+        assert!(is_player_visible_to_mob(&c, &m));
+    }
+
+    #[test]
+    fn invisibility_blocks_normal_mob() {
+        let mut c = base_char();
+        c.active_buffs.push(ActiveBuff {
+            effect_type: EffectType::Invisibility,
+            magnitude: 0,
+            remaining_secs: 100,
+            source: "test".to_string(),
+        });
+        let m = base_mob();
+        assert!(!is_player_visible_to_mob(&c, &m));
+    }
+
+    #[test]
+    fn aware_pierces_invisibility() {
+        let mut c = base_char();
+        c.active_buffs.push(ActiveBuff {
+            effect_type: EffectType::Invisibility,
+            magnitude: 0,
+            remaining_secs: 100,
+            source: "test".to_string(),
+        });
+        let mut m = base_mob();
+        m.flags = MobileFlags {
+            aware: true,
+            ..Default::default()
+        };
+        assert!(is_player_visible_to_mob(&c, &m));
+    }
+
+    #[test]
+    fn perception_does_not_pierce_invisibility() {
+        let mut c = base_char();
+        c.active_buffs.push(ActiveBuff {
+            effect_type: EffectType::Invisibility,
+            magnitude: 0,
+            remaining_secs: 100,
+            source: "test".to_string(),
+        });
+        let mut m = base_mob();
+        m.perception = 10;
+        assert!(!is_player_visible_to_mob(&c, &m));
+    }
+}
 
 /// Register stealth-related functions
 pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections) {

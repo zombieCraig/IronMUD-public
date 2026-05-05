@@ -1026,6 +1026,9 @@ fn apply_named_mob_flag(flags: &mut MobileFlags, name: &str) -> bool {
         "chilling" => flags.chilling = true,
         "corrosive" => flags.corrosive = true,
         "shocking" => flags.shocking = true,
+        "stay_zone" => flags.stay_zone = true,
+        "aware" => flags.aware = true,
+        "memory" => flags.memory = true,
         _ => return false,
     }
     true

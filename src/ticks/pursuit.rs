@@ -16,7 +16,9 @@ use super::broadcast::{
     broadcast_to_room_awake, broadcast_to_room_except_awake, broadcast_to_room_mobiles, send_message_to_character,
     sync_character_to_session,
 };
-use super::mobile::{get_opposite_direction_rust, get_valid_wander_exits, propagate_mobile_followers};
+use super::mobile::{
+    filter_exits_by_stay_zone, get_opposite_direction_rust, get_valid_wander_exits, propagate_mobile_followers,
+};
 
 /// Pursuit tick interval in seconds
 pub const PURSUIT_TICK_INTERVAL_SECS: u64 = 10;
@@ -82,8 +84,9 @@ fn process_pursuit_tick(db: &db::Db, connections: &SharedConnections) -> Result<
             }
         };
 
-        // Build valid exits
+        // Build valid exits (clamped to home zone if MOB_STAY_ZONE)
         let valid_exits = get_valid_wander_exits(db, &current_room)?;
+        let valid_exits = filter_exits_by_stay_zone(db, &current_mobile, valid_exits);
         if valid_exits.is_empty() {
             clear_pursuit(db, &current_mobile.id);
             continue;

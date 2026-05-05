@@ -19,7 +19,9 @@ use crate::ticks::broadcast::{
     broadcast_to_room_awake, broadcast_to_room_except, broadcast_to_room_except_awake, send_message_to_character,
     sync_character_to_session,
 };
-use crate::ticks::mobile::{find_player_name_in_room, get_opposite_direction_rust, get_valid_wander_exits};
+use crate::ticks::mobile::{
+    filter_exits_by_stay_zone, find_player_name_in_room, get_opposite_direction_rust, get_valid_wander_exits,
+};
 
 /// Combat tick interval in seconds (5 second rounds)
 pub const COMBAT_TICK_INTERVAL_SECS: u64 = 5;
@@ -1080,6 +1082,7 @@ fn process_character_attacks_mobile(
         // Apply damage
         damage = ironmud::script::apply_damage_reduction(damage, &mobile.active_buffs);
         mobile.current_hp -= damage;
+        ironmud::script::record_mob_memory(&mut mobile, &char.name);
         db.save_mobile_data(mobile.clone())?;
 
         // Build message with crit text (yellow/bold)
@@ -1189,8 +1192,9 @@ fn attempt_mobile_flee(db: &db::Db, connections: &SharedConnections, mobile: &mu
     let room_id = mobile.current_room_id?;
     let room = db.get_room_data(&room_id).ok()??;
 
-    // Build valid exit list using existing wander logic
+    // Build valid exit list using existing wander logic (clamped to home zone)
     let exits = get_valid_wander_exits(db, &room).ok()?;
+    let exits = filter_exits_by_stay_zone(db, mobile, exits);
     if exits.is_empty() {
         // No escape - broadcast failure (sleeping players don't see combat)
         broadcast_to_room_awake(

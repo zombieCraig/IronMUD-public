@@ -90,6 +90,8 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
         social: None,
         active_buffs: Vec::new(),
         adoption_pending: false,
+        home_area_id: None,
+        remembered_enemies: Vec::new(),
     }
 }
 

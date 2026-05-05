@@ -1226,6 +1226,14 @@ impl Db {
     pub fn move_mobile_to_room(&self, mobile_id: &Uuid, room_id: &Uuid) -> Result<bool> {
         if let Some(mut mobile) = self.get_mobile_data(mobile_id)? {
             mobile.current_room_id = Some(*room_id);
+            // First placement also stamps home_area_id for MOB_STAY_ZONE.
+            // Once set, it never moves — wander into another room must not
+            // reset the home zone.
+            if !mobile.is_prototype && mobile.home_area_id.is_none() {
+                if let Some(room) = self.get_room_data(room_id)? {
+                    mobile.home_area_id = room.area_id;
+                }
+            }
             self.save_mobile_data(mobile)?;
             Ok(true)
         } else {

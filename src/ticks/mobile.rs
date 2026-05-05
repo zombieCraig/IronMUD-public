@@ -167,6 +167,25 @@ fn bfs_next_step(db: &db::Db, from: uuid::Uuid, to: uuid::Uuid, mobile: &MobileD
     let mut visited: HashSet<uuid::Uuid> = HashSet::new();
     visited.insert(from);
 
+    // MOB_STAY_ZONE clamps BFS to the mobile's home area. Closure stays
+    // local to BFS so the existing get_routine_exits signature is unchanged.
+    let stay_zone_home: Option<uuid::Uuid> = if mobile.flags.stay_zone {
+        mobile.home_area_id
+    } else {
+        None
+    };
+    let in_zone = |target_id: &uuid::Uuid| -> bool {
+        match stay_zone_home {
+            None => true,
+            Some(home) => db
+                .get_room_data(target_id)
+                .ok()
+                .flatten()
+                .and_then(|r| r.area_id)
+                .map_or(false, |aid| aid == home),
+        }
+    };
+
     // Seed with exits from starting room
     if let Ok(Some(start_room)) = db.get_room_data(&from) {
         if let Ok(exits) = get_routine_exits(
@@ -177,7 +196,7 @@ fn bfs_next_step(db: &db::Db, from: uuid::Uuid, to: uuid::Uuid, mobile: &MobileD
             mobile.flags.cant_swim,
         ) {
             for (dir, target_id, _) in exits {
-                if !visited.contains(&target_id) {
+                if !visited.contains(&target_id) && in_zone(&target_id) {
                     visited.insert(target_id);
                     if target_id == to {
                         return BfsOutcome::Step { direction: dir };
@@ -214,7 +233,7 @@ fn bfs_next_step(db: &db::Db, from: uuid::Uuid, to: uuid::Uuid, mobile: &MobileD
                 mobile.flags.cant_swim,
             ) {
                 for (_, target_id, _) in exits {
-                    if !visited.contains(&target_id) {
+                    if !visited.contains(&target_id) && in_zone(&target_id) {
                         visited.insert(target_id);
                         if target_id == to {
                             return BfsOutcome::Step { direction: first_dir };
@@ -583,20 +602,25 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
             }
         }
 
-        // Check for aggressive behavior BEFORE wandering
-        // Aggressive mobiles attack players on sight
-        if current_mobile.flags.aggressive {
+        // Check for aggressive / memory-driven attack BEFORE wandering.
+        // Aggressive mobiles attack any visible player; MOB_MEMORY mobs
+        // attack any remembered visible player even without aggressive.
+        // Visibility honours MOB_AWARE + perception.
+        if current_mobile.flags.aggressive
+            || (current_mobile.flags.memory && !current_mobile.remembered_enemies.is_empty())
+        {
             if let Some(room_id) = current_mobile.current_room_id {
                 // Check if room allows combat (not a safe zone)
                 if let Ok(Some(room)) = db.get_room_data(&room_id) {
                     let is_safe = room.flags.combat_zone == Some(CombatZoneType::Safe);
 
                     if !is_safe {
-                        // Find a player in the room to attack
-                        if let Some(player_name) = find_player_name_in_room(connections, &room_id) {
+                        if let Some((player_name, was_remembered)) =
+                            find_aggression_target_for_mob(db, connections, &current_mobile, &room_id)
+                        {
                             debug!(
-                                "Aggressive: {} attacking player {} in room {}",
-                                current_mobile.name, player_name, room_id
+                                "Aggression: {} targeting player {} in room {} (remembered={})",
+                                current_mobile.name, player_name, room_id, was_remembered
                             );
 
                             // Get the player's character data
@@ -654,12 +678,17 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
                                 let _ = db.save_character_data(char.clone());
                                 sync_character_to_session(connections, &char);
 
-                                // Notify the room (sleeping players don't see this)
-                                broadcast_to_room_awake(
-                                    connections,
-                                    &room_id,
-                                    &format!("{} snarls and attacks {}!", current_mobile.name, player_name),
-                                );
+                                // Notify the room (sleeping players don't see this).
+                                // Memory-driven attacks get a recognition emote.
+                                let attack_msg = if was_remembered {
+                                    format!(
+                                        "{} snarls, '{}! I remember you!' and attacks!",
+                                        current_mobile.name, player_name
+                                    )
+                                } else {
+                                    format!("{} snarls and attacks {}!", current_mobile.name, player_name)
+                                };
+                                broadcast_to_room_awake(connections, &room_id, &attack_msg);
 
                                 // Skip wandering - mobile is now in combat
                                 continue;
@@ -864,6 +893,7 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
 
         // Build list of valid exits (cant_swim mobiles also avoid shallow water)
         let valid_exits = get_valid_wander_exits_with_flags(db, &current_room, current_mobile.flags.cant_swim)?;
+        let valid_exits = filter_exits_by_stay_zone(db, &current_mobile, valid_exits);
 
         if valid_exits.is_empty() {
             continue;
@@ -956,6 +986,34 @@ pub fn get_valid_wander_exits_with_flags(
     }
 
     Ok(valid_exits)
+}
+
+/// Filter exit candidates to those staying inside the mobile's home area
+/// when `flags.stay_zone` is set. Mobiles without `stay_zone` or a home
+/// area pass through unchanged. Used by wander, pursuit, and routine BFS
+/// to keep MOB_STAY_ZONE bound to its zone.
+pub fn filter_exits_by_stay_zone(
+    db: &db::Db,
+    mobile: &MobileData,
+    exits: Vec<(String, uuid::Uuid)>,
+) -> Vec<(String, uuid::Uuid)> {
+    if !mobile.flags.stay_zone {
+        return exits;
+    }
+    let home = match mobile.home_area_id {
+        Some(id) => id,
+        None => return exits,
+    };
+    exits
+        .into_iter()
+        .filter(|(_, target_id)| {
+            db.get_room_data(target_id)
+                .ok()
+                .flatten()
+                .and_then(|r| r.area_id)
+                .map_or(false, |aid| aid == home)
+        })
+        .collect()
 }
 
 /// Get the opposite direction for arrival messages
@@ -1101,6 +1159,50 @@ pub fn find_players_in_room(connections: &SharedConnections, room_id: &uuid::Uui
     players
 }
 
+/// Returns a candidate player for a mob's aggression / memory logic, if any.
+/// Honours MOB_AWARE (visibility) and MOB_MEMORY (remembered enemies). The
+/// boolean in the tuple is `true` when the candidate matched the memory
+/// list — used to gate the "I remember you!" emote.
+pub fn find_aggression_target_for_mob(
+    db: &db::Db,
+    connections: &SharedConnections,
+    mob: &MobileData,
+    room_id: &uuid::Uuid,
+) -> Option<(String, bool)> {
+    let aggressive = mob.flags.aggressive;
+    let memory_active = mob.flags.memory && !mob.remembered_enemies.is_empty();
+    if !aggressive && !memory_active {
+        return None;
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let remembered: HashSet<String> = mob
+        .remembered_enemies
+        .iter()
+        .filter(|e| e.expires_at_secs > now)
+        .map(|e| e.name.to_lowercase())
+        .collect();
+
+    let players = find_players_in_room(connections, room_id);
+    for name in players {
+        let key = name.to_lowercase();
+        let ch = match db.get_character_data(&key) {
+            Ok(Some(c)) => c,
+            _ => continue,
+        };
+        if !ironmud::script::is_player_visible_to_mob(&ch, mob) {
+            continue;
+        }
+        let is_remembered = remembered.contains(&key);
+        if aggressive || is_remembered {
+            return Some((name, is_remembered));
+        }
+    }
+    None
+}
+
 /// Background task that processes mobile periodic effects (poison emotes, etc.)
 pub async fn run_mobile_effects_tick(db: db::Db, connections: SharedConnections) {
     let mut ticker = interval(Duration::from_secs(MOBILE_EFFECTS_TICK_INTERVAL_SECS));
@@ -1171,6 +1273,20 @@ fn process_mobile_effects(db: &db::Db, connections: &SharedConnections) -> Resul
             let _ = db.update_mobile(&mobile.id, |m| {
                 ironmud::social::decay_mobile_buffs(m, tick_secs);
             })?;
+        }
+
+        // Prune expired MOB_MEMORY entries so dead-name lists don't pile up
+        // on long-lived mobs that are no longer being attacked.
+        if !mobile.remembered_enemies.is_empty() {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::SystemTime::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            if mobile.remembered_enemies.iter().any(|e| e.expires_at_secs <= now) {
+                let _ = db.update_mobile(&mobile.id, |m| {
+                    m.remembered_enemies.retain(|e| e.expires_at_secs > now);
+                })?;
+            }
         }
     }
     Ok(())

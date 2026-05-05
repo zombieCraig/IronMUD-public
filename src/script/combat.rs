@@ -1674,6 +1674,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                     );
                 }
                 mobile.combat.in_combat = true;
+                // MOB_MEMORY: record any PC who put this mob in combat. Covers
+                // every PC->mob attack path that goes through enter_mobile_combat
+                // (melee + spells + scripted damage).
+                if tt == CombatTargetType::Player {
+                    crate::script::record_mob_memory(&mut mobile, &target_id);
+                }
                 let mobile_name = mobile.name.clone();
                 let save_result = cloned_db.save_mobile_data(mobile);
                 tracing::debug!("enter_mobile_combat: saved mobile, result={:?}", save_result.is_ok());

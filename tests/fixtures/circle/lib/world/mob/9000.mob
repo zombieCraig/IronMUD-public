@@ -6,7 +6,7 @@ A test wanderer paces back and forth.
 The test wanderer is a small simulated NPC that exists only to satisfy the
 importer's mobile fixture.
 ~
-bf 0 0 S
+befgl 0 0 S
 3 18 7 2d6+10 1d6+1
 50 0
 8 8 1

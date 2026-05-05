@@ -36,6 +36,8 @@ pub use areas::check_build_mode;
 pub use combat::{apply_damage_reduction, apply_mobile_on_hit_dots};
 pub use crafting::build_crafted_item_from_prototype;
 pub use macros::parse_uuid_or_none;
+pub use mobiles::{MEMORY_CAP, MEMORY_DURATION_SECS, check_and_prune_memory, record_mob_memory};
+pub use stealth::is_player_visible_to_mob;
 pub use triggers::execute_room_template;
 pub use triggers::fire_mobile_triggers_from_rust;
 

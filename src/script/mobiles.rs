@@ -2,10 +2,141 @@
 // Mobile/NPC system functions
 
 use crate::db::Db;
-use crate::{ActivityState, DamageType, EffectType, MobileData, MobileFlags, RoutineEntry, find_active_entry};
+use crate::{
+    ActivityState, DamageType, EffectType, MobileData, MobileFlags, RememberedEnemy, RoutineEntry,
+    find_active_entry,
+};
 use rhai::Engine;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+/// Maximum number of remembered enemies a MOB_MEMORY mob can hold. Excess
+/// entries fall off the front (FIFO).
+pub const MEMORY_CAP: usize = 10;
+
+/// How long a remembered enemy stays in memory after being recorded /
+/// re-attacked (wall-clock seconds; 30 minutes).
+pub const MEMORY_DURATION_SECS: i64 = 1800;
+
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// Stamps `attacker_name` into `mob.remembered_enemies` if `mob.flags.memory`.
+/// Re-attacking refreshes the timer; FIFO eviction at MEMORY_CAP. The caller
+/// is responsible for persisting the mob afterwards.
+pub fn record_mob_memory(mob: &mut MobileData, attacker_name: &str) {
+    if !mob.flags.memory {
+        return;
+    }
+    let key = attacker_name.to_lowercase();
+    if key.is_empty() {
+        return;
+    }
+    let expires = now_secs() + MEMORY_DURATION_SECS;
+    if let Some(existing) = mob
+        .remembered_enemies
+        .iter_mut()
+        .find(|e| e.name.to_lowercase() == key)
+    {
+        existing.expires_at_secs = expires;
+        return;
+    }
+    mob.remembered_enemies.push(RememberedEnemy {
+        name: key,
+        expires_at_secs: expires,
+    });
+    while mob.remembered_enemies.len() > MEMORY_CAP {
+        mob.remembered_enemies.remove(0);
+    }
+}
+
+/// Returns true if `mob` should treat `attacker_name` as a remembered enemy
+/// right now. Lazy-prunes expired entries (caller persists if `pruned`
+/// matters). Returns `(remembers, pruned_any)`.
+pub fn check_and_prune_memory(mob: &mut MobileData, attacker_name: &str) -> (bool, bool) {
+    let now = now_secs();
+    let before = mob.remembered_enemies.len();
+    mob.remembered_enemies.retain(|e| e.expires_at_secs > now);
+    let pruned = mob.remembered_enemies.len() != before;
+    let key = attacker_name.to_lowercase();
+    let remembers = mob
+        .remembered_enemies
+        .iter()
+        .any(|e| e.name.to_lowercase() == key);
+    (remembers, pruned)
+}
+
+#[cfg(test)]
+mod memory_tests {
+    use super::*;
+
+    fn mob_with_memory(flag: bool) -> MobileData {
+        let mut m = MobileData::new("ogre".to_string());
+        m.flags.memory = flag;
+        m
+    }
+
+    #[test]
+    fn flag_off_is_noop() {
+        let mut m = mob_with_memory(false);
+        record_mob_memory(&mut m, "alice");
+        assert!(m.remembered_enemies.is_empty());
+    }
+
+    #[test]
+    fn records_attacker_lowercased() {
+        let mut m = mob_with_memory(true);
+        record_mob_memory(&mut m, "Alice");
+        assert_eq!(m.remembered_enemies.len(), 1);
+        assert_eq!(m.remembered_enemies[0].name, "alice");
+    }
+
+    #[test]
+    fn dedupes_and_refreshes() {
+        let mut m = mob_with_memory(true);
+        record_mob_memory(&mut m, "alice");
+        let first = m.remembered_enemies[0].expires_at_secs;
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        record_mob_memory(&mut m, "Alice");
+        assert_eq!(m.remembered_enemies.len(), 1);
+        assert!(m.remembered_enemies[0].expires_at_secs > first);
+    }
+
+    #[test]
+    fn fifo_eviction_at_cap() {
+        let mut m = mob_with_memory(true);
+        for i in 0..(MEMORY_CAP + 2) {
+            record_mob_memory(&mut m, &format!("foe{}", i));
+        }
+        assert_eq!(m.remembered_enemies.len(), MEMORY_CAP);
+        assert_eq!(m.remembered_enemies[0].name, "foe2");
+    }
+
+    #[test]
+    fn check_prunes_expired() {
+        let mut m = mob_with_memory(true);
+        m.remembered_enemies.push(RememberedEnemy {
+            name: "ghost".to_string(),
+            expires_at_secs: 1,
+        });
+        let (remembers, pruned) = check_and_prune_memory(&mut m, "ghost");
+        assert!(!remembers);
+        assert!(pruned);
+        assert!(m.remembered_enemies.is_empty());
+    }
+
+    #[test]
+    fn check_finds_active() {
+        let mut m = mob_with_memory(true);
+        record_mob_memory(&mut m, "Bob");
+        let (remembers, _) = check_and_prune_memory(&mut m, "bob");
+        assert!(remembers);
+    }
+}
 
 /// Register mobile-related functions
 pub fn register(engine: &mut Engine, db: Arc<Db>) {
@@ -34,7 +165,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         chilling,
         corrosive,
         shocking,
-        unique
+        unique,
+        stay_zone,
+        aware,
+        memory
     );
 
     // Register MobileData type with getters

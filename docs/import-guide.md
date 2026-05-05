@@ -183,10 +183,10 @@ warn-only (see the [Zone reset commands](#zone-reset-commands) section).
 | `WIMPY` | sets `cowardly` (close enough — Circle's wimpy is HP-threshold-driven) |
 | `SPEC` | **Warn**: special procedures not modeled — replace with a Rhai trigger after import |
 | `ISNPC` | silently dropped (implicit on every imported mob) |
-| `AWARE` | **Warn**: per-mob hidden-detection not modeled |
-| `STAY_ZONE` | **Warn**: zone-bound wandering not modeled |
+| `AWARE` | sets `aware` (mob sees through hidden/sneak/invisibility) |
+| `STAY_ZONE` | sets `stay_zone` (wander/pursuit clamps to home area; stamped at first room placement) |
 | `AGGR_EVIL`, `AGGR_GOOD`, `AGGR_NEUTRAL` | **Warn**: blocked on alignment system |
-| `MEMORY` | **Warn**: persistent enmity not modeled |
+| `MEMORY` | sets `memory` (remembers PC attackers for 30 min, FIFO cap 10; resets on respawn) |
 | `HELPER` | sets `helper` (faction left empty → Circle-stock semantics: any NPC defends any other NPC against PCs) |
 | `NOCHARM`, `NOSUMMON`, `NOSLEEP`, `NOBASH`, `NOBLIND` | **Warn**: status immunities not modeled |
 | Bits ≥ 18 | **Warn** (`unrecognised mob flag`): patched flag — surface for review |
@@ -828,6 +828,37 @@ ranked below.
   examine and the room mobile listing for any target with the buff
   active.
 
+- **`MOB_STAY_ZONE`** → `MobileFlags.stay_zone`. Wander, BFS routine
+  pathing, pursuit, and combat-flee all consult
+  `filter_exits_by_stay_zone`, dropping any exit whose target room
+  belongs to a different `area_id`. Each mobile's `home_area_id` is
+  stamped on its first room placement (`db::move_mobile_to_room`) and
+  never overwritten thereafter, so a STAY_ZONE mob stays bound to the
+  zone it was first dropped into. Mobiles without `home_area_id`
+  pre-dating the field treat the flag as a no-op (graceful upgrade).
+- **`MOB_AWARE`** → `MobileFlags.aware`. Aggression-target selection
+  goes through `find_aggression_target_for_mob`, which calls
+  `is_player_visible_to_mob`: hidden / sneaking PCs are skipped unless
+  the mob is `aware` or its `perception` stat is at least
+  `PERCEPTION_PIERCE_THRESHOLD = 5`; magical invisibility is only
+  pierced by `aware` (perception is not enough). Composes with
+  `MOB_MEMORY`: a hidden vendetta target slips by unless the mob is
+  also `aware`.
+- **`MOB_MEMORY`** → `MobileFlags.memory` plus a per-instance
+  `remembered_enemies: Vec<RememberedEnemy>`. Every PC→mob attack that
+  reaches `enter_mobile_combat` (melee, spell, scripted) and every
+  melee swing in `process_character_attacks_mobile` calls
+  `record_mob_memory`, which stamps a 30-minute timer
+  (`MEMORY_DURATION_SECS`) and FIFO-evicts at `MEMORY_CAP = 10`. The
+  same expansion of the wander-tick aggression predicate that fires
+  for `aggressive` also fires when the mob has any non-expired
+  remembered name in the room — yielding the in-room "<Mob> snarls,
+  '<player>! I remember you!' and attacks!" emote. A periodic sweep
+  in `process_mobile_effects` prunes expired entries on dormant mobs.
+  Memory is per-instance and resets on respawn (Circle parity) — the
+  prototype keeps an empty Vec, and `db::spawn_mobile_from_prototype`
+  clones it.
+
 - **`MOB_HELPER`** → `MobileFlags.helper`. The helper system scans the
   current room each combat tick and pulls any standing, alive,
   non-engaged HELPER mobile into combat against a PC who is attacking
@@ -847,13 +878,6 @@ ranked below.
 - **`MOB_AGGR_EVIL` / `AGGR_GOOD` / `AGGR_NEUTRAL`** — alignment-conditional
   aggression. Blocked on the alignment system below; degrades gracefully
   to non-aggressive in the meantime.
-- **`MOB_AWARE`** — auto-detect hidden/sneaking players. Ties into the
-  stealth system; per-mob override on top of the global perception
-  check.
-- **`MOB_MEMORY`** — remembers attackers across rooms / reboots.
-  Requires a persistent enmity list on `MobileData`.
-- **`MOB_STAY_ZONE`** — clamps wandering to the home zone. The wander
-  tick currently respects no zone boundary.
 - **`AFF_INVISIBLE`** — permanent invisibility on a mob. Without a
   detect-invisible system this is cosmetic; pair with a player-side
   detect skill to land safely.

@@ -152,9 +152,12 @@ fn parses_mobiles_into_plan() {
     assert!(!wanderer.short_desc.ends_with('\n'));
     assert!(wanderer.long_desc.contains("simulated NPC"));
     assert_eq!(wanderer.keywords, vec!["test".to_string(), "wanderer".to_string()]);
-    // bf = SENTINEL (1) + AGGRESSIVE (5); both map via set_flag.
+    // befgl = SENTINEL (1) + AWARE (4) + AGGRESSIVE (5) + STAY_ZONE (6) + MEMORY (11)
     assert!(wanderer.flags.sentinel);
+    assert!(wanderer.flags.aware);
     assert!(wanderer.flags.aggressive);
+    assert!(wanderer.flags.stay_zone);
+    assert!(wanderer.flags.memory);
     // 2d6+10 → max 22 hp.
     assert_eq!(wanderer.max_hp, 22);
     assert_eq!(wanderer.damage_dice, "1d6+1");

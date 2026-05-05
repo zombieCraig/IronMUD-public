@@ -569,7 +569,7 @@ fn handle_flag_subcommand(mobile_id, parts, connection_id) {
     // Validate all names before changing anything.
     for name in flag_names {
         if get_mobile_flag_value(mobile, name) == () {
-            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim, poisonous, fiery, chilling, corrosive, shocking, unique");
+            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim, poisonous, fiery, chilling, corrosive, shocking, unique, stay_zone, aware, memory");
             return;
         }
     }
@@ -610,6 +610,9 @@ fn get_mobile_flag_value(mobile, flag_name) {
     if flag_name == "corrosive" { return flags.corrosive; }
     if flag_name == "shocking" { return flags.shocking; }
     if flag_name == "unique" { return flags.unique; }
+    if flag_name == "stay_zone" || flag_name == "stayzone" { return flags.stay_zone; }
+    if flag_name == "aware" { return flags.aware; }
+    if flag_name == "memory" { return flags.memory; }
     return ();
 }
 
@@ -800,6 +803,9 @@ fn build_flags_display(mobile) {
     if flags.corrosive { flag_str += "corrosive "; }
     if flags.shocking { flag_str += "shocking "; }
     if flags.unique { flag_str += "unique "; }
+    if flags.stay_zone { flag_str += "stay_zone "; }
+    if flags.aware { flag_str += "aware "; }
+    if flags.memory { flag_str += "memory "; }
     if flag_str == "" { flag_str = "(none)"; }
     output += flag_str + "\n";
     return output;
@@ -942,6 +948,9 @@ fn show_mobile_flags(mobile, mobile_id, connection_id) {
     output += build_flag_line("corrosive", flags.corrosive, "Melee hits apply an acid DoT", display_id, connection_id);
     output += build_flag_line("shocking", flags.shocking, "Melee hits apply a lightning DoT", display_id, connection_id);
     output += build_flag_line("unique", flags.unique, "Only one live (non-prototype) instance allowed in the world", display_id, connection_id);
+    output += build_flag_line("stay_zone", flags.stay_zone, "Wandering and pursuit stay inside the home area", display_id, connection_id);
+    output += build_flag_line("aware", flags.aware, "Sees through hidden / sneaking / invisibility", display_id, connection_id);
+    output += build_flag_line("memory", flags.memory, "Remembers PC attackers and attacks on sight", display_id, connection_id);
 
     send_mxp_message(connection_id, output);
 }
