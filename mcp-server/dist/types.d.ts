@@ -133,6 +133,8 @@ export interface Item {
     armor_class?: number;
     hit_bonus?: number;
     damage_bonus?: number;
+    max_hp_bonus?: number;
+    max_mana_bonus?: number;
     light_hours_remaining?: number;
     cast_on_use?: CastOnUse;
     damage_dice_count?: number;
@@ -329,6 +331,8 @@ export interface CreateItemRequest {
     armor_class?: number;
     hit_bonus?: number;
     damage_bonus?: number;
+    max_hp_bonus?: number;
+    max_mana_bonus?: number;
     light_hours_remaining?: number;
     cast_on_use?: CastOnUse;
     flags?: Partial<ItemFlags>;

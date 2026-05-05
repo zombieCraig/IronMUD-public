@@ -243,6 +243,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         // damage bonuses summed across all worn equipment in combat.
         .register_get("hit_bonus", |i: &mut ItemData| i.hit_bonus as i64)
         .register_get("damage_bonus", |i: &mut ItemData| i.damage_bonus as i64)
+        // CircleMUD APPLY_MAXHIT / APPLY_MAXMANA parity: flat ceiling lift
+        // while equipped (any slot).
+        .register_get("max_hp_bonus", |i: &mut ItemData| i.max_hp_bonus as i64)
+        .register_get("max_mana_bonus", |i: &mut ItemData| i.max_mana_bonus as i64)
         // CircleMUD ITEM_LIGHT capacity hours: 0 = permanent, N>0 = burn time left.
         .register_get("light_hours_remaining", |i: &mut ItemData| i.light_hours_remaining as i64)
         // CircleMUD POTION/WAND/STAFF on-use spell payload. Returns Rhai Map
@@ -2290,13 +2294,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     engine.register_fn("drink_from", move |item_id: String, sips: i64| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
             if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                // Infinite source (e.g. fountain): always returns full request,
+                // no decrement, no save.
+                if item.liquid_max == -1 {
+                    return sips;
+                }
                 let actual_sips = std::cmp::min(sips as i32, item.liquid_current);
-                // Only decrement if not infinite (liquid_max != -1)
-                if item.liquid_max != -1 {
-                    item.liquid_current -= actual_sips;
-                    if cloned_db.save_item_data(item).is_err() {
-                        return 0_i64;
-                    }
+                item.liquid_current -= actual_sips;
+                if cloned_db.save_item_data(item).is_err() {
+                    return 0_i64;
                 }
                 return actual_sips as i64;
             }
@@ -2332,17 +2338,21 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                                 result.insert("message".into(), "You can't fill from that".into());
                                 return result;
                             }
-                            if source.liquid_current <= 0 {
+                            let source_infinite = source.liquid_max == -1;
+                            if !source_infinite && source.liquid_current <= 0 {
                                 result.insert("message".into(), "The source is empty".into());
                                 return result;
                             }
                             let space = container.liquid_max - container.liquid_current;
-                            let transfer = std::cmp::min(space, source.liquid_current);
+                            let transfer = if source_infinite {
+                                space
+                            } else {
+                                std::cmp::min(space, source.liquid_current)
+                            };
                             container.liquid_current += transfer;
                             container.liquid_type = source.liquid_type;
                             container.liquid_poisoned = source.liquid_poisoned;
-                            // Only decrement source if not infinite (liquid_max != -1)
-                            if source.liquid_max != -1 {
+                            if !source_infinite {
                                 source.liquid_current -= transfer;
                                 let _ = cloned_db.save_item_data(source);
                             }
@@ -2585,6 +2595,30 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
             if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
                 item.damage_bonus = value as i32;
+                return cloned_db.save_item_data(item).is_ok();
+            }
+        }
+        false
+    });
+
+    // set_item_max_hp_bonus(item_id, value) -> bool — APPLY_MAXHIT parity
+    let cloned_db = db.clone();
+    engine.register_fn("set_item_max_hp_bonus", move |item_id: String, value: i64| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                item.max_hp_bonus = value as i32;
+                return cloned_db.save_item_data(item).is_ok();
+            }
+        }
+        false
+    });
+
+    // set_item_max_mana_bonus(item_id, value) -> bool — APPLY_MAXMANA parity
+    let cloned_db = db.clone();
+    engine.register_fn("set_item_max_mana_bonus", move |item_id: String, value: i64| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                item.max_mana_bonus = value as i32;
                 return cloned_db.save_item_data(item).is_ok();
             }
         }
@@ -3037,6 +3071,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "detect_buried" | "detectburied" => item.flags.detect_buried = value,
                         _ => return false,
                     }
+                    item.sync_flag_categories();
                     return cloned_db.save_item_data(item).is_ok();
                 }
             }

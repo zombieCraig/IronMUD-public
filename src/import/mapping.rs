@@ -112,6 +112,12 @@ pub enum FlagAction {
     /// Add to `ItemData.damage_bonus` (APPLY_DAMROLL). Modifier copied as-is
     /// (positive = bonus damage). Item-only.
     SetDamageBonus,
+    /// Add to `ItemData.max_hp_bonus` (APPLY_MAXHIT). Modifier copied as-is.
+    /// Item-only.
+    SetMaxHpBonus,
+    /// Add to `ItemData.max_mana_bonus` (APPLY_MAXMANA). Modifier copied as-is.
+    /// Item-only.
+    SetMaxManaBonus,
     /// Emit a warning (severity = Warn).
     Warn { message: String },
     /// Silently ignore this flag (e.g. CircleMUD runtime / editor flags).
@@ -907,7 +913,9 @@ fn map_room(zone: &IrZone, area_prefix: &str, room: &IrRoom, opts: &MappingOptio
             Some(FlagAction::SetStat { .. })
             | Some(FlagAction::SetArmorClass { .. })
             | Some(FlagAction::SetHitBonus)
-            | Some(FlagAction::SetDamageBonus) => {
+            | Some(FlagAction::SetDamageBonus)
+            | Some(FlagAction::SetMaxHpBonus)
+            | Some(FlagAction::SetMaxManaBonus) => {
                 warnings.push(Warning::new(
                     WarningKind::UnsupportedFlag,
                     Severity::Warn,
@@ -1150,7 +1158,9 @@ fn map_mob(
             Some(FlagAction::SetStat { .. })
             | Some(FlagAction::SetArmorClass { .. })
             | Some(FlagAction::SetHitBonus)
-            | Some(FlagAction::SetDamageBonus) => {
+            | Some(FlagAction::SetDamageBonus)
+            | Some(FlagAction::SetMaxHpBonus)
+            | Some(FlagAction::SetMaxManaBonus) => {
                 warnings.push(Warning::new(
                     WarningKind::UnsupportedFlag,
                     Severity::Warn,
@@ -1232,7 +1242,9 @@ fn map_mob(
             Some(FlagAction::SetStat { .. })
             | Some(FlagAction::SetArmorClass { .. })
             | Some(FlagAction::SetHitBonus)
-            | Some(FlagAction::SetDamageBonus) => {
+            | Some(FlagAction::SetDamageBonus)
+            | Some(FlagAction::SetMaxHpBonus)
+            | Some(FlagAction::SetMaxManaBonus) => {
                 warnings.push(Warning::new(
                     WarningKind::UnsupportedFlag,
                     Severity::Warn,
@@ -1472,6 +1484,8 @@ fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &MappingOptio
             | Some(FlagAction::SetArmorClass { .. })
             | Some(FlagAction::SetHitBonus)
             | Some(FlagAction::SetDamageBonus)
+            | Some(FlagAction::SetMaxHpBonus)
+            | Some(FlagAction::SetMaxManaBonus)
             | Some(FlagAction::AddBuff { .. }) => {
                 warnings.push(Warning::new(
                     WarningKind::UnsupportedFlag,
@@ -1592,6 +1606,12 @@ fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &MappingOptio
             Some(FlagAction::SetDamageBonus) => {
                 data.damage_bonus += modifier;
             }
+            Some(FlagAction::SetMaxHpBonus) => {
+                data.max_hp_bonus += modifier;
+            }
+            Some(FlagAction::SetMaxManaBonus) => {
+                data.max_mana_bonus += modifier;
+            }
             Some(FlagAction::Warn { message }) => {
                 warnings.push(Warning::new(
                     WarningKind::UnsupportedFlag,
@@ -1633,6 +1653,9 @@ fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &MappingOptio
             description: e.description.clone(),
         })
         .collect();
+
+    // Sync flag-driven categories (e.g. flags.magical → categories ["magical"]).
+    data.sync_flag_categories();
 
     (
         PlannedItem {
@@ -2402,12 +2425,15 @@ fn apply_item_type(item: &IrItem, data: &mut ItemData, warnings: &mut Vec<Warnin
             data.item_type = ItemType::Misc;
             data.flags.boat = true;
         }
-        // ITEM_FOUNTAIN — same shape as DRINKCON; the infinite-fill behaviour
-        // is what differs in stock Circle.
+        // ITEM_FOUNTAIN — same shape as DRINKCON, but stock Circle fountains
+        // refill themselves on use. IronMUD's LiquidContainer treats
+        // `liquid_max == -1` as infinite (drink_from / fill_liquid_container
+        // skip decrement); set both fields to that sentinel so fountains
+        // never run dry.
         23 => {
             data.item_type = ItemType::LiquidContainer;
-            data.liquid_max = v[0].max(0);
-            data.liquid_current = v[1].max(0);
+            data.liquid_max = -1;
+            data.liquid_current = -1;
             let (lt, info) = circle_liquid_index_to_type(v[2]);
             data.liquid_type = lt;
             data.liquid_poisoned = v[3] != 0;
@@ -2419,13 +2445,6 @@ fn apply_item_type(item: &IrItem, data: &mut ItemData, warnings: &mut Vec<Warnin
                     msg,
                 ));
             }
-            warnings.push(Warning::new(
-                WarningKind::UnsupportedValueSemantic,
-                Severity::Warn,
-                item.source.clone(),
-                "ITEM_FOUNTAIN infinite-fill behaviour not modeled (treated as a finite drink container)"
-                    .to_string(),
-            ));
         }
         _ => {
             data.item_type = ItemType::Misc;

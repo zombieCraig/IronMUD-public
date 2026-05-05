@@ -78,6 +78,8 @@ fn build_player_corpse(name: &str, room_id: Uuid, gold: i64) -> ItemData {
         armor_class: None,
         hit_bonus: 0,
         damage_bonus: 0,
+        max_hp_bonus: 0,
+        max_mana_bonus: 0,
         light_hours_remaining: 0,
         cast_on_use: None,
         protects: vec![],

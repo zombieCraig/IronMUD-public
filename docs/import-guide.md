@@ -249,7 +249,7 @@ commands](#zone-reset-commands)).
 | `MONEY` (20) | `Gold` | `value = v0` (gold coins) |
 | `PEN` (21) | `Misc` | writing-tool **Warn** |
 | `BOAT` (22) | `Misc` + `flags.boat = true` | clean |
-| `FOUNTAIN` (23) | `LiquidContainer` | same shape as DRINKCON; infinite-fill behaviour **Warn** |
+| `FOUNTAIN` (23) | `LiquidContainer` | same shape as DRINKCON; `liquid_max = -1` (infinite sentinel — never runs dry) |
 
 ### CircleMUD spell-number mapping (SCROLL / POTION / WAND / STAFF)
 
@@ -304,7 +304,7 @@ code change needed — the mapping is loaded lazily on first import.
 | `NOSELL` | sets `no_sell` |
 | `NORENT`, `NODONATE` | silently dropped (no rent / donation systems) |
 | `NOINVIS` | **Warn**: cannot-be-made-invis not modeled |
-| `MAGIC` | **Warn**: tag-only; no IronMUD field — set `categories: ["magical"]` manually if desired |
+| `MAGIC` | sets `magical`; auto-tags `categories: ["magical"]` |
 | `BLESS` | **Warn**: no blessing system |
 | `ANTI_GOOD`, `ANTI_EVIL`, `ANTI_NEUTRAL` | **Warn**: alignment-restricted use not modeled |
 | `ANTI_MAGE`, `ANTI_CLERIC`, `ANTI_THIEF`, `ANTI_WARRIOR` | **Warn**: class-restricted use not modeled |
@@ -345,7 +345,8 @@ entries.
 | `ARMOR` | adds `-modifier` to `armor_class` (sign-flipped) |
 | `HITROLL` | adds modifier to `hit_bonus` — flat to-hit bonus summed across all worn equipment in combat |
 | `DAMROLL` | adds modifier to `damage_bonus` — flat damage bonus summed across all worn equipment in combat |
-| `MAXHIT`, `MAXMANA` | **Warn**: no item-level HP / mana bonus |
+| `MAXHIT` | adds modifier to `max_hp_bonus` — lifts the wearer's max HP ceiling while equipped |
+| `MAXMANA` | adds modifier to `max_mana_bonus` — lifts the wearer's max mana ceiling while equipped |
 | `MAXMOVE` | **Warn**: no movement stat in IronMUD |
 | `AGE`, `CHAR_WEIGHT`, `CHAR_HEIGHT` | silently dropped (no aging, height/weight on chars) |
 | `SAVING_*` | **Warn**: no saving-throw system |
@@ -1052,22 +1053,10 @@ below for what's next.)
 
 ### Object subsystems — Medium priority
 
-- **`ITEM_MAGIC` tag** — 213 stock items carry the bit as a "this is a
-  magical item" indicator. Currently warns. Closest equivalent:
-  `categories: ["magical"]`, but the importer doesn't auto-add it
-  because the bit is informational rather than functional.
 - **Class / alignment restriction flags** (`ITEM_ANTI_*`) — gate equip
   by class or alignment. ~140 stock occurrences across all six bits.
   Both systems (alignment + class restrictions on items) need to land
   before this can be wired.
-- **`APPLY_MAXHIT` / `APPLY_MAXMANA`** — items that bump max HP/mana
-  when worn. No item-level field; once buff stamping at equip-time
-  exists, these become trivial.
-- **`ITEM_FOUNTAIN` infinite-fill** — currently imports as a finite
-  `LiquidContainer`. Stock fountains refill themselves on use. Likely
-  shape: `flags.infinite_liquid` consulted by the `drink` / `fill`
-  commands.
-
 ### Object subsystems — Low priority
 
 - **`ITEM_WAND` / `ITEM_STAFF` charge counts** (`v2`) — currently

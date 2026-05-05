@@ -127,6 +127,8 @@ export const itemToolDefinitions = [
         armor_class: { type: "number", description: "For armor: AC bonus" },
         hit_bonus: { type: "number", description: "Bonus to to-hit roll while equipped (CircleMUD APPLY_HITROLL parity); summed across all worn items" },
         damage_bonus: { type: "number", description: "Bonus to damage roll while equipped (CircleMUD APPLY_DAMROLL parity); summed across all worn items" },
+        max_hp_bonus: { type: "number", description: "Lifts the wearer's max HP ceiling while equipped (CircleMUD APPLY_MAXHIT parity); summed across all worn items" },
+        max_mana_bonus: { type: "number", description: "Lifts the wearer's max mana ceiling while equipped (CircleMUD APPLY_MAXMANA parity); summed across all worn items" },
         light_hours_remaining: { type: "number", description: "ITEM_LIGHT capacity hours: 0 = permanent, N>0 = remaining hours of light when equipped lit (decrements per game hour, switches off at 0)" },
         cast_on_use: {
           type: "object",
@@ -244,6 +246,8 @@ export const itemToolDefinitions = [
         armor_class: { type: "number", description: "For armor: AC bonus" },
         hit_bonus: { type: "number", description: "Bonus to to-hit roll while equipped (CircleMUD APPLY_HITROLL parity); summed across all worn items" },
         damage_bonus: { type: "number", description: "Bonus to damage roll while equipped (CircleMUD APPLY_DAMROLL parity); summed across all worn items" },
+        max_hp_bonus: { type: "number", description: "Lifts the wearer's max HP ceiling while equipped (CircleMUD APPLY_MAXHIT parity); summed across all worn items" },
+        max_mana_bonus: { type: "number", description: "Lifts the wearer's max mana ceiling while equipped (CircleMUD APPLY_MAXMANA parity); summed across all worn items" },
         light_hours_remaining: { type: "number", description: "ITEM_LIGHT capacity hours: 0 = permanent, N>0 = remaining hours of light when equipped lit" },
         cast_on_use: {
           type: "object",

@@ -113,6 +113,11 @@ pub struct CreateItemRequest {
     pub hit_bonus: Option<i32>,
     #[serde(default)]
     pub damage_bonus: Option<i32>,
+    // Equipment max HP/mana bonuses (CircleMUD APPLY_MAXHIT/MAXMANA parity)
+    #[serde(default)]
+    pub max_hp_bonus: Option<i32>,
+    #[serde(default)]
+    pub max_mana_bonus: Option<i32>,
     // ITEM_LIGHT capacity hours: 0 = permanent, N>0 = burn time remaining when equipped lit.
     #[serde(default)]
     pub light_hours_remaining: Option<i32>,
@@ -327,6 +332,10 @@ pub struct UpdateItemRequest {
     pub hit_bonus: Option<i32>,
     #[serde(default)]
     pub damage_bonus: Option<i32>,
+    #[serde(default)]
+    pub max_hp_bonus: Option<i32>,
+    #[serde(default)]
+    pub max_mana_bonus: Option<i32>,
     #[serde(default)]
     pub light_hours_remaining: Option<i32>,
     #[serde(default)]
@@ -717,6 +726,8 @@ async fn create_item(
         armor_class: req.armor_class,
         hit_bonus: req.hit_bonus.unwrap_or(0),
         damage_bonus: req.damage_bonus.unwrap_or(0),
+        max_hp_bonus: req.max_hp_bonus.unwrap_or(0),
+        max_mana_bonus: req.max_mana_bonus.unwrap_or(0),
         light_hours_remaining: req.light_hours_remaining.unwrap_or(0).max(0),
         cast_on_use: req.cast_on_use.as_ref().and_then(build_cast_on_use_from_req),
         protects: Vec::new(),
@@ -864,6 +875,8 @@ async fn create_item(
     if item.item_type == ItemType::LiquidContainer && item.liquid_effects.is_empty() {
         item.liquid_effects = item.liquid_type.default_effects();
     }
+
+    item.sync_flag_categories();
 
     state
         .db
@@ -1127,6 +1140,12 @@ async fn update_item(
     if let Some(db) = req.damage_bonus {
         item.damage_bonus = db;
     }
+    if let Some(mhb) = req.max_hp_bonus {
+        item.max_hp_bonus = mhb;
+    }
+    if let Some(mmb) = req.max_mana_bonus {
+        item.max_mana_bonus = mmb;
+    }
     if let Some(lhr) = req.light_hours_remaining {
         item.light_hours_remaining = lhr.max(0);
     }
@@ -1201,6 +1220,8 @@ async fn update_item(
             })
             .collect();
     }
+
+    item.sync_flag_categories();
 
     state
         .db

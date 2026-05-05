@@ -33,7 +33,7 @@ fn run_command(args, connection_id) {
         return;
     }
 
-    if item.liquid_current <= 0 {
+    if item.liquid_max != -1 && item.liquid_current <= 0 {
         send_client_message(connection_id, "It's empty.");
         return;
     }
@@ -71,9 +71,9 @@ fn run_command(args, connection_id) {
         apply_effect(char, effect, connection_id, source);
     }
 
-    // Check if now empty
+    // Check if now empty (infinite sources never run dry).
     let updated = get_item_data(item.id);
-    if updated != () && updated.liquid_current <= 0 {
+    if updated != () && updated.liquid_max != -1 && updated.liquid_current <= 0 {
         send_client_message(connection_id, item.name + " is now empty.");
     }
 }
@@ -98,7 +98,8 @@ fn apply_effect(char, effect, connection_id, source) {
 fn apply_heal(char, magnitude, connection_id) {
     let old_hp = char.hp;
     char.hp = char.hp + magnitude;
-    if char.hp > char.max_hp { char.hp = char.max_hp; }
+    let eff_max_hp = get_effective_max_hp(char.name);
+    if char.hp > eff_max_hp { char.hp = eff_max_hp; }
     let healed = char.hp - old_hp;
     if healed > 0 {
         save_character_data(char);

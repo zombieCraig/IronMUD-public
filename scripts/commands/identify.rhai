@@ -141,6 +141,10 @@ fn build_all_stats(item) {
         output += "\n  HIT: " + fmt_bonus(item.hit_bonus);
         output += "  DAM: " + fmt_bonus(item.damage_bonus);
     }
+    if item.max_hp_bonus != 0 || item.max_mana_bonus != 0 {
+        output += "\n  MAX HP: " + fmt_bonus(item.max_hp_bonus);
+        output += "  MAX MANA: " + fmt_bonus(item.max_mana_bonus);
+    }
     return output;
 }
 

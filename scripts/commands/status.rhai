@@ -248,13 +248,15 @@ fn show_basic_status(char, connection_id) {
     }
     output += "\n";
 
-    // HP bar with color based on percentage
+    // HP bar with color based on percentage. Equipment APPLY_MAXHIT bonuses
+    // lift the cap; show the effective ceiling.
+    let eff_max_hp = get_effective_max_hp(char.name);
     let hp_pct = 100;
-    if char.max_hp > 0 {
-        hp_pct = (char.hp * 100) / char.max_hp;
+    if eff_max_hp > 0 {
+        hp_pct = (char.hp * 100) / eff_max_hp;
     }
-    let hp_bar = build_bar(char.hp, char.max_hp, 10);
-    let hp_str = "HP: " + hp_bar + " " + char.hp + "/" + char.max_hp;
+    let hp_bar = build_bar(char.hp, eff_max_hp, 10);
+    let hp_str = "HP: " + hp_bar + " " + char.hp + "/" + eff_max_hp;
     let hp_colored = get_hp_colored(hp_str, hp_pct, connection_id);
 
     // Stamina bar with color based on percentage
@@ -408,12 +410,13 @@ fn show_detailed_status(char, connection_id) {
     // Vitals section
     output += color_or(ansi_green("--- Vitals ---"), "--- Vitals ---", connection_id) + "\n";
 
+    let eff_max_hp = get_effective_max_hp(char.name);
     let hp_pct = 100;
-    if char.max_hp > 0 {
-        hp_pct = (char.hp * 100) / char.max_hp;
+    if eff_max_hp > 0 {
+        hp_pct = (char.hp * 100) / eff_max_hp;
     }
-    let hp_bar = build_bar(char.hp, char.max_hp, 10);
-    let hp_str = "HP: " + hp_bar + " " + char.hp + "/" + char.max_hp;
+    let hp_bar = build_bar(char.hp, eff_max_hp, 10);
+    let hp_str = "HP: " + hp_bar + " " + char.hp + "/" + eff_max_hp;
     output += get_hp_colored(hp_str, hp_pct, connection_id) + "\n";
 
     let stamina_pct = 100;
@@ -426,12 +429,13 @@ fn show_detailed_status(char, connection_id) {
 
     // Mana bar (only if mana is enabled for this character)
     if char.mana_enabled {
+        let eff_max_mana = get_effective_max_mana(char.name);
         let mana_pct = 100;
-        if char.max_mana > 0 {
-            mana_pct = (char.mana * 100) / char.max_mana;
+        if eff_max_mana > 0 {
+            mana_pct = (char.mana * 100) / eff_max_mana;
         }
-        let mana_bar = build_bar(char.mana, char.max_mana, 10);
-        let mana_str = "Mana: " + mana_bar + " " + char.mana + "/" + char.max_mana;
+        let mana_bar = build_bar(char.mana, eff_max_mana, 10);
+        let mana_str = "Mana: " + mana_bar + " " + char.mana + "/" + eff_max_mana;
         output += get_mana_colored(mana_str, mana_pct, connection_id) + "\n";
     }
 

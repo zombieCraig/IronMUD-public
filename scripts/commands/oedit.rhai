@@ -432,6 +432,14 @@ fn handle_subcommand(item, item_id, subcommand, parts, char, connection_id) {
         handle_hit_bonus_subcommand(uuid, parts, connection_id);
         return;
     }
+    if subcommand == "max_hp_bonus" || subcommand == "max_hp" || subcommand == "maxhit" {
+        handle_max_hp_bonus_subcommand(uuid, parts, connection_id);
+        return;
+    }
+    if subcommand == "max_mana_bonus" || subcommand == "max_mana" || subcommand == "maxmana" {
+        handle_max_mana_bonus_subcommand(uuid, parts, connection_id);
+        return;
+    }
     if subcommand == "damage_bonus" || subcommand == "damroll" || subcommand == "dam" {
         handle_damage_bonus_subcommand(uuid, parts, connection_id);
         return;
@@ -2693,6 +2701,8 @@ fn build_stats_display(item) {
     if item.stat_cha != 0 { output += " CHA " + format_stat(item.stat_cha); }
     if item.hit_bonus != 0 { output += " HIT " + format_stat(item.hit_bonus); }
     if item.damage_bonus != 0 { output += " DAM " + format_stat(item.damage_bonus); }
+    if item.max_hp_bonus != 0 { output += " MAXHP " + format_stat(item.max_hp_bonus); }
+    if item.max_mana_bonus != 0 { output += " MAXMANA " + format_stat(item.max_mana_bonus); }
     if item.insulation != 0 { output += " Insulation: " + item.insulation; }
     output += "\n";
     return output;
@@ -3019,6 +3029,46 @@ fn handle_damage_bonus_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Damage-roll bonus set to: +" + value);
     } else {
         send_client_message(connection_id, "Damage-roll bonus set to: " + value);
+    }
+}
+
+fn handle_max_hp_bonus_subcommand(item_id, parts, connection_id) {
+    if parts.len() < 3 {
+        send_client_message(connection_id, "Usage: oedit " + item_id + " max_hp_bonus <value>");
+        return;
+    }
+    let value = parse_int(parts[2]);
+    if value == () {
+        send_client_message(connection_id, "Invalid number.");
+        return;
+    }
+    set_item_max_hp_bonus(item_id, value);
+    if value == 0 {
+        send_client_message(connection_id, "Max HP bonus removed.");
+    } else if value > 0 {
+        send_client_message(connection_id, "Max HP bonus set to: +" + value);
+    } else {
+        send_client_message(connection_id, "Max HP bonus set to: " + value);
+    }
+}
+
+fn handle_max_mana_bonus_subcommand(item_id, parts, connection_id) {
+    if parts.len() < 3 {
+        send_client_message(connection_id, "Usage: oedit " + item_id + " max_mana_bonus <value>");
+        return;
+    }
+    let value = parse_int(parts[2]);
+    if value == () {
+        send_client_message(connection_id, "Invalid number.");
+        return;
+    }
+    set_item_max_mana_bonus(item_id, value);
+    if value == 0 {
+        send_client_message(connection_id, "Max mana bonus removed.");
+    } else if value > 0 {
+        send_client_message(connection_id, "Max mana bonus set to: +" + value);
+    } else {
+        send_client_message(connection_id, "Max mana bonus set to: " + value);
     }
 }
 

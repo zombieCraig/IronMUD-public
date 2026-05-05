@@ -3817,6 +3817,90 @@ fn test_item_cast_on_use_persists() {
 }
 
 #[test]
+fn test_item_max_hp_mana_bonus_persists() {
+    use ironmud::ItemData;
+    use ironmud::db::Db;
+
+    let db_path = format!("test_max_hp_mana_bonus_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+        let mut item = ItemData::new(
+            "ring".to_string(),
+            "an enchanted ring".to_string(),
+            "An enchanted ring lies here.".to_string(),
+        );
+        assert_eq!(item.max_hp_bonus, 0);
+        assert_eq!(item.max_mana_bonus, 0);
+        item.max_hp_bonus = 25;
+        item.max_mana_bonus = 10;
+        let item_id = item.id;
+        db.save_item_data(item).expect("save");
+
+        let loaded = db.get_item_data(&item_id).expect("get").expect("present");
+        assert_eq!(loaded.max_hp_bonus, 25);
+        assert_eq!(loaded.max_mana_bonus, 10);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_item_magical_flag_auto_adds_category() {
+    use ironmud::ItemData;
+    use ironmud::db::Db;
+
+    let db_path = format!("test_magical_category_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut item = ItemData::new(
+            "amulet".to_string(),
+            "an amulet".to_string(),
+            "An amulet lies here.".to_string(),
+        );
+        assert!(item.categories.is_empty());
+
+        // Flag on → category added.
+        item.flags.magical = true;
+        item.sync_flag_categories();
+        assert!(item.categories.iter().any(|c| c == "magical"));
+        let item_id = item.id;
+        db.save_item_data(item).expect("save");
+
+        let loaded = db.get_item_data(&item_id).expect("get").expect("present");
+        assert!(loaded.categories.iter().any(|c| c == "magical"));
+
+        // Idempotent — calling again does not duplicate.
+        let mut again = loaded;
+        again.sync_flag_categories();
+        again.sync_flag_categories();
+        let count = again
+            .categories
+            .iter()
+            .filter(|c| c.eq_ignore_ascii_case("magical"))
+            .count();
+        assert_eq!(count, 1, "magical category should not duplicate");
+
+        // Clearing flag does NOT strip the category (one-way by design).
+        again.flags.magical = false;
+        again.sync_flag_categories();
+        assert!(again.categories.iter().any(|c| c == "magical"));
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_item_note_content_persists() {
     use ironmud::ItemData;
     use ironmud::db::Db;

@@ -2791,6 +2791,12 @@ pub struct ItemData {
     /// CircleMUD APPLY_DAMROLL parity: flat damage bonus while equipped (any slot).
     #[serde(default)]
     pub damage_bonus: i32,
+    /// CircleMUD APPLY_MAXHIT parity: bonus to max HP while equipped.
+    #[serde(default)]
+    pub max_hp_bonus: i32,
+    /// CircleMUD APPLY_MAXMANA parity: bonus to max mana while equipped.
+    #[serde(default)]
+    pub max_mana_bonus: i32,
     /// CircleMUD ITEM_LIGHT capacity hours: 0 = permanent (default), N>0 = hours of
     /// burn time remaining while equipped lit. When the light tick decrements to 0,
     /// `flags.provides_light` is cleared and the holder sees a "burns out" message.
@@ -3002,6 +3008,8 @@ impl ItemData {
             armor_class: None,
             hit_bonus: 0,
             damage_bonus: 0,
+            max_hp_bonus: 0,
+            max_mana_bonus: 0,
             light_hours_remaining: 0,
             cast_on_use: None,
             protects: Vec::new(),
@@ -3092,6 +3100,18 @@ impl ItemData {
             plant_prototype_vnum: String::new(),
             fertilizer_duration: 0,
             treats_infestation: String::new(),
+        }
+    }
+
+    pub fn sync_flag_categories(&mut self) {
+        const MAGICAL: &str = "magical";
+        if self.flags.magical
+            && !self
+                .categories
+                .iter()
+                .any(|c| c.eq_ignore_ascii_case(MAGICAL))
+        {
+            self.categories.push(MAGICAL.to_string());
         }
     }
 }

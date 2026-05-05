@@ -33,6 +33,11 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if item.liquid_max == -1 {
+        send_client_message(connection_id, "You can't empty something that refills itself.");
+        return;
+    }
+
     if item.liquid_current <= 0 {
         send_client_message(connection_id, "It's already empty.");
         return;

@@ -300,7 +300,7 @@ fn parses_items_into_plan() {
     let (ir, parse_warnings) = CircleEngine.parse(&fixture_root()).expect("parse");
     assert_eq!(parse_warnings.len(), 0, "fixture should parse cleanly");
     let zone = &ir.zones[0];
-    assert_eq!(zone.items.len(), 9, "nine fixture items in obj/9000.obj");
+    assert_eq!(zone.items.len(), 11, "eleven fixture items in obj/9000.obj");
 
     let opts = MappingOptions {
         circle: mapping::CircleMappingTable::load_default(),
@@ -310,7 +310,7 @@ fn parses_items_into_plan() {
         existing_item_vnums: Vec::new(),
     };
     let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
-    assert_eq!(plan.items.len(), 9);
+    assert_eq!(plan.items.len(), 11);
 
     // Sword: weapon, 1d8 slashing, GLOW (extra-bit `a` = bit 0), wearable
     // wielded; APPLY_DAMROLL +2 → damage_bonus = 2 (CircleMUD APPLY_DAMROLL parity).
@@ -323,6 +323,14 @@ fn parses_items_into_plan() {
     assert_eq!(sword.data.damage_type, DamageType::Slashing);
     assert!(sword.data.flags.glow);
     assert!(sword.data.flags.magical);
+    assert!(
+        sword
+            .data
+            .categories
+            .iter()
+            .any(|c| c.eq_ignore_ascii_case("magical")),
+        "ITEM_MAGIC bit should auto-tag categories with \"magical\""
+    );
     assert!(sword.data.wear_locations.contains(&WearLocation::Wielded));
     assert_eq!(sword.data.value, 600);
     assert_eq!(sword.data.damage_bonus, 2, "APPLY_DAMROLL +2 lands on damage_bonus");
@@ -407,6 +415,30 @@ fn parses_items_into_plan() {
         "ITEM_WAND should no longer warn for known spells"
     );
 
+    // Fountain: ITEM_FOUNTAIN (type 23). Imports as a LiquidContainer with the
+    // infinite sentinel (`liquid_max == -1`) so drink_from / fill skip
+    // decrement and stock fountains never run dry. v[0]/v[1] from the .obj
+    // are intentionally ignored.
+    let fountain = plan.items.iter().find(|i| i.source_vnum == 9019).expect("fountain");
+    assert_eq!(fountain.data.item_type, ItemType::LiquidContainer);
+    assert_eq!(fountain.data.liquid_max, -1, "fountain is infinite");
+    assert_eq!(fountain.data.liquid_current, -1, "fountain is infinite");
+    assert!(
+        !warnings.iter().any(|w| w.message.contains("ITEM_FOUNTAIN")),
+        "ITEM_FOUNTAIN should no longer warn"
+    );
+
+    // Enchanted ring: APPLY_MAXHIT +20 / APPLY_MAXMANA +15 land on the new
+    // ItemData fields (CircleMUD parity). No APPLY_MAXHIT/MAXMANA warnings.
+    let ring = plan.items.iter().find(|i| i.source_vnum == 9020).expect("ring");
+    assert_eq!(ring.data.max_hp_bonus, 20, "APPLY_MAXHIT +20 → max_hp_bonus");
+    assert_eq!(ring.data.max_mana_bonus, 15, "APPLY_MAXMANA +15 → max_mana_bonus");
+    assert!(
+        !warnings.iter().any(|w| w.message.contains("APPLY_MAXHIT")
+            || w.message.contains("APPLY_MAXMANA")),
+        "APPLY_MAXHIT/MAXMANA should no longer warn"
+    );
+
     // Cursed amulet: NODROP set, ANTI_GOOD warns.
     let amulet = plan.items.iter().find(|i| i.source_vnum == 9017).expect("amulet");
     assert!(amulet.data.flags.no_drop);
@@ -440,8 +472,8 @@ fn applies_items_to_tmp_db() {
         };
         let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
         let summary = writer::apply(&db, &plan, &warnings).expect("apply");
-        assert_eq!(summary.written_items, 9);
-        assert_eq!(summary.planned_items, 9);
+        assert_eq!(summary.written_items, 11);
+        assert_eq!(summary.planned_items, 11);
 
         let sword = db
             .get_item_by_vnum("test_fixture_village_9010")

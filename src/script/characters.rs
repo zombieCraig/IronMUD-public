@@ -2127,6 +2127,40 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         }
     });
 
+    // get_effective_max_hp(char_name) -> i64
+    // Base max_hp plus sum of `max_hp_bonus` across equipped items (CircleMUD
+    // APPLY_MAXHIT parity). Read-only — does not mutate stored max_hp.
+    let cloned_db = db.clone();
+    engine.register_fn("get_effective_max_hp", move |char_name: String| -> i64 {
+        let lname = char_name.to_lowercase();
+        let base = match cloned_db.get_character_data(&lname) {
+            Ok(Some(c)) => c.max_hp as i64,
+            _ => return 0,
+        };
+        let bonus: i64 = cloned_db
+            .get_equipped_items(&lname)
+            .map(|items| items.iter().map(|i| i.max_hp_bonus as i64).sum())
+            .unwrap_or(0);
+        base + bonus
+    });
+
+    // get_effective_max_mana(char_name) -> i64
+    // Base max_mana plus sum of `max_mana_bonus` across equipped items
+    // (CircleMUD APPLY_MAXMANA parity). Read-only.
+    let cloned_db = db.clone();
+    engine.register_fn("get_effective_max_mana", move |char_name: String| -> i64 {
+        let lname = char_name.to_lowercase();
+        let base = match cloned_db.get_character_data(&lname) {
+            Ok(Some(c)) => c.max_mana as i64,
+            _ => return 0,
+        };
+        let bonus: i64 = cloned_db
+            .get_equipped_items(&lname)
+            .map(|items| items.iter().map(|i| i.max_mana_bonus as i64).sum())
+            .unwrap_or(0);
+        base + bonus
+    });
+
     // get_combat_skill_names() -> Array
     // Returns the list of combat skill name strings
     engine.register_fn("get_combat_skill_names", || -> rhai::Array {

@@ -34,6 +34,8 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            max_hp_bonus?: undefined;
+            max_mana_bonus?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -107,6 +109,8 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            max_hp_bonus?: undefined;
+            max_mana_bonus?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -183,6 +187,8 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            max_hp_bonus?: undefined;
+            max_mana_bonus?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -259,6 +265,8 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            max_hp_bonus?: undefined;
+            max_mana_bonus?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -380,6 +388,14 @@ export declare const itemToolDefinitions: ({
                 description: string;
             };
             damage_bonus: {
+                type: string;
+                description: string;
+            };
+            max_hp_bonus: {
+                type: string;
+                description: string;
+            };
+            max_mana_bonus: {
                 type: string;
                 description: string;
             };
@@ -917,6 +933,14 @@ export declare const itemToolDefinitions: ({
                 description: string;
             };
             damage_bonus: {
+                type: string;
+                description: string;
+            };
+            max_hp_bonus: {
+                type: string;
+                description: string;
+            };
+            max_mana_bonus: {
                 type: string;
                 description: string;
             };
@@ -1179,6 +1203,8 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            max_hp_bonus?: undefined;
+            max_mana_bonus?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -1258,6 +1284,8 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            max_hp_bonus?: undefined;
+            max_mana_bonus?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -1354,6 +1382,8 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            max_hp_bonus?: undefined;
+            max_mana_bonus?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -1430,6 +1460,8 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            max_hp_bonus?: undefined;
+            max_mana_bonus?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -1514,6 +1546,8 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            max_hp_bonus?: undefined;
+            max_mana_bonus?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -1593,6 +1627,8 @@ export declare const itemToolDefinitions: ({
             armor_class?: undefined;
             hit_bonus?: undefined;
             damage_bonus?: undefined;
+            max_hp_bonus?: undefined;
+            max_mana_bonus?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;

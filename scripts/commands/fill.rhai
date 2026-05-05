@@ -67,7 +67,7 @@ fn fill_from_source(char, container, source_keyword, connection_id) {
         return;
     }
 
-    if source.liquid_current <= 0 {
+    if source.liquid_max != -1 && source.liquid_current <= 0 {
         send_client_message(connection_id, source.name + " is empty.");
         return;
     }
@@ -117,7 +117,7 @@ fn find_room_water_source(room_id) {
 
 fn is_water_source(item) {
     if !item.is_liquid_container { return false; }
-    if item.liquid_current <= 0 { return false; }
+    if item.liquid_max != -1 && item.liquid_current <= 0 { return false; }
     let name_lower = item.name.to_lower();
     if name_lower.contains("fountain") { return true; }
     if name_lower.contains("well") { return true; }

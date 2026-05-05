@@ -423,8 +423,8 @@ fn handle_heal(connection_id, args, admin_char) {
         return;
     }
 
-    // Heal HP and stamina
-    target_char.hp = target_char.max_hp;
+    // Heal HP and stamina (use effective max to honor APPLY_MAXHIT bonuses).
+    target_char.hp = get_effective_max_hp(target_char.name);
     target_char.stamina = target_char.max_stamina;
 
     // Clear unconscious/bleedout state

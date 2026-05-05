@@ -411,7 +411,14 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections) -> Result<()
             // Max HP traits (effective cap)
             let has_tough = char.traits.iter().any(|t| t == "tough");
             let has_sickly = char.traits.iter().any(|t| t == "sickly");
-            let mut effective_max_hp = char.max_hp;
+            // CircleMUD APPLY_MAXHIT parity: equipment max-HP bonuses lift the
+            // ceiling. Read fresh from the equipped set so unwear takes effect
+            // immediately.
+            let eq_max_hp_bonus: i32 = db
+                .get_equipped_items(&char.name)
+                .map(|items| items.iter().map(|i| i.max_hp_bonus).sum())
+                .unwrap_or(0);
+            let mut effective_max_hp = char.max_hp + eq_max_hp_bonus;
             if has_vigorous {
                 effective_max_hp = effective_max_hp * 115 / 100;
             } // +15%
@@ -568,7 +575,12 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections) -> Result<()
                 // Max mana traits (effective cap)
                 let has_mana_well = char.traits.iter().any(|t| t == "mana_well");
                 let has_mana_stunted = char.traits.iter().any(|t| t == "mana_stunted");
-                let mut effective_max_mana = char.max_mana;
+                // CircleMUD APPLY_MAXMANA parity.
+                let eq_max_mana_bonus: i32 = db
+                    .get_equipped_items(&char.name)
+                    .map(|items| items.iter().map(|i| i.max_mana_bonus).sum())
+                    .unwrap_or(0);
+                let mut effective_max_mana = char.max_mana + eq_max_mana_bonus;
                 if has_mana_well {
                     effective_max_mana = effective_max_mana * 130 / 100;
                 } // +30%

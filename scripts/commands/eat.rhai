@@ -108,7 +108,8 @@ fn apply_effect(char, effect, connection_id, source) {
 fn apply_heal(char, magnitude, connection_id) {
     let old_hp = char.hp;
     char.hp = char.hp + magnitude;
-    if char.hp > char.max_hp { char.hp = char.max_hp; }
+    let eff_max_hp = get_effective_max_hp(char.name);
+    if char.hp > eff_max_hp { char.hp = eff_max_hp; }
     let healed = char.hp - old_hp;
     if healed > 0 {
         save_character_data(char);
