@@ -182,6 +182,8 @@ pub struct ItemFlagsRequest {
     #[serde(default)]
     pub provides_light: Option<bool>,
     #[serde(default)]
+    pub night_vision: Option<bool>,
+    #[serde(default)]
     pub fishing_rod: Option<bool>,
     #[serde(default)]
     pub bait: Option<bool>,
@@ -657,6 +659,7 @@ async fn create_item(
             quest_item: req.flags.quest_item.unwrap_or(false),
             vending: req.flags.vending.unwrap_or(false),
             provides_light: req.flags.provides_light.unwrap_or(false),
+            night_vision: req.flags.night_vision.unwrap_or(false),
             fishing_rod: req.flags.fishing_rod.unwrap_or(false),
             bait: req.flags.bait.unwrap_or(false),
             foraging_tool: req.flags.foraging_tool.unwrap_or(false),
@@ -911,6 +914,9 @@ async fn update_item(
         }
         if let Some(v) = flags.provides_light {
             item.flags.provides_light = v;
+        }
+        if let Some(v) = flags.night_vision {
+            item.flags.night_vision = v;
         }
         if let Some(v) = flags.fishing_rod {
             item.flags.fishing_rod = v;

@@ -963,12 +963,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 match conns_guard.get(&conn_uuid) {
                     Some(session) => {
                         let (night_vision, light_source, blindness) = if let Some(ref char) = session.character {
-                            let nv = char.traits.iter().any(|t| t == "night_vision");
+                            let equipped = cloned_db.get_equipped_items(&char.name).unwrap_or_default();
+                            let nv = char.traits.iter().any(|t| t == "night_vision")
+                                || char
+                                    .active_buffs
+                                    .iter()
+                                    .any(|b| b.effect_type == crate::EffectType::NightVision)
+                                || equipped.iter().any(|item| item.flags.night_vision);
                             let blind = char.traits.iter().any(|t| t == "blindness");
-                            let light = cloned_db
-                                .get_equipped_items(&char.name)
-                                .map(|items| items.iter().any(|item| item.flags.provides_light))
-                                .unwrap_or(false);
+                            let light = equipped.iter().any(|item| item.flags.provides_light);
                             (nv, light, blind)
                         } else {
                             (false, false, false)

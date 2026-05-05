@@ -24,6 +24,7 @@
     "INVISIBLE":     { "action": "add_buff", "effect_type": "invisibility", "magnitude": 0, "remaining_secs": -1, "source": "innate invisibility" },
     "DETECT_INVIS":  { "action": "add_buff", "effect_type": "detect_invisible", "magnitude": 0, "remaining_secs": -1, "source": "innate detect invisible" },
     "DETECT_MAGIC":  { "action": "add_buff", "effect_type": "detect_magic", "magnitude": 0, "remaining_secs": -1, "source": "innate detect magic" },
+    "INFRAVISION":   { "action": "add_buff", "effect_type": "night_vision", "magnitude": 0, "remaining_secs": -1, "source": "innate night vision" },
     "SANCTUARY":     { "action": "add_buff", "effect_type": "damage_reduction", "magnitude": 50, "remaining_secs": -1, "source": "innate sanctuary" },
     "POISON":        { "action": "warn", "message": "permanent AFF_POISON not modeled (different from on-hit MobileFlags.poisonous)." },
     "GROUP":         { "action": "drop", "info": "transient runtime flag — never set on a prototype" },

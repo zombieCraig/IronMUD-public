@@ -4501,3 +4501,66 @@ fn test_mob_with_detect_invisible_buff_sees_invisible_pc() {
     });
     assert!(is_player_visible_to_mob(&char, &detector));
 }
+
+#[test]
+fn test_night_vision_effect_type_roundtrip() {
+    use ironmud::types::EffectType;
+
+    assert_eq!(
+        EffectType::from_str("night_vision"),
+        Some(EffectType::NightVision)
+    );
+    assert_eq!(
+        EffectType::from_str("nightvision"),
+        Some(EffectType::NightVision)
+    );
+    // CircleMUD AFF_INFRAVISION ⇒ night_vision
+    assert_eq!(
+        EffectType::from_str("infravision"),
+        Some(EffectType::NightVision)
+    );
+    assert_eq!(EffectType::NightVision.to_display_string(), "night_vision");
+    assert!(EffectType::all().contains(&"night_vision"));
+}
+
+#[test]
+fn test_aff_infravision_imports_as_night_vision_buff() {
+    use ironmud::db::Db;
+    use ironmud::types::{ActiveBuff, EffectType, MobileData};
+
+    let db_path = format!("test_aff_infravision_spawn_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        // Mirror what the importer stamps for AFF_INFRAVISION.
+        let mut proto = MobileData::new("an owl".to_string());
+        proto.is_prototype = true;
+        proto.vnum = "test:owl".to_string();
+        proto.active_buffs.push(ActiveBuff {
+            effect_type: EffectType::NightVision,
+            magnitude: 0,
+            remaining_secs: -1,
+            source: "innate night vision".to_string(),
+        });
+        db.save_mobile_data(proto).expect("save proto");
+
+        let spawned = db
+            .spawn_mobile_from_prototype("test:owl")
+            .expect("spawn ok")
+            .expect("spawn produced an instance");
+        assert!(
+            spawned
+                .active_buffs
+                .iter()
+                .any(|b| b.effect_type == EffectType::NightVision),
+            "spawn instance missing NightVision buff"
+        );
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}

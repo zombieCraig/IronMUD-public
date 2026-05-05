@@ -203,6 +203,21 @@
     "target_type": "self",
     "xp_award": 6
   },
+  "night_vision": {
+    "id": "night_vision",
+    "name": "Night Vision",
+    "description": "Sharpens the caster's eyes to pierce darkness.",
+    "skill_required": 2,
+    "scroll_only": false,
+    "mana_cost": 15,
+    "cooldown_secs": 60,
+    "spell_type": "buff",
+    "buff_effect": "night_vision",
+    "buff_magnitude": 1,
+    "buff_duration_secs": 600,
+    "target_type": "self_or_friendly",
+    "xp_award": 6
+  },
   "dispel_magic": {
     "id": "dispel_magic",
     "name": "Dispel Magic",

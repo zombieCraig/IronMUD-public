@@ -1196,6 +1196,7 @@ fn is_valid_item_flag(name) {
         "invisible", "glow", "hum", "magical", "magic", "no_sell", "nosell", "unique",
         "quest_item", "questitem", "quest", "vending",
         "provides_light", "provideslight", "light",
+        "night_vision", "nightvision", "infravision",
         "fishing_rod", "fishingrod", "rod", "bait",
         "foraging_tool", "foragingtool", "forage", "waterproof",
         "provides_warmth", "provideswarmth", "warmth",
@@ -1233,7 +1234,7 @@ fn handle_flag_subcommand(item_id, parts, connection_id) {
     // Validate all names before changing anything.
     for name in flag_names {
         if !is_valid_item_flag(name) {
-            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: no_drop, no_get, no_remove, invisible, glow, hum, magical, no_sell, unique, quest_item, vending, provides_light, fishing_rod, bait, foraging_tool, waterproof, provides_warmth, reduces_glare, medical_tool, preserves_contents, death_only, atm, broken, plant_pot, lockpick, is_skinned, boat, buried, can_dig, detect_buried");
+            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: no_drop, no_get, no_remove, invisible, glow, hum, magical, no_sell, unique, quest_item, vending, provides_light, night_vision, fishing_rod, bait, foraging_tool, waterproof, provides_warmth, reduces_glare, medical_tool, preserves_contents, death_only, atm, broken, plant_pot, lockpick, is_skinned, boat, buried, can_dig, detect_buried");
             return;
         }
     }
@@ -1718,6 +1719,7 @@ fn copy_item_flags(item, new_item_id) {
     if item.flags.quest_item { set_item_flag(new_item_id, "quest_item", true); }
     if item.flags.vending { set_item_flag(new_item_id, "vending", true); }
     if item.flags.provides_light { set_item_flag(new_item_id, "provides_light", true); }
+    if item.flags.night_vision { set_item_flag(new_item_id, "night_vision", true); }
     if item.flags.fishing_rod { set_item_flag(new_item_id, "fishing_rod", true); }
     if item.flags.bait { set_item_flag(new_item_id, "bait", true); }
     if item.flags.foraging_tool { set_item_flag(new_item_id, "foraging_tool", true); }
@@ -2319,6 +2321,7 @@ fn build_flags_display(item) {
     if flags.quest_item { flag_str += "quest_item "; }
     if flags.vending { flag_str += "vending "; }
     if flags.provides_light { flag_str += "provides_light "; }
+    if flags.night_vision { flag_str += "night_vision "; }
     if flags.fishing_rod { flag_str += "fishing_rod "; }
     if flags.bait { flag_str += "bait "; }
     if flags.foraging_tool { flag_str += "foraging_tool "; }
@@ -2669,6 +2672,7 @@ fn show_item_flags(item, item_id, connection_id) {
     output += build_flag_line("quest_item", flags.quest_item, "Special quest item", display_id, connection_id);
     output += build_flag_line("vending", flags.vending, "Functions as a vending machine (configure via 'vending' subcommand)", display_id, connection_id);
     output += build_flag_line("provides_light", flags.provides_light, "Provides light when equipped/wielded", display_id, connection_id);
+    output += build_flag_line("night_vision", flags.night_vision, "Grants night vision when equipped (CircleMUD AFF_INFRAVISION)", display_id, connection_id);
     output += build_flag_line("fishing_rod", flags.fishing_rod, "Can be used for fishing when held", display_id, connection_id);
     output += build_flag_line("bait", flags.bait, "Can be used as fishing bait", display_id, connection_id);
     output += build_flag_line("foraging_tool", flags.foraging_tool, "Can be used as foraging tool (uses quality for bonus)", display_id, connection_id);

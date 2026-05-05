@@ -17,6 +17,7 @@ const itemFlagsSchema = {
     quest_item: { type: "boolean" },
     vending: { type: "boolean", description: "Functions as a vending machine" },
     provides_light: { type: "boolean", description: "Gives light when equipped/wielded" },
+    night_vision: { type: "boolean", description: "Grants night vision when equipped (CircleMUD AFF_INFRAVISION)" },
     fishing_rod: { type: "boolean" },
     bait: { type: "boolean" },
     foraging_tool: { type: "boolean" },

@@ -185,12 +185,14 @@ fn parses_mobiles_into_plan() {
         "AFF_SANCTUARY should no longer warn",
     );
 
-    // The wisp also has AFF_INVISIBLE (b), DETECT_INVIS (d), DETECT_MAGIC (e)
-    // — each one should stamp the matching permanent buff on the prototype.
+    // The wisp also has AFF_INVISIBLE (b), DETECT_INVIS (d), DETECT_MAGIC (e),
+    // INFRAVISION (k) — each one should stamp the matching permanent buff
+    // on the prototype.
     for et in [
         ironmud::types::EffectType::Invisibility,
         ironmud::types::EffectType::DetectInvisible,
         ironmud::types::EffectType::DetectMagic,
+        ironmud::types::EffectType::NightVision,
     ] {
         let buff = wisp
             .active_buffs
@@ -202,8 +204,9 @@ fn parses_mobiles_into_plan() {
     assert!(
         !warnings.iter().any(|w| w.message.contains("AFF_INVISIBLE")
             || w.message.contains("AFF_DETECT_INVIS")
-            || w.message.contains("AFF_DETECT_MAGIC")),
-        "AFF_INVISIBLE/DETECT_INVIS/DETECT_MAGIC should no longer warn",
+            || w.message.contains("AFF_DETECT_MAGIC")
+            || w.message.contains("AFF_INFRAVISION")),
+        "AFF_INVISIBLE/DETECT_INVIS/DETECT_MAGIC/INFRAVISION should no longer warn",
     );
 
     // BareHandAttack should warn exactly once across the import (the beast

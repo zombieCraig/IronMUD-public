@@ -1193,7 +1193,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
         // Check character's ability to see in darkness
         if let Ok(conn_uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let (god_mode, has_nv_trait, has_da_trait, race_id, char_name) = {
+            let (god_mode, has_nv_trait, has_da_trait, has_nv_buff, race_id, char_name) = {
                 let conns_guard = conns.lock().unwrap();
                 if let Some(session) = conns_guard.get(&conn_uuid) {
                     if let Some(ref char) = session.character {
@@ -1201,6 +1201,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                             char.god_mode,
                             char.traits.iter().any(|t| t == "night_vision"),
                             char.traits.iter().any(|t| t == "dark_adapted"),
+                            char.active_buffs
+                                .iter()
+                                .any(|b| b.effect_type == crate::EffectType::NightVision),
                             char.race.to_lowercase(),
                             char.name.clone(),
                         )
@@ -1231,7 +1234,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 }
             }
 
-            if has_nv_trait || has_racial_nv {
+            if has_nv_trait || has_racial_nv || has_nv_buff {
                 return false;
             }
 
@@ -1240,9 +1243,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 return false;
             }
 
-            // Check for light source
+            // Check for light source or item-granted night vision
             if let Ok(equipped) = cloned_db.get_equipped_items(&char_name) {
-                if equipped.iter().any(|item| item.flags.provides_light) {
+                if equipped
+                    .iter()
+                    .any(|item| item.flags.provides_light || item.flags.night_vision)
+                {
                     return false;
                 }
             }
@@ -1416,26 +1422,27 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 }
             };
 
-            // Check traits
-            let has_night_vision = char.traits.iter().any(|t| t == "night_vision");
+            // Check traits + night-vision buff + item-granted night vision
+            let equipped = cloned_db.get_equipped_items(&char.name).unwrap_or_default();
+            let has_nv_trait = char.traits.iter().any(|t| t == "night_vision");
+            let has_nv_buff = char
+                .active_buffs
+                .iter()
+                .any(|b| b.effect_type == crate::EffectType::NightVision);
+            let has_nv_item = equipped.iter().any(|item| item.flags.night_vision);
+            let has_night_vision = has_nv_trait || has_nv_buff || has_nv_item;
             let has_dark_adapted = char.traits.iter().any(|t| t == "dark_adapted");
             let has_night_blind = char.traits.iter().any(|t| t == "night_blind");
             let has_light_sensitive = char.traits.iter().any(|t| t == "light_sensitive");
 
             // Check for light source
-            let has_light = cloned_db
-                .get_equipped_items(&char.name)
-                .map(|items| items.iter().any(|item| item.flags.provides_light))
-                .unwrap_or(false);
+            let has_light = equipped.iter().any(|item| item.flags.provides_light);
 
             // Calculate lighting penalty
             let lighting_penalty: i64 = match lighting {
                 "bright" => {
                     if has_light_sensitive {
-                        let has_glare_protection = cloned_db
-                            .get_equipped_items(&char.name)
-                            .map(|items| items.iter().any(|item| item.flags.reduces_glare))
-                            .unwrap_or(false);
+                        let has_glare_protection = equipped.iter().any(|item| item.flags.reduces_glare);
                         if has_glare_protection { 0 } else { 30 }
                     } else {
                         0

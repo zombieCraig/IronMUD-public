@@ -859,6 +859,18 @@ ranked below.
   prototype keeps an empty Vec, and `db::spawn_mobile_from_prototype`
   clones it.
 
+- **`AFF_INFRAVISION`** → permanent `EffectType::NightVision` buff
+  stamped onto the imported prototype, mapped onto IronMUD's existing
+  night-vision logic (no separate infravision system). Players gain
+  night vision from any of three sources: the `night_vision` trait
+  (racial / point-buy), the new `night_vision` buff (cast via the
+  `night_vision` spell — skill 2, mana 15, 10 min duration, in
+  `spells_fantasy.json`), or wearing an item with the new
+  `ItemFlags.night_vision` flag (e.g. goggles). All three OR into the
+  dark-room checks in `display_room`, `is_room_dark`, and the
+  light-level penalty calculation in `src/script/characters.rs`.
+  Builder surface: `oedit <id> flag night_vision [on|off]` (alias
+  `infravision`); MCP/API: `night_vision` on `ItemFlags`.
 - **`AFF_INVISIBLE` / `AFF_DETECT_INVIS` / `AFF_DETECT_MAGIC`** →
   permanent buffs stamped onto the imported prototype's `active_buffs`,
   riding the same path as `AFF_SANCTUARY`. `AFF_INVISIBLE` adds a
@@ -899,7 +911,6 @@ ranked below.
   to non-aggressive in the meantime.
 - **`AFF_DETECT_ALIGN`** — paired with an alignment system that doesn't
   exist yet.
-- **`AFF_INFRAVISION`** — no light-level / dark-vision system to gate.
 
 ### Mobile flags — Low priority
 

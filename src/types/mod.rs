@@ -2201,6 +2201,7 @@ pub enum EffectType {
     Invisibility,
     DetectInvisible,
     DetectMagic,
+    NightVision,
     Regeneration,
     Drunk,
     Satiated,
@@ -2235,6 +2236,7 @@ impl EffectType {
             "invisibility" | "invis" => Some(EffectType::Invisibility),
             "detect_invisible" | "detectinvisible" | "detect_invis" => Some(EffectType::DetectInvisible),
             "detect_magic" | "detectmagic" => Some(EffectType::DetectMagic),
+            "night_vision" | "nightvision" | "infravision" => Some(EffectType::NightVision),
             "regeneration" | "regen" => Some(EffectType::Regeneration),
             "drunk" => Some(EffectType::Drunk),
             "satiated" => Some(EffectType::Satiated),
@@ -2266,6 +2268,7 @@ impl EffectType {
             EffectType::Invisibility => "invisibility",
             EffectType::DetectInvisible => "detect_invisible",
             EffectType::DetectMagic => "detect_magic",
+            EffectType::NightVision => "night_vision",
             EffectType::Regeneration => "regeneration",
             EffectType::Drunk => "drunk",
             EffectType::Satiated => "satiated",
@@ -2296,6 +2299,7 @@ impl EffectType {
             "invisibility",
             "detect_invisible",
             "detect_magic",
+            "night_vision",
             "regeneration",
             "drunk",
             "satiated",
@@ -2637,6 +2641,8 @@ pub struct ItemFlags {
     pub vending: bool, // Functions as a vending machine
     #[serde(default)]
     pub provides_light: bool, // Provides light when equipped/wielded
+    #[serde(default)]
+    pub night_vision: bool, // Grants the wearer night vision while equipped
     #[serde(default)]
     pub fishing_rod: bool, // Can be used for fishing when held
     #[serde(default)]
