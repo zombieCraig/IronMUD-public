@@ -585,17 +585,17 @@ fn collect_parts(parts, start_idx) {
 
 fn handle_type_subcommand(item_id, parts, connection_id) {
     if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: oedit " + item_id + " type <armor|weapon|ammunition|container|liquid_container|food|key|misc|potion|wand|staff>");
+        send_client_message(connection_id, "Usage: oedit " + item_id + " type <armor|weapon|ammunition|container|liquid_container|food|key|misc|potion|wand|staff|note|pen>");
         return;
     }
     let type_str = parts[2].to_lower();
-    let valid_types = ["armor", "weapon", "ammunition", "misc", "container", "liquid_container", "food", "key", "potion", "wand", "staff"];
+    let valid_types = ["armor", "weapon", "ammunition", "misc", "container", "liquid_container", "food", "key", "potion", "wand", "staff", "note", "pen"];
     let is_valid = false;
     for t in valid_types {
         if type_str == t { is_valid = true; }
     }
     if !is_valid {
-        send_client_message(connection_id, "Invalid type. Use: armor, weapon, ammunition, container, liquid_container, food, key, misc, potion, wand, staff");
+        send_client_message(connection_id, "Invalid type. Use: armor, weapon, ammunition, container, liquid_container, food, key, misc, potion, wand, staff, note, pen");
         return;
     }
     set_item_type(item_id, type_str);

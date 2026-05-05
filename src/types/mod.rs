@@ -2025,6 +2025,11 @@ pub enum ItemType {
     Potion,
     Wand,
     Staff,
+    /// Writable paper. Players with a `Pen` in their inventory can use
+    /// `write <paper>` to author or revise the item's `note_content`.
+    Note,
+    /// Writing tool. Required (anywhere in inventory) to author a `Note`.
+    Pen,
 }
 
 impl ItemType {
@@ -2042,6 +2047,8 @@ impl ItemType {
             "potion" => Some(ItemType::Potion),
             "wand" => Some(ItemType::Wand),
             "staff" => Some(ItemType::Staff),
+            "note" | "paper" => Some(ItemType::Note),
+            "pen" => Some(ItemType::Pen),
             _ => None,
         }
     }
@@ -2060,6 +2067,8 @@ impl ItemType {
             ItemType::Potion => "potion",
             ItemType::Wand => "wand",
             ItemType::Staff => "staff",
+            ItemType::Note => "note",
+            ItemType::Pen => "pen",
         }
     }
 }

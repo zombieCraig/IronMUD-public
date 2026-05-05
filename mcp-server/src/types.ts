@@ -201,7 +201,9 @@ export type ItemType =
   | "ammunition"
   | "potion"
   | "wand"
-  | "staff";
+  | "staff"
+  | "note"
+  | "pen";
 
 export type WearLocation =
   | "head" | "neck" | "shoulders" | "back" | "torso" | "waist" | "ears"

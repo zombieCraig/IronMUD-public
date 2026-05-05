@@ -149,7 +149,7 @@ export interface CastOnUse {
     charges?: number;
     max_charges?: number;
 }
-export type ItemType = "misc" | "armor" | "weapon" | "container" | "liquid_container" | "food" | "key" | "gold" | "ammunition" | "potion" | "wand" | "staff";
+export type ItemType = "misc" | "armor" | "weapon" | "container" | "liquid_container" | "food" | "key" | "gold" | "ammunition" | "potion" | "wand" | "staff" | "note" | "pen";
 export type WearLocation = "head" | "neck" | "shoulders" | "back" | "torso" | "waist" | "ears" | "wielded" | "offhand" | "ready" | "leftarm" | "rightarm" | "leftwrist" | "rightwrist" | "lefthand" | "righthand" | "leftfinger" | "rightfinger" | "leftleg" | "rightleg" | "leftankle" | "rightankle" | "leftfoot" | "rightfoot";
 export type DamageType = "bludgeoning" | "slashing" | "piercing" | "fire" | "cold" | "lightning" | "poison" | "acid";
 export interface ItemFlags {

@@ -242,12 +242,12 @@ commands](#zone-reset-commands)).
 | `TRASH` (13) | `Misc` + `categories: ["trash"]` | |
 | `TRAP` (14) | `Misc` | unimplemented stock, **Warn** |
 | `CONTAINER` (15) | `Container` | `v0` → `container_max_weight`; `v1` bits → `container_closed/_locked` (PICKPROOF **Warn**); `v2` → `container_key_vnum` rewritten to prefixed form |
-| `NOTE` (16) | `Misc` | blank-paper writing semantics **Warn** — not modeled |
+| `NOTE` (16) | `Note` | players use `write <paper>` to author or revise `note_content` (requires a `Pen` in inventory); Circle's per-language literacy gating is not modeled |
 | `DRINKCON` (17) | `LiquidContainer` | `v0`/`v1`/`v3` → `liquid_max`/`_current`/`_poisoned`; `v2` → `liquid_type` via Circle drink table |
 | `KEY` (18) | `Key` | clean |
 | `FOOD` (19) | `Food` | `v0` → `food_nutrition` (Circle's "hours of hunger" is close enough); `v3≠0` → `food_poisoned` |
 | `MONEY` (20) | `Gold` | `value = v0` (gold coins) |
-| `PEN` (21) | `Misc` | writing-tool **Warn** |
+| `PEN` (21) | `Pen` | required (anywhere in inventory) for `write <paper>` to author a `Note` |
 | `BOAT` (22) | `Misc` + `flags.boat = true` | clean |
 | `FOUNTAIN` (23) | `LiquidContainer` | same shape as DRINKCON; `liquid_max = -1` (infinite sentinel — never runs dry) |
 
@@ -1059,17 +1059,9 @@ below for what's next.)
   before this can be wired.
 ### Object subsystems — Low priority
 
-- **`ITEM_WAND` / `ITEM_STAFF` charge counts** (`v2`) — currently
-  dropped. Likely shape: a `charges_remaining: i32` once "cast on use"
-  lands.
 - **`ITEM_TRAP`** (`v0` = spell, `v1` = damage) — unimplemented in
   stock Circle and uncommon. Maps to `Misc` with a warn today; closest
   IronMUD analogue is a per-room trap.
-- **`ITEM_NOTE`** blank-paper writing — `note_content` already exists
-  on `ItemData` but is authored by `oedit`, not by a player writing
-  on a blank page mid-game.
-- **`ITEM_PEN`** — needed for the note-writing system above; no
-  IronMUD analogue.
 - **`APPLY_SAVING_*`** — saving throws don't exist in IronMUD's
   combat system.
 - **`NORENT` / `NODONATE`** — no rent / donation systems in IronMUD;

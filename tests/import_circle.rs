@@ -300,7 +300,7 @@ fn parses_items_into_plan() {
     let (ir, parse_warnings) = CircleEngine.parse(&fixture_root()).expect("parse");
     assert_eq!(parse_warnings.len(), 0, "fixture should parse cleanly");
     let zone = &ir.zones[0];
-    assert_eq!(zone.items.len(), 11, "eleven fixture items in obj/9000.obj");
+    assert_eq!(zone.items.len(), 13, "thirteen fixture items in obj/9000.obj");
 
     let opts = MappingOptions {
         circle: mapping::CircleMappingTable::load_default(),
@@ -310,7 +310,7 @@ fn parses_items_into_plan() {
         existing_item_vnums: Vec::new(),
     };
     let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
-    assert_eq!(plan.items.len(), 11);
+    assert_eq!(plan.items.len(), 13);
 
     // Sword: weapon, 1d8 slashing, GLOW (extra-bit `a` = bit 0), wearable
     // wielded; APPLY_DAMROLL +2 → damage_bonus = 2 (CircleMUD APPLY_DAMROLL parity).
@@ -439,6 +439,18 @@ fn parses_items_into_plan() {
         "APPLY_MAXHIT/MAXMANA should no longer warn"
     );
 
+    // Paper / pen: ITEM_NOTE → Note, ITEM_PEN → Pen. Both used to warn
+    // ("not modeled"); now they import cleanly with their dedicated types.
+    let paper = plan.items.iter().find(|i| i.source_vnum == 9021).expect("paper");
+    assert_eq!(paper.data.item_type, ItemType::Note);
+    assert!(paper.data.note_content.is_none(), "blank paper has no note body");
+    let pen = plan.items.iter().find(|i| i.source_vnum == 9022).expect("pen");
+    assert_eq!(pen.data.item_type, ItemType::Pen);
+    assert!(
+        !warnings.iter().any(|w| w.message.contains("ITEM_NOTE") || w.message.contains("ITEM_PEN")),
+        "ITEM_NOTE/PEN should no longer warn"
+    );
+
     // Cursed amulet: NODROP set, ANTI_GOOD warns.
     let amulet = plan.items.iter().find(|i| i.source_vnum == 9017).expect("amulet");
     assert!(amulet.data.flags.no_drop);
@@ -472,8 +484,8 @@ fn applies_items_to_tmp_db() {
         };
         let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
         let summary = writer::apply(&db, &plan, &warnings).expect("apply");
-        assert_eq!(summary.written_items, 11);
-        assert_eq!(summary.planned_items, 11);
+        assert_eq!(summary.written_items, 13);
+        assert_eq!(summary.planned_items, 13);
 
         let sword = db
             .get_item_by_vnum("test_fixture_village_9010")

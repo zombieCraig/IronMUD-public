@@ -415,6 +415,10 @@
     "access": "user",
     "description": "Read an item (may learn recipes from books)"
   },
+  "write": {
+    "access": "user",
+    "description": "Write on a paper note (requires a pen in your inventory)"
+  },
   "fish": {
     "access": "user",
     "description": "Fish in water using a fishing rod"

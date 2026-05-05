@@ -50,7 +50,7 @@ export const itemToolDefinitions = [
         offset: { type: "number", default: 0 },
         item_type: {
           type: "string",
-          enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold", "ammunition", "potion", "wand", "staff"],
+          enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold", "ammunition", "potion", "wand", "staff", "note", "pen"],
         },
       },
     },
@@ -100,7 +100,7 @@ export const itemToolDefinitions = [
         keywords: { type: "array", items: { type: "string" } },
         item_type: {
           type: "string",
-          enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold", "ammunition", "potion", "wand", "staff"],
+          enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold", "ammunition", "potion", "wand", "staff", "note", "pen"],
         },
         weight: { type: "number", default: 1 },
         value: { type: "number", default: 0 },
@@ -227,7 +227,7 @@ export const itemToolDefinitions = [
         short_desc: { type: "string" },
         long_desc: { type: "string" },
         vnum: { type: "string", description: "New vnum (must be unique)" },
-        item_type: { type: "string", enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold", "ammunition", "potion", "wand", "staff"], description: "Change item type" },
+        item_type: { type: "string", enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold", "ammunition", "potion", "wand", "staff", "note", "pen"], description: "Change item type" },
         keywords: { type: "array", items: { type: "string" } },
         weight: { type: "number" },
         value: { type: "number" },

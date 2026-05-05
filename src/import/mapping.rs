@@ -2368,15 +2368,11 @@ fn apply_item_type(item: &IrItem, data: &mut ItemData, warnings: &mut Vec<Warnin
                 data.container_key_vnum = Some(format!("{}_{}", area_prefix, v[2]));
             }
         }
-        // ITEM_NOTE — blank-paper writing system not modeled.
+        // ITEM_NOTE — blank or pre-authored paper. Players with a Pen in
+        // their inventory can use `write <paper>` to set `note_content`.
+        // Circle's per-language literacy gating is not modeled.
         16 => {
-            data.item_type = ItemType::Misc;
-            warnings.push(Warning::new(
-                WarningKind::UnsupportedValueSemantic,
-                Severity::Warn,
-                item.source.clone(),
-                "ITEM_NOTE writing/language semantics not modeled; imported as Misc".to_string(),
-            ));
+            data.item_type = ItemType::Note;
         }
         // ITEM_DRINKCON — full mapping; v2 indexes the drink table.
         17 => {
@@ -2410,15 +2406,10 @@ fn apply_item_type(item: &IrItem, data: &mut ItemData, warnings: &mut Vec<Warnin
             data.item_type = ItemType::Gold;
             data.value = v[0].max(0);
         }
-        // ITEM_PEN — writing-tool with no IronMUD analogue.
+        // ITEM_PEN — writing tool. Required to be in the writer's
+        // inventory to use `write <paper>`.
         21 => {
-            data.item_type = ItemType::Misc;
-            warnings.push(Warning::new(
-                WarningKind::UnsupportedValueSemantic,
-                Severity::Warn,
-                item.source.clone(),
-                "ITEM_PEN (writing tool) not modeled; imported as Misc".to_string(),
-            ));
+            data.item_type = ItemType::Pen;
         }
         // ITEM_BOAT — Misc + IronMUD's flags.boat which already exists.
         22 => {

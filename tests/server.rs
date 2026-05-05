@@ -3944,6 +3944,55 @@ fn test_item_note_content_persists() {
 }
 
 #[test]
+fn test_item_type_note_and_pen_round_trip() {
+    use ironmud::ItemData;
+    use ironmud::db::Db;
+    use ironmud::types::ItemType;
+
+    let db_path = format!("test_note_pen_types_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut paper = ItemData::new(
+            "paper blank".to_string(),
+            "a blank piece of paper".to_string(),
+            "A blank piece of paper lies here.".to_string(),
+        );
+        paper.item_type = ItemType::Note;
+        let paper_id = paper.id;
+        db.save_item_data(paper).expect("save paper");
+
+        let mut pen = ItemData::new(
+            "pen quill".to_string(),
+            "a feathered quill pen".to_string(),
+            "A feathered quill pen rests here.".to_string(),
+        );
+        pen.item_type = ItemType::Pen;
+        let pen_id = pen.id;
+        db.save_item_data(pen).expect("save pen");
+
+        let loaded_paper = db.get_item_data(&paper_id).expect("get").expect("present");
+        assert_eq!(loaded_paper.item_type, ItemType::Note);
+        assert_eq!(loaded_paper.item_type.to_display_string(), "note");
+
+        let loaded_pen = db.get_item_data(&pen_id).expect("get").expect("present");
+        assert_eq!(loaded_pen.item_type, ItemType::Pen);
+        assert_eq!(loaded_pen.item_type.to_display_string(), "pen");
+
+        assert_eq!(ItemType::from_str("note"), Some(ItemType::Note));
+        assert_eq!(ItemType::from_str("paper"), Some(ItemType::Note));
+        assert_eq!(ItemType::from_str("pen"), Some(ItemType::Pen));
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_spawn_crafted_item_copies_liquid_ammo_and_note_fields() {
     use ironmud::ItemData;
     use ironmud::script::build_crafted_item_from_prototype;
