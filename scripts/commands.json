@@ -147,6 +147,10 @@
     "access": "user",
     "description": "Pick up an item or gold from the room or container"
   },
+  "donate": {
+    "access": "user",
+    "description": "Donate an item to the area's donation room (if any)"
+  },
   "drop": {
     "access": "user",
     "description": "Drop an item or gold from your inventory/balance"

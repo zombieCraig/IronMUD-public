@@ -1460,6 +1460,7 @@ mod pair_housing_tests {
             migrant_starting_gold: crate::types::GoldRange::default(),
             guard_wage_per_hour: 0,
             healer_wage_per_hour: 0,
+            donation_room_vnum: None,
             scavenger_wage_per_hour: 0,
         };
         db.save_area_data(area.clone()).expect("save area");

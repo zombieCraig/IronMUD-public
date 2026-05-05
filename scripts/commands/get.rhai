@@ -105,6 +105,7 @@ fn get_from_room(char, keyword, connection_id) {
     }
 
     move_item_to_inventory(item.id, char.name);
+    clear_item_donation_timer(item.id);
     send_client_message(connection_id, "You pick up " + item.name + ".");
     broadcast_to_room(char.current_room_id, char.name + " picks up " + item.name + ".", char.name);
 }
@@ -163,6 +164,7 @@ fn get_all_from_room(char, filter_keyword, room_items, connection_id) {
             delete_item(item.id);
         } else {
             move_item_to_inventory(item.id, char.name);
+            clear_item_donation_timer(item.id);
             picked_up_names.push(item.name);
         }
     }
@@ -280,6 +282,7 @@ fn get_from_container(char, item_keyword, container_keyword, connection_id) {
     // Move item from container to inventory
     remove_item_from_container(item.id);
     move_item_to_inventory(item.id, char.name);
+    clear_item_donation_timer(item.id);
     send_client_message(connection_id, "You get " + item.name + " from " + container.name + ".");
     let msg = char.name + " gets something from " + container.name + ".";
     broadcast_to_room(char.current_room_id, msg, char.name);
@@ -347,6 +350,7 @@ fn get_all_from_container(char, filter_keyword, container, connection_id) {
         } else {
             remove_item_from_container(item.id);
             move_item_to_inventory(item.id, char.name);
+            clear_item_donation_timer(item.id);
             picked_up_names.push(item.name);
         }
     }
@@ -634,6 +638,7 @@ fn get_single_from_specific_container(char, item_keyword, container, connection_
 
     remove_item_from_container(item.id);
     move_item_to_inventory(item.id, char.name);
+    clear_item_donation_timer(item.id);
     send_client_message(connection_id, "You get " + item.name + " from " + container.name + ".");
     broadcast_to_room(char.current_room_id, char.name + " gets something from " + container.name + ".", char.name);
 }

@@ -455,6 +455,10 @@ export declare const itemToolDefinitions: ({
                     readonly no_sell: {
                         readonly type: "boolean";
                     };
+                    readonly no_donate: {
+                        readonly type: "boolean";
+                        readonly description: "Cannot be donated via the `donate` command (CircleMUD ITEM_NODONATE)";
+                    };
                     readonly unique: {
                         readonly type: "boolean";
                     };
@@ -823,6 +827,10 @@ export declare const itemToolDefinitions: ({
                     };
                     readonly no_sell: {
                         readonly type: "boolean";
+                    };
+                    readonly no_donate: {
+                        readonly type: "boolean";
+                        readonly description: "Cannot be donated via the `donate` command (CircleMUD ITEM_NODONATE)";
                     };
                     readonly unique: {
                         readonly type: "boolean";

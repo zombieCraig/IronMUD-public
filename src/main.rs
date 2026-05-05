@@ -27,7 +27,7 @@ use ironmud::{
 
 use ironmud::script;
 use ticks::{
-    run_aging_tick, run_bleeding_tick, run_combat_tick, run_corpse_decay_tick, run_drowning_tick, run_exposure_tick,
+    run_aging_tick, run_bleeding_tick, run_combat_tick, run_corpse_decay_tick, run_donation_decay_tick, run_drowning_tick, run_exposure_tick,
     run_garden_tick, run_hunger_tick, run_hunting_tick, run_migration_tick, run_mobile_effects_tick,
     run_periodic_trigger_tick, run_pursuit_tick, run_regen_tick, run_rent_tick, run_routine_tick, run_simulation_tick,
     run_spawn_tick, run_spoilage_tick, run_thirst_tick, run_time_tick, run_transport_tick, run_wander_tick,
@@ -119,6 +119,7 @@ async fn main() -> Result<()> {
     let tick_db21 = db.clone(); // Clone db for simulation tick
     let tick_db22 = db.clone(); // Clone db for migration tick
     let tick_db23 = db.clone(); // Clone db for aging tick
+    let tick_db24 = db.clone(); // Clone db for donation decay tick
     let api_db = db.clone(); // Clone db for REST API
 
     let connections = Arc::new(Mutex::new(HashMap::new()));
@@ -304,6 +305,12 @@ async fn main() -> Result<()> {
     let aging_connections = connections.clone();
     tokio::spawn(async move {
         run_aging_tick(tick_db23, aging_connections).await;
+    });
+
+    // Start background donation-decay tick (donated items rot in donation rooms)
+    let donation_connections = connections.clone();
+    tokio::spawn(async move {
+        run_donation_decay_tick(tick_db24, donation_connections).await;
     });
 
     // Start control socket listener for out-of-process admin commands.

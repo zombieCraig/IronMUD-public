@@ -14,6 +14,7 @@ export declare const areaToolDefinitions: ({
             id?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;
+            donation_room_vnum?: undefined;
             immigration_name_pool?: undefined;
             immigration_visual_profile?: undefined;
             migration_interval_days?: undefined;
@@ -51,6 +52,7 @@ export declare const areaToolDefinitions: ({
             id?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;
+            donation_room_vnum?: undefined;
             immigration_name_pool?: undefined;
             immigration_visual_profile?: undefined;
             migration_interval_days?: undefined;
@@ -103,6 +105,7 @@ export declare const areaToolDefinitions: ({
             id?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;
+            donation_room_vnum?: undefined;
             immigration_name_pool?: undefined;
             immigration_visual_profile?: undefined;
             migration_interval_days?: undefined;
@@ -160,6 +163,10 @@ export declare const areaToolDefinitions: ({
                 description: string;
             };
             immigration_room_vnum: {
+                type: string;
+                description: string;
+            };
+            donation_room_vnum: {
                 type: string;
                 description: string;
             };
@@ -302,6 +309,7 @@ export declare const areaToolDefinitions: ({
             theme?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;
+            donation_room_vnum?: undefined;
             immigration_name_pool?: undefined;
             immigration_visual_profile?: undefined;
             migration_interval_days?: undefined;
@@ -340,6 +348,7 @@ export declare const areaToolDefinitions: ({
             id?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;
+            donation_room_vnum?: undefined;
             immigration_name_pool?: undefined;
             immigration_visual_profile?: undefined;
             migration_interval_days?: undefined;
@@ -395,6 +404,7 @@ export declare const areaToolDefinitions: ({
             id?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;
+            donation_room_vnum?: undefined;
             immigration_name_pool?: undefined;
             immigration_visual_profile?: undefined;
             migration_interval_days?: undefined;
@@ -437,6 +447,7 @@ export declare const areaToolDefinitions: ({
             id?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;
+            donation_room_vnum?: undefined;
             immigration_name_pool?: undefined;
             immigration_visual_profile?: undefined;
             migration_interval_days?: undefined;

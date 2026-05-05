@@ -75,6 +75,9 @@ pub struct UpdateAreaRequest {
     pub healer_wage_per_hour: Option<i32>,
     /// Hourly scrounging wage paid to migrant scavengers while away from home.
     pub scavenger_wage_per_hour: Option<i32>,
+    /// Optional vnum of a room that accepts `donate <item>`. Empty string clears
+    /// (donations refused). Absent leaves the existing setting alone.
+    pub donation_room_vnum: Option<String>,
     /// Per-flag overrides for the area's default_room_flags template.
     /// Absent keys preserve current state; unknown keys are ignored.
     pub default_room_flags: Option<std::collections::HashMap<String, bool>>,
@@ -294,6 +297,7 @@ async fn create_area(
         migrant_starting_gold: crate::types::GoldRange::default(),
         guard_wage_per_hour: 0,
         healer_wage_per_hour: 0,
+            donation_room_vnum: None,
         scavenger_wage_per_hour: 0,
     };
 
@@ -361,6 +365,9 @@ async fn update_area(
     }
     if let Some(v) = req.immigration_room_vnum {
         area.immigration_room_vnum = v;
+    }
+    if let Some(v) = req.donation_room_vnum {
+        area.donation_room_vnum = if v.trim().is_empty() { None } else { Some(v) };
     }
     if let Some(v) = req.immigration_name_pool {
         area.immigration_name_pool = v;

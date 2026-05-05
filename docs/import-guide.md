@@ -302,7 +302,8 @@ code change needed — the mapping is loaded lazily on first import.
 | `INVISIBLE` | sets `invisible` |
 | `NODROP` | sets `no_drop` (curse) |
 | `NOSELL` | sets `no_sell` |
-| `NORENT`, `NODONATE` | silently dropped (no rent / donation systems) |
+| `NORENT` | silently dropped (no save-on-logout system; IronMUD persists inventory in-place) |
+| `NODONATE` | sets `no_donate` (refuses `donate <item>`) |
 | `NOINVIS` | **Warn**: cannot-be-made-invis not modeled |
 | `MAGIC` | sets `magical`; auto-tags `categories: ["magical"]` |
 | `BLESS` | **Warn**: no blessing system |
@@ -1064,9 +1065,6 @@ below for what's next.)
   IronMUD analogue is a per-room trap.
 - **`APPLY_SAVING_*`** — saving throws don't exist in IronMUD's
   combat system.
-- **`NORENT` / `NODONATE`** — no rent / donation systems in IronMUD;
-  silently dropped.
-
 ### Object subsystems (whole-feature)
 
 - **Item affect → buff conversion** — Circle's `A`-blocks today apply

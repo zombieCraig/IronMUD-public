@@ -15,6 +15,7 @@ export interface Area {
   // Migrant immigration config
   immigration_enabled?: boolean;
   immigration_room_vnum?: string;
+  donation_room_vnum?: string | null;
   immigration_name_pool?: string;
   immigration_visual_profile?: string;
   migration_interval_days?: number;
@@ -232,6 +233,7 @@ export interface ItemFlags {
   magical?: boolean;
   night_vision?: boolean;
   no_sell?: boolean;
+  no_donate?: boolean;
   unique?: boolean;
   plant_pot?: boolean;
   lockpick?: boolean;
@@ -386,6 +388,7 @@ export interface UpdateAreaRequest {
   migration_max_per_check?: number;
   immigration_guard_chance?: number;
   migrant_starting_gold?: GoldRange;
+  donation_room_vnum?: string | null;
   guard_wage_per_hour?: number;
   healer_wage_per_hour?: number;
   scavenger_wage_per_hour?: number;

@@ -41,6 +41,7 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             migrant_starting_gold: crate::types::GoldRange::default(),
             guard_wage_per_hour: 0,
             healer_wage_per_hour: 0,
+            donation_room_vnum: None,
             scavenger_wage_per_hour: 0,
         },
         AreaData {
@@ -78,6 +79,7 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             migrant_starting_gold: crate::types::GoldRange::default(),
             guard_wage_per_hour: 0,
             healer_wage_per_hour: 0,
+            donation_room_vnum: None,
             scavenger_wage_per_hour: 0,
         },
         AreaData {
@@ -112,6 +114,7 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             migrant_starting_gold: crate::types::GoldRange::default(),
             guard_wage_per_hour: 0,
             healer_wage_per_hour: 0,
+            donation_room_vnum: None,
             scavenger_wage_per_hour: 0,
         },
         AreaData {
@@ -148,6 +151,7 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             migrant_starting_gold: crate::types::GoldRange::default(),
             guard_wage_per_hour: 0,
             healer_wage_per_hour: 0,
+            donation_room_vnum: None,
             scavenger_wage_per_hour: 0,
         },
         AreaData {
@@ -184,6 +188,7 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             migrant_starting_gold: crate::types::GoldRange::default(),
             guard_wage_per_hour: 0,
             healer_wage_per_hour: 0,
+            donation_room_vnum: None,
             scavenger_wage_per_hour: 0,
         },
     ];

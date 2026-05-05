@@ -125,6 +125,7 @@ fn is_subcommand(arg) {
     if cmd == "flags" { return true; }
     if cmd == "default_flags" { return true; }
     if cmd == "immigration" { return true; }
+    if cmd == "donation" { return true; }
     return false;
 }
 
@@ -253,7 +254,13 @@ fn run_command(args, connection_id) {
         output += "  aedit zone [pve|safe|pvp]\n";
         output += "  aedit flags [climate_controlled] [on|off]\n";
         output += "  aedit default_flags [<flag>] [on|off]  (template flags for new rooms)\n";
-        output += "  aedit immigration [...]  (migrant spawning config)";
+        output += "  aedit immigration [...]  (migrant spawning config)\n";
+        output += "  aedit donation <vnum>|clear  (donation room for `donate <item>`)";
+
+        // Donation room summary
+        let donation_vnum = get_area_donation_room_vnum(area.id);
+        let donation_display = if donation_vnum == "" { "(disabled)" } else { donation_vnum };
+        output += "\n" + olc::c_label("donation:  ", connection_id) + olc::c_value(donation_display, connection_id);
 
         // Immigration summary block
         output += "\n\n" + olc::c_label("--- Migrant Immigration ---", connection_id) + "\n";
@@ -502,7 +509,51 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "donation" {
+        handle_donation_subcommand(area, remaining, connection_id);
+        return;
+    }
+
     send_client_message(connection_id, "Unknown subcommand: " + subcommand);
+}
+
+// === Donation subcommand handler ===
+//   aedit donation                → show current setting
+//   aedit donation <vnum>         → set donation room
+//   aedit donation clear|none|off → disable donations
+fn handle_donation_subcommand(area, args, connection_id) {
+    if args.len() == 0 {
+        let cur = get_area_donation_room_vnum(area.id);
+        if cur == "" {
+            send_client_message(connection_id, "Donation room: (disabled)");
+        } else {
+            send_client_message(connection_id, "Donation room: " + cur);
+        }
+        send_client_message(connection_id, "Usage: aedit donation <vnum>|clear");
+        return;
+    }
+
+    let arg = args[0].to_lower();
+    if arg == "clear" || arg == "none" || arg == "off" {
+        if set_area_donation_room(area.id, "") {
+            send_client_message(connection_id, "Donations disabled in this area.");
+        } else {
+            send_client_message(connection_id, "Failed to update donation room.");
+        }
+        return;
+    }
+
+    let dest = get_room_by_vnum(args[0]);
+    if dest == () {
+        send_client_message(connection_id, "No room with vnum '" + args[0] + "'.");
+        return;
+    }
+
+    if set_area_donation_room(area.id, args[0]) {
+        send_client_message(connection_id, "Donation room set to: " + args[0] + " (" + dest.name + ")");
+    } else {
+        send_client_message(connection_id, "Failed to update donation room.");
+    }
 }
 
 // === Immigration subcommand handler ===

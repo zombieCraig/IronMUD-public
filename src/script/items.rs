@@ -54,6 +54,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         hum,
         magical,
         no_sell,
+        no_donate,
         unique,
         quest_item,
         vending,
@@ -2774,6 +2775,43 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 item.note_content = if body.is_empty() { None } else { Some(body) };
                 return cloned_db.save_item_data(item).is_ok();
             }
+        }
+        false
+    });
+
+    // mark_item_donated(item_id) -> bool — stamps `donated_at` to now
+    // (Unix epoch). The donation-decay tick uses this as its gate.
+    let cloned_db = db.clone();
+    engine.register_fn("mark_item_donated", move |item_id: String| -> bool {
+        let uuid = match uuid::Uuid::parse_str(&item_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+            item.donated_at = Some(now);
+            return cloned_db.save_item_data(item).is_ok();
+        }
+        false
+    });
+
+    // clear_item_donation_timer(item_id) -> bool — no-op if already cleared.
+    // Called from `get`/`take` so picked-up items stop decaying.
+    let cloned_db = db.clone();
+    engine.register_fn("clear_item_donation_timer", move |item_id: String| -> bool {
+        let uuid = match uuid::Uuid::parse_str(&item_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+            if item.donated_at.is_none() {
+                return true;
+            }
+            item.donated_at = None;
+            return cloned_db.save_item_data(item).is_ok();
         }
         false
     });

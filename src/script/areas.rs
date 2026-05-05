@@ -86,6 +86,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             migrant_starting_gold: crate::types::GoldRange::default(),
             guard_wage_per_hour: 0,
             healer_wage_per_hour: 0,
+            donation_room_vnum: None,
             scavenger_wage_per_hour: 0,
         };
         if let Err(e) = cloned_db.save_area_data(area.clone()) {
@@ -131,6 +132,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 migrant_starting_gold: crate::types::GoldRange::default(),
                 guard_wage_per_hour: 0,
                 healer_wage_per_hour: 0,
+            donation_room_vnum: None,
                 scavenger_wage_per_hour: 0,
             };
             if let Err(e) = cloned_db.save_area_data(area.clone()) {
@@ -1363,6 +1365,37 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             false
         },
     );
+
+    // set_area_donation_room(area_id, vnum) -> bool
+    // Empty `vnum` clears the setting (donations refused).
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_area_donation_room",
+        move |area_id: String, vnum: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+                if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+                    area.donation_room_vnum = if vnum.trim().is_empty() {
+                        None
+                    } else {
+                        Some(vnum)
+                    };
+                    return cloned_db.save_area_data(area).is_ok();
+                }
+            }
+            false
+        },
+    );
+
+    // get_area_donation_room_vnum(area_id) -> String ("" when unset)
+    let cloned_db = db.clone();
+    engine.register_fn("get_area_donation_room_vnum", move |area_id: String| -> String {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+            if let Ok(Some(area)) = cloned_db.get_area_data(&uuid) {
+                return area.donation_room_vnum.unwrap_or_default();
+            }
+        }
+        String::new()
+    });
 
     // set_area_immigration_name_pool(area_id, pool_name) -> bool
     let cloned_db = db.clone();

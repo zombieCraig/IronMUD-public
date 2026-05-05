@@ -13,6 +13,7 @@ const itemFlagsSchema = {
     hum: { type: "boolean" },
     magical: { type: "boolean", description: "Reveals (magical aura) cue when viewer has detect_magic" },
     no_sell: { type: "boolean" },
+    no_donate: { type: "boolean", description: "Cannot be donated via the `donate` command (CircleMUD ITEM_NODONATE)" },
     unique: { type: "boolean" },
     quest_item: { type: "boolean" },
     vending: { type: "boolean", description: "Functions as a vending machine" },

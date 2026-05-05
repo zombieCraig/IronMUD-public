@@ -7,7 +7,7 @@
     "NODROP":       { "action": "set_flag", "ironmud_flag": "no_drop" },
     "NOSELL":       { "action": "set_flag", "ironmud_flag": "no_sell" },
     "NORENT":       { "action": "drop", "info": "no rent system" },
-    "NODONATE":     { "action": "drop", "info": "no donation system" },
+    "NODONATE":     { "action": "set_flag", "ironmud_flag": "no_donate" },
     "NOINVIS":      { "action": "warn", "message": "ITEM_NOINVIS (cannot be made invisible) not modeled." },
     "MAGIC":        { "action": "set_flag", "ironmud_flag": "magical" },
     "BLESS":        { "action": "warn", "message": "ITEM_BLESS not modeled (no alignment/blessing system)." },

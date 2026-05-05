@@ -221,6 +221,8 @@ pub struct ItemFlagsRequest {
     #[serde(default)]
     pub no_sell: Option<bool>,
     #[serde(default)]
+    pub no_donate: Option<bool>,
+    #[serde(default)]
     pub unique: Option<bool>,
     #[serde(default)]
     pub quest_item: Option<bool>,
@@ -706,6 +708,7 @@ async fn create_item(
         teaches_recipe: None,
         teaches_spell: None,
         note_content: req.note_content.map(normalize_note_input).transpose()?.flatten(),
+        donated_at: None,
         extra_descs: req
             .extra_descs
             .map(|v| {
@@ -740,6 +743,7 @@ async fn create_item(
             hum: req.flags.hum.unwrap_or(false),
             magical: req.flags.magical.unwrap_or(false),
             no_sell: req.flags.no_sell.unwrap_or(false),
+            no_donate: req.flags.no_donate.unwrap_or(false),
             unique: req.flags.unique.unwrap_or(false),
             quest_item: req.flags.quest_item.unwrap_or(false),
             vending: req.flags.vending.unwrap_or(false),
@@ -998,6 +1002,9 @@ async fn update_item(
         }
         if let Some(v) = flags.no_sell {
             item.flags.no_sell = v;
+        }
+        if let Some(v) = flags.no_donate {
+            item.flags.no_donate = v;
         }
         if let Some(v) = flags.unique {
             item.flags.unique = v;

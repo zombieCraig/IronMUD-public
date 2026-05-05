@@ -300,7 +300,7 @@ fn parses_items_into_plan() {
     let (ir, parse_warnings) = CircleEngine.parse(&fixture_root()).expect("parse");
     assert_eq!(parse_warnings.len(), 0, "fixture should parse cleanly");
     let zone = &ir.zones[0];
-    assert_eq!(zone.items.len(), 13, "thirteen fixture items in obj/9000.obj");
+    assert_eq!(zone.items.len(), 14, "fourteen fixture items in obj/9000.obj");
 
     let opts = MappingOptions {
         circle: mapping::CircleMappingTable::load_default(),
@@ -310,7 +310,7 @@ fn parses_items_into_plan() {
         existing_item_vnums: Vec::new(),
     };
     let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
-    assert_eq!(plan.items.len(), 13);
+    assert_eq!(plan.items.len(), 14);
 
     // Sword: weapon, 1d8 slashing, GLOW (extra-bit `a` = bit 0), wearable
     // wielded; APPLY_DAMROLL +2 → damage_bonus = 2 (CircleMUD APPLY_DAMROLL parity).
@@ -451,6 +451,15 @@ fn parses_items_into_plan() {
         "ITEM_NOTE/PEN should no longer warn"
     );
 
+    // Cursed trinket: NODONATE bit (extra-flag bit 3) flips to flags.no_donate.
+    // Used to be silently dropped via the JSON mapping; now lands as a flag.
+    let trinket = plan.items.iter().find(|i| i.source_vnum == 9023).expect("trinket");
+    assert!(trinket.data.flags.no_donate, "NODONATE → flags.no_donate");
+    assert!(
+        !warnings.iter().any(|w| w.message.contains("ITEM_NODONATE")),
+        "NODONATE should not surface as a warning"
+    );
+
     // Cursed amulet: NODROP set, ANTI_GOOD warns.
     let amulet = plan.items.iter().find(|i| i.source_vnum == 9017).expect("amulet");
     assert!(amulet.data.flags.no_drop);
@@ -484,8 +493,8 @@ fn applies_items_to_tmp_db() {
         };
         let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
         let summary = writer::apply(&db, &plan, &warnings).expect("apply");
-        assert_eq!(summary.written_items, 13);
-        assert_eq!(summary.planned_items, 13);
+        assert_eq!(summary.written_items, 14);
+        assert_eq!(summary.planned_items, 14);
 
         let sword = db
             .get_item_by_vnum("test_fixture_village_9010")

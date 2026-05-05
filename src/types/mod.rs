@@ -1752,6 +1752,13 @@ pub struct AreaData {
     /// Default 0 disables.
     #[serde(default)]
     pub healer_wage_per_hour: i32,
+
+    /// Optional vnum of a room in this area that accepts player donations
+    /// (`donate <item>`). `None` = donations refused with "Donations are not
+    /// accepted here." Items teleported here decay after `donation_decay_secs`
+    /// (default 1800) via the donation-decay tick.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub donation_room_vnum: Option<String>,
     /// Hourly scavenging wage for migrant scavengers, paid only while not at
     /// their home room (they have to actually be out scrounging). Default 0.
     #[serde(default)]
@@ -2691,6 +2698,8 @@ pub struct ItemFlags {
     #[serde(default)]
     pub no_sell: bool,
     #[serde(default)]
+    pub no_donate: bool,
+    #[serde(default)]
     pub unique: bool,
     #[serde(default)]
     pub quest_item: bool,
@@ -2753,6 +2762,7 @@ pub struct ItemFlags {
     pub detect_buried: bool, // Surfaces a hint when buried items are nearby
 }
 
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(tag = "type", content = "id")]
 pub enum ItemLocation {
@@ -2787,6 +2797,11 @@ pub struct ItemData {
     // Authored via `oedit <id> note` multi-line editor; surfaced by `read`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note_content: Option<String>,
+    // Epoch seconds when this item was donated. Presence is the gate
+    // for the donation-decay tick (see src/ticks/donation.rs); cleared
+    // when a player picks the item up.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub donated_at: Option<i64>,
     // Sub-keyword lore revealed via `look <keyword>` against this item.
     #[serde(default)]
     pub extra_descs: Vec<ExtraDesc>,
@@ -3012,6 +3027,7 @@ impl ItemData {
             teaches_recipe: None,
             teaches_spell: None,
             note_content: None,
+            donated_at: None,
             extra_descs: Vec::new(),
             wear_locations: Vec::new(),
             armor_class: None,

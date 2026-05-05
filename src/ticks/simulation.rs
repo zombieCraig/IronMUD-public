@@ -1968,6 +1968,7 @@ mod tests {
             migrant_starting_gold: GoldRange::default(),
             guard_wage_per_hour: 25,
             healer_wage_per_hour: 0,
+            donation_room_vnum: None,
             scavenger_wage_per_hour: 0,
         };
         g.db.save_area_data(area).expect("save area");
@@ -2038,6 +2039,7 @@ mod tests {
             migrant_starting_gold: GoldRange::default(),
             guard_wage_per_hour: 0,
             healer_wage_per_hour: 0,
+            donation_room_vnum: None,
             scavenger_wage_per_hour: 7,
         };
         g.db.save_area_data(area).expect("save area");
@@ -2176,6 +2178,7 @@ mod tests {
             guard_wage_per_hour: guard,
             healer_wage_per_hour: healer,
             scavenger_wage_per_hour: scavenger,
+            donation_room_vnum: None,
         };
         db.save_area_data(area).expect("save area");
         area_id

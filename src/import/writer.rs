@@ -183,6 +183,7 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
             migrant_starting_gold: GoldRange::default(),
             guard_wage_per_hour: 0,
             healer_wage_per_hour: 0,
+            donation_room_vnum: None,
             scavenger_wage_per_hour: 0,
         };
         db.save_area_data(area)

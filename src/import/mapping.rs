@@ -2503,6 +2503,7 @@ fn apply_named_item_flag(flags: &mut ItemFlags, name: &str) -> bool {
         "hum" => flags.hum = true,
         "magical" => flags.magical = true,
         "no_sell" => flags.no_sell = true,
+        "no_donate" => flags.no_donate = true,
         "unique" => flags.unique = true,
         "quest_item" => flags.quest_item = true,
         "provides_light" => flags.provides_light = true,

@@ -1222,7 +1222,8 @@ fn handle_attachment_compatible(item_id, parts, connection_id) {
 // Mirrors the alias set in src/script/items.rs set_item_flag/get_item_flag.
 fn is_valid_item_flag(name) {
     let valid = ["no_drop", "nodrop", "no_get", "noget", "no_remove", "noremove",
-        "invisible", "glow", "hum", "magical", "magic", "no_sell", "nosell", "unique",
+        "invisible", "glow", "hum", "magical", "magic", "no_sell", "nosell",
+        "no_donate", "nodonate", "unique",
         "quest_item", "questitem", "quest", "vending",
         "provides_light", "provideslight", "light",
         "night_vision", "nightvision", "infravision",
@@ -1263,7 +1264,7 @@ fn handle_flag_subcommand(item_id, parts, connection_id) {
     // Validate all names before changing anything.
     for name in flag_names {
         if !is_valid_item_flag(name) {
-            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: no_drop, no_get, no_remove, invisible, glow, hum, magical, no_sell, unique, quest_item, vending, provides_light, night_vision, fishing_rod, bait, foraging_tool, waterproof, provides_warmth, reduces_glare, medical_tool, preserves_contents, death_only, atm, broken, plant_pot, lockpick, is_skinned, boat, buried, can_dig, detect_buried");
+            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: no_drop, no_get, no_remove, invisible, glow, hum, magical, no_sell, no_donate, unique, quest_item, vending, provides_light, night_vision, fishing_rod, bait, foraging_tool, waterproof, provides_warmth, reduces_glare, medical_tool, preserves_contents, death_only, atm, broken, plant_pot, lockpick, is_skinned, boat, buried, can_dig, detect_buried");
             return;
         }
     }
@@ -1903,6 +1904,7 @@ fn copy_item_flags(item, new_item_id) {
     if item.flags.hum { set_item_flag(new_item_id, "hum", true); }
     if item.flags.magical { set_item_flag(new_item_id, "magical", true); }
     if item.flags.no_sell { set_item_flag(new_item_id, "no_sell", true); }
+    if item.flags.no_donate { set_item_flag(new_item_id, "no_donate", true); }
     if item.flags.unique { set_item_flag(new_item_id, "unique", true); }
     if item.flags.quest_item { set_item_flag(new_item_id, "quest_item", true); }
     if item.flags.vending { set_item_flag(new_item_id, "vending", true); }
@@ -2534,6 +2536,7 @@ fn build_flags_display(item) {
     if flags.hum { flag_str += "hum "; }
     if flags.magical { flag_str += "magical "; }
     if flags.no_sell { flag_str += "no_sell "; }
+    if flags.no_donate { flag_str += "no_donate "; }
     if flags.unique { flag_str += "unique "; }
     if flags.quest_item { flag_str += "quest_item "; }
     if flags.vending { flag_str += "vending "; }
@@ -2891,6 +2894,7 @@ fn show_item_flags(item, item_id, connection_id) {
     output += build_flag_line("hum", flags.hum, "Makes humming sound", display_id, connection_id);
     output += build_flag_line("magical", flags.magical, "Surrounded by a magical aura (visible with detect_magic)", display_id, connection_id);
     output += build_flag_line("no_sell", flags.no_sell, "Cannot be sold to shops", display_id, connection_id);
+    output += build_flag_line("no_donate", flags.no_donate, "Cannot be donated", display_id, connection_id);
     output += build_flag_line("unique", flags.unique, "Only one can exist in world", display_id, connection_id);
     output += build_flag_line("quest_item", flags.quest_item, "Special quest item", display_id, connection_id);
     output += build_flag_line("vending", flags.vending, "Functions as a vending machine (configure via 'vending' subcommand)", display_id, connection_id);

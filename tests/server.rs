@@ -1528,6 +1528,7 @@ mod migration_tests {
             guard_wage_per_hour: 0,
             healer_wage_per_hour: 0,
             scavenger_wage_per_hour: 0,
+            donation_room_vnum: None,
         }
     }
 
@@ -3993,6 +3994,185 @@ fn test_item_type_note_and_pen_round_trip() {
 }
 
 #[test]
+fn test_donation_fields_round_trip() {
+    use ironmud::ItemData;
+    use ironmud::db::Db;
+    use ironmud::types::AreaPermission;
+
+    let db_path = format!("test_donation_round_trip_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        // ItemFlags.no_donate persists.
+        let mut item = ItemData::new(
+            "trinket".to_string(),
+            "a worthless trinket".to_string(),
+            "A worthless trinket lies here.".to_string(),
+        );
+        item.flags.no_donate = true;
+        let item_id = item.id;
+        db.save_item_data(item).expect("save item");
+        let loaded = db.get_item_data(&item_id).expect("get").expect("present");
+        assert!(loaded.flags.no_donate, "no_donate persists across save/load");
+        assert!(loaded.donated_at.is_none(), "donated_at unset by default");
+
+        // AreaData.donation_room_vnum starts unset, persists when set.
+        let mut area = ironmud::types::AreaData {
+            id: uuid::Uuid::new_v4(),
+            name: "Test Area".to_string(),
+            prefix: "test".to_string(),
+            description: String::new(),
+            level_min: 0,
+            level_max: 0,
+            theme: String::new(),
+            owner: None,
+            permission_level: AreaPermission::default(),
+            trusted_builders: Vec::new(),
+            city_forage_table: Vec::new(),
+            wilderness_forage_table: Vec::new(),
+            shallow_water_forage_table: Vec::new(),
+            deep_water_forage_table: Vec::new(),
+            underwater_forage_table: Vec::new(),
+            combat_zone: ironmud::types::CombatZoneType::default(),
+            flags: ironmud::types::AreaFlags::default(),
+            default_room_flags: ironmud::types::RoomFlags::default(),
+            immigration_enabled: false,
+            immigration_room_vnum: String::new(),
+            immigration_name_pool: String::new(),
+            immigration_visual_profile: String::new(),
+            migration_interval_days: 0,
+            migration_max_per_check: 0,
+            migrant_sim_defaults: None,
+            last_migration_check_day: None,
+            immigration_variation_chances: Default::default(),
+            immigration_family_chance: Default::default(),
+            migrant_starting_gold: Default::default(),
+            guard_wage_per_hour: 0,
+            healer_wage_per_hour: 0,
+            scavenger_wage_per_hour: 0,
+            donation_room_vnum: None,
+        };
+        let area_id = area.id;
+        db.save_area_data(area.clone()).expect("save area");
+        let reloaded = db.get_area_data(&area_id).expect("get").expect("present");
+        assert!(reloaded.donation_room_vnum.is_none(), "default is None");
+
+        area.donation_room_vnum = Some("test_9100".to_string());
+        db.save_area_data(area).expect("save area v2");
+        let reloaded = db.get_area_data(&area_id).expect("get").expect("present");
+        assert_eq!(
+            reloaded.donation_room_vnum.as_deref(),
+            Some("test_9100"),
+            "donation_room_vnum survives round-trip"
+        );
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+/// Mirror of `src/ticks/donation.rs::process_donation_decay` minus the
+/// room broadcast. The tick module lives under main.rs so it isn't
+/// reachable from integration tests; replicating the iteration here
+/// guards the deletion logic (only Some(donated_at) past threshold,
+/// only items in a Room) without coupling tests to the runner.
+fn run_donation_decay_pass(db: &ironmud::db::Db, decay_secs: i64) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    if let Ok(items) = db.list_all_items() {
+        for item in items {
+            let stamped = match item.donated_at {
+                Some(t) => t,
+                None => continue,
+            };
+            if now - stamped < decay_secs {
+                continue;
+            }
+            if !matches!(item.location, ironmud::types::ItemLocation::Room(_)) {
+                continue;
+            }
+            let _ = db.delete_item(&item.id);
+        }
+    }
+}
+
+#[test]
+fn test_donation_decay_pass_deletes_expired_items_only() {
+    use ironmud::ItemData;
+    use ironmud::types::ItemLocation;
+
+    let db_path = format!("test_donation_decay_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(&db_path).expect("open DB");
+        let room_id = uuid::Uuid::new_v4();
+
+        // Expired donation — donated_at is the epoch.
+        let mut expired = ItemData::new(
+            "expired".to_string(),
+            "an expired trinket".to_string(),
+            "An expired trinket sits here.".to_string(),
+        );
+        expired.location = ItemLocation::Room(room_id);
+        expired.donated_at = Some(0);
+        let expired_id = expired.id;
+        db.save_item_data(expired).expect("save expired");
+
+        // Fresh donation — stamped now, must survive.
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap();
+        let mut fresh = ItemData::new(
+            "fresh".to_string(),
+            "a fresh trinket".to_string(),
+            "A fresh trinket sits here.".to_string(),
+        );
+        fresh.location = ItemLocation::Room(room_id);
+        fresh.donated_at = Some(now);
+        let fresh_id = fresh.id;
+        db.save_item_data(fresh).expect("save fresh");
+
+        // Never-donated item must not be touched.
+        let mut bystander = ItemData::new(
+            "bystander".to_string(),
+            "a stick".to_string(),
+            "A stick lies here.".to_string(),
+        );
+        bystander.location = ItemLocation::Room(room_id);
+        let bystander_id = bystander.id;
+        db.save_item_data(bystander).expect("save bystander");
+
+        run_donation_decay_pass(&db, 60);
+
+        assert!(
+            db.get_item_data(&expired_id).expect("get").is_none(),
+            "expired donation should be deleted"
+        );
+        assert!(
+            db.get_item_data(&fresh_id).expect("get").is_some(),
+            "fresh donation should survive"
+        );
+        assert!(
+            db.get_item_data(&bystander_id).expect("get").is_some(),
+            "non-donated item must not be touched"
+        );
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_spawn_crafted_item_copies_liquid_ammo_and_note_fields() {
     use ironmud::ItemData;
     use ironmud::script::build_crafted_item_from_prototype;
@@ -4100,6 +4280,7 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
             guard_wage_per_hour: 0,
             healer_wage_per_hour: 0,
             scavenger_wage_per_hour: 0,
+            donation_room_vnum: None,
         };
         db.save_area_data(area.clone()).expect("save area");
 
