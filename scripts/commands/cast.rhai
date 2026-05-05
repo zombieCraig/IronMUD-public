@@ -414,6 +414,48 @@ fn cast_summon(connection_id, char, spell, target_arg) {
     return true;
 }
 
+fn cast_charm(connection_id, char, spell, target_arg) {
+    let room_id = char.current_room_id;
+    let mob_id = find_mob_target(char, target_arg, room_id);
+    if mob_id == "" {
+        send_client_message(connection_id, "Charm whom?");
+        return false;
+    }
+
+    let target = get_mobile_data(mob_id);
+    if type_of(target) == "()" {
+        send_client_message(connection_id, "Charm whom?");
+        return false;
+    }
+
+    if target.flags.no_attack {
+        send_client_message(connection_id, target.short_desc + " cannot be charmed.");
+        return false;
+    }
+
+    if target.flags.no_charm {
+        send_client_message(connection_id, target.short_desc + " resists your charm.");
+        broadcast_to_room_except(room_id, connection_id, target.short_desc + " shrugs off " + char.name + "'s charm.");
+        return true;
+    }
+
+    let existing_master = mobile_charm_master(mob_id);
+    if existing_master != "" && existing_master.to_lower() != char.name.to_lower() {
+        send_client_message(connection_id, target.short_desc + " is already under another's sway.");
+        return false;
+    }
+
+    apply_buff_to_mobile(mob_id, "charmed", 0, spell["buff_duration_secs"], char.name);
+    forget_player(mob_id, char.name);
+    if is_mobile_in_combat(mob_id) {
+        exit_mobile_combat(mob_id);
+    }
+
+    send_client_message(connection_id, target.short_desc + "'s eyes glaze over and fall on you.");
+    broadcast_to_room_except(room_id, connection_id, target.short_desc + "'s eyes glaze over.");
+    return true;
+}
+
 fn cast_dispel(connection_id, char, spell, target_arg) {
     let room_id = char.current_room_id;
     let mob_id = find_mob_target(char, target_arg, room_id);
@@ -567,6 +609,9 @@ fn run_command(args, connection_id) {
     }
     if stype == "summon" {
         success = cast_summon(connection_id, char, spell, target_arg);
+    }
+    if stype == "charm" {
+        success = cast_charm(connection_id, char, spell, target_arg);
     }
 
     if !success {

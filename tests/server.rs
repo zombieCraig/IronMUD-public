@@ -4727,3 +4727,240 @@ fn test_summonable_field_defaults_off_and_persists() {
         std::panic::resume_unwind(e);
     }
 }
+
+#[test]
+fn test_charm_spell_definition_loads() {
+    use std::fs;
+
+    let json = fs::read_to_string("scripts/data/spells_fantasy.json").expect("read spells_fantasy");
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+    let spell = parsed
+        .get("charm")
+        .expect("charm entry present")
+        .as_object()
+        .expect("charm is an object");
+
+    assert_eq!(spell.get("spell_type").and_then(|v| v.as_str()), Some("charm"));
+    assert_eq!(spell.get("skill_required").and_then(|v| v.as_i64()), Some(4));
+    assert_eq!(spell.get("mana_cost").and_then(|v| v.as_i64()), Some(35));
+    assert_eq!(spell.get("target_type").and_then(|v| v.as_str()), Some("in_room_npc"));
+    assert_eq!(spell.get("buff_effect").and_then(|v| v.as_str()), Some("charmed"));
+    assert_eq!(spell.get("buff_duration_secs").and_then(|v| v.as_i64()), Some(300));
+}
+
+#[test]
+fn test_no_charm_flag_persists() {
+    use ironmud::db::Db;
+    use ironmud::types::MobileData;
+
+    let db_path = format!("test_no_charm_persists_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut mob = MobileData::new("an iron golem".to_string());
+        mob.flags.no_charm = true;
+        let id = mob.id;
+        db.save_mobile_data(mob).expect("save");
+
+        let loaded = db.get_mobile_data(&id).expect("read").expect("present");
+        assert!(loaded.flags.no_charm);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_charmed_buff_persists_with_master_source() {
+    use ironmud::db::Db;
+    use ironmud::types::{ActiveBuff, EffectType, MobileData};
+
+    let db_path = format!("test_charmed_buff_persists_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut mob = MobileData::new("a hapless thrall".to_string());
+        mob.active_buffs.push(ActiveBuff {
+            effect_type: EffectType::Charmed,
+            magnitude: 0,
+            remaining_secs: 300,
+            source: "Wizard".to_string(),
+        });
+        let id = mob.id;
+        db.save_mobile_data(mob).expect("save");
+
+        let loaded = db.get_mobile_data(&id).expect("read").expect("present");
+        assert_eq!(loaded.active_buffs.len(), 1);
+        assert_eq!(loaded.active_buffs[0].effect_type, EffectType::Charmed);
+        assert_eq!(loaded.active_buffs[0].source, "Wizard");
+        assert!(loaded.is_charmed_by("Wizard"));
+        assert!(loaded.is_charmed_by("wizard"), "is_charmed_by is case-insensitive");
+        assert!(!loaded.is_charmed_by("Cleric"));
+        assert_eq!(loaded.charm_master(), Some("Wizard"));
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_break_all_charms_by_player_clears_only_matching_buffs() {
+    use ironmud::break_all_charms_by_player;
+    use ironmud::db::Db;
+    use ironmud::types::{ActiveBuff, EffectType, MobileData};
+
+    let db_path = format!("test_break_charms_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let make_charmed = |name: &str, master: &str| -> MobileData {
+            let mut m = MobileData::new(name.to_string());
+            m.is_prototype = false;
+            m.active_buffs.push(ActiveBuff {
+                effect_type: EffectType::Charmed,
+                magnitude: 0,
+                remaining_secs: 300,
+                source: master.to_string(),
+            });
+            m
+        };
+
+        let a = make_charmed("thrall a", "Wizard");
+        let b = make_charmed("thrall b", "Wizard");
+        let c = make_charmed("thrall c", "Cleric");
+        let (a_id, b_id, c_id) = (a.id, b.id, c.id);
+        db.save_mobile_data(a).unwrap();
+        db.save_mobile_data(b).unwrap();
+        db.save_mobile_data(c).unwrap();
+
+        break_all_charms_by_player(&db, "Wizard");
+
+        let a = db.get_mobile_data(&a_id).unwrap().unwrap();
+        let b = db.get_mobile_data(&b_id).unwrap().unwrap();
+        let c = db.get_mobile_data(&c_id).unwrap().unwrap();
+
+        assert!(!a.is_charmed_by_anyone(), "Wizard's charm a should be cleared");
+        assert!(!b.is_charmed_by_anyone(), "Wizard's charm b should be cleared");
+        assert!(c.is_charmed_by("Cleric"), "Cleric's charm should remain");
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_charmed_effect_type_round_trips_via_serde() {
+    use ironmud::types::EffectType;
+
+    assert_eq!(EffectType::from_str("charm"), Some(EffectType::Charmed));
+    assert_eq!(EffectType::from_str("charmed"), Some(EffectType::Charmed));
+    assert_eq!(EffectType::Charmed.to_display_string(), "charmed");
+
+    let json = serde_json::to_string(&EffectType::Charmed).expect("serialize");
+    assert_eq!(json, "\"charmed\"");
+    let back: EffectType = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(back, EffectType::Charmed);
+}
+
+#[test]
+fn test_charm_stay_and_follow_persist() {
+    use ironmud::db::Db;
+    use ironmud::types::MobileData;
+
+    let db_path = format!("test_charm_stay_follow_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut mob = MobileData::new("a thrall".to_string());
+        // Defaults
+        assert!(!mob.charm_stay);
+        assert!(mob.charm_follow_player.is_none());
+
+        mob.charm_stay = true;
+        mob.charm_follow_player = Some("Other".to_string());
+        let id = mob.id;
+        db.save_mobile_data(mob).expect("save");
+
+        let loaded = db.get_mobile_data(&id).expect("read").expect("present");
+        assert!(loaded.charm_stay);
+        assert_eq!(loaded.charm_follow_player.as_deref(), Some("Other"));
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_break_all_charms_clears_stay_follow_and_dangling_follow_targets() {
+    use ironmud::break_all_charms_by_player;
+    use ironmud::db::Db;
+    use ironmud::types::{ActiveBuff, EffectType, MobileData};
+
+    let db_path = format!("test_break_charms_clears_overrides_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        // Mob A: charmed by Wizard, with stay set.
+        let mut a = MobileData::new("thrall A".to_string());
+        a.is_prototype = false;
+        a.active_buffs.push(ActiveBuff {
+            effect_type: EffectType::Charmed,
+            magnitude: 0,
+            remaining_secs: 300,
+            source: "Wizard".to_string(),
+        });
+        a.charm_stay = true;
+        let a_id = a.id;
+        db.save_mobile_data(a).unwrap();
+
+        // Mob B: charmed by Cleric, told to follow Wizard. Wizard's break
+        // should clear B's follow override but leave the Cleric charm intact.
+        let mut b = MobileData::new("thrall B".to_string());
+        b.is_prototype = false;
+        b.active_buffs.push(ActiveBuff {
+            effect_type: EffectType::Charmed,
+            magnitude: 0,
+            remaining_secs: 300,
+            source: "Cleric".to_string(),
+        });
+        b.charm_follow_player = Some("Wizard".to_string());
+        let b_id = b.id;
+        db.save_mobile_data(b).unwrap();
+
+        break_all_charms_by_player(&db, "Wizard");
+
+        let a = db.get_mobile_data(&a_id).unwrap().unwrap();
+        assert!(!a.is_charmed_by_anyone(), "A's charm cleared");
+        assert!(!a.charm_stay, "A's stay cleared on charm break");
+
+        let b = db.get_mobile_data(&b_id).unwrap().unwrap();
+        assert!(b.is_charmed_by("Cleric"), "B's Cleric charm should remain");
+        assert!(
+            b.charm_follow_player.is_none(),
+            "B's dangling follow override on Wizard cleared"
+        );
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}

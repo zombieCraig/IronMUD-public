@@ -10,4 +10,4 @@ pub mod death;
 
 pub use broadcast::*;
 pub use connection::*;
-pub use death::kill_player_at_room;
+pub use death::{break_all_charms_by_player, kill_player_at_room};

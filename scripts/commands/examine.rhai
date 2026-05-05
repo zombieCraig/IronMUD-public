@@ -487,6 +487,25 @@ fn examine_show_mobile(mobile, connection_id) {
         output += "\n\n" + mobile.name + " is surrounded by a faint white aura.";
     }
 
+    let charm_master = mobile_charm_master(mobile.id);
+    if charm_master != "" {
+        let viewer = get_player_character(connection_id);
+        let is_master = type_of(viewer) != "()" && viewer.name.to_lower() == charm_master.to_lower();
+        if is_master {
+            let stay = get_charm_stay(mobile.id);
+            let follow_other = get_charm_follow_player(mobile.id);
+            if stay {
+                output += "\n" + mobile.name + " is charmed by you and waits where you left it.";
+            } else if follow_other != "" {
+                output += "\n" + mobile.name + " is charmed by you and following " + follow_other + ".";
+            } else {
+                output += "\n" + mobile.name + " is charmed by you and follows your will.";
+            }
+        } else {
+            output += "\n" + mobile.name + " seems strangely compliant.";
+        }
+    }
+
     // Visual cues for simulated NPCs
     if is_npc_simulated(mobile.id) {
         let cues = get_npc_visual_cues(mobile.id);

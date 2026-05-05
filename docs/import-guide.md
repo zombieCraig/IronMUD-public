@@ -188,8 +188,7 @@ warn-only (see the [Zone reset commands](#zone-reset-commands) section).
 | `AGGR_EVIL`, `AGGR_GOOD`, `AGGR_NEUTRAL` | **Warn**: blocked on alignment system |
 | `MEMORY` | sets `memory` (remembers PC attackers for 30 min, FIFO cap 10; resets on respawn) |
 | `HELPER` | sets `helper` (faction left empty → Circle-stock semantics: any NPC defends any other NPC against PCs) |
-| `NOSLEEP`, `NOBASH`, `NOBLIND`, `NOSUMMON` | sets matching `MobileFlags.no_*` (hard-immunity gate over the paired spell/skill) |
-| `NOCHARM` | **Warn**: status immunity blocked on missing `charm` spell |
+| `NOSLEEP`, `NOBASH`, `NOBLIND`, `NOSUMMON`, `NOCHARM` | sets matching `MobileFlags.no_*` (hard-immunity gate over the paired spell/skill) |
 | Bits ≥ 18 | **Warn** (`unrecognised mob flag`): patched flag — surface for review |
 
 ### AFF_* affected-by bits
@@ -904,8 +903,7 @@ ranked below.
   damage. Blind applies an `EffectType::Blind` buff that subtracts
   `magnitude` percentage points from the attacker's hit chance and,
   when applied to a player, also short-circuits room sight (mirrors
-  the `blindness` trait). `MOB_NOCHARM` remains warn-only — its
-  paired `charm` spell isn't implemented yet.
+  the `blindness` trait).
 - **`MOB_NOSUMMON`** → `MobileFlags.no_summon`. Hard-immunity gate
   over the new player-castable `summon` spell (skill 4, mana 40,
   60s cooldown). The spell does world-wide name lookup; on success
@@ -917,6 +915,22 @@ ranked below.
   shopkeepers, healers, and guards can't be pulled out of place.
   ROOM_NOMAGIC on the caster's room blocks the cast through the
   existing source-room gate.
+- **`MOB_NOCHARM`** → `MobileFlags.no_charm`. Hard-immunity gate
+  over the new player-castable `charm` spell (skill 4, mana 35,
+  90s cooldown, 5min duration). Charm targets an in-room NPC and
+  stamps a duration-bound `EffectType::Charmed` buff whose `source`
+  field stores the master's name — no separate master_id field on
+  MobileData. Charmed mobs auto-follow the master across rooms via
+  a new `propagate_charmed_mobs` hook in `go.rhai`, are filtered
+  from `find_aggression_target_for_mob` so they never aggro the
+  master, and short-circuit `should_suppress_wander` so they stop
+  wandering / sim-routing while bound. The new `order <mob> attack
+  <target>` command lets the master redirect the charmed mob in
+  combat (refuses targeting the master themselves). Charm releases
+  cleanly on master quit, master death, mob death, or buff expiry
+  (`break_all_charms_by_player` runs from `quit.rhai` and both
+  player-death paths). With this landing, the stock CircleMUD
+  mob-flag set has zero `warn` rows.
 - **`MOB_HELPER`** → `MobileFlags.helper`. The helper system scans the
   current room each combat tick and pulls any standing, alive,
   non-engaged HELPER mobile into combat against a PC who is attacking
@@ -941,10 +955,6 @@ ranked below.
 
 ### Mobile flags — Low priority
 
-- **`MOB_NOCHARM`** — status-immunity flag whose matching `charm`
-  spell + mob-AI redirection doesn't yet exist. `NOSLEEP` / `NOBASH`
-  / `NOBLIND` / `NOSUMMON` shipped May 2026 — see the Implemented
-  section above.
 - **`AFF_BLIND` / `SLEEP` / `CURSE` / `POISON`** — permanent affects on
   prototypes. Once buff stamping at spawn lands, these become trivial.
 - **`MOB_WIMPY`** — currently maps to `cowardly`, but Circle's wimpy is

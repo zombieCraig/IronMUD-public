@@ -2217,6 +2217,7 @@ pub enum EffectType {
     Disguise,
     WaterBreathing,
     DamageReduction,
+    Charmed,
 }
 
 impl EffectType {
@@ -2254,6 +2255,7 @@ impl EffectType {
             "disguise" => Some(EffectType::Disguise),
             "water_breathing" | "waterbreathing" | "aqua_breath" => Some(EffectType::WaterBreathing),
             "damage_reduction" | "damagereduction" | "sanctuary" => Some(EffectType::DamageReduction),
+            "charm" | "charmed" => Some(EffectType::Charmed),
             _ => None,
         }
     }
@@ -2288,6 +2290,7 @@ impl EffectType {
             EffectType::Disguise => "disguise",
             EffectType::WaterBreathing => "water_breathing",
             EffectType::DamageReduction => "damage_reduction",
+            EffectType::Charmed => "charmed",
         }
     }
 
@@ -2321,6 +2324,7 @@ impl EffectType {
             "disguise",
             "water_breathing",
             "damage_reduction",
+            "charmed",
         ]
     }
 }
@@ -3093,6 +3097,8 @@ pub struct MobileFlags {
     pub no_bash: bool, // Immune to the bash skill's stun (CircleMUD MOB_NOBASH)
     #[serde(default)]
     pub no_summon: bool, // Immune to the summon spell (CircleMUD MOB_NOSUMMON)
+    #[serde(default)]
+    pub no_charm: bool, // Immune to the charm spell (CircleMUD MOB_NOCHARM)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -3313,6 +3319,17 @@ pub struct MobileData {
     /// MEMORY_DURATION_SECS.
     #[serde(default)]
     pub remembered_enemies: Vec<RememberedEnemy>,
+    /// Charmed-mob "stay" override. When true the mob ignores the master
+    /// follow propagation and stays put. Set by `order <mob> stay`,
+    /// cleared by `order <mob> follow [...]`. Reset on charm break.
+    #[serde(default)]
+    pub charm_stay: bool,
+    /// Charmed-mob alternative leader. When `Some(name)`, the mob follows
+    /// that player instead of its charm master. None = follow master
+    /// (the default). Set by `order <mob> follow <player>`. Reset on
+    /// charm break.
+    #[serde(default)]
+    pub charm_follow_player: Option<String>,
 }
 
 fn default_mobile_hp() -> i32 {
@@ -3425,7 +3442,26 @@ impl MobileData {
             adoption_pending: false,
             home_area_id: None,
             remembered_enemies: Vec::new(),
+            charm_stay: false,
+            charm_follow_player: None,
         }
+    }
+
+    pub fn charm_master(&self) -> Option<&str> {
+        self.active_buffs
+            .iter()
+            .find(|b| b.effect_type == EffectType::Charmed)
+            .map(|b| b.source.as_str())
+    }
+
+    pub fn is_charmed_by(&self, player_name: &str) -> bool {
+        self.charm_master()
+            .map(|m| m.eq_ignore_ascii_case(player_name))
+            .unwrap_or(false)
+    }
+
+    pub fn is_charmed_by_anyone(&self) -> bool {
+        self.charm_master().is_some()
     }
 }
 

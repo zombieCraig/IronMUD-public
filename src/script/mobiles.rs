@@ -172,7 +172,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         no_sleep,
         no_blind,
         no_bash,
-        no_summon
+        no_summon,
+        no_charm
     );
 
     // Register MobileData type with getters
@@ -449,6 +450,176 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         }
         rhai::Dynamic::UNIT
     });
+
+    // is_mobile_charmed(mobile_id) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn("is_mobile_charmed", move |mobile_id: String| -> bool {
+        let Ok(mid) = uuid::Uuid::parse_str(&mobile_id) else {
+            return false;
+        };
+        match cloned_db.get_mobile_data(&mid) {
+            Ok(Some(m)) => m.is_charmed_by_anyone(),
+            _ => false,
+        }
+    });
+
+    // mobile_charm_master(mobile_id) -> String (empty if not charmed)
+    let cloned_db = db.clone();
+    engine.register_fn("mobile_charm_master", move |mobile_id: String| -> String {
+        let Ok(mid) = uuid::Uuid::parse_str(&mobile_id) else {
+            return String::new();
+        };
+        match cloned_db.get_mobile_data(&mid) {
+            Ok(Some(m)) => m.charm_master().map(|s| s.to_string()).unwrap_or_default(),
+            _ => String::new(),
+        }
+    });
+
+    // break_all_charms_by(player_name) -> i64 (count of charms removed)
+    let cloned_db = db.clone();
+    engine.register_fn("break_all_charms_by", move |player_name: String| -> i64 {
+        if player_name.is_empty() {
+            return 0;
+        }
+        let mobiles = match cloned_db.list_all_mobiles() {
+            Ok(m) => m,
+            Err(_) => return 0,
+        };
+        let mut count = 0i64;
+        for mut mobile in mobiles {
+            if mobile.is_prototype {
+                continue;
+            }
+            let mut changed = false;
+            let before = mobile.active_buffs.len();
+            mobile.active_buffs.retain(|b| {
+                !(b.effect_type == crate::types::EffectType::Charmed
+                    && b.source.eq_ignore_ascii_case(&player_name))
+            });
+            if mobile.active_buffs.len() != before {
+                mobile.charm_stay = false;
+                mobile.charm_follow_player = None;
+                count += 1;
+                changed = true;
+            }
+            if let Some(ref name) = mobile.charm_follow_player {
+                if name.eq_ignore_ascii_case(&player_name) {
+                    mobile.charm_follow_player = None;
+                    changed = true;
+                }
+            }
+            if changed {
+                let _ = cloned_db.save_mobile_data(mobile);
+            }
+        }
+        count
+    });
+
+    // forget_player(mobile_id, player_name) -> bool
+    // Removes player_name from the mobile's remembered_enemies list.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "forget_player",
+        move |mobile_id: String, player_name: String| -> bool {
+            let Ok(mid) = uuid::Uuid::parse_str(&mobile_id) else {
+                return false;
+            };
+            let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&mid) else {
+                return false;
+            };
+            let before = mobile.remembered_enemies.len();
+            mobile
+                .remembered_enemies
+                .retain(|e| !e.name.eq_ignore_ascii_case(&player_name));
+            if mobile.remembered_enemies.len() == before {
+                return true;
+            }
+            cloned_db.save_mobile_data(mobile).is_ok()
+        },
+    );
+
+    // set_charm_stay(mobile_id, value) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_charm_stay",
+        move |mobile_id: String, value: bool| -> bool {
+            let Ok(mid) = uuid::Uuid::parse_str(&mobile_id) else {
+                return false;
+            };
+            let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&mid) else {
+                return false;
+            };
+            mobile.charm_stay = value;
+            cloned_db.save_mobile_data(mobile).is_ok()
+        },
+    );
+
+    // set_charm_follow_player(mobile_id, name) -> bool
+    // Empty `name` clears the override (mob falls back to following its master).
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_charm_follow_player",
+        move |mobile_id: String, name: String| -> bool {
+            let Ok(mid) = uuid::Uuid::parse_str(&mobile_id) else {
+                return false;
+            };
+            let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&mid) else {
+                return false;
+            };
+            mobile.charm_follow_player = if name.is_empty() { None } else { Some(name) };
+            cloned_db.save_mobile_data(mobile).is_ok()
+        },
+    );
+
+    // get_charm_stay(mobile_id) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn("get_charm_stay", move |mobile_id: String| -> bool {
+        let Ok(mid) = uuid::Uuid::parse_str(&mobile_id) else {
+            return false;
+        };
+        match cloned_db.get_mobile_data(&mid) {
+            Ok(Some(m)) => m.charm_stay,
+            _ => false,
+        }
+    });
+
+    // get_charm_follow_player(mobile_id) -> String (empty if None)
+    let cloned_db = db.clone();
+    engine.register_fn("get_charm_follow_player", move |mobile_id: String| -> String {
+        let Ok(mid) = uuid::Uuid::parse_str(&mobile_id) else {
+            return String::new();
+        };
+        match cloned_db.get_mobile_data(&mid) {
+            Ok(Some(m)) => m.charm_follow_player.unwrap_or_default(),
+            _ => String::new(),
+        }
+    });
+
+    // list_charmed_mobs_in_room(player_name, room_id) -> Vec<MobileData>
+    // Returns same-room non-prototype mobs charmed by player_name. Used by
+    // `order group` dispatch.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "list_charmed_mobs_in_room",
+        move |player_name: String, room_id: String| -> rhai::Array {
+            let Ok(rid) = uuid::Uuid::parse_str(&room_id) else {
+                return rhai::Array::new();
+            };
+            let Ok(mobs) = cloned_db.get_mobiles_in_room(&rid) else {
+                return rhai::Array::new();
+            };
+            let mut out = rhai::Array::new();
+            for m in mobs {
+                if m.is_prototype {
+                    continue;
+                }
+                if m.is_charmed_by(&player_name) {
+                    out.push(rhai::Dynamic::from(m));
+                }
+            }
+            out
+        },
+    );
 
     // move_mobile_to_room(mobile_id, room_id) -> bool
     let cloned_db = db.clone();
@@ -780,6 +951,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "no_blind" | "noblind" => mobile.flags.no_blind = value,
                         "no_bash" | "nobash" => mobile.flags.no_bash = value,
                         "no_summon" | "nosummon" => mobile.flags.no_summon = value,
+                        "no_charm" | "nocharm" => mobile.flags.no_charm = value,
                         _ => return false,
                     }
                     return cloned_db.save_mobile_data(mobile).is_ok();

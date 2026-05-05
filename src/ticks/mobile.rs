@@ -385,6 +385,11 @@ fn get_exit_target_for_direction(room: &RoomData, direction: &str) -> Option<uui
 
 /// Check if a mobile's active routine entry suppresses wandering
 fn should_suppress_wander(mobile: &MobileData) -> bool {
+    // Charmed mobs stay put; movement happens via master-follow propagation.
+    if mobile.is_charmed_by_anyone() {
+        return true;
+    }
+
     // Suppress if mobile has a routine destination it's walking toward
     if mobile.routine_destination_room.is_some() {
         return true;
@@ -1185,9 +1190,14 @@ pub fn find_aggression_target_for_mob(
         .map(|e| e.name.to_lowercase())
         .collect();
 
+    let charm_master = mob.charm_master().map(|s| s.to_lowercase());
     let players = find_players_in_room(connections, room_id);
     for name in players {
         let key = name.to_lowercase();
+        // Charmed mobs never aggro their master.
+        if charm_master.as_deref() == Some(&key) {
+            continue;
+        }
         let ch = match db.get_character_data(&key) {
             Ok(Some(c)) => c,
             _ => continue,

@@ -207,6 +207,10 @@
     "access": "user",
     "description": "Open a container"
   },
+  "order": {
+    "access": "user",
+    "description": "Direct a charmed mobile (e.g. order <mob> attack <target>)"
+  },
   "close": {
     "access": "user",
     "description": "Close a container"

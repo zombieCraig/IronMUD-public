@@ -456,6 +456,9 @@ fn run_command(args, connection_id) {
         broadcast_to_room_awake(target_room_id, char.name + " arrives from the " + arrival_dir + ".", char.name);
     }
 
+    // Drag along any mobiles charmed by this player.
+    propagate_charmed_mobs(char.name, old_room_id, target_room_id, direction);
+
     // Alertness passive: players with tracking >= 3 in the room may detect sneaking arrivals
     if currently_sneaking {
         let room_players = get_characters_in_room(target_room_id);

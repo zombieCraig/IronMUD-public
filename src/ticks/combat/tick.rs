@@ -9,7 +9,7 @@ use tracing::{debug, error};
 use ironmud::{
     BodyPart, CharacterData, CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, DamageType, EffectType,
     ItemLocation, ItemType, MobileData, STARTING_ROOM_ID, SharedConnections, SharedState, SkillProgress, WeaponSkill,
-    WearLocation, WoundLevel, WoundType, db,
+    WearLocation, WoundLevel, WoundType, break_all_charms_by_player, db,
 };
 
 use super::corpse::{CorpseBuilder, mobile_gold_with_variance};
@@ -2637,6 +2637,9 @@ pub fn process_player_death(
     room_id: &uuid::Uuid,
 ) -> Result<()> {
     let char_name = char.name.clone();
+
+    // Release any mobiles this player had charmed.
+    break_all_charms_by_player(db, &char_name);
 
     // Send death messages
     send_message_to_character(connections, &char_name, "You have died!");

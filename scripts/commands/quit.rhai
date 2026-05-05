@@ -21,6 +21,9 @@ fn run_command(args, connection_id) {
         // Announce to Matrix room
         matrix_broadcast(char_name + " has left the realm.");
 
+        // Release any mobiles charmed by this player.
+        break_all_charms_by(char_name);
+
         // Save character data
         send_client_message(connection_id, "Saving character '" + char_name + "'...");
         save_character_data(char);

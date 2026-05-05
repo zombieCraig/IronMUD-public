@@ -263,6 +263,21 @@
     "requires_combat": false,
     "xp_award": 15
   },
+  "charm": {
+    "id": "charm",
+    "name": "Charm",
+    "description": "Bends a creature's will to your service for a time.",
+    "skill_required": 4,
+    "scroll_only": false,
+    "mana_cost": 35,
+    "cooldown_secs": 90,
+    "spell_type": "charm",
+    "target_type": "in_room_npc",
+    "buff_effect": "charmed",
+    "buff_duration_secs": 300,
+    "requires_combat": false,
+    "xp_award": 15
+  },
   "dispel_magic": {
     "id": "dispel_magic",
     "name": "Dispel Magic",

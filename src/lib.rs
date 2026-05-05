@@ -38,9 +38,9 @@ pub use types::*;
 pub use init::{load_command_metadata, load_game_data, load_scripts, watch_scripts};
 pub use script::check_build_mode;
 pub use session::{
-    broadcast_to_all_players, broadcast_to_builders, broadcast_to_outdoor_players, broadcast_to_room,
-    broadcast_to_room_awake, broadcast_to_room_dreaming, clear_player_character, disconnect_client,
-    find_player_connection_by_name, get_character_for_connection, get_characters_in_room,
+    break_all_charms_by_player, broadcast_to_all_players, broadcast_to_builders, broadcast_to_outdoor_players,
+    broadcast_to_room, broadcast_to_room_awake, broadcast_to_room_dreaming, clear_player_character,
+    disconnect_client, find_player_connection_by_name, get_character_for_connection, get_characters_in_room,
     get_characters_in_room_with_positions, send_client_message, set_character_for_connection,
 };
 

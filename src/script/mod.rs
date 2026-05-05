@@ -960,6 +960,65 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         },
     );
 
+    // propagate_charmed_mobs(player_name, source_room, dest_room, direction)
+    // Move any non-prototype mobiles in source_room charmed by player_name
+    // into dest_room, broadcasting departure/arrival to bystanders.
+    let conns = connections.clone();
+    let charm_db = db.clone();
+    engine.register_fn(
+        "propagate_charmed_mobs",
+        move |player_name: String, source_room: String, dest_room: String, direction: String| {
+            let Ok(src) = uuid::Uuid::parse_str(&source_room) else {
+                return;
+            };
+            let Ok(dst) = uuid::Uuid::parse_str(&dest_room) else {
+                return;
+            };
+            let Ok(mobs) = charm_db.get_mobiles_in_room(&src) else {
+                return;
+            };
+            let arrival_dir = crate::types::get_opposite_direction(&direction).unwrap_or("nowhere");
+            for mut mob in mobs {
+                if mob.is_prototype {
+                    continue;
+                }
+                if mob.charm_stay {
+                    continue;
+                }
+                // Drag this mob if it's either:
+                //   (a) charmed by `player_name` AND has no follow-override, OR
+                //   (b) explicitly told to follow `player_name` (regardless of master).
+                let follows_master = mob.is_charmed_by(&player_name)
+                    && mob.charm_follow_player.is_none();
+                let follows_explicit = mob
+                    .charm_follow_player
+                    .as_deref()
+                    .map(|n| n.eq_ignore_ascii_case(&player_name))
+                    .unwrap_or(false);
+                if !follows_master && !follows_explicit {
+                    continue;
+                }
+                let mob_name = mob.name.clone();
+                crate::broadcast_to_room_awake(
+                    &conns,
+                    src,
+                    format!("{} follows {} {}.", mob_name, player_name, direction),
+                    None,
+                );
+                mob.current_room_id = Some(dst);
+                if charm_db.save_mobile_data(mob).is_err() {
+                    continue;
+                }
+                crate::broadcast_to_room_awake(
+                    &conns,
+                    dst,
+                    format!("{} arrives from the {}, following {}.", mob_name, arrival_dir, player_name),
+                    None,
+                );
+            }
+        },
+    );
+
     // Register broadcast_to_room_except function (takes connection_id instead of name)
     let conns = connections.clone();
     engine.register_fn(

@@ -14,7 +14,7 @@
     "AGGR_NEUTRAL": { "action": "warn", "message": "alignment-conditional aggression not modeled (no alignment system)." },
     "MEMORY":       { "action": "set_flag", "ironmud_flag": "memory" },
     "HELPER":       { "action": "set_flag", "ironmud_flag": "helper" },
-    "NOCHARM":      { "action": "warn", "message": "MOB_NOCHARM not modeled." },
+    "NOCHARM":      { "action": "set_flag", "ironmud_flag": "no_charm" },
     "NOSUMMON":     { "action": "set_flag", "ironmud_flag": "no_summon" },
     "NOSLEEP":      { "action": "set_flag", "ironmud_flag": "no_sleep" },
     "NOBASH":       { "action": "set_flag", "ironmud_flag": "no_bash" },

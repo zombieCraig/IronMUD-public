@@ -16,7 +16,46 @@ use crate::db::Db;
 use crate::session::broadcast::broadcast_to_room;
 use crate::session::connection::send_client_message;
 use crate::STARTING_ROOM_ID;
-use crate::types::{CharacterData, ItemData, ItemFlags, ItemLocation, ItemType, LiquidType};
+use crate::types::{CharacterData, EffectType, ItemData, ItemFlags, ItemLocation, ItemType, LiquidType};
+
+/// Drop any `EffectType::Charmed` buffs sourced to `player_name` from every
+/// non-prototype mobile in the world. Used on player death and quit so that
+/// charmed mobs revert immediately rather than waiting for the buff to decay.
+/// Also clears `charm_stay` / `charm_follow_player` on those mobs, and clears
+/// dangling `charm_follow_player == player_name` overrides on mobs charmed by
+/// other players (so they fall back to following their own master).
+pub fn break_all_charms_by_player(db: &Db, player_name: &str) {
+    if player_name.is_empty() {
+        return;
+    }
+    let Ok(mobiles) = db.list_all_mobiles() else {
+        return;
+    };
+    for mut mobile in mobiles {
+        if mobile.is_prototype {
+            continue;
+        }
+        let mut changed = false;
+        let before = mobile.active_buffs.len();
+        mobile.active_buffs.retain(|b| {
+            !(b.effect_type == EffectType::Charmed && b.source.eq_ignore_ascii_case(player_name))
+        });
+        if mobile.active_buffs.len() != before {
+            mobile.charm_stay = false;
+            mobile.charm_follow_player = None;
+            changed = true;
+        }
+        if let Some(ref name) = mobile.charm_follow_player {
+            if name.eq_ignore_ascii_case(player_name) {
+                mobile.charm_follow_player = None;
+                changed = true;
+            }
+        }
+        if changed {
+            let _ = db.save_mobile_data(mobile);
+        }
+    }
+}
 
 fn build_player_corpse(name: &str, room_id: Uuid, gold: i64) -> ItemData {
     let now = SystemTime::now()
@@ -136,6 +175,9 @@ pub fn kill_player_at_room(
     connection_id_str: &str,
 ) -> Result<()> {
     let char_name = char.name.clone();
+
+    // Release any mobiles this player had charmed.
+    break_all_charms_by_player(db, &char_name);
 
     send_client_message(connections, connection_id_str.to_string(), "You have died!".to_string());
     broadcast_to_room(connections, *room_id, format!("{} has died!", char_name), Some(&char_name));
