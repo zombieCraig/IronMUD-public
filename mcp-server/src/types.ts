@@ -28,7 +28,12 @@ export interface Area {
   scavenger_wage_per_hour?: number;
   // Template RoomFlags copied into every newly-created room in this area.
   default_room_flags?: RoomFlags;
+  // Per-area climate preset that filters globally-rolled weather and shifts
+  // effective temperature. Defaults to "temperate" (no filtering).
+  climate?: ClimateProfile;
 }
+
+export type ClimateProfile = "temperate" | "tropical" | "arid" | "tundra" | "subarctic";
 
 export interface GoldRange {
   min: number;
@@ -373,6 +378,7 @@ export interface CreateAreaRequest {
   level_min?: number;
   level_max?: number;
   theme?: string;
+  climate?: ClimateProfile;
 }
 
 export interface UpdateAreaRequest {
@@ -396,6 +402,7 @@ export interface UpdateAreaRequest {
   healer_wage_per_hour?: number;
   scavenger_wage_per_hour?: number;
   default_room_flags?: RoomFlags;
+  climate?: ClimateProfile;
 }
 
 export interface CreateRoomRequest {

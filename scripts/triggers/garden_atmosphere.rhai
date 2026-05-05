@@ -9,8 +9,10 @@
 // description, preventing them from overwriting each other.
 
 fn run_trigger(room_id, connection_id, context) {
-    // Get current conditions from game time
-    let game_time = get_game_time();
+    // Get current conditions, projected through the room's area climate so a
+    // tropical garden never describes itself as buried in driving snow.
+    let game_time = get_room_game_time(room_id);
+    if game_time == () { game_time = get_game_time(); }
     if game_time == () { return "continue"; }
 
     let time_of_day = game_time.get("time_of_day");

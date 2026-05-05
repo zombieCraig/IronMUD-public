@@ -1702,6 +1702,11 @@ pub struct AreaData {
     /// so builders can toggle a default off on a specific room.
     #[serde(default)]
     pub default_room_flags: RoomFlags,
+    /// Climate preset filtering globally-rolled weather into a locally-permitted
+    /// condition (e.g. Tropical converts snow to rain) and shifting effective
+    /// temperature. Defaults to Temperate, which preserves global behavior.
+    #[serde(default)]
+    pub climate: ClimateProfile,
 
     // === Migrant immigration system ===
     /// When true, the migration tick will attempt to spawn migrants in this area.

@@ -1514,6 +1514,7 @@ mod migration_tests {
             combat_zone: CombatZoneType::Pve,
             flags: AreaFlags::default(),
             default_room_flags: ironmud::types::RoomFlags::default(),
+            climate: ironmud::types::ClimateProfile::default(),
             immigration_enabled: true,
             immigration_room_vnum: format!("{}:gate", prefix),
             immigration_name_pool: "generic".to_string(),
@@ -4038,6 +4039,7 @@ fn test_donation_fields_round_trip() {
             combat_zone: ironmud::types::CombatZoneType::default(),
             flags: ironmud::types::AreaFlags::default(),
             default_room_flags: ironmud::types::RoomFlags::default(),
+            climate: ironmud::types::ClimateProfile::default(),
             immigration_enabled: false,
             immigration_room_vnum: String::new(),
             immigration_name_pool: String::new(),
@@ -4266,6 +4268,7 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
             combat_zone: CombatZoneType::default(),
             flags: AreaFlags::default(),
             default_room_flags: defaults.clone(),
+            climate: ironmud::types::ClimateProfile::default(),
             immigration_enabled: false,
             immigration_room_vnum: String::new(),
             immigration_name_pool: String::new(),
@@ -4353,6 +4356,186 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
         assert!(loaded.flags.indoors);
         assert!(loaded.flags.no_windows);
         assert!(loaded.flags.dark);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_climate_profile_projection() {
+    use ironmud::types::{ClimateProfile, WeatherCondition};
+
+    // Tropical erases snow/blizzard.
+    assert_eq!(
+        ClimateProfile::Tropical.project(WeatherCondition::Snow),
+        WeatherCondition::Rain
+    );
+    assert_eq!(
+        ClimateProfile::Tropical.project(WeatherCondition::Blizzard),
+        WeatherCondition::Thunderstorm
+    );
+    assert_eq!(
+        ClimateProfile::Tropical.project(WeatherCondition::LightSnow),
+        WeatherCondition::LightRain
+    );
+    // Tropical leaves permitted conditions alone.
+    assert_eq!(
+        ClimateProfile::Tropical.project(WeatherCondition::Thunderstorm),
+        WeatherCondition::Thunderstorm
+    );
+
+    // Tundra converts rain to snow.
+    assert_eq!(
+        ClimateProfile::Tundra.project(WeatherCondition::Rain),
+        WeatherCondition::Snow
+    );
+    assert_eq!(
+        ClimateProfile::Tundra.project(WeatherCondition::LightRain),
+        WeatherCondition::LightSnow
+    );
+    assert_eq!(
+        ClimateProfile::Tundra.project(WeatherCondition::Thunderstorm),
+        WeatherCondition::Blizzard
+    );
+
+    // Arid bleaches rain/snow into clear.
+    assert_eq!(
+        ClimateProfile::Arid.project(WeatherCondition::Rain),
+        WeatherCondition::Clear
+    );
+    assert_eq!(
+        ClimateProfile::Arid.project(WeatherCondition::Snow),
+        WeatherCondition::Clear
+    );
+
+    // Temperate is the identity.
+    for w in [
+        WeatherCondition::Clear,
+        WeatherCondition::Rain,
+        WeatherCondition::Snow,
+        WeatherCondition::Thunderstorm,
+        WeatherCondition::Blizzard,
+        WeatherCondition::Fog,
+    ] {
+        assert_eq!(
+            ClimateProfile::Temperate.project(w),
+            w,
+            "Temperate must preserve the global condition (no filtering)"
+        );
+    }
+
+    // Round-trip the from_name / to_string surface so the aedit + API paths
+    // share a single canonical naming.
+    for c in ClimateProfile::all() {
+        let name = c.to_string();
+        assert_eq!(ClimateProfile::from_name(&name), Some(*c));
+    }
+    assert_eq!(ClimateProfile::from_name("desert"), Some(ClimateProfile::Arid));
+    assert_eq!(ClimateProfile::from_name("frozen"), Some(ClimateProfile::Tundra));
+    assert!(ClimateProfile::from_name("not-a-climate").is_none());
+}
+
+#[test]
+fn test_climate_temperature_offset_applies() {
+    use ironmud::types::{ClimateProfile, GameTime, WeatherCondition};
+
+    let mut gt = GameTime::default();
+    // Cloudy passes through unchanged in every climate, so the only
+    // difference between profiles is the temperature offset itself.
+    gt.weather = WeatherCondition::Cloudy;
+    gt.base_temperature = 18;
+
+    let temperate = gt.effective_temperature_for_climate(ClimateProfile::Temperate);
+    let tropical = gt.effective_temperature_for_climate(ClimateProfile::Tropical);
+    let tundra = gt.effective_temperature_for_climate(ClimateProfile::Tundra);
+
+    assert_eq!(
+        tropical - temperate,
+        ClimateProfile::Tropical.temperature_offset(),
+        "tropical adds its offset on top of the temperate baseline"
+    );
+    assert_eq!(
+        tundra - temperate,
+        ClimateProfile::Tundra.temperature_offset(),
+        "tundra subtracts its (negative) offset"
+    );
+    assert!(tropical > temperate, "tropical must be warmer than temperate");
+    assert!(tundra < temperate, "tundra must be colder than temperate");
+}
+
+#[test]
+fn test_area_climate_persists() {
+    use ironmud::db::Db;
+    use ironmud::types::{
+        AreaData, AreaFlags, AreaPermission, ClimateProfile, CombatZoneType, ImmigrationFamilyChance,
+        ImmigrationVariationChances, RoomFlags,
+    };
+
+    let db_path = format!("test_area_climate_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let area = AreaData {
+            id: uuid::Uuid::new_v4(),
+            name: "Sun Isle".into(),
+            prefix: "isle".into(),
+            description: String::new(),
+            level_min: 0,
+            level_max: 0,
+            theme: String::new(),
+            owner: None,
+            permission_level: AreaPermission::AllBuilders,
+            trusted_builders: Vec::new(),
+            city_forage_table: Vec::new(),
+            wilderness_forage_table: Vec::new(),
+            shallow_water_forage_table: Vec::new(),
+            deep_water_forage_table: Vec::new(),
+            underwater_forage_table: Vec::new(),
+            combat_zone: CombatZoneType::default(),
+            flags: AreaFlags::default(),
+            default_room_flags: RoomFlags::default(),
+            climate: ClimateProfile::Tropical,
+            immigration_enabled: false,
+            immigration_room_vnum: String::new(),
+            immigration_name_pool: String::new(),
+            immigration_visual_profile: String::new(),
+            migration_interval_days: 0,
+            migration_max_per_check: 0,
+            migrant_sim_defaults: None,
+            last_migration_check_day: None,
+            immigration_variation_chances: ImmigrationVariationChances::default(),
+            immigration_family_chance: ImmigrationFamilyChance::default(),
+            migrant_starting_gold: ironmud::types::GoldRange::default(),
+            guard_wage_per_hour: 0,
+            healer_wage_per_hour: 0,
+            scavenger_wage_per_hour: 0,
+            donation_room_vnum: None,
+        };
+        let area_id = area.id;
+        db.save_area_data(area).expect("save area");
+
+        let reloaded = db.get_area_data(&area_id).expect("get").expect("present");
+        assert_eq!(reloaded.climate, ClimateProfile::Tropical);
+
+        // Pre-existing areas serialized before this field exists deserialize
+        // with the Temperate default — verify by stripping the field from the
+        // JSON and round-tripping.
+        let mut value = serde_json::to_value(&reloaded).expect("to_value");
+        value
+            .as_object_mut()
+            .expect("object")
+            .remove("climate");
+        let downgraded: AreaData = serde_json::from_value(value).expect("legacy load");
+        assert_eq!(
+            downgraded.climate,
+            ClimateProfile::Temperate,
+            "absent climate field must default to Temperate"
+        );
     }));
 
     let _ = std::fs::remove_dir_all(&db_path);

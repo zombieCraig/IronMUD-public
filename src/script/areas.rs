@@ -73,6 +73,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             combat_zone: CombatZoneType::Pve,
             flags: crate::AreaFlags::default(),
             default_room_flags: crate::RoomFlags::default(),
+            climate: crate::types::ClimateProfile::default(),
             immigration_enabled: false,
             immigration_room_vnum: String::new(),
             immigration_name_pool: String::new(),
@@ -119,6 +120,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 combat_zone: CombatZoneType::Pve,
                 flags: crate::AreaFlags::default(),
                 default_room_flags: crate::RoomFlags::default(),
+                climate: crate::types::ClimateProfile::default(),
                 immigration_enabled: false,
                 immigration_room_vnum: String::new(),
                 immigration_name_pool: String::new(),
@@ -217,6 +219,35 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             }
         }
         false
+    });
+
+    // set_area_climate(area_id, name) -> bool
+    // Sets the area's climate preset. Unknown names return false without
+    // touching the area; valid names are temperate/tropical/arid/tundra/subarctic.
+    let cloned_db = db.clone();
+    engine.register_fn("set_area_climate", move |area_id: String, name: String| {
+        let climate = match crate::types::ClimateProfile::from_name(&name) {
+            Some(c) => c,
+            None => return false,
+        };
+        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+            if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+                area.climate = climate;
+                return cloned_db.save_area_data(area).is_ok();
+            }
+        }
+        false
+    });
+
+    // get_area_climate(area_id) -> String (climate preset name; empty if not found)
+    let cloned_db = db.clone();
+    engine.register_fn("get_area_climate", move |area_id: String| -> String {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+            if let Ok(Some(area)) = cloned_db.get_area_data(&uuid) {
+                return area.climate.to_string();
+            }
+        }
+        String::new()
     });
 
     // set_area_levels(area_id, min, max) -> bool

@@ -51,6 +51,11 @@ export const areaToolDefinitions = [
                     type: "string",
                     description: "Area theme/category",
                 },
+                climate: {
+                    type: "string",
+                    enum: ["temperate", "tropical", "arid", "tundra", "subarctic"],
+                    description: "Climate preset that filters globally-rolled weather into a locally-permitted condition (e.g. tropical converts snow to rain) and shifts effective temperature. Defaults to temperate.",
+                },
             },
             required: ["name", "prefix"],
         },
@@ -71,6 +76,11 @@ export const areaToolDefinitions = [
                 level_min: { type: "number" },
                 level_max: { type: "number" },
                 theme: { type: "string" },
+                climate: {
+                    type: "string",
+                    enum: ["temperate", "tropical", "arid", "tundra", "subarctic"],
+                    description: "Climate preset filtering area weather and temperature. Unknown values are ignored.",
+                },
                 immigration_enabled: { type: "boolean", description: "Enable/disable migrant spawning for this area" },
                 immigration_room_vnum: { type: "string", description: "Room vnum where migrants arrive" },
                 donation_room_vnum: { type: "string", description: "Room vnum that accepts player `donate <item>` (empty string disables)" },

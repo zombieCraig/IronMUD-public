@@ -1447,6 +1447,7 @@ mod pair_housing_tests {
             combat_zone: CombatZoneType::default(),
             flags: AreaFlags::default(),
             default_room_flags: RoomFlags::default(),
+            climate: crate::types::ClimateProfile::default(),
             immigration_enabled: false,
             immigration_room_vnum: String::new(),
             immigration_name_pool: String::new(),

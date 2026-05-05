@@ -47,6 +47,9 @@ pub struct CreateAreaRequest {
     pub level_max: i32,
     #[serde(default)]
     pub theme: String,
+    /// Climate preset name (temperate/tropical/arid/tundra/subarctic). Unknown
+    /// or absent values fall through to the default (Temperate).
+    pub climate: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -81,6 +84,10 @@ pub struct UpdateAreaRequest {
     /// Per-flag overrides for the area's default_room_flags template.
     /// Absent keys preserve current state; unknown keys are ignored.
     pub default_room_flags: Option<std::collections::HashMap<String, bool>>,
+    /// Climate preset name (temperate/tropical/arid/tundra/subarctic). Unknown
+    /// values are silently ignored to keep PUT idempotent for clients that
+    /// accidentally round-trip an unrecognized preset.
+    pub climate: Option<String>,
 }
 
 /// Apply a (flag_name -> bool) override map onto an area's default_room_flags.
@@ -284,6 +291,11 @@ async fn create_area(
         combat_zone: CombatZoneType::default(),
         flags: AreaFlags::default(),
         default_room_flags: RoomFlags::default(),
+        climate: req
+            .climate
+            .as_deref()
+            .and_then(crate::types::ClimateProfile::from_name)
+            .unwrap_or_default(),
         immigration_enabled: false,
         immigration_room_vnum: String::new(),
         immigration_name_pool: String::new(),
@@ -401,6 +413,11 @@ async fn update_area(
     }
     if let Some(map) = req.default_room_flags {
         apply_default_room_flag_overrides(&mut area.default_room_flags, &map);
+    }
+    if let Some(climate_name) = req.climate {
+        if let Some(climate) = crate::types::ClimateProfile::from_name(&climate_name) {
+            area.climate = climate;
+        }
     }
 
     state

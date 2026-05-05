@@ -71,7 +71,7 @@ fn process_time_tick(db: &db::Db, connections: &SharedConnections) -> Result<()>
         );
         context.insert("is_day".to_string(), game_time.is_daytime().to_string());
 
-        if let Err(e) = fire_environmental_triggers(db, connections, TriggerType::OnTimeChange, &context) {
+        if let Err(e) = fire_environmental_triggers(db, connections, TriggerType::OnTimeChange, &context, None) {
             error!("Error firing time change triggers: {}", e);
         }
     }
@@ -111,7 +111,13 @@ fn process_time_tick(db: &db::Db, connections: &SharedConnections) -> Result<()>
             context.insert("is_snowing".to_string(), is_snowing.to_string());
             context.insert("is_clear".to_string(), is_clear.to_string());
 
-            if let Err(e) = fire_environmental_triggers(db, connections, TriggerType::OnWeatherChange, &context) {
+            if let Err(e) = fire_environmental_triggers(
+                db,
+                connections,
+                TriggerType::OnWeatherChange,
+                &context,
+                Some((old_weather, game_time.weather)),
+            ) {
                 error!("Error firing weather change triggers: {}", e);
             }
         }
@@ -130,7 +136,7 @@ fn process_time_tick(db: &db::Db, connections: &SharedConnections) -> Result<()>
         context.insert("is_autumn".to_string(), (new_season == Season::Autumn).to_string());
         context.insert("is_winter".to_string(), (new_season == Season::Winter).to_string());
 
-        if let Err(e) = fire_environmental_triggers(db, connections, TriggerType::OnSeasonChange, &context) {
+        if let Err(e) = fire_environmental_triggers(db, connections, TriggerType::OnSeasonChange, &context, None) {
             error!("Error firing season change triggers: {}", e);
         }
     }
@@ -147,7 +153,7 @@ fn process_time_tick(db: &db::Db, connections: &SharedConnections) -> Result<()>
         let is_festival = game_time.month == 4 || game_time.month == 8 || game_time.month == 12;
         context.insert("is_festival".to_string(), is_festival.to_string());
 
-        if let Err(e) = fire_environmental_triggers(db, connections, TriggerType::OnMonthChange, &context) {
+        if let Err(e) = fire_environmental_triggers(db, connections, TriggerType::OnMonthChange, &context, None) {
             error!("Error firing month change triggers: {}", e);
         }
     }
@@ -306,12 +312,17 @@ fn update_weather(game_time: &mut GameTime) {
     game_time.base_temperature = 18 + rng.gen_range(-5..=5);
 }
 
-/// Fire environmental triggers (time change or weather change) for all rooms
+/// Fire environmental triggers (time change or weather change) for all rooms.
+/// `weather_change`, if Some, carries the global old/new weather so that
+/// OnWeatherChange firings can be projected per-room through area climate
+/// (a Tropical area never sees the snow→rain transition; an Arid area filters
+/// out rain/clear shifts that don't actually manifest locally).
 fn fire_environmental_triggers(
     db: &db::Db,
     connections: &SharedConnections,
     trigger_type: TriggerType,
     context: &std::collections::HashMap<String, String>,
+    weather_change: Option<(WeatherCondition, WeatherCondition)>,
 ) -> Result<()> {
     use rand::Rng;
 
@@ -334,6 +345,56 @@ fn fire_environmental_triggers(
                 continue;
             }
         }
+
+        // Build the effective context for this room. For weather-change firings
+        // with climate info, project per-area and skip rooms whose local
+        // condition didn't actually change.
+        let local_context: std::collections::HashMap<String, String>;
+        let context_ref: &std::collections::HashMap<String, String> = if trigger_type
+            == TriggerType::OnWeatherChange
+            && weather_change.is_some()
+        {
+            let (old_global, new_global) = weather_change.unwrap();
+            let climate = db.room_climate(&room);
+            let local_old = climate.project(old_global);
+            let local_new = climate.project(new_global);
+            if local_old == local_new {
+                continue;
+            }
+            let is_raining = matches!(
+                local_new,
+                WeatherCondition::LightRain
+                    | WeatherCondition::Rain
+                    | WeatherCondition::HeavyRain
+                    | WeatherCondition::Thunderstorm
+            );
+            let is_snowing = matches!(
+                local_new,
+                WeatherCondition::LightSnow | WeatherCondition::Snow | WeatherCondition::Blizzard
+            );
+            let is_clear = matches!(
+                local_new,
+                WeatherCondition::Clear | WeatherCondition::PartlyCloudy
+            );
+            local_context = std::collections::HashMap::from([
+                (
+                    "old_weather".to_string(),
+                    format!("{:?}", local_old).to_lowercase(),
+                ),
+                (
+                    "new_weather".to_string(),
+                    format!("{:?}", local_new).to_lowercase(),
+                ),
+                ("is_raining".to_string(), is_raining.to_string()),
+                ("is_snowing".to_string(), is_snowing.to_string()),
+                ("is_clear".to_string(), is_clear.to_string()),
+            ]);
+            &local_context
+        } else {
+            context
+        };
+        // Use `context_ref` for the rest of the body.
+        let context = context_ref;
 
         // Find matching triggers
         for trigger in &room.triggers {
@@ -569,8 +630,6 @@ pub async fn run_exposure_tick(db: db::Db, connections: SharedConnections) {
 /// Process weather exposure for all logged-in players
 fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
     let game_time = db.get_game_time()?;
-    let outdoor_temp = game_time.calculate_effective_temperature();
-    let weather = game_time.weather;
 
     // Collect helpline alerts to send after the main loop
     let mut helpline_alerts: Vec<String> = Vec::new();
@@ -610,6 +669,12 @@ fn process_exposure_tick(db: &db::Db, connections: &SharedConnections) -> Result
                     .unwrap_or(false);
             let is_outdoors = !room.flags.indoors && !is_climate_controlled;
             let expose_to_elements = is_outdoors || room.flags.always_cold || room.flags.always_hot;
+
+            // Project the global weather + temperature through this room's
+            // area climate so a tropical area never spawns blizzard exposure.
+            let climate = db.room_climate(&room);
+            let weather = game_time.weather_for_climate(climate);
+            let outdoor_temp = game_time.effective_temperature_for_climate(climate);
 
             // Calculate effective temperature for this room
             let effective_temp = if room.flags.always_cold {

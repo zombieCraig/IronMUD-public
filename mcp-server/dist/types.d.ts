@@ -24,7 +24,9 @@ export interface Area {
     healer_wage_per_hour?: number;
     scavenger_wage_per_hour?: number;
     default_room_flags?: RoomFlags;
+    climate?: ClimateProfile;
 }
+export type ClimateProfile = "temperate" | "tropical" | "arid" | "tundra" | "subarctic";
 export interface GoldRange {
     min: number;
     max: number;
@@ -192,6 +194,8 @@ export interface Mobile {
     faction?: string;
     dialogue: Record<string, string>;
     triggers: MobileTrigger[];
+    combat_spells?: string[];
+    combat_spell_chance?: number;
     simulation?: SimulationConfig;
     needs?: NeedsState;
 }
@@ -288,6 +292,7 @@ export interface CreateAreaRequest {
     level_min?: number;
     level_max?: number;
     theme?: string;
+    climate?: ClimateProfile;
 }
 export interface UpdateAreaRequest {
     name?: string;
@@ -310,6 +315,7 @@ export interface UpdateAreaRequest {
     healer_wage_per_hour?: number;
     scavenger_wage_per_hour?: number;
     default_room_flags?: RoomFlags;
+    climate?: ClimateProfile;
 }
 export interface CreateRoomRequest {
     title: string;
@@ -414,6 +420,8 @@ export interface CreateMobileRequest {
     remove_simulation?: boolean;
     world_max_count?: number;
     faction?: string;
+    combat_spells?: string[];
+    combat_spell_chance?: number;
 }
 export interface RoutineEntry {
     start_hour: number;

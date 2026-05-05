@@ -58,7 +58,6 @@ fn process_garden(db: &db::Db, connections: &SharedConnections) -> Result<()> {
     // Get current game time for season/weather
     let game_time = db.get_game_time()?;
     let current_season = game_time.get_season();
-    let temp_cat = game_time.get_temperature_category();
 
     let plants = db.list_all_plants()?;
     if plants.is_empty() {
@@ -91,13 +90,31 @@ fn process_garden(db: &db::Db, connections: &SharedConnections) -> Result<()> {
             }
         };
 
-        // Check if plant is outdoors (for weather effects)
-        let is_outdoor = !plant.is_potted && {
-            if let Ok(Some(room)) = db.get_room_data(&plant.room_id) {
-                !room.flags.indoors && !room.flags.climate_controlled
-            } else {
-                false
-            }
+        // Check if plant is outdoors (for weather effects), and resolve the
+        // local weather/temperature through the room's area climate.
+        let plant_room = if !plant.is_potted {
+            db.get_room_data(&plant.room_id).ok().flatten()
+        } else {
+            None
+        };
+        let is_outdoor = plant_room
+            .as_ref()
+            .map(|r| !r.flags.indoors && !r.flags.climate_controlled)
+            .unwrap_or(false);
+        let climate = plant_room
+            .as_ref()
+            .map(|r| db.room_climate(r))
+            .unwrap_or_default();
+        let local_weather = game_time.weather_for_climate(climate);
+        let local_temp = game_time.effective_temperature_for_climate(climate);
+        let temp_cat = match local_temp {
+            t if t < 0 => TemperatureCategory::Freezing,
+            t if t < 10 => TemperatureCategory::Cold,
+            t if t < 15 => TemperatureCategory::Cool,
+            t if t < 20 => TemperatureCategory::Mild,
+            t if t < 25 => TemperatureCategory::Warm,
+            t if t < 35 => TemperatureCategory::Hot,
+            _ => TemperatureCategory::Sweltering,
         };
 
         // === Water Depletion ===
@@ -106,7 +123,7 @@ fn process_garden(db: &db::Db, connections: &SharedConnections) -> Result<()> {
 
         // Rain bonus for outdoor plants
         if is_outdoor {
-            let rain = rain_bonus_per_hour(&game_time.weather) * elapsed_game_hours;
+            let rain = rain_bonus_per_hour(&local_weather) * elapsed_game_hours;
             if rain > 0.0 {
                 plant.water_level = (plant.water_level + rain).min(proto.water_capacity);
             }

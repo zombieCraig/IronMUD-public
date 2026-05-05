@@ -13,6 +13,58 @@ use crate::{
 use rhai::Engine;
 use std::sync::Arc;
 
+/// Build the rhai::Map shape that `get_game_time()` returns, projecting
+/// weather and effective temperature through the supplied climate. Pass
+/// `ClimateProfile::Temperate` for the unprojected (global) view.
+pub(crate) fn build_game_time_map(
+    gt: &crate::types::GameTime,
+    climate: crate::types::ClimateProfile,
+) -> rhai::Map {
+    let local_weather = gt.weather_for_climate(climate);
+    let local_temp = gt.effective_temperature_for_climate(climate);
+    let mut map = rhai::Map::new();
+    map.insert("hour".into(), rhai::Dynamic::from(gt.hour as i64));
+    map.insert("day".into(), rhai::Dynamic::from(gt.day as i64));
+    map.insert("month".into(), rhai::Dynamic::from(gt.month as i64));
+    map.insert("year".into(), rhai::Dynamic::from(gt.year as i64));
+    map.insert(
+        "season".into(),
+        rhai::Dynamic::from(gt.get_season().to_string().to_lowercase()),
+    );
+    map.insert(
+        "time_of_day".into(),
+        rhai::Dynamic::from(format!("{}", gt.get_time_of_day())),
+    );
+    map.insert(
+        "weather".into(),
+        rhai::Dynamic::from(format!("{:?}", local_weather).to_lowercase()),
+    );
+    map.insert("temperature".into(), rhai::Dynamic::from(local_temp as i64));
+    map.insert(
+        "time_of_day_desc".into(),
+        rhai::Dynamic::from(format!("{}", gt.get_time_of_day())),
+    );
+    map.insert(
+        "weather_desc".into(),
+        rhai::Dynamic::from(format!("{}", local_weather)),
+    );
+    let temp_cat = match local_temp {
+        t if t < 0 => crate::types::TemperatureCategory::Freezing,
+        t if t < 10 => crate::types::TemperatureCategory::Cold,
+        t if t < 15 => crate::types::TemperatureCategory::Cool,
+        t if t < 20 => crate::types::TemperatureCategory::Mild,
+        t if t < 25 => crate::types::TemperatureCategory::Warm,
+        t if t < 35 => crate::types::TemperatureCategory::Hot,
+        _ => crate::types::TemperatureCategory::Sweltering,
+    };
+    map.insert(
+        "temperature_desc".into(),
+        rhai::Dynamic::from(format!("{}", temp_cat)),
+    );
+    map.insert("is_daytime".into(), rhai::Dynamic::from(gt.is_daytime()));
+    map
+}
+
 /// Register character-related functions
 pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, state: SharedState) {
     // ========== Character Creation Wizard Functions ==========
@@ -595,6 +647,58 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 map.insert("is_daytime".into(), rhai::Dynamic::from(gt.is_daytime()));
                 rhai::Dynamic::from(map)
             }
+            Err(_) => rhai::Dynamic::UNIT,
+        }
+    });
+
+    // get_local_game_time(connection_id) -> Same shape as get_game_time(), but
+    // weather/temperature are projected through the player's current room's
+    // area climate. Use this for any player-facing weather/temperature display
+    // (weather command, watch items, MOTD, etc) so a tropical-island player
+    // never sees blizzard text when the global roll happens to be blizzard.
+    let cloned_db = db.clone();
+    let conns = connections.clone();
+    engine.register_fn("get_local_game_time", move |connection_id: String| -> rhai::Dynamic {
+        let conn_uuid = match uuid::Uuid::parse_str(&connection_id) {
+            Ok(u) => u,
+            Err(_) => return rhai::Dynamic::UNIT,
+        };
+        let room_id = {
+            let conns_guard = match conns.lock() {
+                Ok(g) => g,
+                Err(_) => return rhai::Dynamic::UNIT,
+            };
+            match conns_guard.get(&conn_uuid).and_then(|s| s.character.as_ref()) {
+                Some(c) => c.current_room_id,
+                None => return rhai::Dynamic::UNIT,
+            }
+        };
+        let climate = match cloned_db.get_room_data(&room_id) {
+            Ok(Some(room)) => cloned_db.room_climate(&room),
+            _ => crate::types::ClimateProfile::default(),
+        };
+        match cloned_db.get_game_time() {
+            Ok(gt) => rhai::Dynamic::from(build_game_time_map(&gt, climate)),
+            Err(_) => rhai::Dynamic::UNIT,
+        }
+    });
+
+    // get_room_game_time(room_id) -> Same shape as get_game_time(), projected
+    // through the given room's area climate. Use this from environmental
+    // triggers (on_weather_change, on_time_change) where the trigger's
+    // room_id is in scope but no specific player is.
+    let cloned_db = db.clone();
+    engine.register_fn("get_room_game_time", move |room_id: String| -> rhai::Dynamic {
+        let room_uuid = match uuid::Uuid::parse_str(&room_id) {
+            Ok(u) => u,
+            Err(_) => return rhai::Dynamic::UNIT,
+        };
+        let climate = match cloned_db.get_room_data(&room_uuid) {
+            Ok(Some(room)) => cloned_db.room_climate(&room),
+            _ => crate::types::ClimateProfile::default(),
+        };
+        match cloned_db.get_game_time() {
+            Ok(gt) => rhai::Dynamic::from(build_game_time_map(&gt, climate)),
             Err(_) => rhai::Dynamic::UNIT,
         }
     });
@@ -1294,9 +1398,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
         let hour = game_time.hour;
 
-        // Check weather condition
+        // Check weather condition (projected through area climate)
+        let local_weather = game_time.weather_for_climate(cloned_db.room_climate(&room));
         let is_overcast = matches!(
-            game_time.weather,
+            local_weather,
             crate::WeatherCondition::Overcast
                 | crate::WeatherCondition::HeavyRain
                 | crate::WeatherCondition::Thunderstorm
@@ -1305,7 +1410,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         );
 
         let is_cloudy = matches!(
-            game_time.weather,
+            local_weather,
             crate::WeatherCondition::Cloudy
                 | crate::WeatherCondition::LightRain
                 | crate::WeatherCondition::Rain
@@ -1400,8 +1505,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
                     let hour = game_time.hour;
 
+                    let local_weather =
+                        game_time.weather_for_climate(cloned_db.room_climate(&room));
                     let is_overcast = matches!(
-                        game_time.weather,
+                        local_weather,
                         crate::WeatherCondition::Overcast
                             | crate::WeatherCondition::HeavyRain
                             | crate::WeatherCondition::Thunderstorm
@@ -1410,7 +1517,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     );
 
                     let is_cloudy = matches!(
-                        game_time.weather,
+                        local_weather,
                         crate::WeatherCondition::Cloudy
                             | crate::WeatherCondition::LightRain
                             | crate::WeatherCondition::Rain

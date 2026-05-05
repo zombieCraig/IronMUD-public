@@ -3,7 +3,10 @@
 // Shows precise game time and weather when examined
 
 fn run_trigger(item_id, connection_id, context) {
-    let time = get_game_time();
+    // Project weather/temperature through the wearer's area climate so the
+    // watch reports the local conditions, not the unprojected world weather.
+    let time = get_local_game_time(connection_id);
+    if time == () { time = get_game_time(); }
 
     // Format hour with leading zero
     let hour_str = "";

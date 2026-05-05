@@ -228,6 +228,9 @@ fn run_command(args, connection_id) {
         let zone_desc = if zone == "pve" { "PvE (attack mobiles only)" } else if zone == "safe" { "Safe (no combat)" } else { "PvP (attack mobiles and players)" };
         output += "\n" + olc::c_label("Combat Zone: ", connection_id) + olc::c_value("[" + zone.to_upper() + "]", connection_id) + " " + zone_desc + "\n";
 
+        // Climate preset
+        output += olc::c_label("Climate:     ", connection_id) + olc::c_value("[" + area.climate.to_upper() + "]", connection_id) + "\n";
+
         // Area flags
         output += "\n" + olc::c_label("--- Area Flags ---", connection_id) + "\n";
         let area_flags = area.flags;
@@ -252,6 +255,7 @@ fn run_command(args, connection_id) {
         output += "  aedit trustees\n";
         output += "  aedit forage\n";
         output += "  aedit zone [pve|safe|pvp]\n";
+        output += "  aedit climate [<preset>]  (temperate|tropical|arid|tundra|subarctic)\n";
         output += "  aedit flags [climate_controlled] [on|off]\n";
         output += "  aedit default_flags [<flag>] [on|off]  (template flags for new rooms)\n";
         output += "  aedit immigration [...]  (migrant spawning config)\n";
@@ -491,6 +495,30 @@ fn run_command(args, connection_id) {
         if val_lower == "safe" { desc = "Safe (no combat)"; }
         if val_lower == "pvp" { desc = "PvP (attack mobiles and players)"; }
         send_client_message(connection_id, "Combat zone set to " + val_lower.to_upper() + " for area '" + area.name + "'.\n" + desc + "\nNote: Rooms inherit this unless they have their own zone set.");
+        return;
+    }
+
+    if subcommand == "climate" {
+        if value == "" {
+            let cur = get_area_climate(area.id);
+            send_client_message(
+                connection_id,
+                "Current climate: " + cur.to_upper()
+                    + "\nUsage: aedit climate <preset>"
+                    + "\n  temperate - default; no filtering"
+                    + "\n  tropical  - snow becomes rain; warmer"
+                    + "\n  arid      - rain becomes clear; hotter"
+                    + "\n  tundra    - rain becomes snow; much colder"
+                    + "\n  subarctic - storms tame to rain; colder"
+            );
+            return;
+        }
+        let val_lower = value.to_lower();
+        if !set_area_climate(area.id, val_lower) {
+            send_client_message(connection_id, "Invalid climate: " + value + "\nValid: temperate, tropical, arid, tundra, subarctic");
+            return;
+        }
+        send_client_message(connection_id, "Climate for area '" + area.name + "' set to " + val_lower.to_upper() + ".\nWeather and exposure in this area are now filtered through the new preset.");
         return;
     }
 

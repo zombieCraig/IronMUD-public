@@ -126,6 +126,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     level_min: args?.level_min,
                     level_max: args?.level_max,
                     theme: args?.theme,
+                    climate: args?.climate,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(area, null, 2) }],
@@ -153,6 +154,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     healer_wage_per_hour: args?.healer_wage_per_hour,
                     scavenger_wage_per_hour: args?.scavenger_wage_per_hour,
                     default_room_flags: args?.default_room_flags,
+                    climate: args?.climate,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(area, null, 2) }],
@@ -653,6 +655,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     simulation: args?.simulation,
                     world_max_count: args?.world_max_count,
                     faction: args?.faction,
+                    combat_spells: args?.combat_spells,
+                    combat_spell_chance: args?.combat_spell_chance,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(mobile, null, 2) }],
@@ -672,7 +676,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     "shop_extra_types", "shop_extra_categories", "shop_deny_types", "shop_deny_categories",
                     "shop_stock", "shop_preset_vnum",
                     "daily_routine", "simulation", "remove_simulation", "world_max_count",
-                    "faction",
+                    "faction", "combat_spells", "combat_spell_chance",
                 ];
                 for (const field of mobileFields) {
                     if (args?.[field] !== undefined) {

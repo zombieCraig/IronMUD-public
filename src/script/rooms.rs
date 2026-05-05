@@ -1415,9 +1415,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         .map(|area| area.flags.climate_controlled)
                         .unwrap_or(false);
                 if !room.flags.indoors && !is_climate_controlled {
-                    // Outdoor room - show weather
+                    // Outdoor room - show weather (projected through area climate).
                     if let Ok(game_time) = cloned_db.get_game_time() {
-                        let weather_desc = match game_time.weather {
+                        let climate = cloned_db.room_climate(&room);
+                        let local_weather = game_time.weather_for_climate(climate);
+                        let weather_desc = match local_weather {
                             crate::WeatherCondition::Clear => "clear",
                             crate::WeatherCondition::PartlyCloudy => "partly cloudy",
                             crate::WeatherCondition::Cloudy => "cloudy",
@@ -1431,7 +1433,16 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                             crate::WeatherCondition::Blizzard => "a blizzard howling",
                             crate::WeatherCondition::Fog => "foggy",
                         };
-                        let temp_desc = game_time.get_temperature_category().to_string();
+                        let local_temp = game_time.effective_temperature_for_climate(climate);
+                        let temp_desc = match local_temp {
+                            t if t < 0 => "freezing cold",
+                            t if t < 10 => "cold",
+                            t if t < 15 => "cool",
+                            t if t < 20 => "mild",
+                            t if t < 25 => "warm",
+                            t if t < 35 => "hot",
+                            _ => "sweltering",
+                        };
                         output.push_str("\n");
                         output.push_str(&color(&format!("It is {} and {}.", weather_desc, temp_desc), ANSI_DIM));
                     }

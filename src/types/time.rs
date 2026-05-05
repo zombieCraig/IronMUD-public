@@ -126,6 +126,107 @@ impl Default for TemperatureCategory {
     }
 }
 
+/// Per-area climate preset. Filters the world's rolled weather into a
+/// condition that fits the local environment (e.g. Tropical converts snow to
+/// rain) and shifts the effective temperature.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClimateProfile {
+    Temperate,
+    Tropical,
+    Arid,
+    Tundra,
+    Subarctic,
+}
+
+impl Default for ClimateProfile {
+    fn default() -> Self {
+        ClimateProfile::Temperate
+    }
+}
+
+impl std::fmt::Display for ClimateProfile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClimateProfile::Temperate => write!(f, "temperate"),
+            ClimateProfile::Tropical => write!(f, "tropical"),
+            ClimateProfile::Arid => write!(f, "arid"),
+            ClimateProfile::Tundra => write!(f, "tundra"),
+            ClimateProfile::Subarctic => write!(f, "subarctic"),
+        }
+    }
+}
+
+impl ClimateProfile {
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "temperate" => Some(ClimateProfile::Temperate),
+            "tropical" => Some(ClimateProfile::Tropical),
+            "arid" | "desert" => Some(ClimateProfile::Arid),
+            "tundra" | "frozen" => Some(ClimateProfile::Tundra),
+            "subarctic" => Some(ClimateProfile::Subarctic),
+            _ => None,
+        }
+    }
+
+    pub fn all() -> &'static [ClimateProfile] {
+        &[
+            ClimateProfile::Temperate,
+            ClimateProfile::Tropical,
+            ClimateProfile::Arid,
+            ClimateProfile::Tundra,
+            ClimateProfile::Subarctic,
+        ]
+    }
+
+    /// Per-climate temperature shift (Celsius) added on top of the global
+    /// season/time/weather model.
+    pub fn temperature_offset(self) -> i32 {
+        match self {
+            ClimateProfile::Temperate => 0,
+            ClimateProfile::Tropical => 6,
+            ClimateProfile::Arid => 4,
+            ClimateProfile::Tundra => -10,
+            ClimateProfile::Subarctic => -5,
+        }
+    }
+
+    /// Project a globally-rolled weather condition into one that fits this
+    /// climate. Conditions already permitted pass through unchanged.
+    pub fn project(self, w: WeatherCondition) -> WeatherCondition {
+        use WeatherCondition::*;
+        match self {
+            ClimateProfile::Temperate => w,
+            ClimateProfile::Tropical => match w {
+                LightSnow => LightRain,
+                Snow => Rain,
+                Blizzard => Thunderstorm,
+                other => other,
+            },
+            ClimateProfile::Arid => match w {
+                LightRain | Rain | HeavyRain => Clear,
+                Thunderstorm => Overcast,
+                LightSnow | Snow | Blizzard => Clear,
+                Fog => PartlyCloudy,
+                other => other,
+            },
+            ClimateProfile::Tundra => match w {
+                Clear => PartlyCloudy,
+                LightRain => LightSnow,
+                Rain => Snow,
+                HeavyRain => Snow,
+                Thunderstorm => Blizzard,
+                other => other,
+            },
+            ClimateProfile::Subarctic => match w {
+                HeavyRain => Rain,
+                Thunderstorm => Snow,
+                other => other,
+            },
+        }
+    }
+}
+
 impl std::fmt::Display for TemperatureCategory {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -261,6 +362,22 @@ impl GameTime {
 
     pub fn is_daytime(&self) -> bool {
         self.hour >= 6 && self.hour < 20
+    }
+
+    /// Project the global weather through a climate preset for a specific area.
+    pub fn weather_for_climate(&self, climate: ClimateProfile) -> WeatherCondition {
+        climate.project(self.weather)
+    }
+
+    /// Effective temperature for a room in the given climate. Takes the global
+    /// effective temperature (season/time/weather) and applies the climate
+    /// offset, but evaluates the weather contribution against the *projected*
+    /// condition so a tropical area in winter doesn't get the blizzard penalty.
+    pub fn effective_temperature_for_climate(&self, climate: ClimateProfile) -> i32 {
+        let projected = climate.project(self.weather);
+        let mut clone = self.clone();
+        clone.weather = projected;
+        clone.calculate_effective_temperature() + climate.temperature_offset()
     }
 
     /// Advance time by one hour, handling day/month/year rollovers

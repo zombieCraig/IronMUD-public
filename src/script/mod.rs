@@ -549,6 +549,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         .register_get("level_min", |a: &mut AreaData| a.level_min as i64)
         .register_get("level_max", |a: &mut AreaData| a.level_max as i64)
         .register_get("theme", |a: &mut AreaData| a.theme.clone())
+        .register_get("climate", |a: &mut AreaData| a.climate.to_string())
         .register_get("owner", |a: &mut AreaData| a.owner.clone().unwrap_or_default())
         .register_get("permission_level", |a: &mut AreaData| match a.permission_level {
             AreaPermission::OwnerOnly => "owner_only".to_string(),

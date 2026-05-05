@@ -15,7 +15,9 @@ fn run_command(args, connection_id) {
     }
 
     let flags = room.flags;
-    let time = get_game_time();
+    // Project weather/temperature through this player's area climate so a
+    // tropical-island report never reads "blizzard" when the global rolls one.
+    let time = get_local_game_time(connection_id);
 
     let output = "";
 

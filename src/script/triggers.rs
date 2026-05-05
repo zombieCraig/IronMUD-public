@@ -1446,26 +1446,75 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 let db_for_time = cloned_db.clone();
                 trigger_engine.register_fn("get_game_time", move || -> rhai::Dynamic {
                     match db_for_time.get_game_time() {
-                        Ok(gt) => {
-                            let mut map = rhai::Map::new();
-                            map.insert("hour".into(), rhai::Dynamic::from(gt.hour as i64));
-                            map.insert("day".into(), rhai::Dynamic::from(gt.day as i64));
-                            map.insert("month".into(), rhai::Dynamic::from(gt.month as i64));
-                            map.insert("year".into(), rhai::Dynamic::from(gt.year as i64));
-                            map.insert(
-                                "season".into(),
-                                rhai::Dynamic::from(gt.get_season().to_string().to_lowercase()),
-                            );
-                            map.insert(
-                                "temperature".into(),
-                                rhai::Dynamic::from(gt.calculate_effective_temperature() as i64),
-                            );
-                            map.insert("weather_desc".into(), rhai::Dynamic::from(format!("{}", gt.weather)));
-                            rhai::Dynamic::from(map)
-                        }
+                        Ok(gt) => rhai::Dynamic::from(crate::script::characters::build_game_time_map(
+                            &gt,
+                            crate::types::ClimateProfile::Temperate,
+                        )),
                         Err(_) => rhai::Dynamic::UNIT,
                     }
                 });
+
+                // get_local_game_time(connection_id): same map shape, but
+                // weather + temperature projected through the player's
+                // current-room area climate. Use from item triggers (watch
+                // displays, etc) so a tropical-island player never sees the
+                // global blizzard text.
+                let db_for_local = cloned_db.clone();
+                let conns_for_local = cloned_conns.clone();
+                trigger_engine.register_fn(
+                    "get_local_game_time",
+                    move |connection_id: String| -> rhai::Dynamic {
+                        let conn_uuid = match uuid::Uuid::parse_str(&connection_id) {
+                            Ok(u) => u,
+                            Err(_) => return rhai::Dynamic::UNIT,
+                        };
+                        let room_id = {
+                            let conns_guard = match conns_for_local.lock() {
+                                Ok(g) => g,
+                                Err(_) => return rhai::Dynamic::UNIT,
+                            };
+                            match conns_guard.get(&conn_uuid).and_then(|s| s.character.as_ref()) {
+                                Some(c) => c.current_room_id,
+                                None => return rhai::Dynamic::UNIT,
+                            }
+                        };
+                        let climate = match db_for_local.get_room_data(&room_id) {
+                            Ok(Some(room)) => db_for_local.room_climate(&room),
+                            _ => crate::types::ClimateProfile::default(),
+                        };
+                        match db_for_local.get_game_time() {
+                            Ok(gt) => rhai::Dynamic::from(
+                                crate::script::characters::build_game_time_map(&gt, climate),
+                            ),
+                            Err(_) => rhai::Dynamic::UNIT,
+                        }
+                    },
+                );
+
+                // get_room_game_time(room_id): same map shape, projected
+                // through the given room's area climate. Use from
+                // environmental triggers (on_weather_change, on_time_change)
+                // where a room_id is in scope but no specific player is.
+                let db_for_room = cloned_db.clone();
+                trigger_engine.register_fn(
+                    "get_room_game_time",
+                    move |room_id: String| -> rhai::Dynamic {
+                        let room_uuid = match uuid::Uuid::parse_str(&room_id) {
+                            Ok(u) => u,
+                            Err(_) => return rhai::Dynamic::UNIT,
+                        };
+                        let climate = match db_for_room.get_room_data(&room_uuid) {
+                            Ok(Some(room)) => db_for_room.room_climate(&room),
+                            _ => crate::types::ClimateProfile::default(),
+                        };
+                        match db_for_room.get_game_time() {
+                            Ok(gt) => rhai::Dynamic::from(
+                                crate::script::characters::build_game_time_map(&gt, climate),
+                            ),
+                            Err(_) => rhai::Dynamic::UNIT,
+                        }
+                    },
+                );
 
                 // Register get_character_thirst for trigger scripts
                 let conns_for_thirst = cloned_conns.clone();

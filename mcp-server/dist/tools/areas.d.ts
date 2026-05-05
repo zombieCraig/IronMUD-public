@@ -11,6 +11,7 @@ export declare const areaToolDefinitions: ({
             level_min?: undefined;
             level_max?: undefined;
             theme?: undefined;
+            climate?: undefined;
             id?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;
@@ -49,6 +50,7 @@ export declare const areaToolDefinitions: ({
             level_min?: undefined;
             level_max?: undefined;
             theme?: undefined;
+            climate?: undefined;
             id?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;
@@ -99,6 +101,11 @@ export declare const areaToolDefinitions: ({
             };
             theme: {
                 type: string;
+                description: string;
+            };
+            climate: {
+                type: string;
+                enum: string[];
                 description: string;
             };
             identifier?: undefined;
@@ -157,6 +164,11 @@ export declare const areaToolDefinitions: ({
             theme: {
                 type: string;
                 description?: undefined;
+            };
+            climate: {
+                type: string;
+                enum: string[];
+                description: string;
             };
             immigration_enabled: {
                 type: string;
@@ -307,6 +319,7 @@ export declare const areaToolDefinitions: ({
             level_min?: undefined;
             level_max?: undefined;
             theme?: undefined;
+            climate?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;
             donation_room_vnum?: undefined;
@@ -345,6 +358,7 @@ export declare const areaToolDefinitions: ({
             level_min?: undefined;
             level_max?: undefined;
             theme?: undefined;
+            climate?: undefined;
             id?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;
@@ -401,6 +415,7 @@ export declare const areaToolDefinitions: ({
             level_min?: undefined;
             level_max?: undefined;
             theme?: undefined;
+            climate?: undefined;
             id?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;
@@ -444,6 +459,7 @@ export declare const areaToolDefinitions: ({
             level_min?: undefined;
             level_max?: undefined;
             theme?: undefined;
+            climate?: undefined;
             id?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;

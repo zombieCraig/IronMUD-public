@@ -327,6 +327,17 @@ impl Db {
         Ok(self.areas.remove(key)?.is_some())
     }
 
+    /// Resolve the climate preset for a room by walking to its area.
+    /// Returns Temperate if the room has no area or the area lookup fails —
+    /// keeping the no-area / orphaned-room case identical to the global
+    /// pre-climate behavior.
+    pub fn room_climate(&self, room: &RoomData) -> crate::types::ClimateProfile {
+        room.area_id
+            .and_then(|aid| self.get_area_data(&aid).ok().flatten())
+            .map(|a| a.climate)
+            .unwrap_or_default()
+    }
+
     /// List all areas
     pub fn list_all_areas(&self) -> Result<Vec<AreaData>> {
         let mut areas = Vec::new();

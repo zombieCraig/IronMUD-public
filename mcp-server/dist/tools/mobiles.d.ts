@@ -27,6 +27,8 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            combat_spells?: undefined;
+            combat_spell_chance?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -90,6 +92,8 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            combat_spells?: undefined;
+            combat_spell_chance?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -156,6 +160,8 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            combat_spells?: undefined;
+            combat_spell_chance?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -222,6 +228,8 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            combat_spells?: undefined;
+            combat_spell_chance?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -432,6 +440,17 @@ export declare const mobileToolDefinitions: ({
                 description: string;
             };
             faction: {
+                type: string;
+                description: string;
+            };
+            combat_spells: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                description: string;
+            };
+            combat_spell_chance: {
                 type: string;
                 description: string;
             };
@@ -805,6 +824,17 @@ export declare const mobileToolDefinitions: ({
                 type: string;
                 description: string;
             };
+            combat_spells: {
+                type: string;
+                items: {
+                    type: string;
+                };
+                description: string;
+            };
+            combat_spell_chance: {
+                type: string;
+                description: string;
+            };
             healer_type: {
                 type: string;
                 description?: undefined;
@@ -1027,6 +1057,8 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            combat_spells?: undefined;
+            combat_spell_chance?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -1101,6 +1133,8 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            combat_spells?: undefined;
+            combat_spell_chance?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -1169,6 +1203,8 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            combat_spells?: undefined;
+            combat_spell_chance?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -1258,6 +1294,8 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            combat_spells?: undefined;
+            combat_spell_chance?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -1322,6 +1360,8 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            combat_spells?: undefined;
+            combat_spell_chance?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -1390,6 +1430,8 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            combat_spells?: undefined;
+            combat_spell_chance?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;
@@ -1483,6 +1525,8 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            combat_spells?: undefined;
+            combat_spell_chance?: undefined;
             healer_type?: undefined;
             healing_free?: undefined;
             healing_cost_multiplier?: undefined;

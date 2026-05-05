@@ -25,7 +25,7 @@ import {
   buildMobileContext,
   getDescriptionExamples,
 } from "./description-context.js";
-import type { GoldRange, ItemType, RoomFlags, TriggerType } from "./types.js";
+import type { ClimateProfile, GoldRange, ItemType, RoomFlags, TriggerType } from "./types.js";
 
 // Helper to format auto-refresh info for MCP output
 function formatRefreshSuffix(refreshed?: number): string {
@@ -144,6 +144,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           level_min: args?.level_min as number | undefined,
           level_max: args?.level_max as number | undefined,
           theme: args?.theme as string | undefined,
+          climate: args?.climate as ClimateProfile | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(area, null, 2) }],
@@ -170,6 +171,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           healer_wage_per_hour: args?.healer_wage_per_hour as number | undefined,
           scavenger_wage_per_hour: args?.scavenger_wage_per_hour as number | undefined,
           default_room_flags: args?.default_room_flags as RoomFlags | undefined,
+          climate: args?.climate as ClimateProfile | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(area, null, 2) }],
