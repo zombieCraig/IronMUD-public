@@ -1,0 +1,22 @@
+{
+  "_comment": "CircleMUD spells.h numeric ID → IronMUD spell ID. Used by the .obj importer to translate ITEM_SCROLL/WAND/STAFF/POTION v0..v3 spell slots. Add entries as you implement matching IronMUD spells; missing numbers warn at import.",
+  "4": "blind",
+  "5": "firebolt",
+  "6": "lightning_bolt",
+  "7": "charm",
+  "15": "greater_heal",
+  "16": "cure_wounds",
+  "17": "blind",
+  "19": "detect_invisible",
+  "20": "detect_magic",
+  "26": "firebolt",
+  "28": "greater_heal",
+  "29": "invisibility",
+  "30": "lightning_bolt",
+  "32": "magic_missile",
+  "36": "sanctuary",
+  "37": "lightning_bolt",
+  "38": "sleep",
+  "40": "summon",
+  "50": "night_vision"
+}

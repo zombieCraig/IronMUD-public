@@ -15,12 +15,37 @@ use super::{
     error::ApiError,
     notify_builders,
 };
-use crate::types::{EffectType, ExtraDesc, ItemEffect, ItemTrigger, ItemTriggerType};
+use crate::types::{CastOnUse, EffectType, ExtraDesc, ItemEffect, ItemTrigger, ItemTriggerType};
 use crate::{DamageType, ItemData, ItemFlags, ItemLocation, ItemType, LiquidType, WeaponSkill, WearLocation};
 
 use super::rooms::AddExtraDescRequest;
 
 const MAX_NOTE_BYTES: usize = 32 * 1024;
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct CastOnUseRequest {
+    pub spell: String,
+    #[serde(default)]
+    pub min_level: Option<i32>,
+    #[serde(default)]
+    pub charges: Option<i32>,
+    #[serde(default)]
+    pub max_charges: Option<i32>,
+}
+
+fn build_cast_on_use_from_req(req: &CastOnUseRequest) -> Option<CastOnUse> {
+    if req.spell.trim().is_empty() {
+        return None;
+    }
+    let charges = req.charges.unwrap_or(0).max(0);
+    let max_charges = req.max_charges.unwrap_or(charges).max(charges);
+    Some(CastOnUse {
+        spell: req.spell.clone(),
+        min_level: req.min_level.unwrap_or(0).max(0),
+        charges,
+        max_charges,
+    })
+}
 
 /// Normalize note body line endings (\r\n → \n, lone \r → \n) and enforce the size cap.
 fn normalize_note_input(raw: String) -> Result<Option<String>, ApiError> {
@@ -91,6 +116,9 @@ pub struct CreateItemRequest {
     // ITEM_LIGHT capacity hours: 0 = permanent, N>0 = burn time remaining when equipped lit.
     #[serde(default)]
     pub light_hours_remaining: Option<i32>,
+    // Cast-on-use spell payload (POTION/WAND/STAFF parity)
+    #[serde(default)]
+    pub cast_on_use: Option<CastOnUseRequest>,
     // Flags
     #[serde(default)]
     pub flags: ItemFlagsRequest,
@@ -301,6 +329,8 @@ pub struct UpdateItemRequest {
     pub damage_bonus: Option<i32>,
     #[serde(default)]
     pub light_hours_remaining: Option<i32>,
+    #[serde(default)]
+    pub cast_on_use: Option<CastOnUseRequest>,
     #[serde(default)]
     pub wear_location: Option<String>,
     #[serde(default)]
@@ -688,6 +718,7 @@ async fn create_item(
         hit_bonus: req.hit_bonus.unwrap_or(0),
         damage_bonus: req.damage_bonus.unwrap_or(0),
         light_hours_remaining: req.light_hours_remaining.unwrap_or(0).max(0),
+        cast_on_use: req.cast_on_use.as_ref().and_then(build_cast_on_use_from_req),
         protects: Vec::new(),
         flags: ItemFlags {
             no_drop: req.flags.no_drop.unwrap_or(false),
@@ -1098,6 +1129,9 @@ async fn update_item(
     }
     if let Some(lhr) = req.light_hours_remaining {
         item.light_hours_remaining = lhr.max(0);
+    }
+    if let Some(ref cou) = req.cast_on_use {
+        item.cast_on_use = build_cast_on_use_from_req(cou);
     }
     if let Some(ref loc_str) = req.wear_location {
         item.wear_locations = WearLocation::from_str(loc_str).map(|l| vec![l]).unwrap_or_default();

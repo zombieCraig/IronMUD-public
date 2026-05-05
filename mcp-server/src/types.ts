@@ -172,11 +172,19 @@ export interface Item {
   hit_bonus?: number;
   damage_bonus?: number;
   light_hours_remaining?: number;
+  cast_on_use?: CastOnUse;
   damage_dice_count?: number;
   damage_dice_sides?: number;
   damage_type?: DamageType;
   flags: ItemFlags;
   extra_descs?: ExtraDesc[];
+}
+
+export interface CastOnUse {
+  spell: string;
+  min_level?: number;
+  charges?: number;
+  max_charges?: number;
 }
 
 export type ItemType =
@@ -187,7 +195,11 @@ export type ItemType =
   | "liquid_container"
   | "food"
   | "key"
-  | "gold";
+  | "gold"
+  | "ammunition"
+  | "potion"
+  | "wand"
+  | "staff";
 
 export type WearLocation =
   | "head" | "neck" | "shoulders" | "back" | "torso" | "waist" | "ears"
@@ -402,6 +414,7 @@ export interface CreateItemRequest {
   hit_bonus?: number;
   damage_bonus?: number;
   light_hours_remaining?: number;
+  cast_on_use?: CastOnUse;
   flags?: Partial<ItemFlags>;
   // Firearm fields
   caliber?: string;

@@ -2022,6 +2022,9 @@ pub enum ItemType {
     Key,
     Gold,
     Ammunition,
+    Potion,
+    Wand,
+    Staff,
 }
 
 impl ItemType {
@@ -2036,6 +2039,9 @@ impl ItemType {
             "key" => Some(ItemType::Key),
             "gold" => Some(ItemType::Gold),
             "ammunition" | "ammo" => Some(ItemType::Ammunition),
+            "potion" => Some(ItemType::Potion),
+            "wand" => Some(ItemType::Wand),
+            "staff" => Some(ItemType::Staff),
             _ => None,
         }
     }
@@ -2051,8 +2057,30 @@ impl ItemType {
             ItemType::Key => "key",
             ItemType::Gold => "gold",
             ItemType::Ammunition => "ammunition",
+            ItemType::Potion => "potion",
+            ItemType::Wand => "wand",
+            ItemType::Staff => "staff",
         }
     }
+}
+
+/// CircleMUD POTION/WAND/STAFF on-use spell payload.
+///
+/// `spell` is an IronMUD spell id (matches an entry in `spells_fantasy.json`).
+/// `min_level` is the magic skill level required to use the item (0 = none —
+/// potions are universally usable). `charges` and `max_charges` track usage:
+/// potions ignore charges (single-use, deleted on quaff), wands/staves consume
+/// one per `zap` / `brandish`. When `charges == 0` the item is depleted but
+/// stays in inventory.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct CastOnUse {
+    pub spell: String,
+    #[serde(default)]
+    pub min_level: i32,
+    #[serde(default)]
+    pub charges: i32,
+    #[serde(default)]
+    pub max_charges: i32,
 }
 
 /// Returns the tier description for a gold amount
@@ -2768,6 +2796,10 @@ pub struct ItemData {
     /// `flags.provides_light` is cleared and the holder sees a "burns out" message.
     #[serde(default)]
     pub light_hours_remaining: i32,
+    /// CircleMUD POTION/WAND/STAFF parity: spell to fire when the item is used
+    /// (`quaff` / `zap` / `brandish`). `None` for non-spell items.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cast_on_use: Option<CastOnUse>,
     /// Body parts this armor protects (for armor items)
     #[serde(default)]
     pub protects: Vec<BodyPart>,
@@ -2971,6 +3003,7 @@ impl ItemData {
             hit_bonus: 0,
             damage_bonus: 0,
             light_hours_remaining: 0,
+            cast_on_use: None,
             protects: Vec::new(),
             holes: 0,
             flags: ItemFlags::default(),

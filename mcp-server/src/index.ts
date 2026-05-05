@@ -458,6 +458,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           hit_bonus: args?.hit_bonus as number | undefined,
           damage_bonus: args?.damage_bonus as number | undefined,
           light_hours_remaining: args?.light_hours_remaining as number | undefined,
+          cast_on_use: args?.cast_on_use as { spell: string; min_level?: number; charges?: number; max_charges?: number } | undefined,
           flags: args?.flags as Record<string, boolean> | undefined,
           caliber: args?.caliber as string | undefined,
           ranged_type: args?.ranged_type as string | undefined,
@@ -501,7 +502,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const itemFields = [
           "name", "short_desc", "long_desc", "vnum", "item_type", "keywords", "weight", "value", "categories", "flags",
           "damage_dice_count", "damage_dice_sides", "damage_type", "armor_class",
-          "hit_bonus", "damage_bonus", "light_hours_remaining",
+          "hit_bonus", "damage_bonus", "light_hours_remaining", "cast_on_use",
           "wear_location", "weapon_skill",
           "caliber", "ranged_type", "magazine_size", "fire_mode", "supported_fire_modes",
           "noise_level", "two_handed", "ammo_count", "ammo_damage_bonus",

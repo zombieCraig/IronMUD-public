@@ -3762,6 +3762,61 @@ fn test_item_light_hours_remaining_persists() {
 }
 
 #[test]
+fn test_item_cast_on_use_persists() {
+    use ironmud::ItemData;
+    use ironmud::ItemType;
+    use ironmud::db::Db;
+    use ironmud::types::CastOnUse;
+
+    let db_path = format!("test_cast_on_use_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut item = ItemData::new(
+            "wand".to_string(),
+            "a slender wand".to_string(),
+            "A slender wand lies here.".to_string(),
+        );
+        // Default: None.
+        assert!(item.cast_on_use.is_none());
+
+        item.item_type = ItemType::Wand;
+        item.cast_on_use = Some(CastOnUse {
+            spell: "magic_missile".to_string(),
+            min_level: 2,
+            charges: 5,
+            max_charges: 5,
+        });
+        let item_id = item.id;
+        db.save_item_data(item).expect("save");
+
+        let loaded = db.get_item_data(&item_id).expect("get").expect("present");
+        assert_eq!(loaded.item_type, ItemType::Wand);
+        let cou = loaded.cast_on_use.as_ref().expect("cast_on_use round-trips");
+        assert_eq!(cou.spell, "magic_missile");
+        assert_eq!(cou.min_level, 2);
+        assert_eq!(cou.charges, 5);
+        assert_eq!(cou.max_charges, 5);
+
+        // Decrement charges (mimics zap path) and verify persistence.
+        let mut after_zap = loaded;
+        after_zap.cast_on_use.as_mut().unwrap().charges = 4;
+        db.save_item_data(after_zap).expect("save");
+        let reloaded = db.get_item_data(&item_id).expect("get").expect("present");
+        assert_eq!(reloaded.cast_on_use.as_ref().unwrap().charges, 4);
+        // max_charges unchanged.
+        assert_eq!(reloaded.cast_on_use.as_ref().unwrap().max_charges, 5);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_item_note_content_persists() {
     use ironmud::ItemData;
     use ironmud::db::Db;

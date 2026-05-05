@@ -235,6 +235,18 @@
     "access": "user",
     "description": "Drink from a liquid container"
   },
+  "quaff": {
+    "access": "user",
+    "description": "Quaff a magical potion to fire its bound spell"
+  },
+  "zap": {
+    "access": "user",
+    "description": "Zap a target with a magical wand (consumes one charge)"
+  },
+  "brandish": {
+    "access": "user",
+    "description": "Brandish a magical staff to invoke its area spell"
+  },
   "fill": {
     "access": "user",
     "description": "Fill a liquid container"

@@ -134,13 +134,20 @@ export interface Item {
     hit_bonus?: number;
     damage_bonus?: number;
     light_hours_remaining?: number;
+    cast_on_use?: CastOnUse;
     damage_dice_count?: number;
     damage_dice_sides?: number;
     damage_type?: DamageType;
     flags: ItemFlags;
     extra_descs?: ExtraDesc[];
 }
-export type ItemType = "misc" | "armor" | "weapon" | "container" | "liquid_container" | "food" | "key" | "gold";
+export interface CastOnUse {
+    spell: string;
+    min_level?: number;
+    charges?: number;
+    max_charges?: number;
+}
+export type ItemType = "misc" | "armor" | "weapon" | "container" | "liquid_container" | "food" | "key" | "gold" | "ammunition" | "potion" | "wand" | "staff";
 export type WearLocation = "head" | "neck" | "shoulders" | "back" | "torso" | "waist" | "ears" | "wielded" | "offhand" | "ready" | "leftarm" | "rightarm" | "leftwrist" | "rightwrist" | "lefthand" | "righthand" | "leftfinger" | "rightfinger" | "leftleg" | "rightleg" | "leftankle" | "rightankle" | "leftfoot" | "rightfoot";
 export type DamageType = "bludgeoning" | "slashing" | "piercing" | "fire" | "cold" | "lightning" | "poison" | "acid";
 export interface ItemFlags {
@@ -323,6 +330,7 @@ export interface CreateItemRequest {
     hit_bonus?: number;
     damage_bonus?: number;
     light_hours_remaining?: number;
+    cast_on_use?: CastOnUse;
     flags?: Partial<ItemFlags>;
     caliber?: string;
     ranged_type?: string;

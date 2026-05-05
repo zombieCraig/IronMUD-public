@@ -35,6 +35,7 @@ export declare const itemToolDefinitions: ({
             hit_bonus?: undefined;
             damage_bonus?: undefined;
             light_hours_remaining?: undefined;
+            cast_on_use?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -107,6 +108,7 @@ export declare const itemToolDefinitions: ({
             hit_bonus?: undefined;
             damage_bonus?: undefined;
             light_hours_remaining?: undefined;
+            cast_on_use?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -182,6 +184,7 @@ export declare const itemToolDefinitions: ({
             hit_bonus?: undefined;
             damage_bonus?: undefined;
             light_hours_remaining?: undefined;
+            cast_on_use?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -257,6 +260,7 @@ export declare const itemToolDefinitions: ({
             hit_bonus?: undefined;
             damage_bonus?: undefined;
             light_hours_remaining?: undefined;
+            cast_on_use?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -382,6 +386,29 @@ export declare const itemToolDefinitions: ({
             light_hours_remaining: {
                 type: string;
                 description: string;
+            };
+            cast_on_use: {
+                type: string;
+                description: string;
+                properties: {
+                    spell: {
+                        type: string;
+                        description: string;
+                    };
+                    min_level: {
+                        type: string;
+                        description: string;
+                    };
+                    charges: {
+                        type: string;
+                        description: string;
+                    };
+                    max_charges: {
+                        type: string;
+                        description: string;
+                    };
+                };
+                required: string[];
             };
             flags: {
                 readonly type: "object";
@@ -896,6 +923,29 @@ export declare const itemToolDefinitions: ({
             light_hours_remaining: {
                 type: string;
                 description: string;
+            };
+            cast_on_use: {
+                type: string;
+                description: string;
+                properties: {
+                    spell: {
+                        type: string;
+                        description: string;
+                    };
+                    min_level: {
+                        type: string;
+                        description: string;
+                    };
+                    charges: {
+                        type: string;
+                        description: string;
+                    };
+                    max_charges: {
+                        type: string;
+                        description: string;
+                    };
+                };
+                required: string[];
             };
             wear_location: {
                 type: string;
@@ -1130,6 +1180,7 @@ export declare const itemToolDefinitions: ({
             hit_bonus?: undefined;
             damage_bonus?: undefined;
             light_hours_remaining?: undefined;
+            cast_on_use?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -1208,6 +1259,7 @@ export declare const itemToolDefinitions: ({
             hit_bonus?: undefined;
             damage_bonus?: undefined;
             light_hours_remaining?: undefined;
+            cast_on_use?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -1303,6 +1355,7 @@ export declare const itemToolDefinitions: ({
             hit_bonus?: undefined;
             damage_bonus?: undefined;
             light_hours_remaining?: undefined;
+            cast_on_use?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -1378,6 +1431,7 @@ export declare const itemToolDefinitions: ({
             hit_bonus?: undefined;
             damage_bonus?: undefined;
             light_hours_remaining?: undefined;
+            cast_on_use?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -1461,6 +1515,7 @@ export declare const itemToolDefinitions: ({
             hit_bonus?: undefined;
             damage_bonus?: undefined;
             light_hours_remaining?: undefined;
+            cast_on_use?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;
@@ -1539,6 +1594,7 @@ export declare const itemToolDefinitions: ({
             hit_bonus?: undefined;
             damage_bonus?: undefined;
             light_hours_remaining?: undefined;
+            cast_on_use?: undefined;
             flags?: undefined;
             caliber?: undefined;
             ranged_type?: undefined;

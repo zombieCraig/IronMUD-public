@@ -440,6 +440,10 @@ fn handle_subcommand(item, item_id, subcommand, parts, char, connection_id) {
         handle_light_hours_subcommand(uuid, parts, connection_id);
         return;
     }
+    if subcommand == "cast_on_use" || subcommand == "spell" {
+        handle_cast_on_use_subcommand(uuid, parts, connection_id);
+        return;
+    }
     if subcommand == "insulation" || subcommand == "insul" {
         handle_insulation_subcommand(uuid, parts, connection_id);
         return;
@@ -573,17 +577,17 @@ fn collect_parts(parts, start_idx) {
 
 fn handle_type_subcommand(item_id, parts, connection_id) {
     if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: oedit " + item_id + " type <armor|weapon|ammunition|container|liquid_container|food|key|misc>");
+        send_client_message(connection_id, "Usage: oedit " + item_id + " type <armor|weapon|ammunition|container|liquid_container|food|key|misc|potion|wand|staff>");
         return;
     }
     let type_str = parts[2].to_lower();
-    let valid_types = ["armor", "weapon", "ammunition", "misc", "container", "liquid_container", "food", "key"];
+    let valid_types = ["armor", "weapon", "ammunition", "misc", "container", "liquid_container", "food", "key", "potion", "wand", "staff"];
     let is_valid = false;
     for t in valid_types {
         if type_str == t { is_valid = true; }
     }
     if !is_valid {
-        send_client_message(connection_id, "Invalid type. Use: armor, weapon, ammunition, container, liquid_container, food, key, misc");
+        send_client_message(connection_id, "Invalid type. Use: armor, weapon, ammunition, container, liquid_container, food, key, misc, potion, wand, staff");
         return;
     }
     set_item_type(item_id, type_str);
@@ -1896,6 +1900,10 @@ fn copy_item_flags(item, new_item_id) {
     if item.flags.vending { set_item_flag(new_item_id, "vending", true); }
     if item.flags.provides_light { set_item_flag(new_item_id, "provides_light", true); }
     if item.light_hours_remaining > 0 { set_item_light_hours(new_item_id, item.light_hours_remaining); }
+    if item.has_cast_on_use {
+        let cou = item.cast_on_use;
+        set_item_cast_on_use(new_item_id, cou["spell"], cou["min_level"], cou["max_charges"]);
+    }
     if item.flags.night_vision { set_item_flag(new_item_id, "night_vision", true); }
     if item.flags.fishing_rod { set_item_flag(new_item_id, "fishing_rod", true); }
     if item.flags.bait { set_item_flag(new_item_id, "bait", true); }
@@ -2348,6 +2356,15 @@ fn show_item_properties(item, item_id, connection_id) {
         }
     }
 
+    if item.has_cast_on_use {
+        let cou = item.cast_on_use;
+        let sid = cou["spell"];
+        let cou_spell = get_spell_info(sid);
+        let label = if cou_spell.len() > 0 { sid + " (" + cou_spell["name"] + ")" } else { sid + " (UNKNOWN!)" };
+        output += olc::c_label("Cast on use: ", connection_id) + olc::c_value(label, connection_id);
+        output += olc::c_value(" lvl>=" + cou["min_level"] + ", " + cou["charges"] + "/" + cou["max_charges"] + " charges", connection_id) + "\n";
+    }
+
     // Note body (readable via `read`)
     let note_body = get_item_note_content(item.id);
     if note_body != "" {
@@ -2700,7 +2717,7 @@ fn build_commands_help(item_id, item) {
     output += "  oedit " + display_id + " short <text>          (AI: help <prompt> | rephrase)\n";
     output += "  oedit " + display_id + " long <text>           (AI: help <prompt> | rephrase)\n";
     output += "  oedit " + display_id + " keywords <kw1> <kw2> ...\n";
-    output += "  oedit " + display_id + " type <armor|weapon|ammunition|container|liquid_container|food|key|misc>\n";
+    output += "  oedit " + display_id + " type <armor|weapon|ammunition|container|liquid_container|food|key|misc|potion|wand|staff>\n";
     output += "  oedit " + display_id + " wear <loc1> <loc2> ...\n";
     output += "  oedit " + display_id + " flags\n";
     output += "  oedit " + display_id + " flag <name> [on|off]\n";
@@ -2712,6 +2729,8 @@ fn build_commands_help(item_id, item) {
     output += "  oedit " + display_id + " category                    (recipe category management)\n";
     output += "  oedit " + display_id + " teaches <recipe_id|clear>  (recipe book/scroll)\n";
     output += "  oedit " + display_id + " teaches_spell <spell_id|clear>  (spell scroll)\n";
+    output += "  oedit " + display_id + " cast_on_use <spell_id> <min_level> <charges>   (potion/wand/staff)\n";
+    output += "  oedit " + display_id + " cast_on_use clear\n";
     output += "  oedit " + display_id + " transport <vnum|clear>     (transport status sign)\n";
     output += "  oedit " + display_id + " note [clear]               (multi-line readable body)\n";
 
@@ -3018,6 +3037,47 @@ fn handle_light_hours_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Burn time set to permanent (no decay).");
     } else {
         send_client_message(connection_id, "Burn time set to " + value + " hour(s) of light.");
+    }
+}
+
+// oedit <item> cast_on_use <spell_id> <min_level> <charges>
+// oedit <item> cast_on_use clear
+fn handle_cast_on_use_subcommand(item_id, parts, connection_id) {
+    if parts.len() < 3 {
+        send_client_message(connection_id, "Usage: oedit " + item_id + " cast_on_use <spell_id> <min_level> <charges>");
+        send_client_message(connection_id, "       oedit " + item_id + " cast_on_use clear");
+        return;
+    }
+    let arg = parts[2].to_lower();
+    if arg == "clear" || arg == "none" {
+        clear_item_cast_on_use(item_id);
+        send_client_message(connection_id, "Cast-on-use cleared.");
+        return;
+    }
+    if parts.len() < 5 {
+        send_client_message(connection_id, "Usage: oedit " + item_id + " cast_on_use <spell_id> <min_level> <charges>");
+        return;
+    }
+    let spell_id = parts[2];
+    let spell_info = get_spell_info(spell_id);
+    if type_of(spell_info) == "()" {
+        send_client_message(connection_id, "Unknown spell id: " + spell_id);
+        return;
+    }
+    let min_level = parse_int(parts[3]);
+    if min_level == () || min_level < 0 {
+        send_client_message(connection_id, "Invalid min_level (must be >= 0).");
+        return;
+    }
+    let charges = parse_int(parts[4]);
+    if charges == () || charges < 0 {
+        send_client_message(connection_id, "Invalid charges (must be >= 0).");
+        return;
+    }
+    if set_item_cast_on_use(item_id, spell_id, min_level, charges) {
+        send_client_message(connection_id, "Cast-on-use set: " + spell_id + " (min level " + min_level + ", " + charges + " charges).");
+    } else {
+        send_client_message(connection_id, "Failed to set cast-on-use.");
     }
 }
 

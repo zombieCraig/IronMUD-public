@@ -245,6 +245,20 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_get("damage_bonus", |i: &mut ItemData| i.damage_bonus as i64)
         // CircleMUD ITEM_LIGHT capacity hours: 0 = permanent, N>0 = burn time left.
         .register_get("light_hours_remaining", |i: &mut ItemData| i.light_hours_remaining as i64)
+        // CircleMUD POTION/WAND/STAFF on-use spell payload. Returns Rhai Map
+        // `#{spell, min_level, charges, max_charges}` or `()` when unset.
+        .register_get("cast_on_use", |i: &mut ItemData| match &i.cast_on_use {
+            Some(c) => {
+                let mut m = rhai::Map::new();
+                m.insert("spell".into(), c.spell.clone().into());
+                m.insert("min_level".into(), (c.min_level as i64).into());
+                m.insert("charges".into(), (c.charges as i64).into());
+                m.insert("max_charges".into(), (c.max_charges as i64).into());
+                rhai::Dynamic::from_map(m)
+            }
+            None => rhai::Dynamic::UNIT,
+        })
+        .register_get("has_cast_on_use", |i: &mut ItemData| i.cast_on_use.is_some())
         // Insulation for temperature/weather system
         .register_get("insulation", |i: &mut ItemData| i.insulation as i64)
         .register_get("has_stats", |i: &mut ItemData| {
@@ -2587,6 +2601,62 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             }
         }
         false
+    });
+
+    // set_item_cast_on_use(item_id, spell, min_level, charges) -> bool
+    // Sets `max_charges = charges`. Empty spell rejects.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_item_cast_on_use",
+        move |item_id: String, spell: String, min_level: i64, charges: i64| {
+            if spell.trim().is_empty() {
+                return false;
+            }
+            if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+                if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                    let charges = (charges as i32).max(0);
+                    item.cast_on_use = Some(crate::types::CastOnUse {
+                        spell,
+                        min_level: (min_level as i32).max(0),
+                        charges,
+                        max_charges: charges,
+                    });
+                    return cloned_db.save_item_data(item).is_ok();
+                }
+            }
+            false
+        },
+    );
+
+    // clear_item_cast_on_use(item_id) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn("clear_item_cast_on_use", move |item_id: String| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                item.cast_on_use = None;
+                return cloned_db.save_item_data(item).is_ok();
+            }
+        }
+        false
+    });
+
+    // decrement_item_charges(item_id) -> i64 — consumes one charge, returns
+    // remaining (or -1 if item missing / no cast_on_use). Saves on success.
+    let cloned_db = db.clone();
+    engine.register_fn("decrement_item_charges", move |item_id: String| -> i64 {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                if let Some(ref mut cou) = item.cast_on_use {
+                    if cou.charges > 0 {
+                        cou.charges -= 1;
+                    }
+                    let remaining = cou.charges as i64;
+                    let _ = cloned_db.save_item_data(item);
+                    return remaining;
+                }
+            }
+        }
+        -1
     });
 
     // ========== Prototype Functions ==========

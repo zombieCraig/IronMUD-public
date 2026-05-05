@@ -18,10 +18,34 @@ use crate::import::{
     TriggerMutation, Warning, WarningKind,
 };
 use crate::types::{
-    CombatZoneType, DamageType, ExtraDesc, ItemData, ItemFlags, ItemTrigger, ItemTriggerType, ItemType, LiquidType,
-    MobileFlags, MobileTrigger, MobileTriggerType, RoomFlags, RoomTrigger, SpawnDestination, SpawnEntityType,
-    TriggerType, WearLocation,
+    CastOnUse, CombatZoneType, DamageType, ExtraDesc, ItemData, ItemFlags, ItemTrigger, ItemTriggerType, ItemType,
+    LiquidType, MobileFlags, MobileTrigger, MobileTriggerType, RoomFlags, RoomTrigger, SpawnDestination,
+    SpawnEntityType, TriggerType, WearLocation,
 };
+
+/// CircleMUD spell-number → IronMUD spell ID lookup, loaded lazily from
+/// `scripts/data/import/circle_spell_mapping.json`. Used by ITEM_SCROLL /
+/// WAND / STAFF / POTION routing to resolve Circle's numeric `v[1..3]` slots.
+fn circle_spell_mapping() -> &'static HashMap<i32, String> {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<HashMap<i32, String>> = OnceLock::new();
+    CACHE.get_or_init(|| {
+        let path = "scripts/data/import/circle_spell_mapping.json";
+        let raw = match std::fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(_) => return HashMap::new(),
+        };
+        let parsed: HashMap<String, String> = serde_json::from_str(&raw).unwrap_or_default();
+        parsed
+            .into_iter()
+            .filter_map(|(k, v)| k.parse::<i32>().ok().map(|n| (n, v)))
+            .collect()
+    })
+}
+
+fn lookup_circle_spell(num: i32) -> Option<&'static str> {
+    circle_spell_mapping().get(&num).map(|s| s.as_str())
+}
 
 /// CircleMUD-specific mapping table. Loaded from JSON, but defaults to a
 /// hard-coded copy embedded in the binary so the importer works even when
@@ -2153,18 +2177,59 @@ fn apply_item_type(item: &IrItem, data: &mut ItemData, warnings: &mut Vec<Warnin
             data.flags.provides_light = true;
             data.light_hours_remaining = if v[2] > 0 { v[2] } else { 0 };
         }
-        // ITEM_SCROLL / WAND / STAFF / POTION — spell-list semantics not modeled.
-        2 | 3 | 4 => {
+        // ITEM_SCROLL — IronMUD scrolls *teach* (learn-on-read) rather than
+        // cast-on-use. We map Circle's first spell slot (`v[1]`) into
+        // `teaches_spell` when the spell is known; warn for additional slots.
+        2 => {
             data.item_type = ItemType::Misc;
-            warnings.push(Warning::new(
-                WarningKind::UnsupportedValueSemantic,
-                Severity::Warn,
-                item.source.clone(),
-                format!(
-                    "ITEM_{type_name} spell list (level={}, spells {}/{}/{} or charges {}) not imported",
-                    v[0], v[1], v[2], v[3], v[2]
-                ),
-            ));
+            if let Some(mapped) = lookup_circle_spell(v[1]) {
+                data.teaches_spell = Some(mapped.to_string());
+            } else if v[1] != 0 {
+                warnings.push(Warning::new(
+                    WarningKind::UnsupportedValueSemantic,
+                    Severity::Warn,
+                    item.source.clone(),
+                    format!("ITEM_SCROLL references unmapped Circle spell #{} (slot 1)", v[1]),
+                ));
+            }
+            for (slot, num) in [(2, v[2]), (3, v[3])] {
+                if num != 0 {
+                    warnings.push(Warning::new(
+                        WarningKind::UnsupportedValueSemantic,
+                        Severity::Warn,
+                        item.source.clone(),
+                        format!(
+                            "ITEM_SCROLL slot {} (Circle spell #{}) dropped — IronMUD scrolls teach a single spell.",
+                            slot, num
+                        ),
+                    ));
+                }
+            }
+        }
+        // ITEM_WAND / STAFF — single-spell, charge-based items. v[0]=min level,
+        // v[1]=spell number, v[2]=max charges, v[3]=current charges.
+        3 | 4 => {
+            data.item_type = if item.item_type == 3 { ItemType::Wand } else { ItemType::Staff };
+            if let Some(mapped) = lookup_circle_spell(v[1]) {
+                let max_charges = v[2].max(0);
+                let charges = v[3].max(0).min(max_charges.max(0));
+                data.cast_on_use = Some(CastOnUse {
+                    spell: mapped.to_string(),
+                    min_level: v[0].max(0),
+                    charges,
+                    max_charges,
+                });
+            } else {
+                warnings.push(Warning::new(
+                    WarningKind::UnsupportedValueSemantic,
+                    Severity::Warn,
+                    item.source.clone(),
+                    format!(
+                        "ITEM_{type_name} references unmapped Circle spell #{}; cast_on_use left empty (item becomes a dud)",
+                        v[1]
+                    ),
+                ));
+            }
         }
         // ITEM_WEAPON — values map cleanly to damage dice + damage type.
         5 => {
@@ -2195,21 +2260,39 @@ fn apply_item_type(item: &IrItem, data: &mut ItemData, warnings: &mut Vec<Warnin
             data.item_type = ItemType::Armor;
             data.armor_class = Some(-v[0]);
         }
-        // ITEM_POTION — fold into LiquidContainer with capacity 1 sip.
+        // ITEM_POTION — single-spell, single-charge magical potion. v[0]=min level
+        // (ignored; potions are universal in IronMUD), v[1]=primary spell. We
+        // use the first spell slot and warn for slots 2-3.
         10 => {
-            data.item_type = ItemType::LiquidContainer;
-            data.liquid_max = 1;
-            data.liquid_current = 1;
-            data.liquid_type = LiquidType::HealingPotion;
-            warnings.push(Warning::new(
-                WarningKind::UnsupportedValueSemantic,
-                Severity::Warn,
-                item.source.clone(),
-                format!(
-                    "ITEM_POTION spell list (level={}, spells {}/{}/{}) not imported; modeled as a 1-sip liquid",
-                    v[0], v[1], v[2], v[3]
-                ),
-            ));
+            data.item_type = ItemType::Potion;
+            if let Some(mapped) = lookup_circle_spell(v[1]) {
+                data.cast_on_use = Some(CastOnUse {
+                    spell: mapped.to_string(),
+                    min_level: 0,
+                    charges: 1,
+                    max_charges: 1,
+                });
+            } else if v[1] != 0 {
+                warnings.push(Warning::new(
+                    WarningKind::UnsupportedValueSemantic,
+                    Severity::Warn,
+                    item.source.clone(),
+                    format!("ITEM_POTION references unmapped Circle spell #{}; cast_on_use left empty", v[1]),
+                ));
+            }
+            for (slot, num) in [(2, v[2]), (3, v[3])] {
+                if num != 0 {
+                    warnings.push(Warning::new(
+                        WarningKind::UnsupportedValueSemantic,
+                        Severity::Warn,
+                        item.source.clone(),
+                        format!(
+                            "ITEM_POTION slot {} (Circle spell #{}) dropped — only the primary spell is imported.",
+                            slot, num
+                        ),
+                    ));
+                }
+            }
         }
         // ITEM_WORN — unimplemented in stock; treat as Misc and let
         // wear_locations carry the slot info.

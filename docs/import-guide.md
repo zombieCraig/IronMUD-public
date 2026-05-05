@@ -229,14 +229,14 @@ commands](#zone-reset-commands)).
 | CircleMUD type | IronMUD result | Notes |
 |---|---|---|
 | `LIGHT` (1) | `Misc` + `flags.provides_light` + `light_hours_remaining = v2` | `v2 ≤ 0` (incl. `-1` permanent) → `0` (no decay); positive → game-hour countdown that flips `provides_light` off when it hits 0 |
-| `SCROLL` (2) | `Misc` | spell list (`v0..v3`) **Warn** — no `cast_spells_on_use` field |
-| `WAND` (3) | `Misc` | charges + spell **Warn** — same gap |
-| `STAFF` (4) | `Misc` | charges + spell **Warn** — same gap |
+| `SCROLL` (2) | `Misc` + `teaches_spell = lookup(v1)` | first spell slot becomes IronMUD's *teach-on-read* (different from Circle's cast-on-read; deliberate divergence). v2/v3 spell slots **Warn** (single-spell parity); unmapped Circle spell numbers **Warn** |
+| `WAND` (3) | `Wand` + `cast_on_use = {spell, min_level=v0, charges=v3, max_charges=v2}` | use via `zap <wand> [target]`; magic skill ≥ `min_level` required; consumes one charge per use. Unmapped Circle spell # **Warn**, item becomes a dud |
+| `STAFF` (4) | `Staff` + `cast_on_use = {...}` | same shape as WAND; `brandish <staff>` fires the spell on every hostile in the room (damage/debuff) or on the wielder (buff/heal) |
 | `WEAPON` (5) | `Weapon` | `damage_dice_count`/`_sides` from `v1`/`v2`; `damage_type` from `v3` verb (see below) |
 | `FIRE_WEAPON` (6), `MISSILE` (7) | `Misc` | unimplemented in stock Circle, **Warn** |
 | `TREASURE` (8) | `Misc` + `categories: ["treasure"]` | |
 | `ARMOR` (9) | `Armor` | `armor_class = -v0` (sign flip — Circle is negative-better) |
-| `POTION` (10) | `LiquidContainer` (capacity 1 sip, type `HealingPotion`) | spell list **Warn** |
+| `POTION` (10) | `Potion` + `cast_on_use = {spell=lookup(v1), min_level=0, charges=1, max_charges=1}` | use via `quaff <potion>`; universal access (no skill gate); single-use (deleted on quaff). Slots v2/v3 **Warn** (single-spell parity); unmapped Circle spell # **Warn** |
 | `WORN` (11) | `Misc` | unimplemented stock; wear locations carry the slot info |
 | `OTHER` (12) | `Misc` | clean |
 | `TRASH` (13) | `Misc` + `categories: ["trash"]` | |
@@ -250,6 +250,20 @@ commands](#zone-reset-commands)).
 | `PEN` (21) | `Misc` | writing-tool **Warn** |
 | `BOAT` (22) | `Misc` + `flags.boat = true` | clean |
 | `FOUNTAIN` (23) | `LiquidContainer` | same shape as DRINKCON; infinite-fill behaviour **Warn** |
+
+### CircleMUD spell-number mapping (SCROLL / POTION / WAND / STAFF)
+
+`SCROLL`/`POTION`/`WAND`/`STAFF` items reference spells by Circle's
+`spells.h` numeric ID (e.g. `32 = magic_missile`, `38 = sleep`). The
+importer translates those numbers into IronMUD spell IDs via a JSON
+table at `scripts/data/import/circle_spell_mapping.json`. Numbers
+absent from the table surface as a warning at import time and the
+item's `cast_on_use` is left empty (the item becomes a dud — builders
+can fix it with `oedit <id> cast_on_use <spell> <min> <charges>`).
+
+To map a new Circle spell, add an entry to the JSON file (key is the
+Circle number as a quoted string; value is the IronMUD spell id). No
+code change needed — the mapping is loaded lazily on first import.
 
 ### `WEAPON` damage verb (`v3`) → `DamageType`
 
@@ -1033,12 +1047,8 @@ ranked below.
 Histogram numbers below are from a clean dry-run against stock CircleMUD 3.1
 (30 zones, 679 imported items).
 
-- **Spell-bearing consumables** (`SCROLL`, `POTION`, `WAND`, `STAFF`)
-  — `v0..v3` carry "cast spell N at level L on use" semantics. IronMUD
-  has `teaches_spell` (different concept: learning the spell) but no
-  "cast on use". Likely shape: `cast_on_use: Vec<{spell, level,
-  charges}>` on `ItemData` consulted by `quaff` / `recite` /
-  `zap` / `brandish` commands.
+(High-priority backlog drained — see "Object subsystems — Medium priority"
+below for what's next.)
 
 ### Object subsystems — Medium priority
 

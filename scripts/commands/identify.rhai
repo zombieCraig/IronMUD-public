@@ -90,6 +90,7 @@ fn build_identify_output(item, shopkeeper, cost) {
     output += build_insulation_section(item);
     output += build_all_stats(item);
     output += build_light_section(item);
+    output += build_cast_on_use_section(item);
     output += build_flags_section(item);
     output += build_ranged_section(item);
     return output;
@@ -149,6 +150,22 @@ fn build_light_section(item) {
         return "\nLight: " + item.light_hours_remaining + " hour(s) of burn time remaining";
     }
     return "\nLight: this source burns indefinitely";
+}
+
+fn build_cast_on_use_section(item) {
+    if !item.has_cast_on_use { return ""; }
+    let cou = item.cast_on_use;
+    let sid = cou["spell"];
+    let info = get_spell_info(sid);
+    let spell_label = if type_of(info) != "()" && info.len() > 0 { info["name"] } else { sid };
+    let output = "\nCast on use: " + spell_label;
+    if cou["min_level"] > 0 {
+        output += "\n  Skill required: magic " + cou["min_level"];
+    }
+    if cou["max_charges"] > 0 {
+        output += "\n  Charges: " + cou["charges"] + "/" + cou["max_charges"];
+    }
+    return output;
 }
 
 fn build_flags_section(item) {

@@ -300,7 +300,7 @@ fn parses_items_into_plan() {
     let (ir, parse_warnings) = CircleEngine.parse(&fixture_root()).expect("parse");
     assert_eq!(parse_warnings.len(), 0, "fixture should parse cleanly");
     let zone = &ir.zones[0];
-    assert_eq!(zone.items.len(), 8, "eight fixture items in obj/9000.obj");
+    assert_eq!(zone.items.len(), 9, "nine fixture items in obj/9000.obj");
 
     let opts = MappingOptions {
         circle: mapping::CircleMappingTable::load_default(),
@@ -310,7 +310,7 @@ fn parses_items_into_plan() {
         existing_item_vnums: Vec::new(),
     };
     let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
-    assert_eq!(plan.items.len(), 8);
+    assert_eq!(plan.items.len(), 9);
 
     // Sword: weapon, 1d8 slashing, GLOW (extra-bit `a` = bit 0), wearable
     // wielded; APPLY_DAMROLL +2 → damage_bonus = 2 (CircleMUD APPLY_DAMROLL parity).
@@ -392,6 +392,21 @@ fn parses_items_into_plan() {
         "ITEM_LIGHT capacity hours should no longer warn"
     );
 
+    // Wand: CircleMUD ITEM_WAND (type 3). v[0]=1 min level, v[1]=32 → magic_missile,
+    // v[2]=5 max charges, v[3]=5 current charges. Imports as ItemType::Wand with
+    // a populated cast_on_use payload — no spell-list warnings.
+    let wand = plan.items.iter().find(|i| i.source_vnum == 9018).expect("wand");
+    assert_eq!(wand.data.item_type, ItemType::Wand);
+    let cou = wand.data.cast_on_use.as_ref().expect("wand has cast_on_use populated");
+    assert_eq!(cou.spell, "magic_missile");
+    assert_eq!(cou.min_level, 1);
+    assert_eq!(cou.charges, 5);
+    assert_eq!(cou.max_charges, 5);
+    assert!(
+        !warnings.iter().any(|w| w.message.contains("ITEM_WAND")),
+        "ITEM_WAND should no longer warn for known spells"
+    );
+
     // Cursed amulet: NODROP set, ANTI_GOOD warns.
     let amulet = plan.items.iter().find(|i| i.source_vnum == 9017).expect("amulet");
     assert!(amulet.data.flags.no_drop);
@@ -425,8 +440,8 @@ fn applies_items_to_tmp_db() {
         };
         let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
         let summary = writer::apply(&db, &plan, &warnings).expect("apply");
-        assert_eq!(summary.written_items, 8);
-        assert_eq!(summary.planned_items, 8);
+        assert_eq!(summary.written_items, 9);
+        assert_eq!(summary.planned_items, 9);
 
         let sword = db
             .get_item_by_vnum("test_fixture_village_9010")

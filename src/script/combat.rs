@@ -2339,6 +2339,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 hit_bonus: 0,
                 damage_bonus: 0,
                 light_hours_remaining: 0,
+                cast_on_use: None,
                 protects: vec![],
                 flags: ItemFlags {
                     no_get: true, // Can't pick up corpses

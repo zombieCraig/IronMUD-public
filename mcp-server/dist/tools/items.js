@@ -48,7 +48,7 @@ export const itemToolDefinitions = [
                 offset: { type: "number", default: 0 },
                 item_type: {
                     type: "string",
-                    enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold"],
+                    enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold", "ammunition", "potion", "wand", "staff"],
                 },
             },
         },
@@ -98,7 +98,7 @@ export const itemToolDefinitions = [
                 keywords: { type: "array", items: { type: "string" } },
                 item_type: {
                     type: "string",
-                    enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold"],
+                    enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold", "ammunition", "potion", "wand", "staff"],
                 },
                 weight: { type: "number", default: 1 },
                 value: { type: "number", default: 0 },
@@ -126,6 +126,17 @@ export const itemToolDefinitions = [
                 hit_bonus: { type: "number", description: "Bonus to to-hit roll while equipped (CircleMUD APPLY_HITROLL parity); summed across all worn items" },
                 damage_bonus: { type: "number", description: "Bonus to damage roll while equipped (CircleMUD APPLY_DAMROLL parity); summed across all worn items" },
                 light_hours_remaining: { type: "number", description: "ITEM_LIGHT capacity hours: 0 = permanent, N>0 = remaining hours of light when equipped lit (decrements per game hour, switches off at 0)" },
+                cast_on_use: {
+                    type: "object",
+                    description: "POTION/WAND/STAFF cast-on-use spell. Bound to item_type potion/wand/staff. Wands/staves require magic skill >= min_level; potions are universal.",
+                    properties: {
+                        spell: { type: "string", description: "Spell ID from spells_fantasy.json (e.g., 'magic_missile')" },
+                        min_level: { type: "number", description: "Magic skill level required (0 = none, common for potions)" },
+                        charges: { type: "number", description: "Current charges remaining (potions ignore; wands/staves consume one per use)" },
+                        max_charges: { type: "number", description: "Maximum charges (display + future regen)" },
+                    },
+                    required: ["spell"],
+                },
                 flags: itemFlagsSchema,
                 caliber: { type: "string", description: "Firearm caliber (e.g., '9mm', '5.56')" },
                 ranged_type: { type: "string", description: "Ranged weapon type (e.g., 'pistol', 'rifle')" },
@@ -212,7 +223,7 @@ export const itemToolDefinitions = [
                 short_desc: { type: "string" },
                 long_desc: { type: "string" },
                 vnum: { type: "string", description: "New vnum (must be unique)" },
-                item_type: { type: "string", enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold"], description: "Change item type" },
+                item_type: { type: "string", enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold", "ammunition", "potion", "wand", "staff"], description: "Change item type" },
                 keywords: { type: "array", items: { type: "string" } },
                 weight: { type: "number" },
                 value: { type: "number" },
@@ -232,6 +243,17 @@ export const itemToolDefinitions = [
                 hit_bonus: { type: "number", description: "Bonus to to-hit roll while equipped (CircleMUD APPLY_HITROLL parity); summed across all worn items" },
                 damage_bonus: { type: "number", description: "Bonus to damage roll while equipped (CircleMUD APPLY_DAMROLL parity); summed across all worn items" },
                 light_hours_remaining: { type: "number", description: "ITEM_LIGHT capacity hours: 0 = permanent, N>0 = remaining hours of light when equipped lit" },
+                cast_on_use: {
+                    type: "object",
+                    description: "POTION/WAND/STAFF cast-on-use spell. Bound to item_type potion/wand/staff. Wands/staves require magic skill >= min_level; potions are universal.",
+                    properties: {
+                        spell: { type: "string", description: "Spell ID from spells_fantasy.json" },
+                        min_level: { type: "number", description: "Magic skill level required (0 = none)" },
+                        charges: { type: "number", description: "Current charges remaining" },
+                        max_charges: { type: "number", description: "Maximum charges" },
+                    },
+                    required: ["spell"],
+                },
                 wear_location: {
                     type: "string",
                     enum: ["head", "neck", "shoulders", "back", "torso", "waist", "ears",
