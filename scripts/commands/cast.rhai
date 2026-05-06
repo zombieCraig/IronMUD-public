@@ -517,6 +517,12 @@ fn run_command(args, connection_id) {
         }
     }
 
+    // Silence buff: caster cannot speak the words. god_mode bypasses.
+    if !char.god_mode && has_buff(char.name, "silence") {
+        send_client_message(connection_id, "Your throat seizes - you cannot speak the words of the spell.");
+        return;
+    }
+
     if args == "" {
         send_client_message(connection_id, "Cast what spell? Try 'spells' to see available spells.");
         return;

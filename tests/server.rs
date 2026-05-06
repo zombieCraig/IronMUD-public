@@ -1565,6 +1565,7 @@ mod migration_tests {
             traps: Vec::new(),
             living_capacity: capacity,
             residents: Vec::new(),
+            dg_vars: std::collections::HashMap::new(),
         }
     }
 
@@ -4434,6 +4435,7 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
             traps: Vec::new(),
             living_capacity: 0,
             residents: Vec::new(),
+            dg_vars: std::collections::HashMap::new(),
         };
         let room_id = room.id;
         db.save_room_data(room).expect("save room");
@@ -5049,6 +5051,7 @@ fn stay_zone_test_room(area_id: Option<uuid::Uuid>) -> ironmud::types::RoomData 
         traps: Vec::new(),
         living_capacity: 0,
         residents: Vec::new(),
+        dg_vars: std::collections::HashMap::new(),
     }
 }
 

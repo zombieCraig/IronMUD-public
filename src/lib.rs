@@ -60,6 +60,15 @@ pub struct PlayerSession {
     pub olc_buffer: Vec<String>,
     pub olc_edit_room: Option<Uuid>,
     pub olc_edit_item: Option<Uuid>,
+    /// DG trigger editing — host mobile when editing a mob's trigger.
+    /// Used together with `olc_edit_trigger_index` and `olc_edit_trigger_host`
+    /// to identify which trigger to write the edited body to.
+    pub olc_edit_mobile: Option<Uuid>,
+    /// `"mobile" | "item" | "room"` — which entity kind owns the trigger
+    /// being edited. The matching `olc_edit_*` field carries the id.
+    pub olc_edit_trigger_host: Option<String>,
+    /// Index into the host's `triggers` Vec.
+    pub olc_edit_trigger_index: Option<usize>,
     pub olc_extra_keywords: Vec<String>,
     pub olc_undo_buffer: Option<Vec<String>>,
     // Character creation wizard state (JSON-serialized)
@@ -1120,6 +1129,9 @@ pub async fn handle_connection(
                 olc_buffer: Vec::new(),
                 olc_edit_room: None,
                 olc_edit_item: None,
+                olc_edit_mobile: None,
+                olc_edit_trigger_host: None,
+                olc_edit_trigger_index: None,
                 olc_extra_keywords: Vec::new(),
                 olc_undo_buffer: None,
                 wizard_data: None,
@@ -1648,6 +1660,133 @@ pub async fn handle_connection(
             continue;
         }
 
+        // Check for OLC DG trigger body collection mode
+        if olc_mode.as_deref() == Some("collecting_dg_body") {
+            let result = {
+                let mut conns = connections.lock().unwrap();
+                if let Some(session) = conns.get_mut(&connection_id) {
+                    handle_editor_command(&input, &mut session.olc_buffer, &mut session.olc_undo_buffer)
+                } else {
+                    EditorCommandResult::Cancel
+                }
+            };
+
+            match result {
+                EditorCommandResult::Handled(msg) => {
+                    let _ = tx_client.send(msg);
+                }
+                EditorCommandResult::Save(content) => {
+                    const MAX_DG_BODY_BYTES: usize = 32 * 1024;
+                    if content.len() > MAX_DG_BODY_BYTES {
+                        let _ = tx_client.send(format!(
+                            "DG body too long ({} bytes, max {}). Trim with .d or .r, then .save.\n",
+                            content.len(),
+                            MAX_DG_BODY_BYTES
+                        ));
+                    } else {
+                        let (host_kind, host_id, idx) = {
+                            let conns = connections.lock().unwrap();
+                            conns
+                                .get(&connection_id)
+                                .map(|s| {
+                                    let kind = s.olc_edit_trigger_host.clone();
+                                    let id = match kind.as_deref() {
+                                        Some("mobile") => s.olc_edit_mobile,
+                                        Some("item") => s.olc_edit_item,
+                                        Some("room") => s.olc_edit_room,
+                                        _ => None,
+                                    };
+                                    (kind, id, s.olc_edit_trigger_index)
+                                })
+                                .unwrap_or((None, None, None))
+                        };
+
+                        let saved = if let (Some(kind), Some(id), Some(idx)) = (host_kind, host_id, idx) {
+                            let world = state.lock().unwrap();
+                            let body = if content.is_empty() { None } else { Some(content) };
+                            match kind.as_str() {
+                                "mobile" => world
+                                    .db
+                                    .update_mobile(&id, |m| {
+                                        if idx < m.triggers.len() {
+                                            m.triggers[idx].dg_body = body.clone();
+                                        }
+                                    })
+                                    .is_ok(),
+                                "item" => world
+                                    .db
+                                    .update_item(&id, |i| {
+                                        if idx < i.triggers.len() {
+                                            i.triggers[idx].dg_body = body.clone();
+                                        }
+                                    })
+                                    .is_ok(),
+                                "room" => world
+                                    .db
+                                    .update_room(&id, |r| {
+                                        if idx < r.triggers.len() {
+                                            r.triggers[idx].dg_body = body.clone();
+                                        }
+                                    })
+                                    .is_ok(),
+                                _ => false,
+                            }
+                        } else {
+                            false
+                        };
+
+                        let _ = tx_client.send(if saved {
+                            "DG trigger body saved.\n".to_string()
+                        } else {
+                            "Error: could not save DG trigger body.\n".to_string()
+                        });
+
+                        {
+                            let mut conns = connections.lock().unwrap();
+                            if let Some(session) = conns.get_mut(&connection_id) {
+                                session.olc_mode = None;
+                                session.olc_buffer.clear();
+                                session.olc_edit_room = None;
+                                session.olc_edit_item = None;
+                                session.olc_edit_mobile = None;
+                                session.olc_edit_trigger_host = None;
+                                session.olc_edit_trigger_index = None;
+                                session.olc_undo_buffer = None;
+                            }
+                        }
+                        let prompt = build_prompt(&connection_id, &connections, &state);
+                        let _ = tx_client.send(prompt);
+                    }
+                }
+                EditorCommandResult::Cancel => {
+                    {
+                        let mut conns = connections.lock().unwrap();
+                        if let Some(session) = conns.get_mut(&connection_id) {
+                            session.olc_mode = None;
+                            session.olc_buffer.clear();
+                            session.olc_edit_room = None;
+                            session.olc_edit_item = None;
+                            session.olc_edit_mobile = None;
+                            session.olc_edit_trigger_host = None;
+                            session.olc_edit_trigger_index = None;
+                            session.olc_undo_buffer = None;
+                        }
+                    }
+                    let _ = tx_client.send("DG trigger body editing cancelled.\n".to_string());
+                    let prompt = build_prompt(&connection_id, &connections, &state);
+                    let _ = tx_client.send(prompt);
+                }
+                EditorCommandResult::AppendText(text) => {
+                    let mut conns = connections.lock().unwrap();
+                    if let Some(session) = conns.get_mut(&connection_id) {
+                        session.olc_undo_buffer = Some(session.olc_buffer.clone());
+                        session.olc_buffer.push(text);
+                    }
+                }
+            }
+            continue;
+        }
+
         // Check for OLC extra description collection mode
         if olc_mode.as_deref() == Some("collecting_extra_desc") {
             // Use shared editor command handler
@@ -2140,6 +2279,30 @@ pub async fn handle_connection(
                 };
                 if is_unconscious && !is_unconscious_allowed(&resolved_command) {
                     let _ = tx_client.send("You are unconscious and cannot do that.\n".to_string());
+                    continue;
+                }
+            }
+
+            // DG OnCommand hook: fire any OnCommand triggers on the room,
+            // its mobs, and the player's items before the rhai dispatch.
+            // Return(0) cancels the host command. Skip while not logged in.
+            if is_logged_in {
+                let db_arc = {
+                    let world = state.lock().unwrap();
+                    std::sync::Arc::new(world.db.clone())
+                };
+                if crate::script::dg::fire_oncommand_for_player(
+                    &connection_id,
+                    command_name,
+                    &resolved_command,
+                    args,
+                    &db_arc,
+                    &connections,
+                ) {
+                    // Suppressed: skip rhai dispatch and the prompt redraw
+                    // path picks up cleanly on the next iteration.
+                    let prompt = build_prompt(&connection_id, &connections, &state);
+                    let _ = tx_client.send(prompt);
                     continue;
                 }
             }

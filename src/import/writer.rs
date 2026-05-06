@@ -245,6 +245,7 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
             traps: Vec::new(),
             living_capacity: 0,
             residents: Vec::new(),
+            dg_vars: std::collections::HashMap::new(),
         };
         db.save_room_data(room)
             .with_context(|| format!("saving room {}", r.vnum))?;
@@ -484,6 +485,15 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
         }
     }
 
+    // Pass 8: DG trigger prototypes. Seeded so the runtime `attach <vnum>`
+    // statement (and `trigger dg attach` builder cmd) can resolve bodies.
+    let mut written_dg_protos = 0usize;
+    for proto in &plan.dg_trigger_protos {
+        db.save_dg_trigger_proto(proto)
+            .with_context(|| format!("saving DG trigger prototype {}", proto.vnum))?;
+        written_dg_protos += 1;
+    }
+
     let summary = summarize(
         plan,
         warnings,
@@ -497,6 +507,7 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
         written_spawns,
         applied_triggers,
     );
+    let _ = written_dg_protos;
     println!(
         "== Import applied ==\n  areas: {}\n  rooms: {}\n  exits linked: {} (dropped: {})\n  mobiles: {}\n  items: {}\n  shop overlays: {}\n  spawn points: {}\n  trigger overlays: {}\n",
         summary.written_areas,

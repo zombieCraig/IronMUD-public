@@ -503,6 +503,7 @@ async fn create_room(
         traps: Vec::new(),
         living_capacity: 0,
         residents: Vec::new(),
+        dg_vars: std::collections::HashMap::new(),
     };
 
     if room.flags.liveable && room.living_capacity <= 0 {
@@ -1061,6 +1062,8 @@ async fn add_trigger(
         last_fired: 0,
         chance: req.chance,
         args: req.args,
+        dg_body: None,
+        dg_name: None,
     };
 
     room.triggers.push(trigger);

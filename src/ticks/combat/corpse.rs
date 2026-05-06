@@ -151,6 +151,7 @@ impl CorpseBuilder {
             plant_prototype_vnum: String::new(),
             fertilizer_duration: 0,
             treats_infestation: String::new(),
+            dg_vars: std::collections::HashMap::new(),
         }
     }
 }

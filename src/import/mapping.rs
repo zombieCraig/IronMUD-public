@@ -449,56 +449,71 @@ pub fn ir_to_plan(ir: &ImportIR, opts: &MappingOptions) -> (Plan, Vec<Warning>) 
         warnings.extend(trig_warnings);
     }
 
-    // tbaMUD DG Scripts: per-attachment Warns naming the source trigger
-    // vnum + name. The mob/obj/room source-IR carries `trigger_vnums`; we
-    // resolve each against `dg_triggers` for the human-readable name.
+    // tbaMUD DG Scripts: attach each trigger as a real trigger on the
+    // host entity, with `dg_body = Some(body)` so the runtime DG
+    // interpreter (`src/script/dg/`) handles fire dispatch. Triggers
+    // whose flag letters don't (yet) map to a native IronMUD `TriggerType`
+    // surface as a single Info warning each — they're parseable but won't
+    // fire until we wire the corresponding hook.
     if !ir.dg_triggers.is_empty() {
+        // Seed every parsed trigger into the runtime prototype registry,
+        // regardless of whether any zone T-line attaches it. This is what
+        // `attach <vnum> <target>` (DG statement and builder cmd) reads
+        // from at runtime.
+        for t in &ir.dg_triggers {
+            let attach_kind = match t.attach_type_raw {
+                0 => crate::types::DgAttachKind::Mob,
+                1 => crate::types::DgAttachKind::Obj,
+                2 => crate::types::DgAttachKind::Room,
+                _ => continue,
+            };
+            plan.dg_trigger_protos.push(crate::types::DgTriggerProto {
+                vnum: t.vnum.to_string(),
+                name: t.name.clone(),
+                attach_kind,
+                flags: t.trigger_flags.clone(),
+                numeric_arg: t.numeric_arg,
+                arglist: t.arglist.clone(),
+                body: t.body.clone(),
+            });
+        }
+
+        // Static-analyze each body and emit one Info warning per trigger
+        // summarising distinct issues. Catches commands/variables/eval that
+        // the runtime would silently no-op on, so builders see them in the
+        // import report instead of having to play through the world.
+        for t in &ir.dg_triggers {
+            if t.body.trim().is_empty() {
+                continue;
+            }
+            let issues = crate::script::dg::analyze::analyze(&t.body);
+            if issues.is_empty() {
+                continue;
+            }
+            let summary = crate::script::dg::analyze::summarize(&issues);
+            warnings.push(Warning::new(
+                WarningKind::Info,
+                Severity::Info,
+                t.source.clone(),
+                format!(
+                    "DG Scripts trigger #{} ({}) has unsupported features: {}",
+                    t.vnum, t.name, summary
+                ),
+            ));
+        }
+
         let trig_index: HashMap<i32, &IrDgTrigger> =
             ir.dg_triggers.iter().map(|t| (t.vnum, t)).collect();
-        for zone in &ir.zones {
-            for room in &zone.rooms {
-                for tv in &room.trigger_vnums {
-                    let name = trig_index.get(tv).map(|t| t.name.as_str()).unwrap_or("(unknown)");
-                    warnings.push(
-                        Warning::new(
-                            WarningKind::DeferredFeature,
-                            Severity::Warn,
-                            room.source.clone(),
-                            format!("DG Scripts trigger #{tv} ({name}) attached to room #{}; body not translated", room.vnum),
-                        )
-                        .with_suggestion("re-author behavior in Rhai under scripts/commands/ or scripts/triggers/"),
-                    );
-                }
-            }
-            for mob in &zone.mobiles {
-                for tv in &mob.trigger_vnums {
-                    let name = trig_index.get(tv).map(|t| t.name.as_str()).unwrap_or("(unknown)");
-                    warnings.push(
-                        Warning::new(
-                            WarningKind::DeferredFeature,
-                            Severity::Warn,
-                            mob.source.clone(),
-                            format!("DG Scripts trigger #{tv} ({name}) attached to mob #{}; body not translated", mob.vnum),
-                        )
-                        .with_suggestion("re-author behavior as a MobileTrigger in Rhai"),
-                    );
-                }
-            }
-            for item in &zone.items {
-                for tv in &item.trigger_vnums {
-                    let name = trig_index.get(tv).map(|t| t.name.as_str()).unwrap_or("(unknown)");
-                    warnings.push(
-                        Warning::new(
-                            WarningKind::DeferredFeature,
-                            Severity::Warn,
-                            item.source.clone(),
-                            format!("DG Scripts trigger #{tv} ({name}) attached to obj #{}; body not translated", item.vnum),
-                        )
-                        .with_suggestion("re-author behavior as an ItemTrigger in Rhai"),
-                    );
-                }
-            }
-        }
+        let dg_overlays_and_warnings = map_dg_triggers(
+            &trig_index,
+            &ir.zones,
+            &room_index_for_dg(&plan),
+            &mob_index_for_dg(&plan),
+            &item_index_for_dg(&plan),
+        );
+        plan.trigger_overlays.extend(dg_overlays_and_warnings.0);
+        warnings.extend(dg_overlays_and_warnings.1);
+
         // Surface any defined-but-unattached triggers as a single Info note
         // so the audit trail captures them. (Stock tbaMUD has plenty of
         // these — guild guards, etc., that get attached via zone resets the
@@ -541,6 +556,157 @@ pub fn ir_to_plan(ir: &ImportIR, opts: &MappingOptions) -> (Plan, Vec<Warning>) 
     }
 
     (plan, warnings)
+}
+
+/// Build (source-vnum → prefixed-vnum) indexes for the planned rooms /
+/// mobs / items. Used to resolve T-line trigger attachments to their
+/// IronMUD targets.
+fn room_index_for_dg(plan: &Plan) -> HashMap<i32, String> {
+    plan.rooms.iter().map(|r| (r.source_vnum, r.vnum.clone())).collect()
+}
+
+fn mob_index_for_dg(plan: &Plan) -> HashMap<i32, String> {
+    plan.mobiles.iter().map(|m| (m.source_vnum, m.vnum.clone())).collect()
+}
+
+fn item_index_for_dg(plan: &Plan) -> HashMap<i32, String> {
+    plan.items.iter().map(|i| (i.source_vnum, i.vnum.clone())).collect()
+}
+
+/// Translate every (zone × T-line) DG trigger reference into one or more
+/// [`PlannedTriggerOverlay`]s. Each emitted overlay carries the trigger
+/// body in `dg_body` so the runtime interpreter dispatches it.
+///
+/// Returns `(overlays, warnings)`. The warnings are Info-severity notes
+/// for triggers whose flag letters don't (yet) map to a native IronMUD
+/// `TriggerType` (e.g. MTRIG_FIGHT, OTRIG_GIVE — Phase-2/3 wiring).
+fn map_dg_triggers(
+    trig_index: &HashMap<i32, &IrDgTrigger>,
+    zones: &[IrZone],
+    room_index: &HashMap<i32, String>,
+    mob_index: &HashMap<i32, String>,
+    item_index: &HashMap<i32, String>,
+) -> (Vec<PlannedTriggerOverlay>, Vec<Warning>) {
+    use crate::import::engines::tba::trg_map;
+
+    let mut overlays = Vec::new();
+    let mut warnings = Vec::new();
+
+    for zone in zones {
+        for room in &zone.rooms {
+            for tv in &room.trigger_vnums {
+                let Some(t) = trig_index.get(tv) else { continue };
+                let target = match room_index.get(&room.vnum) {
+                    Some(v) => v.clone(),
+                    None => continue,
+                };
+                let mapped = trg_map::room_trigger_types(&t.trigger_flags);
+                if mapped.is_empty() {
+                    warnings.push(unsupported_dg_warning(t, "room", room.vnum, &room.source));
+                    continue;
+                }
+                for ttype in mapped {
+                    overlays.push(PlannedTriggerOverlay {
+                        attach_type: AttachType::Room,
+                        target_vnum: target.clone(),
+                        specproc_name: format!("dg_trigger_{}", t.vnum),
+                        mutation: TriggerMutation::AddRoomTrigger(RoomTrigger {
+                            trigger_type: ttype,
+                            script_name: String::new(),
+                            enabled: true,
+                            interval_secs: 60,
+                            last_fired: 0,
+                            chance: t.numeric_arg.clamp(1, 100),
+                            args: Vec::new(),
+                            dg_body: Some(t.body.clone()),
+                            dg_name: Some(t.name.clone()),
+                        }),
+                        source: t.source.clone(),
+                    });
+                }
+            }
+        }
+
+        for mob in &zone.mobiles {
+            for tv in &mob.trigger_vnums {
+                let Some(t) = trig_index.get(tv) else { continue };
+                let target = match mob_index.get(&mob.vnum) {
+                    Some(v) => v.clone(),
+                    None => continue,
+                };
+                let mapped = trg_map::mobile_trigger_types(&t.trigger_flags);
+                if mapped.is_empty() {
+                    warnings.push(unsupported_dg_warning(t, "mob", mob.vnum, &mob.source));
+                    continue;
+                }
+                for ttype in mapped {
+                    overlays.push(PlannedTriggerOverlay {
+                        attach_type: AttachType::Mob,
+                        target_vnum: target.clone(),
+                        specproc_name: format!("dg_trigger_{}", t.vnum),
+                        mutation: TriggerMutation::AddMobTrigger(MobileTrigger {
+                            trigger_type: ttype,
+                            script_name: String::new(),
+                            enabled: true,
+                            chance: t.numeric_arg.clamp(1, 100),
+                            args: Vec::new(),
+                            interval_secs: 60,
+                            last_fired: 0,
+                            dg_body: Some(t.body.clone()),
+                            dg_name: Some(t.name.clone()),
+                        }),
+                        source: t.source.clone(),
+                    });
+                }
+            }
+        }
+
+        for item in &zone.items {
+            for tv in &item.trigger_vnums {
+                let Some(t) = trig_index.get(tv) else { continue };
+                let target = match item_index.get(&item.vnum) {
+                    Some(v) => v.clone(),
+                    None => continue,
+                };
+                let mapped = trg_map::item_trigger_types(&t.trigger_flags);
+                if mapped.is_empty() {
+                    warnings.push(unsupported_dg_warning(t, "obj", item.vnum, &item.source));
+                    continue;
+                }
+                for ttype in mapped {
+                    overlays.push(PlannedTriggerOverlay {
+                        attach_type: AttachType::Obj,
+                        target_vnum: target.clone(),
+                        specproc_name: format!("dg_trigger_{}", t.vnum),
+                        mutation: TriggerMutation::AddItemTrigger(ItemTrigger {
+                            trigger_type: ttype,
+                            script_name: String::new(),
+                            enabled: true,
+                            chance: t.numeric_arg.clamp(1, 100),
+                            args: Vec::new(),
+                            dg_body: Some(t.body.clone()),
+                            dg_name: Some(t.name.clone()),
+                        }),
+                        source: t.source.clone(),
+                    });
+                }
+            }
+        }
+    }
+
+    (overlays, warnings)
+}
+
+fn unsupported_dg_warning(t: &IrDgTrigger, host_kind: &str, host_vnum: i32, source: &SourceLoc) -> Warning {
+    Warning::new(
+        WarningKind::Info,
+        Severity::Info,
+        source.clone(),
+        format!(
+            "DG Scripts trigger #{} ({}) attached to {} #{}: flag(s) `{}` not yet wired in IronMUD; body imported but trigger will not fire",
+            t.vnum, t.name, host_kind, host_vnum, t.trigger_flags
+        ),
+    )
 }
 
 /// Walk all PlannedSpawns, accumulate the largest authored CircleMUD `max`

@@ -8,8 +8,8 @@ use tokio::time::{Duration, interval};
 use tracing::{debug, error, warn};
 
 use ironmud::{
-    CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, CombatZoneType, InputEvent, ItemData,
-    MobileData, RoomData, SharedConnections, WoundType, broadcast_to_builders, db, get_opposite_direction,
+    CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, CombatZoneType, EffectType, InputEvent,
+    ItemData, MobileData, RoomData, SharedConnections, WoundType, broadcast_to_builders, db, get_opposite_direction,
 };
 
 use super::broadcast::{
@@ -1277,10 +1277,22 @@ fn process_mobile_effects(db: &db::Db, connections: &SharedConnections) -> Resul
             }
         }
 
-        // Decay mood/social buffs on simulated mobiles.
+        // Decay mood/social buffs on simulated mobiles. Also tick
+        // Regeneration buffs (magnitude HP per effects-tick interval, capped
+        // at max_hp).
         if !mobile.active_buffs.is_empty() {
             let tick_secs = MOBILE_EFFECTS_TICK_INTERVAL_SECS as i32;
             let _ = db.update_mobile(&mobile.id, |m| {
+                if let Some(regen) = m
+                    .active_buffs
+                    .iter()
+                    .find(|b| b.effect_type == EffectType::Regeneration)
+                {
+                    let amt = regen.magnitude;
+                    if m.current_hp < m.max_hp && amt > 0 {
+                        m.current_hp = (m.current_hp + amt).min(m.max_hp);
+                    }
+                }
                 ironmud::social::decay_mobile_buffs(m, tick_secs);
             })?;
         }

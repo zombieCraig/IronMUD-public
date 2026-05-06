@@ -88,6 +88,12 @@ pub struct CharacterData {
     pub current_room_id: Uuid,
     #[serde(default)]
     pub aliases: HashMap<String, String>,
+    /// DG Scripts per-character persistent vars. Set via `set name value` /
+    /// `global name` from a trigger body, queried via `%actor.<name>%` and
+    /// `%actor.varexists(<name>)%`. Empty for fresh characters; persists
+    /// across logins by virtue of being on `CharacterData`.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub dg_vars: HashMap<String, String>,
     #[serde(default)]
     pub is_builder: bool,
     #[serde(default)]
@@ -105,6 +111,10 @@ pub struct CharacterData {
     // Character creation wizard fields
     #[serde(default)]
     pub race: String,
+    /// Pronoun gender for DG Scripts %actor.heshe%/%hisher%/%himher%/sex/gender.
+    /// Empty / unrecognised resolves as "neuter" (it/its).
+    #[serde(default)]
+    pub gender: String,
     #[serde(default)]
     pub short_description: String,
     #[serde(default = "default_class")]
@@ -614,6 +624,9 @@ pub struct RoomData {
     /// Populated by the migration system; drained on mobile death.
     #[serde(default)]
     pub residents: Vec<Uuid>,
+    /// DG Scripts persistent vars (see MobileData.dg_vars).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub dg_vars: HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -2268,6 +2281,11 @@ pub enum EffectType {
     DamageReduction,
     Charmed,
     Curse,
+    /// Combat blessing — adds `magnitude*3` to hit chance and `(magnitude+1)/2`
+    /// to weapon damage. Default magnitude=1 yields +3 hit, +1 damage.
+    Bless,
+    /// Silence — caster cannot cast spells while active. Hard gate in cast.rhai.
+    Silence,
 }
 
 impl EffectType {
@@ -2277,7 +2295,7 @@ impl EffectType {
             "heal" => Some(EffectType::Heal),
             "poison" => Some(EffectType::Poison),
             "mana_restore" | "manarestore" | "mana" => Some(EffectType::ManaRestore),
-            "stamina_restore" | "staminarestore" | "stamina" => Some(EffectType::StaminaRestore),
+            "stamina_restore" | "staminarestore" | "stamina" | "refresh" => Some(EffectType::StaminaRestore),
             "strength_boost" | "strengthboost" | "str_boost" | "strength" => Some(EffectType::StrengthBoost),
             "dexterity_boost" | "dexterityboost" | "dex_boost" | "dexterity" => Some(EffectType::DexterityBoost),
             "constitution_boost" | "constitutionboost" | "con_boost" | "constitution" => {
@@ -2293,20 +2311,30 @@ impl EffectType {
             "sleep" => Some(EffectType::Sleep),
             "blind" | "blindness" => Some(EffectType::Blind),
             "invisibility" | "invis" => Some(EffectType::Invisibility),
-            "detect_invisible" | "detectinvisible" | "detect_invis" => Some(EffectType::DetectInvisible),
+            "detect_invisible" | "detectinvisible" | "detect_invis" | "detect_invisibility"
+            | "true_seeing" | "trueseeing" | "true_sight" | "sense_life" | "senselife" => {
+                Some(EffectType::DetectInvisible)
+            }
             "detect_magic" | "detectmagic" => Some(EffectType::DetectMagic),
             "night_vision" | "nightvision" | "infravision" => Some(EffectType::NightVision),
             "regeneration" | "regen" => Some(EffectType::Regeneration),
             "drunk" => Some(EffectType::Drunk),
             "satiated" => Some(EffectType::Satiated),
             "quenched" => Some(EffectType::Quenched),
-            "armor_class_boost" | "armorclassboost" | "ac_boost" | "arcane_shield" => Some(EffectType::ArmorClassBoost),
+            "armor_class_boost" | "armorclassboost" | "ac_boost" | "arcane_shield" | "armor" => {
+                Some(EffectType::ArmorClassBoost)
+            }
             "magic_light" | "magiclight" | "light" => Some(EffectType::MagicLight),
             "disguise" => Some(EffectType::Disguise),
             "water_breathing" | "waterbreathing" | "aqua_breath" => Some(EffectType::WaterBreathing),
-            "damage_reduction" | "damagereduction" | "sanctuary" => Some(EffectType::DamageReduction),
+            "damage_reduction" | "damagereduction" | "sanctuary" | "stone_skin" | "stoneskin"
+            | "protection_from_evil" | "protection_from_good" => {
+                Some(EffectType::DamageReduction)
+            }
             "charm" | "charmed" => Some(EffectType::Charmed),
             "curse" | "cursed" => Some(EffectType::Curse),
+            "bless" | "blessed" | "blessing" => Some(EffectType::Bless),
+            "silence" | "silenced" => Some(EffectType::Silence),
             _ => None,
         }
     }
@@ -2343,6 +2371,8 @@ impl EffectType {
             EffectType::DamageReduction => "damage_reduction",
             EffectType::Charmed => "charmed",
             EffectType::Curse => "curse",
+            EffectType::Bless => "bless",
+            EffectType::Silence => "silence",
         }
     }
 
@@ -2378,6 +2408,8 @@ impl EffectType {
             "damage_reduction",
             "charmed",
             "curse",
+            "bless",
+            "silence",
         ]
     }
 }
@@ -3021,6 +3053,9 @@ pub struct ItemData {
     /// Infestation type this item treats: "aphids", "blight", "root_rot", "frost", or "all"
     #[serde(default)]
     pub treats_infestation: String,
+    /// DG Scripts persistent vars (see MobileData.dg_vars).
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub dg_vars: HashMap<String, String>,
 }
 
 impl ItemData {
@@ -3135,6 +3170,7 @@ impl ItemData {
             plant_prototype_vnum: String::new(),
             fertilizer_duration: 0,
             treats_infestation: String::new(),
+            dg_vars: HashMap::new(),
         }
     }
 
@@ -3456,6 +3492,11 @@ pub struct MobileData {
     /// charm break.
     #[serde(default)]
     pub charm_follow_player: Option<String>,
+    /// DG Scripts persistent vars set via `set <var> <value>` while
+    /// `context %self.id%` is active, plus any `remote` writes from
+    /// other scripts. Empty by default.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub dg_vars: HashMap<String, String>,
 }
 
 fn default_mobile_hp() -> i32 {
@@ -3577,6 +3618,7 @@ impl MobileData {
             remembered_enemies: Vec::new(),
             charm_stay: false,
             charm_follow_player: None,
+            dg_vars: HashMap::new(),
         }
     }
 
@@ -3595,6 +3637,16 @@ impl MobileData {
 
     pub fn is_charmed_by_anyone(&self) -> bool {
         self.charm_master().is_some()
+    }
+
+    /// Pronoun gender for DG Scripts. Reads `characteristics.gender` when
+    /// set; otherwise resolves as "neuter".
+    pub fn resolved_gender(&self) -> &str {
+        self.characteristics
+            .as_ref()
+            .map(|c| c.gender.as_str())
+            .filter(|g| !g.is_empty())
+            .unwrap_or("neuter")
     }
 }
 

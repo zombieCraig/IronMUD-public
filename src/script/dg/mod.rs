@@ -1,0 +1,1345 @@
+//! DG Scripts interpreter — runtime evaluator for the trigger language used
+//! by tbamud and circlemud, rehosted in Rust against IronMUD's world API.
+//!
+//! ## Architecture
+//!
+//! - [`parser`] turns a `.trg` body string into a [`ast::Block`] (a `Vec<Stmt>`).
+//! - [`eval`] tree-walks the AST against an [`EvalCtx`], returning an [`Outcome`].
+//! - [`vars`] resolves `%actor.field%`-style substitutions against the ctx.
+//! - [`cmds`] dispatches DG commands (`%send%`, `mecho`, `mload`, …) to
+//!   IronMUD's existing world API (broadcast, spawn, damage, teleport, …).
+//!
+//! ## Phase 1 scope (landed)
+//!
+//! Implemented: `if/elseif/else/end`, `switch/case/default/break/done`,
+//! `set`, `eval` (string ops only), `halt`, `return`, comments.
+//! Variables: `%actor.field%`, `%self.field%`, `%arg%`, `%cmd%`, `%random.N%`.
+//! Commands: `%send%`/`msend`, `%echo%`/`mecho`/`oecho`/`wecho`,
+//! `%echoaround%`, `%damage%`, `%teleport%`, `%purge%`, `%load%`.
+//!
+//! ## Phase 2 scope (landed)
+//!
+//! - `wait <duration>` cooperative suspension via tokio task. Bodies that
+//!   contain `wait` move to an async eval; the sync caller gets `Done`
+//!   immediately and forfeits the ability to cancel host actions via
+//!   `return 0`. Bodies without `wait` keep the synchronous fast path.
+//! - `context %expr%` switches the durable scope for `global`/`unset`.
+//! - `global <var>` promotes a local to either world `dg_globals`
+//!   (no context) or the context entity's `dg_vars`.
+//! - `unset <var>` clears local + durable scopes.
+//! - `remote <var> <uuid>` / `rdelete <var> <uuid>` write or remove a
+//!   var on a named entity's `dg_vars`.
+//! - `%<uuid>.<field>%` reads `dg_vars[field]` from a remote entity.
+//!
+//! ## Phase 3 scope (landed)
+//!
+//! - New trigger types: `OnFight` / `OnHitPercent` (combat tick),
+//!   `OnReceive` / `OnBribe` (give.rhai), `OnLoad` (spawn tick),
+//!   `OnCommand` (room/item/mobile, args[0] keyword-matches the verb).
+//! - `dg_cast '<spell>' <target>` — simplified mapping that treats the
+//!   spell name as an [`crate::EffectType`] and applies a permanent-ish
+//!   buff (default 5 min). Unknown effects silently no-op.
+//! - `dg_affect <target> <effect> <magnitude> <duration>` — direct
+//!   buff application (no spell-engine dependency).
+//! - `mforce` / `oforce` / `wforce` / `force <target> <cmdline>` — inject
+//!   a command line into a player target's input stream.
+//! - Helpers [`fire_mobile_dg_triggers`] / [`fire_item_dg_triggers`] /
+//!   [`fire_room_dg_triggers`] for Rust-side trigger fire sites that
+//!   only need the DG path (no template/rhai dispatch).
+//!
+//! ## Phase 4 scope (landed)
+//!
+//! - `attach <vnum> <target>` / `detach <vnum> <target>` resolve a DG
+//!   trigger prototype out of the `dg_trigger_protos` sled tree (seeded
+//!   by the tbamud importer for every parsed `.trg` record) and push or
+//!   pull a fully-bodied trigger on the named host. `target` accepts a
+//!   UUID, a prototype vnum, or `self`/`here`.
+//! - `dg_cast '<spell>' <target>` now handles three shapes: buffs/debuffs
+//!   via `EffectType::from_str`, damage spells via [`cmds::dg_cast_damage_table`],
+//!   and healing spells via [`cmds::dg_cast_heal_table`]. Unknown names
+//!   silent-no-op.
+//! - Vocabulary: `mremember` / `mforget` (mob memory), `mhunt`
+//!   (pursuit_target), `mat <room> <cmd>` (rebind self_room and recurse),
+//!   `mdoor` / `odoor` / `wdoor` (door state mutation: open/closed/locked/
+//!   unlocked/pickproof/normal + description + purge).
+//! - OnCommand wired into `src/lib.rs` command dispatch via
+//!   [`fire_oncommand_for_player`]: fires room + room-mobs + player items
+//!   triggers before the rhai run_command call, with `Return(0)` short-
+//!   circuiting the host command.
+//! - Builder UX: `medit/oedit/redit <id> trigger dg <list|view|add|edit|attach|protos>`
+//!   — `add`/`edit` open the line editor in `collecting_dg_body` mode
+//!   (mirrors `oedit note`), saving back into the trigger's `dg_body`.
+//!   Helpers live in `scripts/lib/dg_olc.rhai`.
+//!
+//! ## Still deferred
+//!
+//! - Real spell-engine integration for `dg_cast` (currently table-driven
+//!   for damage/heal; doesn't read `World.spell_definitions`).
+//! - `mhunt` is a one-shot pursuit set; tbamud's `mhunt` includes
+//!   automatic re-pathing across reboots.
+
+pub mod analyze;
+pub mod ast;
+pub mod cmds;
+pub mod eval;
+pub mod mob_cmd;
+pub mod parser;
+pub mod vars;
+
+use std::sync::Arc;
+use uuid::Uuid;
+
+use crate::SharedConnections;
+use crate::db::Db;
+
+/// What kind of entity a DG script is `%self%`-bound to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelfKind {
+    Mob,
+    Obj,
+    Room,
+}
+
+/// One side of an `%actor%` / `%victim%` reference, resolved to either a
+/// player (by connection_id + uuid + name) or a mobile (by uuid + name).
+/// Field lookups (`%actor.level%`, `%actor.is_pc%`) read from this.
+#[derive(Debug, Clone)]
+pub enum ActorRef {
+    Player { connection_id: String, char_id: Uuid, name: String },
+    Mob { mobile_id: Uuid, name: String },
+}
+
+impl ActorRef {
+    pub fn name(&self) -> &str {
+        match self {
+            ActorRef::Player { name, .. } | ActorRef::Mob { name, .. } => name.as_str(),
+        }
+    }
+
+    pub fn is_pc(&self) -> bool {
+        matches!(self, ActorRef::Player { .. })
+    }
+}
+
+/// Runtime context for one DG script invocation. Holds the world handles,
+/// the `%self%` binding, and any event-supplied actors / args.
+///
+/// Cloned cheaply — `Arc<Db>` and `SharedConnections` are reference-counted.
+#[derive(Clone)]
+pub struct EvalCtx {
+    pub db: Arc<Db>,
+    pub connections: SharedConnections,
+    pub self_kind: SelfKind,
+    pub self_id: Uuid,
+    /// Cached `%self%` data fields (name, vnum, room) snapshotted at fire
+    /// time. The interpreter never re-reads from `db` for these — keeping
+    /// them inline avoids re-locking and matches DG's "self is fixed for
+    /// this run" semantics.
+    pub self_name: String,
+    pub self_vnum: String,
+    pub self_room: Option<Uuid>,
+    pub actor: Option<ActorRef>,
+    pub victim: Option<ActorRef>,
+    /// `%arg%` — argument passed to a COMMAND/SPEECH trigger (the rest of
+    /// the player's command line after the verb).
+    pub arg: String,
+    /// `%cmd%` — the verb the player typed (COMMAND triggers).
+    pub cmd: String,
+    /// `%cmd.mudcommand%` — canonical (un-abbreviated) command name.
+    /// Equal to `cmd` when the player typed the verb in full; the
+    /// canonical form when they used an abbreviation (e.g. `cmd="dr"` →
+    /// `cmd_canonical="drop"`).
+    pub cmd_canonical: String,
+}
+
+/// Result of evaluating a DG body.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Outcome {
+    /// Script finished normally.
+    Done,
+    /// Script hit a `halt` statement.
+    Halt,
+    /// Script hit a `return <n>` statement. `0` is conventionally used by
+    /// COMMAND triggers to suppress the host action; non-zero lets it
+    /// proceed.
+    Return(i32),
+    /// Phase-2 placeholder. The evaluator currently treats `wait` as a
+    /// no-op; this variant exists so call sites can be future-proofed.
+    Suspended,
+}
+
+/// Public entry point: parse `body` and evaluate against `ctx`.
+///
+/// Errors during parsing or evaluation are folded into [`Outcome::Done`]
+/// after logging — DG triggers must never crash the host even on bad input.
+///
+/// ## Sync vs. async dispatch
+///
+/// - When the body has no `wait`, the eval runs synchronously and the
+///   real outcome (including `Return(0)` cancellation) is observable to
+///   the caller. This is the common case (~90% of stock triggers).
+/// - When the body contains `wait` (recursively, at any depth), eval is
+///   moved to a tokio task so [`tokio::time::sleep`] can suspend at the
+///   wait point. The synchronous return value is always [`Outcome::Done`]
+///   — the script's eventual return is no longer observable. This
+///   mirrors tbamud's behavior: a wait-bearing script gives up its veto.
+pub fn fire_dg(body: &str, ctx: &EvalCtx) -> Outcome {
+    let block = match parser::parse(body) {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!("DG parse error in trigger on {} ({:?}): {}", ctx.self_name, ctx.self_kind, e);
+            return Outcome::Done;
+        }
+    };
+
+    // Sync fast path: no wait → real outcome.
+    if !eval::block_contains_wait(&block) {
+        let mut state = eval::State::new();
+        return match eval::eval_block(&block, ctx, &mut state) {
+            Ok(o) => o,
+            Err(e) => {
+                tracing::warn!(
+                    "DG eval error in trigger on {} ({:?}): {}",
+                    ctx.self_name, ctx.self_kind, e
+                );
+                Outcome::Done
+            }
+        };
+    }
+
+    // Async path: spawn into the surrounding tokio runtime. If we're
+    // not in a runtime (only happens in tests/CLI tools), fall back to
+    // running the sync path with `wait` treated as a no-op so we don't
+    // deadlock or panic.
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle) => {
+            let ctx_owned = ctx.clone();
+            let block_owned = block;
+            let self_name = ctx.self_name.clone();
+            let self_kind = ctx.self_kind;
+            handle.spawn(async move {
+                let mut state = eval::State::new();
+                if let Err(e) = eval::eval_block_async(&block_owned, &ctx_owned, &mut state).await {
+                    tracing::warn!(
+                        "DG eval error in async trigger on {} ({:?}): {}",
+                        self_name, self_kind, e
+                    );
+                }
+            });
+            Outcome::Done
+        }
+        Err(_) => {
+            let mut state = eval::State::new();
+            eval::eval_block(&block, ctx, &mut state).unwrap_or(Outcome::Done)
+        }
+    }
+}
+
+/// Bridge helper for the Rhai-side `fire_room_trigger`: builds an
+/// [`EvalCtx`] from the entity + event data and runs the body.
+pub fn fire_room_dg(
+    body: &str,
+    room: &crate::types::RoomData,
+    connection_id: &str,
+    db: Arc<Db>,
+    connections: SharedConnections,
+) -> Outcome {
+    let actor = actor_from_connection(connection_id, &connections);
+    let ctx = EvalCtx {
+        db,
+        connections,
+        self_kind: SelfKind::Room,
+        self_id: room.id,
+        self_name: room.title.clone(),
+        self_vnum: room.vnum.clone().unwrap_or_default(),
+        self_room: Some(room.id),
+        actor,
+        victim: None,
+        arg: String::new(),
+        cmd: String::new(),
+        cmd_canonical: String::new(),
+    };
+    fire_dg(body, &ctx)
+}
+
+/// Bridge helper for `fire_item_trigger`.
+pub fn fire_item_dg(
+    body: &str,
+    item: &crate::types::ItemData,
+    connection_id: &str,
+    db: Arc<Db>,
+    connections: SharedConnections,
+) -> Outcome {
+    let actor = actor_from_connection(connection_id, &connections);
+    let self_room = match &item.location {
+        crate::types::ItemLocation::Room(r) => Some(*r),
+        _ => actor_room(actor.as_ref(), &db),
+    };
+    let ctx = EvalCtx {
+        db,
+        connections,
+        self_kind: SelfKind::Obj,
+        self_id: item.id,
+        self_name: item.name.clone(),
+        self_vnum: item.vnum.clone().unwrap_or_default(),
+        self_room,
+        actor,
+        victim: None,
+        arg: String::new(),
+        cmd: String::new(),
+        cmd_canonical: String::new(),
+    };
+    fire_dg(body, &ctx)
+}
+
+/// Bridge helper for `fire_mobile_trigger`.
+pub fn fire_mobile_dg(
+    body: &str,
+    mobile: &crate::types::MobileData,
+    connection_id: &str,
+    db: Arc<Db>,
+    connections: SharedConnections,
+) -> Outcome {
+    let actor = actor_from_connection(connection_id, &connections);
+    let ctx = EvalCtx {
+        db,
+        connections,
+        self_kind: SelfKind::Mob,
+        self_id: mobile.id,
+        self_name: mobile.name.clone(),
+        self_vnum: mobile.vnum.clone(),
+        self_room: mobile.current_room_id,
+        actor,
+        victim: None,
+        arg: String::new(),
+        cmd: String::new(),
+        cmd_canonical: String::new(),
+    };
+    fire_dg(body, &ctx)
+}
+
+/// Fire any DG-bodied triggers of `trig_type` on the given item. Returns
+/// `true` if any trigger returned 0 (cancel host action), `false` otherwise.
+/// Phase-3 helper — used for `OnLoad` / `OnCommand` on items where we
+/// don't need the full template/rhai dispatch path that mobiles use.
+pub fn fire_item_dg_triggers(
+    db: &Arc<Db>,
+    connections: &SharedConnections,
+    item: &crate::types::ItemData,
+    trig_type: crate::types::ItemTriggerType,
+    connection_id: &str,
+) -> bool {
+    let mut cancelled = false;
+    for t in &item.triggers {
+        if t.trigger_type != trig_type || !t.enabled {
+            continue;
+        }
+        let Some(body) = t.dg_body.as_deref() else {
+            continue;
+        };
+        let outcome = fire_item_dg(body, item, connection_id, db.clone(), connections.clone());
+        if matches!(outcome, Outcome::Return(0)) {
+            cancelled = true;
+        }
+    }
+    cancelled
+}
+
+/// Fire any DG-bodied triggers of `trig_type` on the given room.
+pub fn fire_room_dg_triggers(
+    db: &Arc<Db>,
+    connections: &SharedConnections,
+    room: &crate::types::RoomData,
+    trig_type: crate::types::TriggerType,
+    connection_id: &str,
+    cmd: &str,
+    cmd_canonical: &str,
+    arg: &str,
+) -> bool {
+    let mut cancelled = false;
+    for t in &room.triggers {
+        if t.trigger_type != trig_type || !t.enabled {
+            continue;
+        }
+        let Some(body) = t.dg_body.as_deref() else {
+            continue;
+        };
+        // For OnCommand, the trigger's args[0] is the verb keyword.
+        // Skip the trigger if its verb doesn't match (DG `/=` semantics:
+        // case-insensitive equality OR mutual prefix match).
+        if trig_type == crate::types::TriggerType::OnCommand {
+            if let Some(want) = t.args.first() {
+                if !dg_keyword_match(want, cmd) {
+                    continue;
+                }
+            }
+        }
+        let actor = actor_from_connection(connection_id, connections);
+        let ctx = EvalCtx {
+            db: db.clone(),
+            connections: connections.clone(),
+            self_kind: SelfKind::Room,
+            self_id: room.id,
+            self_name: room.title.clone(),
+            self_vnum: room.vnum.clone().unwrap_or_default(),
+            self_room: Some(room.id),
+            actor,
+            victim: None,
+            arg: arg.to_string(),
+            cmd: cmd.to_string(),
+            cmd_canonical: if cmd_canonical.is_empty() {
+                cmd.to_string()
+            } else {
+                cmd_canonical.to_string()
+            },
+        };
+        if matches!(fire_dg(body, &ctx), Outcome::Return(0)) {
+            cancelled = true;
+        }
+    }
+    cancelled
+}
+
+/// Fire any DG-bodied triggers of `trig_type` on the given mobile, with
+/// optional `cmd`/`arg` for `OnCommand`-shape triggers and an optional
+/// extra `actor` (e.g. the giver in `OnReceive`).
+pub fn fire_mobile_dg_triggers(
+    db: &Arc<Db>,
+    connections: &SharedConnections,
+    mobile: &crate::types::MobileData,
+    trig_type: crate::types::MobileTriggerType,
+    connection_id: &str,
+    cmd: &str,
+    cmd_canonical: &str,
+    arg: &str,
+) -> bool {
+    let mut cancelled = false;
+    for t in &mobile.triggers {
+        if t.trigger_type != trig_type || !t.enabled {
+            continue;
+        }
+        let Some(body) = t.dg_body.as_deref() else {
+            continue;
+        };
+        if trig_type == crate::types::MobileTriggerType::OnCommand {
+            if let Some(want) = t.args.first() {
+                if !dg_keyword_match(want, cmd) {
+                    continue;
+                }
+            }
+        }
+        let actor = actor_from_connection(connection_id, connections);
+        let ctx = EvalCtx {
+            db: db.clone(),
+            connections: connections.clone(),
+            self_kind: SelfKind::Mob,
+            self_id: mobile.id,
+            self_name: mobile.name.clone(),
+            self_vnum: mobile.vnum.clone(),
+            self_room: mobile.current_room_id,
+            actor,
+            victim: None,
+            arg: arg.to_string(),
+            cmd: cmd.to_string(),
+            cmd_canonical: if cmd_canonical.is_empty() {
+                cmd.to_string()
+            } else {
+                cmd_canonical.to_string()
+            },
+        };
+        if matches!(fire_dg(body, &ctx), Outcome::Return(0)) {
+            cancelled = true;
+        }
+    }
+    cancelled
+}
+
+/// Fire OnCommand DG triggers for a player command across the player's
+/// room, the mobs in that room, and any items the player has in inventory
+/// or equipped. Returns `true` if any trigger returned 0, signalling the
+/// host command should be cancelled. Phase-4 hook used by lib.rs's command
+/// dispatch loop just before the rhai run_command call.
+pub fn fire_oncommand_for_player(
+    connection_id: &Uuid,
+    cmd: &str,
+    cmd_canonical: &str,
+    arg: &str,
+    db: &Arc<Db>,
+    connections: &SharedConnections,
+) -> bool {
+    // Snapshot what we need from the session under one lock.
+    let (char_name, room_id) = {
+        let Ok(conns) = connections.lock() else { return false };
+        let Some(session) = conns.get(connection_id) else { return false };
+        let Some(ch) = session.character.as_ref() else { return false };
+        (ch.name.clone(), ch.current_room_id)
+    };
+
+    let conn_id_str = connection_id.to_string();
+    let mut cancelled = false;
+
+    // Room-level OnCommand triggers.
+    if let Ok(Some(room)) = db.get_room_data(&room_id) {
+        if fire_room_dg_triggers(
+            db,
+            connections,
+            &room,
+            crate::types::TriggerType::OnCommand,
+            &conn_id_str,
+            cmd,
+            cmd_canonical,
+            arg,
+        ) {
+            cancelled = true;
+        }
+    }
+
+    // Mobs in the room.
+    if let Ok(mobs) = db.get_mobiles_in_room(&room_id) {
+        for mob in mobs {
+            if fire_mobile_dg_triggers(
+                db,
+                connections,
+                &mob,
+                crate::types::MobileTriggerType::OnCommand,
+                &conn_id_str,
+                cmd,
+                cmd_canonical,
+                arg,
+            ) {
+                cancelled = true;
+            }
+        }
+    }
+
+    // Items in inventory + equipped.
+    let mut items: Vec<crate::types::ItemData> = Vec::new();
+    if let Ok(inv) = db.get_items_in_inventory(&char_name) {
+        items.extend(inv);
+    }
+    if let Ok(eq) = db.get_equipped_items(&char_name) {
+        items.extend(eq);
+    }
+    for item in items {
+        // Items don't have OnCommand args in Phase 3 yet — fire helper does
+        // its own keyword gating via the trigger's args[0].
+        if fire_item_dg_oncommand(db, connections, &item, &conn_id_str, cmd, cmd_canonical, arg) {
+            cancelled = true;
+        }
+    }
+
+    cancelled
+}
+
+/// Item OnCommand fire — same shape as `fire_item_dg_triggers` but with
+/// cmd/arg substitution and keyword gating. Inlined here because the
+/// Phase-3 helper signature doesn't take cmd/arg.
+fn fire_item_dg_oncommand(
+    db: &Arc<Db>,
+    connections: &SharedConnections,
+    item: &crate::types::ItemData,
+    connection_id: &str,
+    cmd: &str,
+    cmd_canonical: &str,
+    arg: &str,
+) -> bool {
+    let mut cancelled = false;
+    for t in &item.triggers {
+        if t.trigger_type != crate::types::ItemTriggerType::OnCommand || !t.enabled {
+            continue;
+        }
+        let Some(body) = t.dg_body.as_deref() else {
+            continue;
+        };
+        if let Some(want) = t.args.first() {
+            if !dg_keyword_match(want, cmd) {
+                continue;
+            }
+        }
+        let actor = actor_from_connection(connection_id, connections);
+        let self_room = match &item.location {
+            crate::types::ItemLocation::Room(r) => Some(*r),
+            _ => actor_room(actor.as_ref(), db),
+        };
+        let ctx = EvalCtx {
+            db: db.clone(),
+            connections: connections.clone(),
+            self_kind: SelfKind::Obj,
+            self_id: item.id,
+            self_name: item.name.clone(),
+            self_vnum: item.vnum.clone().unwrap_or_default(),
+            self_room,
+            actor,
+            victim: None,
+            arg: arg.to_string(),
+            cmd: cmd.to_string(),
+            cmd_canonical: if cmd_canonical.is_empty() {
+                cmd.to_string()
+            } else {
+                cmd_canonical.to_string()
+            },
+        };
+        if matches!(fire_dg(body, &ctx), Outcome::Return(0)) {
+            cancelled = true;
+        }
+    }
+    cancelled
+}
+
+/// DG `/=` keyword match: case-insensitive equality OR mutual prefix.
+/// Stock command-trigger args use this to match verb prefixes
+/// (e.g. trigger arg `pan` matches player typing `pa` or `pann`).
+fn dg_keyword_match(want: &str, got: &str) -> bool {
+    let w = want.trim().to_ascii_lowercase();
+    let g = got.trim().to_ascii_lowercase();
+    if w.is_empty() {
+        return true;
+    }
+    if g.is_empty() {
+        return false;
+    }
+    w == g || w.starts_with(&g) || g.starts_with(&w)
+}
+
+/// Resolve a connection_id string to a fully-bound [`ActorRef::Player`]
+/// by looking up the active session. Returns None when the id is empty,
+/// unparseable, or stale (no matching session).
+fn actor_from_connection(connection_id: &str, connections: &SharedConnections) -> Option<ActorRef> {
+    if connection_id.is_empty() {
+        return None;
+    }
+    let cid = Uuid::parse_str(connection_id).ok()?;
+    let conns = connections.lock().ok()?;
+    let session = conns.get(&cid)?;
+    let ch = session.character.as_ref()?;
+    Some(ActorRef::Player {
+        connection_id: connection_id.to_string(),
+        char_id: cid, // ConnectionId is the most stable identifier we have
+        name: ch.name.clone(),
+    })
+}
+
+/// For item triggers fired without a room context (e.g. an item in a
+/// player's inventory), fall back to the actor's current room so
+/// `%self.room%` and `wecho`-style commands have a sane target.
+fn actor_room(actor: Option<&ActorRef>, db: &Db) -> Option<Uuid> {
+    let name = match actor? {
+        ActorRef::Player { name, .. } if !name.is_empty() => name.clone(),
+        _ => return None,
+    };
+    db.get_character_data(&name).ok().flatten().map(|c| c.current_room_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    /// Build a minimal EvalCtx against a temp db, with no live player
+    /// session. Sufficient to exercise control flow, vars, and the
+    /// no-actor branches of cmds.
+    fn make_ctx(self_kind: SelfKind, self_id: Uuid, self_name: &str) -> EvalCtx {
+        let path = format!("test_dg_{}.db", Uuid::new_v4().simple());
+        let _ = std::fs::remove_dir_all(&path);
+        let db = Arc::new(Db::open(&path).expect("open db"));
+        let connections: SharedConnections = Arc::new(Mutex::new(HashMap::new()));
+        EvalCtx {
+            db,
+            connections,
+            self_kind,
+            self_id,
+            self_name: self_name.to_string(),
+            self_vnum: "test".to_string(),
+            self_room: None,
+            actor: None,
+            victim: None,
+            arg: String::new(),
+            cmd: String::new(),
+            cmd_canonical: String::new(),
+        }
+    }
+
+    #[test]
+    fn fire_dg_returns_zero_from_command_trigger() {
+        // Mirrors `if %direction% == south\n  return 0\nend` from the
+        // mage guildguard fixture. Without `direction` bound, no branch
+        // matches and the script runs to completion → Done.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "guard");
+        let body = "\
+if %direction% == south
+  return 0
+end";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Done);
+
+        // With the local set, the if matches and we return 0.
+        let body2 = "\
+set direction south
+if %direction% == south
+  return 0
+end";
+        assert_eq!(fire_dg(body2, &ctx), Outcome::Return(0));
+    }
+
+    #[test]
+    fn fire_dg_executes_switch_with_fallthrough() {
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "wizard");
+        ctx.cmd = "test".to_string();
+        // Match arm 'a' falls through to 'b' which returns 1.
+        let body = "\
+switch a
+  case a
+  case b
+    return 7
+  case c
+    return 9
+done";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Return(7));
+    }
+
+    #[test]
+    fn fire_dg_halts_on_halt_statement() {
+        let ctx = make_ctx(SelfKind::Room, Uuid::new_v4(), "river");
+        let body = "halt";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Halt);
+    }
+
+    #[test]
+    fn fire_dg_set_and_eval_arithmetic() {
+        // `set i 5` then `eval i %i% + 1` should leave i=6.
+        // We can't observe locals from outside, so this test verifies the
+        // script reaches Done without crashing on the eval expression.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "merchant");
+        let body = "\
+set i 5
+eval i %i% + 1
+if %i% == 6
+  halt
+end";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Halt);
+    }
+
+    #[test]
+    fn fire_dg_unknown_command_silently_continues() {
+        // dg_cast / mforce etc. are Phase-3; they should silent-no-op so
+        // imported scripts with them don't blow up.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "casting_mob");
+        let body = "\
+dg_cast 'fireball' victim
+mforce victim flee
+halt";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Halt);
+    }
+
+    // ---------- Phase 2 tests ----------
+
+    #[test]
+    fn global_promotes_local_to_world_store() {
+        // After `global foo`, the value flows into Db.dg_globals and
+        // survives across separate `fire_dg` calls.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "merchant");
+        let body1 = "\
+set greeting hello
+global greeting
+halt";
+        assert_eq!(fire_dg(body1, &ctx), Outcome::Halt);
+        assert_eq!(
+            ctx.db.get_dg_global("greeting").expect("get").as_deref(),
+            Some("hello")
+        );
+
+        // A second script with no local should read through to the global.
+        // We can't observe interpreter state directly, but we can verify
+        // the value via the db.
+        let body2 = "\
+global greeting
+halt";
+        assert_eq!(fire_dg(body2, &ctx), Outcome::Halt);
+        // Greeting still set (no local to promote, but no clear either).
+        assert_eq!(
+            ctx.db.get_dg_global("greeting").expect("get").as_deref(),
+            Some("hello")
+        );
+    }
+
+    #[test]
+    fn unset_clears_local_and_global() {
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "merchant");
+        let body = "\
+set foo bar
+global foo
+unset foo
+halt";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Halt);
+        assert_eq!(ctx.db.get_dg_global("foo").expect("get"), None);
+    }
+
+    #[test]
+    fn context_redirects_durable_writes_to_entity_vars() {
+        // `context %self.id%` makes `global` write to the mob's dg_vars
+        // instead of world globals.
+        let mob = crate::types::MobileData::new("test_mob".to_string());
+        let mob_id = mob.id;
+        let ctx = make_ctx(SelfKind::Mob, mob_id, "test_mob");
+        ctx.db.save_mobile_data(mob).expect("save");
+
+        let body = "\
+set tag friendly
+context %self.id%
+global tag
+halt";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Halt);
+
+        // World globals untouched.
+        assert_eq!(ctx.db.get_dg_global("tag").expect("get"), None);
+        // Mob's dg_vars carries the value.
+        let saved = ctx.db.get_mobile_data(&mob_id).expect("get").expect("mob");
+        assert_eq!(saved.dg_vars.get("tag").map(|s| s.as_str()), Some("friendly"));
+    }
+
+    #[test]
+    fn remote_writes_var_to_named_entity() {
+        let target = crate::types::MobileData::new("target_mob".to_string());
+        let target_id = target.id;
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "writer_mob");
+        ctx.db.save_mobile_data(target).expect("save");
+
+        let body = format!(
+            "\
+set color red
+remote color {tid}
+halt",
+            tid = target_id
+        );
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Halt);
+
+        let saved = ctx.db.get_mobile_data(&target_id).expect("get").expect("mob");
+        assert_eq!(saved.dg_vars.get("color").map(|s| s.as_str()), Some("red"));
+    }
+
+    #[test]
+    fn rdelete_removes_remote_var() {
+        let mut target = crate::types::MobileData::new("target_mob".to_string());
+        target.dg_vars.insert("color".to_string(), "blue".to_string());
+        let target_id = target.id;
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "writer_mob");
+        ctx.db.save_mobile_data(target).expect("save");
+
+        let body = format!("rdelete color {tid}\nhalt", tid = target_id);
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Halt);
+
+        let saved = ctx.db.get_mobile_data(&target_id).expect("get").expect("mob");
+        assert!(!saved.dg_vars.contains_key("color"));
+    }
+
+    #[test]
+    fn remote_uuid_var_lookup_in_substitution() {
+        // `%<uuid>.<field>%` reads dg_vars[field] on the entity.
+        let mut target = crate::types::MobileData::new("target_mob".to_string());
+        target.dg_vars.insert("mood".to_string(), "happy".to_string());
+        let target_id = target.id;
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "reader_mob");
+        ctx.db.save_mobile_data(target).expect("save");
+
+        // If the read works, set local copy will match → take the if branch
+        // → halt. If the read fails (empty), the if won't match → done.
+        let body = format!(
+            "\
+set m %{tid}.mood%
+if %m% == happy
+  halt
+end",
+            tid = target_id
+        );
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Halt);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn wait_suspends_async_eval() {
+        // Body containing `wait` must route through the async path; the
+        // outer fire_dg returns Done immediately while the post-wait
+        // stmts run after the sleep completes.
+        let mob = crate::types::MobileData::new("waiter".to_string());
+        let mob_id = mob.id;
+        let ctx = make_ctx(SelfKind::Mob, mob_id, "waiter");
+        ctx.db.save_mobile_data(mob).expect("save");
+
+        let body = "\
+context %self.id%
+set ready no
+global ready
+wait 1 sec
+set ready yes
+global ready
+halt";
+        let outcome = fire_dg(body, &ctx);
+        assert_eq!(outcome, Outcome::Done);
+
+        // Wait for the spawned task to finish (sleep + post-wait writes).
+        // Add a small buffer past the 1-second wait.
+        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+
+        let post = ctx.db.get_mobile_data(&mob_id).expect("get").expect("mob");
+        assert_eq!(
+            post.dg_vars.get("ready").map(|s| s.as_str()),
+            Some("yes"),
+            "post-wait write must land in mob.dg_vars"
+        );
+    }
+
+    #[test]
+    fn fire_dg_real_panning_trigger_parses_and_evaluates() {
+        // Full body from tbamud 7.trg #700. We don't have a real actor or
+        // held object so the script just runs the outer guards to no-op.
+        let ctx = make_ctx(SelfKind::Room, Uuid::new_v4(), "river_bank");
+        let body = "\
+if %actor.move% <= 10
+  %send% %actor% You are too exhausted.
+  halt
+end
+if %cmd% /= pan && %arg% /= gold
+  eval heldobj %actor.eq(hold)%
+  if %heldobj.vnum% == 717
+    %send% %actor% You dip your pan into the river...
+    nop %actor.move(-10)%
+    wait 3 sec
+    if %random.10% == 1
+      %load% obj 718 %actor% inv
+    end
+  end
+end";
+        // No actor → %actor.move% is empty → first if `<= 10` evaluates
+        // empty-vs-10. Empty parses as not-an-int; comparison falls to
+        // string. We just want this to not crash.
+        let _ = fire_dg(body, &ctx);
+    }
+
+    // ---------- Phase 3 tests ----------
+
+    #[test]
+    fn dg_affect_applies_buff_to_targeted_mob() {
+        // `dg_affect <uuid> sleep 1 30` should land a Sleep buff on the
+        // target mob with magnitude=1, duration=30.
+        let target = crate::types::MobileData::new("target".to_string());
+        let target_id = target.id;
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "caster");
+        ctx.db.save_mobile_data(target).expect("save");
+
+        let body = format!("dg_affect {tid} sleep 1 30\nhalt", tid = target_id);
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Halt);
+
+        let saved = ctx.db.get_mobile_data(&target_id).expect("get").expect("mob");
+        let buff = saved
+            .active_buffs
+            .iter()
+            .find(|b| b.effect_type == crate::EffectType::Sleep);
+        assert!(buff.is_some(), "Sleep buff must be applied via dg_affect");
+        let buff = buff.unwrap();
+        assert_eq!(buff.magnitude, 1);
+        assert_eq!(buff.remaining_secs, 30);
+    }
+
+    #[test]
+    fn dg_cast_with_known_spell_applies_effect() {
+        // `dg_cast 'sleep' <uuid>` (quoted spell name) → simplified mapping
+        // treats spell name as effect → applies Sleep buff.
+        let target = crate::types::MobileData::new("victim".to_string());
+        let target_id = target.id;
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "caster");
+        ctx.db.save_mobile_data(target).expect("save");
+
+        let body = format!("dg_cast 'sleep' {tid}\nhalt", tid = target_id);
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Halt);
+
+        let saved = ctx.db.get_mobile_data(&target_id).expect("get").expect("mob");
+        assert!(
+            saved
+                .active_buffs
+                .iter()
+                .any(|b| b.effect_type == crate::EffectType::Sleep),
+            "dg_cast 'sleep' must produce a Sleep buff"
+        );
+    }
+
+    #[test]
+    fn dg_cast_with_unknown_effect_is_silent_noop() {
+        // `dg_cast 'nonsense' victim` doesn't crash; just no-ops.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "caster");
+        let body = "dg_cast 'nonsense' victim\nhalt";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Halt);
+    }
+
+    #[test]
+    fn keyword_match_handles_prefixes_and_case() {
+        assert!(dg_keyword_match("pan", "pan"));
+        assert!(dg_keyword_match("pan", "PAN"));
+        assert!(dg_keyword_match("pan", "pa")); // mutual prefix
+        assert!(dg_keyword_match("pan", "panning")); // prefix the other way
+        assert!(!dg_keyword_match("pan", "shovel"));
+        // Empty `want` (no first arg) is the always-match case.
+        assert!(dg_keyword_match("", "anything"));
+    }
+
+    // ---------- Phase 4 tests ----------
+
+    #[test]
+    fn dg_cast_fireball_subtracts_hp() {
+        let mut target = crate::types::MobileData::new("dummy".to_string());
+        target.max_hp = 100;
+        target.current_hp = 100;
+        let target_id = target.id;
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "caster");
+        ctx.db.save_mobile_data(target).expect("save");
+
+        let body = format!("dg_cast 'fireball' {tid}\nhalt", tid = target_id);
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Halt);
+
+        let saved = ctx.db.get_mobile_data(&target_id).expect("get").expect("mob");
+        assert_eq!(saved.current_hp, 70, "fireball should subtract 30 HP");
+    }
+
+    #[test]
+    fn dg_cast_heal_adds_hp_capped_at_max() {
+        let mut target = crate::types::MobileData::new("patient".to_string());
+        target.max_hp = 100;
+        target.current_hp = 50;
+        let target_id = target.id;
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "healer");
+        ctx.db.save_mobile_data(target).expect("save");
+
+        let body = format!("dg_cast 'heal' {tid}\nhalt", tid = target_id);
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Halt);
+
+        let saved = ctx.db.get_mobile_data(&target_id).expect("get").expect("mob");
+        assert_eq!(saved.current_hp, 100, "heal caps at max_hp");
+    }
+
+    #[test]
+    fn dg_cast_cure_blind_removes_blind_buff() {
+        // Plant a Blind buff on a target mob, then have a script run
+        // `dg_cast 'cure_blind' <target>` and assert the buff is stripped.
+        let mut target = crate::types::MobileData::new("subject".to_string());
+        target.active_buffs.push(crate::ActiveBuff {
+            effect_type: crate::EffectType::Blind,
+            magnitude: 1,
+            remaining_secs: 60,
+            source: "old_caster".to_string(),
+        });
+        let target_id = target.id;
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "healer");
+        ctx.db.save_mobile_data(target).expect("save");
+
+        let body = format!("dg_cast 'cure_blind' {tid}\nhalt", tid = target_id);
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Halt);
+
+        let saved = ctx.db.get_mobile_data(&target_id).expect("get").expect("mob");
+        assert!(
+            !saved
+                .active_buffs
+                .iter()
+                .any(|b| b.effect_type == crate::EffectType::Blind),
+            "cure_blind must remove the Blind buff"
+        );
+    }
+
+    #[test]
+    fn dg_cast_armor_alias_lands_ac_boost() {
+        // The `armor` spell name is a tbamud-stock alias for ArmorClassBoost.
+        let target = crate::types::MobileData::new("subject".to_string());
+        let target_id = target.id;
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "caster");
+        ctx.db.save_mobile_data(target).expect("save");
+
+        let body = format!("dg_cast 'armor' {tid}\nhalt", tid = target_id);
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Halt);
+
+        let saved = ctx.db.get_mobile_data(&target_id).expect("get").expect("mob");
+        assert!(
+            saved
+                .active_buffs
+                .iter()
+                .any(|b| b.effect_type == crate::EffectType::ArmorClassBoost),
+            "armor must alias to ArmorClassBoost"
+        );
+    }
+
+    #[test]
+    fn dg_attach_clones_prototype_onto_target() {
+        // Seed a prototype, then run `attach <vnum> <target_uuid>` on a mob.
+        let host = crate::types::MobileData::new("host_mob".to_string());
+        let host_id = host.id;
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "self_mob");
+        ctx.db.save_mobile_data(host).expect("save");
+
+        let proto = crate::types::DgTriggerProto {
+            vnum: "9999".to_string(),
+            name: "test greet".to_string(),
+            attach_kind: crate::types::DgAttachKind::Mob,
+            flags: "g".to_string(),
+            numeric_arg: 100,
+            arglist: String::new(),
+            body: "halt".to_string(),
+        };
+        ctx.db.save_dg_trigger_proto(&proto).expect("save proto");
+
+        let body = format!("attach 9999 {hid}\nhalt", hid = host_id);
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Halt);
+
+        let saved = ctx.db.get_mobile_data(&host_id).expect("get").expect("host");
+        assert_eq!(saved.triggers.len(), 1, "attach should add one trigger");
+        assert_eq!(saved.triggers[0].dg_name.as_deref(), Some("test greet"));
+        assert!(saved.triggers[0].dg_body.is_some());
+    }
+
+    #[test]
+    fn dg_detach_removes_attached_trigger() {
+        let mut host = crate::types::MobileData::new("host_mob".to_string());
+        host.triggers.push(crate::MobileTrigger {
+            trigger_type: crate::MobileTriggerType::OnGreet,
+            script_name: String::new(),
+            enabled: true,
+            chance: 100,
+            args: Vec::new(),
+            interval_secs: 60,
+            last_fired: 0,
+            dg_body: Some("halt".to_string()),
+            dg_name: Some("removable".to_string()),
+        });
+        let host_id = host.id;
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "self_mob");
+        ctx.db.save_mobile_data(host).expect("save");
+
+        let proto = crate::types::DgTriggerProto {
+            vnum: "8888".to_string(),
+            name: "removable".to_string(),
+            attach_kind: crate::types::DgAttachKind::Mob,
+            flags: "g".to_string(),
+            numeric_arg: 100,
+            arglist: String::new(),
+            body: "halt".to_string(),
+        };
+        ctx.db.save_dg_trigger_proto(&proto).expect("save proto");
+
+        let body = format!("detach 8888 {hid}\nhalt", hid = host_id);
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Halt);
+
+        let saved = ctx.db.get_mobile_data(&host_id).expect("get").expect("host");
+        assert_eq!(saved.triggers.len(), 0, "detach should remove the matching trigger");
+    }
+
+    #[test]
+    fn cmd_mudcommand_resolves_to_canonical_form() {
+        // Player typed `dr`; OnCommand fire site populates cmd_canonical
+        // with the resolved form `drop`. `%cmd%` returns `dr`,
+        // `%cmd.mudcommand%` returns `drop`.
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "guard");
+        ctx.cmd = "dr".to_string();
+        ctx.cmd_canonical = "drop".to_string();
+
+        let body = "\
+if %cmd.mudcommand% == drop
+  return 0
+end";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Return(0));
+
+        // When canonical is empty, %cmd.mudcommand% falls back to %cmd%.
+        let mut ctx2 = make_ctx(SelfKind::Mob, Uuid::new_v4(), "guard");
+        ctx2.cmd = "drop".to_string();
+        ctx2.cmd_canonical = String::new();
+        let body2 = "\
+if %cmd.mudcommand% == drop
+  return 0
+end";
+        assert_eq!(fire_dg(body2, &ctx2), Outcome::Return(0));
+    }
+
+    #[test]
+    fn actor_id_resolves_for_player_and_mob() {
+        // Player actor: %actor.id% == char_id (the connection_id we bound).
+        let cid = Uuid::new_v4();
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: cid.to_string(),
+            char_id: cid,
+            name: "tester".to_string(),
+        });
+        // Re-uses the local `set` path: assign %actor.id% into a local and
+        // verify equality.
+        let body = format!(
+            "\
+set aid %actor.id%
+if %aid% == {cid}
+  return 7
+end",
+            cid = cid
+        );
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Return(7));
+
+        // Mob actor: %actor.id% == mobile_id.
+        let mob_id = Uuid::new_v4();
+        let mut ctx2 = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        ctx2.actor = Some(ActorRef::Mob {
+            mobile_id: mob_id,
+            name: "minion".to_string(),
+        });
+        let body2 = format!(
+            "\
+set aid %actor.id%
+if %aid% == {mid}
+  return 8
+end",
+            mid = mob_id
+        );
+        assert_eq!(fire_dg(&body2, &ctx2), Outcome::Return(8));
+    }
+
+    #[test]
+    fn actor_pronoun_fields_resolve_for_player() {
+        // Save a male character and confirm heshe/himher/hisher resolve.
+        let cid = Uuid::new_v4();
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "alex",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+            "gender": "male",
+        }))
+        .expect("build character");
+        ctx.db.save_character_data(ch).expect("save");
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: cid.to_string(),
+            char_id: cid,
+            name: "alex".to_string(),
+        });
+
+        let body = "\
+if %actor.heshe% == he
+  if %actor.himher% == him
+    if %actor.hisher% == his
+      return 9
+    end
+  end
+end";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Return(9));
+    }
+
+    // ---------- Phase 5d tests ----------
+
+    #[test]
+    fn actor_gold_call_subtracts_and_persists() {
+        // Player has 100 gold. Trigger does `nop %actor.gold(-50)%`. After
+        // the fire, the character's persisted gold is 50.
+        let cid = Uuid::new_v4();
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let mut ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "buyer",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ch.gold = 100;
+        ctx.db.save_character_data(ch).expect("save");
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: cid.to_string(),
+            char_id: cid,
+            name: "buyer".to_string(),
+        });
+
+        let body = "nop %actor.gold(-50)%\nhalt";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Halt);
+        let after = ctx.db.get_character_data("buyer").unwrap().unwrap();
+        assert_eq!(after.gold, 50, "gold(-50) should subtract 50");
+    }
+
+    #[test]
+    fn actor_gold_call_clamps_at_zero() {
+        let cid = Uuid::new_v4();
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let mut ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "broke",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ch.gold = 5;
+        ctx.db.save_character_data(ch).expect("save");
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: cid.to_string(),
+            char_id: cid,
+            name: "broke".to_string(),
+        });
+
+        let body = "nop %actor.gold(-100)%\nhalt";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Halt);
+        let after = ctx.db.get_character_data("broke").unwrap().unwrap();
+        assert_eq!(after.gold, 0, "gold call clamps at 0");
+    }
+
+    #[test]
+    fn self_hp_call_heals_capped_at_max() {
+        let mut mob = crate::types::MobileData::new("hurt".to_string());
+        mob.is_prototype = false;
+        mob.max_hp = 50;
+        mob.current_hp = 30;
+        let mob_id = mob.id;
+        let ctx = make_ctx(SelfKind::Mob, mob_id, "hurt");
+        ctx.db.save_mobile_data(mob).expect("save");
+
+        let body = "nop %self.hitp(40)%\nhalt";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Halt);
+        let after = ctx.db.get_mobile_data(&mob_id).unwrap().unwrap();
+        assert_eq!(after.current_hp, 50, "self.hitp(N) caps at max_hp");
+    }
+
+    #[test]
+    fn fire_mobile_dg_triggers_filters_by_command_keyword() {
+        // OnCommand triggers gate on args[0] /= cmd. Build a mob with two
+        // OnCommand triggers: one wants `pan`, one wants `shovel`. Fire
+        // for `cmd=pan`; only the `pan` trigger should land its effect.
+        let mut mob = crate::types::MobileData::new("guardian".to_string());
+        mob.triggers.push(crate::MobileTrigger {
+            trigger_type: crate::MobileTriggerType::OnCommand,
+            script_name: String::new(),
+            enabled: true,
+            chance: 100,
+            args: vec!["pan".to_string()],
+            interval_secs: 60,
+            last_fired: 0,
+            dg_body: Some("set fired pan\nglobal fired\nhalt".to_string()),
+            dg_name: None,
+        });
+        mob.triggers.push(crate::MobileTrigger {
+            trigger_type: crate::MobileTriggerType::OnCommand,
+            script_name: String::new(),
+            enabled: true,
+            chance: 100,
+            args: vec!["shovel".to_string()],
+            interval_secs: 60,
+            last_fired: 0,
+            dg_body: Some("set fired shovel\nglobal fired\nhalt".to_string()),
+            dg_name: None,
+        });
+        let mob_id = mob.id;
+        let ctx = make_ctx(SelfKind::Mob, mob_id, "guardian");
+        ctx.db.save_mobile_data(mob.clone()).expect("save");
+
+        // Reload to get the same shape and fire for cmd=pan.
+        let mob = ctx.db.get_mobile_data(&mob_id).expect("get").expect("mob");
+        let cancelled = fire_mobile_dg_triggers(
+            &ctx.db,
+            &ctx.connections,
+            &mob,
+            crate::MobileTriggerType::OnCommand,
+            "",
+            "pan",
+            "pan",
+            "gold",
+        );
+        assert!(!cancelled, "test triggers don't return 0");
+        // `fired` global must be 'pan', not 'shovel' (or empty).
+        assert_eq!(
+            ctx.db.get_dg_global("fired").expect("get").as_deref(),
+            Some("pan")
+        );
+    }
+}

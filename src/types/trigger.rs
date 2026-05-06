@@ -2,6 +2,43 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Which kind of host entity a DG trigger prototype attaches to.
+/// Mirrors the `attach_type` byte from `.trg` headers (0=mob, 1=obj, 2=room).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DgAttachKind {
+    Mob,
+    Obj,
+    Room,
+}
+
+/// A DG Scripts trigger prototype, looked up by vnum at runtime by the
+/// `attach <vnum> <target>` command (and the builder `trigger dg attach`
+/// subcommand). Imported `.trg` files seed this registry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DgTriggerProto {
+    pub vnum: String,
+    pub name: String,
+    pub attach_kind: DgAttachKind,
+    /// Letter-flag string from the `.trg` header (e.g. `g` for greet,
+    /// `q` for command). Resolved via `tba::trg_map` at attach time.
+    pub flags: String,
+    /// Numeric arg / priority — used as `chance` on the resulting trigger
+    /// (or as the HP-percent threshold for `MTRIG_HITPRCNT`).
+    #[serde(default = "default_proto_numeric")]
+    pub numeric_arg: i32,
+    /// Single-line argument string (verb keyword for COMMAND triggers,
+    /// keyword list for SPEECH triggers, etc.).
+    #[serde(default)]
+    pub arglist: String,
+    /// Raw DG body — copied into `dg_body` on the resulting trigger.
+    pub body: String,
+}
+
+fn default_proto_numeric() -> i32 {
+    100
+}
+
 // === Room Trigger System ===
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -15,6 +52,10 @@ pub enum TriggerType {
     OnWeatherChange, // Fires when weather changes (rain starts, clears up, etc.)
     OnSeasonChange,  // Fires when season changes (spring, summer, autumn, winter)
     OnMonthChange,   // Fires when month changes (1-12)
+    /// Fires when a player runs any command in this room. The trigger
+    /// `args` first entry is matched against the command verb (DG keyword
+    /// `/=` semantics). `Return(0)` cancels the host command. (DG WTRIG_COMMAND)
+    OnCommand,
 }
 
 impl Default for TriggerType {
@@ -36,6 +77,15 @@ pub struct RoomTrigger {
     pub chance: i32, // 1-100 percent (100 = always)
     #[serde(default)]
     pub args: Vec<String>, // Template arguments
+    /// DG Scripts source body (from imported `.trg` files). When present,
+    /// the fire path routes through the DG interpreter instead of
+    /// `script_name`. Builders can author either flavor.
+    #[serde(default)]
+    pub dg_body: Option<String>,
+    /// Human-readable trigger name from the `.trg` header (e.g.
+    /// "Mage Guildguard - 3024"). Display only.
+    #[serde(default)]
+    pub dg_name: Option<String>,
 }
 
 fn default_trigger_interval() -> i64 {
@@ -56,6 +106,8 @@ impl Default for RoomTrigger {
             last_fired: 0,
             chance: 100,
             args: Vec::new(),
+            dg_body: None,
+            dg_name: None,
         }
     }
 }
@@ -70,6 +122,11 @@ pub enum ItemTriggerType {
     OnUse,
     OnExamine,
     OnPrompt, // Fires when building prompt for equipped items
+    /// Fires when an item is loaded (spawned from prototype). (DG OTRIG_LOAD)
+    OnLoad,
+    /// Fires when a player runs any command while this item is in their
+    /// inventory or equipped. `Return(0)` cancels the host command. (DG OTRIG_COMMAND)
+    OnCommand,
 }
 
 impl Default for ItemTriggerType {
@@ -87,6 +144,10 @@ pub struct ItemTrigger {
     pub chance: i32, // 1-100 percent (100 = always)
     #[serde(default)]
     pub args: Vec<String>, // Template arguments
+    #[serde(default)]
+    pub dg_body: Option<String>,
+    #[serde(default)]
+    pub dg_name: Option<String>,
 }
 
 impl Default for ItemTrigger {
@@ -97,6 +158,8 @@ impl Default for ItemTrigger {
             enabled: true,
             chance: 100,
             args: Vec::new(),
+            dg_body: None,
+            dg_name: None,
         }
     }
 }
@@ -113,6 +176,21 @@ pub enum MobileTriggerType {
     OnIdle,   // Periodic when players present in room
     OnAlways, // Periodic regardless of player presence
     OnFlee,   // Mobile flees from combat
+    /// Fires once per round while NPC is in combat. (DG MTRIG_FIGHT)
+    OnFight,
+    /// Fires when NPC HP drops below the threshold percent stored in
+    /// `args[0]` (a number 1-99). One-shot per crossing. (DG MTRIG_HITPRCNT)
+    OnHitPercent,
+    /// Fires when a player gives an item to this NPC. (DG MTRIG_RECEIVE)
+    OnReceive,
+    /// Fires when a player gives gold to this NPC. (DG MTRIG_BRIBE)
+    OnBribe,
+    /// Fires when an NPC is loaded (spawned from prototype). (DG MTRIG_LOAD)
+    OnLoad,
+    /// Fires when a player in the same room runs any command. The trigger
+    /// `args` first entry is matched against the command verb (DG keyword
+    /// `/=` semantics). `Return(0)` cancels the host command. (DG MTRIG_COMMAND)
+    OnCommand,
 }
 
 impl Default for MobileTriggerType {
@@ -134,6 +212,10 @@ pub struct MobileTrigger {
     pub interval_secs: i64, // For OnIdle triggers (default 60)
     #[serde(default)]
     pub last_fired: i64, // Unix timestamp of last execution
+    #[serde(default)]
+    pub dg_body: Option<String>,
+    #[serde(default)]
+    pub dg_name: Option<String>,
 }
 
 impl Default for MobileTrigger {
@@ -146,6 +228,8 @@ impl Default for MobileTrigger {
             args: Vec::new(),
             interval_secs: 60,
             last_fired: 0,
+            dg_body: None,
+            dg_name: None,
         }
     }
 }

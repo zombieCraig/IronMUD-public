@@ -100,15 +100,27 @@ fn maps_tba_ir_to_plan() {
     assert_eq!(plan.mobiles.len(), 2);
     assert_eq!(plan.items.len(), 2);
 
-    // Trigger-attachment Warns: 1 (room) + 1 (mob) + 2 (obj) = 4.
-    let trig_attach_warns = warnings
+    // DG trigger handling (post-runtime-interpreter, Phase 4 mapping):
+    // - Room T 555 (`g` = WTRIG_ENTER) → OnEnter overlay.
+    // - Obj  T 778 (`g` letter, treated as OTRIG_GET on the obj host) → OnGet.
+    // - Obj  T 777 (`c` = OTRIG_COMMAND) → OnCommand overlay (Phase 4).
+    // - Mob  T 666 (`q` = MTRIG_LEAVE) still surfaces as Info — no IronMUD
+    //   "leave" hook yet on mobs.
+    let dg_overlays = plan
+        .trigger_overlays
+        .iter()
+        .filter(|o| o.specproc_name.starts_with("dg_trigger_"))
+        .count();
+    assert_eq!(dg_overlays, 3, "WTRIG_ENTER + OTRIG_GET + OTRIG_COMMAND attach");
+    let dg_info_warns = warnings
         .iter()
         .filter(|w| {
-            matches!(w.kind, ironmud::import::WarningKind::DeferredFeature)
+            matches!(w.kind, ironmud::import::WarningKind::Info)
                 && w.message.contains("DG Scripts trigger")
+                && w.message.contains("not yet wired")
         })
         .count();
-    assert_eq!(trig_attach_warns, 4, "one Warn per attachment");
+    assert_eq!(dg_info_warns, 1, "MTRIG_LEAVE surfaces as Info");
 
     // Quest Warn.
     let quest_warns = warnings
@@ -132,6 +144,56 @@ fn maps_tba_ir_to_plan() {
             && w.message.contains("DG trigger attachment")
     });
     assert!(dg_zone_reset, "zone T reset surfaced as deferred warning");
+}
+
+#[test]
+fn analyzer_flags_unsupported_dg_features_during_import() {
+    // Build an in-memory ImportIR with a single dg_trigger whose body uses
+    // an unsupported variable accessor and an unknown command. The mapping
+    // pass should surface a single Info warning summarising both.
+    use ironmud::import::{ImportIR, IrDgTrigger, SourceLoc};
+
+    let mut ir = ImportIR::default();
+    // Phase 8a: actor/victim/self unknown fields are no longer flagged
+    // (treated as dg_var reads). To exercise the analyzer, use an unknown
+    // command and an unknown call-form on a non-entity head.
+    ir.dg_triggers.push(IrDgTrigger {
+        vnum: 9001,
+        name: "broken trigger".to_string(),
+        attach_type_raw: 0,
+        trigger_flags: "g".to_string(),
+        numeric_arg: 100,
+        arglist: String::new(),
+        body: "if %cmd.foobar(1)% == 1\n  bogus_command stuff\nend".to_string(),
+        source: SourceLoc::default(),
+    });
+
+    let (_plan, warnings) = mapping::ir_to_plan(&ir, &empty_opts());
+    let analyzer_warnings: Vec<_> = warnings
+        .iter()
+        .filter(|w| w.message.contains("unsupported features"))
+        .collect();
+    assert_eq!(analyzer_warnings.len(), 1, "one analyzer warning per trigger; got {warnings:?}");
+    let msg = &analyzer_warnings[0].message;
+    assert!(msg.contains("9001"), "warning includes trigger vnum: {msg}");
+    assert!(msg.contains("bogus_command"), "warning includes the unknown verb: {msg}");
+    assert!(msg.contains("cmd.foobar"), "warning includes the unknown accessor: {msg}");
+}
+
+#[test]
+fn analyzer_does_not_warn_on_clean_bodies() {
+    // The default fixture only uses %send%/%teleport% with %actor%/%actor.class% —
+    // all supported. The analyzer should emit zero warnings.
+    let (ir, _) = TbaEngine.parse(&fixture_root()).expect("parse");
+    let (_plan, warnings) = mapping::ir_to_plan(&ir, &empty_opts());
+    let analyzer_warnings: Vec<_> = warnings
+        .iter()
+        .filter(|w| w.message.contains("unsupported features"))
+        .collect();
+    assert!(
+        analyzer_warnings.is_empty(),
+        "no analyzer warnings expected on clean fixture; got {analyzer_warnings:?}"
+    );
 }
 
 #[test]

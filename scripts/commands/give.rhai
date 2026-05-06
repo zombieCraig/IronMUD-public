@@ -142,6 +142,11 @@ fn give_gold_to_mobile(char, target_mobile, amount, connection_id) {
 
     send_client_message(connection_id, "You give " + target_mobile.name + " " + amount + " gold coins.");
     broadcast_to_room(char.current_room_id, char.name + " gives " + target_mobile.name + " some gold.", char.name);
+
+    fire_mobile_trigger(target_mobile.id, "on_bribe", connection_id, #{
+        "amount": amount.to_string(),
+        "giver": char.name,
+    });
 }
 
 // ========== Single item ==========
@@ -199,6 +204,12 @@ fn give_item_to_mobile(char, target_mobile, item_keyword, connection_id) {
 
     send_client_message(connection_id, "You give " + item.name + " to " + target_mobile.name + ".");
     broadcast_to_room(char.current_room_id, char.name + " gives " + target_mobile.name + " something.", char.name);
+
+    fire_mobile_trigger(target_mobile.id, "on_receive", connection_id, #{
+        "item_id": item.id.to_string(),
+        "item_name": item.name,
+        "giver": char.name,
+    });
 }
 
 // ========== Give all ==========
@@ -260,6 +271,11 @@ fn give_all_items_to_mobile(char, target_mobile, filter_keyword, connection_id) 
         if item.flags.quest_item && !char.god_mode { skipped += 1; continue; }
         move_item_to_mobile_inventory(item.id, target_mobile.id);
         given += 1;
+        fire_mobile_trigger(target_mobile.id, "on_receive", connection_id, #{
+            "item_id": item.id.to_string(),
+            "item_name": item.name,
+            "giver": char.name,
+        });
     }
 
     if given > 0 {

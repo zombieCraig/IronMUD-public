@@ -137,6 +137,14 @@ fn process_spawn_points(db: &db::Db, connections: &SharedConnections) -> Result<
             match sp.entity_type {
                 SpawnEntityType::Mobile => db.spawn_mobile_from_prototype(&sp.vnum)?.and_then(|mobile| {
                     db.move_mobile_to_room(&mobile.id, &sp.room_id).ok();
+                    let _ = ironmud::script::fire_mobile_triggers_from_rust(
+                        db,
+                        connections,
+                        &mobile.id.to_string(),
+                        "on_load",
+                        "",
+                        &std::collections::HashMap::new(),
+                    );
                     Some(mobile.id)
                 }),
                 SpawnEntityType::Item => db.spawn_item_from_prototype(&sp.vnum)?.and_then(|item| {
@@ -147,6 +155,16 @@ fn process_spawn_points(db: &db::Db, connections: &SharedConnections) -> Result<
                             spawned.flags.buried = true;
                             let _ = db.save_item_data(spawned);
                         }
+                    }
+                    if let Ok(Some(loaded)) = db.get_item_data(&item_id) {
+                        let db_arc = std::sync::Arc::new(db.clone());
+                        ironmud::script::dg::fire_item_dg_triggers(
+                            &db_arc,
+                            connections,
+                            &loaded,
+                            ironmud::ItemTriggerType::OnLoad,
+                            "",
+                        );
                     }
                     Some(item_id)
                 }),

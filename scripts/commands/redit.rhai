@@ -3,6 +3,7 @@
 
 // Import shared OLC helpers
 import "olc_helpers" as olc;
+import "dg_olc" as dg;
 
 // Helper - safe-zone alias: `flag safe`/`flag peaceful` route to combat_zone.
 fn handle_safe_alias(room_id, want_on, connection_id) {
@@ -393,6 +394,15 @@ fn handle_trigger_subcommand(connection_id, room, parts) {
     }
 
     let trigger_cmd = parts[1].to_lower();
+
+    if trigger_cmd == "dg" {
+        let dg_action = if parts.len() > 2 { parts[2] } else { "" };
+        let dg_rest = [];
+        let i = 3;
+        while i < parts.len() { dg_rest.push(parts[i]); i += 1; }
+        dg::handle("room", room.id.to_string(), dg_action, dg_rest, connection_id);
+        return;
+    }
 
     if trigger_cmd == "list" {
         let triggers = get_room_triggers(room.id);

@@ -904,6 +904,7 @@ async fn create_item(
         plant_prototype_vnum: req.plant_prototype_vnum.unwrap_or_default(),
         fertilizer_duration: req.fertilizer_duration.unwrap_or(0),
         treats_infestation: req.treats_infestation.unwrap_or_default(),
+        dg_vars: std::collections::HashMap::new(),
     };
 
     // Auto-set default liquid effects for liquid containers
@@ -1387,6 +1388,8 @@ async fn add_trigger(
         enabled: true,
         chance: req.chance,
         args: req.args,
+        dg_body: None,
+        dg_name: None,
     });
 
     state

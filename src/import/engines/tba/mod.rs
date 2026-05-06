@@ -21,6 +21,7 @@ pub mod mob;
 pub mod obj;
 pub mod qst;
 pub mod trg;
+pub mod trg_map;
 pub mod wld;
 pub mod zon;
 

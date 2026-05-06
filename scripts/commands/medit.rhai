@@ -4,6 +4,7 @@
 
 // Import shared OLC helpers
 import "olc_helpers" as olc;
+import "dg_olc" as dg;
 
 // AI helper: handle short help command
 fn handle_ai_short_help(mobile, uuid, parts, connection_id) {
@@ -2041,6 +2042,15 @@ fn handle_trigger_subcommand(mobile, mobile_id, parts, connection_id) {
         return;
     }
 
+    if action == "dg" {
+        let dg_action = if parts.len() > 3 { parts[3] } else { "" };
+        let dg_rest = [];
+        let i = 4;
+        while i < parts.len() { dg_rest.push(parts[i]); i += 1; }
+        dg::handle("mobile", mobile_id, dg_action, dg_rest, connection_id);
+        return;
+    }
+
     show_trigger_help(mobile_id, connection_id);
 }
 
@@ -2067,7 +2077,14 @@ fn show_trigger_help(mobile_id, connection_id) {
     output += "Always triggers fire periodically regardless of player presence.\n";
     output += "Use 'trigger interval' to set how often (default 60s).\n";
     output += "\nNote: attack triggers fire when combat begins; death triggers fire before the mobile is removed.\n";
-    output += "Flee triggers fire when the mobile flees from combat.";
+    output += "Flee triggers fire when the mobile flees from combat.\n";
+    output += "\nDG Scripts (imported tbamud/circlemud triggers):\n";
+    output += "  medit " + mobile_id + " trigger dg list\n";
+    output += "  medit " + mobile_id + " trigger dg view <index>\n";
+    output += "  medit " + mobile_id + " trigger dg add <type> [name]\n";
+    output += "  medit " + mobile_id + " trigger dg edit <index>\n";
+    output += "  medit " + mobile_id + " trigger dg attach <vnum>\n";
+    output += "  medit " + mobile_id + " trigger dg protos\n";
     send_client_message(connection_id, output);
 }
 

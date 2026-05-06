@@ -342,9 +342,8 @@ pub enum AttachType {
 }
 
 /// tbaMUD DG Scripts trigger definition (one record in a `.trg` file).
-/// Bodies are not translated — the importer only records the header so
-/// mapping can emit per-attachment Warns telling the builder which scripts
-/// to re-author in Rhai.
+/// The body is captured verbatim and routed through the runtime DG
+/// interpreter at fire time (`src/script/dg/`).
 #[derive(Debug, Clone)]
 pub struct IrDgTrigger {
     pub vnum: i32,
@@ -353,10 +352,18 @@ pub struct IrDgTrigger {
     /// 0 = mob, 1 = obj, 2 = room. Anything else surfaces as a Warn.
     pub attach_type_raw: i32,
     /// Trigger flag string (e.g. `q` = command, `g` = greet). Captured
-    /// verbatim — IronMUD has no DG Scripts equivalent.
+    /// verbatim. Each letter is a bit position in the per-attach-type
+    /// flag table (see `engines/tba/trg_map.rs` for the IronMUD mapping).
     pub trigger_flags: String,
     /// Numeric arg (priority / percentage). Stock tbaMUD uses 100 most often.
     pub numeric_arg: i32,
+    /// Single-line argument string for command/speech triggers (the part
+    /// between the header line and the body). e.g. for a SPEECH trigger
+    /// this is the keyword list. Empty for triggers that don't take args.
+    pub arglist: String,
+    /// Raw DG Scripts source body, lines joined with `\n`. Stored as the
+    /// trigger's `dg_body` when the trigger is attached to a mob/obj/room.
+    pub body: String,
     pub source: SourceLoc,
 }
 
@@ -574,6 +581,10 @@ pub struct Plan {
     /// `castle.c`. Applied in a writer pass after spawn points land so the
     /// overlay can compose with shopkeeper / receptionist mob mutations.
     pub trigger_overlays: Vec<PlannedTriggerOverlay>,
+    /// DG trigger prototypes seeded from `.trg` files. Persist into the
+    /// `dg_trigger_protos` sled tree so the runtime `attach` statement and
+    /// `trigger dg attach <vnum>` builder command can resolve bodies.
+    pub dg_trigger_protos: Vec<crate::types::DgTriggerProto>,
 }
 
 #[derive(Debug, Clone)]

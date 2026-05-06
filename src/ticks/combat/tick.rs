@@ -964,6 +964,32 @@ fn process_character_attacks_mobile(
         base_hit_chance = (base_hit_chance - curse.magnitude).clamp(5, 95);
     }
 
+    // Bless buff — magnitude*3 % to hit chance.
+    if let Some(bless) = char
+        .active_buffs
+        .iter()
+        .find(|b| b.effect_type == EffectType::Bless)
+    {
+        base_hit_chance = (base_hit_chance + bless.magnitude * 3).clamp(5, 95);
+    }
+
+    // Haste / Slow — affect hit chance. Stock D&D haste is "extra attack per
+    // round"; without per-attack timing we approximate as +/- hit accuracy.
+    if let Some(haste) = char
+        .active_buffs
+        .iter()
+        .find(|b| b.effect_type == EffectType::Haste)
+    {
+        base_hit_chance = (base_hit_chance + haste.magnitude * 2).clamp(5, 95);
+    }
+    if let Some(slow) = char
+        .active_buffs
+        .iter()
+        .find(|b| b.effect_type == EffectType::Slow)
+    {
+        base_hit_chance = (base_hit_chance - slow.magnitude * 2).clamp(5, 95);
+    }
+
     // Broadcast gunshot noise to adjacent rooms for loud ranged weapons
     if is_ranged_attack {
         if let Some(wid) = get_character_wielded_weapon_id(db, char) {
@@ -1055,6 +1081,15 @@ fn process_character_attacks_mobile(
 
         // Hit - calculate base damage (includes ammo bonus for ranged + APPLY_DAMROLL bonuses)
         let mut damage = roll_dice(dice_count, dice_sides) + damage_bonus + ammo_bonus + eq_dam_bonus;
+
+        // Bless adds (magnitude+1)/2 to damage. Default magnitude=1 → +1.
+        if let Some(bless) = char
+            .active_buffs
+            .iter()
+            .find(|b| b.effect_type == EffectType::Bless)
+        {
+            damage += (bless.magnitude + 1) / 2;
+        }
 
         // Apply underwater damage type modifier
         let (modified_damage, water_msg) =
@@ -1572,6 +1607,11 @@ fn process_mobile_combat_round(
         return Ok(());
     }
 
+    // Fire DG OnFight + OnHitPercent triggers (Phase 3) before action.
+    // OnFight runs each round; OnHitPercent fires once when HP% crosses
+    // a trigger-specified threshold and re-arms when HP% rises above it.
+    fire_combat_dg_triggers(db, connections, &mut mobile);
+
     // Consume stamina for attack
     mobile.current_stamina = (mobile.current_stamina - MOBILE_COMBAT_STAMINA_COST).max(0);
 
@@ -1701,6 +1741,75 @@ fn process_mobile_combat_round(
 
     debug!("Mobile combat round complete");
     Ok(())
+}
+
+/// Fire DG `OnFight` (every round) and `OnHitPercent` (once per
+/// crossing) triggers on a combatant mobile. Mutates `mobile.triggers[i]
+/// .last_fired` as a flag for HitPercent re-arm semantics.
+fn fire_combat_dg_triggers(db: &db::Db, connections: &SharedConnections, mobile: &mut MobileData) {
+    use ironmud::MobileTriggerType;
+
+    let db_arc = std::sync::Arc::new(db.clone());
+
+    // OnFight: fire all matching dg-bodied triggers every round.
+    let snapshot = mobile.clone();
+    ironmud::script::dg::fire_mobile_dg_triggers(
+        &db_arc,
+        connections,
+        &snapshot,
+        MobileTriggerType::OnFight,
+        "",
+        "",
+        "",
+        "",
+    );
+
+    // OnHitPercent: re-arm/fire logic. Each trigger's args[0] is a
+    // numeric threshold (1-99 inclusive). last_fired==0 means armed;
+    // non-zero means already-fired in the current crossing window.
+    if mobile.max_hp <= 0 {
+        return;
+    }
+    let hp_pct = (mobile.current_hp.max(0) * 100) / mobile.max_hp;
+    let mut needs_save = false;
+    let mut to_fire: Vec<usize> = Vec::new();
+    for (i, t) in mobile.triggers.iter_mut().enumerate() {
+        if t.trigger_type != MobileTriggerType::OnHitPercent || !t.enabled {
+            continue;
+        }
+        let threshold: i32 = t.args.first().and_then(|s| s.parse().ok()).unwrap_or(0);
+        if threshold <= 0 || threshold >= 100 {
+            continue;
+        }
+        if hp_pct <= threshold {
+            if t.last_fired == 0 {
+                to_fire.push(i);
+                t.last_fired = 1; // armed-flag (not a wall-clock ts here).
+                needs_save = true;
+            }
+        } else if t.last_fired != 0 {
+            t.last_fired = 0;
+            needs_save = true;
+        }
+    }
+    if !to_fire.is_empty() {
+        let snapshot = mobile.clone();
+        for &i in &to_fire {
+            let t = &snapshot.triggers[i];
+            if let Some(body) = t.dg_body.as_deref() {
+                let _ = ironmud::script::dg::fire_mobile_dg(
+                    body,
+                    &snapshot,
+                    "",
+                    db_arc.clone(),
+                    connections.clone(),
+                );
+            }
+        }
+    }
+    if needs_save {
+        let _ = db.save_mobile_data(mobile.clone());
+    }
 }
 
 /// Process a mobile attacking a player
@@ -1851,6 +1960,29 @@ fn process_mobile_attacks_player(
         hit_chance = (hit_chance - curse.magnitude).clamp(5, 95);
     }
 
+    if let Some(bless) = mobile
+        .active_buffs
+        .iter()
+        .find(|b| b.effect_type == EffectType::Bless)
+    {
+        hit_chance = (hit_chance + bless.magnitude * 3).clamp(5, 95);
+    }
+
+    if let Some(haste) = mobile
+        .active_buffs
+        .iter()
+        .find(|b| b.effect_type == EffectType::Haste)
+    {
+        hit_chance = (hit_chance + haste.magnitude * 2).clamp(5, 95);
+    }
+    if let Some(slow) = mobile
+        .active_buffs
+        .iter()
+        .find(|b| b.effect_type == EffectType::Slow)
+    {
+        hit_chance = (hit_chance - slow.magnitude * 2).clamp(5, 95);
+    }
+
     let roll = rng.gen_range(1..=100);
 
     // Skip hit roll if target was sleeping (automatic hit)
@@ -1881,6 +2013,14 @@ fn process_mobile_attacks_player(
 
     // Hit - calculate damage (includes APPLY_DAMROLL bonuses from equipped items)
     let mut damage = roll_dice(count, sides) + bonus + mob_eq_dam_bonus;
+
+    if let Some(bless) = mobile
+        .active_buffs
+        .iter()
+        .find(|b| b.effect_type == EffectType::Bless)
+    {
+        damage += (bless.magnitude + 1) / 2;
+    }
 
     // Apply underwater damage type modifier
     let (modified_damage, _water_msg) = apply_underwater_modifier(db, room_id, damage, damage_type);

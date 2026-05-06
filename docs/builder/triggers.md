@@ -1,6 +1,6 @@
 # Triggers and Scripting
 
-Triggers enable scripted behaviors that fire when specific events occur. Each trigger points to a Rhai script in `scripts/triggers/`.
+Triggers enable scripted behaviors that fire when specific events occur. Each trigger points to a Rhai script in `scripts/triggers/` — or, for imported tbamud content, a DG Scripts body. This page covers the Rhai authoring path; for DG Scripts, see [dg-scripts.md](dg-scripts.md).
 
 ## Trigger Types Overview
 
@@ -424,3 +424,4 @@ scripts/triggers/
 - [Items](items.md) - Item creation and properties
 - [Mobiles](mobiles.md) - NPC creation and properties
 - [Builder Guide](../builder-guide.md) - Overview of building
+- [DG Scripts](dg-scripts.md) - tbamud-style trigger language (for imported content or DG-style authoring)

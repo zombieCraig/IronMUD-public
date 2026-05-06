@@ -121,6 +121,7 @@ fn item(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str, ite
         plant_prototype_vnum: String::new(),
         fertilizer_duration: 0,
         treats_infestation: String::new(),
+        dg_vars: std::collections::HashMap::new(),
     }
 }
 

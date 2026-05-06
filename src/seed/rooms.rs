@@ -39,6 +39,7 @@ fn room(id: Uuid, area_id: Uuid, vnum: &str, title: &str, description: &str) -> 
         traps: Vec::new(),
         living_capacity: 0,
         residents: Vec::new(),
+        dg_vars: std::collections::HashMap::new(),
     }
 }
 
@@ -97,6 +98,8 @@ fn seed_oakvale(db: &Db) -> Result<usize> {
                 last_fired: 0,
                 chance: 100,
                 args: Vec::new(),
+                dg_body: None,
+                dg_name: None,
             },
             RoomTrigger {
                 trigger_type: TriggerType::Periodic,
@@ -106,6 +109,8 @@ fn seed_oakvale(db: &Db) -> Result<usize> {
                 last_fired: 0,
                 chance: 30,
                 args: vec!["A sparrow hops along the fountain rim, pecking at crumbs.|The fountain water catches the light, sending ripples of color across the stones.|A child chases a stray cat between the market stalls, laughing.|The village bell tolls the hour from the temple tower.".to_string()],
+                dg_body: None,
+                dg_name: None,
             },
         ],
         doors: HashMap::new(),
@@ -126,6 +131,7 @@ fn seed_oakvale(db: &Db) -> Result<usize> {
         traps: Vec::new(),
         living_capacity: 0,
         residents: Vec::new(),
+        dg_vars: std::collections::HashMap::new(),
     };
 
     // --- Tavern ---
@@ -434,6 +440,8 @@ fn seed_whisperwood(db: &Db) -> Result<usize> {
         last_fired: 0,
         chance: 40,
         args: Vec::new(),
+        dg_body: None,
+        dg_name: None,
     });
 
     let mut wolf_den = room(
@@ -726,6 +734,8 @@ fn seed_shadowfang(db: &Db) -> Result<usize> {
         last_fired: 0,
         chance: 35,
         args: vec!["Water drips from the ceiling into an unseen pool.|Something skitters in the darkness ahead.|A cold draft extinguishes a nearby torch, plunging the tunnel into deeper shadow.|You hear a distant, echoing growl.".to_string()],
+        dg_body: None,
+        dg_name: None,
     });
 
     let mut goblin_camp = room(

@@ -4,6 +4,7 @@
 
 // Import shared OLC helpers
 import "olc_helpers" as olc;
+import "dg_olc" as dg;
 
 // AI helper: handle short help command
 fn handle_ai_item_short_help(item, uuid, parts, connection_id) {
@@ -3381,6 +3382,15 @@ fn handle_trigger_subcommand(item, item_id, parts, connection_id) {
 
     if action == "view" {
         view_trigger_script(parts, connection_id);
+        return;
+    }
+
+    if action == "dg" {
+        let dg_action = if parts.len() > 3 { parts[3] } else { "" };
+        let dg_rest = [];
+        let i = 4;
+        while i < parts.len() { dg_rest.push(parts[i]); i += 1; }
+        dg::handle("item", item_id, dg_action, dg_rest, connection_id);
         return;
     }
 

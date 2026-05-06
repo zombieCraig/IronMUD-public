@@ -1,9 +1,8 @@
-//! tbaMUD `.trg` (DG Scripts trigger) header parser.
+//! tbaMUD `.trg` (DG Scripts trigger) parser.
 //!
-//! Records each trigger as an [`IrDgTrigger`] but **does not translate the
-//! body** — DG Scripts is a complete scripting language with ~50 commands
-//! and ~80 built-in variables. Bodies surface as one Warn per attachment
-//! during mapping; builders re-author the behavior in Rhai.
+//! Captures vnum, name, attach type, flags, arglist, and body. The body is
+//! the source for IronMUD's runtime DG interpreter (`src/script/dg/`); the
+//! body text is not translated at import time.
 //!
 //! Record format:
 //! ```text
@@ -14,12 +13,15 @@
 //! body (multi-line; ~ on its own line terminates)
 //! ```
 //!
-//! NOTE on body parsing: DG Script bodies legitimately contain `~` characters
-//! in comments / string interpolation, so the standard CircleMUD `~ anywhere
-//! in line` terminator rule (used by [`crate::import::engines::circle::parser::LineParser::read_string`])
-//! is too eager. Instead, we scan forward until we find a record-boundary
-//! line (`#<vnum>` or `$` at start-of-line). Bodies aren't surfaced — we
-//! only need the header to emit a Warn naming the source vnum.
+//! NOTE on body termination: DG Script bodies legitimately contain `~`
+//! characters in comments and string-comparison operators, so the standard
+//! CircleMUD "~ anywhere in line" rule (used by
+//! [`crate::import::engines::circle::parser::LineParser::read_string`]) is
+//! too eager. Instead, we treat a `~` on its own line (after optional
+//! leading whitespace) as the body terminator, and fall back to the next
+//! record-boundary line (`#<vnum>` or `$` at start-of-line) if no lone-`~`
+//! is found. This matches tbaMUD's parser behavior on every stock trigger
+//! while staying robust against `~` inside body lines.
 
 use anyhow::{Context, Result};
 use std::path::Path;
@@ -94,12 +96,37 @@ pub fn parse_str(text: &str, path: &Path) -> Result<Vec<IrDgTrigger>> {
         let trigger_flags = t.next().unwrap_or("0").to_string();
         let numeric_arg: i32 = t.next().and_then(|s| s.parse().ok()).unwrap_or(100);
 
-        // Skip arglist (single line, ~-terminated) + body (multi-line) by
-        // scanning until the next boundary (`#<vnum>` or `$` at start of
-        // a non-blank line). This is more permissive than tbaMUD's actual
-        // parser but resilient against `~` inside DG Script bodies.
+        // Arglist: single line, `~`-terminated. Stock tbaMUD format.
+        let mut arglist = String::new();
+        if i < lines.len() {
+            let l = lines[i].1;
+            if let Some(idx) = l.find('~') {
+                arglist.push_str(&l[..idx]);
+                i += 1;
+            } else {
+                // Malformed — treat the line as the arglist body and move on.
+                arglist.push_str(l);
+                i += 1;
+            }
+        }
+
+        // Body: lines until a `~` on its own line (optionally indented),
+        // OR until the next record boundary (`#<vnum>` or `$`). The first
+        // condition matches tbaMUD's terminator; the second is the fallback
+        // for records missing the closing tilde.
+        let mut body_lines: Vec<&str> = Vec::new();
         while i < lines.len() {
-            let l = lines[i].1.trim_start();
+            let raw = lines[i].1;
+            let l = raw.trim();
+            // Lone-tilde terminator (the standard tbaMUD body close).
+            if l == "~" {
+                i += 1;
+                break;
+            }
+            // Record-boundary fallback.
+            if l.starts_with('$') {
+                break;
+            }
             if l.starts_with('#')
                 && l.trim_start_matches('#')
                     .split_whitespace()
@@ -109,11 +136,10 @@ pub fn parse_str(text: &str, path: &Path) -> Result<Vec<IrDgTrigger>> {
             {
                 break;
             }
-            if l.starts_with('$') {
-                break;
-            }
+            body_lines.push(raw);
             i += 1;
         }
+        let body = body_lines.join("\n");
 
         out.push(IrDgTrigger {
             vnum,
@@ -121,6 +147,8 @@ pub fn parse_str(text: &str, path: &Path) -> Result<Vec<IrDgTrigger>> {
             attach_type_raw,
             trigger_flags,
             numeric_arg,
+            arglist,
+            body,
             source,
         });
     }
@@ -158,13 +186,17 @@ $
         assert_eq!(ts[0].attach_type_raw, 0);
         assert_eq!(ts[0].trigger_flags, "q");
         assert_eq!(ts[0].numeric_arg, 100);
+        assert!(ts[0].body.contains("if %direction% == south"));
+        assert!(ts[0].body.contains("return 0"));
         assert_eq!(ts[1].vnum, 3001);
+        assert_eq!(ts[1].body, "");
     }
 
     #[test]
     fn handles_tilde_in_body() {
         // DG Scripts bodies legitimately contain ~ in comments and string
-        // operators. The parser must not be confused.
+        // operators. The body terminator is a `~` on its own line; inline
+        // `~`s pass through.
         let body = "\
 #100
 Reverse Card~
@@ -185,6 +217,11 @@ $
         let ts = parse_str(body, &PathBuf::from("test.trg")).unwrap();
         assert_eq!(ts.len(), 2);
         assert_eq!(ts[0].vnum, 100);
+        assert_eq!(ts[0].arglist, "say");
+        assert!(ts[0].body.contains("set arg ~%arg%"));
+        assert!(!ts[0].body.contains("#101"));
         assert_eq!(ts[1].vnum, 101);
+        assert_eq!(ts[1].arglist, "foo");
+        assert_eq!(ts[1].body, "* simple");
     }
 }

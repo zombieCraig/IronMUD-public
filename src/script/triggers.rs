@@ -11,6 +11,58 @@ use crate::{
 use rhai::Engine;
 use std::sync::Arc;
 
+/// Parse a room trigger type name into a [`TriggerType`]. Recognises both
+/// `on_xxx` and bare `xxx` forms.
+pub(crate) fn parse_room_trigger_type(s: &str) -> Option<TriggerType> {
+    Some(match s.to_ascii_lowercase().as_str() {
+        "on_enter" | "enter" => TriggerType::OnEnter,
+        "on_exit" | "exit" => TriggerType::OnExit,
+        "on_look" | "look" => TriggerType::OnLook,
+        "periodic" => TriggerType::Periodic,
+        "on_time_change" | "time_change" => TriggerType::OnTimeChange,
+        "on_weather_change" | "weather_change" => TriggerType::OnWeatherChange,
+        "on_season_change" | "season_change" => TriggerType::OnSeasonChange,
+        "on_month_change" | "month_change" => TriggerType::OnMonthChange,
+        "on_command" | "command" => TriggerType::OnCommand,
+        _ => return None,
+    })
+}
+
+/// Parse an item trigger type name into an [`ItemTriggerType`].
+pub(crate) fn parse_item_trigger_type(s: &str) -> Option<ItemTriggerType> {
+    Some(match s.to_ascii_lowercase().as_str() {
+        "on_get" | "get" => ItemTriggerType::OnGet,
+        "on_drop" | "drop" => ItemTriggerType::OnDrop,
+        "on_use" | "use" => ItemTriggerType::OnUse,
+        "on_examine" | "examine" => ItemTriggerType::OnExamine,
+        "on_prompt" | "prompt" => ItemTriggerType::OnPrompt,
+        "on_load" | "load" => ItemTriggerType::OnLoad,
+        "on_command" | "command" => ItemTriggerType::OnCommand,
+        _ => return None,
+    })
+}
+
+/// Parse a string like "on_greet" / "greet" / "on_hitprcnt" / "hitprcnt"
+/// into a [`MobileTriggerType`]. Returns None for unrecognised input.
+pub(crate) fn parse_mobile_trigger_type(s: &str) -> Option<MobileTriggerType> {
+    Some(match s.to_ascii_lowercase().as_str() {
+        "on_greet" | "greet" => MobileTriggerType::OnGreet,
+        "on_attack" | "attack" => MobileTriggerType::OnAttack,
+        "on_death" | "death" => MobileTriggerType::OnDeath,
+        "on_say" | "say" => MobileTriggerType::OnSay,
+        "on_idle" | "idle" => MobileTriggerType::OnIdle,
+        "on_always" | "always" => MobileTriggerType::OnAlways,
+        "on_flee" | "flee" => MobileTriggerType::OnFlee,
+        "on_fight" | "fight" => MobileTriggerType::OnFight,
+        "on_hitprcnt" | "hitprcnt" | "hitpercent" | "on_hitpercent" => MobileTriggerType::OnHitPercent,
+        "on_receive" | "receive" => MobileTriggerType::OnReceive,
+        "on_bribe" | "bribe" => MobileTriggerType::OnBribe,
+        "on_load" | "load" => MobileTriggerType::OnLoad,
+        "on_command" | "command" => MobileTriggerType::OnCommand,
+        _ => return None,
+    })
+}
+
 /// Validate a trigger script name to prevent path traversal.
 /// Only allows alphanumeric characters, underscores, and hyphens.
 /// Template names (starting with @) are validated the same way for the part after @.
@@ -334,6 +386,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         TriggerType::OnWeatherChange => "on_weather_change".to_string(),
         TriggerType::OnSeasonChange => "on_season_change".to_string(),
         TriggerType::OnMonthChange => "on_month_change".to_string(),
+        TriggerType::OnCommand => "on_command".to_string(),
     });
 
     // get_room_triggers(room_id) -> Array of RoomTrigger
@@ -363,16 +416,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(Some(r)) => r,
                 _ => return false,
             };
-            let ttype = match trigger_type.to_lowercase().as_str() {
-                "on_enter" | "enter" => TriggerType::OnEnter,
-                "on_exit" | "exit" => TriggerType::OnExit,
-                "on_look" | "look" => TriggerType::OnLook,
-                "periodic" => TriggerType::Periodic,
-                "on_time_change" | "time_change" => TriggerType::OnTimeChange,
-                "on_weather_change" | "weather_change" => TriggerType::OnWeatherChange,
-                "on_season_change" | "season_change" => TriggerType::OnSeasonChange,
-                "on_month_change" | "month_change" => TriggerType::OnMonthChange,
-                _ => return false,
+            let ttype = match parse_room_trigger_type(&trigger_type) {
+                Some(t) => t,
+                None => return false,
             };
             room.triggers.push(RoomTrigger {
                 trigger_type: ttype,
@@ -382,6 +428,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 last_fired: 0,
                 chance: 100,
                 args: Vec::new(),
+                dg_body: None,
+                dg_name: None,
             });
             cloned_db.save_room_data(room).is_ok()
         },
@@ -401,16 +449,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(Some(r)) => r,
                 _ => return false,
             };
-            let ttype = match trigger_type.to_lowercase().as_str() {
-                "on_enter" | "enter" => TriggerType::OnEnter,
-                "on_exit" | "exit" => TriggerType::OnExit,
-                "on_look" | "look" => TriggerType::OnLook,
-                "periodic" => TriggerType::Periodic,
-                "on_time_change" | "time_change" => TriggerType::OnTimeChange,
-                "on_weather_change" | "weather_change" => TriggerType::OnWeatherChange,
-                "on_season_change" | "season_change" => TriggerType::OnSeasonChange,
-                "on_month_change" | "month_change" => TriggerType::OnMonthChange,
-                _ => return false,
+            let ttype = match parse_room_trigger_type(&trigger_type) {
+                Some(t) => t,
+                None => return false,
             };
             let string_args: Vec<String> = args.into_iter().filter_map(|a| a.try_cast::<String>()).collect();
             room.triggers.push(RoomTrigger {
@@ -421,6 +462,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 last_fired: 0,
                 chance: 100,
                 args: string_args,
+                dg_body: None,
+                dg_name: None,
             });
             cloned_db.save_room_data(room).is_ok()
         },
@@ -440,16 +483,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(Some(r)) => r,
                 _ => return false,
             };
-            let ttype = match trigger_type.to_lowercase().as_str() {
-                "on_enter" | "enter" => TriggerType::OnEnter,
-                "on_exit" | "exit" => TriggerType::OnExit,
-                "on_look" | "look" => TriggerType::OnLook,
-                "periodic" => TriggerType::Periodic,
-                "on_time_change" | "time_change" => TriggerType::OnTimeChange,
-                "on_weather_change" | "weather_change" => TriggerType::OnWeatherChange,
-                "on_season_change" | "season_change" => TriggerType::OnSeasonChange,
-                "on_month_change" | "month_change" => TriggerType::OnMonthChange,
-                _ => return false,
+            let ttype = match parse_room_trigger_type(&trigger_type) {
+                Some(t) => t,
+                None => return false,
             };
             // Extract args from parts starting at start_idx
             let string_args: Vec<String> = parts
@@ -465,6 +501,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 last_fired: 0,
                 chance: 100,
                 args: string_args,
+                dg_body: None,
+                dg_name: None,
             });
             cloned_db.save_room_data(room).is_ok()
         },
@@ -753,16 +791,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 _ => return "continue".to_string(),
             };
 
-            let target_type = match trigger_type.to_lowercase().as_str() {
-                "on_enter" | "enter" => TriggerType::OnEnter,
-                "on_exit" | "exit" => TriggerType::OnExit,
-                "on_look" | "look" => TriggerType::OnLook,
-                "periodic" => TriggerType::Periodic,
-                "on_time_change" | "time_change" => TriggerType::OnTimeChange,
-                "on_weather_change" | "weather_change" => TriggerType::OnWeatherChange,
-                "on_season_change" | "season_change" => TriggerType::OnSeasonChange,
-                "on_month_change" | "month_change" => TriggerType::OnMonthChange,
-                _ => return "continue".to_string(),
+            let target_type = match parse_room_trigger_type(&trigger_type) {
+                Some(t) => t,
+                None => return "continue".to_string(),
             };
 
             // Find all matching triggers
@@ -778,6 +809,23 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     if roll > trigger.chance {
                         continue;
                     }
+                }
+
+                // DG Scripts body (imported from .trg). Routes through the
+                // runtime DG interpreter; `return 0` from a command-shape
+                // trigger cancels the host action.
+                if let Some(body) = trigger.dg_body.as_deref() {
+                    let outcome = super::dg::fire_room_dg(
+                        body,
+                        &room,
+                        &connection_id,
+                        cloned_db.clone(),
+                        cloned_conns.clone(),
+                    );
+                    if matches!(outcome, super::dg::Outcome::Return(0)) {
+                        return "cancel".to_string();
+                    }
+                    continue;
                 }
 
                 // Handle built-in templates (script_name starts with @)
@@ -1009,6 +1057,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         ItemTriggerType::OnUse => "on_use".to_string(),
         ItemTriggerType::OnExamine => "on_examine".to_string(),
         ItemTriggerType::OnPrompt => "on_prompt".to_string(),
+        ItemTriggerType::OnLoad => "on_load".to_string(),
+        ItemTriggerType::OnCommand => "on_command".to_string(),
     });
 
     // get_item_triggers(item_id) -> Array of ItemTrigger
@@ -1038,13 +1088,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(Some(i)) => i,
                 _ => return false,
             };
-            let ttype = match trigger_type.to_lowercase().as_str() {
-                "on_get" | "get" => ItemTriggerType::OnGet,
-                "on_drop" | "drop" => ItemTriggerType::OnDrop,
-                "on_use" | "use" => ItemTriggerType::OnUse,
-                "on_examine" | "examine" => ItemTriggerType::OnExamine,
-                "on_prompt" | "prompt" => ItemTriggerType::OnPrompt,
-                _ => return false,
+            let ttype = match parse_item_trigger_type(&trigger_type) {
+                Some(t) => t,
+                None => return false,
             };
             item.triggers.push(ItemTrigger {
                 trigger_type: ttype,
@@ -1052,6 +1098,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 enabled: true,
                 chance: 100,
                 args: Vec::new(),
+                dg_body: None,
+                dg_name: None,
             });
             cloned_db.save_item_data(item).is_ok()
         },
@@ -1071,13 +1119,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(Some(i)) => i,
                 _ => return false,
             };
-            let ttype = match trigger_type.to_lowercase().as_str() {
-                "on_get" | "get" => ItemTriggerType::OnGet,
-                "on_drop" | "drop" => ItemTriggerType::OnDrop,
-                "on_use" | "use" => ItemTriggerType::OnUse,
-                "on_examine" | "examine" => ItemTriggerType::OnExamine,
-                "on_prompt" | "prompt" => ItemTriggerType::OnPrompt,
-                _ => return false,
+            let ttype = match parse_item_trigger_type(&trigger_type) {
+                Some(t) => t,
+                None => return false,
             };
             let string_args: Vec<String> = args.into_iter().filter_map(|a| a.try_cast::<String>()).collect();
             item.triggers.push(ItemTrigger {
@@ -1086,6 +1130,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 enabled: true,
                 chance: 100,
                 args: string_args,
+                dg_body: None,
+                dg_name: None,
             });
             cloned_db.save_item_data(item).is_ok()
         },
@@ -1330,13 +1376,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 _ => return "continue".to_string(),
             };
 
-            let trigger_type = match trigger_type_str.to_lowercase().as_str() {
-                "on_get" => ItemTriggerType::OnGet,
-                "on_drop" => ItemTriggerType::OnDrop,
-                "on_use" => ItemTriggerType::OnUse,
-                "on_examine" => ItemTriggerType::OnExamine,
-                "on_prompt" => ItemTriggerType::OnPrompt,
-                _ => return "continue".to_string(),
+            let trigger_type = match parse_item_trigger_type(&trigger_type_str) {
+                Some(t) => t,
+                None => return "continue".to_string(),
             };
 
             // Find all matching triggers
@@ -1359,6 +1401,21 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     if roll > trigger.chance {
                         continue;
                     }
+                }
+
+                // DG Scripts body (imported from .trg).
+                if let Some(body) = trigger.dg_body.as_deref() {
+                    let outcome = super::dg::fire_item_dg(
+                        body,
+                        &item,
+                        &connection_id,
+                        cloned_db.clone(),
+                        cloned_conns.clone(),
+                    );
+                    if matches!(outcome, super::dg::Outcome::Return(0)) {
+                        return "cancel".to_string();
+                    }
+                    continue;
                 }
 
                 // Handle built-in templates (script_name starts with @)
@@ -1621,6 +1678,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         MobileTriggerType::OnIdle => "on_idle".to_string(),
         MobileTriggerType::OnAlways => "on_always".to_string(),
         MobileTriggerType::OnFlee => "on_flee".to_string(),
+        MobileTriggerType::OnFight => "on_fight".to_string(),
+        MobileTriggerType::OnHitPercent => "on_hitprcnt".to_string(),
+        MobileTriggerType::OnReceive => "on_receive".to_string(),
+        MobileTriggerType::OnBribe => "on_bribe".to_string(),
+        MobileTriggerType::OnLoad => "on_load".to_string(),
+        MobileTriggerType::OnCommand => "on_command".to_string(),
     });
 
     // get_mobile_triggers(mobile_id) -> Array of MobileTrigger
@@ -1650,15 +1713,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(Some(m)) => m,
                 _ => return false,
             };
-            let ttype = match trigger_type.to_lowercase().as_str() {
-                "on_greet" | "greet" => MobileTriggerType::OnGreet,
-                "on_attack" | "attack" => MobileTriggerType::OnAttack,
-                "on_death" | "death" => MobileTriggerType::OnDeath,
-                "on_say" | "say" => MobileTriggerType::OnSay,
-                "on_idle" | "idle" => MobileTriggerType::OnIdle,
-                "on_always" | "always" => MobileTriggerType::OnAlways,
-                "on_flee" | "flee" => MobileTriggerType::OnFlee,
-                _ => return false,
+            let ttype = match parse_mobile_trigger_type(&trigger_type) {
+                Some(t) => t,
+                None => return false,
             };
             mobile.triggers.push(MobileTrigger {
                 trigger_type: ttype,
@@ -1668,6 +1725,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 args: Vec::new(),
                 interval_secs: 60,
                 last_fired: 0,
+                dg_body: None,
+                dg_name: None,
             });
             cloned_db.save_mobile_data(mobile).is_ok()
         },
@@ -1687,15 +1746,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(Some(m)) => m,
                 _ => return false,
             };
-            let ttype = match trigger_type.to_lowercase().as_str() {
-                "on_greet" | "greet" => MobileTriggerType::OnGreet,
-                "on_attack" | "attack" => MobileTriggerType::OnAttack,
-                "on_death" | "death" => MobileTriggerType::OnDeath,
-                "on_say" | "say" => MobileTriggerType::OnSay,
-                "on_idle" | "idle" => MobileTriggerType::OnIdle,
-                "on_always" | "always" => MobileTriggerType::OnAlways,
-                "on_flee" | "flee" => MobileTriggerType::OnFlee,
-                _ => return false,
+            let ttype = match parse_mobile_trigger_type(&trigger_type) {
+                Some(t) => t,
+                None => return false,
             };
             let string_args: Vec<String> = args.into_iter().filter_map(|a| a.try_cast::<String>()).collect();
             mobile.triggers.push(MobileTrigger {
@@ -1706,6 +1759,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 args: string_args,
                 interval_secs: 60,
                 last_fired: 0,
+                dg_body: None,
+                dg_name: None,
             });
             cloned_db.save_mobile_data(mobile).is_ok()
         },
@@ -2107,13 +2162,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 _ => return "continue".to_string(),
             };
 
-            let trigger_type = match trigger_type_str.to_lowercase().as_str() {
-                "on_greet" => MobileTriggerType::OnGreet,
-                "on_attack" => MobileTriggerType::OnAttack,
-                "on_death" => MobileTriggerType::OnDeath,
-                "on_say" => MobileTriggerType::OnSay,
-                "on_flee" => MobileTriggerType::OnFlee,
-                _ => return "continue".to_string(),
+            let trigger_type = match parse_mobile_trigger_type(&trigger_type_str) {
+                Some(t) => t,
+                None => return "continue".to_string(),
             };
 
             // Find all matching triggers
@@ -2136,6 +2187,21 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     if roll > trigger.chance {
                         continue;
                     }
+                }
+
+                // DG Scripts body (imported from .trg).
+                if let Some(body) = trigger.dg_body.as_deref() {
+                    let outcome = super::dg::fire_mobile_dg(
+                        body,
+                        &mobile,
+                        &connection_id,
+                        cloned_db.clone(),
+                        cloned_conns.clone(),
+                    );
+                    if matches!(outcome, super::dg::Outcome::Return(0)) {
+                        return "cancel".to_string();
+                    }
+                    continue;
                 }
 
                 // Handle built-in templates (script_name starts with @)
@@ -2280,6 +2346,219 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             "continue".to_string()
         },
     );
+
+    // ========== DG-trigger helpers (Phase 4 builder UX) ==========
+
+    // get_mobile_trigger_dg_body(mobile_id, index) -> body string ("" when none).
+    let cloned_db = db.clone();
+    engine.register_fn("get_mobile_trigger_dg_body", move |id: String, index: i64| {
+        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        match cloned_db.get_mobile_data(&uid) {
+            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.dg_body.clone()).unwrap_or_default(),
+            _ => String::new(),
+        }
+    });
+    let cloned_db = db.clone();
+    engine.register_fn("get_item_trigger_dg_body", move |id: String, index: i64| {
+        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        match cloned_db.get_item_data(&uid) {
+            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.dg_body.clone()).unwrap_or_default(),
+            _ => String::new(),
+        }
+    });
+    let cloned_db = db.clone();
+    engine.register_fn("get_room_trigger_dg_body", move |id: String, index: i64| {
+        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        match cloned_db.get_room_data(&uid) {
+            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.dg_body.clone()).unwrap_or_default(),
+            _ => String::new(),
+        }
+    });
+
+    // get_*_trigger_dg_name -> human-readable name (used in `trigger dg list`).
+    let cloned_db = db.clone();
+    engine.register_fn("get_mobile_trigger_dg_name", move |id: String, index: i64| {
+        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        match cloned_db.get_mobile_data(&uid) {
+            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.dg_name.clone()).unwrap_or_default(),
+            _ => String::new(),
+        }
+    });
+    let cloned_db = db.clone();
+    engine.register_fn("get_item_trigger_dg_name", move |id: String, index: i64| {
+        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        match cloned_db.get_item_data(&uid) {
+            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.dg_name.clone()).unwrap_or_default(),
+            _ => String::new(),
+        }
+    });
+    let cloned_db = db.clone();
+    engine.register_fn("get_room_trigger_dg_name", move |id: String, index: i64| {
+        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        match cloned_db.get_room_data(&uid) {
+            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.dg_name.clone()).unwrap_or_default(),
+            _ => String::new(),
+        }
+    });
+
+    // Append a new dg-bodied trigger and return its index (-1 on failure).
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "add_mobile_dg_trigger",
+        move |mobile_id: String, trigger_type: String, name: String| {
+            let uid = match uuid::Uuid::parse_str(&mobile_id) {
+                Ok(u) => u,
+                Err(_) => return -1i64,
+            };
+            let ttype = match parse_mobile_trigger_type(&trigger_type) {
+                Some(t) => t,
+                None => return -1,
+            };
+            let mut idx_out: i64 = -1;
+            let _ = cloned_db.update_mobile(&uid, |m| {
+                m.triggers.push(MobileTrigger {
+                    trigger_type: ttype,
+                    script_name: String::new(),
+                    enabled: true,
+                    chance: 100,
+                    args: Vec::new(),
+                    interval_secs: 60,
+                    last_fired: 0,
+                    dg_body: Some(String::new()),
+                    dg_name: if name.is_empty() { None } else { Some(name.clone()) },
+                });
+                idx_out = (m.triggers.len() as i64) - 1;
+            });
+            idx_out
+        },
+    );
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "add_item_dg_trigger",
+        move |item_id: String, trigger_type: String, name: String| {
+            let uid = match uuid::Uuid::parse_str(&item_id) {
+                Ok(u) => u,
+                Err(_) => return -1i64,
+            };
+            let ttype = match parse_item_trigger_type(&trigger_type) {
+                Some(t) => t,
+                None => return -1,
+            };
+            let mut idx_out: i64 = -1;
+            let _ = cloned_db.update_item(&uid, |it| {
+                it.triggers.push(ItemTrigger {
+                    trigger_type: ttype,
+                    script_name: String::new(),
+                    enabled: true,
+                    chance: 100,
+                    args: Vec::new(),
+                    dg_body: Some(String::new()),
+                    dg_name: if name.is_empty() { None } else { Some(name.clone()) },
+                });
+                idx_out = (it.triggers.len() as i64) - 1;
+            });
+            idx_out
+        },
+    );
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "add_room_dg_trigger",
+        move |room_id: String, trigger_type: String, name: String| {
+            let uid = match uuid::Uuid::parse_str(&room_id) {
+                Ok(u) => u,
+                Err(_) => return -1i64,
+            };
+            let ttype = match parse_room_trigger_type(&trigger_type) {
+                Some(t) => t,
+                None => return -1,
+            };
+            let mut idx_out: i64 = -1;
+            let _ = cloned_db.update_room(&uid, |r| {
+                r.triggers.push(RoomTrigger {
+                    trigger_type: ttype,
+                    script_name: String::new(),
+                    enabled: true,
+                    interval_secs: 60,
+                    last_fired: 0,
+                    chance: 100,
+                    args: Vec::new(),
+                    dg_body: Some(String::new()),
+                    dg_name: if name.is_empty() { None } else { Some(name.clone()) },
+                });
+                idx_out = (r.triggers.len() as i64) - 1;
+            });
+            idx_out
+        },
+    );
+
+    // attach_dg_trigger_proto_to_<kind>(target_id, vnum) -> bool.
+    // Resolves the prototype from the dg_trigger_protos sled tree and
+    // pushes a fully-bodied trigger onto the target's triggers list.
+    let cloned_db = db.clone();
+    let cloned_conns = connections.clone();
+    engine.register_fn(
+        "attach_dg_trigger_proto",
+        move |target_id: String, vnum: String| {
+            let uid = match uuid::Uuid::parse_str(&target_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            // Build a minimal EvalCtx — host kind comes from the proto.
+            let proto = match cloned_db.get_dg_trigger_proto(vnum.trim()) {
+                Ok(Some(p)) => p,
+                _ => return false,
+            };
+            let (kind, name) = (proto.attach_kind, target_id.clone());
+            let self_kind = match kind {
+                crate::types::DgAttachKind::Mob => crate::script::dg::SelfKind::Mob,
+                crate::types::DgAttachKind::Obj => crate::script::dg::SelfKind::Obj,
+                crate::types::DgAttachKind::Room => crate::script::dg::SelfKind::Room,
+            };
+            let ctx = crate::script::dg::EvalCtx {
+                db: cloned_db.clone(),
+                connections: cloned_conns.clone(),
+                self_kind,
+                self_id: uid,
+                self_name: String::new(),
+                self_vnum: String::new(),
+                self_room: None,
+                actor: None,
+                victim: None,
+                arg: String::new(),
+                cmd: String::new(),
+                cmd_canonical: String::new(),
+            };
+            let _ = name;
+            crate::script::dg::cmds::attach_trigger_proto(&proto.vnum, &uid.to_string(), &ctx);
+            true
+        },
+    );
+
+    // list_dg_trigger_protos() -> Array of map { vnum, name, kind, flags }.
+    let cloned_db = db.clone();
+    engine.register_fn("list_dg_trigger_protos", move || {
+        let mut out: rhai::Array = Vec::new();
+        if let Ok(list) = cloned_db.list_dg_trigger_protos() {
+            for p in list {
+                let mut m = rhai::Map::new();
+                m.insert("vnum".into(), p.vnum.clone().into());
+                m.insert("name".into(), p.name.clone().into());
+                m.insert(
+                    "kind".into(),
+                    match p.attach_kind {
+                        crate::types::DgAttachKind::Mob => "mob",
+                        crate::types::DgAttachKind::Obj => "obj",
+                        crate::types::DgAttachKind::Room => "room",
+                    }
+                    .to_string()
+                    .into(),
+                );
+                m.insert("flags".into(), p.flags.clone().into());
+                out.push(rhai::Dynamic::from(m));
+            }
+        }
+        out
+    });
 }
 
 /// Fire mobile triggers from Rust code (e.g., combat tick).
@@ -2301,13 +2580,9 @@ pub fn fire_mobile_triggers_from_rust(
         _ => return "continue".to_string(),
     };
 
-    let trigger_type = match trigger_type_str.to_lowercase().as_str() {
-        "on_greet" => MobileTriggerType::OnGreet,
-        "on_attack" => MobileTriggerType::OnAttack,
-        "on_death" => MobileTriggerType::OnDeath,
-        "on_say" => MobileTriggerType::OnSay,
-        "on_flee" => MobileTriggerType::OnFlee,
-        _ => return "continue".to_string(),
+    let trigger_type = match parse_mobile_trigger_type(trigger_type_str) {
+        Some(t) => t,
+        None => return "continue".to_string(),
     };
 
     // Find all matching triggers

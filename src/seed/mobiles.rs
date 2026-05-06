@@ -97,6 +97,7 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
         remembered_enemies: Vec::new(),
         charm_stay: false,
         charm_follow_player: None,
+        dg_vars: std::collections::HashMap::new(),
     }
 }
 

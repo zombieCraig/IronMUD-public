@@ -8,6 +8,7 @@ mod bugs;
 mod characters;
 mod combat;
 mod crafting;
+pub mod dg;
 mod fishing;
 mod garden;
 mod groups;
@@ -343,8 +344,10 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 level: 1,
                 gold: 0,
                 bank_gold: 0,
+                dg_vars: std::collections::HashMap::new(),
                 // Character creation wizard fields
                 race: String::new(),
+                gender: String::new(),
                 short_description: String::new(),
                 class_name: "unemployed".to_string(),
                 traits: Vec::new(),
@@ -746,6 +749,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         traps: Vec::new(),
         living_capacity: 0,
         residents: Vec::new(),
+        dg_vars: std::collections::HashMap::new(),
     });
 
     // Register get_available_exits helper
@@ -1461,6 +1465,25 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         false
     });
 
+    // set_olc_buffer_text(connection_id, text) -> pre-fill editor buffer
+    // from a multi-line string (splits on \n). Used by `trigger dg edit` to
+    // prime the editor with the current body.
+    let conns = connections.clone();
+    engine.register_fn("set_olc_buffer_text", move |connection_id: String, text: String| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
+            let mut conns = conns.lock().unwrap();
+            if let Some(session) = conns.get_mut(&uuid) {
+                session.olc_buffer = if text.is_empty() {
+                    Vec::new()
+                } else {
+                    text.split('\n').map(|s| s.to_string()).collect()
+                };
+                return true;
+            }
+        }
+        false
+    });
+
     // set_olc_buffer(connection_id, lines) -> Set OLC buffer contents (for pre-populating)
     let conns = connections.clone();
     engine.register_fn("set_olc_buffer", move |connection_id: String, lines: rhai::Array| {
@@ -1521,6 +1544,46 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         }
         false
     });
+
+    // set_olc_edit_mobile(connection_id, mobile_id) -> mark mobile under
+    // edit (used by `medit trigger dg edit/add` to anchor the dg-body editor).
+    let conns = connections.clone();
+    engine.register_fn("set_olc_edit_mobile", move |connection_id: String, mobile_id: String| {
+        if let Ok(conn_uuid) = uuid::Uuid::parse_str(&connection_id) {
+            let mob_uuid = if mobile_id.is_empty() {
+                None
+            } else {
+                uuid::Uuid::parse_str(&mobile_id).ok()
+            };
+            let mut conns = conns.lock().unwrap();
+            if let Some(session) = conns.get_mut(&conn_uuid) {
+                session.olc_edit_mobile = mob_uuid;
+                return true;
+            }
+        }
+        false
+    });
+
+    // set_olc_edit_trigger(connection_id, host_kind, index) -> mark which
+    // trigger to write the next collecting_dg_body save into. host_kind is
+    // "mobile" | "item" | "room"; pair with the matching set_olc_edit_*.
+    let conns = connections.clone();
+    engine.register_fn(
+        "set_olc_edit_trigger",
+        move |connection_id: String, host_kind: String, index: i64| {
+            if let Ok(conn_uuid) = uuid::Uuid::parse_str(&connection_id) {
+                let mut conns = conns.lock().unwrap();
+                if let Some(session) = conns.get_mut(&conn_uuid) {
+                    session.olc_edit_trigger_host =
+                        if host_kind.is_empty() { None } else { Some(host_kind) };
+                    session.olc_edit_trigger_index =
+                        if index < 0 { None } else { Some(index as usize) };
+                    return true;
+                }
+            }
+            false
+        },
+    );
 
     // set_olc_extra_keywords(connection_id, keywords) -> Set keywords for extra desc being collected
     let conns = connections.clone();

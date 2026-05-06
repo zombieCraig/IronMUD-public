@@ -2432,6 +2432,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 plant_prototype_vnum: String::new(),
                 fertilizer_duration: 0,
                 treats_infestation: String::new(),
+                dg_vars: std::collections::HashMap::new(),
             };
 
             let corpse_id = corpse.id.to_string();

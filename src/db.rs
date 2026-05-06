@@ -39,6 +39,13 @@ pub struct Db {
     plant_prototypes: Arc<Tree>,
     // Bug reporting system
     bug_reports: Arc<Tree>,
+    // DG Scripts global variable store (key = var name, value = string).
+    // Backs `global <var>` declarations in the DG interpreter.
+    dg_globals: Arc<Tree>,
+    // DG Scripts trigger prototypes (key = vnum, value = serialized
+    // DgTriggerProto). Imported `.trg` files seed this; the `attach`
+    // statement and `trigger dg attach` builder command read from it.
+    dg_trigger_protos: Arc<Tree>,
 }
 
 /// Statistics about the world database
@@ -79,6 +86,8 @@ impl Db {
         let plants = db.open_tree("plants")?;
         let plant_prototypes = db.open_tree("plant_prototypes")?;
         let bug_reports = db.open_tree("bug_reports")?;
+        let dg_globals = db.open_tree("dg_globals")?;
+        let dg_trigger_protos = db.open_tree("dg_trigger_protos")?;
         Ok(Self {
             db: Arc::new(db),                 // Wrap in Arc
             characters: Arc::new(characters), // Wrap in Arc
@@ -100,7 +109,68 @@ impl Db {
             plants: Arc::new(plants),
             plant_prototypes: Arc::new(plant_prototypes),
             bug_reports: Arc::new(bug_reports),
+            dg_globals: Arc::new(dg_globals),
+            dg_trigger_protos: Arc::new(dg_trigger_protos),
         })
+    }
+
+    // === DG Scripts global variables ===
+    //
+    // Backed by the `dg_globals` sled tree. Values persist across reboots,
+    // matching tbamud's expectation that `global <var>` is durable. All
+    // values are stored as plain strings (DG is dynamically typed).
+
+    /// Read a DG global variable. Returns `None` when unset.
+    pub fn get_dg_global(&self, name: &str) -> Result<Option<String>> {
+        let res = self.dg_globals.get(name.as_bytes())?;
+        Ok(res.and_then(|v| String::from_utf8(v.to_vec()).ok()))
+    }
+
+    /// Set (or overwrite) a DG global variable.
+    pub fn set_dg_global(&self, name: &str, value: &str) -> Result<()> {
+        self.dg_globals.insert(name.as_bytes(), value.as_bytes())?;
+        Ok(())
+    }
+
+    /// Remove a DG global variable. No-op if not present.
+    pub fn unset_dg_global(&self, name: &str) -> Result<()> {
+        self.dg_globals.remove(name.as_bytes())?;
+        Ok(())
+    }
+
+    // === DG Scripts trigger prototypes ===
+
+    /// Read a DG trigger prototype by vnum.
+    pub fn get_dg_trigger_proto(&self, vnum: &str) -> Result<Option<crate::types::DgTriggerProto>> {
+        match self.dg_trigger_protos.get(vnum.as_bytes())? {
+            Some(ivec) => Ok(Some(serde_json::from_slice(&ivec)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Save (or overwrite) a DG trigger prototype.
+    pub fn save_dg_trigger_proto(&self, proto: &crate::types::DgTriggerProto) -> Result<()> {
+        let value = serde_json::to_vec(proto)?;
+        self.dg_trigger_protos.insert(proto.vnum.as_bytes(), value)?;
+        Ok(())
+    }
+
+    /// List all DG trigger prototypes (e.g. for `trigger dg list`).
+    pub fn list_dg_trigger_protos(&self) -> Result<Vec<crate::types::DgTriggerProto>> {
+        let mut out = Vec::new();
+        for kv in self.dg_trigger_protos.iter() {
+            let (_, ivec) = kv?;
+            if let Ok(p) = serde_json::from_slice::<crate::types::DgTriggerProto>(&ivec) {
+                out.push(p);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Delete a DG trigger prototype by vnum.
+    pub fn delete_dg_trigger_proto(&self, vnum: &str) -> Result<()> {
+        self.dg_trigger_protos.remove(vnum.as_bytes())?;
+        Ok(())
     }
 
     /// Flush all pending writes to disk. Call before shutdown.

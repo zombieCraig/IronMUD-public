@@ -1499,6 +1499,7 @@ mod pair_housing_tests {
             traps: Vec::new(),
             living_capacity: capacity,
             residents: Vec::new(),
+            dg_vars: std::collections::HashMap::new(),
         };
         db.save_room_data(room.clone()).expect("save room");
         db.set_room_vnum(&room.id, vnum).expect("vnum index");

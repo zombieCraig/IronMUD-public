@@ -803,6 +803,7 @@ async fn create_mobile(
         remembered_enemies: Vec::new(),
         charm_stay: false,
         charm_follow_player: None,
+        dg_vars: std::collections::HashMap::new(),
     };
 
     state
@@ -1307,6 +1308,8 @@ async fn add_trigger(
         interval_secs: req.interval_secs,
         args: req.args,
         last_fired: 0,
+        dg_body: None,
+        dg_name: None,
     };
 
     mobile.triggers.push(trigger);
