@@ -295,6 +295,7 @@ fn dispatch_routine_subcommand(mobile, uuid, subcommand, parts, connection_id) {
     if subcommand == "simulation" || subcommand == "sim" { handle_simulation_subcommand(mobile, uuid, parts, connection_id); return true; }
     if subcommand == "social" { handle_social_subcommand(mobile, uuid, parts, connection_id); return true; }
     if subcommand == "pregnancy" || subcommand == "preg" { handle_pregnancy_subcommand(mobile, uuid, parts, connection_id); return true; }
+    if subcommand == "on_hit" || subcommand == "onhit" { handle_mob_on_hit_subcommand(uuid, mobile_id, parts, connection_id); return true; }
     return false;
 }
 
@@ -724,6 +725,15 @@ fn show_mobile_properties(mobile, mobile_id, connection_id) {
     }
     if mobile.faction != "" {
         output += olc::c_label("Faction: ", connection_id) + olc::c_value(mobile.faction, connection_id) + "\n";
+    }
+    let mob_on_hit = get_mobile_on_hit_effects(mobile_id);
+    if mob_on_hit.len() > 0 {
+        output += olc::c_label("On-hit Effects: ", connection_id) + olc::c_value("" + mob_on_hit.len(), connection_id) + "\n";
+        let i = 0;
+        while i < mob_on_hit.len() {
+            output += "  [" + (i + 1) + "] " + format_mob_on_hit_entry(mob_on_hit[i]) + "\n";
+            i += 1;
+        }
     }
 
     output += "\n" + olc::c_label("--- Attributes ---", connection_id) + "\n";
@@ -3454,6 +3464,114 @@ fn show_combat_spells(mobile, connection_id) {
         send_client_message(connection_id, line);
     }
     send_client_message(connection_id, "Usage: medit <id> combat_spells [add|remove|clear|chance] [<spell_id>|<0-100>]");
+}
+
+fn handle_mob_on_hit_subcommand(uuid, mobile_id, parts, connection_id) {
+    let mode = if parts.len() >= 3 { parts[2].to_lower() } else { "list" };
+
+    if mode == "list" || mode == "show" {
+        let effects = get_mobile_on_hit_effects(uuid);
+        send_client_message(connection_id, build_mob_on_hit_list(effects, mobile_id));
+        return;
+    }
+
+    if mode == "clear" {
+        set_mobile_on_hit_effects(uuid, []);
+        send_client_message(connection_id, "On-hit effects cleared.");
+        return;
+    }
+
+    if mode == "remove" || mode == "rm" || mode == "delete" {
+        if parts.len() < 4 {
+            send_client_message(connection_id, "Usage: medit " + mobile_id + " on_hit remove <index>");
+            return;
+        }
+        let one_based = parse_int(parts[3]);
+        if one_based == () || one_based < 1 {
+            send_client_message(connection_id, "Index must be a positive number (see 'medit " + mobile_id + " on_hit list').");
+            return;
+        }
+        let effects = get_mobile_on_hit_effects(uuid);
+        if one_based > effects.len() {
+            send_client_message(connection_id, "No effect at index " + one_based + " (have " + effects.len() + ").");
+            return;
+        }
+        let removed = effects[one_based - 1];
+        effects.remove(one_based - 1);
+        set_mobile_on_hit_effects(uuid, effects);
+        send_client_message(connection_id, "Removed: " + format_mob_on_hit_entry(removed));
+        return;
+    }
+
+    if mode == "add" {
+        if parts.len() < 7 {
+            send_client_message(
+                connection_id,
+                "Usage: medit " + mobile_id + " on_hit add <effect> <chance> <magnitude> <duration>\n" +
+                "  effect:    bleeding | fire | poison | cold | acid | lightning | sleep | blind | slow | curse | ...\n" +
+                "  chance:    1-100 (per-hit roll)\n" +
+                "  magnitude: bleeding=severity; elemental=damage/round; buff=effect-specific\n" +
+                "  duration:  bleeding=ignored; elemental=rounds; buff=seconds\n" +
+                "Note: composes with the legacy poisonous/fiery/chilling/corrosive/shocking flags."
+            );
+            return;
+        }
+        let effect_str = parts[3].to_lower();
+        let chance = parse_int(parts[4]);
+        let magnitude = parse_int(parts[5]);
+        let duration = parse_int(parts[6]);
+        if chance == () || magnitude == () || duration == () {
+            send_client_message(connection_id, "chance, magnitude, and duration must all be whole numbers.");
+            return;
+        }
+        if chance < 1 || chance > 100 {
+            send_client_message(connection_id, "chance must be 1-100.");
+            return;
+        }
+        let effects = get_mobile_on_hit_effects(uuid);
+        effects.push(#{
+            effect: effect_str,
+            chance: chance,
+            magnitude: magnitude,
+            duration: duration
+        });
+        set_mobile_on_hit_effects(uuid, effects);
+        send_client_message(connection_id, "Added: " + format_mob_on_hit_entry(effects[effects.len() - 1]));
+        return;
+    }
+
+    send_client_message(
+        connection_id,
+        "Usage: medit " + mobile_id + " on_hit [list|add|remove|clear]\n" +
+        "  list                                — show current effects\n" +
+        "  add <effect> <chance> <mag> <dur>   — append a new effect\n" +
+        "  remove <index>                      — remove by 1-based index\n" +
+        "  clear                               — remove all"
+    );
+}
+
+fn format_mob_on_hit_entry(effect) {
+    let suffix = if effect.effect == "bleeding" {
+        "severity " + effect.magnitude
+    } else if effect.effect == "fire" || effect.effect == "poison" || effect.effect == "cold" || effect.effect == "acid" || effect.effect == "lightning" {
+        effect.magnitude + " dmg/round for " + effect.duration + " rounds"
+    } else {
+        "magnitude " + effect.magnitude + ", " + effect.duration + "s"
+    };
+    return effect.effect + " (" + effect.chance + "% chance, " + suffix + ")";
+}
+
+fn build_mob_on_hit_list(effects, mobile_id) {
+    if effects.len() == 0 {
+        return "On-hit effects: (none)\nUse 'medit " + mobile_id + " on_hit add <effect> <chance> <mag> <dur>' to add one.";
+    }
+    let output = "On-hit effects (" + effects.len() + "):\n";
+    let i = 0;
+    while i < effects.len() {
+        output += "  [" + (i + 1) + "] " + format_mob_on_hit_entry(effects[i]) + "\n";
+        i += 1;
+    }
+    return output;
 }
 
 fn handle_combat_spells_subcommand(mobile, mobile_id, parts, connection_id) {

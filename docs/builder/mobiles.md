@@ -62,6 +62,7 @@ Flag shopkeeper set to: ON
 | `ac` | `medit <id> ac <value>` | Set armor class |
 | `stat` | `medit <id> stat <attr> <value>` | Set attribute (str/dex/con/int/wis/cha) |
 | `perception` | `medit <id> perception <0-10>` | Set stealth detection ability (higher = better at spotting hidden players) |
+| `on_hit` | `medit <id> on_hit [list\|add\|remove\|clear]` | Manage per-hit effects (composes with the legacy `poisonous`/`fiery`/`chilling`/`corrosive`/`shocking` flags). See [Items > On-hit effects](items.md#on-hit-effects) for the dispatch table. |
 
 ### Flags and Triggers
 

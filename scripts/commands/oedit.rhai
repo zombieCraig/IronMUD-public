@@ -562,6 +562,10 @@ fn handle_subcommand(item, item_id, subcommand, parts, char, connection_id) {
         handle_treats_subcommand(uuid, parts, connection_id);
         return;
     }
+    if subcommand == "on_hit" || subcommand == "onhit" {
+        handle_on_hit_subcommand(uuid, item_id, parts, connection_id);
+        return;
+    }
 
     send_client_message(connection_id, "Unknown subcommand: " + subcommand);
 }
@@ -769,6 +773,114 @@ fn handle_value_subcommand(item_id, parts, connection_id) {
     }
     set_item_value(item_id, val);
     send_client_message(connection_id, "Value set to: " + val + " gold");
+}
+
+fn handle_on_hit_subcommand(uuid, item_id, parts, connection_id) {
+    // parts[0]=oedit-target, parts[1]="on_hit", parts[2]=mode
+    let mode = if parts.len() >= 3 { parts[2].to_lower() } else { "list" };
+
+    if mode == "list" || mode == "show" {
+        let effects = get_item_on_hit_effects(uuid);
+        send_client_message(connection_id, build_on_hit_list(effects, item_id));
+        return;
+    }
+
+    if mode == "clear" {
+        set_item_on_hit_effects(uuid, []);
+        send_client_message(connection_id, "On-hit effects cleared.");
+        return;
+    }
+
+    if mode == "remove" || mode == "rm" || mode == "delete" {
+        if parts.len() < 4 {
+            send_client_message(connection_id, "Usage: oedit " + item_id + " on_hit remove <index>");
+            return;
+        }
+        let one_based = parse_int(parts[3]);
+        if one_based == () || one_based < 1 {
+            send_client_message(connection_id, "Index must be a positive number (see 'oedit " + item_id + " on_hit list').");
+            return;
+        }
+        let effects = get_item_on_hit_effects(uuid);
+        if one_based > effects.len() {
+            send_client_message(connection_id, "No effect at index " + one_based + " (have " + effects.len() + ").");
+            return;
+        }
+        let removed = effects[one_based - 1];
+        effects.remove(one_based - 1);
+        set_item_on_hit_effects(uuid, effects);
+        send_client_message(connection_id, "Removed: " + format_on_hit_entry(removed));
+        return;
+    }
+
+    if mode == "add" {
+        if parts.len() < 7 {
+            send_client_message(
+                connection_id,
+                "Usage: oedit " + item_id + " on_hit add <effect> <chance> <magnitude> <duration>\n" +
+                "  effect:    bleeding | fire | poison | cold | acid | lightning | sleep | blind | slow | curse | ...\n" +
+                "  chance:    1-100 (per-hit roll)\n" +
+                "  magnitude: bleeding=severity; elemental=damage/round; buff=effect-specific\n" +
+                "  duration:  bleeding=ignored; elemental=rounds; buff=seconds"
+            );
+            return;
+        }
+        let effect_str = parts[3].to_lower();
+        let chance = parse_int(parts[4]);
+        let magnitude = parse_int(parts[5]);
+        let duration = parse_int(parts[6]);
+        if chance == () || magnitude == () || duration == () {
+            send_client_message(connection_id, "chance, magnitude, and duration must all be whole numbers.");
+            return;
+        }
+        if chance < 1 || chance > 100 {
+            send_client_message(connection_id, "chance must be 1-100.");
+            return;
+        }
+        let effects = get_item_on_hit_effects(uuid);
+        effects.push(#{
+            effect: effect_str,
+            chance: chance,
+            magnitude: magnitude,
+            duration: duration
+        });
+        set_item_on_hit_effects(uuid, effects);
+        send_client_message(connection_id, "Added: " + format_on_hit_entry(effects[effects.len() - 1]));
+        return;
+    }
+
+    send_client_message(
+        connection_id,
+        "Usage: oedit " + item_id + " on_hit [list|add|remove|clear]\n" +
+        "  list                                — show current effects\n" +
+        "  add <effect> <chance> <mag> <dur>   — append a new effect\n" +
+        "  remove <index>                      — remove by 1-based index\n" +
+        "  clear                               — remove all"
+    );
+}
+
+fn format_on_hit_entry(effect) {
+    let suffix = if effect.effect == "bleeding" {
+        "severity " + effect.magnitude
+    } else if effect.effect == "fire" || effect.effect == "poison" || effect.effect == "cold" || effect.effect == "acid" || effect.effect == "lightning" {
+        effect.magnitude + " dmg/round for " + effect.duration + " rounds"
+    } else {
+        "magnitude " + effect.magnitude + ", " + effect.duration + "s"
+    };
+    return effect.effect + " (" + effect.chance + "% chance, " + suffix + ")";
+}
+
+fn build_on_hit_list(effects, item_id) {
+    if effects.len() == 0 {
+        return "On-hit effects: (none)\nUse 'oedit " + item_id + " on_hit add <effect> <chance> <mag> <dur>' to add one.";
+    }
+    let output = "On-hit effects (" + effects.len() + "):\n";
+    let i = 0;
+    while i < effects.len() {
+        output += "  [" + (i + 1) + "] " + format_on_hit_entry(effects[i]) + "\n";
+        i += 1;
+    }
+    return output;
 }
 
 fn handle_world_max_subcommand(item_id, parts, connection_id) {
@@ -1751,6 +1863,11 @@ fn handle_spawn_subcommand(item, char, connection_id) {
     if source_wskill != () && source_wskill != "" {
         set_item_weapon_skill(new_item.id, source_wskill);
     }
+    // Copy on-hit effects
+    let source_on_hit = get_item_on_hit_effects(item.id);
+    if source_on_hit.len() > 0 {
+        set_item_on_hit_effects(new_item.id, source_on_hit);
+    }
     // Copy caliber (for both weapons and ammunition)
     if item.has_caliber {
         set_item_caliber(new_item.id, item.caliber);
@@ -2460,6 +2577,16 @@ fn build_weapon_display(item, connection_id) {
         output += "(none)\n";
     } else {
         output += olc::c_value(wskill, connection_id) + "\n";
+    }
+
+    let on_hit = get_item_on_hit_effects(item.id);
+    if on_hit.len() > 0 {
+        output += olc::c_label("On-hit Effects: ", connection_id) + olc::c_value("" + on_hit.len(), connection_id) + "\n";
+        let i = 0;
+        while i < on_hit.len() {
+            output += "  [" + (i + 1) + "] " + format_on_hit_entry(on_hit[i]) + "\n";
+            i += 1;
+        }
     }
 
     if item.has_caliber {

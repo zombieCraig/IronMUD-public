@@ -68,8 +68,22 @@ Damage set to: 2d6
 | `damtype` | `oedit <id> damtype <type>` | Set damage type |
 | `twohanded` | `oedit <id> twohanded [on\|off]` | Set two-handed weapon |
 | `stat` | `oedit <id> stat <attr> <value>` | Set stat bonus (str/dex/con/int/wis/cha) |
+| `on_hit` | `oedit <id> on_hit [list\|add\|remove\|clear]` | Manage per-hit effects (bleeding/elemental DOT/status) |
 
 See also: [Weapon Damage Balance](weapon-balance.md) for recommended damage dice by weapon type and setting.
+
+#### On-hit effects
+
+`on_hit add <effect> <chance> <magnitude> <duration>` rolls each entry against d100 on every landed melee/ranged hit. Dispatch by `effect`:
+
+- `bleeding` → adds `magnitude` to wound bleeding severity on a random body part (`duration` ignored)
+- `fire` / `poison` / `cold` / `acid` / `lightning` → ongoing DOT (`magnitude` = damage/round, `duration` = rounds)
+- anything else (`sleep`, `blind`, `slow`, `curse`, …) → applied as an `ActiveBuff` with `magnitude` and `duration` in seconds; honours target mob immunity flags (`no_sleep`, `no_blind`, `no_charm`)
+
+Example: a pirate's cutlass that bleeds at 70%:
+```
+oedit pirate_cutlass on_hit add bleeding 70 2 0
+```
 
 ### Flags and Triggers
 
