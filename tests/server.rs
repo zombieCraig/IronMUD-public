@@ -5446,6 +5446,28 @@ fn test_charm_spell_definition_loads() {
 }
 
 #[test]
+fn test_buried_items_visible_to_builders_and_admins_in_room_display() {
+    use std::fs;
+
+    let src = fs::read_to_string("src/script/rooms.rs").expect("read rooms.rs");
+
+    // The room-display item filter must admit buried items when the viewer is
+    // an admin or in build mode (bug #2 ironmud-public).
+    assert!(
+        src.contains("let see_buried = viewer_is_admin || in_build_mode;"),
+        "see_buried gate missing from display_room item block"
+    );
+    assert!(
+        src.contains("(!i.flags.buried || see_buried)"),
+        "room display item filter does not allow buried items through for admins/builders"
+    );
+    assert!(
+        src.contains("\" (buried)\""),
+        "room display does not tag buried items with (buried)"
+    );
+}
+
+#[test]
 fn test_safe_zone_gate_present_in_offensive_cast_handlers() {
     use regex::Regex;
     use std::fs;

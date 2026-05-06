@@ -1254,9 +1254,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 }
             }
 
-            // Items in room (yellow, skip invisible/buried) - show generic if dark/blind
+            // Items in room (yellow, skip invisible/buried) - show generic if dark/blind.
+            // Builders (build_mode in editable area) and admins see buried items tagged "(buried)".
+            let see_buried = viewer_is_admin || in_build_mode;
             if let Ok(items) = cloned_db.get_items_in_room(&room_uuid) {
-                let visible_items: Vec<_> = items.iter().filter(|i| !i.flags.invisible && !i.flags.buried).collect();
+                let visible_items: Vec<_> = items
+                    .iter()
+                    .filter(|i| !i.flags.invisible && (!i.flags.buried || see_buried))
+                    .collect();
                 if !visible_items.is_empty() {
                     output.push('\n');
                     for item in visible_items {
@@ -1272,6 +1277,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                             }
                             if item.flags.magical && (viewer_can_detect_magic || viewer_is_admin) {
                                 display_desc.push_str(" (magical aura)");
+                            }
+                            if item.flags.buried {
+                                display_desc.push_str(" (buried)");
                             }
                             output.push_str(&color(&display_desc, ANSI_YELLOW));
                         }
