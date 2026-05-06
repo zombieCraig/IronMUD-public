@@ -98,7 +98,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             i.note_content = if v.is_empty() { None } else { Some(v) };
         })
         .register_get("extra_descs", |i: &mut ItemData| {
-            i.extra_descs.clone()
+            i.extra_descs
+                .iter()
+                .map(|e| rhai::Dynamic::from(e.clone()))
+                .collect::<Vec<_>>()
         })
         .register_get("keywords", |i: &mut ItemData| {
             i.keywords

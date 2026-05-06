@@ -963,6 +963,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "no_summon" | "nosummon" => mobile.flags.no_summon = value,
                         "no_charm" | "nocharm" => mobile.flags.no_charm = value,
                         "hostile_on_steal" | "hostileonsteal" => mobile.flags.hostile_on_steal = value,
+                        "helper" => mobile.flags.helper = value,
+                        "stay_zone" | "stayzone" => mobile.flags.stay_zone = value,
+                        "aware" => mobile.flags.aware = value,
+                        "memory" => mobile.flags.memory = value,
                         _ => return false,
                     }
                     return cloned_db.save_mobile_data(mobile).is_ok();

@@ -5985,3 +5985,139 @@ fn test_magic_user_trigger_mapping_sets_combat_spells() {
     let chance = entry.get("chance").and_then(|v| v.as_i64()).unwrap_or(0);
     assert!((0..=100).contains(&chance), "chance {} out of range", chance);
 }
+
+/// Bug #5 regression: `item.extra_descs` must behave as a Rhai Array so script
+/// code can call `.len()`, index, and iterate. The original getter returned
+/// `Vec<ExtraDesc>` which Rhai treats as an opaque type with no methods.
+#[test]
+fn test_item_extra_descs_is_rhai_array() {
+    use ironmud::types::{ExtraDesc, ItemData};
+
+    let mut engine = rhai::Engine::new();
+    engine
+        .register_type_with_name::<ItemData>("ItemData")
+        .register_type_with_name::<ExtraDesc>("ExtraDesc")
+        .register_get("extra_descs", |i: &mut ItemData| {
+            i.extra_descs
+                .iter()
+                .map(|e| rhai::Dynamic::from(e.clone()))
+                .collect::<Vec<_>>()
+        })
+        .register_get("keywords", |e: &mut ExtraDesc| {
+            e.keywords
+                .iter()
+                .map(|s| rhai::Dynamic::from(s.clone()))
+                .collect::<Vec<_>>()
+        });
+
+    let mut item = ItemData::new(
+        "rock".to_string(),
+        "a rock".to_string(),
+        "a small rock lies here.".to_string(),
+    );
+    item.extra_descs.push(ExtraDesc {
+        keywords: vec!["mossy".to_string()],
+        description: "moss covers the surface.".to_string(),
+    });
+    item.extra_descs.push(ExtraDesc {
+        keywords: vec!["chip".to_string()],
+        description: "a small chip on the side.".to_string(),
+    });
+
+    let mut scope = rhai::Scope::new();
+    scope.push("item", item);
+
+    let count: i64 = engine
+        .eval_with_scope(&mut scope, "item.extra_descs.len()")
+        .expect("item.extra_descs.len() must succeed");
+    assert_eq!(count, 2, "extra_descs.len() should return the array length");
+
+    let joined: String = engine
+        .eval_with_scope(
+            &mut scope,
+            r#"
+                let extras = item.extra_descs;
+                let kws = "";
+                for ex in extras {
+                    for kw in ex.keywords {
+                        if kws != "" { kws += ","; }
+                        kws += kw;
+                    }
+                }
+                kws
+            "#,
+        )
+        .expect("iterating extra_descs and their keywords must succeed");
+    assert_eq!(joined, "mossy,chip");
+}
+
+/// Bug #6 regression: `set_mobile_flag` must accept `helper`, `stay_zone`,
+/// `aware`, and `memory` (each advertised in medit's help and read-side getter
+/// but previously absent from the Rust write path). Verifies by scanning the
+/// source — keeps the test cheap and avoids a full server boot.
+#[test]
+fn test_set_mobile_flag_handles_all_public_flags() {
+    use std::fs;
+
+    let src = fs::read_to_string("src/script/mobiles.rs").expect("read src/script/mobiles.rs");
+    let body = src
+        .split("\"set_mobile_flag\",")
+        .nth(1)
+        .expect("set_mobile_flag registration not found");
+    // Bound to the closure: the next register_fn call ends our scan window.
+    let body = body
+        .split("set_mobile_vnum")
+        .next()
+        .expect("end of set_mobile_flag closure not found");
+
+    for flag in &["helper", "stay_zone", "aware", "memory"] {
+        let needle = format!("\"{}\"", flag);
+        assert!(
+            body.contains(&needle),
+            "set_mobile_flag is missing match arm for `{}` — bug #6 has regressed",
+            flag
+        );
+    }
+}
+
+/// Tab-completion `MOBILE_FLAGS` must match medit's advertised flag list and
+/// stay non-empty. Locks completion drift after the bug #6/#6b fix.
+#[test]
+fn test_mobile_flags_completion_matches_medit_advertisement() {
+    use std::collections::HashSet;
+    use std::fs;
+
+    let completion_set: HashSet<&str> = ironmud::completion::MOBILE_FLAGS.iter().copied().collect();
+
+    // medit advertises flags inside the "Available: aggressive, ..." string at
+    // the unknown-flag fallback. Anchor on `aggressive` so we don't pick up
+    // other "Available: " strings (damtype, trigger scripts, etc.).
+    let medit = fs::read_to_string("scripts/commands/medit.rhai").expect("read medit.rhai");
+    let needle = "Available: aggressive";
+    let idx = medit
+        .find(needle)
+        .expect("medit unknown-flag advertise string not found");
+    let start = idx + "Available: ".len();
+    let tail = &medit[start..];
+    let end = tail.find('"').expect("end of advertise string not found");
+    let advertised: HashSet<&str> = tail[..end]
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+
+    let missing_in_completion: Vec<&&str> = advertised.difference(&completion_set).collect();
+    let extra_in_completion: Vec<&&str> = completion_set.difference(&advertised).collect();
+
+    assert!(
+        missing_in_completion.is_empty() && extra_in_completion.is_empty(),
+        "MOBILE_FLAGS / medit advertise list drift.\n  missing in completion: {:?}\n  extra in completion: {:?}",
+        missing_in_completion,
+        extra_in_completion
+    );
+
+    assert!(
+        completion_set.len() >= 28,
+        "MOBILE_FLAGS shrank below the post-fix size — possible regression"
+    );
+}
