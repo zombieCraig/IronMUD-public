@@ -24,6 +24,7 @@ The importer:
 | Engine | Rooms | Mobiles | Objects | Zone resets | Shops | Triggers |
 |---|---|---|---|---|---|---|
 | **CircleMUD 3.x** | ✅ | ✅ (prototypes) | ✅ (prototypes) | ✅ (M/O/G/E/P/D; R warn-only) | ✅ (overlaid onto keeper mob) | ✅ (specproc bindings from `spec_assign.c` + `castle.c`) |
+| **tbaMUD** | ✅ | ✅ (prototypes; 10-token action line) | ✅ (prototypes; 13-token type/flags line + 5-token weight line) | ✅ (M/O/G/E/P/D; R warn-only; T / V warn-only) | ✅ (overlaid onto keeper mob) | ⚠ (DG Scripts: header parsed, body warn-only — re-author in Rhai) |
 | Diku / ROM / Smaug | (planned) | (planned) | (planned) | (planned) | (planned) | (planned) |
 
 A **(planned)** entry means the framework can hold the data but no parser
@@ -48,6 +49,10 @@ ironmud-import --database ironmud.db circle --source /path/to/circle-3.1 --apply
 # Use a custom mapping table.
 ironmud-import circle --source /path/to/circle-3.1 \
                       --mapping ./my-circle-mapping.json
+
+# Same shape for tbaMUD: swap `circle` for `tba`.
+ironmud-import tba --source /path/to/tbamud --report /tmp/tba.json
+ironmud-import --database ironmud.db tba --source /path/to/tbamud --apply
 ```
 
 `--source` accepts the CircleMUD root, its `lib/` subdirectory, or `lib/world/`
@@ -546,6 +551,73 @@ Authoritative source: `circle-3.1/src/structs.h` (`WEAR_LIGHT`..`WEAR_HOLD`).
 Hard-coded in `src/import/engines/circle/wear.rs` — not configurable via JSON
 (IronMUD's `WearLocation` is a Rust enum, not a flag bit, so the mapping
 table format can't represent it).
+
+## tbaMUD coverage matrix
+
+tbaMUD is a modern CircleMUD descendant. The importer reuses the entire
+CircleMUD coverage matrix above unchanged — sectors, room flags, doors,
+extra descs, mobiles, objects, shops, and the M/O/G/E/P/D zone resets all
+behave identically. What's new in tbaMUD (and what the `tba` engine adds
+on top of `circle`):
+
+### Format deltas the parser handles
+
+| Surface | CircleMUD 3.x | tbaMUD | Notes |
+|---|---|---|---|
+| Mob action line | `act aff align {S\|E}` (4 tokens) | `f1 f2 f3 f4 f5 f6 f7 f8 align letter` (10 tokens) | Each `fN` is a 32-bit ASCII-letter (`abdh`) or decimal flag bank. Stock tbaMUD MOB / AFF bits all live in `f1` / `f5`; high banks (`f2..f4`, `f6..f8`) are dropped silently — IronMUD's flag model caps at 64 bits. |
+| Obj type/flags line | 3 tokens | 13 tokens (type + 4 extra-flag banks + 4 wear-flag banks + 4 obj-AFF banks) | Same 32-bit-ASCII bank treatment as mobs. obj-AFF banks (`f9..f12`) are dropped — IronMUD covers obj-attached affects via item flags + the `A`-block path. |
+| Obj weight line | `weight cost rent` (3 tokens) | `weight cost rent level timer` (5 tokens) | tbaMUD `level` (min wear level) and `timer` (item lifetime) are silently dropped — no IronMUD analog. |
+| Zone header | `bot top lifespan reset_mode` (4 tokens) | 10 tokens (adds `zone_flags`, `min_level`, `max_level`, builders, etc.) | First 4 fields parsed as in CircleMUD; trailing tokens dropped. |
+| Zone string preamble | 1 tilde-string (zone name) | 2 tilde-strings (builder + zone name) | The parser auto-detects single vs. double preamble by peeking the next significant line. |
+| Zone reset alphabet | M / O / G / E / P / D / R | + **T** (DG trigger attach), **V** (DG variable assignment) | T and V become **Warn**-level deferred features; no IronMUD analog. |
+| `T <vnum>` lines | none | DG Scripts trigger attachments on rooms (after `S`), mobs (after S/E body), objs (after weight line, before E/A subblocks) | Recorded in `IrRoom.trigger_vnums` / `IrMob.trigger_vnums` / `IrItem.trigger_vnums`. Surface as one **Warn** per attachment naming the source vnum. |
+
+### DG Scripts (`.trg` files) — warn-only
+
+tbaMUD ships scripts in `lib/world/trg/*.trg` (191 files in stock). The
+importer parses each trigger header (vnum, name, attach type, flags,
+priority) but **does not translate the body** — DG Scripts is a complete
+scripting language with ~50 commands and ~80 built-in variables, distinct
+from IronMUD's Rhai. Bodies surface as one Warn per attachment so a builder
+can re-author the behavior.
+
+DG Script bodies legitimately contain `~` characters (in comments, regex
+operators, string interpolation), so the parser uses a relaxed
+record-boundary scan rather than the standard CircleMUD `fread_string`
+terminator rule. The trade-off is that malformed bodies don't surface as
+parse errors — the parser keeps walking until the next `#<vnum>`. Header
+fields are still validated.
+
+### Quests (`.qst` files) — warn-only
+
+tbaMUD ships 10 quest files in stock. IronMUD has no quest system; each
+record surfaces as a single **Warn** during mapping. The full quest body
+(stat lines, reward lines, three messages) is parsed and discarded — only
+the vnum, name, and keywords are surfaced for audit. Re-authoring is a
+manual process once a quest system lands.
+
+### CircleMUD `spec_assign.c` is intentionally not parsed
+
+tbaMUD replaces CircleMUD's hard-coded specproc bindings with DG Scripts;
+the `tba` engine emits one Info note saying spec_assign.c parsing was
+skipped so the audit trail makes that explicit.
+
+### Apply numbers (stock tbaMUD)
+
+A clean dry-run against the full stock tbaMUD `lib/world/` tree (191
+zones) produces:
+
+```
+areas: 189            (2 zones empty — credits / index)
+rooms: 12,700
+mobiles: 3,705        (prototypes)
+items: 4,765          (prototypes)
+spawns: 8,747         (M/O resets translated)
+shop overlays: 330
+block warnings: 0
+warn warnings: ~6,300 (DG Scripts re-authoring + intentional design gaps)
+info warnings: ~7,000 (slot collapses, R-reset deferrals, attachment audit)
+```
 
 ## Mapping table format
 
@@ -1185,6 +1257,31 @@ warn-only. Gaps ranked below.
   individually, so there's no direct mapping; the field is silently
   dropped. (`lifespan` *is* consumed as the per-spawn cadence; see
   [CircleMUD zone reset coverage matrix](#circlemud-zone-reset-coverage-matrix).)
+
+### tbaMUD-specific backlog
+
+- **DG Scripts → Rhai translation** — Whole subsystem. tbaMUD ships ~600
+  trigger scripts in stock; the importer surfaces every attachment as a
+  Warn but translates none of them. A best-effort transpiler covering
+  common idioms (`%send%`, `%echoaround%`, `%actor.class%`, `if/end`,
+  `return 0`) would knock down ~80% of stock content; full coverage is
+  open-ended (~50 DG commands + ~80 variables + arithmetic, regex,
+  string ops). Pre-req: a place to put per-mob / per-room script bodies
+  in IronMUD's existing `*Trigger` model.
+- **Quest system** — IronMUD has none. Stock tbaMUD ships 10 `.qst`
+  records; the importer warns on each. Adding a quest engine is its own
+  feature project — see [Quests (`.qst` files) — warn-only](#quests-qst-files--warn-only).
+- **Zone-level `T` (trigger attach) and `V` (variable assignment) reset
+  commands** — DG-Scripts-coupled. Currently warn-only. Could be wired
+  alongside DG translation work.
+- **tbaMUD obj-attached AFF banks** (the third 4-bank quad on the obj
+  type/flags line) — silently dropped. Reserved for future on-equip
+  buffs sourced from tbaMUD's enhanced item model.
+- **Patched MOB / ITEM / ROOM bits** beyond the named tables — tbaMUD
+  installs commonly add new bits in higher positions. The importer
+  surfaces each as `unknown_flag`; mapping JSON additions are needed
+  per-bit. ~417 occurrences in stock tbaMUD content (mostly shop
+  bitvector bit 0x4, which is a tbaMUD-specific shop addition).
 
 ## Troubleshooting
 

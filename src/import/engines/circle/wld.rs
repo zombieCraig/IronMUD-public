@@ -59,6 +59,13 @@ pub fn parse_str(text: &str, path: &Path) -> Result<Vec<IrRoom>> {
             p.inner.consume_line();
             let room = p.parse_room(vnum)?;
             rooms.push(room);
+        } else if trimmed.starts_with("T ") || trimmed == "T" {
+            // tbaMUD writes DG Scripts trigger attachments as `T <vnum>`
+            // lines between room records. Stock CircleMUD has none. The
+            // tba engine extracts attachments via a separate pass; here
+            // we just skip them so the parser doesn't choke on a tbaMUD
+            // file accidentally fed to the circle engine.
+            p.inner.consume_line();
         } else {
             return Err(p.inner.err(&format!("expected '#vnum' or '$', got: {trimmed:?}")));
         }
@@ -191,6 +198,7 @@ impl<'a> WldParser<'a> {
             unknown_flag_names: Vec::new(),
             exits,
             extras,
+            trigger_vnums: Vec::new(),
             source,
         })
     }

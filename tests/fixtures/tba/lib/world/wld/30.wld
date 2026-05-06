@@ -1,0 +1,24 @@
+#3000
+The Reading Room~
+A small, simple room. To the east lies the temple.
+~
+30 156 0 0 0 0
+D1
+The Temple of Midgaard.
+~
+~
+0 -1 3001
+S
+T 555
+#3001
+The Temple of Midgaard~
+The temple square.
+~
+30 156 0 0 0 0
+D3
+The Reading Room.
+~
+~
+0 -1 3000
+S
+$

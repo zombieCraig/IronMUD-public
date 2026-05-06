@@ -1,0 +1,25 @@
+#3000
+teleporter~
+the teleporter~
+A teleporter has been left here.~
+~
+12 0 0 0 0 a 0 0 0 0 0 0 0
+0 0 0 0
+1 10 0 0 0
+T 777
+T 778
+E
+teleporter~
+The teleporter transfers players between zones.
+~
+#3001
+sword long~
+a long sword~
+A long sword has been left here.~
+~
+5 a g 0 0 abch 0 0 0 0 0 0 0
+1 8 3 0
+8 600 10 0 0
+A
+1 2 0
+$

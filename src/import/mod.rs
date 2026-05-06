@@ -61,6 +61,14 @@ pub struct ImportIR {
     /// mapping layer resolves each source vnum against the global
     /// mob/item/room indexes built during the per-zone passes.
     pub triggers: Vec<IrTrigger>,
+    /// tbaMUD DG Scripts trigger definitions (one entry per `.trg` record
+    /// across the whole tree). Stock CircleMUD ships none. Bodies are not
+    /// translated; per-attachment warnings are emitted by the mapper so a
+    /// builder can re-author the behavior in Rhai.
+    pub dg_triggers: Vec<IrDgTrigger>,
+    /// tbaMUD quest definitions (one entry per `.qst` record). IronMUD has
+    /// no quest system; surfaced as warnings.
+    pub quests: Vec<IrQuest>,
 }
 
 #[derive(Debug, Clone)]
@@ -109,6 +117,11 @@ pub struct IrRoom {
     pub unknown_flag_names: Vec<String>,
     pub exits: Vec<IrExit>,
     pub extras: Vec<IrExtraDesc>,
+    /// tbaMUD DG Scripts trigger vnums attached to this room (`T <vnum>`
+    /// lines after the room's `S` terminator). Resolved against
+    /// `ImportIR.dg_triggers` during mapping. Empty for stock CircleMUD.
+    #[allow(dead_code)]
+    pub trigger_vnums: Vec<i32>,
     pub source: SourceLoc,
 }
 
@@ -170,6 +183,10 @@ pub struct IrMob {
     /// E-block named attributes (e.g. `BareHandAttack: 12`). Captured
     /// verbatim; surfaced as warn-once-per-distinct-name during mapping.
     pub extra_attrs: Vec<(String, String)>,
+    /// tbaMUD DG Scripts trigger vnums attached to this mob. Empty for
+    /// stock CircleMUD (which has no DG Scripts).
+    #[allow(dead_code)]
+    pub trigger_vnums: Vec<i32>,
     pub source: SourceLoc,
 }
 
@@ -214,6 +231,10 @@ pub struct IrItem {
     pub extra_descs: Vec<IrExtraDesc>,
     /// `A`-blocks: pairs of (`apply_location`, modifier).
     pub affects: Vec<(i32, i32)>,
+    /// tbaMUD DG Scripts trigger vnums attached to this item. Empty for
+    /// stock CircleMUD (which has no DG Scripts).
+    #[allow(dead_code)]
+    pub trigger_vnums: Vec<i32>,
     pub source: SourceLoc,
 }
 
@@ -318,6 +339,37 @@ pub enum AttachType {
     Mob,
     Obj,
     Room,
+}
+
+/// tbaMUD DG Scripts trigger definition (one record in a `.trg` file).
+/// Bodies are not translated — the importer only records the header so
+/// mapping can emit per-attachment Warns telling the builder which scripts
+/// to re-author in Rhai.
+#[derive(Debug, Clone)]
+pub struct IrDgTrigger {
+    pub vnum: i32,
+    pub name: String,
+    /// `attach_type` byte from line 1 of the trigger header (digit 0/1/2).
+    /// 0 = mob, 1 = obj, 2 = room. Anything else surfaces as a Warn.
+    pub attach_type_raw: i32,
+    /// Trigger flag string (e.g. `q` = command, `g` = greet). Captured
+    /// verbatim — IronMUD has no DG Scripts equivalent.
+    pub trigger_flags: String,
+    /// Numeric arg (priority / percentage). Stock tbaMUD uses 100 most often.
+    pub numeric_arg: i32,
+    pub source: SourceLoc,
+}
+
+/// tbaMUD quest definition (one record in a `.qst` file). IronMUD has no
+/// quest system; mapping emits a single Warn per quest so the audit trail
+/// shows which zones expected them.
+#[derive(Debug, Clone)]
+pub struct IrQuest {
+    pub vnum: i32,
+    pub name: String,
+    /// Keywords used in the `quest` command (e.g. `mice`).
+    pub keywords: String,
+    pub source: SourceLoc,
 }
 
 /// A planned overlay onto a [`PlannedMobile`]. Shops cross-cut zones

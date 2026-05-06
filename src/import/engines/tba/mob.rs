@@ -1,32 +1,22 @@
-//! CircleMUD `.mob` (mobile / NPC) file parser.
+//! tbaMUD `.mob` parser. Forks the CircleMUD parser to handle:
 //!
-//! Reference: `parse_mobile` in `circle-3.1/src/db.c`.
+//! - **10-token action line** (`f1 f2 f3 f4 f5 f6 f7 f8 align letter`) where
+//!   f1..f4 are 32-bit MOB_FLAGS banks and f5..f8 are 32-bit AFF_FLAGS banks.
+//!   Each field accepts ASCII-letter (`abdh` = bits 0|1|3|7) or decimal
+//!   encoding. Stock CircleMUD uses 4 tokens (`act aff align letter`).
+//!   Reference: `parse_mobile` in `tbamud/src/db.c` ~line 1820.
+//! - **T trailers** following the S/E body, attaching DG Scripts triggers to
+//!   the mob via vnum reference.
 //!
-//! File format (one or more mobs followed by `$` EOF marker):
-//! ```text
-//! #VNUM
-//! keywords~                                           (line 2)
-//! short_descr~                                        (line 3, e.g. "the wizard")
-//! long_descr (multi-line)~                            (in-room sentence)
-//! description (multi-line, may be empty)~             (look/examine body)
-//! MOB_FLAGS AFF_FLAGS ALIGNMENT FORMAT                ("ablno d 900 S")
-//! LEVEL THAC0 AC HP_DICE DAMAGE_DICE                  ("33 2 2 1d1+30000 2d8+18")
-//! GOLD EXP                                            ("30000 160000")
-//! POSITION DEFAULT_POSITION SEX                       ("8 8 1")
-//! [if FORMAT == 'E':]
-//! NamedAttr: value                                    ("BareHandAttack: 12")
-//! ...
-//! E
-//! ```
-//! `S` (simple) terminates the mob with no extra block; `E` (enhanced)
-//! reads named attribute lines until a lone `E` is encountered.
+//! High banks (f2..f4 / f6..f8) are dropped silently — IronMUD's flag model
+//! caps at 64 bits and the stock tbaMUD mob bits all live in f1 / f5.
 
 use anyhow::{Context, Result};
 use std::path::Path;
 
-use super::flags::parse_bitvector;
-use super::parser::LineParser;
 use crate::import::IrMob;
+use crate::import::engines::circle::flags::parse_bitvector;
+use crate::import::engines::circle::parser::LineParser;
 
 pub fn parse_file(path: &Path) -> Result<Vec<IrMob>> {
     let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
@@ -46,8 +36,6 @@ pub fn parse_str(text: &str, path: &Path) -> Result<Vec<IrMob>> {
             p.inner.consume_line();
             continue;
         }
-        // `$` terminates the file. Anything after (e.g. credits in some
-        // patched stocks) is silently ignored.
         if trimmed.starts_with('$') {
             break;
         }
@@ -60,8 +48,17 @@ pub fn parse_str(text: &str, path: &Path) -> Result<Vec<IrMob>> {
                 .map_err(|_| p.inner.err("non-numeric vnum after '#'"))?;
             p.inner.consume_line();
             mobs.push(p.parse_mob(vnum)?);
+        } else if trimmed.starts_with("T ") {
+            // Trigger attachment for the most recently parsed mob. Last mob
+            // owns it; we look it up by mutable index.
+            p.inner.consume_line();
+            if let Some(vnum) = trimmed[2..].split_whitespace().next().and_then(|s| s.parse::<i32>().ok()) {
+                if let Some(last) = mobs.last_mut() {
+                    last.trigger_vnums.push(vnum);
+                }
+            }
         } else {
-            return Err(p.inner.err(&format!("expected '#vnum' or '$', got: {trimmed:?}")));
+            return Err(p.inner.err(&format!("expected '#vnum', 'T <vnum>', or '$', got: {trimmed:?}")));
         }
     }
     Ok(mobs)
@@ -91,9 +88,6 @@ impl<'a> MobParser<'a> {
             .inner
             .read_string()
             .with_context(|| format!("mob #{vnum}: long descr"))?;
-        // Stock format is "long_descr\n~"; the parser captures the trailing
-        // blank line. Trim trailing whitespace/newlines so the in-room line
-        // doesn't have a dangling LF.
         let long_descr = long_descr_raw.trim_end().to_string();
         let description = self
             .inner
@@ -102,31 +96,43 @@ impl<'a> MobParser<'a> {
             .trim_end()
             .to_string();
 
-        // Action line: MOB_FLAGS AFF_FLAGS ALIGNMENT FORMAT
+        // Action line: tbaMUD format = `f1 f2 f3 f4 f5 f6 f7 f8 align letter`.
+        // Stock CircleMUD format = `act aff align letter` (4 tokens). We
+        // accept both: count tokens to decide. Mixed fixtures (some mobs
+        // 4-token, others 10-token) are rare in practice but handled.
         let action_line = self
             .inner
             .consume_line()
             .ok_or_else(|| self.inner.err(&format!("mob #{vnum}: expected action line, got EOF")))?
             .trim()
             .to_string();
-        let mut t = action_line.split_whitespace();
-        let mob_token = t
-            .next()
-            .ok_or_else(|| self.inner.err(&format!("mob #{vnum}: missing MOB_FLAGS")))?;
-        let aff_token = t
-            .next()
-            .ok_or_else(|| self.inner.err(&format!("mob #{vnum}: missing AFF_FLAGS")))?;
-        let align_token = t
-            .next()
-            .ok_or_else(|| self.inner.err(&format!("mob #{vnum}: missing ALIGNMENT")))?;
-        let format_token = t
-            .next()
-            .ok_or_else(|| self.inner.err(&format!("mob #{vnum}: missing FORMAT (S/E)")))?;
-        let mob_flag_bits = parse_bitvector(mob_token);
-        let aff_flag_bits = parse_bitvector(aff_token);
-        let alignment: i32 = align_token
-            .parse()
-            .map_err(|_| self.inner.err(&format!("mob #{vnum}: non-numeric alignment {align_token}")))?;
+        let parts: Vec<&str> = action_line.split_whitespace().collect();
+        let (mob_flag_bits, aff_flag_bits, alignment, format_token) = match parts.len() {
+            10 => {
+                // tbaMUD format. f1 = MOB bits 0..31; high banks dropped.
+                let mob_flag_bits = parse_bitvector(parts[0]);
+                let aff_flag_bits = parse_bitvector(parts[4]);
+                let alignment: i32 = parts[8]
+                    .parse()
+                    .map_err(|_| self.inner.err(&format!("mob #{vnum}: non-numeric alignment {:?}", parts[8])))?;
+                (mob_flag_bits, aff_flag_bits, alignment, parts[9])
+            }
+            n if n >= 4 => {
+                // Stock CircleMUD format (or a tbaMUD file authored without
+                // the extension — rare but present in some patches).
+                let mob_flag_bits = parse_bitvector(parts[0]);
+                let aff_flag_bits = parse_bitvector(parts[1]);
+                let alignment: i32 = parts[2]
+                    .parse()
+                    .map_err(|_| self.inner.err(&format!("mob #{vnum}: non-numeric alignment {:?}", parts[2])))?;
+                (mob_flag_bits, aff_flag_bits, alignment, parts[3])
+            }
+            other => {
+                return Err(self.inner.err(&format!(
+                    "mob #{vnum}: action line has {other} tokens; expected 4 (CircleMUD) or 10 (tbaMUD)"
+                )));
+            }
+        };
         let format = format_token.chars().next().unwrap_or('S').to_ascii_uppercase();
         if format != 'S' && format != 'E' {
             return Err(self
@@ -192,11 +198,6 @@ impl<'a> MobParser<'a> {
                     self.inner.consume_line();
                     break;
                 }
-                // Some E-attrs (e.g. patched 'Description:') span multiple
-                // lines via tilde-strings. Stock CircleMUD only uses
-                // single-line `Name: Value` pairs, which is what we model
-                // here. Fancier patches surface in the warning report via
-                // the unique-name set built in mapping.rs.
                 self.inner.consume_line();
                 if let Some((name, value)) = trimmed.split_once(':') {
                     extra_attrs.push((name.trim().to_string(), value.trim().to_string()));
@@ -249,55 +250,65 @@ mod tests {
     }
 
     #[test]
-    fn parses_simple_mob() {
+    fn parses_tba_10_token_action_line_decimal() {
         let body = "\
 #3000
 wizard~
 the wizard~
-A wizard walks around behind the counter, talking to himself.
+A wizard walks around behind the counter.
 ~
-The wizard looks old and senile.
+   The wizard looks old and senile.
 ~
-ablno d 900 S
-33 2 2 1d1+30000 2d8+18
-30000 160000
+26635 0 0 0 16 0 0 0 900 E
+33 9 -9 6d6+330 5d5+5
+330 108900
 8 8 1
+E
 $
 ";
         let mobs = p(body);
         assert_eq!(mobs.len(), 1);
         let m = &mobs[0];
         assert_eq!(m.vnum, 3000);
-        assert_eq!(m.keywords, vec!["wizard"]);
-        assert_eq!(m.short_descr, "the wizard");
-        assert!(m.long_descr.starts_with("A wizard walks"));
-        assert!(!m.long_descr.ends_with('\n'));
-        assert!(m.description.starts_with("The wizard looks"));
+        assert_eq!(m.mob_flag_bits, 26635); // f1 decimal
+        assert_eq!(m.aff_flag_bits, 16); // f5 decimal
         assert_eq!(m.alignment, 900);
-        assert_eq!(m.format, 'S');
+        assert_eq!(m.format, 'E');
         assert_eq!(m.level, 33);
-        assert_eq!(m.thac0, 2);
-        assert_eq!(m.ac, 2);
-        assert_eq!(m.hp_dice, "1d1+30000");
-        assert_eq!(m.damage_dice, "2d8+18");
-        assert_eq!(m.gold, 30000);
-        assert_eq!(m.exp, 160000);
-        assert_eq!(m.position, 8);
-        assert_eq!(m.default_position, 8);
-        assert_eq!(m.sex, 1);
-        // 'a','b','l','n','o' = bits 0,1,11,13,14
-        let expected = (1u64 << 0) | (1 << 1) | (1 << 11) | (1 << 13) | (1 << 14);
-        assert_eq!(m.mob_flag_bits, expected);
-        assert_eq!(m.aff_flag_bits, 1u64 << 3); // 'd'
     }
 
     #[test]
-    fn parses_enhanced_mob_with_named_attr() {
+    fn parses_tba_10_token_action_line_ascii_letters() {
         let body = "\
-#1
-Puff dragon fractal~
+#3001
+guard~
+a city guard~
+A burly guard stands here.
+~
+A burly guard.
+~
+abdf 0 0 0 cd 0 0 0 0 S
+30 0 0 5d10+200 3d6+10
+1000 0
+8 8 1
+$
+";
+        let mobs = p(body);
+        let m = &mobs[0];
+        // a|b|d|f = bits 0|1|3|5 = 1+2+8+32 = 43
+        assert_eq!(m.mob_flag_bits, 0b101011);
+        // c|d = bits 2|3 = 12
+        assert_eq!(m.aff_flag_bits, 0b1100);
+        assert_eq!(m.format, 'S');
+    }
+
+    #[test]
+    fn falls_back_to_circle_4_token_format() {
+        let body = "\
+#5
+Puff fractal~
 Puff~
-Puff the Fractal Dragon is here.
+Puff is here.
 ~
 A puff of dragon.
 ~
@@ -312,48 +323,40 @@ $
         let mobs = p(body);
         let m = &mobs[0];
         assert_eq!(m.format, 'E');
+        assert_eq!(m.alignment, 1000);
         assert_eq!(m.extra_attrs.len(), 1);
-        assert_eq!(m.extra_attrs[0], ("BareHandAttack".to_string(), "12".to_string()));
     }
 
     #[test]
-    fn empty_description_block_is_ok() {
+    fn captures_trigger_trailers() {
         let body = "\
 #10
-clone~
-the clone~
-A boring old clone is standing here.
+mob~
+a mob~
+A mob is here.
 ~
 ~
-b 0 0 S
+0 0 0 0 0 0 0 0 0 S
+1 0 0 1d1+1 1d1+1
+0 0
+8 8 0
+T 555
+T 556
+#11
+mob2~
+another mob~
+Another mob.
+~
+~
+0 0 0 0 0 0 0 0 0 S
 1 0 0 1d1+1 1d1+1
 0 0
 8 8 0
 $
 ";
         let mobs = p(body);
-        assert_eq!(mobs.len(), 1);
-        assert_eq!(mobs[0].description, "");
-    }
-
-    #[test]
-    fn ignores_trailing_after_dollar() {
-        let body = "\
-#1
-a~
-a~
-b
-~
-~
-0 0 0 S
-1 0 0 1d1+1 1d1+1
-0 0
-8 8 0
-$
-some credits or junk after EOF
-more junk
-";
-        let mobs = p(body);
-        assert_eq!(mobs.len(), 1);
+        assert_eq!(mobs.len(), 2);
+        assert_eq!(mobs[0].trigger_vnums, vec![555, 556]);
+        assert!(mobs[1].trigger_vnums.is_empty());
     }
 }

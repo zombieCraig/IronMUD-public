@@ -1,0 +1,25 @@
+#3000
+wizard~
+the wizard~
+A wizard walks here.
+~
+   The wizard looks old and senile.
+~
+26635 0 0 0 16 0 0 0 900 E
+33 9 -9 6d6+330 5d5+5
+330 108900
+8 8 1
+E
+T 666
+#3001
+guard~
+a city guard~
+A burly guard stands here.
+~
+A burly guard.
+~
+abdf 0 0 0 cd 0 0 0 0 S
+30 0 0 5d10+200 3d6+10
+1000 0
+8 8 1
+$

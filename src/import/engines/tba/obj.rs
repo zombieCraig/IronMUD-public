@@ -1,34 +1,28 @@
-//! CircleMUD `.obj` (object / item prototype) file parser.
+//! tbaMUD `.obj` parser. Forks the CircleMUD parser to handle:
 //!
-//! Reference: `parse_object` in `circle-3.1/src/db.c` and the format
-//! documented in `circle-3.1/doc/sources/building.tex` (Objects section).
+//! - **13-token type/flags line**: `type extra1..extra4 wear1..wear4
+//!   aff1..aff4`. Each flag bank is 32 bits, ASCII-letter or decimal. Stock
+//!   CircleMUD uses 3 tokens (`type extra wear`). Reference: `parse_object`
+//!   in `tbamud/src/db.c` ~line 1956.
+//! - **5-token weight/cost/rent line**: `weight cost rent level timer`.
+//!   `level` (min wear level) and `timer` (item lifetime) are dropped —
+//!   no IronMUD analog. Stock circle uses 3 tokens.
+//! - **`A`-blocks with 3 fields** (`location modifier bitvector`) — tbaMUD's
+//!   third field carries an aff_bitvector to apply alongside the modifier.
+//!   We accept it but drop bits ≥ 0 (warn-only via mapping).
+//! - **T trailers inside the record** (after the weight line, before E/A
+//!   subblocks).
 //!
-//! File format (one or more objects followed by `$` EOF marker):
-//! ```text
-//! #VNUM
-//! keywords~
-//! short_descr~                      ground appearance: "a long sword"
-//! long_descr~                       in-room sentence: "A long sword has been left here."
-//! action_descr~                     usually empty (bare ~)
-//! TYPE EXTRA_FLAGS WEAR_FLAGS       e.g. "5 an 8193"
-//! V0 V1 V2 V3                       four type-specific values
-//! WEIGHT COST RENT                  e.g. "8 600 10"
-//! [zero or more sub-blocks:]
-//!   E
-//!     keyword(s)~
-//!     description~
-//!   A
-//!     APPLY_LOCATION MODIFIER       e.g. "17 -10"  (APPLY_AC -10)
-//! ```
-//! Records terminate when the next non-blank line starts with `#` or `$`.
-//! Up to `MAX_OBJ_AFFECT = 6` `A`-blocks are allowed in stock Circle.
+//! High flag banks (extra2..extra4 / wear2..wear4 / aff1..aff4) are dropped
+//! silently — IronMUD's flag model caps at 64 bits and the stock tbaMUD obj
+//! bits all live in extra1 / wear1.
 
 use anyhow::{Context, Result};
 use std::path::Path;
 
-use super::flags::parse_bitvector;
-use super::parser::LineParser;
 use crate::import::{IrExtraDesc, IrItem};
+use crate::import::engines::circle::flags::parse_bitvector;
+use crate::import::engines::circle::parser::LineParser;
 
 pub fn parse_file(path: &Path) -> Result<Vec<IrItem>> {
     let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
@@ -73,8 +67,6 @@ struct ObjParser<'a> {
 
 impl<'a> ObjParser<'a> {
     fn parse_obj(&mut self, vnum: i32) -> Result<IrItem> {
-        // SourceLoc.room_vnum doubles as "the entity's source vnum" for
-        // warning context — same convention the mob parser uses.
         let source = self.inner.loc().with_room(vnum);
 
         let keywords_raw = self
@@ -102,30 +94,45 @@ impl<'a> ObjParser<'a> {
             .trim_end()
             .to_string();
 
-        // Numeric line 1: TYPE EXTRA_FLAGS WEAR_FLAGS
+        // Numeric line 1: type + flag banks.
+        // tbaMUD = 13 tokens; circle stock = 3 tokens. Accept both.
         let header = self
             .inner
             .consume_line()
             .ok_or_else(|| self.inner.err(&format!("obj #{vnum}: expected type/flags line, got EOF")))?
             .trim()
             .to_string();
-        let mut t = header.split_whitespace();
-        let type_token = t
-            .next()
-            .ok_or_else(|| self.inner.err(&format!("obj #{vnum}: missing item_type")))?;
-        let extra_token = t
-            .next()
-            .ok_or_else(|| self.inner.err(&format!("obj #{vnum}: missing extra_flags")))?;
-        let wear_token = t
-            .next()
-            .ok_or_else(|| self.inner.err(&format!("obj #{vnum}: missing wear_flags")))?;
-        let item_type: i32 = type_token
-            .parse()
-            .map_err(|_| self.inner.err(&format!("obj #{vnum}: non-numeric item_type {type_token:?}")))?;
-        let extra_flag_bits = parse_bitvector(extra_token);
-        let wear_flag_bits = parse_bitvector(wear_token);
+        let parts: Vec<&str> = header.split_whitespace().collect();
+        let (item_type, extra_flag_bits, wear_flag_bits) = match parts.len() {
+            13 => {
+                let item_type: i32 = parts[0]
+                    .parse()
+                    .map_err(|_| self.inner.err(&format!("obj #{vnum}: non-numeric item_type {:?}", parts[0])))?;
+                // extra1 = parts[1] (bits 0..31 = stock ITEM_*)
+                // wear1 = parts[5] (bits 0..31 = stock WEAR_*)
+                let extra_flag_bits = parse_bitvector(parts[1]);
+                let wear_flag_bits = parse_bitvector(parts[5]);
+                // parts[9..13] are obj-attached AFF banks; not surfaced today
+                // (IronMUD obj-attached AFF buffs would be redundant with
+                // existing item flag handling).
+                (item_type, extra_flag_bits, wear_flag_bits)
+            }
+            n if n >= 3 => {
+                let item_type: i32 = parts[0]
+                    .parse()
+                    .map_err(|_| self.inner.err(&format!("obj #{vnum}: non-numeric item_type {:?}", parts[0])))?;
+                let extra_flag_bits = parse_bitvector(parts[1]);
+                let wear_flag_bits = parse_bitvector(parts[2]);
+                (item_type, extra_flag_bits, wear_flag_bits)
+            }
+            other => {
+                return Err(self.inner.err(&format!(
+                    "obj #{vnum}: type/flags line has {other} tokens; expected 3 (CircleMUD) or 13 (tbaMUD)"
+                )));
+            }
+        };
 
-        // Numeric line 2: V0 V1 V2 V3
+        // Numeric line 2: V0 V1 V2 V3 (same as stock circle).
         let values_line = self
             .inner
             .consume_line()
@@ -138,7 +145,8 @@ impl<'a> ObjParser<'a> {
         let v2 = parse_i32(&mut t, "v2", vnum, &self.inner)?;
         let v3 = parse_i32(&mut t, "v3", vnum, &self.inner)?;
 
-        // Numeric line 3: WEIGHT COST RENT
+        // Numeric line 3: weight cost rent [level timer]. tbaMUD = 5 tokens;
+        // circle stock = 3. The C parser at db.c:2001 accepts 3, 4, or 5.
         let stats_line = self
             .inner
             .consume_line()
@@ -149,8 +157,12 @@ impl<'a> ObjParser<'a> {
         let weight = parse_i32(&mut t, "weight", vnum, &self.inner)?;
         let cost = parse_i32(&mut t, "cost", vnum, &self.inner)?;
         let rent = parse_i32(&mut t, "rent", vnum, &self.inner)?;
+        // Optional level + timer trailers — silently dropped.
+        let _ = t.next();
+        let _ = t.next();
 
-        // Sub-blocks: zero or more E / A blocks until the next `#` or `$` or EOF.
+        // Sub-blocks: T (trigger attach), E, A — until next # / $ / EOF.
+        let mut trigger_vnums: Vec<i32> = Vec::new();
         let mut extra_descs: Vec<IrExtraDesc> = Vec::new();
         let mut affects: Vec<(i32, i32)> = Vec::new();
         loop {
@@ -185,18 +197,29 @@ impl<'a> ObjParser<'a> {
                     .ok_or_else(|| self.inner.err(&format!("obj #{vnum}: A block missing location/modifier")))?
                     .trim()
                     .to_string();
-                let mut p = pair_line.split_whitespace();
-                let loc = parse_i32(&mut p, "apply_location", vnum, &self.inner)?;
-                let modifier = parse_i32(&mut p, "apply_modifier", vnum, &self.inner)?;
+                let mut pp = pair_line.split_whitespace();
+                let loc = parse_i32(&mut pp, "apply_location", vnum, &self.inner)?;
+                let modifier = parse_i32(&mut pp, "apply_modifier", vnum, &self.inner)?;
+                // tbaMUD A-block has an optional 3rd field (aff_bitvector).
+                // Drop it — IronMUD's A-block model is just (loc, modifier).
+                let _ = pp.next();
                 affects.push((loc, modifier));
                 continue;
             }
-            // Stock Circle's parse_object accepts only E/A here, but some
-            // patches add more letters. Surface as a hard error so we don't
-            // silently misalign and corrupt subsequent records.
+            if trimmed.starts_with("T ") {
+                self.inner.consume_line();
+                if let Some(tv) = trimmed[2..]
+                    .split_whitespace()
+                    .next()
+                    .and_then(|s| s.parse::<i32>().ok())
+                {
+                    trigger_vnums.push(tv);
+                }
+                continue;
+            }
             return Err(self
                 .inner
-                .err(&format!("obj #{vnum}: expected 'E', 'A', '#vnum', or '$' — got {trimmed:?}")));
+                .err(&format!("obj #{vnum}: expected 'E', 'A', 'T <vnum>', '#vnum', or '$' — got {trimmed:?}")));
         }
 
         Ok(IrItem {
@@ -216,7 +239,7 @@ impl<'a> ObjParser<'a> {
             rent,
             extra_descs,
             affects,
-            trigger_vnums: Vec::new(),
+            trigger_vnums,
             source,
         })
     }
@@ -240,8 +263,39 @@ mod tests {
     }
 
     #[test]
-    fn parses_silver_ring_with_two_affects() {
-        // Reduced version of circle-3.1/lib/world/obj/71.obj #7190.
+    fn parses_tba_13_token_obj_with_t_trailers() {
+        let body = "\
+#3008
+teleporter~
+the teleporter~
+A strange device labeled \"teleporter\" was left here.~
+~
+12 0 0 0 0 a 0 0 0 0 0 0 0
+0 0 0 0
+1 10 0 0 0
+T 3014
+T 3015
+E
+teleporter~
+This teleporter is used to transfer players between zones.
+~
+$
+";
+        let items = p(body);
+        assert_eq!(items.len(), 1);
+        let it = &items[0];
+        assert_eq!(it.vnum, 3008);
+        assert_eq!(it.item_type, 12); // OTHER
+        assert_eq!(it.wear_flag_bits, 1); // 'a' = bit 0 = TAKE
+        assert_eq!(it.weight, 1);
+        assert_eq!(it.cost, 10);
+        assert_eq!(it.rent, 0);
+        assert_eq!(it.trigger_vnums, vec![3014, 3015]);
+        assert_eq!(it.extra_descs.len(), 1);
+    }
+
+    #[test]
+    fn falls_back_to_circle_3_token_format() {
         let body = "\
 #7190
 ring silver~
@@ -253,105 +307,35 @@ A lovely silver ring has been left here.~
 9 16000 5000
 A
 17 -10
-A
-18 2
 $
 ";
         let items = p(body);
-        assert_eq!(items.len(), 1);
         let it = &items[0];
-        assert_eq!(it.vnum, 7190);
-        assert_eq!(it.keywords, vec!["ring", "silver"]);
-        assert_eq!(it.short_descr, "a glinting silver ring");
-        assert!(it.long_descr.starts_with("A lovely silver ring"));
-        assert!(!it.long_descr.ends_with('\n'));
-        assert_eq!(it.action_descr, "");
-        assert_eq!(it.item_type, 11); // ITEM_WORN
+        assert_eq!(it.item_type, 11);
         assert_eq!(it.extra_flag_bits, 1u64 << 6); // 'g' = bit 6 = MAGIC
-        assert_eq!(it.wear_flag_bits, 3); // numeric 3 = TAKE | FINGER
-        assert_eq!(it.values, [0, 0, 10, 0]);
+        assert_eq!(it.wear_flag_bits, 3);
         assert_eq!(it.weight, 9);
-        assert_eq!(it.cost, 16000);
-        assert_eq!(it.rent, 5000);
-        assert_eq!(it.affects.len(), 2);
-        assert_eq!(it.affects[0], (17, -10));
-        assert_eq!(it.affects[1], (18, 2));
-        assert!(it.extra_descs.is_empty());
+        assert_eq!(it.affects, vec![(17, -10)]);
     }
 
     #[test]
-    fn parses_container_with_extra_desc() {
-        // Reduced version of obj/60.obj #6004 (hooded brass lantern with E).
+    fn drops_three_field_a_block() {
+        // tbaMUD A blocks: location modifier aff_bitvector
         let body = "\
-#6004
-lantern brass hooded~
-a hooded brass lantern~
-A hooded brass lantern has been left here.~
+#1
+ring~
+a ring~
+A ring is here.~
 ~
-1 0 16385
-0 0 100 0
-4 60 10
-E
-lantern brass hooded~
-A robust brass oil lantern.
-~
+11 0 0 0 0 a 0 0 0 0 0 0 0
+0 0 0 0
+1 100 50 0 0
+A
+1 2 0
 $
 ";
         let items = p(body);
-        assert_eq!(items.len(), 1);
         let it = &items[0];
-        assert_eq!(it.item_type, 1); // ITEM_LIGHT
-        assert_eq!(it.extra_descs.len(), 1);
-        assert_eq!(it.extra_descs[0].keywords, vec!["lantern", "brass", "hooded"]);
-        assert!(it.extra_descs[0].description.contains("oil lantern"));
-    }
-
-    #[test]
-    fn parses_multiple_objects_in_one_file() {
-        let body = "\
-#1
-key brass~
-a small brass key~
-A key lies here.~
-~
-18 0 1
-0 0 0 0
-1 5 1
-#2
-gold~
-some gold coins~
-Some coins lie here.~
-~
-20 0 1
-50 0 0 0
-1 50 0
-$
-";
-        let items = p(body);
-        assert_eq!(items.len(), 2);
-        assert_eq!(items[0].vnum, 1);
-        assert_eq!(items[0].item_type, 18);
-        assert_eq!(items[1].vnum, 2);
-        assert_eq!(items[1].item_type, 20);
-        assert_eq!(items[1].values[0], 50);
-    }
-
-    #[test]
-    fn rejects_unknown_subblock_letter() {
-        let body = "\
-#1
-x~
-x~
-x~
-~
-12 0 1
-0 0 0 0
-1 0 0
-Z
-$
-";
-        let err = parse_str(body, &PathBuf::from("t.obj")).unwrap_err();
-        let msg = format!("{err:#}");
-        assert!(msg.contains("expected 'E', 'A'"), "unexpected error: {msg}");
+        assert_eq!(it.affects, vec![(1, 2)]);
     }
 }

@@ -12,7 +12,7 @@ use serde::Deserialize;
 use std::collections::HashSet;
 
 use crate::import::{
-    AttachType, DeferredItem, ImportIR, IrItem, IrMob, IrResetKind, IrRoom, IrShop, IrTrigger, IrZone,
+    AttachType, DeferredItem, ImportIR, IrDgTrigger, IrItem, IrMob, IrResetKind, IrRoom, IrShop, IrTrigger, IrZone,
     MappingOptions, Plan, PlannedArea, PlannedDoor, PlannedExit, PlannedItem, PlannedMobile, PlannedRoom,
     PlannedShopOverlay, PlannedSpawn, PlannedSpawnDep, PlannedTriggerOverlay, Severity, SourceLoc,
     TriggerMutation, Warning, WarningKind,
@@ -447,6 +447,97 @@ pub fn ir_to_plan(ir: &ImportIR, opts: &MappingOptions) -> (Plan, Vec<Warning>) 
         let (overlays, trig_warnings) = map_triggers(&ir.triggers, &mob_index, &item_index, &room_index, &plan.spawns, opts);
         plan.trigger_overlays.extend(overlays);
         warnings.extend(trig_warnings);
+    }
+
+    // tbaMUD DG Scripts: per-attachment Warns naming the source trigger
+    // vnum + name. The mob/obj/room source-IR carries `trigger_vnums`; we
+    // resolve each against `dg_triggers` for the human-readable name.
+    if !ir.dg_triggers.is_empty() {
+        let trig_index: HashMap<i32, &IrDgTrigger> =
+            ir.dg_triggers.iter().map(|t| (t.vnum, t)).collect();
+        for zone in &ir.zones {
+            for room in &zone.rooms {
+                for tv in &room.trigger_vnums {
+                    let name = trig_index.get(tv).map(|t| t.name.as_str()).unwrap_or("(unknown)");
+                    warnings.push(
+                        Warning::new(
+                            WarningKind::DeferredFeature,
+                            Severity::Warn,
+                            room.source.clone(),
+                            format!("DG Scripts trigger #{tv} ({name}) attached to room #{}; body not translated", room.vnum),
+                        )
+                        .with_suggestion("re-author behavior in Rhai under scripts/commands/ or scripts/triggers/"),
+                    );
+                }
+            }
+            for mob in &zone.mobiles {
+                for tv in &mob.trigger_vnums {
+                    let name = trig_index.get(tv).map(|t| t.name.as_str()).unwrap_or("(unknown)");
+                    warnings.push(
+                        Warning::new(
+                            WarningKind::DeferredFeature,
+                            Severity::Warn,
+                            mob.source.clone(),
+                            format!("DG Scripts trigger #{tv} ({name}) attached to mob #{}; body not translated", mob.vnum),
+                        )
+                        .with_suggestion("re-author behavior as a MobileTrigger in Rhai"),
+                    );
+                }
+            }
+            for item in &zone.items {
+                for tv in &item.trigger_vnums {
+                    let name = trig_index.get(tv).map(|t| t.name.as_str()).unwrap_or("(unknown)");
+                    warnings.push(
+                        Warning::new(
+                            WarningKind::DeferredFeature,
+                            Severity::Warn,
+                            item.source.clone(),
+                            format!("DG Scripts trigger #{tv} ({name}) attached to obj #{}; body not translated", item.vnum),
+                        )
+                        .with_suggestion("re-author behavior as an ItemTrigger in Rhai"),
+                    );
+                }
+            }
+        }
+        // Surface any defined-but-unattached triggers as a single Info note
+        // so the audit trail captures them. (Stock tbaMUD has plenty of
+        // these — guild guards, etc., that get attached via zone resets the
+        // importer doesn't translate.)
+        let attached: HashSet<i32> = ir
+            .zones
+            .iter()
+            .flat_map(|z| {
+                z.rooms
+                    .iter()
+                    .flat_map(|r| r.trigger_vnums.iter().copied())
+                    .chain(z.mobiles.iter().flat_map(|m| m.trigger_vnums.iter().copied()))
+                    .chain(z.items.iter().flat_map(|i| i.trigger_vnums.iter().copied()))
+            })
+            .collect();
+        let unattached = ir.dg_triggers.iter().filter(|t| !attached.contains(&t.vnum)).count();
+        if unattached > 0 {
+            warnings.push(Warning::new(
+                WarningKind::Info,
+                Severity::Info,
+                SourceLoc::default(),
+                format!(
+                    "{unattached} DG Scripts trigger(s) defined but not attached to any room/mob/obj in the imported set"
+                ),
+            ));
+        }
+    }
+
+    // Quests: one Warn per .qst record. IronMUD has no quest system.
+    for q in &ir.quests {
+        warnings.push(
+            Warning::new(
+                WarningKind::DeferredFeature,
+                Severity::Warn,
+                q.source.clone(),
+                format!("quest #{} ({}) not imported; IronMUD has no quest system", q.vnum, q.name),
+            )
+            .with_suggestion("re-author as scripted dialogue / triggers once a quest system lands"),
+        );
     }
 
     (plan, warnings)

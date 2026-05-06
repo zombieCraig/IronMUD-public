@@ -20,7 +20,9 @@ use anyhow::{Result, bail};
 use clap::{Parser, Subcommand};
 
 use ironmud::db::Db;
-use ironmud::import::{MappingOptions, MudEngine, Severity, engines::circle::CircleEngine, mapping, writer};
+use ironmud::import::{
+    MappingOptions, MudEngine, Severity, engines::circle::CircleEngine, engines::tba::TbaEngine, mapping, writer,
+};
 
 #[derive(Parser)]
 #[command(name = "ironmud-import")]
@@ -60,6 +62,31 @@ enum Engine {
         #[arg(long)]
         report: Option<PathBuf>,
     },
+    /// Import tbaMUD world data (extends CircleMUD format with 128-bit ascii
+    /// flag fields, DG Scripts trigger attachments, and quests). DG Script
+    /// bodies and quests are warn-only — re-author behavior in Rhai.
+    Tba {
+        /// Path to a tbaMUD installation. Auto-detects whether you point
+        /// at the repo root, `lib/`, or `lib/world/`.
+        #[arg(short, long)]
+        source: PathBuf,
+
+        /// Commit changes to the DB.
+        #[arg(long)]
+        apply: bool,
+
+        /// Restrict to a single zone vnum (debug aid).
+        #[arg(long)]
+        zone: Option<i32>,
+
+        /// Override the default mapping JSON. See docs/import-guide.md.
+        #[arg(long)]
+        mapping: Option<PathBuf>,
+
+        /// Also write a JSON report of warnings + summary to this path.
+        #[arg(long)]
+        report: Option<PathBuf>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -82,11 +109,19 @@ fn run(cli: Cli) -> Result<ExitCode> {
             zone,
             mapping: mapping_path,
             report,
-        } => run_circle(&cli.database, source, apply, zone, mapping_path, report),
+        } => run_engine(&CircleEngine, &cli.database, source, apply, zone, mapping_path, report),
+        Engine::Tba {
+            source,
+            apply,
+            zone,
+            mapping: mapping_path,
+            report,
+        } => run_engine(&TbaEngine, &cli.database, source, apply, zone, mapping_path, report),
     }
 }
 
-fn run_circle(
+fn run_engine<E: MudEngine>(
+    engine: &E,
     database: &str,
     source: PathBuf,
     apply: bool,
@@ -94,7 +129,6 @@ fn run_circle(
     mapping_path: Option<PathBuf>,
     report_path: Option<PathBuf>,
 ) -> Result<ExitCode> {
-    let engine = CircleEngine;
     println!(
         "ironmud-import: engine={} source={} mode={}",
         engine.name(),

@@ -1450,6 +1450,7 @@ fn maps_high_priority_room_flag_bits() {
             unknown_flag_names: Vec::new(),
             exits: Vec::new(),
             extras: Vec::new(),
+            trigger_vnums: Vec::new(),
             source: SourceLoc::default(),
         }],
         mobiles: Vec::new(),
@@ -1461,6 +1462,8 @@ fn maps_high_priority_room_flag_bits() {
     let ir = ImportIR {
         zones: vec![zone],
         triggers: Vec::new(),
+        dg_triggers: Vec::new(),
+        quests: Vec::new(),
     };
 
     let opts = MappingOptions {
@@ -1520,6 +1523,7 @@ fn maps_medium_priority_room_flag_bits() {
             unknown_flag_names: Vec::new(),
             exits: Vec::new(),
             extras: Vec::new(),
+            trigger_vnums: Vec::new(),
             source: SourceLoc::default(),
         }],
         mobiles: Vec::new(),
@@ -1531,6 +1535,8 @@ fn maps_medium_priority_room_flag_bits() {
     let ir = ImportIR {
         zones: vec![zone],
         triggers: Vec::new(),
+        dg_triggers: Vec::new(),
+        quests: Vec::new(),
     };
 
     let opts = MappingOptions {
@@ -1593,6 +1599,7 @@ fn imports_pickproof_doors() {
                     to_room_vnum: 4401,
                 }],
                 extras: Vec::new(),
+                trigger_vnums: Vec::new(),
                 source: SourceLoc::default(),
             },
             IrRoom {
@@ -1604,6 +1611,7 @@ fn imports_pickproof_doors() {
                 unknown_flag_names: Vec::new(),
                 exits: Vec::new(),
                 extras: Vec::new(),
+                trigger_vnums: Vec::new(),
                 source: SourceLoc::default(),
             },
         ],
@@ -1616,6 +1624,8 @@ fn imports_pickproof_doors() {
     let ir = ImportIR {
         zones: vec![zone],
         triggers: Vec::new(),
+        dg_triggers: Vec::new(),
+        quests: Vec::new(),
     };
 
     let opts = MappingOptions {

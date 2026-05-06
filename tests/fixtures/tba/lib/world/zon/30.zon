@@ -1,0 +1,10 @@
+#30
+TBA Builder~
+Northern Midgaard~
+3000 3099 15 2 d 0 0 0 1 33
+M 0 3000 1 3000 (the wizard)
+M 0 3001 1 3001 (a city guard)
+O 0 3000 1 3000 (a teleporter)
+T 0 0 555 3000
+S
+$

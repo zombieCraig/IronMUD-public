@@ -311,7 +311,15 @@ impl MudEngine for CircleEngine {
             )),
         }
 
-        Ok((ImportIR { zones, triggers }, warnings))
+        Ok((
+            ImportIR {
+                zones,
+                triggers,
+                dg_triggers: Vec::new(),
+                quests: Vec::new(),
+            },
+            warnings,
+        ))
     }
 }
 

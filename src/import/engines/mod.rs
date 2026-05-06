@@ -6,3 +6,4 @@
 //! 3. Document its coverage matrix in `docs/import-guide.md`.
 
 pub mod circle;
+pub mod tba;
