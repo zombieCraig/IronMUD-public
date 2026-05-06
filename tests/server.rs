@@ -5446,6 +5446,59 @@ fn test_charm_spell_definition_loads() {
 }
 
 #[test]
+fn test_safe_zone_gate_present_in_offensive_cast_handlers() {
+    use regex::Regex;
+    use std::fs;
+
+    let src = fs::read_to_string("scripts/commands/cast.rhai").expect("read cast.rhai");
+
+    for handler in ["cast_damage", "cast_debuff", "cast_charm"] {
+        let body_re = Regex::new(&format!(
+            r"(?ms)fn {}\([^)]*\)\s*\{{(.*?)\n\}}",
+            regex::escape(handler)
+        ))
+        .unwrap();
+        let captures = body_re
+            .captures(&src)
+            .unwrap_or_else(|| panic!("could not locate {handler} body in cast.rhai"));
+        let body = captures.get(1).unwrap().as_str();
+
+        assert!(
+            body.contains("get_combat_zone(room_id)"),
+            "{handler} is missing the safe-zone gate (get_combat_zone(room_id))"
+        );
+        assert!(
+            body.contains("zone == \"safe\""),
+            "{handler} is missing the zone == \"safe\" check"
+        );
+        assert!(
+            body.contains("char.god_mode"),
+            "{handler} safe-zone gate is missing the god_mode bypass"
+        );
+    }
+}
+
+#[test]
+fn test_redit_flag_safe_alias_routes_to_combat_zone() {
+    use std::fs;
+
+    let src = fs::read_to_string("scripts/commands/redit.rhai").expect("read redit.rhai");
+
+    assert!(
+        src.contains("handle_safe_alias"),
+        "handle_safe_alias helper missing from redit.rhai"
+    );
+    assert!(
+        src.contains("flag_name == \"safe\"") && src.contains("flag_name == \"peaceful\""),
+        "redit flag dispatcher does not branch on safe/peaceful"
+    );
+    assert!(
+        src.contains("set_room_combat_zone(room_id, \"safe\")"),
+        "handle_safe_alias does not route to set_room_combat_zone(\"safe\")"
+    );
+}
+
+#[test]
 fn test_no_charm_flag_persists() {
     use ironmud::db::Db;
     use ironmud::types::MobileData;

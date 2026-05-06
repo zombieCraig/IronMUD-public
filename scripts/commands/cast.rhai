@@ -124,6 +124,13 @@ fn cast_damage(connection_id, char, spell, target_arg) {
         return false;
     }
 
+    let zone = get_combat_zone(room_id);
+    let in_build = is_in_build_mode(char.name, room_id);
+    if zone == "safe" && !char.god_mode && !in_build {
+        send_client_message(connection_id, "A peaceful aura suppresses your magic here.");
+        return false;
+    }
+
     // Calculate damage
     let magic_level = get_skill_level(char.name, "magic");
     let effective_int = get_effective_stat(char.name, "int");
@@ -175,6 +182,13 @@ fn cast_debuff(connection_id, char, spell, target_arg) {
 
     if mob.flags.no_attack {
         send_client_message(connection_id, "You cannot attack " + mob.name + ".");
+        return false;
+    }
+
+    let zone = get_combat_zone(room_id);
+    let in_build = is_in_build_mode(char.name, room_id);
+    if zone == "safe" && !char.god_mode && !in_build {
+        send_client_message(connection_id, "A peaceful aura suppresses your magic here.");
         return false;
     }
 
@@ -431,6 +445,13 @@ fn cast_charm(connection_id, char, spell, target_arg) {
 
     if target.flags.no_attack {
         send_client_message(connection_id, target.short_desc + " cannot be charmed.");
+        return false;
+    }
+
+    let zone = get_combat_zone(room_id);
+    let in_build = is_in_build_mode(char.name, room_id);
+    if zone == "safe" && !char.god_mode && !in_build {
+        send_client_message(connection_id, "A peaceful aura suppresses your magic here.");
         return false;
     }
 

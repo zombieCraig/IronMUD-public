@@ -4,8 +4,30 @@
 // Import shared OLC helpers
 import "olc_helpers" as olc;
 
+// Helper - safe-zone alias: `flag safe`/`flag peaceful` route to combat_zone.
+fn handle_safe_alias(room_id, want_on, connection_id) {
+    if want_on {
+        if !set_room_combat_zone(room_id, "safe") {
+            send_client_message(connection_id, "Error: Failed to set safe zone.");
+            return;
+        }
+        send_client_message(connection_id, "Safe zone ENABLED. (Combat zone now SAFE — no violence here.)");
+    } else {
+        if !clear_room_combat_zone(room_id) {
+            send_client_message(connection_id, "Error: Failed to clear safe zone.");
+            return;
+        }
+        send_client_message(connection_id, "Safe zone CLEARED. (Combat zone now inherits from area.)");
+    }
+}
+
 // Helper for cycling flag values (toggle on/off)
 fn handle_flag_cycle(room_id, flag_name, connection_id) {
+    if flag_name == "safe" || flag_name == "peaceful" {
+        let want_on = get_room_combat_zone_raw(room_id) != "safe";
+        handle_safe_alias(room_id, want_on, connection_id);
+        return;
+    }
     let current = get_room_flag(room_id, flag_name);
     let new_value = !current;
     if set_room_flag(room_id, flag_name, new_value) {
@@ -18,6 +40,18 @@ fn handle_flag_cycle(room_id, flag_name, connection_id) {
 
 // Helper for flag setting with explicit value
 fn handle_flag_explicit(room_id, flag_name, val_str, connection_id) {
+    if flag_name == "safe" || flag_name == "peaceful" {
+        if olc::is_on_value(val_str) {
+            handle_safe_alias(room_id, true, connection_id);
+            return;
+        }
+        if olc::is_off_value(val_str) {
+            handle_safe_alias(room_id, false, connection_id);
+            return;
+        }
+        send_client_message(connection_id, "Invalid value. Use 'on' or 'off'.");
+        return;
+    }
     // Check for on value
     if olc::is_on_value(val_str) {
         if set_room_flag(room_id, flag_name, true) {
@@ -1102,11 +1136,11 @@ fn run_command(args, connection_id) {
     if subcommand == "flag" {
         // Set or toggle one or more room flags
         if parts.len() < 2 {
-            send_client_message(connection_id, "Usage: redit flag <name> [<name>...] [on|off]\nValid flags: dark, no_mob, indoors, underwater, shallow_water, deep_water, city, no_windows, difficult_terrain, dirt_floor, post_office, bank, garden, spawn_point, liveable");
+            send_client_message(connection_id, "Usage: redit flag <name> [<name>...] [on|off]\nValid flags: dark, no_mob, indoors, underwater, shallow_water, deep_water, city, no_windows, difficult_terrain, dirt_floor, post_office, bank, garden, spawn_point, liveable, safe");
             return;
         }
 
-        let valid_flags = ["dark", "no_mob", "nomob", "indoors", "underwater", "shallow_water", "deep_water", "city", "no_windows", "nowindows", "difficult_terrain", "dirt_floor", "post_office", "bank", "garden", "spawn_point", "liveable", "livable", "private", "private_room", "tunnel", "death", "no_magic", "nomagic", "soundproof", "notrack", "no_track"];
+        let valid_flags = ["dark", "no_mob", "nomob", "indoors", "underwater", "shallow_water", "deep_water", "city", "no_windows", "nowindows", "difficult_terrain", "dirt_floor", "post_office", "bank", "garden", "spawn_point", "liveable", "livable", "private", "private_room", "tunnel", "death", "no_magic", "nomagic", "soundproof", "notrack", "no_track", "safe", "peaceful"];
 
         // Split into flag names and optional trailing on/off value.
         let flag_names = [];
@@ -1130,7 +1164,7 @@ fn run_command(args, connection_id) {
                 if f == name { is_valid = true; break; }
             }
             if !is_valid {
-                send_client_message(connection_id, "Unknown flag: " + name + "\nValid flags: dark, no_mob, indoors, underwater, shallow_water, deep_water, city, no_windows, difficult_terrain, dirt_floor, post_office, bank, garden, spawn_point, liveable\nFor combat zone, use 'redit zone [pve|safe|pvp|inherit]'");
+                send_client_message(connection_id, "Unknown flag: " + name + "\nValid flags: dark, no_mob, indoors, underwater, shallow_water, deep_water, city, no_windows, difficult_terrain, dirt_floor, post_office, bank, garden, spawn_point, liveable, safe\nFor combat zone, use 'redit zone [pve|safe|pvp|inherit]'");
                 return;
             }
         }
