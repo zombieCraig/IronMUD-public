@@ -2858,6 +2858,10 @@ pub struct ItemData {
     /// Weapon skill used by this weapon (for combat XP)
     #[serde(default)]
     pub weapon_skill: Option<WeaponSkill>,
+    /// Effects rolled per landed hit while this weapon is wielded.
+    /// See `OnHitEffect` for dispatch (bleeding -> wounds, elemental -> ongoing_effects, status -> active_buffs).
+    #[serde(default)]
+    pub on_hit_effects: Vec<OnHitEffect>,
     // Container fields (ItemType::Container)
     #[serde(default)]
     pub container_contents: Vec<Uuid>,
@@ -3053,6 +3057,7 @@ impl ItemData {
             damage_type: DamageType::default(),
             two_handed: false,
             weapon_skill: None,
+            on_hit_effects: Vec::new(),
             // Container fields
             container_contents: Vec::new(),
             container_max_items: 0,
@@ -3351,6 +3356,10 @@ pub struct MobileData {
     pub wounds: Vec<Wound>,
     #[serde(default)]
     pub ongoing_effects: Vec<OngoingEffect>,
+    /// Effects rolled per landed natural attack (composes with the legacy
+    /// `flags.poisonous/fiery/chilling/corrosive/shocking` DOT flags).
+    #[serde(default)]
+    pub on_hit_effects: Vec<OnHitEffect>,
     #[serde(default)]
     pub scars: HashMap<String, i32>, // body_part display name -> scar count
     // Death/unconscious state (not persisted)
@@ -3536,6 +3545,7 @@ impl MobileData {
             combat: CombatState::default(),
             wounds: Vec::new(),
             ongoing_effects: Vec::new(),
+            on_hit_effects: Vec::new(),
             scars: HashMap::new(),
             // Death/unconscious state (not persisted)
             is_unconscious: false,

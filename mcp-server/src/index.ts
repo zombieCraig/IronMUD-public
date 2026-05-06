@@ -493,6 +493,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           food_effects: args?.food_effects as { effect_type: string; magnitude: number; duration: number }[] | undefined,
           note_content: args?.note_content as string | undefined,
           world_max_count: args?.world_max_count as number | undefined,
+          on_hit_effects: args?.on_hit_effects as { effect: string; chance: number; magnitude: number; duration: number }[] | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(item, null, 2) }],
@@ -516,7 +517,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           "liquid_effects",
           "medical_tier", "medical_uses", "treats_wound_types",
           "food_nutrition", "food_spoil_duration", "food_effects",
-          "note_content", "world_max_count",
+          "note_content", "world_max_count", "on_hit_effects",
         ];
         for (const field of itemFields) {
           if (args?.[field] !== undefined) {
@@ -675,6 +676,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           faction: args?.faction as string | undefined,
           combat_spells: args?.combat_spells as string[] | undefined,
           combat_spell_chance: args?.combat_spell_chance as number | undefined,
+          on_hit_effects: args?.on_hit_effects as { effect: string; chance: number; magnitude: number; duration: number }[] | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(mobile, null, 2) }],
@@ -693,7 +695,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           "shop_extra_types", "shop_extra_categories", "shop_deny_types", "shop_deny_categories",
           "shop_stock", "shop_preset_vnum",
           "daily_routine", "simulation", "remove_simulation", "world_max_count",
-          "faction", "combat_spells", "combat_spell_chance",
+          "faction", "combat_spells", "combat_spell_chance", "on_hit_effects",
         ];
         for (const field of mobileFields) {
           if (args?.[field] !== undefined) {

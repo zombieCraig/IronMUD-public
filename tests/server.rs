@@ -3946,6 +3946,91 @@ fn test_item_note_content_persists() {
 }
 
 #[test]
+fn test_item_on_hit_effects_persist() {
+    use ironmud::db::Db;
+    use ironmud::{ItemData, OnHitEffect};
+
+    let db_path = format!("test_item_on_hit_effects_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut item = ItemData::new(
+            "cutlass".to_string(),
+            "a curved cutlass".to_string(),
+            "A cutlass lies here.".to_string(),
+        );
+        assert!(item.on_hit_effects.is_empty(), "fresh items start empty");
+
+        item.on_hit_effects = vec![
+            OnHitEffect {
+                effect: "bleeding".to_string(),
+                chance: 70,
+                magnitude: 2,
+                duration: 0,
+            },
+            OnHitEffect {
+                effect: "fire".to_string(),
+                chance: 30,
+                magnitude: 3,
+                duration: 5,
+            },
+        ];
+        let item_id = item.id;
+        db.save_item_data(item).expect("save");
+
+        let loaded = db.get_item_data(&item_id).expect("get").expect("present");
+        assert_eq!(loaded.on_hit_effects.len(), 2);
+        assert_eq!(loaded.on_hit_effects[0].effect, "bleeding");
+        assert_eq!(loaded.on_hit_effects[0].chance, 70);
+        assert_eq!(loaded.on_hit_effects[0].magnitude, 2);
+        assert_eq!(loaded.on_hit_effects[1].effect, "fire");
+        assert_eq!(loaded.on_hit_effects[1].duration, 5);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_mobile_on_hit_effects_persist() {
+    use ironmud::db::Db;
+    use ironmud::{MobileData, OnHitEffect};
+
+    let db_path = format!("test_mob_on_hit_effects_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut mob = MobileData::new("a fire elemental".to_string());
+        assert!(mob.on_hit_effects.is_empty(), "fresh mobs start empty");
+
+        mob.on_hit_effects = vec![OnHitEffect {
+            effect: "fire".to_string(),
+            chance: 100,
+            magnitude: 4,
+            duration: 3,
+        }];
+        let id = mob.id;
+        db.save_mobile_data(mob).expect("save");
+
+        let loaded = db.get_mobile_data(&id).expect("get").expect("present");
+        assert_eq!(loaded.on_hit_effects.len(), 1);
+        assert_eq!(loaded.on_hit_effects[0].effect, "fire");
+        assert_eq!(loaded.on_hit_effects[0].magnitude, 4);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_item_type_note_and_pen_round_trip() {
     use ironmud::ItemData;
     use ironmud::db::Db;

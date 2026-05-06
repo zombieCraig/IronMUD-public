@@ -6,6 +6,7 @@
 //! - `corpse` - Corpse creation builder pattern
 
 pub(crate) mod corpse;
+mod on_hit;
 mod tick;
 mod wounds;
 

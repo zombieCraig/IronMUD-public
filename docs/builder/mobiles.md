@@ -8,8 +8,7 @@ This guide covers creating and editing mobiles (NPCs) using IronMUD's Online Cre
 |---------|-------|-------------|
 | `medit create` | `medit create <name>` | Create a new mobile prototype |
 | `medit` | `medit <id\|vnum> [subcommand]` | Edit mobile properties |
-| `mlist` | `mlist` | List all mobiles |
-| `mfind` | `mfind <keyword>` | Search mobiles by name/keywords/vnum |
+| `mlist` | `mlist [search]` / `mlist all [search]` / `mlist detail` | List or search mobiles by name/vnum/keyword |
 | `mdelete` | `mdelete <mobile_id>` | Delete a mobile |
 | `mspawn` | `mspawn <vnum>` | Spawn mobile from prototype |
 

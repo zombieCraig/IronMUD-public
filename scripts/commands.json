@@ -273,11 +273,7 @@
   },
   "mlist": {
     "access": "builder",
-    "description": "List all mobiles in the database"
-  },
-  "mfind": {
-    "access": "builder",
-    "description": "Search for mobiles by keyword"
+    "description": "List or search mobiles by name/vnum/keyword"
   },
   "mdelete": {
     "access": "builder",

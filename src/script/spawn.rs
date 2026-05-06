@@ -74,7 +74,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         vnum,
                         max_count: max_count as i32,
                         respawn_interval_secs: interval_secs,
-                        enabled: true,
+                        enabled: false,
                         last_spawn_time: 0,
                         spawned_entities: Vec::new(),
                         dependencies: Vec::new(),

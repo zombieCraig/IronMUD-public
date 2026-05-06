@@ -7,6 +7,8 @@ use crate::{
     find_active_entry,
 };
 use rhai::Engine;
+
+use crate::script::items::{on_hit_effect_to_map, parse_on_hit_array};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -993,6 +995,35 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         }
         false
     });
+
+    // get_mobile_on_hit_effects(mobile_id) -> Array<Map>
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_mobile_on_hit_effects",
+        move |mobile_id: String| -> rhai::Array {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+                if let Ok(Some(mob)) = cloned_db.get_mobile_data(&uuid) {
+                    return mob.on_hit_effects.iter().map(on_hit_effect_to_map).collect();
+                }
+            }
+            Vec::new()
+        },
+    );
+
+    // set_mobile_on_hit_effects(mobile_id, effects_array) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_mobile_on_hit_effects",
+        move |mobile_id: String, effects: rhai::Array| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+                if let Ok(Some(mut mob)) = cloned_db.get_mobile_data(&uuid) {
+                    mob.on_hit_effects = parse_on_hit_array(effects);
+                    return cloned_db.save_mobile_data(mob).is_ok();
+                }
+            }
+            false
+        },
+    );
 
     // set_mobile_faction(mobile_id, value) -> bool. Empty string clears to None.
     let cloned_db = db.clone();

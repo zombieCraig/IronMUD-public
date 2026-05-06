@@ -145,6 +145,13 @@ export interface Item {
     damage_type?: DamageType;
     flags: ItemFlags;
     extra_descs?: ExtraDesc[];
+    on_hit_effects?: OnHitEffect[];
+}
+export interface OnHitEffect {
+    effect: string;
+    chance: number;
+    magnitude: number;
+    duration: number;
 }
 export interface CastOnUse {
     spell: string;
@@ -384,6 +391,7 @@ export interface CreateItemRequest {
     note_content?: string;
     world_max_count?: number;
     extra_descs?: ExtraDesc[];
+    on_hit_effects?: OnHitEffect[];
 }
 export interface CreateMobileRequest {
     name: string;
@@ -422,6 +430,7 @@ export interface CreateMobileRequest {
     faction?: string;
     combat_spells?: string[];
     combat_spell_chance?: number;
+    on_hit_effects?: OnHitEffect[];
 }
 export interface RoutineEntry {
     start_hour: number;

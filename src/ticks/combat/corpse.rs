@@ -80,6 +80,7 @@ impl CorpseBuilder {
             damage_type: Default::default(),
             two_handed: false,
             weapon_skill: None,
+            on_hit_effects: Vec::new(),
             // Container fields - corpses are containers
             container_contents: vec![],
             container_max_items: 1000,

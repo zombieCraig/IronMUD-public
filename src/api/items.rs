@@ -16,7 +16,7 @@ use super::{
     notify_builders,
 };
 use crate::types::{CastOnUse, EffectType, ExtraDesc, ItemEffect, ItemTrigger, ItemTriggerType};
-use crate::{DamageType, ItemData, ItemFlags, ItemLocation, ItemType, LiquidType, WeaponSkill, WearLocation};
+use crate::{DamageType, ItemData, ItemFlags, ItemLocation, ItemType, LiquidType, OnHitEffect, WeaponSkill, WearLocation};
 
 use super::rooms::AddExtraDescRequest;
 
@@ -196,6 +196,8 @@ pub struct CreateItemRequest {
     pub world_max_count: Option<i32>,
     #[serde(default)]
     pub extra_descs: Option<Vec<ExtraDescRequest>>,
+    #[serde(default)]
+    pub on_hit_effects: Option<Vec<OnHitEffectRequest>>,
 }
 
 /// Builder-facing subset of `ItemFlags`. Every field is optional so callers
@@ -384,6 +386,8 @@ pub struct UpdateItemRequest {
     pub world_max_count: Option<i32>,
     #[serde(default)]
     pub extra_descs: Option<Vec<ExtraDescRequest>>,
+    #[serde(default)]
+    pub on_hit_effects: Option<Vec<OnHitEffectRequest>>,
 }
 
 /// API-facing extra description payload (mirrors `ExtraDesc`).
@@ -391,6 +395,28 @@ pub struct UpdateItemRequest {
 pub struct ExtraDescRequest {
     pub keywords: Vec<String>,
     pub description: String,
+}
+
+/// Per-hit effect carried by a weapon. Dispatched in combat tick:
+/// `bleeding` -> wound severity, elemental kinds -> ongoing_effects DOT,
+/// anything else -> `EffectType` buff (gated by mob immunity flags).
+#[derive(Deserialize, Serialize, Clone)]
+pub struct OnHitEffectRequest {
+    pub effect: String,
+    pub chance: i32,
+    pub magnitude: i32,
+    pub duration: i32,
+}
+
+impl From<OnHitEffectRequest> for OnHitEffect {
+    fn from(r: OnHitEffectRequest) -> Self {
+        OnHitEffect {
+            effect: r.effect,
+            chance: r.chance.clamp(0, 100),
+            magnitude: r.magnitude,
+            duration: r.duration.max(0),
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -774,6 +800,11 @@ async fn create_item(
         damage_type,
         two_handed: req.two_handed.unwrap_or(false),
         weapon_skill: req.weapon_skill.as_ref().and_then(|s| WeaponSkill::from_str(s)),
+        on_hit_effects: req
+            .on_hit_effects
+            .clone()
+            .map(|v| v.into_iter().map(Into::into).collect())
+            .unwrap_or_default(),
         container_contents: Vec::new(),
         container_max_items: 0,
         container_max_weight: 0,
@@ -939,6 +970,9 @@ async fn update_item(
                 description: e.description,
             })
             .collect();
+    }
+    if let Some(on_hit) = req.on_hit_effects {
+        item.on_hit_effects = on_hit.into_iter().map(Into::into).collect();
     }
     if let Some(key_vnum) = req.container_key_vnum {
         item.container_key_vnum = if key_vnum.is_empty() { None } else { Some(key_vnum) };

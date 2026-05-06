@@ -100,7 +100,17 @@ fn run_command(args, connection_id) {
         let filtered = [];
         let term_lower = search_term.to_lower();
         for mobile in mobiles {
-            if mobile.name.to_lower().contains(term_lower) || mobile.vnum.to_lower().contains(term_lower) {
+            let matched = mobile.name.to_lower().contains(term_lower)
+                || mobile.vnum.to_lower().contains(term_lower);
+            if !matched {
+                for kw in mobile.keywords {
+                    if kw.to_lower().contains(term_lower) {
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+            if matched {
                 filtered.push(mobile);
             }
         }
@@ -184,8 +194,16 @@ fn get_room_info(room) {
 
 fn format_mobile_entry(mobile, connection_id) {
     let display_name = get_mobile_display_name(mobile);
+    let menu_cmds = ["medit " + mobile.id];
+    let menu_labels = ["Edit Mobile"];
+    if mobile.is_prototype && mobile.vnum != "" {
+        menu_cmds.push("mspawn " + mobile.vnum);
+        menu_labels.push("Spawn Mobile");
+    }
+    menu_cmds.push("mdelete " + mobile.id);
+    menu_labels.push("Delete/Despawn");
     let name_link = mxp_or(
-        mxp_menu(["medit " + mobile.id, "mdelete " + mobile.id], ["Edit Mobile", "Delete/Despawn"], display_name),
+        mxp_menu(menu_cmds, menu_labels, display_name),
         display_name,
         connection_id
     );

@@ -1,3 +1,29 @@
+export declare const onHitEffectsSchema: {
+    readonly type: "array";
+    readonly description: string;
+    readonly items: {
+        readonly type: "object";
+        readonly properties: {
+            readonly effect: {
+                readonly type: "string";
+                readonly description: "Effect kind: 'bleeding', elemental ('fire'|'poison'|'cold'|'acid'|'lightning'), or buff effect type.";
+            };
+            readonly chance: {
+                readonly type: "number";
+                readonly description: "Procurement chance, 1-100. Rolled per hit; <=0 disables, >100 clamped to 100.";
+            };
+            readonly magnitude: {
+                readonly type: "number";
+                readonly description: "Bleeding: wound severity. Elemental: damage per round. Buff: magnitude (effect-specific).";
+            };
+            readonly duration: {
+                readonly type: "number";
+                readonly description: "Bleeding: ignored. Elemental: rounds. Buff: seconds. -1 not supported here (use scripts for permanent buffs).";
+            };
+        };
+        readonly required: readonly ["effect", "chance", "magnitude", "duration"];
+    };
+};
 export declare const itemToolDefinitions: ({
     name: string;
     description: string;
@@ -70,6 +96,7 @@ export declare const itemToolDefinitions: ({
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
+            on_hit_effects?: undefined;
             id?: undefined;
             room_id?: undefined;
             item_id?: undefined;
@@ -145,6 +172,7 @@ export declare const itemToolDefinitions: ({
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
+            on_hit_effects?: undefined;
             id?: undefined;
             room_id?: undefined;
             item_id?: undefined;
@@ -223,6 +251,7 @@ export declare const itemToolDefinitions: ({
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
+            on_hit_effects?: undefined;
             id?: undefined;
             room_id?: undefined;
             item_id?: undefined;
@@ -301,6 +330,7 @@ export declare const itemToolDefinitions: ({
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
+            on_hit_effects?: undefined;
             id?: undefined;
             room_id?: undefined;
             item_id?: undefined;
@@ -727,6 +757,32 @@ export declare const itemToolDefinitions: ({
                         };
                     };
                     required: string[];
+                };
+            };
+            on_hit_effects: {
+                readonly type: "array";
+                readonly description: string;
+                readonly items: {
+                    readonly type: "object";
+                    readonly properties: {
+                        readonly effect: {
+                            readonly type: "string";
+                            readonly description: "Effect kind: 'bleeding', elemental ('fire'|'poison'|'cold'|'acid'|'lightning'), or buff effect type.";
+                        };
+                        readonly chance: {
+                            readonly type: "number";
+                            readonly description: "Procurement chance, 1-100. Rolled per hit; <=0 disables, >100 clamped to 100.";
+                        };
+                        readonly magnitude: {
+                            readonly type: "number";
+                            readonly description: "Bleeding: wound severity. Elemental: damage per round. Buff: magnitude (effect-specific).";
+                        };
+                        readonly duration: {
+                            readonly type: "number";
+                            readonly description: "Bleeding: ignored. Elemental: rounds. Buff: seconds. -1 not supported here (use scripts for permanent buffs).";
+                        };
+                    };
+                    readonly required: readonly ["effect", "chance", "magnitude", "duration"];
                 };
             };
             limit?: undefined;
@@ -1163,6 +1219,32 @@ export declare const itemToolDefinitions: ({
                         };
                     };
                     required: string[];
+                };
+            };
+            on_hit_effects: {
+                readonly type: "array";
+                readonly description: string;
+                readonly items: {
+                    readonly type: "object";
+                    readonly properties: {
+                        readonly effect: {
+                            readonly type: "string";
+                            readonly description: "Effect kind: 'bleeding', elemental ('fire'|'poison'|'cold'|'acid'|'lightning'), or buff effect type.";
+                        };
+                        readonly chance: {
+                            readonly type: "number";
+                            readonly description: "Procurement chance, 1-100. Rolled per hit; <=0 disables, >100 clamped to 100.";
+                        };
+                        readonly magnitude: {
+                            readonly type: "number";
+                            readonly description: "Bleeding: wound severity. Elemental: damage per round. Buff: magnitude (effect-specific).";
+                        };
+                        readonly duration: {
+                            readonly type: "number";
+                            readonly description: "Bleeding: ignored. Elemental: rounds. Buff: seconds. -1 not supported here (use scripts for permanent buffs).";
+                        };
+                    };
+                    readonly required: readonly ["effect", "chance", "magnitude", "duration"];
                 };
             };
             limit?: undefined;
@@ -1247,6 +1329,7 @@ export declare const itemToolDefinitions: ({
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
+            on_hit_effects?: undefined;
             room_id?: undefined;
             item_id?: undefined;
             trigger_type?: undefined;
@@ -1328,6 +1411,7 @@ export declare const itemToolDefinitions: ({
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
+            on_hit_effects?: undefined;
             id?: undefined;
             item_id?: undefined;
             trigger_type?: undefined;
@@ -1426,6 +1510,7 @@ export declare const itemToolDefinitions: ({
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
+            on_hit_effects?: undefined;
             id?: undefined;
             room_id?: undefined;
             index?: undefined;
@@ -1504,6 +1589,7 @@ export declare const itemToolDefinitions: ({
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
+            on_hit_effects?: undefined;
             id?: undefined;
             room_id?: undefined;
             trigger_type?: undefined;
@@ -1590,6 +1676,7 @@ export declare const itemToolDefinitions: ({
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
+            on_hit_effects?: undefined;
             id?: undefined;
             room_id?: undefined;
             trigger_type?: undefined;
@@ -1671,6 +1758,7 @@ export declare const itemToolDefinitions: ({
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
+            on_hit_effects?: undefined;
             id?: undefined;
             room_id?: undefined;
             trigger_type?: undefined;

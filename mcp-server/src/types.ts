@@ -186,6 +186,14 @@ export interface Item {
   damage_type?: DamageType;
   flags: ItemFlags;
   extra_descs?: ExtraDesc[];
+  on_hit_effects?: OnHitEffect[];
+}
+
+export interface OnHitEffect {
+  effect: string;
+  chance: number;
+  magnitude: number;
+  duration: number;
 }
 
 export interface CastOnUse {
@@ -475,6 +483,8 @@ export interface CreateItemRequest {
   world_max_count?: number;
   // Sub-keyword lore revealed via `look <keyword>` against this item
   extra_descs?: ExtraDesc[];
+  // Per-hit effects rolled when this weapon lands a hit
+  on_hit_effects?: OnHitEffect[];
 }
 
 export interface CreateMobileRequest {
@@ -519,6 +529,8 @@ export interface CreateMobileRequest {
   combat_spells?: string[];
   // Per-round percent chance to cast (0-100). Default 50.
   combat_spell_chance?: number;
+  // Per-hit effects rolled on every landed natural attack
+  on_hit_effects?: OnHitEffect[];
 }
 
 export interface RoutineEntry {

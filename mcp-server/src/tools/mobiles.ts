@@ -1,3 +1,5 @@
+import { onHitEffectsSchema } from "./items.js";
+
 export const mobileToolDefinitions = [
   {
     name: "list_mobiles",
@@ -95,6 +97,7 @@ export const mobileToolDefinitions = [
         faction: { type: "string", description: "Helper-system ally tag. Mobiles with the same faction string defend each other when `flags.helper` is set. Omit/empty = Circle-stock fallback (any NPC defends any other NPC)." },
         combat_spells: { type: "array", items: { type: "string" }, description: "Spell IDs (e.g. 'magic_missile', 'firebolt') the mob may cast in combat. CircleMUD `magic_user` specproc analog. Each combat round rolls `combat_spell_chance`; on success a random spell from the list is cast at the player target instead of swinging melee." },
         combat_spell_chance: { type: "number", description: "Per-round percent chance (0-100) to cast from `combat_spells` rather than swinging. Default 50; ignored when `combat_spells` is empty." },
+        on_hit_effects: onHitEffectsSchema,
         healer_type: { type: "string", description: "Healer specialization type" },
         healing_free: { type: "boolean", description: "Whether healing is free" },
         healing_cost_multiplier: { type: "number", description: "Healing cost multiplier (default 100)" },
@@ -202,6 +205,7 @@ export const mobileToolDefinitions = [
         faction: { type: "string", description: "Helper-system ally tag. Empty string clears." },
         combat_spells: { type: "array", items: { type: "string" }, description: "Replace the spell list. Empty array clears." },
         combat_spell_chance: { type: "number", description: "Per-round percent chance (0-100) to cast from `combat_spells`. Out-of-range values are clamped." },
+        on_hit_effects: onHitEffectsSchema,
         healer_type: { type: "string" },
         healing_free: { type: "boolean" },
         healing_cost_multiplier: { type: "number" },

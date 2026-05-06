@@ -13,6 +13,7 @@ use ironmud::{
 };
 
 use super::corpse::{CorpseBuilder, mobile_gold_with_variance};
+use super::on_hit::{apply_on_hit_effects_to_character, apply_on_hit_effects_to_mobile};
 use super::wounds::{add_wound_bleeding, escalate_wound_to_severe};
 
 use crate::ticks::broadcast::{
@@ -1157,6 +1158,15 @@ fn process_character_attacks_mobile(
                 .retain(|b| b.effect_type != ironmud::EffectType::Sleep);
         }
         ironmud::script::record_mob_memory(&mut mobile, &char.name);
+
+        // Roll on-hit effects from wielded weapon (bleeding/elemental DOTs/status buffs)
+        let on_hit_messages = apply_weapon_on_hit_to_mobile(
+            db,
+            char,
+            &mut mobile,
+            roll_random_body_part(&mut rng).as_str(),
+        );
+
         db.save_mobile_data(mobile.clone())?;
         if was_sleeping {
             broadcast_to_room_awake(
@@ -1226,6 +1236,11 @@ fn process_character_attacks_mobile(
                     )
                 },
             );
+        }
+
+        // Broadcast any on-hit effect lines (bleeding/elemental/status)
+        for line in &on_hit_messages {
+            broadcast_to_room_awake(connections, &room_id, line);
         }
 
         // Award XP for successful hit (10 XP to weapon skill)
@@ -2021,6 +2036,14 @@ fn process_mobile_attacks_player(
     // Apply on-hit DoT effects from mobile flags (poisonous, fiery, chilling, corrosive, shocking)
     ironmud::script::apply_mobile_on_hit_dots(mobile, &mut char.ongoing_effects, "body");
 
+    // Apply per-mobile `on_hit_effects` (composes with the legacy flag-based DOTs above).
+    let mob_on_hit_messages = if mobile.on_hit_effects.is_empty() {
+        Vec::new()
+    } else {
+        let body_part = roll_random_body_part(&mut rng);
+        apply_on_hit_effects_to_character(&mobile.on_hit_effects, &mut char, &mobile.name, &body_part).room_messages
+    };
+
     // Magical sleep breaks on any damage taken.
     let player_was_sleeping = char
         .active_buffs
@@ -2075,6 +2098,11 @@ fn process_mobile_attacks_player(
             )
         },
     );
+
+    // Broadcast on-hit effect lines (bleeding/elemental/status from mobile.on_hit_effects)
+    for line in &mob_on_hit_messages {
+        broadcast_to_room_awake(connections, room_id, line);
+    }
 
     // Check if player died or went unconscious
     if char.hp <= 0 {
@@ -2543,6 +2571,27 @@ fn consume_ammo_from_item(db: &db::Db, item_id: &uuid::Uuid) {
             let _ = db.save_item_data(item);
         }
     }
+}
+
+/// Load the wielded weapon's `on_hit_effects` and roll them against `mobile`.
+/// Empty (no-op) when the attacker has no wielded weapon. Returns flavour
+/// lines for the room broadcaster.
+fn apply_weapon_on_hit_to_mobile(
+    db: &db::Db,
+    char: &CharacterData,
+    mobile: &mut MobileData,
+    body_part: &str,
+) -> Vec<String> {
+    let Some(wid) = get_character_wielded_weapon_id(db, char) else {
+        return Vec::new();
+    };
+    let Ok(Some(weapon)) = db.get_item_data(&wid) else {
+        return Vec::new();
+    };
+    if weapon.on_hit_effects.is_empty() {
+        return Vec::new();
+    }
+    apply_on_hit_effects_to_mobile(&weapon.on_hit_effects, mobile, &char.name, body_part).room_messages
 }
 
 /// Get the ranged_type of a character's wielded weapon (e.g., "bow", "crossbow", "firearm")

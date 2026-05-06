@@ -112,6 +112,9 @@ pub struct CreateMobileRequest {
     /// Per-round percent chance (0-100) to cast from `combat_spells`. Default 50.
     #[serde(default)]
     pub combat_spell_chance: Option<u8>,
+    /// Per-hit effects rolled on every landed natural attack.
+    #[serde(default)]
+    pub on_hit_effects: Option<Vec<crate::api::items::OnHitEffectRequest>>,
 }
 
 #[derive(Deserialize)]
@@ -345,6 +348,9 @@ pub struct UpdateMobileRequest {
     /// Per-round percent chance (0-100). Out-of-range values are clamped.
     #[serde(default)]
     pub combat_spell_chance: Option<u8>,
+    /// Per-hit effects rolled on every landed natural attack. Replaces the existing list.
+    #[serde(default)]
+    pub on_hit_effects: Option<Vec<crate::api::items::OnHitEffectRequest>>,
 }
 
 #[derive(Deserialize)]
@@ -711,6 +717,11 @@ async fn create_mobile(
         combat: CombatState::default(),
         wounds: Vec::new(),
         ongoing_effects: Vec::new(),
+        on_hit_effects: req
+            .on_hit_effects
+            .clone()
+            .map(|v| v.into_iter().map(Into::into).collect())
+            .unwrap_or_default(),
         scars: HashMap::new(),
         gold: 0,
         flags: MobileFlags {
@@ -967,6 +978,9 @@ async fn update_mobile(
     }
     if let Some(chance) = req.combat_spell_chance {
         mobile.combat_spell_chance = chance.min(100);
+    }
+    if let Some(on_hit) = req.on_hit_effects {
+        mobile.on_hit_effects = on_hit.into_iter().map(Into::into).collect();
     }
     // Healer config
     if let Some(healer_type) = req.healer_type {

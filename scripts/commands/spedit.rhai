@@ -432,7 +432,14 @@ fn handle_create(area, parts, connection_id) {
         return;
     }
 
-    send_client_message(connection_id, "Created spawn point: " + sp.id + "\nType: " + sp.entity_type + ", VNUM: " + sp.vnum + ", Max: " + sp.max_count + ", Interval: " + sp.respawn_interval_secs + "s");
+    send_client_message(
+        connection_id,
+        "Created spawn point: " + sp.id +
+        "\nType: " + sp.entity_type + ", VNUM: " + sp.vnum +
+        ", Max: " + sp.max_count + ", Interval: " + sp.respawn_interval_secs + "s" +
+        "\n\nNOTE: New spawn points start DISABLED so you can add dependencies first." +
+        "\nRun 'spedit list' to find its index, then 'spedit enable <index>' to activate it."
+    );
 }
 
 fn handle_delete(spawns, parts, idx_pos, connection_id) {

@@ -3,10 +3,10 @@
 
 use crate::db::Db;
 use crate::{
-    BodyPart, DamageType, EffectType, ItemData, ItemEffect, ItemFlags, ItemLocation, ItemType, LiquidType, WeaponSkill,
-    WearLocation, register_bool_flags,
+    BodyPart, DamageType, EffectType, ItemData, ItemEffect, ItemFlags, ItemLocation, ItemType, LiquidType, OnHitEffect,
+    WeaponSkill, WearLocation, register_bool_flags,
 };
-use rhai::Engine;
+use rhai::{Dynamic, Engine, Map};
 use std::sync::Arc;
 
 /// Parse N.keyword syntax (e.g., "2.guard" -> (2, "guard"), "sword" -> (1, "sword"))
@@ -822,6 +822,36 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         }
         false
     });
+
+    // get_item_on_hit_effects(item_id) -> Array<Map>
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_item_on_hit_effects",
+        move |item_id: String| -> rhai::Array {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+                if let Ok(Some(item)) = cloned_db.get_item_data(&uuid) {
+                    return item.on_hit_effects.iter().map(on_hit_effect_to_map).collect();
+                }
+            }
+            Vec::new()
+        },
+    );
+
+    // set_item_on_hit_effects(item_id, effects_array) -> bool
+    // Each entry is a Map with {effect, chance, magnitude, duration}.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_item_on_hit_effects",
+        move |item_id: String, effects: rhai::Array| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+                if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                    item.on_hit_effects = parse_on_hit_array(effects);
+                    return cloned_db.save_item_data(item).is_ok();
+                }
+            }
+            false
+        },
+    );
 
     // get_all_damage_types() -> Array of strings
     engine.register_fn("get_all_damage_types", || {
@@ -3842,6 +3872,43 @@ fn calculate_total_carry_weight(db: &Arc<Db>, char_name: &str) -> i64 {
     }
 
     total_weight
+}
+
+pub(crate) fn on_hit_effect_to_map(effect: &OnHitEffect) -> Dynamic {
+    let mut map = Map::new();
+    map.insert("effect".into(), Dynamic::from(effect.effect.clone()));
+    map.insert("chance".into(), Dynamic::from(effect.chance as i64));
+    map.insert("magnitude".into(), Dynamic::from(effect.magnitude as i64));
+    map.insert("duration".into(), Dynamic::from(effect.duration as i64));
+    Dynamic::from(map)
+}
+
+pub(crate) fn parse_on_hit_array(arr: rhai::Array) -> Vec<OnHitEffect> {
+    arr.into_iter()
+        .filter_map(|d| d.try_cast::<Map>())
+        .map(|m| OnHitEffect {
+            effect: m
+                .get("effect")
+                .and_then(|d| d.clone().try_cast::<String>())
+                .unwrap_or_default(),
+            chance: m
+                .get("chance")
+                .and_then(|d| d.as_int().ok())
+                .map(|n| (n as i32).clamp(0, 100))
+                .unwrap_or(0),
+            magnitude: m
+                .get("magnitude")
+                .and_then(|d| d.as_int().ok())
+                .map(|n| n as i32)
+                .unwrap_or(0),
+            duration: m
+                .get("duration")
+                .and_then(|d| d.as_int().ok())
+                .map(|n| (n as i32).max(0))
+                .unwrap_or(0),
+        })
+        .filter(|e| !e.effect.is_empty())
+        .collect()
 }
 
 #[cfg(test)]

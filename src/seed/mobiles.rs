@@ -69,6 +69,7 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
         combat: CombatState::default(),
         wounds: Vec::new(),
         ongoing_effects: Vec::new(),
+        on_hit_effects: Vec::new(),
         scars: HashMap::new(),
         is_unconscious: false,
         bleedout_rounds_remaining: 0,

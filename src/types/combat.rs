@@ -428,6 +428,23 @@ pub struct OngoingEffect {
     pub body_part: String, // affected body part display name
 }
 
+/// A weapon/mobile on-hit effect rolled per landed melee or ranged hit.
+///
+/// Dispatch by `effect`:
+/// - `"bleeding"` → wound `bleeding_severity += magnitude` on a random body part (`duration` ignored)
+/// - `"fire" | "poison" | "cold" | "acid" | "lightning"` → push `OngoingEffect` with
+///   `damage_per_round = magnitude`, `rounds_remaining = duration`
+/// - anything else → resolved via `EffectType::from_str` and pushed as an `ActiveBuff`
+///   (`magnitude`, `remaining_secs = duration`); honours immunity flags (`no_sleep`,
+///   `no_blind`, `no_charm`).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct OnHitEffect {
+    pub effect: String,
+    pub chance: i32,
+    pub magnitude: i32,
+    pub duration: i32,
+}
+
 /// A wound on a body part
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Wound {

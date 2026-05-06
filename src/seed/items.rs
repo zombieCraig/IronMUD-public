@@ -40,6 +40,7 @@ fn item(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str, ite
         damage_type: DamageType::Bludgeoning,
         two_handed: false,
         weapon_skill: None,
+        on_hit_effects: Vec::new(),
         // Container fields
         container_contents: Vec::new(),
         container_max_items: 0,

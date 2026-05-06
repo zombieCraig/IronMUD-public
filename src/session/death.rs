@@ -101,6 +101,7 @@ fn build_player_corpse(name: &str, room_id: Uuid, gold: i64) -> ItemData {
         damage_type: Default::default(),
         two_handed: false,
         weapon_skill: None,
+        on_hit_effects: Vec::new(),
         container_contents: vec![],
         container_max_items: 1000,
         container_max_weight: 10000,

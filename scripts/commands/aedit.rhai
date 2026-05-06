@@ -122,6 +122,7 @@ fn is_subcommand(arg) {
     if cmd == "trustees" { return true; }
     if cmd == "forage" { return true; }
     if cmd == "zone" { return true; }
+    if cmd == "climate" { return true; }
     if cmd == "flags" { return true; }
     if cmd == "default_flags" { return true; }
     if cmd == "immigration" { return true; }

@@ -476,6 +476,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     food_effects: args?.food_effects,
                     note_content: args?.note_content,
                     world_max_count: args?.world_max_count,
+                    on_hit_effects: args?.on_hit_effects,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(item, null, 2) }],
@@ -500,7 +501,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     "liquid_effects",
                     "medical_tier", "medical_uses", "treats_wound_types",
                     "food_nutrition", "food_spoil_duration", "food_effects",
-                    "note_content", "world_max_count",
+                    "note_content", "world_max_count", "on_hit_effects",
                 ];
                 for (const field of itemFields) {
                     if (args?.[field] !== undefined) {
@@ -657,6 +658,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     faction: args?.faction,
                     combat_spells: args?.combat_spells,
                     combat_spell_chance: args?.combat_spell_chance,
+                    on_hit_effects: args?.on_hit_effects,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(mobile, null, 2) }],
@@ -676,7 +678,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     "shop_extra_types", "shop_extra_categories", "shop_deny_types", "shop_deny_categories",
                     "shop_stock", "shop_preset_vnum",
                     "daily_routine", "simulation", "remove_simulation", "world_max_count",
-                    "faction", "combat_spells", "combat_spell_chance",
+                    "faction", "combat_spells", "combat_spell_chance", "on_hit_effects",
                 ];
                 for (const field of mobileFields) {
                     if (args?.[field] !== undefined) {

@@ -40,6 +40,50 @@ const itemFlagsSchema = {
   },
 } as const;
 
+// Per-hit effects rolled when a wielded weapon (or mob's natural attack) lands a hit.
+// Dispatch:
+//   `bleeding`  -> wound bleeding severity = magnitude on a random body part (duration ignored)
+//   `fire` | `poison` | `cold` | `acid` | `lightning` -> push OngoingEffect
+//        with damage_per_round=magnitude, rounds_remaining=duration
+//   anything else -> resolved via EffectType (sleep, blind, slow, curse, …) and
+//        applied as an ActiveBuff with magnitude + remaining_secs=duration.
+//        Honours mob immunity flags (no_sleep, no_blind, no_charm).
+// Passing this REPLACES the existing on_hit_effects list.
+export const onHitEffectsSchema = {
+  type: "array",
+  description:
+    "Per-hit effects rolled on every landed melee/ranged hit. Each entry is rolled independently. " +
+    "Dispatch by `effect`: 'bleeding' → wound severity (duration ignored); " +
+    "'fire'|'poison'|'cold'|'acid'|'lightning' → ongoing DOT (magnitude=damage/round, duration=rounds); " +
+    "anything else → resolved via EffectType ('sleep','blind','slow','curse',...) and applied as an ActiveBuff " +
+    "(magnitude, duration in seconds), gated by mob immunity flags. Passing this REPLACES the existing list.",
+  items: {
+    type: "object",
+    properties: {
+      effect: {
+        type: "string",
+        description:
+          "Effect kind: 'bleeding', elemental ('fire'|'poison'|'cold'|'acid'|'lightning'), or buff effect type.",
+      },
+      chance: {
+        type: "number",
+        description: "Procurement chance, 1-100. Rolled per hit; <=0 disables, >100 clamped to 100.",
+      },
+      magnitude: {
+        type: "number",
+        description:
+          "Bleeding: wound severity. Elemental: damage per round. Buff: magnitude (effect-specific).",
+      },
+      duration: {
+        type: "number",
+        description:
+          "Bleeding: ignored. Elemental: rounds. Buff: seconds. -1 not supported here (use scripts for permanent buffs).",
+      },
+    },
+    required: ["effect", "chance", "magnitude", "duration"],
+  },
+} as const;
+
 export const itemToolDefinitions = [
   {
     name: "list_items",
@@ -213,6 +257,7 @@ export const itemToolDefinitions = [
             required: ["keywords", "description"],
           },
         },
+        on_hit_effects: onHitEffectsSchema,
       },
       required: ["name", "short_desc", "long_desc", "vnum", "item_type"],
     },
@@ -339,6 +384,7 @@ export const itemToolDefinitions = [
             required: ["keywords", "description"],
           },
         },
+        on_hit_effects: onHitEffectsSchema,
       },
       required: ["id"],
     },
