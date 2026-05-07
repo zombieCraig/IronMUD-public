@@ -341,6 +341,14 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         .register_get("automap_enabled", |c: &mut CharacterData| c.automap_enabled)
         .register_set("automap_enabled", |c: &mut CharacterData, val: bool| {
             c.automap_enabled = val;
+        })
+        .register_get("automap_radius", |c: &mut CharacterData| c.automap_radius as i64)
+        .register_set("automap_radius", |c: &mut CharacterData, val: i64| {
+            c.automap_radius = val.clamp(1, 8) as i32;
+        })
+        .register_get("ascii_map", |c: &mut CharacterData| c.ascii_map)
+        .register_set("ascii_map", |c: &mut CharacterData, val: bool| {
+            c.ascii_map = val;
         });
 
     // Register CharacterData constructor
@@ -467,6 +475,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 // Map system fields
                 rooms_visited: std::collections::HashSet::new(),
                 automap_enabled: false,
+                automap_radius: crate::script::map::AUTOMAP_DEFAULT_RADIUS,
+                ascii_map: false,
             }
         },
     );

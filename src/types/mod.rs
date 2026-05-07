@@ -307,6 +307,15 @@ pub struct CharacterData {
     // heavy and many players prefer to invoke `map` on demand.
     #[serde(default)]
     pub automap_enabled: bool,
+    #[serde(default = "default_automap_radius")]
+    pub automap_radius: i32,
+    // Fallback to ASCII connectors/arrows for restricted clients.
+    #[serde(default)]
+    pub ascii_map: bool,
+}
+
+fn default_automap_radius() -> i32 {
+    crate::script::map::AUTOMAP_DEFAULT_RADIUS
 }
 
 // ===== Achievement system types =====

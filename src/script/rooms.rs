@@ -1622,11 +1622,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             }
 
             // Automap injection: if the world setting and the character's
-            // `automap_enabled` are both on, render a small map (radius 3) and
-            // prepend it above the room block. Plain ASCII, so it sits before
-            // the MXP-mode escape — keeps the parser out of the map.
+            // `automap_enabled` are both on, render the map at the character's
+            // configured radius and prepend it above the room block. Plain
+            // ASCII (or Unicode box-drawing) sits before the MXP-mode escape so
+            // the parser stays out of the map.
             let (map_prefix, map_legend_was_shown) = {
-                let (player_name, automap_on, show_legend, want_colors) = {
+                let (player_name, automap_on, show_legend, want_colors, radius, ascii_only) = {
                     let conns_guard = conns.lock().unwrap();
                     match conns_guard.get(&conn_uuid) {
                         Some(s) => match s.character.as_ref() {
@@ -1635,10 +1636,29 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                                 c.automap_enabled,
                                 !s.map_legend_shown,
                                 s.colors_enabled,
+                                c.automap_radius.clamp(
+                                    crate::script::map::MIN_RADIUS,
+                                    crate::script::map::MAX_RADIUS,
+                                ),
+                                c.ascii_map,
                             ),
-                            None => (String::new(), false, false, false),
+                            None => (
+                                String::new(),
+                                false,
+                                false,
+                                false,
+                                crate::script::map::AUTOMAP_DEFAULT_RADIUS,
+                                false,
+                            ),
                         },
-                        None => (String::new(), false, false, false),
+                        None => (
+                            String::new(),
+                            false,
+                            false,
+                            false,
+                            crate::script::map::AUTOMAP_DEFAULT_RADIUS,
+                            false,
+                        ),
                     }
                 };
                 if automap_on
@@ -1648,9 +1668,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     let rendered = crate::script::map::render_map_for_player_with_options(
                         &cloned_db,
                         &player_name.to_lowercase(),
-                        Some(crate::script::map::AUTOMAP_DEFAULT_RADIUS),
+                        Some(radius),
                         show_legend,
                         want_colors,
+                        ascii_only,
                     );
                     if rendered.is_empty() {
                         (String::new(), false)

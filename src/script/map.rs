@@ -73,6 +73,15 @@ impl Direction {
             Direction::W => '←',
         }
     }
+
+    fn arrow_ascii(self) -> char {
+        match self {
+            Direction::N => '^',
+            Direction::S => 'v',
+            Direction::E => '>',
+            Direction::W => '<',
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -275,13 +284,23 @@ fn collect_shop_rooms(db: &Db) -> HashSet<Uuid> {
     out
 }
 
-pub fn render_map(layout: &MapLayout, show_legend: bool, colors_enabled: bool) -> String {
+pub fn render_map(
+    layout: &MapLayout,
+    show_legend: bool,
+    colors_enabled: bool,
+    ascii_only: bool,
+) -> String {
     let r = layout.radius;
     let grid_n = (2 * r + 1) as usize;
-    // Each cell is 3 chars wide; horizontal connector takes 1 char between cells.
-    let total_w = grid_n * 3 + (grid_n.saturating_sub(1));
-    // Each cell is 1 line; vertical connector takes 1 line between cell rows.
-    let total_h = grid_n + grid_n.saturating_sub(1);
+    // Compact layout: each cell is 1 char wide and 1 row tall. Connectors
+    // (1 char) live between cells. Junction slots at (odd col, odd row) stay
+    // blank — every connector still joins exactly two cells.
+    let total_w = (2 * grid_n).saturating_sub(1);
+    let total_h = (2 * grid_n).saturating_sub(1);
+
+    let h_conn = if ascii_only { '-' } else { '─' };
+    let v_conn = if ascii_only { '|' } else { '│' };
+    let door_conn = if ascii_only { '+' } else { '┼' };
 
     let mut grid: Vec<Vec<char>> = vec![vec![' '; total_w]; total_h];
 
@@ -291,42 +310,36 @@ pub fn render_map(layout: &MapLayout, show_legend: bool, colors_enabled: bool) -
             let cell = layout.cells.get(&coord);
 
             let row = ((cy + r) * 2) as usize;
-            let col_start = ((cx + r) * 4) as usize;
+            let col = ((cx + r) * 2) as usize;
 
-            let glyphs = render_cell_glyphs(cell);
-            for (i, ch) in glyphs.chars().enumerate() {
-                if col_start + i < total_w {
-                    grid[row][col_start + i] = ch;
-                }
-            }
+            grid[row][col] = render_cell_glyph(cell);
 
-            // Connectors: drawn between visible cells.
+            // Connectors between adjacent cells.
             if let Some(c) = cell {
                 if let Some(east) = layout.cells.get(&(cx + 1, cy)) {
-                    let conn_col = col_start + 3;
+                    let conn_col = col + 1;
                     if conn_col < total_w {
                         let ch = if c.closed_door_dirs.contains(&Direction::E)
                             || east.closed_door_dirs.contains(&Direction::W)
                         {
-                            '+'
+                            door_conn
                         } else {
-                            '-'
+                            h_conn
                         };
                         grid[row][conn_col] = ch;
                     }
                 }
                 if let Some(south) = layout.cells.get(&(cx, cy + 1)) {
                     let conn_row = row + 1;
-                    let conn_col = col_start + 1;
-                    if conn_row < total_h && conn_col < total_w {
+                    if conn_row < total_h {
                         let ch = if c.closed_door_dirs.contains(&Direction::S)
                             || south.closed_door_dirs.contains(&Direction::N)
                         {
-                            '+'
+                            door_conn
                         } else {
-                            '|'
+                            v_conn
                         };
-                        grid[conn_row][conn_col] = ch;
+                        grid[conn_row][col] = ch;
                     }
                 }
             }
@@ -341,28 +354,28 @@ pub fn render_map(layout: &MapLayout, show_legend: bool, colors_enabled: bool) -
                     continue;
                 }
                 let row = ((cy + r) * 2) as usize;
-                let col_start = ((cx + r) * 4) as usize;
+                let col = ((cx + r) * 2) as usize;
                 for d in c.cross_area_dirs.iter().copied() {
+                    let arrow_ch = if ascii_only { d.arrow_ascii() } else { d.arrow() };
                     match d {
                         Direction::N => {
                             if row > 0 {
-                                grid[row - 1][col_start + 1] = d.arrow();
+                                grid[row - 1][col] = arrow_ch;
                             }
                         }
                         Direction::S => {
                             if row + 1 < total_h {
-                                grid[row + 1][col_start + 1] = d.arrow();
+                                grid[row + 1][col] = arrow_ch;
                             }
                         }
                         Direction::E => {
-                            let cc = col_start + 3;
-                            if cc < total_w {
-                                grid[row][cc] = d.arrow();
+                            if col + 1 < total_w {
+                                grid[row][col + 1] = arrow_ch;
                             }
                         }
                         Direction::W => {
-                            if col_start > 0 {
-                                grid[row][col_start - 1] = d.arrow();
+                            if col > 0 {
+                                grid[row][col - 1] = arrow_ch;
                             }
                         }
                     }
@@ -383,31 +396,32 @@ pub fn render_map(layout: &MapLayout, show_legend: bool, colors_enabled: bool) -
             output.push('\n');
             continue;
         }
-        // Cell row + colors on. Wrap collision-cell glyphs in dim ANSI inline so
-        // unicode arrows elsewhere on the row don't break byte-offset splicing.
+        // Cell row + colors on: per-cell color via cell_color(); connectors
+        // (odd cols) stay uncolored. Track current ANSI style and emit
+        // transitions inline so unicode connectors don't break byte slicing.
         let cy = (row_idx as i32 / 2) - r;
         let mut line = String::new();
-        let mut in_dim = false;
+        let mut current_style: Option<&'static str> = None;
         for (i, ch) in row.into_iter().enumerate() {
-            let slot_in_cell = i % 4;
-            let in_cell_slot = slot_in_cell < 3;
-            let cx = ((i / 4) as i32) - r;
-            let collision_here = in_cell_slot
-                && layout
-                    .cells
-                    .get(&(cx, cy))
-                    .map(|c| c.collision)
-                    .unwrap_or(false);
-            if collision_here && !in_dim {
-                line.push_str("\x1b[2m");
-                in_dim = true;
-            } else if !collision_here && in_dim {
-                line.push_str("\x1b[0m");
-                in_dim = false;
+            let in_cell_slot = i % 2 == 0;
+            let cx = ((i / 2) as i32) - r;
+            let want_style = if in_cell_slot {
+                cell_color(layout.cells.get(&(cx, cy)))
+            } else {
+                None
+            };
+            if want_style != current_style {
+                if current_style.is_some() {
+                    line.push_str("\x1b[0m");
+                }
+                if let Some(code) = want_style {
+                    line.push_str(code);
+                }
+                current_style = want_style;
             }
             line.push(ch);
         }
-        if in_dim {
+        if current_style.is_some() {
             line.push_str("\x1b[0m");
         }
         output.push_str(line.trim_end());
@@ -428,23 +442,52 @@ pub fn render_map(layout: &MapLayout, show_legend: bool, colors_enabled: bool) -
     }
 
     if show_legend {
-        output.push_str(
-            "Legend: [@] you  o room  # shop  ~ water  ! trap  + door  ? unmapped\n",
-        );
+        output.push_str(&build_legend(colors_enabled, ascii_only));
     }
     output
 }
 
-fn render_cell_glyphs(cell: Option<&MapCell>) -> &'static str {
+fn render_cell_glyph(cell: Option<&MapCell>) -> char {
     match cell {
-        None => " * ",
-        Some(c) if c.collision => " ? ",
-        Some(c) if c.is_origin => "[@]",
-        Some(c) if c.visibility == Visibility::Glimpsed => " o ",
-        Some(c) if c.has_shop => " # ",
-        Some(c) if c.has_trap => " ! ",
-        Some(c) if c.has_water => " ~ ",
-        Some(_) => " o ",
+        None => ' ',
+        Some(c) if c.collision => '?',
+        Some(c) if c.is_origin => '@',
+        Some(c) if c.visibility == Visibility::Glimpsed => 'o',
+        Some(c) if c.has_shop => '#',
+        Some(c) if c.has_trap => '!',
+        Some(c) if c.has_water => '~',
+        Some(_) => 'o',
+    }
+}
+
+/// Per-cell ANSI color code (without trailing reset). Mirrors
+/// `render_cell_glyph`'s priority list 1:1 — adding a glyph means
+/// updating both fns. None means "use default terminal color".
+fn cell_color(cell: Option<&MapCell>) -> Option<&'static str> {
+    match cell {
+        None => None,
+        Some(c) if c.collision => Some("\x1b[2m"),
+        Some(c) if c.is_origin => Some("\x1b[1;33m"),
+        Some(c) if c.visibility == Visibility::Glimpsed => Some("\x1b[2m"),
+        Some(c) if c.has_shop => Some("\x1b[36m"),
+        Some(c) if c.has_trap => Some("\x1b[31m"),
+        Some(c) if c.has_water => Some("\x1b[34m"),
+        Some(_) => None,
+    }
+}
+
+fn build_legend(colors_enabled: bool, ascii_only: bool) -> String {
+    let door = if ascii_only { '+' } else { '┼' };
+    if colors_enabled {
+        format!(
+            "Legend: \x1b[1;33m@\x1b[0m you  o room  \x1b[36m#\x1b[0m shop  \x1b[34m~\x1b[0m water  \x1b[31m!\x1b[0m trap  {} door  \x1b[2m?\x1b[0m unmapped\n",
+            door
+        )
+    } else {
+        format!(
+            "Legend: @ you  o room  # shop  ~ water  ! trap  {} door  ? unmapped\n",
+            door
+        )
     }
 }
 
@@ -459,11 +502,10 @@ pub fn enabled(db: &Db) -> bool {
 /// Build a map for the given player by name. Returns the rendered string,
 /// or an empty string if the system is disabled / character missing / etc.
 ///
-/// Defaults: legend shown, colors off. Slice-2 callers should prefer
-/// `render_map_for_player_with_options` so legend suppression and dim
-/// collisions reflect session state.
+/// Defaults: legend shown, colors off, Unicode connectors. Session-aware
+/// callers should prefer `render_map_for_player_with_options`.
 pub fn render_map_for_player(db: &Db, player_name: &str, radius: Option<i32>) -> String {
-    render_map_for_player_with_options(db, player_name, radius, true, false)
+    render_map_for_player_with_options(db, player_name, radius, true, false, false)
 }
 
 pub fn render_map_for_player_with_options(
@@ -472,6 +514,7 @@ pub fn render_map_for_player_with_options(
     radius: Option<i32>,
     show_legend: bool,
     colors_enabled: bool,
+    ascii_only: bool,
 ) -> String {
     if !enabled(db) {
         return String::new();
@@ -485,7 +528,7 @@ pub fn render_map_for_player_with_options(
     if layout.cells.is_empty() {
         return String::new();
     }
-    render_map(&layout, show_legend, colors_enabled)
+    render_map(&layout, show_legend, colors_enabled, ascii_only)
 }
 
 pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnections) {
@@ -519,18 +562,18 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
                     Ok(u) => u,
                     Err(_) => return String::new(),
                 };
-                let (player_name, show_legend, colors_enabled) = {
+                let (player_name, show_legend, colors_enabled, ascii_only) = {
                     let conns = match connections.lock() {
                         Ok(g) => g,
                         Err(_) => return String::new(),
                     };
                     match conns.get(&conn_uuid) {
                         Some(s) => {
-                            let name = match s.character.as_ref() {
-                                Some(c) => c.name.clone(),
+                            let (name, ascii_only) = match s.character.as_ref() {
+                                Some(c) => (c.name.clone(), c.ascii_map),
                                 None => return String::new(),
                             };
-                            (name, !s.map_legend_shown, s.colors_enabled)
+                            (name, !s.map_legend_shown, s.colors_enabled, ascii_only)
                         }
                         None => return String::new(),
                     }
@@ -541,6 +584,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
                     Some(radius as i32),
                     show_legend,
                     colors_enabled,
+                    ascii_only,
                 );
                 if !rendered.is_empty() && show_legend {
                     if let Ok(mut conns) = connections.lock() {
@@ -631,6 +675,124 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
                     _ => return false,
                 };
                 ch.automap_enabled = value;
+                if db.save_character_data(ch.clone()).is_err() {
+                    return false;
+                }
+                if let Ok(mut conns) = connections.lock() {
+                    if let Some(session) = conns.get_mut(&conn_uuid) {
+                        session.character = Some(ch);
+                    }
+                }
+                true
+            },
+        );
+    }
+
+    // get_automap_radius_for(connection_id) -> i64 (defaults to AUTOMAP_DEFAULT_RADIUS)
+    {
+        let connections = _connections.clone();
+        engine.register_fn("get_automap_radius_for", move |connection_id: String| -> i64 {
+            let conn_uuid = match Uuid::parse_str(&connection_id) {
+                Ok(u) => u,
+                Err(_) => return AUTOMAP_DEFAULT_RADIUS as i64,
+            };
+            let conns = match connections.lock() {
+                Ok(g) => g,
+                Err(_) => return AUTOMAP_DEFAULT_RADIUS as i64,
+            };
+            conns
+                .get(&conn_uuid)
+                .and_then(|s| s.character.as_ref().map(|c| c.automap_radius as i64))
+                .unwrap_or(AUTOMAP_DEFAULT_RADIUS as i64)
+        });
+    }
+
+    // set_automap_radius_for(connection_id, radius) -> bool (success).
+    // Clamps to [1, 8].
+    {
+        let db = db.clone();
+        let connections = _connections.clone();
+        engine.register_fn(
+            "set_automap_radius_for",
+            move |connection_id: String, radius: i64| -> bool {
+                let conn_uuid = match Uuid::parse_str(&connection_id) {
+                    Ok(u) => u,
+                    Err(_) => return false,
+                };
+                let player_name = {
+                    let conns = match connections.lock() {
+                        Ok(g) => g,
+                        Err(_) => return false,
+                    };
+                    match conns.get(&conn_uuid).and_then(|s| s.character.as_ref().map(|c| c.name.clone())) {
+                        Some(n) => n,
+                        None => return false,
+                    }
+                };
+                let clamped = radius.clamp(MIN_RADIUS as i64, MAX_RADIUS as i64) as i32;
+                let mut ch = match db.get_character_data(&player_name) {
+                    Ok(Some(c)) => c,
+                    _ => return false,
+                };
+                ch.automap_radius = clamped;
+                if db.save_character_data(ch.clone()).is_err() {
+                    return false;
+                }
+                if let Ok(mut conns) = connections.lock() {
+                    if let Some(session) = conns.get_mut(&conn_uuid) {
+                        session.character = Some(ch);
+                    }
+                }
+                true
+            },
+        );
+    }
+
+    // is_ascii_map_for(connection_id) -> bool
+    {
+        let connections = _connections.clone();
+        engine.register_fn("is_ascii_map_for", move |connection_id: String| -> bool {
+            let conn_uuid = match Uuid::parse_str(&connection_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let conns = match connections.lock() {
+                Ok(g) => g,
+                Err(_) => return false,
+            };
+            conns
+                .get(&conn_uuid)
+                .and_then(|s| s.character.as_ref().map(|c| c.ascii_map))
+                .unwrap_or(false)
+        });
+    }
+
+    // set_ascii_map_for(connection_id, on) -> bool (success)
+    {
+        let db = db.clone();
+        let connections = _connections.clone();
+        engine.register_fn(
+            "set_ascii_map_for",
+            move |connection_id: String, value: bool| -> bool {
+                let conn_uuid = match Uuid::parse_str(&connection_id) {
+                    Ok(u) => u,
+                    Err(_) => return false,
+                };
+                let player_name = {
+                    let conns = match connections.lock() {
+                        Ok(g) => g,
+                        Err(_) => return false,
+                    };
+                    match conns.get(&conn_uuid).and_then(|s| s.character.as_ref().map(|c| c.name.clone())) {
+                        Some(n) => n,
+                        None => return false,
+                    }
+                };
+                let mut ch = match db.get_character_data(&player_name) {
+                    Ok(Some(c)) => c,
+                    _ => return false,
+                };
+                ch.ascii_map = value;
                 if db.save_character_data(ch.clone()).is_err() {
                     return false;
                 }
