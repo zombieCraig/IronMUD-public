@@ -125,7 +125,7 @@ fn linear_corridor_all_visited() {
             assert_eq!(cell.visibility, Visibility::Visited, "cell at {:?} should be Visited", c);
         }
 
-        let rendered = ironmud::script::map::render_map(&layout);
+        let rendered = ironmud::script::map::render_map(&layout, true, false);
         assert!(rendered.contains("[@]"), "must mark origin");
         // 5 cell glyphs in a line, separated by " - "
         // Spot-check origin row contains `o - o - [@]- o - o`-ish (whitespace varies);
@@ -199,7 +199,7 @@ fn glimpsed_cells_hide_flags() {
         let cell = &layout.cells[&(1, 0)];
         assert_eq!(cell.visibility, Visibility::Glimpsed);
         // Renderer must NOT show ! on a glimpsed cell.
-        let rendered = ironmud::script::map::render_map(&layout);
+        let rendered = ironmud::script::map::render_map(&layout, true, false);
         let origin_line = rendered.lines().find(|l| l.contains("[@]")).unwrap();
         assert!(!origin_line.contains('!'), "glimpsed trap must not show '!': {}", origin_line);
     });
@@ -260,7 +260,7 @@ fn non_euclidean_loop_marks_collision() {
         let origin_cell = &layout.cells[&(0, 0)];
         assert!(origin_cell.collision, "origin cell should have been flagged as collision");
 
-        let rendered = ironmud::script::map::render_map(&layout);
+        let rendered = ironmud::script::map::render_map(&layout, true, false);
         // ? appears somewhere
         assert!(rendered.contains('?'), "expected ? in rendered map: {}", rendered);
     });
@@ -288,7 +288,7 @@ fn cross_area_arrow_only_when_source_visited() {
         // The foreign cell must NOT be in the layout (we don't render foreign rooms).
         assert!(layout.cells.get(&(1, 0)).is_none());
 
-        let rendered = ironmud::script::map::render_map(&layout);
+        let rendered = ironmud::script::map::render_map(&layout, true, false);
         assert!(rendered.contains('→'), "east cross-area arrow should appear: {}", rendered);
     });
 }
@@ -322,7 +322,7 @@ fn closed_door_glyph_visible_only_between_visited_cells() {
         let layout_both = compute_map_layout(db, a, 5, &visited_both);
         let origin_cell = &layout_both.cells[&(0, 0)];
         assert!(origin_cell.closed_door_dirs.contains(&Direction::E));
-        let rendered_both = ironmud::script::map::render_map(&layout_both);
+        let rendered_both = ironmud::script::map::render_map(&layout_both, true, false);
         let origin_line = rendered_both.lines().find(|l| l.contains("[@]")).unwrap();
         assert!(origin_line.contains('+'), "both visited: + connector. line={:?}", origin_line);
 
@@ -369,7 +369,7 @@ fn trap_glyph_only_for_visited_room() {
         let cell = &layout.cells[&(0, 0)];
         assert!(cell.has_trap, "trap detected");
         // Origin always renders [@] regardless of trap; the glyph table prefers origin.
-        let rendered = ironmud::script::map::render_map(&layout);
+        let rendered = ironmud::script::map::render_map(&layout, true, false);
         assert!(rendered.contains("[@]"));
     });
 }
@@ -412,17 +412,167 @@ fn world_setting_off_returns_empty() {
 }
 
 #[test]
-fn automap_default_on_for_new_and_legacy_chars() {
-    // Existing character JSON missing `automap_enabled` deserializes to true
-    // via #[serde(default = "default_true")].
+fn automap_default_off_for_legacy_chars() {
+    // Existing character JSON missing `automap_enabled` deserializes to false
+    // (default-off via #[serde(default)]). Players opt in with `set automap on`.
     let ch: CharacterData = serde_json::from_value(serde_json::json!({
         "name": "legacy",
         "password_hash": "",
         "current_room_id": Uuid::nil(),
     }))
     .expect("build char");
-    assert!(ch.automap_enabled, "missing field defaults to true");
+    assert!(!ch.automap_enabled, "missing field defaults to false");
     assert!(ch.rooms_visited.is_empty(), "rooms_visited defaults empty");
+}
+
+// ---- Slice 2 tests ----
+
+fn make_shopkeeper_in_room(db: &Db, room: Uuid, name: &str) -> Uuid {
+    let mob: ironmud::types::MobileData = serde_json::from_value(serde_json::json!({
+        "id": Uuid::new_v4(),
+        "name": name,
+        "short_desc": format!("{} stands here.", name),
+        "long_desc": "",
+        "current_room_id": room,
+        "is_prototype": false,
+        "flags": {
+            "shopkeeper": true,
+        },
+    }))
+    .expect("build mob");
+    let id = mob.id;
+    db.save_mobile_data(mob).expect("save mob");
+    id
+}
+
+#[test]
+fn shop_glyph_for_visited_shop_room() {
+    run("shop_visited", |db| {
+        let area = make_area(db, "Test");
+        let origin = make_room(db, area, "origin");
+        let shop = make_room(db, area, "shop");
+        link_pair(db, origin, "e", shop);
+        make_shopkeeper_in_room(db, shop, "barkeep");
+
+        let visited: HashSet<Uuid> = [origin, shop].into_iter().collect();
+        let layout = compute_map_layout(db, origin, 5, &visited);
+        let cell = &layout.cells[&(1, 0)];
+        assert!(cell.has_shop, "visited shop cell should be flagged has_shop");
+
+        let rendered = ironmud::script::map::render_map(&layout, true, false);
+        let origin_line = rendered.lines().find(|l| l.contains("[@]")).unwrap();
+        assert!(
+            origin_line.contains(" # "),
+            "expected `#` glyph in origin row: {:?}",
+            origin_line
+        );
+        // Legend mentions shop too.
+        assert!(rendered.contains("# shop"), "legend must include `# shop`: {}", rendered);
+    });
+}
+
+#[test]
+fn shop_glyph_suppressed_for_glimpsed_neighbor() {
+    run("shop_glimpse", |db| {
+        let area = make_area(db, "Test");
+        let origin = make_room(db, area, "origin");
+        let shop = make_room(db, area, "shop");
+        link_pair(db, origin, "e", shop);
+        make_shopkeeper_in_room(db, shop, "barkeep");
+
+        // Player has only visited the origin; shop is Glimpsed.
+        let visited: HashSet<Uuid> = [origin].into_iter().collect();
+        let layout = compute_map_layout(db, origin, 5, &visited);
+        let cell = &layout.cells[&(1, 0)];
+        assert_eq!(cell.visibility, Visibility::Glimpsed);
+        assert!(!cell.has_shop, "glimpsed cell must suppress shop flag");
+
+        let rendered = ironmud::script::map::render_map(&layout, true, false);
+        let origin_line = rendered.lines().find(|l| l.contains("[@]")).unwrap();
+        assert!(
+            !origin_line.contains(" # "),
+            "glimpsed shop must render as plain o, no #: {:?}",
+            origin_line
+        );
+    });
+}
+
+#[test]
+fn shop_glyph_ignores_prototype_shopkeeper() {
+    run("shop_prototype", |db| {
+        let area = make_area(db, "Test");
+        let origin = make_room(db, area, "origin");
+        // A prototype shopkeeper assigned to the room — must NOT count.
+        let mob: ironmud::types::MobileData = serde_json::from_value(serde_json::json!({
+            "id": Uuid::new_v4(),
+            "name": "proto shopkeeper",
+            "short_desc": "A proto shopkeeper.",
+            "long_desc": "",
+            "current_room_id": origin,
+            "is_prototype": true,
+            "flags": { "shopkeeper": true },
+        }))
+        .expect("build mob");
+        db.save_mobile_data(mob).expect("save");
+
+        let visited: HashSet<Uuid> = [origin].into_iter().collect();
+        let layout = compute_map_layout(db, origin, 5, &visited);
+        assert!(!layout.cells[&(0, 0)].has_shop);
+    });
+}
+
+#[test]
+fn legend_can_be_suppressed() {
+    run("legend_off", |db| {
+        let area = make_area(db, "Test");
+        let origin = make_room(db, area, "origin");
+        let visited: HashSet<Uuid> = [origin].into_iter().collect();
+        let layout = compute_map_layout(db, origin, 5, &visited);
+
+        let with_legend = ironmud::script::map::render_map(&layout, true, false);
+        let without = ironmud::script::map::render_map(&layout, false, false);
+        assert!(with_legend.contains("Legend:"), "expected legend in default render");
+        assert!(!without.contains("Legend:"), "legend must be suppressed when show_legend=false");
+    });
+}
+
+#[test]
+fn collision_dimmed_only_when_colors_enabled() {
+    run("dim_collision", |db| {
+        let area = make_area(db, "Test");
+        let a = make_room(db, area, "a");
+        let b = make_room(db, area, "b");
+        let c = make_room(db, area, "c");
+        let d = make_room(db, area, "d");
+        let e = make_room(db, area, "e");
+        // Build the same non-Euclidean loop as the slice-1 collision test.
+        link_pair(db, a, "n", b);
+        link_pair(db, b, "e", c);
+        link_pair(db, c, "s", d);
+        link(db, d, "w", e);
+        let visited: HashSet<Uuid> = [a, b, c, d, e].into_iter().collect();
+        let layout = compute_map_layout(db, a, 5, &visited);
+
+        let plain = ironmud::script::map::render_map(&layout, false, false);
+        let dimmed = ironmud::script::map::render_map(&layout, false, true);
+
+        assert!(plain.contains(" ? "), "plain output should still contain ` ? `");
+        assert!(
+            !plain.contains("\x1b[2m"),
+            "plain output must not contain dim ANSI: {:?}",
+            plain
+        );
+        assert!(
+            dimmed.contains("\x1b[2m"),
+            "colored output must wrap collision in dim ANSI: {:?}",
+            dimmed
+        );
+        assert!(
+            dimmed.contains("\x1b[0m"),
+            "colored output must close dim ANSI: {:?}",
+            dimmed
+        );
+    });
 }
 
 // Pull `glyph_at` warning down — this helper is used in spot checks above.

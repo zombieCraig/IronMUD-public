@@ -100,6 +100,9 @@ pub struct PlayerSession {
     pub last_activity_time: i64,
     // Command abbreviation matching (e.g., 'sc' -> 'scan')
     pub abbrev_enabled: bool,
+    // ASCII map: legend printed once per session, suppressed thereafter.
+    // Resets to false on disconnect (session reconstruction).
+    pub map_legend_shown: bool,
 }
 
 /// Input events from the read handler
@@ -1163,6 +1166,7 @@ pub async fn handle_connection(
                     .unwrap()
                     .as_secs() as i64,
                 abbrev_enabled: true,
+                map_legend_shown: false,
             },
         );
     }

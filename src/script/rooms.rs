@@ -1621,9 +1621,51 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 output.push_str(&visible_others.join(", "));
             }
 
+            // Automap injection: if the world setting and the character's
+            // `automap_enabled` are both on, render a small map (radius 3) and
+            // prepend it above the room block. Plain ASCII, so it sits before
+            // the MXP-mode escape — keeps the parser out of the map.
+            let (map_prefix, map_legend_was_shown) = {
+                let (player_name, automap_on, show_legend, want_colors) = {
+                    let conns_guard = conns.lock().unwrap();
+                    match conns_guard.get(&conn_uuid) {
+                        Some(s) => match s.character.as_ref() {
+                            Some(c) => (
+                                c.name.clone(),
+                                c.automap_enabled,
+                                !s.map_legend_shown,
+                                s.colors_enabled,
+                            ),
+                            None => (String::new(), false, false, false),
+                        },
+                        None => (String::new(), false, false, false),
+                    }
+                };
+                if automap_on
+                    && !player_name.is_empty()
+                    && crate::script::map::enabled(&cloned_db)
+                {
+                    let rendered = crate::script::map::render_map_for_player_with_options(
+                        &cloned_db,
+                        &player_name.to_lowercase(),
+                        Some(crate::script::map::AUTOMAP_DEFAULT_RADIUS),
+                        show_legend,
+                        want_colors,
+                    );
+                    if rendered.is_empty() {
+                        (String::new(), false)
+                    } else {
+                        // Trailing blank line between map and room title.
+                        (format!("{}\n", rendered), show_legend)
+                    }
+                } else {
+                    (String::new(), false)
+                }
+            };
+
             // Send the message (with MXP prefix if enabled, and terminal title update)
-            let conns_guard = conns.lock().unwrap();
-            if let Some(session) = conns_guard.get(&conn_uuid) {
+            let mut conns_guard = conns.lock().unwrap();
+            if let Some(session) = conns_guard.get_mut(&conn_uuid) {
                 // Build terminal title with character name if logged in
                 let title = if let Some(ref char) = session.character {
                     format!("[{}] {}", char.name, room.title)
@@ -1634,11 +1676,19 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 let title_str = String::from_utf8_lossy(&title_seq);
 
                 let final_output = if session.mxp_enabled {
-                    format!("{}\x1b[1z{}\n", title_str, output)
+                    format!("{}{}\x1b[1z{}\n", title_str, map_prefix, output)
                 } else {
-                    format!("{}{}\n", title_str, utilities::strip_mxp_tags(&output))
+                    format!(
+                        "{}{}{}\n",
+                        title_str,
+                        map_prefix,
+                        utilities::strip_mxp_tags(&output)
+                    )
                 };
                 let _ = session.sender.send(final_output);
+                if map_legend_was_shown {
+                    session.map_legend_shown = true;
+                }
             }
         },
     );

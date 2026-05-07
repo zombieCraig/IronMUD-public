@@ -302,8 +302,10 @@ pub struct CharacterData {
     // Map system: rooms the player has entered (drives fog-of-war).
     #[serde(default)]
     pub rooms_visited: std::collections::HashSet<Uuid>,
-    // Map system: prepend ASCII map to look output. Default on.
-    #[serde(default = "default_true")]
+    // Map system: prepend ASCII map to every room display (look/move/login).
+    // Default off — opt-in via `set automap on`. The map is screen-real-estate
+    // heavy and many players prefer to invoke `map` on demand.
+    #[serde(default)]
     pub automap_enabled: bool,
 }
 

@@ -466,7 +466,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 gold_high_water: 0,
                 // Map system fields
                 rooms_visited: std::collections::HashSet::new(),
-                automap_enabled: true,
+                automap_enabled: false,
             }
         },
     );

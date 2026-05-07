@@ -28,6 +28,7 @@ use crate::SharedConnections;
 use crate::db::Db;
 
 pub const DEFAULT_RADIUS: i32 = 5;
+pub const AUTOMAP_DEFAULT_RADIUS: i32 = 3;
 pub const MIN_RADIUS: i32 = 1;
 pub const MAX_RADIUS: i32 = 8;
 
@@ -83,6 +84,7 @@ pub struct MapCell {
     pub has_down: bool,
     pub has_water: bool,
     pub has_trap: bool,
+    pub has_shop: bool,
     /// Directions toward Visited neighbors that share a closed door with us.
     pub closed_door_dirs: HashSet<Direction>,
     /// Directions where the exit leaves the current area entirely.
@@ -122,10 +124,15 @@ pub fn compute_map_layout(db: &Db, origin: Uuid, radius: i32, visited: &HashSet<
         .and_then(|aid| db.get_area_data(&aid).ok().flatten().map(|a| a.name))
         .unwrap_or_default();
 
+    // Build a single set of room_ids that contain a live (non-prototype)
+    // shopkeeper. One full mob-table scan per render; per-cell lookup is O(1).
+    // Cheaper than scanning room.mobs per cell (RoomData has no mob index).
+    let shop_rooms = collect_shop_rooms(db);
+
     let mut cells: HashMap<(i32, i32), MapCell> = HashMap::new();
 
     let origin_coord = (0_i32, 0_i32);
-    cells.insert(origin_coord, build_cell(&origin_room, Visibility::Visited, true));
+    cells.insert(origin_coord, build_cell(&origin_room, Visibility::Visited, true, &shop_rooms));
 
     // BFS: only Visited cells expand. We record visibility before enqueueing.
     let mut queue: VecDeque<((i32, i32), Uuid)> = VecDeque::new();
@@ -188,7 +195,7 @@ pub fn compute_map_layout(db: &Db, origin: Uuid, radius: i32, visited: &HashSet<
                 Visibility::Glimpsed
             };
 
-            cells.insert(new_coord, build_cell(&neighbor_room, target_visibility, false));
+            cells.insert(new_coord, build_cell(&neighbor_room, target_visibility, false, &shop_rooms));
 
             // Only Visited cells expand further; Glimpsed cells are leaves.
             if target_visibility == Visibility::Visited {
@@ -222,7 +229,15 @@ fn cardinals(room: &crate::RoomData) -> Vec<(Direction, Uuid)> {
     out
 }
 
-fn build_cell(room: &crate::RoomData, visibility: Visibility, is_origin: bool) -> MapCell {
+fn build_cell(
+    room: &crate::RoomData,
+    visibility: Visibility,
+    is_origin: bool,
+    shop_rooms: &HashSet<Uuid>,
+) -> MapCell {
+    // Shop glyph only reveals on Visited cells; Glimpsed cells suppress all
+    // flag glyphs per slice-1 contract.
+    let has_shop = matches!(visibility, Visibility::Visited) && shop_rooms.contains(&room.id);
     MapCell {
         room_id: room.id,
         visibility,
@@ -231,13 +246,36 @@ fn build_cell(room: &crate::RoomData, visibility: Visibility, is_origin: bool) -
         has_down: room.exits.down.is_some(),
         has_water: !matches!(room.water_type, crate::WaterType::None),
         has_trap: !room.traps.is_empty(),
+        has_shop,
         closed_door_dirs: HashSet::new(),
         cross_area_dirs: HashSet::new(),
         collision: false,
     }
 }
 
-pub fn render_map(layout: &MapLayout) -> String {
+/// Single full-table mobile scan returning the set of room_ids that house a
+/// live (non-prototype) shopkeeper. Used by the renderer to stamp `#` glyphs.
+fn collect_shop_rooms(db: &Db) -> HashSet<Uuid> {
+    let mut out = HashSet::new();
+    let mobs = match db.list_all_mobiles() {
+        Ok(v) => v,
+        Err(_) => return out,
+    };
+    for m in mobs {
+        if m.is_prototype {
+            continue;
+        }
+        if !m.flags.shopkeeper {
+            continue;
+        }
+        if let Some(rid) = m.current_room_id {
+            out.insert(rid);
+        }
+    }
+    out
+}
+
+pub fn render_map(layout: &MapLayout, show_legend: bool, colors_enabled: bool) -> String {
     let r = layout.radius;
     let grid_n = (2 * r + 1) as usize;
     // Each cell is 3 chars wide; horizontal connector takes 1 char between cells.
@@ -337,8 +375,41 @@ pub fn render_map(layout: &MapLayout) -> String {
     if !layout.area_name.is_empty() {
         output.push_str(&format!("Map of {}:\n", layout.area_name));
     }
-    for row in grid {
-        let line: String = row.into_iter().collect();
+    for (row_idx, row) in grid.into_iter().enumerate() {
+        let is_cell_row = row_idx % 2 == 0;
+        if !colors_enabled || !is_cell_row {
+            let line: String = row.into_iter().collect();
+            output.push_str(line.trim_end());
+            output.push('\n');
+            continue;
+        }
+        // Cell row + colors on. Wrap collision-cell glyphs in dim ANSI inline so
+        // unicode arrows elsewhere on the row don't break byte-offset splicing.
+        let cy = (row_idx as i32 / 2) - r;
+        let mut line = String::new();
+        let mut in_dim = false;
+        for (i, ch) in row.into_iter().enumerate() {
+            let slot_in_cell = i % 4;
+            let in_cell_slot = slot_in_cell < 3;
+            let cx = ((i / 4) as i32) - r;
+            let collision_here = in_cell_slot
+                && layout
+                    .cells
+                    .get(&(cx, cy))
+                    .map(|c| c.collision)
+                    .unwrap_or(false);
+            if collision_here && !in_dim {
+                line.push_str("\x1b[2m");
+                in_dim = true;
+            } else if !collision_here && in_dim {
+                line.push_str("\x1b[0m");
+                in_dim = false;
+            }
+            line.push(ch);
+        }
+        if in_dim {
+            line.push_str("\x1b[0m");
+        }
         output.push_str(line.trim_end());
         output.push('\n');
     }
@@ -356,7 +427,11 @@ pub fn render_map(layout: &MapLayout) -> String {
         }
     }
 
-    output.push_str("Legend: [@] you  o room  ~ water  ! trap  + door  ? unmapped\n");
+    if show_legend {
+        output.push_str(
+            "Legend: [@] you  o room  # shop  ~ water  ! trap  + door  ? unmapped\n",
+        );
+    }
     output
 }
 
@@ -366,6 +441,7 @@ fn render_cell_glyphs(cell: Option<&MapCell>) -> &'static str {
         Some(c) if c.collision => " ? ",
         Some(c) if c.is_origin => "[@]",
         Some(c) if c.visibility == Visibility::Glimpsed => " o ",
+        Some(c) if c.has_shop => " # ",
         Some(c) if c.has_trap => " ! ",
         Some(c) if c.has_water => " ~ ",
         Some(_) => " o ",
@@ -382,7 +458,21 @@ pub fn enabled(db: &Db) -> bool {
 
 /// Build a map for the given player by name. Returns the rendered string,
 /// or an empty string if the system is disabled / character missing / etc.
+///
+/// Defaults: legend shown, colors off. Slice-2 callers should prefer
+/// `render_map_for_player_with_options` so legend suppression and dim
+/// collisions reflect session state.
 pub fn render_map_for_player(db: &Db, player_name: &str, radius: Option<i32>) -> String {
+    render_map_for_player_with_options(db, player_name, radius, true, false)
+}
+
+pub fn render_map_for_player_with_options(
+    db: &Db,
+    player_name: &str,
+    radius: Option<i32>,
+    show_legend: bool,
+    colors_enabled: bool,
+) -> String {
     if !enabled(db) {
         return String::new();
     }
@@ -395,7 +485,7 @@ pub fn render_map_for_player(db: &Db, player_name: &str, radius: Option<i32>) ->
     if layout.cells.is_empty() {
         return String::new();
     }
-    render_map(&layout)
+    render_map(&layout, show_legend, colors_enabled)
 }
 
 pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnections) {
@@ -411,6 +501,57 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
         engine.register_fn("render_map_for", move |player_name: String, radius: i64| -> String {
             render_map_for_player(&db, &player_name.to_lowercase(), Some(radius as i32))
         });
+    }
+
+    // render_map_for_session(connection_id, radius) -> String
+    //
+    // Session-aware variant: legend is shown only on the first render of a
+    // session (suppressed thereafter), and the `?` collision glyph is dimmed
+    // when the session has colors enabled. After rendering, flips
+    // `map_legend_shown` so subsequent renders elide the legend.
+    {
+        let db = db.clone();
+        let connections = _connections.clone();
+        engine.register_fn(
+            "render_map_for_session",
+            move |connection_id: String, radius: i64| -> String {
+                let conn_uuid = match Uuid::parse_str(&connection_id) {
+                    Ok(u) => u,
+                    Err(_) => return String::new(),
+                };
+                let (player_name, show_legend, colors_enabled) = {
+                    let conns = match connections.lock() {
+                        Ok(g) => g,
+                        Err(_) => return String::new(),
+                    };
+                    match conns.get(&conn_uuid) {
+                        Some(s) => {
+                            let name = match s.character.as_ref() {
+                                Some(c) => c.name.clone(),
+                                None => return String::new(),
+                            };
+                            (name, !s.map_legend_shown, s.colors_enabled)
+                        }
+                        None => return String::new(),
+                    }
+                };
+                let rendered = render_map_for_player_with_options(
+                    &db,
+                    &player_name.to_lowercase(),
+                    Some(radius as i32),
+                    show_legend,
+                    colors_enabled,
+                );
+                if !rendered.is_empty() && show_legend {
+                    if let Ok(mut conns) = connections.lock() {
+                        if let Some(session) = conns.get_mut(&conn_uuid) {
+                            session.map_legend_shown = true;
+                        }
+                    }
+                }
+                rendered
+            },
+        );
     }
 
     // render_map_for_default(player_name) -> String (default radius)

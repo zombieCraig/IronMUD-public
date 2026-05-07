@@ -26,7 +26,7 @@ fn run_command(args, connection_id) {
         }
     }
 
-    let rendered = render_map_for(char.name, radius);
+    let rendered = render_map_for_session(connection_id, radius);
     if rendered == "" {
         send_client_message(connection_id, "You have no map data here yet.");
         return;
