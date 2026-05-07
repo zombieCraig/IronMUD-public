@@ -9,6 +9,7 @@ void assign_mobiles(void) {
   ASSIGNMOB(9002, puff);           /* OnIdle @say_random with extracted quotes */
   ASSIGNMOB(9003, magic_user);     /* sets combat_spells: random offensive spells in combat */
   ASSIGNMOB(9004, postmaster);     /* fan-out: stamps RoomFlags.post_office on every room mob 9004 is M-reset into */
+  ASSIGNMOB(9005, snake);          /* fan-out: sets MobileFlags.aggressive + MobileFlags.poisonous */
   ASSIGNMOB(99999, cityguard);     /* orphan: vnum not in fixture */
   // ASSIGNMOB(8888, snake);       /* commented-out, must be ignored */
   /* ASSIGNMOB(7777, snake);       block-commented, must be ignored */

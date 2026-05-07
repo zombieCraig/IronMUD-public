@@ -1189,6 +1189,15 @@ Histogram from stock CircleMUD 3.1: 148 specproc bindings in
 puff/mayor/gen_board/bank/dump get template triggers); the remainder
 warn-only. Gaps ranked below.
 
+#### Implemented (May 2026)
+
+- **`snake` per-attack venom** — 8 mobs. Now stamps BOTH
+  `MobileFlags.aggressive` AND `MobileFlags.poisonous` via the new
+  `set_mob_flags` (plural) trigger action, which fans out one
+  `SetMobFlag` overlay per named flag. Combat damage from the bite
+  triggers the existing `apply_mobile_on_hit_dots` path so every
+  successful hit applies a 3-round poison DoT.
+
 #### High priority
 
 - **`mayor` daily walk path** — The only stock NPC with a hard-coded
@@ -1228,10 +1237,6 @@ warn-only. Gaps ranked below.
 
 #### Low priority
 
-- **`snake` per-attack venom** — 8 mobs. C body inflicts a poison
-  affect on every successful bite. Today maps to `aggressive` only.
-  Once `MobileFlags.poisonous` is wired on bite damage_type, swap the
-  mapping to set both flags.
 - **`thief` steal action** — 5 mobs. Steals gold from players each
   round. Blocked on a player-side `steal` skill landing first.
 - **`pet_shops` purchase dialogue** — 1 room. Stock pet shops let

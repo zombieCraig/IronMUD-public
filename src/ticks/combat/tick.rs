@@ -2851,7 +2851,7 @@ fn mob_display_name_for(viewer: &CharacterData, mob: &MobileData, lowered: bool)
         .iter()
         .any(|b| b.effect_type == EffectType::Invisibility);
     if !mob_invisible {
-        return mob.name.clone();
+        return mob.display_name().to_string();
     }
     let viewer_detects = viewer.is_admin
         || viewer
@@ -2859,7 +2859,7 @@ fn mob_display_name_for(viewer: &CharacterData, mob: &MobileData, lowered: bool)
             .iter()
             .any(|b| b.effect_type == EffectType::DetectInvisible);
     if viewer_detects {
-        mob.name.clone()
+        mob.display_name().to_string()
     } else if lowered {
         "something".to_string()
     } else {
@@ -3251,15 +3251,31 @@ pub fn process_mobile_death(
 ) -> Result<()> {
     debug!("process_mobile_death: starting for {}", mobile.name);
     let mobile_name = mobile.name.clone();
+    let mobile_display = mobile.display_name().to_string();
 
     // Send death message (red) - sleeping bystanders don't see combat
     debug!("process_mobile_death: broadcasting death message");
     broadcast_to_room_awake(
         connections,
         room_id,
-        &format!("\x1b[1;31m{} collapses to the ground, dead!\x1b[0m", mobile_name),
+        &format!("\x1b[1;31m{} collapses to the ground, dead!\x1b[0m", mobile_display),
     );
     debug!("process_mobile_death: death message broadcast complete");
+
+    // Pet death: notify the owner if they're online, regardless of room.
+    // Live broadcast only — drops on the floor if the owner is offline.
+    if let Some(ref owner) = mobile.pet_owner {
+        if !owner.is_empty() {
+            send_message_to_character(
+                connections,
+                owner,
+                &format!(
+                    "\x1b[1;31mYou feel a chill — {} has died.\x1b[0m",
+                    mobile_display
+                ),
+            );
+        }
+    }
 
     // Create corpse using builder with random gold variance
     let gold = mobile_gold_with_variance(mobile.gold as i64);

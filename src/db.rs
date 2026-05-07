@@ -217,6 +217,9 @@ impl Db {
 
     pub fn delete_character_data(&self, name: &str) -> Result<()> {
         let key = name.to_lowercase();
+        // Purge any pending mail addressed to this recipient before removing
+        // the character key — otherwise the messages orphan in the mail tree.
+        let _ = self.delete_mail_for_recipient(name)?;
         self.characters.remove(key.as_bytes())?;
         Ok(())
     }
@@ -2364,6 +2367,29 @@ impl Db {
             }
             None => Ok(None),
         }
+    }
+
+    /// Delete every mail message addressed to `recipient`. Called from
+    /// `delete_character_data` so removing a character also clears their
+    /// inbox — otherwise messages orphan in the mail tree forever.
+    /// Returns the number of messages removed.
+    pub fn delete_mail_for_recipient(&self, recipient: &str) -> Result<usize> {
+        let recipient_lower = recipient.to_lowercase();
+        let mut to_delete: Vec<Uuid> = Vec::new();
+        for entry in self.mail.iter() {
+            let (_key, value) = entry?;
+            let msg: MailMessage = serde_json::from_slice(&value)?;
+            if msg.recipient == recipient_lower {
+                to_delete.push(msg.id);
+            }
+        }
+        let mut removed = 0usize;
+        for id in &to_delete {
+            if self.delete_mail(id)? {
+                removed += 1;
+            }
+        }
+        Ok(removed)
     }
 
     /// Delete the oldest read message for a recipient (for auto-cleanup)

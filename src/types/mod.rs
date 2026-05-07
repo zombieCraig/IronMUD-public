@@ -3845,6 +3845,11 @@ pub struct MobileData {
     /// `pet dismiss`.
     #[serde(default)]
     pub pet_owner: Option<String>,
+    /// Owner-set nickname (typically by the pet master via `pet rename`).
+    /// When Some, overrides `name` and `short_desc` in room listings,
+    /// combat broadcasts, and order/dismiss keyword matches.
+    #[serde(default)]
+    pub nickname: Option<String>,
 }
 
 fn default_mobile_hp() -> i32 {
@@ -3970,7 +3975,15 @@ impl MobileData {
             dg_vars: HashMap::new(),
             position: MobilePosition::default(),
             pet_owner: None,
+            nickname: None,
         }
+    }
+
+    /// Display name preference: nickname (if set) overrides `name`. Used by
+    /// room listings, combat broadcasts, and the `mob_display_name_for`
+    /// viewer-aware helper.
+    pub fn display_name(&self) -> &str {
+        self.nickname.as_deref().filter(|s| !s.is_empty()).unwrap_or(&self.name)
     }
 
     pub fn charm_master(&self) -> Option<&str> {

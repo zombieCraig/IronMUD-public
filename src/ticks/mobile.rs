@@ -1277,6 +1277,16 @@ fn process_mobile_effects(db: &db::Db, connections: &SharedConnections) -> Resul
             }
         }
 
+        // Passive stance HP regen (mirrors PC formula in
+        // src/ticks/character.rs::process_regen_tick). Standing=0, Sitting=1,
+        // Sleeping=2 HP per MOBILE_EFFECTS_TICK_INTERVAL_SECS. Composes
+        // additively with the Regeneration buff below.
+        if mobile.position != ironmud::types::MobilePosition::Standing && mobile.current_hp < mobile.max_hp {
+            let _ = db.update_mobile(&mobile.id, |m| {
+                ironmud::script::apply_mobile_passive_stance_regen(m);
+            })?;
+        }
+
         // Decay mood/social buffs on simulated mobiles. Also tick
         // Regeneration buffs (magnitude HP per effects-tick interval, capped
         // at max_hp).

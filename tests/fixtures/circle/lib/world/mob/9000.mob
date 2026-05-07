@@ -48,4 +48,16 @@ b 0 0 S
 5 15 5 4d6+20 0d0+0
 0 0
 8 8 1
+#9005
+forest snake~
+a forest snake~
+A forest snake coils warily on the ground.
+~
+A small but venomous snake. Bound to the snake specproc, which the
+importer flips into MobileFlags.aggressive + MobileFlags.poisonous.
+~
+0 0 0 S
+3 19 8 1d6+5 1d3+0
+0 0
+8 8 0
 $

@@ -237,6 +237,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_get("position", |m: &mut MobileData| m.position.to_string())
         .register_get("pet_owner", |m: &mut MobileData| m.pet_owner.clone().unwrap_or_default())
         .register_get("has_pet_owner", |m: &mut MobileData| m.pet_owner.is_some())
+        .register_get("nickname", |m: &mut MobileData| m.nickname.clone().unwrap_or_default())
+        .register_get("has_nickname", |m: &mut MobileData| {
+            m.nickname.as_deref().filter(|s| !s.is_empty()).is_some()
+        })
+        .register_get("display_name", |m: &mut MobileData| m.display_name().to_string())
         .register_get("gender", |m: &mut MobileData| {
             m.characteristics
                 .as_ref()
@@ -1107,6 +1112,38 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         }
         String::new()
     });
+
+    // set_mobile_nickname(mobile_id, value) -> String. Trims, strips
+    // control chars, caps at 32. Empty value clears the nickname.
+    // Returns the stored value ("" on clear or failure).
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_mobile_nickname",
+        move |mobile_id: String, value: String| -> String {
+            let cleaned: String = value
+                .chars()
+                .filter(|c| !c.is_control())
+                .collect::<String>()
+                .trim()
+                .chars()
+                .take(32)
+                .collect();
+            let uuid = match uuid::Uuid::parse_str(&mobile_id) {
+                Ok(u) => u,
+                Err(_) => return String::new(),
+            };
+            let mut mobile = match cloned_db.get_mobile_data(&uuid) {
+                Ok(Some(m)) => m,
+                _ => return String::new(),
+            };
+            mobile.nickname = if cleaned.is_empty() { None } else { Some(cleaned.clone()) };
+            if cloned_db.save_mobile_data(mobile).is_ok() {
+                cleaned
+            } else {
+                String::new()
+            }
+        },
+    );
 
     // set_mobile_gender(mobile_id, value) -> String. Lazy-instantiates
     // Characteristics if None. Trims, strips control chars, caps at 32.

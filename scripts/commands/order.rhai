@@ -6,9 +6,11 @@
 //   order <mob_keyword> follow [<player>]
 //   order <mob_keyword> drop
 //   order group <attack <target>|stay|follow|drop>
+//   order group <keyword> <attack <target>|stay|follow|drop>
 //
 // All same-room subjects only — `order group` dispatches to mobs charmed by
-// the caster who happen to share the caster's current room.
+// the caster who happen to share the caster's current room. The optional
+// keyword form filters to charmed mobs whose name/nickname/keywords match.
 
 fn run_command(args, connection_id) {
     let char = get_player_character(connection_id);
@@ -61,11 +63,34 @@ fn handle_single(connection_id, char, cleaned) {
 
 fn handle_group(connection_id, char, cleaned) {
     if cleaned.len() < 2 {
-        send_client_message(connection_id, "Usage: order group <stay|follow|attack <target>|drop>");
+        send_client_message(connection_id, "Usage: order group [<keyword>] <stay|follow|attack <target>|drop>");
         return;
     }
-    let subcommand = cleaned[1].to_lower();
-    let arg = if cleaned.len() >= 3 { cleaned[2] } else { "" };
+
+    // Disambiguate `order group <subcommand>` (all pets) vs.
+    // `order group <keyword> <subcommand>` (subset). If the second token
+    // is itself a known subcommand, treat as all-pets — otherwise it's a
+    // keyword filter and the third token is the subcommand.
+    let token = cleaned[1].to_lower();
+    let is_subcommand = token == "stay" || token == "follow"
+        || token == "attack" || token == "kill"
+        || token == "drop" || token == "release" || token == "free";
+
+    let filter_keyword = "";
+    let subcommand = "";
+    let arg = "";
+    if is_subcommand {
+        subcommand = token;
+        if cleaned.len() >= 3 { arg = cleaned[2]; }
+    } else {
+        if cleaned.len() < 3 {
+            send_client_message(connection_id, "Usage: order group <keyword> <stay|follow|attack <target>|drop>");
+            return;
+        }
+        filter_keyword = cleaned[1].to_lower();
+        subcommand = cleaned[2].to_lower();
+        if cleaned.len() >= 4 { arg = cleaned[3]; }
+    }
 
     let room_id = char.current_room_id;
     let charmed = list_charmed_mobs_in_room(char.name, room_id);
@@ -74,14 +99,38 @@ fn handle_group(connection_id, char, cleaned) {
         return;
     }
 
+    let matched = [];
+    if filter_keyword == "" {
+        matched = charmed;
+    } else {
+        for mob in charmed {
+            if mob_matches_keyword(mob, filter_keyword) {
+                matched.push(mob);
+            }
+        }
+        if matched.len() == 0 {
+            send_client_message(connection_id, "No charmed creature here matches '" + filter_keyword + "'.");
+            return;
+        }
+    }
+
     let count = 0;
-    for mob in charmed {
+    for mob in matched {
         dispatch_subcommand(connection_id, char, mob, subcommand, arg);
         count += 1;
     }
     if count > 1 {
         send_client_message(connection_id, "(Order issued to " + count + " creatures.)");
     }
+}
+
+fn mob_matches_keyword(mob, lowered_keyword) {
+    if mob.has_nickname && mob.nickname.to_lower().contains(lowered_keyword) { return true; }
+    if mob.name.to_lower().contains(lowered_keyword) { return true; }
+    for kw in mob.keywords {
+        if kw.to_lower().starts_with(lowered_keyword) { return true; }
+    }
+    return false;
 }
 
 fn dispatch_subcommand(connection_id, char, mob, subcommand, arg) {
@@ -116,10 +165,7 @@ fn find_charmed_mob(char, keyword, room_id) {
         let m = get_mobile_data(mob_id);
         if type_of(m) == "()" { continue; }
         if mobile_charm_master(mob_id).to_lower() != master_lower { continue; }
-        if m.name.to_lower().contains(lower) { return mob_id; }
-        for kw in m.keywords {
-            if kw.to_lower().starts_with(lower) { return mob_id; }
-        }
+        if mob_matches_keyword(m, lower) { return mob_id; }
     }
     return "";
 }

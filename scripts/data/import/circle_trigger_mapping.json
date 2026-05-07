@@ -4,7 +4,7 @@
     "cityguard":     { "action": "set_mob_flag", "ironmud_flag": "guard" },
     "fido":          { "action": "set_mob_flag", "ironmud_flag": "scavenger" },
     "janitor":       { "action": "set_mob_flag", "ironmud_flag": "scavenger" },
-    "snake":         { "action": "set_mob_flag", "ironmud_flag": "aggressive" },
+    "snake":         { "action": "set_mob_flags", "ironmud_flags": ["aggressive", "poisonous"] },
     "thief":         { "action": "set_mob_flag", "ironmud_flag": "aggressive" },
     "receptionist":  { "action": "set_mob_flag", "ironmud_flag": "leasing_agent" },
 

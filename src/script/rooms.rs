@@ -1255,13 +1255,21 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         if effectively_dark || is_blind {
                             output.push_str(&color("Someone is here.", ANSI_GREEN));
                         } else {
+                            let display = mobile.display_name();
+                            let has_nickname = mobile
+                                .nickname
+                                .as_deref()
+                                .filter(|s| !s.is_empty())
+                                .is_some();
                             let mut line = if mobile.current_activity
                                 == crate::ActivityState::Sleeping
                                 || mobile.position == crate::types::MobilePosition::Sleeping
                             {
-                                format!("{} is here, sleeping.", mobile.name)
+                                format!("{} is here, sleeping.", display)
                             } else if mobile.position == crate::types::MobilePosition::Sitting {
-                                format!("{} is here, sitting.", mobile.name)
+                                format!("{} is here, sitting.", display)
+                            } else if has_nickname {
+                                format!("{} is here.", display)
                             } else {
                                 mobile.short_desc.clone()
                             };

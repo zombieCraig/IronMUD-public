@@ -151,6 +151,11 @@ pub enum TriggerAction {
     /// Set a single bool field on `MobileFlags` by snake_case name.
     /// Rejected for OBJ/ROOM bindings (warn instead).
     SetMobFlag { ironmud_flag: String },
+    /// Set multiple bool fields on `MobileFlags` (e.g. `snake` →
+    /// `["aggressive", "poisonous"]`). Each flag is fanned out to a
+    /// separate `TriggerMutation::SetMobFlag` overlay at planning time, so
+    /// the writer pass treats them independently and composes cleanly.
+    SetMobFlags { ironmud_flags: Vec<String> },
     /// Append a `MobileTrigger` to the mob's `triggers` Vec. `args` from
     /// `fallback_args` are used unless the parser captured something
     /// specific (e.g. puff()'s do_say quotes).
@@ -2215,6 +2220,37 @@ fn map_triggers(
                         ironmud_flag: ironmud_flag.clone(),
                     })
                 }
+            }
+            Some(TriggerAction::SetMobFlags { ironmud_flags }) => {
+                if trig.attach_type != AttachType::Mob {
+                    warnings.push(Warning::new(
+                        WarningKind::UnsupportedFlag,
+                        Severity::Warn,
+                        trig.source.clone(),
+                        format!(
+                            "specproc `{}` mapping uses set_mob_flags but binding attaches to {:?}; ignored",
+                            trig.specproc_name, trig.attach_type
+                        ),
+                    ));
+                } else {
+                    // Fan out: one SetMobFlag overlay per flag. Bypasses the
+                    // post-match last_overlay_for dedup deliberately —
+                    // multiple flag overlays for the same mob from a single
+                    // specproc binding all need to land. Mirrors the
+                    // SetRoomFlagOnMobSpawnRooms inline-push pattern below.
+                    for flag in ironmud_flags {
+                        overlays.push(PlannedTriggerOverlay {
+                            attach_type: AttachType::Mob,
+                            target_vnum: target_vnum.clone(),
+                            specproc_name: trig.specproc_name.clone(),
+                            mutation: TriggerMutation::SetMobFlag {
+                                ironmud_flag: flag.clone(),
+                            },
+                            source: trig.source.clone(),
+                        });
+                    }
+                }
+                None
             }
             Some(TriggerAction::AddMobTrigger {
                 trigger_type,

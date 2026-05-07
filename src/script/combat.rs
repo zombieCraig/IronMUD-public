@@ -44,6 +44,25 @@ pub fn apply_mobile_on_hit_dots(mobile: &MobileData, effects: &mut Vec<OngoingEf
     }
 }
 
+/// Apply passive stance HP regen for one mob-effects tick. Mirrors the PC formula
+/// in `src/ticks/character.rs::process_regen_tick`: Standing=0, Sitting=1,
+/// Sleeping=2 HP. Returns the HP added (0 when Standing or already at max).
+pub fn apply_mobile_passive_stance_regen(mobile: &mut MobileData) -> i32 {
+    use crate::types::MobilePosition;
+    let amt = match mobile.position {
+        MobilePosition::Standing => 0,
+        MobilePosition::Sitting => 1,
+        MobilePosition::Sleeping => 2,
+    };
+    if amt <= 0 || mobile.current_hp >= mobile.max_hp {
+        return 0;
+    }
+    let new_hp = (mobile.current_hp + amt).min(mobile.max_hp);
+    let added = new_hp - mobile.current_hp;
+    mobile.current_hp = new_hp;
+    added
+}
+
 /// Returns `damage` reduced by the highest-magnitude active `DamageReduction` buff,
 /// or unchanged if none. Floors at 1 to preserve the "you got hit" feedback.
 /// Magnitude is treated as a percentage (0..=95 expected).

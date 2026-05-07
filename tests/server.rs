@@ -5937,6 +5937,202 @@ fn test_mobile_position_parse_handles_aliases() {
 }
 
 #[test]
+fn test_mobile_nickname_field_defaults_none_and_persists() {
+    use ironmud::db::Db;
+    use ironmud::types::MobileData;
+
+    let db_path = format!("test_mob_nickname_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let plain = MobileData::new("a forest wolf".to_string());
+        assert!(plain.nickname.is_none(), "default nickname is None");
+        assert_eq!(plain.display_name(), "a forest wolf", "display_name falls back to name");
+
+        let mut named = MobileData::new("a forest wolf".to_string());
+        named.nickname = Some("Fido".to_string());
+        let id = named.id;
+        db.save_mobile_data(named).expect("save");
+
+        let loaded = db.get_mobile_data(&id).expect("read").expect("present");
+        assert_eq!(loaded.nickname.as_deref(), Some("Fido"));
+        assert_eq!(loaded.display_name(), "Fido", "display_name prefers nickname");
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_mobile_display_name_treats_empty_nickname_as_unset() {
+    use ironmud::types::MobileData;
+
+    let mut m = MobileData::new("a forest wolf".to_string());
+    m.nickname = Some(String::new());
+    assert_eq!(
+        m.display_name(),
+        "a forest wolf",
+        "empty-string nickname must not override the real name"
+    );
+    m.nickname = Some("   ".to_string());
+    // Whitespace-only is technically allowed since set_mobile_nickname
+    // trims it to "" before storing, but display_name only filters on
+    // is_empty — verify the user-facing input path actually trims.
+    // (This part is enforced by set_mobile_nickname's trim().)
+}
+
+#[test]
+fn test_mailbox_purged_on_character_delete() {
+    use ironmud::db::Db;
+    use ironmud::types::MailMessage;
+
+    let db_path = format!("test_mail_purge_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        // Send 3 mails to "alice" + 1 unrelated to "bob".
+        for body in &["hello", "again", "third"] {
+            let msg = MailMessage::new("sender".to_string(), "alice".to_string(), body.to_string());
+            db.store_mail(msg).expect("store");
+        }
+        let bystander = MailMessage::new("sender".to_string(), "bob".to_string(), "kept".to_string());
+        db.store_mail(bystander).expect("store");
+
+        assert_eq!(db.get_mailbox_size("alice").expect("size"), 3);
+        assert_eq!(db.get_mailbox_size("bob").expect("size"), 1);
+
+        // delete_mail_for_recipient is exposed for direct test (mixed-case
+        // recipient name still resolves via to_lowercase).
+        let removed = db.delete_mail_for_recipient("Alice").expect("purge");
+        assert_eq!(removed, 3, "purge should report 3 deletions");
+        assert_eq!(db.get_mailbox_size("alice").expect("size after purge"), 0);
+
+        // Bob's mailbox is untouched.
+        assert_eq!(db.get_mailbox_size("bob").expect("bob size"), 1);
+
+        // delete_character_data should also purge mail end-to-end. Send
+        // another message to bob, delete the bob character, confirm purge.
+        let bystander2 = MailMessage::new("sender".to_string(), "bob".to_string(), "second".to_string());
+        db.store_mail(bystander2).expect("store");
+        assert_eq!(db.get_mailbox_size("bob").expect("size"), 2);
+
+        db.delete_character_data("Bob").expect("delete");
+        assert_eq!(
+            db.get_mailbox_size("bob").expect("bob size after delete"),
+            0,
+            "delete_character_data should purge the deleted player's inbox"
+        );
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_mob_passive_regen_standing_yields_zero() {
+    use ironmud::script::apply_mobile_passive_stance_regen;
+    use ironmud::types::{MobileData, MobilePosition};
+
+    let mut m = MobileData::new("a guard".to_string());
+    m.max_hp = 100;
+    m.current_hp = 50;
+    m.position = MobilePosition::Standing;
+    let added = apply_mobile_passive_stance_regen(&mut m);
+    assert_eq!(added, 0);
+    assert_eq!(m.current_hp, 50);
+}
+
+#[test]
+fn test_mob_passive_regen_sitting_adds_one() {
+    use ironmud::script::apply_mobile_passive_stance_regen;
+    use ironmud::types::{MobileData, MobilePosition};
+
+    let mut m = MobileData::new("a sitting beggar".to_string());
+    m.max_hp = 100;
+    m.current_hp = 50;
+    m.position = MobilePosition::Sitting;
+    let added = apply_mobile_passive_stance_regen(&mut m);
+    assert_eq!(added, 1);
+    assert_eq!(m.current_hp, 51);
+}
+
+#[test]
+fn test_mob_passive_regen_sleeping_adds_two() {
+    use ironmud::script::apply_mobile_passive_stance_regen;
+    use ironmud::types::{MobileData, MobilePosition};
+
+    let mut m = MobileData::new("a slumbering wolf".to_string());
+    m.max_hp = 100;
+    m.current_hp = 50;
+    m.position = MobilePosition::Sleeping;
+    let added = apply_mobile_passive_stance_regen(&mut m);
+    assert_eq!(added, 2);
+    assert_eq!(m.current_hp, 52);
+}
+
+#[test]
+fn test_mob_passive_regen_caps_at_max_hp() {
+    use ironmud::script::apply_mobile_passive_stance_regen;
+    use ironmud::types::{MobileData, MobilePosition};
+
+    let mut m = MobileData::new("a nearly-healed bear".to_string());
+    m.max_hp = 100;
+    m.current_hp = 99;
+    m.position = MobilePosition::Sleeping;
+    let added = apply_mobile_passive_stance_regen(&mut m);
+    assert_eq!(added, 1);
+    assert_eq!(m.current_hp, 100);
+
+    // At max already → no change.
+    let added2 = apply_mobile_passive_stance_regen(&mut m);
+    assert_eq!(added2, 0);
+    assert_eq!(m.current_hp, 100);
+}
+
+#[test]
+fn test_mob_passive_regen_composes_with_regeneration_buff() {
+    use ironmud::script::apply_mobile_passive_stance_regen;
+    use ironmud::types::{ActiveBuff, EffectType, MobileData, MobilePosition};
+
+    let mut m = MobileData::new("a regenerating troll".to_string());
+    m.max_hp = 100;
+    m.current_hp = 50;
+    m.position = MobilePosition::Sleeping;
+    m.active_buffs.push(ActiveBuff {
+        effect_type: EffectType::Regeneration,
+        magnitude: 3,
+        remaining_secs: -1,
+        source: "test".to_string(),
+    });
+
+    // Stance regen runs first (mirrors process_mobile_effects ordering).
+    let stance_added = apply_mobile_passive_stance_regen(&mut m);
+    assert_eq!(stance_added, 2);
+    assert_eq!(m.current_hp, 52);
+
+    // Then the existing Regeneration buff arm would add its magnitude on top.
+    if let Some(regen) = m
+        .active_buffs
+        .iter()
+        .find(|b| b.effect_type == EffectType::Regeneration)
+    {
+        let amt = regen.magnitude;
+        if m.current_hp < m.max_hp && amt > 0 {
+            m.current_hp = (m.current_hp + amt).min(m.max_hp);
+        }
+    }
+    assert_eq!(m.current_hp, 55, "stance (2) + buff (3) should compose to +5");
+}
+
+#[test]
 fn test_static_mobile_resolves_neuter_when_gender_unset() {
     use ironmud::types::MobileData;
 

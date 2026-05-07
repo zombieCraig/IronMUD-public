@@ -900,6 +900,7 @@ async fn create_mobile(
             .and_then(crate::types::MobilePosition::parse)
             .unwrap_or_default(),
         pet_owner: None,
+        nickname: None,
     };
 
     // Apply authored gender via lazy-init Characteristics if provided.

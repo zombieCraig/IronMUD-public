@@ -101,6 +101,7 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
         dg_vars: std::collections::HashMap::new(),
         position: MobilePosition::default(),
         pet_owner: None,
+        nickname: None,
     }
 }
 

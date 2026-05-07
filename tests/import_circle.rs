@@ -138,7 +138,7 @@ fn parses_mobiles_into_plan() {
     let (ir, parse_warnings) = CircleEngine.parse(&fixture_root()).expect("parse");
     assert_eq!(parse_warnings.len(), 0);
     let zone = &ir.zones[0];
-    assert_eq!(zone.mobiles.len(), 4, "four fixture mobs");
+    assert_eq!(zone.mobiles.len(), 5, "five fixture mobs");
 
     let opts = MappingOptions {
         circle: mapping::CircleMappingTable::load_default(),
@@ -148,7 +148,7 @@ fn parses_mobiles_into_plan() {
         existing_item_vnums: Vec::new(),
     };
     let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
-    assert_eq!(plan.mobiles.len(), 4);
+    assert_eq!(plan.mobiles.len(), 5);
 
     let wanderer = plan.mobiles.iter().find(|m| m.source_vnum == 9001).expect("wanderer");
     assert_eq!(wanderer.vnum, "test_fixture_village_9001");
@@ -279,8 +279,8 @@ fn applies_mobiles_to_tmp_db() {
         };
         let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
         let summary = writer::apply(&db, &plan, &warnings).expect("apply");
-        assert_eq!(summary.written_mobiles, 4);
-        assert_eq!(summary.planned_mobiles, 4);
+        assert_eq!(summary.written_mobiles, 5);
+        assert_eq!(summary.planned_mobiles, 5);
 
         let wanderer = db
             .get_mobile_by_vnum("test_fixture_village_9001")
@@ -1086,15 +1086,16 @@ fn tmpdir(prefix: &str) -> PathBuf {
 #[test]
 fn parses_specprocs_into_ir() {
     let (ir, _) = CircleEngine.parse(&fixture_root()).expect("parse");
-    // 6 from spec_assign.c (cityguard 9001, puff 9002, magic_user 9003,
-    // postmaster 9004, cityguard 99999 orphan, bank 9010, dump 9001) + 1
-    // from castle.c (king_welmar 9002).
-    assert_eq!(ir.triggers.len(), 8, "all literal ASSIGN/castle bindings parsed");
+    // 7 from spec_assign.c (cityguard 9001, puff 9002, magic_user 9003,
+    // postmaster 9004, snake 9005, cityguard 99999 orphan, bank 9010,
+    // dump 9001) + 1 from castle.c (king_welmar 9002).
+    assert_eq!(ir.triggers.len(), 9, "all literal ASSIGN/castle bindings parsed");
     let names: Vec<&str> = ir.triggers.iter().map(|t| t.specproc_name.as_str()).collect();
     assert!(names.contains(&"cityguard"));
     assert!(names.contains(&"puff"));
     assert!(names.contains(&"magic_user"));
     assert!(names.contains(&"postmaster"));
+    assert!(names.contains(&"snake"));
     assert!(names.contains(&"bank"));
     assert!(names.contains(&"dump"));
     assert!(names.contains(&"king_welmar"));
@@ -1126,19 +1127,21 @@ fn applies_specprocs_to_tmp_db() {
         };
         let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
 
-        // 6 overlays expected: cityguard → guard flag, puff → mob trigger,
+        // 8 overlays expected: cityguard → guard flag, puff → mob trigger,
         // bank → item trigger, dump → room trigger, magic_user → combat
-        // spell list, postmaster → fan-out room flag overlay (one room).
-        // king_welmar warns rather than overlays; 99999 orphan drops.
+        // spell list, postmaster → fan-out room flag overlay (one room),
+        // snake → fan-out into 2 SetMobFlag overlays (aggressive +
+        // poisonous). king_welmar warns rather than overlays; 99999 orphan
+        // drops.
         assert_eq!(
             plan.trigger_overlays.len(),
-            6,
-            "cityguard, puff, bank, dump, magic_user, postmaster → 6 overlays; king_welmar warn-only; 99999 orphan dropped"
+            8,
+            "cityguard, puff, bank, dump, magic_user, postmaster, snake×2 → 8 overlays; king_welmar warn-only; 99999 orphan dropped"
         );
 
         // Apply.
         let summary = writer::apply(&db, &plan, &warnings).expect("apply");
-        assert_eq!(summary.applied_triggers, 6);
+        assert_eq!(summary.applied_triggers, 8);
 
         // Verify cityguard set the guard flag on mob 9001.
         let cityguard = db
@@ -1206,6 +1209,21 @@ fn applies_specprocs_to_tmp_db() {
         assert!(
             post_office_room.flags.post_office,
             "postmaster → RoomFlags.post_office on the room hosting mob 9004"
+        );
+
+        // Verify snake fan-out stamped BOTH aggressive and poisonous on
+        // mob 9005 (set_mob_flags plural action).
+        let snake = db
+            .get_mobile_by_vnum("test_fixture_village_9005")
+            .unwrap()
+            .expect("snake mob");
+        assert!(
+            snake.flags.aggressive,
+            "snake → MobileFlags.aggressive (first flag of set_mob_flags)"
+        );
+        assert!(
+            snake.flags.poisonous,
+            "snake → MobileFlags.poisonous (second flag of set_mob_flags)"
         );
     }
     let _ = std::fs::remove_dir_all(&dir);
