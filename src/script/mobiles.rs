@@ -237,6 +237,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_get("position", |m: &mut MobileData| m.position.to_string())
         .register_get("pet_owner", |m: &mut MobileData| m.pet_owner.clone().unwrap_or_default())
         .register_get("has_pet_owner", |m: &mut MobileData| m.pet_owner.is_some())
+        .register_get("gender", |m: &mut MobileData| {
+            m.characteristics
+                .as_ref()
+                .map(|c| c.gender.clone())
+                .filter(|g| !g.is_empty())
+                .unwrap_or_default()
+        })
         .register_get("shop_stock", |m: &mut MobileData| {
             m.shop_stock
                 .iter()
@@ -1100,6 +1107,46 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         }
         String::new()
     });
+
+    // set_mobile_gender(mobile_id, value) -> String. Lazy-instantiates
+    // Characteristics if None. Trims, strips control chars, caps at 32.
+    // Empty input clears the gender field (Characteristics survives so
+    // age/visuals on migrants are preserved). Returns the stored value
+    // ("" on clear, "" on failure).
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_mobile_gender",
+        move |mobile_id: String, value: String| -> String {
+            let cleaned: String = value
+                .chars()
+                .filter(|c| !c.is_control())
+                .collect::<String>()
+                .trim()
+                .chars()
+                .take(32)
+                .collect();
+            let uuid = match uuid::Uuid::parse_str(&mobile_id) {
+                Ok(u) => u,
+                Err(_) => return String::new(),
+            };
+            let mut mobile = match cloned_db.get_mobile_data(&uuid) {
+                Ok(Some(m)) => m,
+                _ => return String::new(),
+            };
+            // Lazy-init Characteristics for static prototypes.
+            if mobile.characteristics.is_none() && !cleaned.is_empty() {
+                mobile.characteristics = Some(crate::types::Characteristics::default());
+            }
+            if let Some(ref mut chars) = mobile.characteristics {
+                chars.gender = cleaned.clone();
+            }
+            if cloned_db.save_mobile_data(mobile).is_ok() {
+                cleaned
+            } else {
+                String::new()
+            }
+        },
+    );
 
     // list_pets_for_player(player_name) -> Array<MobileData>
     // Lists all mobiles whose pet_owner matches the given player name.

@@ -545,6 +545,14 @@ fn build_mobile(p: &PlannedMobile) -> MobileData {
     if let Some(pos) = p.position {
         m.position = pos;
     }
+    if let Some(ref gender) = p.characteristics_gender {
+        // Lazy-init Characteristics so DG pronouns resolve correctly.
+        // Static prototypes have no other Characteristics fields to seed
+        // (those live on migrants); just write gender onto Default.
+        let mut chars = crate::types::Characteristics::default();
+        chars.gender = gender.clone();
+        m.characteristics = Some(chars);
+    }
     m
 }
 

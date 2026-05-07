@@ -140,9 +140,9 @@ fn apply_guard<R: Rng>(mobile: &mut MobileData, _rng: &mut R) {
 
     let chars = mobile.characteristics.as_ref();
     let age_label = chars.map(|c| c.age_label.as_str()).unwrap_or("adult");
-    let gender = chars.map(|c| c.gender.as_str()).unwrap_or("man");
-    let gender_noun = if gender == "female" { "woman" } else { "man" };
-    let pronoun = if gender == "female" { "She" } else { "He" };
+    let gender = chars.map(|c| c.gender.as_str()).unwrap_or("");
+    let gender_noun = super::gender_noun(gender);
+    let pronoun = super::gender_pronoun(gender);
 
     mobile.short_desc = format!(
         "{}, a {} {} in a guard's livery, is on patrol here.",
@@ -168,9 +168,9 @@ fn apply_healer<R: Rng>(mobile: &mut MobileData, _rng: &mut R) {
 
     let chars = mobile.characteristics.as_ref();
     let age_label = chars.map(|c| c.age_label.as_str()).unwrap_or("adult");
-    let gender = chars.map(|c| c.gender.as_str()).unwrap_or("man");
-    let gender_noun = if gender == "female" { "woman" } else { "man" };
-    let pronoun = if gender == "female" { "She" } else { "He" };
+    let gender = chars.map(|c| c.gender.as_str()).unwrap_or("");
+    let gender_noun = super::gender_noun(gender);
+    let pronoun = super::gender_pronoun(gender);
 
     mobile.short_desc = format!(
         "{}, a {} {} in a healer's robes, tends a small satchel of herbs here.",
@@ -196,9 +196,9 @@ fn apply_scavenger<R: Rng>(mobile: &mut MobileData, _rng: &mut R) {
 
     let chars = mobile.characteristics.as_ref();
     let age_label = chars.map(|c| c.age_label.as_str()).unwrap_or("adult");
-    let gender = chars.map(|c| c.gender.as_str()).unwrap_or("man");
-    let gender_noun = if gender == "female" { "woman" } else { "man" };
-    let pronoun = if gender == "female" { "She" } else { "He" };
+    let gender = chars.map(|c| c.gender.as_str()).unwrap_or("");
+    let gender_noun = super::gender_noun(gender);
+    let pronoun = super::gender_pronoun(gender);
 
     mobile.short_desc = format!(
         "{}, a {} {} in patched traveling clothes, sifts through the surroundings here.",

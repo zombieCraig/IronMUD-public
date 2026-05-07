@@ -257,6 +257,10 @@ fn dispatch_combat_subcommand(uuid, subcommand, parts, connection_id) {
         handle_position_subcommand(uuid, parts, connection_id);
         return true;
     }
+    if subcommand == "gender" || subcommand == "sex" {
+        handle_gender_subcommand(uuid, parts, connection_id);
+        return true;
+    }
     return false;
 }
 
@@ -680,6 +684,35 @@ fn handle_world_max_subcommand(mobile_id, parts, connection_id) {
     } else {
         send_client_message(connection_id, "World cap set to " + n + " live copies.");
     }
+}
+
+fn handle_gender_subcommand(mobile_id, parts, connection_id) {
+    let mobile = get_mobile_data(mobile_id);
+    if mobile == () {
+        send_client_message(connection_id, "Mobile not found.");
+        return;
+    }
+    if parts.len() < 3 {
+        let current = mobile.gender;
+        let display = if current == "" { "(unset - reads as neuter in DG)" } else { current };
+        send_client_message(connection_id, "Gender: " + display);
+        send_client_message(connection_id, "Usage: medit " + mobile_id + " gender <male|female|nonbinary|clear|<custom>>");
+        return;
+    }
+    let value = parts[2];
+    let lowered = value.to_lower();
+    if lowered == "clear" || lowered == "none" || lowered == "unset" {
+        set_mobile_gender(mobile_id, "");
+        send_client_message(connection_id, "Gender cleared (DG resolves as neuter).");
+        return;
+    }
+    let stored = set_mobile_gender(mobile_id, value);
+    if stored == "" {
+        send_client_message(connection_id, "Failed to set gender.");
+        return;
+    }
+    let pronouns = resolve_gender_pronouns(stored);
+    send_client_message(connection_id, "Gender set to: " + stored + " (pronouns: " + pronouns + ")");
 }
 
 fn handle_position_subcommand(mobile_id, parts, connection_id) {

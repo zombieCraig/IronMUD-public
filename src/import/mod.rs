@@ -662,6 +662,10 @@ pub struct PlannedMobile {
     /// (5/6→Sleeping, 7→Sitting, 8/9→Standing). None = unmapped, applied
     /// to the prototype as Standing.
     pub position: Option<crate::types::MobilePosition>,
+    /// Authored gender from CircleMUD `SEX 1/2`. None = unset (resolves as
+    /// neuter in DG); Some("male"|"female") gets stamped onto a default
+    /// `Characteristics` instance at write time.
+    pub characteristics_gender: Option<String>,
     pub source: SourceLoc,
 }
 

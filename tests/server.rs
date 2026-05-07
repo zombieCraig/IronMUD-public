@@ -5937,6 +5937,89 @@ fn test_mobile_position_parse_handles_aliases() {
 }
 
 #[test]
+fn test_static_mobile_resolves_neuter_when_gender_unset() {
+    use ironmud::types::MobileData;
+
+    let plain = MobileData::new("a stone gargoyle".to_string());
+    assert!(plain.characteristics.is_none());
+    assert_eq!(plain.resolved_gender(), "neuter");
+
+    // Lazy-init Characteristics with empty gender → still resolves neuter.
+    let mut chars_empty = MobileData::new("a wisp".to_string());
+    chars_empty.characteristics = Some(ironmud::types::Characteristics::default());
+    assert_eq!(chars_empty.resolved_gender(), "neuter");
+}
+
+#[test]
+fn test_mobile_gender_clear_preserves_other_characteristics() {
+    use ironmud::types::{Characteristics, MobileData};
+
+    // Simulate the medit `gender clear` path: empty-string write should
+    // preserve age/visuals on a migrant-style mob.
+    let mut mob = MobileData::new("a young farmer".to_string());
+    mob.characteristics = Some(Characteristics {
+        gender: "female".to_string(),
+        age: 24,
+        age_label: "young adult".to_string(),
+        height: "tall".to_string(),
+        ..Characteristics::default()
+    });
+
+    // Mirror the API update apply path: empty string clears gender field
+    // without dropping the Characteristics struct.
+    if let Some(ref mut chars) = mob.characteristics {
+        chars.gender = String::new();
+    }
+
+    let chars = mob.characteristics.expect("characteristics retained");
+    assert_eq!(chars.gender, "");
+    assert_eq!(chars.age, 24, "age survives gender clear");
+    assert_eq!(chars.age_label, "young adult");
+    assert_eq!(chars.height, "tall");
+}
+
+#[test]
+fn test_random_gender_includes_all_three_kinds() {
+    use ironmud::migration::random_gender;
+    use rand::SeedableRng;
+    use rand::rngs::StdRng;
+
+    let mut rng = StdRng::seed_from_u64(0xCAFEBABE);
+    let mut male = 0;
+    let mut female = 0;
+    let mut nb = 0;
+    for _ in 0..5000 {
+        match random_gender(&mut rng) {
+            "male" => male += 1,
+            "female" => female += 1,
+            "nonbinary" => nb += 1,
+            other => panic!("unexpected gender roll: {other:?}"),
+        }
+    }
+    assert!(male > 0, "no male rolls in 5000 (got male={male})");
+    assert!(female > 0, "no female rolls in 5000 (got female={female})");
+    assert!(nb > 0, "no nonbinary rolls in 5000 — adjust MIGRANT_NB_CHANCE?");
+    // Sanity: NB should be the rare branch, not dominate.
+    assert!(nb < male, "nonbinary unexpectedly dominant (male={male} nb={nb})");
+}
+
+#[test]
+fn test_gender_noun_and_pronoun_helpers() {
+    use ironmud::migration::{gender_noun, gender_pronoun};
+
+    assert_eq!(gender_noun("male"), "man");
+    assert_eq!(gender_noun("female"), "woman");
+    assert_eq!(gender_noun("nonbinary"), "person");
+    assert_eq!(gender_noun(""), "person");
+    assert_eq!(gender_noun("starkin"), "person");
+
+    assert_eq!(gender_pronoun("male"), "He");
+    assert_eq!(gender_pronoun("female"), "She");
+    assert_eq!(gender_pronoun("nonbinary"), "They");
+    assert_eq!(gender_pronoun("starkin"), "They");
+}
+
+#[test]
 fn test_charmed_effect_type_round_trips_via_serde() {
     use ironmud::types::EffectType;
 

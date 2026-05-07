@@ -133,6 +133,10 @@ pub struct CreateMobileRequest {
     /// Physical stance: standing | sitting | sleeping. Defaults to standing.
     #[serde(default)]
     pub position: Option<String>,
+    /// Authored gender for DG pronouns. Free string — DG falls back to
+    /// neuter for unrecognised values. Lazy-instantiates `Characteristics`.
+    #[serde(default)]
+    pub gender: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -381,6 +385,10 @@ pub struct UpdateMobileRequest {
     /// leave the field unchanged.
     #[serde(default)]
     pub position: Option<String>,
+    /// Authored gender for DG pronouns. Free string. Empty string clears
+    /// the gender (Characteristics survives so age/visuals are kept).
+    #[serde(default)]
+    pub gender: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -769,7 +777,7 @@ async fn create_mobile(
     // Use provided damage dice string or default
     let damage_dice = req.damage_dice.clone().unwrap_or_else(|| "1d4".to_string());
 
-    let mobile = MobileData {
+    let mut mobile = MobileData {
         id: Uuid::new_v4(),
         name: req.name,
         short_desc: req.short_desc,
@@ -893,6 +901,16 @@ async fn create_mobile(
             .unwrap_or_default(),
         pet_owner: None,
     };
+
+    // Apply authored gender via lazy-init Characteristics if provided.
+    if let Some(ref g) = req.gender {
+        let trimmed = g.trim();
+        if !trimmed.is_empty() {
+            let mut chars = crate::types::Characteristics::default();
+            chars.gender = trimmed.chars().take(32).collect();
+            mobile.characteristics = Some(chars);
+        }
+    }
 
     state
         .db
@@ -1062,6 +1080,29 @@ async fn update_mobile(
     if let Some(ref pos_str) = req.position {
         if let Some(parsed) = crate::types::MobilePosition::parse(pos_str) {
             mobile.position = parsed;
+        }
+    }
+    if let Some(ref g) = req.gender {
+        let cleaned: String = g
+            .chars()
+            .filter(|c| !c.is_control())
+            .collect::<String>()
+            .trim()
+            .chars()
+            .take(32)
+            .collect();
+        if cleaned.is_empty() {
+            // Empty string clears gender; preserve other Characteristics fields.
+            if let Some(ref mut chars) = mobile.characteristics {
+                chars.gender = String::new();
+            }
+        } else {
+            if mobile.characteristics.is_none() {
+                mobile.characteristics = Some(crate::types::Characteristics::default());
+            }
+            if let Some(ref mut chars) = mobile.characteristics {
+                chars.gender = cleaned;
+            }
         }
     }
     if let Some(world_max) = req.world_max_count {

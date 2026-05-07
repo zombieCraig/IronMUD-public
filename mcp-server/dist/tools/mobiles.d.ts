@@ -25,6 +25,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -103,6 +104,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -184,6 +186,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -265,6 +268,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -490,6 +494,10 @@ export declare const mobileToolDefinitions: ({
             position: {
                 type: string;
                 enum: string[];
+                description: string;
+            };
+            gender: {
+                type: string;
                 description: string;
             };
             perception: {
@@ -919,6 +927,10 @@ export declare const mobileToolDefinitions: ({
                 enum: string[];
                 description: string;
             };
+            gender: {
+                type: string;
+                description: string;
+            };
             perception: {
                 type: string;
                 description?: undefined;
@@ -1206,6 +1218,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -1295,6 +1308,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -1378,6 +1392,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -1462,6 +1477,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -1561,6 +1577,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -1658,6 +1675,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -1758,6 +1776,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -1861,6 +1880,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -1943,6 +1963,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -2046,6 +2067,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -2125,6 +2147,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -2208,6 +2231,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -2316,6 +2340,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;

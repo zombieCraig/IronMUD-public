@@ -678,6 +678,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           combat_spell_chance: args?.combat_spell_chance as number | undefined,
           on_hit_effects: args?.on_hit_effects as { effect: string; chance: number; magnitude: number; duration: number }[] | undefined,
           position: args?.position as "standing" | "sitting" | "sleeping" | undefined,
+          gender: args?.gender as string | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(mobile, null, 2) }],
@@ -698,7 +699,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           "daily_routine", "simulation", "remove_simulation", "world_max_count",
           "dialogue_tree", "clear_dialogue_tree",
           "faction", "combat_spells", "combat_spell_chance", "on_hit_effects",
-          "position",
+          "position", "gender",
         ];
         for (const field of mobileFields) {
           if (args?.[field] !== undefined) {

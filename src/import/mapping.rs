@@ -1577,14 +1577,14 @@ fn map_mob(
             ),
         ));
     }
-    if mob.sex == 1 || mob.sex == 2 {
-        warnings.push(Warning::new(
-            WarningKind::Info,
-            Severity::Info,
-            mob.source.clone(),
-            "sex/gender not modeled at prototype level (Characteristics live on simulated migrants only)".to_string(),
-        ));
-    }
+    // CircleMUD SEX field: 1 → male, 2 → female, 0/other → unset.
+    // Stamps a default Characteristics on the prototype with the gender
+    // field set; DG `%self.heshe%`/`.sex%` reads it via resolved_gender().
+    let characteristics_gender = match mob.sex {
+        1 => Some("male".to_string()),
+        2 => Some("female".to_string()),
+        _ => None,
+    };
 
     // E-block named attrs: warn once per distinct attribute name across the
     // whole import. `BareHandAttack` shows up on dozens of stock mobs and
@@ -1636,6 +1636,7 @@ fn map_mob(
             world_max_count: None,
             active_buffs,
             position,
+            characteristics_gender,
             source: mob.source.clone(),
         },
         warnings,

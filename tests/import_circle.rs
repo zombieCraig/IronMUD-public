@@ -294,6 +294,29 @@ fn applies_mobiles_to_tmp_db() {
         assert_eq!(wanderer.current_hp, 22);
         assert_eq!(wanderer.level, 3);
         assert_eq!(wanderer.damage_dice, "1d6+1");
+        // SEX 1 in the fixture stamps a default Characteristics with male.
+        let chars = wanderer
+            .characteristics
+            .as_ref()
+            .expect("SEX 1 should install Characteristics");
+        assert_eq!(chars.gender, "male", "SEX 1 → male");
+
+        // Fixture beast (9002) has SEX 0 — no Characteristics installed.
+        let beast = db
+            .get_mobile_by_vnum("test_fixture_village_9002")
+            .unwrap()
+            .expect("beast saved");
+        assert!(
+            beast.characteristics.is_none(),
+            "SEX 0 leaves Characteristics None (resolves as neuter in DG)"
+        );
+
+        // Importer should not surface the legacy "sex/gender not modeled"
+        // warning anymore.
+        assert!(
+            !warnings.iter().any(|w| w.message.contains("sex/gender not modeled")),
+            "legacy SEX warning must be gone now that the importer maps it"
+        );
     }
     let _ = std::fs::remove_dir_all(&dir);
 }

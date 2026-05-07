@@ -174,8 +174,8 @@ warn-only (see the [Zone reset commands](#zone-reset-commands) section).
 | THAC0 | not modeled; silently dropped |
 | EXP | not modeled (no XP system); silently dropped |
 | ALIGNMENT | not modeled; **Info** warning if non-zero |
-| POSITION / DEFAULT_POSITION | not modeled; silently dropped |
-| SEX | not modeled at prototype level; **Info** warning if 1/2 |
+| POSITION / DEFAULT_POSITION | mapped to `MobilePosition` (5/6→Sleeping, 7→Sitting, 8/9→Standing); see [NPC position](#npc-position) below |
+| SEX | mapped to `Characteristics.gender` (1→male, 2→female); 0 leaves the field unset (DG resolves as neuter) |
 | BareHandAttack and other E-block named attrs | not imported; **Warn** once per distinct attribute name across the whole import |
 
 ### MOB_* action bits → `MobileFlags`
@@ -1087,14 +1087,17 @@ ranked below.
   affects are meaningless.
 - **XP awards** — Circle awards a per-mob `EXP` value on kill. IronMUD
   has no XP system; the field is silently dropped at import.
-- **Position / default position** — sleeping / sitting / resting NPCs.
-  Tied into a stance system that doesn't exist; IronMUD daily routines
-  cover *some* idle behaviors but not "this mob is asleep until
-  attacked".
-- **Sex / gender on prototypes** — `Characteristics.gender` lives only on
-  generated migrants. Stock CircleMUD authors mob gender directly on
-  the prototype; would need a prototype-level `Characteristics` (or a
-  `gender: Option<String>` on `MobileData`) to round-trip.
+- **Position / default position** — Implemented (May 2026): mapped to
+  `MobileData.position` (`MobilePosition::{Standing, Sitting, Sleeping}`).
+  CircleMUD `default_position` 0/4/5→Sleeping, 6/7→Sitting, 8/9→Standing.
+  The combat tick treats sleeping mobs as skip-turn-until-damaged.
+- **Sex / gender on prototypes** — Implemented (May 2026):
+  `Characteristics` is now lazy-instantiated on imported prototypes when
+  CircleMUD `SEX 1/2` is set; the gender field stamps "male"/"female"
+  and DG `%self.heshe%`/`%self.sex%` reads through `resolved_gender()`.
+  SEX 0 leaves the field unset (resolves as neuter). Builders can edit
+  via `medit <id> gender <value>` for any mob — free-text accepted, with
+  the same neuter fallback as the PC `set gender` flow.
 - **THAC0 → `hit_modifier` conversion** — Circle's combat math is
   different (lower THAC0 = better, intersects with target AC). A
   calibrated formula plus a balancing pass is needed before this is

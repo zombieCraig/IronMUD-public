@@ -319,6 +319,7 @@ export interface Mobile {
     needs?: NeedsState;
     position?: "standing" | "sitting" | "sleeping";
     pet_owner?: string;
+    gender?: string;
 }
 export interface SimulationConfig {
     home_room_vnum: string;
@@ -549,6 +550,7 @@ export interface CreateMobileRequest {
     combat_spell_chance?: number;
     on_hit_effects?: OnHitEffect[];
     position?: "standing" | "sitting" | "sleeping";
+    gender?: string;
 }
 export interface RoutineEntry {
     start_hour: number;

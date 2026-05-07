@@ -356,6 +356,7 @@ export interface Mobile {
   needs?: NeedsState;
   position?: "standing" | "sitting" | "sleeping";
   pet_owner?: string;
+  gender?: string;
 }
 
 export interface SimulationConfig {
@@ -613,6 +614,10 @@ export interface CreateMobileRequest {
   on_hit_effects?: OnHitEffect[];
   // Default physical stance (standing | sitting | sleeping)
   position?: "standing" | "sitting" | "sleeping";
+  // Authored gender for DG pronouns. "male" | "female" | "nonbinary" | any
+  // free string. Lazy-instantiates Characteristics; unrecognised values
+  // resolve as neuter pronouns in DG Scripts.
+  gender?: string;
 }
 
 export interface RoutineEntry {

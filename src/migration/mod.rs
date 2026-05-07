@@ -303,10 +303,19 @@ pub fn generate_child_characteristics<R: Rng>(
 /// Generate a first + last name from a pool, best-effort avoiding duplicates
 /// already in `existing_names`. Returns the full "First Last" string.
 pub fn generate_name<R: Rng>(pool: &NamePool, gender: &str, existing_names: &HashSet<String>, rng: &mut R) -> String {
-    let first_pool: &[String] = if gender == "female" {
-        &pool.female_first
-    } else {
-        &pool.male_first
+    let first_pool: &[String] = match gender {
+        "female" => &pool.female_first,
+        "male" => &pool.male_first,
+        // Nonbinary / free-text: stock pools have no unisex bucket, so flip
+        // a coin between male/female buckets per spawn. Identity travels via
+        // the gender field itself, not the name.
+        _ => {
+            if rng.gen_bool(0.5) {
+                &pool.female_first
+            } else {
+                &pool.male_first
+            }
+        }
     };
 
     for _ in 0..20 {
@@ -338,9 +347,40 @@ pub fn generate_name<R: Rng>(pool: &NamePool, gender: &str, existing_names: &Has
     }
 }
 
-/// Pick a gender ("male"/"female") with 50/50 odds.
+/// Per-spawn chance a migrant rolls as nonbinary. Mirror of the PC chargen
+/// flexibility; the rest of the population splits evenly between male and
+/// female.
+pub const MIGRANT_NB_CHANCE: f32 = 0.04;
+
+/// Pick a gender for a fresh migrant. 4% nonbinary, otherwise even male/female.
 pub fn random_gender<R: Rng>(rng: &mut R) -> &'static str {
-    if rng.gen_bool(0.5) { "female" } else { "male" }
+    if rng.r#gen::<f32>() < MIGRANT_NB_CHANCE {
+        "nonbinary"
+    } else if rng.gen_bool(0.5) {
+        "female"
+    } else {
+        "male"
+    }
+}
+
+/// Noun phrase for a migrant short_desc / role description: "man" / "woman" /
+/// "person". Free-string genders fall through to "person".
+pub fn gender_noun(gender: &str) -> &'static str {
+    match gender {
+        "male" => "man",
+        "female" => "woman",
+        _ => "person",
+    }
+}
+
+/// Capitalised subjective pronoun for descriptive lines: "He" / "She" / "They".
+/// Free-string genders fall through to "They".
+pub fn gender_pronoun(gender: &str) -> &'static str {
+    match gender {
+        "male" => "He",
+        "female" => "She",
+        _ => "They",
+    }
 }
 
 /// Roll a starting gold amount within the inclusive range. Negative values are
@@ -375,12 +415,12 @@ pub fn build_migrant<R: Rng>(
 
     let keywords: Vec<String> = full_name.split_whitespace().map(|s| s.to_lowercase()).collect();
 
-    // Short desc: "Akio Tanaka, a young adult man, is here."
+    // Short desc: "Akio Tanaka is here, a young adult man."
     let short_desc = format!(
         "{} is here, a {} {}.",
         full_name,
         chars.age_label,
-        if gender == "female" { "woman" } else { "man" }
+        gender_noun(gender)
     );
 
     // Simulation: inherit area defaults if set, override home_room_vnum.

@@ -94,6 +94,7 @@ export const mobileToolDefinitions = [
           },
         },
         position: { type: "string", enum: ["standing", "sitting", "sleeping"], description: "Default physical stance for spawned instances. Sleeping mobs skip combat turns until damaged; damage transitions Sleeping → Sitting." },
+        gender: { type: "string", description: "Authored gender for DG pronouns (e.g. \"male\", \"female\", \"nonbinary\"). Free string accepted; unrecognised values resolve to neuter pronouns. Lazy-instantiates `Characteristics` if absent." },
         perception: { type: "number", description: "Stealth detection ability (0-10, default 0)" },
         world_max_count: { type: "number", description: "Cap on live (non-prototype) instances of this vnum world-wide. Omit or 0 = unlimited. `flags.unique` is sugar for 1." },
         faction: { type: "string", description: "Helper-system ally tag. Mobiles with the same faction string defend each other when `flags.helper` is set. Omit/empty = Circle-stock fallback (any NPC defends any other NPC)." },
@@ -204,6 +205,7 @@ export const mobileToolDefinitions = [
           },
         },
         position: { type: "string", enum: ["standing", "sitting", "sleeping"], description: "Set the mobile's physical stance." },
+        gender: { type: "string", description: "Set authored gender. Empty string clears (preserves other Characteristics fields). Free string accepted; DG falls back to neuter for unrecognised values." },
         perception: { type: "number" },
         world_max_count: { type: "number", description: "Cap on live (non-prototype) instances of this vnum world-wide. 0 or negative clears the cap (unlimited)." },
         dialogue_tree: {
