@@ -30,6 +30,7 @@ pub mod script;
 pub mod seed;
 pub mod session;
 pub mod social;
+pub mod spawn;
 pub mod telnet;
 pub mod types;
 

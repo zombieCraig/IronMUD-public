@@ -2,12 +2,13 @@
 // Spawn point system functions
 
 use crate::db::Db;
-use crate::{SpawnDependency, SpawnDestination, SpawnEntityType, SpawnPointData, WearLocation};
+use crate::spawn::apply_spawn_dependencies;
+use crate::{SharedConnections, SpawnDependency, SpawnDestination, SpawnEntityType, SpawnPointData, WearLocation};
 use rhai::Engine;
 use std::sync::Arc;
 
 /// Register spawn point functions
-pub fn register(engine: &mut Engine, db: Arc<Db>) {
+pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections) {
     // Register SpawnPointData type with getters
     engine
         .register_type_with_name::<SpawnPointData>("SpawnPointData")
@@ -191,6 +192,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
 
     // trigger_area_reset(area_id) -> i64 (returns number of entities spawned)
     let cloned_db = db.clone();
+    let cloned_connections = connections.clone();
     engine.register_fn("trigger_area_reset", move |area_id: String| {
         if let Ok(area_uuid) = uuid::Uuid::parse_str(&area_id) {
             let spawn_points = cloned_db.get_spawn_points_for_area(&area_uuid).unwrap_or_default();
@@ -258,6 +260,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         };
 
                     if let Some(id) = spawned_id {
+                        apply_spawn_dependencies(&cloned_db, &cloned_connections, &sp, &id);
                         sp.spawned_entities.push(id);
                         spawned_count += 1;
                         local_spawned += 1;

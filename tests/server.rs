@@ -4946,6 +4946,220 @@ fn test_mobile_world_max_count_caps_spawn() {
 }
 
 #[test]
+fn test_spawn_dependencies_apply_inventory_equip_container() {
+    use ironmud::db::Db;
+    use ironmud::spawn::apply_spawn_dependencies;
+    use ironmud::types::{
+        ItemData, ItemType, MobileData, SpawnDependency, SpawnDestination, SpawnEntityType, SpawnPointData, WearLocation,
+    };
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+    use uuid::Uuid;
+
+    let db_path = format!("test_spawn_deps_apply_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+        let connections = Arc::new(Mutex::new(HashMap::new()));
+
+        // Mob prototype that the spawn point will produce.
+        let mut mob_proto = MobileData::new("a town guard".to_string());
+        mob_proto.is_prototype = true;
+        mob_proto.vnum = "test:guard".to_string();
+        db.save_mobile_data(mob_proto).expect("save mob proto");
+
+        // Inventory item prototype.
+        let mut inv_proto = ItemData::new(
+            "a leather pouch".to_string(),
+            "a leather pouch lies here".to_string(),
+            "A small leather pouch.".to_string(),
+        );
+        inv_proto.is_prototype = true;
+        inv_proto.vnum = Some("test:pouch".to_string());
+        db.save_item_data(inv_proto).expect("save inv proto");
+
+        // Equippable item prototype with Head wear location.
+        let mut head_proto = ItemData::new(
+            "a steel helm".to_string(),
+            "a steel helm lies here".to_string(),
+            "A polished steel helm.".to_string(),
+        );
+        head_proto.is_prototype = true;
+        head_proto.vnum = Some("test:helm".to_string());
+        head_proto.wear_locations = vec![WearLocation::Head];
+        db.save_item_data(head_proto).expect("save head proto");
+
+        // Container item prototype + a treasure to put inside.
+        let mut chest_proto = ItemData::new(
+            "an iron chest".to_string(),
+            "an iron chest sits here".to_string(),
+            "A heavy iron chest.".to_string(),
+        );
+        chest_proto.is_prototype = true;
+        chest_proto.vnum = Some("test:chest".to_string());
+        chest_proto.item_type = ItemType::Container;
+        db.save_item_data(chest_proto).expect("save chest proto");
+
+        let mut gold_proto = ItemData::new(
+            "a gold coin".to_string(),
+            "a gold coin glints here".to_string(),
+            "A shiny gold coin.".to_string(),
+        );
+        gold_proto.is_prototype = true;
+        gold_proto.vnum = Some("test:coin".to_string());
+        db.save_item_data(gold_proto).expect("save coin proto");
+
+        // Mob spawn point with Inventory + Equipped(Head) deps.
+        let mob_sp = SpawnPointData {
+            id: Uuid::new_v4(),
+            area_id: Uuid::new_v4(),
+            room_id: Uuid::new_v4(),
+            entity_type: SpawnEntityType::Mobile,
+            vnum: "test:guard".to_string(),
+            max_count: 1,
+            respawn_interval_secs: 300,
+            enabled: true,
+            last_spawn_time: 0,
+            spawned_entities: Vec::new(),
+            dependencies: vec![
+                SpawnDependency {
+                    item_vnum: "test:pouch".to_string(),
+                    destination: SpawnDestination::Inventory,
+                    count: 1,
+                    chance: 100,
+                },
+                SpawnDependency {
+                    item_vnum: "test:helm".to_string(),
+                    destination: SpawnDestination::Equipped(WearLocation::Head),
+                    count: 1,
+                    chance: 100,
+                },
+            ],
+            bury_on_spawn: false,
+        };
+
+        // Container spawn point with Container dep.
+        let chest_sp = SpawnPointData {
+            id: Uuid::new_v4(),
+            area_id: mob_sp.area_id,
+            room_id: mob_sp.room_id,
+            entity_type: SpawnEntityType::Item,
+            vnum: "test:chest".to_string(),
+            max_count: 1,
+            respawn_interval_secs: 300,
+            enabled: true,
+            last_spawn_time: 0,
+            spawned_entities: Vec::new(),
+            dependencies: vec![SpawnDependency {
+                item_vnum: "test:coin".to_string(),
+                destination: SpawnDestination::Container,
+                count: 1,
+                chance: 100,
+            }],
+            bury_on_spawn: false,
+        };
+
+        // Spawn the mob and apply its deps.
+        let mob = db.spawn_mobile_from_prototype("test:guard").expect("spawn mob").expect("mob present");
+        let placed = apply_spawn_dependencies(&db, &connections, &mob_sp, &mob.id);
+        assert_eq!(placed, 2, "both Inventory and Equipped deps placed");
+
+        let inventory = db.get_items_in_mobile_inventory(&mob.id).expect("get inv");
+        assert_eq!(inventory.len(), 1, "pouch landed in inventory");
+        assert_eq!(inventory[0].vnum.as_deref(), Some("test:pouch"));
+
+        let equipped = db.get_items_equipped_on_mobile(&mob.id).expect("get equipped");
+        assert_eq!(equipped.len(), 1, "helm landed in equipped slot");
+        assert_eq!(equipped[0].vnum.as_deref(), Some("test:helm"));
+
+        // Spawn the chest and apply its container dep.
+        let chest = db.spawn_item_from_prototype("test:chest").expect("spawn chest").expect("chest present");
+        let placed_chest = apply_spawn_dependencies(&db, &connections, &chest_sp, &chest.id);
+        assert_eq!(placed_chest, 1, "coin placed in container");
+
+        let contents = db.get_items_in_container(&chest.id).expect("get container contents");
+        assert_eq!(contents.len(), 1, "one item in chest");
+        assert_eq!(contents[0].vnum.as_deref(), Some("test:coin"));
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_spawn_dependencies_skip_equip_when_wear_locations_mismatch() {
+    use ironmud::db::Db;
+    use ironmud::spawn::apply_spawn_dependencies;
+    use ironmud::types::{
+        ItemData, MobileData, SpawnDependency, SpawnDestination, SpawnEntityType, SpawnPointData, WearLocation,
+    };
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+    use uuid::Uuid;
+
+    let db_path = format!("test_spawn_deps_mismatch_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+        let connections = Arc::new(Mutex::new(HashMap::new()));
+
+        let mut mob_proto = MobileData::new("a sentry".to_string());
+        mob_proto.is_prototype = true;
+        mob_proto.vnum = "test:sentry".to_string();
+        db.save_mobile_data(mob_proto).expect("save mob proto");
+
+        // Item that is NOT wearable at Head (empty wear_locations).
+        let mut bad_proto = ItemData::new(
+            "a wooden mug".to_string(),
+            "a wooden mug lies here".to_string(),
+            "A plain wooden mug.".to_string(),
+        );
+        bad_proto.is_prototype = true;
+        bad_proto.vnum = Some("test:mug".to_string());
+        db.save_item_data(bad_proto).expect("save mug proto");
+
+        let sp = SpawnPointData {
+            id: Uuid::new_v4(),
+            area_id: Uuid::new_v4(),
+            room_id: Uuid::new_v4(),
+            entity_type: SpawnEntityType::Mobile,
+            vnum: "test:sentry".to_string(),
+            max_count: 1,
+            respawn_interval_secs: 300,
+            enabled: true,
+            last_spawn_time: 0,
+            spawned_entities: Vec::new(),
+            dependencies: vec![SpawnDependency {
+                item_vnum: "test:mug".to_string(),
+                destination: SpawnDestination::Equipped(WearLocation::Head),
+                count: 1,
+                chance: 100,
+            }],
+            bury_on_spawn: false,
+        };
+
+        let mob = db.spawn_mobile_from_prototype("test:sentry").expect("spawn mob").expect("mob present");
+        let placed = apply_spawn_dependencies(&db, &connections, &sp, &mob.id);
+        assert_eq!(placed, 0, "wear_locations mismatch refuses the equip");
+
+        let inventory = db.get_items_in_mobile_inventory(&mob.id).expect("get inv");
+        assert!(inventory.is_empty(), "mismatched item is not stashed in inventory");
+
+        let equipped = db.get_items_equipped_on_mobile(&mob.id).expect("get equipped");
+        assert!(equipped.is_empty(), "mismatched item is not equipped");
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_sanctuary_buff_on_prototype_carries_to_spawn() {
     use ironmud::db::Db;
     use ironmud::types::{ActiveBuff, EffectType, MobileData};

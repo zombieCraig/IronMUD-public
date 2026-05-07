@@ -212,10 +212,14 @@ authored) and are silently dropped.
 ## CircleMUD object coverage matrix
 
 Each `.obj` entry becomes a single IronMUD `ItemData` **prototype**
-(`is_prototype = true`). Like mobiles, no live instances are spawned —
-zone-reset `O`/`G`/`E`/`P` commands that would place items in rooms,
-mob inventories, or containers stay warn-only (see [Zone reset
-commands](#zone-reset-commands)).
+(`is_prototype = true`). Live instances are produced by the
+zone-reset `O`/`G`/`E`/`P` commands: `O` becomes a room spawn point
+that the spawn tick (or any reset entry point) materialises, and the
+chained `G`/`E`/`P` resets attach as `dependencies` so the spawn
+point also drops items into the mob's inventory (`G`), equips them
+in a wear slot (`E`), or stuffs them into a container (`P`). See the
+[Zone reset coverage matrix](#circlemud-zone-reset-coverage-matrix)
+for per-command details.
 
 ### Identity
 
@@ -1113,10 +1117,15 @@ ranked below.
   matrix](#circlemud-shop-coverage-matrix) for the field-by-field
   translation and [Shop subsystems](#shop-subsystems--high-priority)
   for backlog gaps (hours, message strings, multi-room, etc.).
-- **Equipment / inventory from zone resets** — `G`/`E`/`P` reset
-  commands give items to mobs / equip them / put items in containers.
-  Currently warn-only; not applied. See [Zone resets](#zone-resets-whole-subsystem)
-  above.
+- **Equipment / inventory from zone resets** — Implemented (May
+  2026). `G`/`E`/`P` resets attach as `SpawnDependency` entries on the
+  parent `M`/`O` spawn point during import; at runtime the shared
+  `apply_spawn_dependencies` helper (`src/spawn/mod.rs`) routes each
+  dep to `move_item_to_mobile_inventory`, `move_item_to_mobile_equipped`,
+  or `move_item_to_container` depending on its destination. The helper
+  is called from the periodic spawn tick, the Rhai `trigger_area_reset`
+  binding, and the `POST /api/areas/<id>/reset` handler so all three
+  reset entry points produce identical equipment state.
 
 ### Object subsystems — High priority
 
@@ -1145,8 +1154,10 @@ below for what's next.)
   permanent stat bumps directly to `ItemData.stat_*`. Once the buff
   system supports "apply on equip / remove on unequip", convert these
   to `ActiveBuff` stamps for cleaner state management.
-- **Equipment / inventory from zone resets** — `G`/`E`/`P` reset
-  commands. Already covered under [Zone resets](#zone-resets-whole-subsystem).
+- **Equipment / inventory from zone resets** — Implemented (May
+  2026). See the matching note under
+  [Mobile subsystems](#mobile-subsystems-whole-feature) for the
+  end-to-end picture.
 
 ### Shop subsystems — Medium priority
 

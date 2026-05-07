@@ -1949,7 +1949,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
 
     // Register submodule functions
     utilities::register(engine, db.clone(), connections.clone());
-    spawn::register(engine, db.clone());
+    spawn::register(engine, db.clone(), connections.clone());
     api_keys::register(engine, db.clone());
     areas::register(engine, db.clone());
     combat::register(engine, db.clone());

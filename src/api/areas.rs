@@ -18,6 +18,7 @@ use super::{
     error::ApiError,
     notify_builders,
 };
+use crate::spawn::apply_spawn_dependencies;
 use crate::{AreaData, AreaFlags, AreaPermission, CombatZoneType, ForageEntry, RoomData, RoomFlags, SpawnEntityType};
 
 pub fn routes() -> Router<Arc<ApiState>> {
@@ -706,6 +707,7 @@ async fn reset_area(
                     };
 
                 if let Some(id) = spawned_id {
+                    apply_spawn_dependencies(&state.db, &state.connections, &sp, &id);
                     sp.spawned_entities.push(id);
                     spawned_count += 1;
                 } else {

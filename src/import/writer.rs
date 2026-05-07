@@ -24,6 +24,7 @@ pub struct ReportSummary {
     pub planned_items: usize,
     pub planned_shop_overlays: usize,
     pub planned_spawns: usize,
+    pub planned_dependencies: usize,
     pub planned_trigger_overlays: usize,
     pub block_warnings: usize,
     pub warn_warnings: usize,
@@ -36,13 +37,14 @@ pub struct ReportSummary {
     pub written_items: usize,
     pub overlaid_shops: usize,
     pub written_spawns: usize,
+    pub written_dependencies: usize,
     pub applied_triggers: usize,
 }
 
 pub fn print_dry_run(plan: &Plan, warnings: &[Warning]) -> ReportSummary {
-    let summary = summarize(plan, warnings, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+    let summary = summarize(plan, warnings, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
     println!(
-        "== Import dry-run ==\n  areas: {}\n  rooms: {}\n  exits: {}\n  mobiles: {}\n  items: {}\n  shop overlays: {}\n  spawns: {}\n  trigger overlays: {}\n",
+        "== Import dry-run ==\n  areas: {}\n  rooms: {}\n  exits: {}\n  mobiles: {}\n  items: {}\n  shop overlays: {}\n  spawns: {} (with {} dependency attachments)\n  trigger overlays: {}\n",
         summary.planned_areas,
         summary.planned_rooms,
         summary.planned_exits,
@@ -50,6 +52,7 @@ pub fn print_dry_run(plan: &Plan, warnings: &[Warning]) -> ReportSummary {
         summary.planned_items,
         summary.planned_shop_overlays,
         summary.planned_spawns,
+        summary.planned_dependencies,
         summary.planned_trigger_overlays,
     );
     if !plan.areas.is_empty() {
@@ -363,6 +366,7 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
     // SpawnPointData. room_vnum / area_prefix are resolved via the maps
     // built during the room pass.
     let mut written_spawns = 0usize;
+    let mut written_dependencies = 0usize;
     for sp in &plan.spawns {
         let Some(&room_id) = vnum_to_id.get(&sp.room_vnum) else {
             // The room must have been imported in this run (we only emit
@@ -398,9 +402,11 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
             dependencies,
             bury_on_spawn: false,
         };
+        let dep_count = data.dependencies.len();
         db.save_spawn_point(data)
             .with_context(|| format!("saving spawn point for {} in {}", sp.vnum, sp.room_vnum))?;
         written_spawns += 1;
+        written_dependencies += dep_count;
     }
 
     // Pass 7: trigger overlays (specproc bindings from spec_assign.c).
@@ -505,11 +511,12 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
         written_items,
         overlaid_shops,
         written_spawns,
+        written_dependencies,
         applied_triggers,
     );
     let _ = written_dg_protos;
     println!(
-        "== Import applied ==\n  areas: {}\n  rooms: {}\n  exits linked: {} (dropped: {})\n  mobiles: {}\n  items: {}\n  shop overlays: {}\n  spawn points: {}\n  trigger overlays: {}\n",
+        "== Import applied ==\n  areas: {}\n  rooms: {}\n  exits linked: {} (dropped: {})\n  mobiles: {}\n  items: {}\n  shop overlays: {}\n  spawn points: {} (with {} dependency attachments)\n  trigger overlays: {}\n",
         summary.written_areas,
         summary.written_rooms,
         summary.linked_exits,
@@ -518,6 +525,7 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
         summary.written_items,
         summary.overlaid_shops,
         summary.written_spawns,
+        summary.written_dependencies,
         summary.applied_triggers,
     );
     if dropped > 0 {
@@ -583,6 +591,7 @@ fn summarize(
     written_items: usize,
     overlaid_shops: usize,
     written_spawns: usize,
+    written_dependencies: usize,
     applied_triggers: usize,
 ) -> ReportSummary {
     let mut blocks = 0;
@@ -595,6 +604,7 @@ fn summarize(
             Severity::Info => infos += 1,
         }
     }
+    let planned_dependencies: usize = plan.spawns.iter().map(|s| s.dependencies.len()).sum();
     ReportSummary {
         planned_areas: plan.areas.len(),
         planned_rooms: plan.rooms.len(),
@@ -603,6 +613,7 @@ fn summarize(
         planned_items: plan.items.len(),
         planned_shop_overlays: plan.shop_overlays.len(),
         planned_spawns: plan.spawns.len(),
+        planned_dependencies,
         planned_trigger_overlays: plan.trigger_overlays.len(),
         block_warnings: blocks,
         warn_warnings: warns,
@@ -615,6 +626,7 @@ fn summarize(
         written_items,
         overlaid_shops,
         written_spawns,
+        written_dependencies,
         applied_triggers,
     }
 }

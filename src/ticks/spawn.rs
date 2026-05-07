@@ -8,6 +8,7 @@ use tracing::{debug, error};
 
 use ironmud::{
     ItemType, SharedConnections, SpawnDestination, SpawnEntityType, SpawnPointData, broadcast_to_builders, db,
+    spawn::apply_spawn_dependencies,
 };
 
 /// Spawn tick interval in seconds
@@ -174,100 +175,7 @@ fn process_spawn_points(db: &db::Db, connections: &SharedConnections) -> Result<
         };
 
         if let Some(entity_id) = spawned_id {
-            // Process spawn dependencies
-            let mut dep_success_count = 0;
-            for dep in &sp.dependencies {
-                // Roll chance - skip this dependency if the roll fails
-                if dep.chance < 100 {
-                    use rand::Rng;
-                    let roll: i32 = rand::thread_rng().gen_range(1..=100);
-                    if roll > dep.chance {
-                        continue;
-                    }
-                }
-                for _ in 0..dep.count {
-                    // Spawn the dependency item from prototype
-                    match db.spawn_item_from_prototype(&dep.item_vnum) {
-                        Ok(Some(item)) => {
-                            let item_id = item.id;
-                            let result = match &dep.destination {
-                                SpawnDestination::Inventory => db.move_item_to_mobile_inventory(&item_id, &entity_id),
-                                SpawnDestination::Equipped(wear_loc) => {
-                                    // Validate the item can be worn at this location
-                                    if !item.wear_locations.contains(wear_loc) {
-                                        broadcast_to_builders(
-                                            connections,
-                                            &format!(
-                                                "Spawn warning: Item '{}' cannot be equipped at {:?} (not in wear_locations)",
-                                                dep.item_vnum, wear_loc
-                                            ),
-                                        );
-                                        // Delete the spawned item since we can't use it
-                                        let _ = db.delete_item(&item_id);
-                                        continue;
-                                    }
-                                    db.move_item_to_mobile_equipped(&item_id, &entity_id)
-                                }
-                                SpawnDestination::Container => {
-                                    // For container destination, entity_id should be an item (container)
-                                    match db.move_item_to_container(&item_id, &entity_id) {
-                                        Ok(_) => Ok(true),
-                                        Err(e) => {
-                                            broadcast_to_builders(
-                                                connections,
-                                                &format!(
-                                                    "Spawn warning: Cannot put item '{}' in container: {}",
-                                                    dep.item_vnum, e
-                                                ),
-                                            );
-                                            // Delete the spawned item since we can't use it
-                                            let _ = db.delete_item(&item_id);
-                                            continue;
-                                        }
-                                    }
-                                }
-                            };
-
-                            match result {
-                                Ok(true) => dep_success_count += 1,
-                                Ok(false) => {
-                                    broadcast_to_builders(
-                                        connections,
-                                        &format!(
-                                            "Spawn warning: Failed to place item '{}' for spawn point {}",
-                                            dep.item_vnum, sp.id
-                                        ),
-                                    );
-                                    let _ = db.delete_item(&item_id);
-                                }
-                                Err(e) => {
-                                    broadcast_to_builders(
-                                        connections,
-                                        &format!("Spawn error: Failed to place item '{}': {}", dep.item_vnum, e),
-                                    );
-                                    let _ = db.delete_item(&item_id);
-                                }
-                            }
-                        }
-                        Ok(None) => {
-                            broadcast_to_builders(
-                                connections,
-                                &format!(
-                                    "Spawn warning: Item prototype '{}' not found for spawn point {}",
-                                    dep.item_vnum, sp.id
-                                ),
-                            );
-                        }
-                        Err(e) => {
-                            broadcast_to_builders(
-                                connections,
-                                &format!("Spawn error: Failed to spawn item '{}': {}", dep.item_vnum, e),
-                            );
-                        }
-                    }
-                }
-            }
-
+            let dep_success_count = apply_spawn_dependencies(db, connections, &sp, &entity_id);
             sp.spawned_entities.push(entity_id);
 
             if dep_success_count > 0 {
