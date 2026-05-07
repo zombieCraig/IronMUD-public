@@ -3,7 +3,7 @@
 use axum::{
     Json, Router,
     extract::{Extension, Path, Query, State},
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -34,6 +34,21 @@ pub fn routes() -> Router<Arc<ApiState>> {
         .route("/:id/routine/:index", delete(remove_routine_entry))
         .route("/:id/triggers", post(add_trigger))
         .route("/:id/triggers/:index", delete(remove_trigger))
+        // Granular dialogue-tree editing
+        .route("/:id/dialogue_tree/root", put(set_dialogue_tree_root))
+        .route("/:id/dialogue_tree/nodes", post(add_dialogue_node))
+        .route(
+            "/:id/dialogue_tree/nodes/:node_name",
+            put(update_dialogue_node).delete(remove_dialogue_node),
+        )
+        .route(
+            "/:id/dialogue_tree/nodes/:node_name/choices",
+            post(add_dialogue_choice),
+        )
+        .route(
+            "/:id/dialogue_tree/nodes/:node_name/choices/:index",
+            put(update_dialogue_choice).delete(remove_dialogue_choice),
+        )
         .route("/:vnum/spawn", post(spawn_mobile))
 }
 
@@ -339,6 +354,12 @@ pub struct UpdateMobileRequest {
     pub remove_simulation: Option<bool>,
     #[serde(default)]
     pub world_max_count: Option<i32>,
+    /// Replace the dialogue tree. `Some(tree)` overwrites; pass an explicit
+    /// empty tree (no nodes) or `clear_dialogue_tree: true` to remove.
+    #[serde(default)]
+    pub dialogue_tree: Option<crate::types::DialogueTree>,
+    #[serde(default)]
+    pub clear_dialogue_tree: Option<bool>,
     /// Helper-system faction tag. Empty string clears to None.
     #[serde(default)]
     pub faction: Option<String>,
@@ -357,6 +378,56 @@ pub struct UpdateMobileRequest {
 pub struct AddDialogueRequest {
     pub keyword: String,
     pub response: String,
+}
+
+// ===== Granular dialogue-tree request types =====
+
+#[derive(Deserialize)]
+pub struct SetDialogueRootRequest {
+    pub node_name: String,
+}
+
+#[derive(Deserialize)]
+pub struct AddDialogueNodeRequest {
+    pub name: String,
+    pub text: String,
+    #[serde(default)]
+    pub on_enter: Vec<crate::types::DialogueEffect>,
+    #[serde(default)]
+    pub on_each_visit: Vec<crate::types::DialogueEffect>,
+    #[serde(default)]
+    pub on_exit: Vec<crate::types::DialogueEffect>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateDialogueNodeRequest {
+    pub text: Option<String>,
+    pub on_enter: Option<Vec<crate::types::DialogueEffect>>,
+    pub on_each_visit: Option<Vec<crate::types::DialogueEffect>>,
+    pub on_exit: Option<Vec<crate::types::DialogueEffect>>,
+}
+
+#[derive(Deserialize)]
+pub struct DialogueChoiceRequest {
+    pub keyword: String,
+    pub label: String,
+    pub target: crate::types::DialogueTarget,
+    #[serde(default)]
+    pub conditions: Vec<crate::types::DialogueCondition>,
+    #[serde(default)]
+    pub effects: Vec<crate::types::DialogueEffect>,
+}
+
+impl From<DialogueChoiceRequest> for crate::types::DialogueChoice {
+    fn from(r: DialogueChoiceRequest) -> Self {
+        Self {
+            keyword: r.keyword,
+            label: r.label,
+            target: r.target,
+            conditions: r.conditions,
+            effects: r.effects,
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -755,6 +826,7 @@ async fn create_mobile(
             hostile_on_steal: req.flags.hostile_on_steal.unwrap_or(false),
         },
         dialogue: HashMap::new(),
+        dialogue_tree: None,
         shop_stock: req.shop_stock.unwrap_or_default(),
         shop_inventory: Vec::new(),
         shop_buys_types: req.shop_buys_types.unwrap_or_default(),
@@ -971,6 +1043,11 @@ async fn update_mobile(
     if let Some(world_max) = req.world_max_count {
         mobile.world_max_count = if world_max <= 0 { None } else { Some(world_max) };
     }
+    if let Some(true) = req.clear_dialogue_tree {
+        mobile.dialogue_tree = None;
+    } else if let Some(tree) = req.dialogue_tree {
+        mobile.dialogue_tree = Some(tree);
+    }
     if let Some(faction) = req.faction {
         mobile.faction = if faction.is_empty() { None } else { Some(faction) };
     }
@@ -1179,6 +1256,179 @@ async fn remove_dialogue(
         data: mobile,
         refreshed_instances: Some(refreshed),
     }))
+}
+
+// ===== Granular dialogue-tree handlers =====
+
+fn map_edit_err(e: crate::dialogue_edit::DialogueEditError) -> ApiError {
+    match e {
+        crate::dialogue_edit::DialogueEditError::NoTree
+        | crate::dialogue_edit::DialogueEditError::NodeMissing(_) => {
+            ApiError::NotFound(e.to_string())
+        }
+        _ => ApiError::InvalidInput(e.to_string()),
+    }
+}
+
+async fn load_mobile(state: &Arc<ApiState>, id: &str) -> Result<MobileData, ApiError> {
+    let uuid = Uuid::parse_str(id)
+        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    state
+        .db
+        .get_mobile_data(&uuid)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))
+}
+
+fn save_mobile_response(
+    state: &Arc<ApiState>,
+    mobile: MobileData,
+) -> Result<Json<MobileResponse>, ApiError> {
+    state
+        .db
+        .save_mobile_data(mobile.clone())
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    let refreshed = refresh_mobile_instances(&state.db, &mobile);
+    Ok(Json(MobileResponse {
+        success: true,
+        data: mobile,
+        refreshed_instances: Some(refreshed),
+    }))
+}
+
+async fn set_dialogue_tree_root(
+    State(state): State<Arc<ApiState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(id): Path<String>,
+    Json(req): Json<SetDialogueRootRequest>,
+) -> Result<Json<MobileResponse>, ApiError> {
+    if !can_write(&user) {
+        return Err(ApiError::Forbidden("Write permission required".into()));
+    }
+    let mut mobile = load_mobile(&state, &id).await?;
+    crate::dialogue_edit::set_root(&mut mobile.dialogue_tree, &req.node_name)
+        .map_err(map_edit_err)?;
+    save_mobile_response(&state, mobile)
+}
+
+async fn add_dialogue_node(
+    State(state): State<Arc<ApiState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(id): Path<String>,
+    Json(req): Json<AddDialogueNodeRequest>,
+) -> Result<Json<MobileResponse>, ApiError> {
+    if !can_write(&user) {
+        return Err(ApiError::Forbidden("Write permission required".into()));
+    }
+    let mut mobile = load_mobile(&state, &id).await?;
+    // Auto-initialize an empty tree if the mobile has none yet — gives MCP
+    // callers a one-shot "stand up dialogue" path: set tree root via the
+    // first node added.
+    if mobile.dialogue_tree.is_none() {
+        crate::dialogue_edit::ensure_initialized(&mut mobile.dialogue_tree, &req.text);
+        // ensure_initialized always installs a node literally named "root" — if
+        // the caller is adding a node also called "root", we're already done.
+        if req.name == "root" {
+            return save_mobile_response(&state, mobile);
+        }
+        // Otherwise the caller wants their own root name; rename ours.
+        if let Some(t) = mobile.dialogue_tree.as_mut() {
+            if let Some(n) = t.nodes.remove("root") {
+                t.nodes.insert(req.name.clone(), n);
+                t.root_node = req.name.clone();
+            }
+        }
+        return save_mobile_response(&state, mobile);
+    }
+    let node = crate::types::DialogueNode {
+        text: req.text,
+        choices: vec![],
+        on_enter: req.on_enter,
+        on_each_visit: req.on_each_visit,
+        on_exit: req.on_exit,
+    };
+    crate::dialogue_edit::add_node(&mut mobile.dialogue_tree, &req.name, node)
+        .map_err(map_edit_err)?;
+    save_mobile_response(&state, mobile)
+}
+
+async fn update_dialogue_node(
+    State(state): State<Arc<ApiState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path((id, node_name)): Path<(String, String)>,
+    Json(req): Json<UpdateDialogueNodeRequest>,
+) -> Result<Json<MobileResponse>, ApiError> {
+    if !can_write(&user) {
+        return Err(ApiError::Forbidden("Write permission required".into()));
+    }
+    let mut mobile = load_mobile(&state, &id).await?;
+    let patch = crate::dialogue_edit::NodePatch {
+        text: req.text,
+        on_enter: req.on_enter,
+        on_each_visit: req.on_each_visit,
+        on_exit: req.on_exit,
+    };
+    crate::dialogue_edit::update_node(&mut mobile.dialogue_tree, &node_name, patch)
+        .map_err(map_edit_err)?;
+    save_mobile_response(&state, mobile)
+}
+
+async fn remove_dialogue_node(
+    State(state): State<Arc<ApiState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path((id, node_name)): Path<(String, String)>,
+) -> Result<Json<MobileResponse>, ApiError> {
+    if !can_write(&user) {
+        return Err(ApiError::Forbidden("Write permission required".into()));
+    }
+    let mut mobile = load_mobile(&state, &id).await?;
+    crate::dialogue_edit::remove_node(&mut mobile.dialogue_tree, &node_name)
+        .map_err(map_edit_err)?;
+    save_mobile_response(&state, mobile)
+}
+
+async fn add_dialogue_choice(
+    State(state): State<Arc<ApiState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path((id, node_name)): Path<(String, String)>,
+    Json(req): Json<DialogueChoiceRequest>,
+) -> Result<Json<MobileResponse>, ApiError> {
+    if !can_write(&user) {
+        return Err(ApiError::Forbidden("Write permission required".into()));
+    }
+    let mut mobile = load_mobile(&state, &id).await?;
+    crate::dialogue_edit::add_choice(&mut mobile.dialogue_tree, &node_name, req.into())
+        .map_err(map_edit_err)?;
+    save_mobile_response(&state, mobile)
+}
+
+async fn update_dialogue_choice(
+    State(state): State<Arc<ApiState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path((id, node_name, index)): Path<(String, String, usize)>,
+    Json(req): Json<DialogueChoiceRequest>,
+) -> Result<Json<MobileResponse>, ApiError> {
+    if !can_write(&user) {
+        return Err(ApiError::Forbidden("Write permission required".into()));
+    }
+    let mut mobile = load_mobile(&state, &id).await?;
+    crate::dialogue_edit::update_choice(&mut mobile.dialogue_tree, &node_name, index, req.into())
+        .map_err(map_edit_err)?;
+    save_mobile_response(&state, mobile)
+}
+
+async fn remove_dialogue_choice(
+    State(state): State<Arc<ApiState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path((id, node_name, index)): Path<(String, String, usize)>,
+) -> Result<Json<MobileResponse>, ApiError> {
+    if !can_write(&user) {
+        return Err(ApiError::Forbidden("Write permission required".into()));
+    }
+    let mut mobile = load_mobile(&state, &id).await?;
+    crate::dialogue_edit::remove_choice(&mut mobile.dialogue_tree, &node_name, index)
+        .map_err(map_edit_err)?;
+    save_mobile_response(&state, mobile)
 }
 
 /// Add a routine entry to a mobile

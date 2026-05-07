@@ -253,6 +253,28 @@ export class IronMUDApiClient {
     async removeMobileDialogue(mobileId, keyword) {
         return this.requestWithMeta("delete", `/mobiles/${mobileId}/dialogue/${encodeURIComponent(keyword)}`);
     }
+    // Granular dialogue-tree editing
+    async setDialogueTreeRoot(mobileId, nodeName) {
+        return this.requestWithMeta("put", `/mobiles/${mobileId}/dialogue_tree/root`, { node_name: nodeName });
+    }
+    async addDialogueNode(mobileId, data) {
+        return this.requestWithMeta("post", `/mobiles/${mobileId}/dialogue_tree/nodes`, data);
+    }
+    async updateDialogueNode(mobileId, nodeName, data) {
+        return this.requestWithMeta("put", `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}`, data);
+    }
+    async removeDialogueNode(mobileId, nodeName) {
+        return this.requestWithMeta("delete", `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}`);
+    }
+    async addDialogueChoice(mobileId, nodeName, data) {
+        return this.requestWithMeta("post", `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices`, data);
+    }
+    async updateDialogueChoice(mobileId, nodeName, index, data) {
+        return this.requestWithMeta("put", `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices/${index}`, data);
+    }
+    async removeDialogueChoice(mobileId, nodeName, index) {
+        return this.requestWithMeta("delete", `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices/${index}`);
+    }
     async addMobileRoutine(mobileId, data) {
         return this.requestWithMeta("post", `/mobiles/${mobileId}/routine`, data);
     }

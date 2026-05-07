@@ -695,6 +695,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           "shop_extra_types", "shop_extra_categories", "shop_deny_types", "shop_deny_categories",
           "shop_stock", "shop_preset_vnum",
           "daily_routine", "simulation", "remove_simulation", "world_max_count",
+          "dialogue_tree", "clear_dialogue_tree",
           "faction", "combat_spells", "combat_spell_chance", "on_hit_effects",
         ];
         for (const field of mobileFields) {
@@ -740,6 +741,102 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return {
           content: [{ type: "text", text: JSON.stringify(rmDialogueResult.data, null, 2) + formatRefreshSuffix(rmDialogueResult.refreshed_instances) }],
         };
+      }
+      case "set_mobile_dialogue_tree_root": {
+        const mobileId = args?.mobile_id as string;
+        const nodeName = args?.node_name as string;
+        if (!mobileId || !nodeName) throw new Error("mobile_id and node_name are required");
+        const resolved = await resolveMobileId(api, mobileId);
+        const r = await api.setDialogueTreeRoot(resolved, nodeName);
+        return { content: [{ type: "text", text: JSON.stringify(r.data, null, 2) + formatRefreshSuffix(r.refreshed_instances) }] };
+      }
+      case "add_mobile_dialogue_node": {
+        const mobileId = args?.mobile_id as string;
+        const name = args?.name as string;
+        const text = args?.text as string;
+        if (!mobileId || !name || text === undefined) {
+          throw new Error("mobile_id, name, and text are required");
+        }
+        const resolved = await resolveMobileId(api, mobileId);
+        const r = await api.addDialogueNode(resolved, {
+          name,
+          text,
+          on_enter: args?.on_enter as any,
+          on_each_visit: args?.on_each_visit as any,
+          on_exit: args?.on_exit as any,
+        });
+        return { content: [{ type: "text", text: JSON.stringify(r.data, null, 2) + formatRefreshSuffix(r.refreshed_instances) }] };
+      }
+      case "update_mobile_dialogue_node": {
+        const mobileId = args?.mobile_id as string;
+        const nodeName = args?.node_name as string;
+        if (!mobileId || !nodeName) throw new Error("mobile_id and node_name are required");
+        const resolved = await resolveMobileId(api, mobileId);
+        const r = await api.updateDialogueNode(resolved, nodeName, {
+          text: args?.text as string | undefined,
+          on_enter: args?.on_enter as any,
+          on_each_visit: args?.on_each_visit as any,
+          on_exit: args?.on_exit as any,
+        });
+        return { content: [{ type: "text", text: JSON.stringify(r.data, null, 2) + formatRefreshSuffix(r.refreshed_instances) }] };
+      }
+      case "remove_mobile_dialogue_node": {
+        const mobileId = args?.mobile_id as string;
+        const nodeName = args?.node_name as string;
+        if (!mobileId || !nodeName) throw new Error("mobile_id and node_name are required");
+        const resolved = await resolveMobileId(api, mobileId);
+        const r = await api.removeDialogueNode(resolved, nodeName);
+        return { content: [{ type: "text", text: JSON.stringify(r.data, null, 2) + formatRefreshSuffix(r.refreshed_instances) }] };
+      }
+      case "add_mobile_dialogue_choice": {
+        const mobileId = args?.mobile_id as string;
+        const nodeName = args?.node_name as string;
+        const keyword = args?.keyword as string;
+        const label = args?.label as string;
+        const target = args?.target as any;
+        if (!mobileId || !nodeName || !keyword || !label || !target) {
+          throw new Error("mobile_id, node_name, keyword, label, and target are required");
+        }
+        const resolved = await resolveMobileId(api, mobileId);
+        const r = await api.addDialogueChoice(resolved, nodeName, {
+          keyword,
+          label,
+          target,
+          conditions: args?.conditions as any,
+          effects: args?.effects as any,
+        });
+        return { content: [{ type: "text", text: JSON.stringify(r.data, null, 2) + formatRefreshSuffix(r.refreshed_instances) }] };
+      }
+      case "update_mobile_dialogue_choice": {
+        const mobileId = args?.mobile_id as string;
+        const nodeName = args?.node_name as string;
+        const index = args?.index as number;
+        const keyword = args?.keyword as string;
+        const label = args?.label as string;
+        const target = args?.target as any;
+        if (!mobileId || !nodeName || index === undefined || !keyword || !label || !target) {
+          throw new Error("mobile_id, node_name, index, keyword, label, and target are required");
+        }
+        const resolved = await resolveMobileId(api, mobileId);
+        const r = await api.updateDialogueChoice(resolved, nodeName, index, {
+          keyword,
+          label,
+          target,
+          conditions: args?.conditions as any,
+          effects: args?.effects as any,
+        });
+        return { content: [{ type: "text", text: JSON.stringify(r.data, null, 2) + formatRefreshSuffix(r.refreshed_instances) }] };
+      }
+      case "remove_mobile_dialogue_choice": {
+        const mobileId = args?.mobile_id as string;
+        const nodeName = args?.node_name as string;
+        const index = args?.index as number;
+        if (!mobileId || !nodeName || index === undefined) {
+          throw new Error("mobile_id, node_name, and index are required");
+        }
+        const resolved = await resolveMobileId(api, mobileId);
+        const r = await api.removeDialogueChoice(resolved, nodeName, index);
+        return { content: [{ type: "text", text: JSON.stringify(r.data, null, 2) + formatRefreshSuffix(r.refreshed_instances) }] };
       }
       case "add_mobile_routine": {
         const mobileId = args?.mobile_id as string;

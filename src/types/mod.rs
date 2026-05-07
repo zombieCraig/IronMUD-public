@@ -296,6 +296,12 @@ pub struct CharacterData {
     pub achievement_counters: HashMap<String, u32>,
     #[serde(default)]
     pub achievements_unlocked: HashMap<String, AchievementUnlock>,
+    // Dialogue tree state: per-mob-vnum conversation cursor
+    #[serde(default)]
+    pub dialogue_pair_state: HashMap<String, DialoguePairState>,
+    // Dialogue flags: "<vnum>:<name>" for FlagScope::Local, "<name>" for Global
+    #[serde(default)]
+    pub dialogue_flags: HashMap<String, bool>,
     #[serde(default)]
     pub active_title: Option<String>,
     /// Highest gold balance the character has ever held; used to fire
@@ -3395,6 +3401,161 @@ pub struct RememberedEnemy {
     pub expires_at_secs: i64,
 }
 
+// ===== Dialogue Tree System =====
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DialogueTree {
+    pub root_node: String,
+    pub nodes: HashMap<String, DialogueNode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DialogueNode {
+    pub text: String,
+    #[serde(default)]
+    pub choices: Vec<DialogueChoice>,
+    /// Effects fired only on the FIRST visit to this node by a given player.
+    /// Subsequent visits skip these — track via DialoguePairState.visit_counts.
+    #[serde(default)]
+    pub on_enter: Vec<DialogueEffect>,
+    /// Effects fired on EVERY entry to this node, including the first.
+    #[serde(default)]
+    pub on_each_visit: Vec<DialogueEffect>,
+    /// Effects fired when the player leaves this node (Goto away or Exit).
+    #[serde(default)]
+    pub on_exit: Vec<DialogueEffect>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DialogueChoice {
+    pub keyword: String,
+    pub label: String,
+    pub target: DialogueTarget,
+    #[serde(default)]
+    pub conditions: Vec<DialogueCondition>,
+    #[serde(default)]
+    pub effects: Vec<DialogueEffect>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DialogueTarget {
+    Goto { node: String },
+    Exit,
+    Repeat,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DialogueCondition {
+    FlagSet {
+        name: String,
+        #[serde(default)]
+        scope: FlagScope,
+    },
+    FlagUnset {
+        name: String,
+        #[serde(default)]
+        scope: FlagScope,
+    },
+    HasItem {
+        vnum: String,
+        #[serde(default = "default_qty_one")]
+        qty: i32,
+    },
+    SkillAtLeast {
+        key: String,
+        level: i32,
+    },
+    CounterAtLeast {
+        key: String,
+        value: i32,
+    },
+    DgVarEquals {
+        scope: DgScope,
+        key: String,
+        value: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DialogueEffect {
+    SetFlag {
+        name: String,
+        #[serde(default)]
+        scope: FlagScope,
+    },
+    ClearFlag {
+        name: String,
+        #[serde(default)]
+        scope: FlagScope,
+    },
+    GiveItem {
+        vnum: String,
+        #[serde(default = "default_qty_one")]
+        qty: i32,
+    },
+    TakeItem {
+        vnum: String,
+        #[serde(default = "default_qty_one")]
+        qty: i32,
+    },
+    AwardSkillXp {
+        skill: String,
+        amount: i32,
+    },
+    SetCounter {
+        key: String,
+        value: i32,
+    },
+    IncrementCounter {
+        key: String,
+        #[serde(default = "default_qty_one")]
+        by: i32,
+    },
+    SetDgVar {
+        scope: DgScope,
+        key: String,
+        value: String,
+    },
+    FireDgTrigger {
+        trigger_type: String,
+        #[serde(default)]
+        arg: String,
+    },
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FlagScope {
+    #[default]
+    Local,
+    Global,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DgScope {
+    Player,
+    Mob,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DialoguePairState {
+    pub current_node: Option<String>,
+    #[serde(default)]
+    pub last_seen_secs: i64,
+    /// How many times this player has entered each named node. Used to gate
+    /// `on_enter` (first-visit only) versus `on_each_visit`.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub visit_counts: HashMap<String, u32>,
+}
+
+fn default_qty_one() -> i32 {
+    1
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MobileData {
     // Identity
@@ -3463,6 +3624,10 @@ pub struct MobileData {
     // Simple dialogue (keyword -> response)
     #[serde(default)]
     pub dialogue: HashMap<String, String>,
+
+    // Branching dialogue tree (overlay; falls back to flat `dialogue` map on miss)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dialogue_tree: Option<DialogueTree>,
 
     // Shop system (requires shopkeeper flag)
     #[serde(default)]
@@ -3699,6 +3864,7 @@ impl MobileData {
             stat_cha: 10,
             flags: MobileFlags::default(),
             dialogue: HashMap::new(),
+            dialogue_tree: None,
             shop_stock: Vec::new(),
             shop_inventory: Vec::new(),
             shop_buy_rate: 50,

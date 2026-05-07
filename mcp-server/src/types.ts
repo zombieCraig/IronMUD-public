@@ -120,6 +120,79 @@ export type TriggerType =
 
 export type MobileTriggerType = "greet" | "attack" | "death" | "say" | "idle" | "always" | "flee";
 
+// ===== Dialogue Trees =====
+
+export type FlagScope = "local" | "global";
+export type DgScope = "player" | "mob";
+
+export type DialogueTarget =
+  | { kind: "goto"; node: string }
+  | { kind: "exit" }
+  | { kind: "repeat" };
+
+export type DialogueCondition =
+  | { kind: "flag_set"; name: string; scope?: FlagScope }
+  | { kind: "flag_unset"; name: string; scope?: FlagScope }
+  | { kind: "has_item"; vnum: string; qty?: number }
+  | { kind: "skill_at_least"; key: string; level: number }
+  | { kind: "counter_at_least"; key: string; value: number }
+  | { kind: "dg_var_equals"; scope: DgScope; key: string; value: string };
+
+export type DialogueEffect =
+  | { kind: "set_flag"; name: string; scope?: FlagScope }
+  | { kind: "clear_flag"; name: string; scope?: FlagScope }
+  | { kind: "give_item"; vnum: string; qty?: number }
+  | { kind: "take_item"; vnum: string; qty?: number }
+  | { kind: "award_skill_xp"; skill: string; amount: number }
+  | { kind: "set_counter"; key: string; value: number }
+  | { kind: "increment_counter"; key: string; by?: number }
+  | { kind: "set_dg_var"; scope: DgScope; key: string; value: string }
+  | { kind: "fire_dg_trigger"; trigger_type: string; arg?: string };
+
+export interface DialogueChoice {
+  keyword: string;
+  label: string;
+  target: DialogueTarget;
+  conditions?: DialogueCondition[];
+  effects?: DialogueEffect[];
+}
+
+export interface DialogueNode {
+  text: string;
+  choices?: DialogueChoice[];
+  on_enter?: DialogueEffect[];
+  on_each_visit?: DialogueEffect[];
+  on_exit?: DialogueEffect[];
+}
+
+export interface DialogueTree {
+  root_node: string;
+  nodes: Record<string, DialogueNode>;
+}
+
+export interface AddDialogueNodeRequest {
+  name: string;
+  text: string;
+  on_enter?: DialogueEffect[];
+  on_each_visit?: DialogueEffect[];
+  on_exit?: DialogueEffect[];
+}
+
+export interface UpdateDialogueNodeRequest {
+  text?: string;
+  on_enter?: DialogueEffect[];
+  on_each_visit?: DialogueEffect[];
+  on_exit?: DialogueEffect[];
+}
+
+export interface DialogueChoiceRequest {
+  keyword: string;
+  label: string;
+  target: DialogueTarget;
+  conditions?: DialogueCondition[];
+  effects?: DialogueEffect[];
+}
+
 export interface MobileTrigger {
   trigger_type: MobileTriggerType;
   script_name: string;
@@ -523,6 +596,10 @@ export interface CreateMobileRequest {
   remove_simulation?: boolean;
   // World-wide cap on live (non-prototype) instances of this vnum (0 = unlimited)
   world_max_count?: number;
+  // Branching dialogue tree (overlay; falls back to flat keyword `dialogue` map on miss).
+  dialogue_tree?: DialogueTree;
+  // Pass true to remove the dialogue tree. Takes precedence over `dialogue_tree`.
+  clear_dialogue_tree?: boolean;
   // Helper-system ally tag. Empty = Circle-stock fallback.
   faction?: string;
   // Spell IDs the mob may cast in combat (CircleMUD `magic_user` analog)

@@ -10,6 +10,7 @@ mod characters;
 mod combat;
 mod crafting;
 pub mod dg;
+pub mod dialogue;
 mod fishing;
 mod garden;
 mod groups;
@@ -478,6 +479,9 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 achievements_unlocked: std::collections::HashMap::new(),
                 active_title: None,
                 gold_high_water: 0,
+                // Dialogue system fields
+                dialogue_pair_state: std::collections::HashMap::new(),
+                dialogue_flags: std::collections::HashMap::new(),
                 // Map system fields
                 rooms_visited: std::collections::HashSet::new(),
                 automap_enabled: false,
@@ -1603,6 +1607,25 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         false
     });
 
+    // set_olc_dialogue_node(connection_id, node_name) -> mark which dialogue
+    // node receives the next collecting_dialogue_node_text save. Pair with
+    // set_olc_edit_mobile for the mobile id. Empty string clears.
+    let conns = connections.clone();
+    engine.register_fn(
+        "set_olc_dialogue_node",
+        move |connection_id: String, node_name: String| {
+            if let Ok(conn_uuid) = uuid::Uuid::parse_str(&connection_id) {
+                let mut conns = conns.lock().unwrap();
+                if let Some(session) = conns.get_mut(&conn_uuid) {
+                    session.olc_dialogue_node_name =
+                        if node_name.is_empty() { None } else { Some(node_name) };
+                    return true;
+                }
+            }
+            false
+        },
+    );
+
     // set_olc_edit_trigger(connection_id, host_kind, index) -> mark which
     // trigger to write the next collecting_dg_body save into. host_kind is
     // "mobile" | "item" | "room"; pair with the matching set_olc_edit_*.
@@ -1920,4 +1943,5 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     achievements::register(engine, db.clone(), connections.clone(), state.clone());
     map::register(engine, db.clone(), connections.clone());
     lang::register(engine, db.clone(), state.clone());
+    dialogue::register(engine, db.clone(), connections.clone());
 }

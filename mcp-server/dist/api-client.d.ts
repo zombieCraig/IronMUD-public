@@ -1,4 +1,4 @@
-import type { Area, Room, Item, Mobile, SpawnPoint, Transport, PlantPrototype, Recipe, CreateRecipeRequest, UpdateRecipeRequest, ForageTables, AddForageEntryRequest, ForageType, ItemSummary, RoomSummary, MobileSummary, AreaOverview, CreateAreaRequest, UpdateAreaRequest, CreateRoomRequest, CreateItemRequest, CreateMobileRequest, CreateSpawnPointRequest, CreateTransportRequest, CreatePlantPrototypeRequest, AddTransportStopRequest, SetExitRequest, AddDoorRequest, AddTriggerRequest, AddExtraDescRequest, AddDialogueRequest, AddMobileTriggerRequest, AddItemTriggerRequest, AddSpawnDependencyRequest, SpawnEntityRequest, BugReport, UpdateBugReportRequest, AddBugNoteRequest } from "./types.js";
+import type { Area, Room, Item, Mobile, SpawnPoint, Transport, PlantPrototype, Recipe, CreateRecipeRequest, UpdateRecipeRequest, ForageTables, AddForageEntryRequest, ForageType, ItemSummary, RoomSummary, MobileSummary, AreaOverview, CreateAreaRequest, UpdateAreaRequest, CreateRoomRequest, CreateItemRequest, CreateMobileRequest, CreateSpawnPointRequest, CreateTransportRequest, CreatePlantPrototypeRequest, AddTransportStopRequest, SetExitRequest, AddDoorRequest, AddTriggerRequest, AddExtraDescRequest, AddDialogueRequest, AddDialogueNodeRequest, UpdateDialogueNodeRequest, DialogueChoiceRequest, AddMobileTriggerRequest, AddItemTriggerRequest, AddSpawnDependencyRequest, SpawnEntityRequest, BugReport, UpdateBugReportRequest, AddBugNoteRequest } from "./types.js";
 export declare class IronMUDApiClient {
     private client;
     constructor(baseUrl: string, apiKey: string);
@@ -80,6 +80,34 @@ export declare class IronMUDApiClient {
         refreshed_instances?: number;
     }>;
     removeMobileDialogue(mobileId: string, keyword: string): Promise<{
+        data: Mobile;
+        refreshed_instances?: number;
+    }>;
+    setDialogueTreeRoot(mobileId: string, nodeName: string): Promise<{
+        data: Mobile;
+        refreshed_instances?: number;
+    }>;
+    addDialogueNode(mobileId: string, data: AddDialogueNodeRequest): Promise<{
+        data: Mobile;
+        refreshed_instances?: number;
+    }>;
+    updateDialogueNode(mobileId: string, nodeName: string, data: UpdateDialogueNodeRequest): Promise<{
+        data: Mobile;
+        refreshed_instances?: number;
+    }>;
+    removeDialogueNode(mobileId: string, nodeName: string): Promise<{
+        data: Mobile;
+        refreshed_instances?: number;
+    }>;
+    addDialogueChoice(mobileId: string, nodeName: string, data: DialogueChoiceRequest): Promise<{
+        data: Mobile;
+        refreshed_instances?: number;
+    }>;
+    updateDialogueChoice(mobileId: string, nodeName: string, index: number, data: DialogueChoiceRequest): Promise<{
+        data: Mobile;
+        refreshed_instances?: number;
+    }>;
+    removeDialogueChoice(mobileId: string, nodeName: string, index: number): Promise<{
         data: Mobile;
         refreshed_instances?: number;
     }>;

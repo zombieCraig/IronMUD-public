@@ -85,8 +85,13 @@ fn run_command(args, connection_id) {
         add_skill_experience(char.name, language_key, 1);
     }
 
-    // Check for NPC dialogue responses (regular dialogue first)
-    let handled = check_npc_dialogue(room_id, args, connection_id);
+    // Check dialogue trees first (overlay; falls through to flat dialogue map on miss)
+    let handled = check_npc_dialogue_tree(args, connection_id);
+
+    // Then the flat keyword-only dialogue map
+    if !handled {
+        handled = check_npc_dialogue(room_id, args, connection_id);
+    }
 
     // If no regular dialogue matched, check for healer interactions
     if !handled {
@@ -106,6 +111,32 @@ fn run_command(args, connection_id) {
         }
     }
     return;
+}
+
+// Tree-based dialogue: iterate words, ask the dialogue engine to walk.
+// Engine handles partner selection (active sticky partner OR any room mob
+// whose current node has a matching choice). Returns true on first match.
+fn check_npc_dialogue_tree(message, connection_id) {
+    let msg_lower = message.to_lower();
+    let words = msg_lower.split(" ");
+    for word in words {
+        let clean = clean_word(word);
+        if clean == "" { continue; }
+        let result = walk_dialogue_keyword(connection_id, clean);
+        if result.ok {
+            let line = result.mob_short_desc + " says: " + result.response;
+            send_client_message(connection_id, line);
+            broadcast_to_room_except(result.mob_room_id, connection_id, line);
+            // Menu only matters for sticky talk mode; print it iff still in dialogue.
+            if !result.finished && is_in_dialogue(connection_id) {
+                if result.menu != "" {
+                    send_client_message(connection_id, result.menu);
+                }
+            }
+            return true;
+        }
+    }
+    return false;
 }
 
 fn check_npc_dialogue(room_id, message, connection_id) {

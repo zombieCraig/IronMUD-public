@@ -18,6 +18,7 @@ pub mod claude;
 pub mod completion;
 pub mod control;
 pub mod db;
+pub mod dialogue_edit;
 pub mod discord;
 pub mod game;
 pub mod gemini;
@@ -69,6 +70,10 @@ pub struct PlayerSession {
     pub olc_edit_trigger_host: Option<String>,
     /// Index into the host's `triggers` Vec.
     pub olc_edit_trigger_index: Option<usize>,
+    /// When `olc_mode == "collecting_dialogue_node_text"`, names the
+    /// dialogue tree node whose `text` field receives the buffered content.
+    /// `olc_edit_mobile` carries the mobile id.
+    pub olc_dialogue_node_name: Option<String>,
     pub olc_extra_keywords: Vec<String>,
     pub olc_undo_buffer: Option<Vec<String>>,
     // Character creation wizard state (JSON-serialized)
@@ -103,6 +108,9 @@ pub struct PlayerSession {
     // ASCII map: legend printed once per session, suppressed thereafter.
     // Resets to false on disconnect (session reconstruction).
     pub map_legend_shown: bool,
+    // Dialogue tree: sticky-mode active partner mob (transient, not persisted).
+    // `Some(mob_id)` means inputs route through dialogue; `None` is normal command parsing.
+    pub dialogue_partner_id: Option<Uuid>,
 }
 
 /// Input events from the read handler
@@ -1145,6 +1153,7 @@ pub async fn handle_connection(
                 olc_edit_mobile: None,
                 olc_edit_trigger_host: None,
                 olc_edit_trigger_index: None,
+                olc_dialogue_node_name: None,
                 olc_extra_keywords: Vec::new(),
                 olc_undo_buffer: None,
                 wizard_data: None,
@@ -1169,6 +1178,7 @@ pub async fn handle_connection(
                     .as_secs() as i64,
                 abbrev_enabled: true,
                 map_legend_shown: false,
+                dialogue_partner_id: None,
             },
         );
     }
@@ -1250,6 +1260,7 @@ pub async fn handle_connection(
                 spell_names,
                 language_keys,
                 online_players,
+                mobs_in_room,
                 has_builder_access,
             ) = {
                 let world = state.lock().unwrap();
@@ -1366,6 +1377,36 @@ pub async fn handle_connection(
                         .collect()
                 };
 
+                // Mobs in this player's current room (for `talk <mob>` completion).
+                let mobs_in_room: Vec<String> = {
+                    let conns = connections.lock().unwrap();
+                    let room_id_opt = conns
+                        .get(&connection_id)
+                        .and_then(|s| s.character.as_ref())
+                        .map(|c| c.current_room_id);
+                    drop(conns);
+                    if let Some(room_id) = room_id_opt {
+                        if room_id != Uuid::nil() {
+                            world
+                                .db
+                                .get_mobiles_in_room(&room_id)
+                                .unwrap_or_default()
+                                .into_iter()
+                                .filter(|m| !m.is_prototype)
+                                .flat_map(|m| {
+                                    let mut keys = m.keywords.clone();
+                                    keys.push(m.name);
+                                    keys
+                                })
+                                .collect()
+                        } else {
+                            Vec::new()
+                        }
+                    } else {
+                        Vec::new()
+                    }
+                };
+
                 let has_builder_access = is_builder || is_admin;
 
                 (
@@ -1382,6 +1423,7 @@ pub async fn handle_connection(
                     spell_names,
                     language_keys,
                     online_players,
+                    mobs_in_room,
                     has_builder_access,
                 )
             };
@@ -1403,6 +1445,7 @@ pub async fn handle_connection(
                 &spell_names,
                 &language_keys,
                 &online_players,
+                &mobs_in_room,
                 has_builder_access,
             );
 
@@ -1807,6 +1850,88 @@ pub async fn handle_connection(
             continue;
         }
 
+        // Multi-line text editor for a dialogue tree node's `text` field.
+        if olc_mode.as_deref() == Some("collecting_dialogue_node_text") {
+            let result = {
+                let mut conns = connections.lock().unwrap();
+                if let Some(session) = conns.get_mut(&connection_id) {
+                    handle_editor_command(&input, &mut session.olc_buffer, &mut session.olc_undo_buffer)
+                } else {
+                    EditorCommandResult::Cancel
+                }
+            };
+
+            match result {
+                EditorCommandResult::Handled(msg) => {
+                    let _ = tx_client.send(msg);
+                }
+                EditorCommandResult::Save(content) => {
+                    let (mob_id, node_name) = {
+                        let conns = connections.lock().unwrap();
+                        conns
+                            .get(&connection_id)
+                            .map(|s| (s.olc_edit_mobile, s.olc_dialogue_node_name.clone()))
+                            .unwrap_or((None, None))
+                    };
+                    let saved = if let (Some(mid), Some(name)) = (mob_id, node_name) {
+                        let world = state.lock().unwrap();
+                        world
+                            .db
+                            .update_mobile(&mid, |m| {
+                                if let Some(tree) = m.dialogue_tree.as_mut() {
+                                    if let Some(node) = tree.nodes.get_mut(&name) {
+                                        node.text = content.clone();
+                                    }
+                                }
+                            })
+                            .is_ok()
+                    } else {
+                        false
+                    };
+                    let _ = tx_client.send(if saved {
+                        "Dialogue node text saved.\n".to_string()
+                    } else {
+                        "Error: could not save dialogue node text.\n".to_string()
+                    });
+                    {
+                        let mut conns = connections.lock().unwrap();
+                        if let Some(session) = conns.get_mut(&connection_id) {
+                            session.olc_mode = None;
+                            session.olc_buffer.clear();
+                            session.olc_edit_mobile = None;
+                            session.olc_dialogue_node_name = None;
+                            session.olc_undo_buffer = None;
+                        }
+                    }
+                    let prompt = build_prompt(&connection_id, &connections, &state);
+                    let _ = tx_client.send(prompt);
+                }
+                EditorCommandResult::Cancel => {
+                    {
+                        let mut conns = connections.lock().unwrap();
+                        if let Some(session) = conns.get_mut(&connection_id) {
+                            session.olc_mode = None;
+                            session.olc_buffer.clear();
+                            session.olc_edit_mobile = None;
+                            session.olc_dialogue_node_name = None;
+                            session.olc_undo_buffer = None;
+                        }
+                    }
+                    let _ = tx_client.send("Dialogue node text editing cancelled.\n".to_string());
+                    let prompt = build_prompt(&connection_id, &connections, &state);
+                    let _ = tx_client.send(prompt);
+                }
+                EditorCommandResult::AppendText(text) => {
+                    let mut conns = connections.lock().unwrap();
+                    if let Some(session) = conns.get_mut(&connection_id) {
+                        session.olc_undo_buffer = Some(session.olc_buffer.clone());
+                        session.olc_buffer.push(text);
+                    }
+                }
+            }
+            continue;
+        }
+
         // Check for OLC extra description collection mode
         if olc_mode.as_deref() == Some("collecting_extra_desc") {
             // Use shared editor command handler
@@ -2142,6 +2267,72 @@ pub async fn handle_connection(
                     let _ = tx_client.send(prompt);
                 }
                 continue;
+            }
+        }
+
+        // Sticky dialogue input: numeric / keyword / bye / movement intercept.
+        // Runs after OLC modes so OLC takes precedence over a stray dialogue
+        // partner (which is benign to leave dangling). Movement directions and
+        // unhandled keywords fall through to normal command dispatch.
+        if crate::script::dialogue::session_in_dialogue(&connections, &connection_id) {
+            let db_clone = {
+                let world = state.lock().unwrap();
+                world.db.clone()
+            };
+            let outcome =
+                crate::script::dialogue::dispatch_sticky_input(&db_clone, &connections, connection_id, &input);
+            match outcome {
+                crate::script::dialogue::DialogueDispatch::Handled {
+                    actor_lines,
+                    room_broadcasts,
+                } => {
+                    for line in actor_lines {
+                        let _ = tx_client.send(format!("{}\n", line));
+                    }
+                    let actor_name = {
+                        let conns = connections.lock().unwrap();
+                        conns
+                            .get(&connection_id)
+                            .and_then(|s| s.character.as_ref().map(|c| c.name.clone()))
+                    };
+                    for (room_id, msg) in room_broadcasts {
+                        crate::session::broadcast_to_room(
+                            &connections,
+                            room_id,
+                            msg,
+                            actor_name.as_deref(),
+                        );
+                    }
+                    let prompt = build_prompt(&connection_id, &connections, &state);
+                    let _ = tx_client.send(prompt);
+                    continue;
+                }
+                crate::script::dialogue::DialogueDispatch::ExitedFallthrough {
+                    actor_lines,
+                    room_broadcasts,
+                } => {
+                    for line in actor_lines {
+                        let _ = tx_client.send(format!("{}\n", line));
+                    }
+                    let actor_name = {
+                        let conns = connections.lock().unwrap();
+                        conns
+                            .get(&connection_id)
+                            .and_then(|s| s.character.as_ref().map(|c| c.name.clone()))
+                    };
+                    for (room_id, msg) in room_broadcasts {
+                        crate::session::broadcast_to_room(
+                            &connections,
+                            room_id,
+                            msg,
+                            actor_name.as_deref(),
+                        );
+                    }
+                    // Fall through to normal command parsing with the same input.
+                }
+                crate::script::dialogue::DialogueDispatch::Fallthrough => {
+                    // Fall through to normal command parsing.
+                }
             }
         }
 

@@ -35,6 +35,10 @@
     "access": "user",
     "description": "Say something to others in the room"
   },
+  "talk": {
+    "access": "user",
+    "description": "Start a conversation with a nearby NPC"
+  },
   "who": {
     "access": "any",
     "description": "List all online players"

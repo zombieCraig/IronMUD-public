@@ -35,6 +35,9 @@ import type {
   AddTriggerRequest,
   AddExtraDescRequest,
   AddDialogueRequest,
+  AddDialogueNodeRequest,
+  UpdateDialogueNodeRequest,
+  DialogueChoiceRequest,
   AddMobileTriggerRequest,
   AddItemTriggerRequest,
   AddSpawnDependencyRequest,
@@ -445,6 +448,87 @@ export class IronMUDApiClient {
     return this.requestWithMeta<Mobile>(
       "delete",
       `/mobiles/${mobileId}/dialogue/${encodeURIComponent(keyword)}`
+    );
+  }
+
+  // Granular dialogue-tree editing
+  async setDialogueTreeRoot(
+    mobileId: string,
+    nodeName: string
+  ): Promise<{ data: Mobile; refreshed_instances?: number }> {
+    return this.requestWithMeta<Mobile>(
+      "put",
+      `/mobiles/${mobileId}/dialogue_tree/root`,
+      { node_name: nodeName }
+    );
+  }
+
+  async addDialogueNode(
+    mobileId: string,
+    data: AddDialogueNodeRequest
+  ): Promise<{ data: Mobile; refreshed_instances?: number }> {
+    return this.requestWithMeta<Mobile>(
+      "post",
+      `/mobiles/${mobileId}/dialogue_tree/nodes`,
+      data
+    );
+  }
+
+  async updateDialogueNode(
+    mobileId: string,
+    nodeName: string,
+    data: UpdateDialogueNodeRequest
+  ): Promise<{ data: Mobile; refreshed_instances?: number }> {
+    return this.requestWithMeta<Mobile>(
+      "put",
+      `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}`,
+      data
+    );
+  }
+
+  async removeDialogueNode(
+    mobileId: string,
+    nodeName: string
+  ): Promise<{ data: Mobile; refreshed_instances?: number }> {
+    return this.requestWithMeta<Mobile>(
+      "delete",
+      `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}`
+    );
+  }
+
+  async addDialogueChoice(
+    mobileId: string,
+    nodeName: string,
+    data: DialogueChoiceRequest
+  ): Promise<{ data: Mobile; refreshed_instances?: number }> {
+    return this.requestWithMeta<Mobile>(
+      "post",
+      `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices`,
+      data
+    );
+  }
+
+  async updateDialogueChoice(
+    mobileId: string,
+    nodeName: string,
+    index: number,
+    data: DialogueChoiceRequest
+  ): Promise<{ data: Mobile; refreshed_instances?: number }> {
+    return this.requestWithMeta<Mobile>(
+      "put",
+      `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices/${index}`,
+      data
+    );
+  }
+
+  async removeDialogueChoice(
+    mobileId: string,
+    nodeName: string,
+    index: number
+  ): Promise<{ data: Mobile; refreshed_instances?: number }> {
+    return this.requestWithMeta<Mobile>(
+      "delete",
+      `/mobiles/${mobileId}/dialogue_tree/nodes/${encodeURIComponent(nodeName)}/choices/${index}`
     );
   }
 

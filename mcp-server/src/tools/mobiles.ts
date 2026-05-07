@@ -202,6 +202,12 @@ export const mobileToolDefinitions = [
         },
         perception: { type: "number" },
         world_max_count: { type: "number", description: "Cap on live (non-prototype) instances of this vnum world-wide. 0 or negative clears the cap (unlimited)." },
+        dialogue_tree: {
+          type: "object",
+          description: "Branching dialogue tree. Shape: { root_node: 'root', nodes: { <id>: { text, choices: [{ keyword, label, target: { kind: 'goto'|'exit'|'repeat', node? }, conditions: [...], effects: [...] }], on_enter: [...] } } }. Conditions use kind: flag_set/flag_unset/has_item/skill_at_least/counter_at_least/dg_var_equals. Effects use kind: set_flag/clear_flag/give_item/take_item/award_skill_xp/set_counter/increment_counter/set_dg_var/fire_dg_trigger. Flag scope is 'local' (per-mob-vnum) or 'global'. DG scope is 'player' or 'mob'.",
+          additionalProperties: true,
+        },
+        clear_dialogue_tree: { type: "boolean", description: "Pass true to remove the dialogue tree. Takes precedence over `dialogue_tree`." },
         faction: { type: "string", description: "Helper-system ally tag. Empty string clears." },
         combat_spells: { type: "array", items: { type: "string" }, description: "Replace the spell list. Empty array clears." },
         combat_spell_chance: { type: "number", description: "Per-round percent chance (0-100) to cast from `combat_spells`. Out-of-range values are clamped." },
@@ -293,6 +299,113 @@ export const mobileToolDefinitions = [
         keyword: { type: "string", description: "Keyword to remove" },
       },
       required: ["mobile_id", "keyword"],
+    },
+  },
+  // ===== Granular dialogue-tree editing =====
+  // Compose a tree node-by-node, choice-by-choice. Adding the very first
+  // node auto-initializes the tree with that node as the root.
+  {
+    name: "set_mobile_dialogue_tree_root",
+    description: "Point the dialogue tree's root_node at an existing node (the entry point reached by 'talk <mob>' before any state).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        mobile_id: { type: "string", description: "Mobile UUID or vnum" },
+        node_name: { type: "string", description: "Existing node id to use as root" },
+      },
+      required: ["mobile_id", "node_name"],
+    },
+  },
+  {
+    name: "add_mobile_dialogue_node",
+    description: "Add a new node to a mobile's dialogue tree. If the mobile has no tree yet, the first node added becomes the tree's root.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        mobile_id: { type: "string", description: "Mobile UUID or vnum" },
+        name: { type: "string", description: "Node id (used by Goto choice targets and for later updates)" },
+        text: { type: "string", description: "Mob's spoken text when this node is entered" },
+        on_enter: { type: "array", description: "Effects fired the FIRST time this player visits this node (DialogueEffect[])" },
+        on_each_visit: { type: "array", description: "Effects fired EVERY time this player enters this node, including the first" },
+        on_exit: { type: "array", description: "Effects fired when leaving this node (Goto away or Exit)" },
+      },
+      required: ["mobile_id", "name", "text"],
+    },
+  },
+  {
+    name: "update_mobile_dialogue_node",
+    description: "Patch fields of an existing node. Omit a field to leave it unchanged. Pass [] to clear an effect list.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        mobile_id: { type: "string", description: "Mobile UUID or vnum" },
+        node_name: { type: "string", description: "Node id to patch" },
+        text: { type: "string", description: "New spoken text" },
+        on_enter: { type: "array", description: "Replacement on_enter effect list" },
+        on_each_visit: { type: "array", description: "Replacement on_each_visit effect list" },
+        on_exit: { type: "array", description: "Replacement on_exit effect list" },
+      },
+      required: ["mobile_id", "node_name"],
+    },
+  },
+  {
+    name: "remove_mobile_dialogue_node",
+    description: "Remove a node from the tree. Errors if it is the root, or if any other node has a Goto pointing at it (re-route those choices first).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        mobile_id: { type: "string", description: "Mobile UUID or vnum" },
+        node_name: { type: "string", description: "Node id to remove" },
+      },
+      required: ["mobile_id", "node_name"],
+    },
+  },
+  {
+    name: "add_mobile_dialogue_choice",
+    description: "Append a choice to a node. The keyword is matched by 'say <keyword>'; the label is shown in 'talk' menus. Goto targets must reference an existing node.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        mobile_id: { type: "string", description: "Mobile UUID or vnum" },
+        node_name: { type: "string", description: "Node id to attach the choice to" },
+        keyword: { type: "string", description: "Single-word lookup key (case-insensitive)" },
+        label: { type: "string", description: "Human-readable label for the talk menu" },
+        target: { type: "object", description: "DialogueTarget: {kind:'goto', node:'X'} | {kind:'exit'} | {kind:'repeat'}" },
+        conditions: { type: "array", description: "DialogueCondition[] — choice is hidden unless ALL evaluate true" },
+        effects: { type: "array", description: "DialogueEffect[] fired when the player picks this choice" },
+      },
+      required: ["mobile_id", "node_name", "keyword", "label", "target"],
+    },
+  },
+  {
+    name: "update_mobile_dialogue_choice",
+    description: "Replace a choice at the given index on a node (0-indexed). Index is the choice's position in the node's choices array.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        mobile_id: { type: "string", description: "Mobile UUID or vnum" },
+        node_name: { type: "string", description: "Node id" },
+        index: { type: "number", description: "0-indexed position of the choice to replace" },
+        keyword: { type: "string" },
+        label: { type: "string" },
+        target: { type: "object" },
+        conditions: { type: "array" },
+        effects: { type: "array" },
+      },
+      required: ["mobile_id", "node_name", "index", "keyword", "label", "target"],
+    },
+  },
+  {
+    name: "remove_mobile_dialogue_choice",
+    description: "Remove a choice at the given index from a node (0-indexed).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        mobile_id: { type: "string", description: "Mobile UUID or vnum" },
+        node_name: { type: "string", description: "Node id" },
+        index: { type: "number", description: "0-indexed position" },
+      },
+      required: ["mobile_id", "node_name", "index"],
     },
   },
   {
