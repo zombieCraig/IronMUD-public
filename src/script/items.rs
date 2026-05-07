@@ -97,6 +97,23 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_set("note_content", |i: &mut ItemData, v: String| {
             i.note_content = if v.is_empty() { None } else { Some(v) };
         })
+        .register_get("board_read_admin_only", |i: &mut ItemData| i.board_read_admin_only)
+        .register_set("board_read_admin_only", |i: &mut ItemData, v: bool| {
+            i.board_read_admin_only = v;
+        })
+        .register_get("board_write_admin_only", |i: &mut ItemData| i.board_write_admin_only)
+        .register_set("board_write_admin_only", |i: &mut ItemData, v: bool| {
+            i.board_write_admin_only = v;
+        })
+        .register_get("board_max_messages", |i: &mut ItemData| {
+            i.board_max_messages.unwrap_or(0) as i64
+        })
+        .register_get("has_board_max_messages", |i: &mut ItemData| {
+            i.board_max_messages.is_some()
+        })
+        .register_set("board_max_messages", |i: &mut ItemData, v: i64| {
+            i.board_max_messages = if v > 0 { Some(v as i32) } else { None };
+        })
         .register_get("extra_descs", |i: &mut ItemData| {
             i.extra_descs
                 .iter()

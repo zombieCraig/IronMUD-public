@@ -328,7 +328,7 @@ fn parses_items_into_plan() {
     let (ir, parse_warnings) = CircleEngine.parse(&fixture_root()).expect("parse");
     assert_eq!(parse_warnings.len(), 0, "fixture should parse cleanly");
     let zone = &ir.zones[0];
-    assert_eq!(zone.items.len(), 14, "fourteen fixture items in obj/9000.obj");
+    assert_eq!(zone.items.len(), 15, "fifteen fixture items in obj/9000.obj");
 
     let opts = MappingOptions {
         circle: mapping::CircleMappingTable::load_default(),
@@ -338,7 +338,7 @@ fn parses_items_into_plan() {
         existing_item_vnums: Vec::new(),
     };
     let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
-    assert_eq!(plan.items.len(), 14);
+    assert_eq!(plan.items.len(), 15);
 
     // Sword: weapon, 1d8 slashing, GLOW (extra-bit `a` = bit 0), wearable
     // wielded; APPLY_DAMROLL +2 → damage_bonus = 2 (CircleMUD APPLY_DAMROLL parity).
@@ -498,10 +498,24 @@ fn parses_items_into_plan() {
         .expect("ANTI_GOOD warn surfaced");
     assert_eq!(anti_warn.severity, Severity::Warn);
 
+    // ITEM_BOARD (type 24) — non-stock vnum 9024 imports as Board with
+    // public defaults + an Info warning steering the builder to oedit.
+    let board = plan.items.iter().find(|i| i.source_vnum == 9024).expect("board");
+    assert_eq!(board.data.item_type, ItemType::Board);
+    assert!(!board.data.board_read_admin_only, "non-stock board defaults to public read");
+    assert!(!board.data.board_write_admin_only, "non-stock board defaults to public write");
+    assert_eq!(board.data.board_max_messages, Some(60));
+    let board_info = warnings
+        .iter()
+        .find(|w| w.message.contains("ITEM_BOARD vnum 9024"))
+        .expect("non-stock board surfaces Info warn");
+    assert_eq!(board_info.severity, Severity::Info);
+
     // No Block warnings on a fresh fixture.
     let blocks = warnings.iter().filter(|w| w.severity == Severity::Block).count();
     assert_eq!(blocks, 0);
 }
+
 
 #[test]
 fn applies_items_to_tmp_db() {
@@ -521,8 +535,8 @@ fn applies_items_to_tmp_db() {
         };
         let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
         let summary = writer::apply(&db, &plan, &warnings).expect("apply");
-        assert_eq!(summary.written_items, 14);
-        assert_eq!(summary.planned_items, 14);
+        assert_eq!(summary.written_items, 15);
+        assert_eq!(summary.planned_items, 15);
 
         let sword = db
             .get_item_by_vnum("test_fixture_village_9010")

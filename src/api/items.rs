@@ -191,6 +191,12 @@ pub struct CreateItemRequest {
     #[serde(default)]
     pub note_content: Option<String>,
     #[serde(default)]
+    pub board_read_admin_only: Option<bool>,
+    #[serde(default)]
+    pub board_write_admin_only: Option<bool>,
+    #[serde(default)]
+    pub board_max_messages: Option<i32>,
+    #[serde(default)]
     pub container_key_vnum: Option<String>,
     #[serde(default)]
     pub world_max_count: Option<i32>,
@@ -380,6 +386,12 @@ pub struct UpdateItemRequest {
     pub food_effects: Option<Vec<FoodEffectRequest>>,
     #[serde(default)]
     pub note_content: Option<String>,
+    #[serde(default)]
+    pub board_read_admin_only: Option<bool>,
+    #[serde(default)]
+    pub board_write_admin_only: Option<bool>,
+    #[serde(default)]
+    pub board_max_messages: Option<i32>,
     #[serde(default)]
     pub container_key_vnum: Option<String>,
     #[serde(default)]
@@ -734,6 +746,9 @@ async fn create_item(
         teaches_recipe: None,
         teaches_spell: None,
         note_content: req.note_content.map(normalize_note_input).transpose()?.flatten(),
+        board_read_admin_only: req.board_read_admin_only.unwrap_or(false),
+        board_write_admin_only: req.board_write_admin_only.unwrap_or(false),
+        board_max_messages: req.board_max_messages.filter(|n| *n > 0),
         donated_at: None,
         extra_descs: req
             .extra_descs

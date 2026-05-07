@@ -243,6 +243,9 @@ export const itemToolDefinitions = [
           },
         },
         note_content: { type: "string", description: "Long-form readable body (use \\n for line breaks). Any item with this becomes readable via the `read` command; ANSI and whitespace are preserved. Max 32 KB." },
+        board_read_admin_only: { type: "boolean", description: "For ItemType `board` only: when true, only admins can `board list`/`read`. Mirrors CircleMUD immortal-board access (gen_board.c)." },
+        board_write_admin_only: { type: "boolean", description: "For ItemType `board` only: when true, only admins can `board write`. Mirrors CircleMUD immortal-board access." },
+        board_max_messages: { type: "number", description: "For ItemType `board` only: per-board post cap (eviction-on-overflow). Omit or 0 = engine default 60. Stock CircleMUD boards use 60." },
         container_key_vnum: { type: "string", description: "For containers: vnum of the key item that unlocks it. Any spawned copy of that prototype works." },
         world_max_count: { type: "number", description: "Cap on live (non-prototype) instances of this vnum world-wide. Omit or 0 = unlimited. `flags.unique` is sugar for 1." },
         extra_descs: {
@@ -370,6 +373,9 @@ export const itemToolDefinitions = [
           },
         },
         note_content: { type: "string", description: "Long-form readable body (use \\n for line breaks). Any item with this becomes readable via the `read` command; ANSI and whitespace are preserved. Empty string clears. Max 32 KB." },
+        board_read_admin_only: { type: "boolean", description: "For ItemType `board` only: when true, only admins can `board list`/`read`." },
+        board_write_admin_only: { type: "boolean", description: "For ItemType `board` only: when true, only admins can `board write`." },
+        board_max_messages: { type: "number", description: "For ItemType `board` only: per-board post cap. 0 or negative clears (engine default 60)." },
         container_key_vnum: { type: "string", description: "For containers: vnum of the key item that unlocks it. Empty string clears. Any spawned copy of that prototype works." },
         world_max_count: { type: "number", description: "Cap on live (non-prototype) instances of this vnum world-wide. 0 or negative clears the cap (unlimited). `flags.unique` is sugar for 1." },
         extra_descs: {

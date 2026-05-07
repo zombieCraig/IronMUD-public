@@ -6036,6 +6036,166 @@ fn test_mailbox_purged_on_character_delete() {
     }
 }
 
+// === Bulletin board (gen_board) tests ===
+
+#[test]
+fn test_board_post_persists_and_lists_oldest_first() {
+    use ironmud::db::Db;
+    use ironmud::types::BoardPost;
+
+    let db_path = format!("test_board_persist_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        // Insert three posts with explicit posted_at to verify oldest-first
+        // listing regardless of insertion order.
+        let mut p1 = BoardPost::new("3098".to_string(), "Alice".to_string(), "first".to_string(), "body 1".to_string());
+        let mut p2 = BoardPost::new("3098".to_string(), "Bob".to_string(), "second".to_string(), "body 2".to_string());
+        let mut p3 = BoardPost::new("3098".to_string(), "Carol".to_string(), "third".to_string(), "body 3".to_string());
+        p1.posted_at = 100;
+        p2.posted_at = 200;
+        p3.posted_at = 300;
+        // Insert in reverse order.
+        db.store_board_post(p3.clone(), None).expect("store p3");
+        db.store_board_post(p1.clone(), None).expect("store p1");
+        db.store_board_post(p2.clone(), None).expect("store p2");
+
+        let listed = db.get_board_posts("3098").expect("list");
+        assert_eq!(listed.len(), 3);
+        assert_eq!(listed[0].subject, "first");
+        assert_eq!(listed[1].subject, "second");
+        assert_eq!(listed[2].subject, "third");
+
+        // Sibling board is untouched.
+        assert_eq!(db.count_board_posts("3099").expect("count"), 0);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_board_max_messages_evicts_oldest() {
+    use ironmud::db::Db;
+    use ironmud::types::BoardPost;
+
+    let db_path = format!("test_board_evict_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        for (i, subj) in ["one", "two", "three"].iter().enumerate() {
+            let mut p = BoardPost::new(
+                "3098".to_string(),
+                "Alice".to_string(),
+                subj.to_string(),
+                "body".to_string(),
+            );
+            p.posted_at = (i as i64) + 1;
+            db.store_board_post(p, Some(2)).expect("store");
+        }
+
+        let listed = db.get_board_posts("3098").expect("list");
+        assert_eq!(listed.len(), 2, "cap=2 should retain only 2 newest");
+        assert_eq!(listed[0].subject, "two", "oldest (one) evicted");
+        assert_eq!(listed[1].subject, "three");
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_board_posts_purged_on_character_delete() {
+    use ironmud::db::Db;
+    use ironmud::types::BoardPost;
+
+    let db_path = format!("test_board_purge_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        for subj in &["a", "b", "c"] {
+            let p = BoardPost::new(
+                "3098".to_string(),
+                "Alice".to_string(),
+                subj.to_string(),
+                "body".to_string(),
+            );
+            db.store_board_post(p, None).expect("store");
+        }
+        let bystander = BoardPost::new(
+            "3098".to_string(),
+            "Bob".to_string(),
+            "kept".to_string(),
+            "body".to_string(),
+        );
+        db.store_board_post(bystander, None).expect("store");
+
+        assert_eq!(db.count_board_posts("3098").expect("count"), 4);
+
+        let removed = db.delete_board_posts_by_author("Alice").expect("purge");
+        assert_eq!(removed, 3);
+
+        let listed = db.get_board_posts("3098").expect("list");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].author, "Bob", "Bob's post should survive");
+
+        // delete_character_data path also purges.
+        db.delete_character_data("Bob").expect("delete");
+        assert_eq!(db.count_board_posts("3098").expect("count after"), 0);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_board_default_cap_uses_engine_constant() {
+    use ironmud::db::Db;
+    use ironmud::types::BoardPost;
+
+    let db_path = format!("test_board_default_cap_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        // Insert DEFAULT_BOARD_MAX_MESSAGES + 1 posts with `None` cap; the
+        // engine default should evict.
+        let cap = Db::DEFAULT_BOARD_MAX_MESSAGES;
+        for i in 0..(cap + 1) {
+            let mut p = BoardPost::new(
+                "3098".to_string(),
+                "Alice".to_string(),
+                format!("post {}", i),
+                "body".to_string(),
+            );
+            p.posted_at = i as i64;
+            db.store_board_post(p, None).expect("store");
+        }
+        assert_eq!(db.count_board_posts("3098").expect("count"), cap);
+        // Oldest (post 0) should be gone.
+        let listed = db.get_board_posts("3098").expect("list");
+        assert_eq!(listed[0].subject, "post 1");
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
 #[test]
 fn test_mob_passive_regen_standing_yields_zero() {
     use ironmud::script::apply_mobile_passive_stance_regen;

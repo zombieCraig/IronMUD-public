@@ -61,6 +61,12 @@ pub struct PlayerSession {
     pub olc_buffer: Vec<String>,
     pub olc_edit_room: Option<Uuid>,
     pub olc_edit_item: Option<Uuid>,
+    /// Bulletin board destination vnum while collecting a multi-line post.
+    /// Set by `start_board_post` (called from `board write`); the saved
+    /// post is committed via `add_board_post` on `.save`.
+    pub olc_edit_board_vnum: Option<String>,
+    /// Subject line for the in-progress bulletin board post.
+    pub olc_board_subject: Option<String>,
     /// DG trigger editing — host mobile when editing a mob's trigger.
     /// Used together with `olc_edit_trigger_index` and `olc_edit_trigger_host`
     /// to identify which trigger to write the edited body to.
@@ -1150,6 +1156,8 @@ pub async fn handle_connection(
                 olc_buffer: Vec::new(),
                 olc_edit_room: None,
                 olc_edit_item: None,
+                olc_edit_board_vnum: None,
+                olc_board_subject: None,
                 olc_edit_mobile: None,
                 olc_edit_trigger_host: None,
                 olc_edit_trigger_index: None,
@@ -1709,6 +1717,107 @@ pub async fn handle_connection(
                         }
                     }
                     let _ = tx_client.send("Note editing cancelled.\n".to_string());
+                    let prompt = build_prompt(&connection_id, &connections, &state);
+                    let _ = tx_client.send(prompt);
+                }
+                EditorCommandResult::AppendText(text) => {
+                    let mut conns = connections.lock().unwrap();
+                    if let Some(session) = conns.get_mut(&connection_id) {
+                        session.olc_undo_buffer = Some(session.olc_buffer.clone());
+                        session.olc_buffer.push(text);
+                    }
+                }
+            }
+            continue;
+        }
+
+        // Check for OLC bulletin board post collection mode
+        if olc_mode.as_deref() == Some("collecting_board_post") {
+            let result = {
+                let mut conns = connections.lock().unwrap();
+                if let Some(session) = conns.get_mut(&connection_id) {
+                    handle_editor_command(&input, &mut session.olc_buffer, &mut session.olc_undo_buffer)
+                } else {
+                    EditorCommandResult::Cancel
+                }
+            };
+
+            match result {
+                EditorCommandResult::Handled(msg) => {
+                    let _ = tx_client.send(msg);
+                }
+                EditorCommandResult::Save(content) => {
+                    const MAX_POST_BYTES: usize = 32 * 1024;
+                    if content.len() > MAX_POST_BYTES {
+                        let _ = tx_client.send(format!(
+                            "Post too long ({} bytes, max {}). Trim with .d or .r, then .save.\n",
+                            content.len(),
+                            MAX_POST_BYTES
+                        ));
+                    } else if content.is_empty() {
+                        let _ = tx_client.send(
+                            "Empty post not saved. Type some text or .cancel to abort.\n".to_string(),
+                        );
+                    } else {
+                        let (board_vnum, subject, author) = {
+                            let conns = connections.lock().unwrap();
+                            match conns.get(&connection_id) {
+                                Some(s) => (
+                                    s.olc_edit_board_vnum.clone(),
+                                    s.olc_board_subject.clone(),
+                                    s.character.as_ref().map(|c| c.name.clone()),
+                                ),
+                                None => (None, None, None),
+                            }
+                        };
+
+                        let saved = match (board_vnum, subject, author) {
+                            (Some(vnum), Some(subj), Some(name)) => {
+                                let world = state.lock().unwrap();
+                                let max = world
+                                    .db
+                                    .get_item_by_vnum(&vnum)
+                                    .ok()
+                                    .flatten()
+                                    .and_then(|item| item.board_max_messages);
+                                let post = BoardPost::new(vnum, name, subj, content);
+                                world.db.store_board_post(post, max).is_ok()
+                            }
+                            _ => false,
+                        };
+
+                        if saved {
+                            let _ = tx_client.send("Post saved.\n".to_string());
+                        } else {
+                            let _ = tx_client.send("Error: could not save post.\n".to_string());
+                        }
+
+                        {
+                            let mut conns = connections.lock().unwrap();
+                            if let Some(session) = conns.get_mut(&connection_id) {
+                                session.olc_mode = None;
+                                session.olc_buffer.clear();
+                                session.olc_edit_board_vnum = None;
+                                session.olc_board_subject = None;
+                                session.olc_undo_buffer = None;
+                            }
+                        }
+                        let prompt = build_prompt(&connection_id, &connections, &state);
+                        let _ = tx_client.send(prompt);
+                    }
+                }
+                EditorCommandResult::Cancel => {
+                    {
+                        let mut conns = connections.lock().unwrap();
+                        if let Some(session) = conns.get_mut(&connection_id) {
+                            session.olc_mode = None;
+                            session.olc_buffer.clear();
+                            session.olc_edit_board_vnum = None;
+                            session.olc_board_subject = None;
+                            session.olc_undo_buffer = None;
+                        }
+                    }
+                    let _ = tx_client.send("Post cancelled.\n".to_string());
                     let prompt = build_prompt(&connection_id, &connections, &state);
                     let _ = tx_client.send(prompt);
                 }

@@ -505,6 +505,9 @@ export interface CreateItemRequest {
         duration: number;
     }[];
     note_content?: string;
+    board_read_admin_only?: boolean;
+    board_write_admin_only?: boolean;
+    board_max_messages?: number;
     world_max_count?: number;
     extra_descs?: ExtraDesc[];
     on_hit_effects?: OnHitEffect[];

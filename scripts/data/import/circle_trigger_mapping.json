@@ -25,13 +25,6 @@
       "fallback_args": ["The mayor strolls thoughtfully through the streets."]
     },
 
-    "gen_board": {
-      "action": "add_item_trigger",
-      "trigger_type": "on_examine",
-      "script_name": "@message",
-      "chance": 100,
-      "fallback_args": ["The board is full of postings."]
-    },
     "bank": {
       "action": "add_item_trigger",
       "trigger_type": "on_use",

@@ -18,6 +18,7 @@ mod healers;
 mod items;
 #[macro_use]
 pub mod macros;
+mod boards;
 mod mail;
 pub mod lang;
 pub mod map;
@@ -1597,6 +1598,31 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         false
     });
 
+    // start_board_post(connection_id, board_vnum, subject) -> bool
+    // Flips a session into `collecting_board_post` mode and primes the
+    // bulletin-board destination + subject for the multi-line editor.
+    // Returns false if the connection lookup fails.
+    let conns = connections.clone();
+    engine.register_fn(
+        "start_board_post",
+        move |connection_id: String, board_vnum: String, subject: String| -> bool {
+            let conn_uuid = match uuid::Uuid::parse_str(&connection_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let mut conns = conns.lock().unwrap();
+            if let Some(session) = conns.get_mut(&conn_uuid) {
+                session.olc_mode = Some("collecting_board_post".to_string());
+                session.olc_buffer.clear();
+                session.olc_edit_board_vnum = Some(board_vnum);
+                session.olc_board_subject = Some(subject);
+                session.olc_undo_buffer = None;
+                return true;
+            }
+            false
+        },
+    );
+
     // set_olc_edit_mobile(connection_id, mobile_id) -> mark mobile under
     // edit (used by `medit trigger dg edit/add` to anchor the dg-body editor).
     let conns = connections.clone();
@@ -1943,6 +1969,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     groups::register(engine, db.clone(), connections.clone());
     property::register(engine, db.clone(), connections.clone());
     mail::register(engine, db.clone(), connections.clone());
+    boards::register(engine, db.clone());
     garden::register(engine, db.clone());
     spells::register(engine, db.clone(), connections.clone(), state.clone());
     stealth::register(engine, db.clone(), connections.clone());

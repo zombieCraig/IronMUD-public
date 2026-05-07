@@ -2230,6 +2230,9 @@ pub enum ItemType {
     Note,
     /// Writing tool. Required (anywhere in inventory) to author a `Note`.
     Pen,
+    /// Bulletin board. Players use the `board` command to list/read/write
+    /// posts; access gating lives on `ItemData.board_*` fields.
+    Board,
 }
 
 impl ItemType {
@@ -2249,6 +2252,7 @@ impl ItemType {
             "staff" => Some(ItemType::Staff),
             "note" | "paper" => Some(ItemType::Note),
             "pen" => Some(ItemType::Pen),
+            "board" | "bulletin" | "bulletin_board" => Some(ItemType::Board),
             _ => None,
         }
     }
@@ -2269,6 +2273,7 @@ impl ItemType {
             ItemType::Staff => "staff",
             ItemType::Note => "note",
             ItemType::Pen => "pen",
+            ItemType::Board => "board",
         }
     }
 }
@@ -3009,6 +3014,14 @@ pub struct ItemData {
     // Authored via `oedit <id> note` multi-line editor; surfaced by `read`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note_content: Option<String>,
+    // Bulletin board (ItemType::Board) gating. Posts live in the `boards`
+    // sled tree keyed by this item's prototype vnum.
+    #[serde(default)]
+    pub board_read_admin_only: bool,
+    #[serde(default)]
+    pub board_write_admin_only: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub board_max_messages: Option<i32>,
     // Epoch seconds when this item was donated. Presence is the gate
     // for the donation-decay tick (see src/ticks/donation.rs); cleared
     // when a player picks the item up.
@@ -3246,6 +3259,9 @@ impl ItemData {
             teaches_recipe: None,
             teaches_spell: None,
             note_content: None,
+            board_read_admin_only: false,
+            board_write_admin_only: false,
+            board_max_messages: None,
             donated_at: None,
             extra_descs: Vec::new(),
             wear_locations: Vec::new(),
@@ -4212,6 +4228,38 @@ impl MailMessage {
             body,
             sent_at: now,
             read: false,
+        }
+    }
+}
+
+// === Bulletin Boards ===
+
+/// A single bulletin board post. Posts live in the `boards` sled tree
+/// keyed by `id`; `board_vnum` identifies which board prototype owns them
+/// (matches `ItemData.vnum: Option<String>` shape).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BoardPost {
+    pub id: Uuid,
+    pub board_vnum: String,
+    pub author: String,
+    pub subject: String,
+    pub body: String,
+    pub posted_at: i64,
+}
+
+impl BoardPost {
+    pub fn new(board_vnum: String, author: String, subject: String, body: String) -> Self {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        BoardPost {
+            id: Uuid::new_v4(),
+            board_vnum,
+            author,
+            subject,
+            body,
+            posted_at: now,
         }
     }
 }

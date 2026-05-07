@@ -556,6 +556,12 @@ export interface CreateItemRequest {
   food_effects?: { effect_type: string; magnitude: number; duration: number }[];
   // Readable body (any item with this becomes readable via `read`)
   note_content?: string;
+  // ItemType=board: gate `board list`/`read` to admins only.
+  board_read_admin_only?: boolean;
+  // ItemType=board: gate `board write` to admins only.
+  board_write_admin_only?: boolean;
+  // ItemType=board: post cap (0 = engine default 60).
+  board_max_messages?: number;
   // World-wide cap on live (non-prototype) instances of this vnum (0 = unlimited)
   world_max_count?: number;
   // Sub-keyword lore revealed via `look <keyword>` against this item

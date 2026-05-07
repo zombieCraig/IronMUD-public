@@ -475,6 +475,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     food_spoil_duration: args?.food_spoil_duration,
                     food_effects: args?.food_effects,
                     note_content: args?.note_content,
+                    board_read_admin_only: args?.board_read_admin_only,
+                    board_write_admin_only: args?.board_write_admin_only,
+                    board_max_messages: args?.board_max_messages,
                     world_max_count: args?.world_max_count,
                     on_hit_effects: args?.on_hit_effects,
                 });
@@ -501,7 +504,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     "liquid_effects",
                     "medical_tier", "medical_uses", "treats_wound_types",
                     "food_nutrition", "food_spoil_duration", "food_effects",
-                    "note_content", "world_max_count", "on_hit_effects",
+                    "note_content", "board_read_admin_only", "board_write_admin_only", "board_max_messages",
+                    "world_max_count", "on_hit_effects",
                 ];
                 for (const field of itemFields) {
                     if (args?.[field] !== undefined) {

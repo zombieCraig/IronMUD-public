@@ -5,9 +5,9 @@ use std::path::Path;
 use std::sync::Arc; // Import Arc
 
 use crate::{
-    AchievementDef, ApiKey, AreaData, CharacterData, EscrowData, ItemData, ItemLocation, ItemType, LeaseData,
-    MailMessage, MobileData, PlantInstance, PlantPrototype, PropertyTemplate, Recipe, RoomData, STARTING_ROOM_ID,
-    ShopPreset, SpawnEntityType, SpawnPointData, TransportData,
+    AchievementDef, ApiKey, AreaData, BoardPost, CharacterData, EscrowData, ItemData, ItemLocation, ItemType,
+    LeaseData, MailMessage, MobileData, PlantInstance, PlantPrototype, PropertyTemplate, Recipe, RoomData,
+    STARTING_ROOM_ID, ShopPreset, SpawnEntityType, SpawnPointData, TransportData,
 };
 use uuid::Uuid;
 
@@ -34,6 +34,9 @@ pub struct Db {
     shop_presets: Arc<Tree>,
     // Mail system
     mail: Arc<Tree>,
+    // Bulletin boards (gen_board parity). One flat tree keyed by
+    // `BoardPost.id`; per-board lookup scans + filters by `board_vnum`.
+    boards: Arc<Tree>,
     // Gardening system
     plants: Arc<Tree>,
     plant_prototypes: Arc<Tree>,
@@ -87,6 +90,7 @@ impl Db {
         let api_keys = db.open_tree("api_keys")?;
         let shop_presets = db.open_tree("shop_presets")?;
         let mail = db.open_tree("mail")?;
+        let boards = db.open_tree("boards")?;
         let plants = db.open_tree("plants")?;
         let plant_prototypes = db.open_tree("plant_prototypes")?;
         let bug_reports = db.open_tree("bug_reports")?;
@@ -111,6 +115,7 @@ impl Db {
             api_keys: Arc::new(api_keys),
             shop_presets: Arc::new(shop_presets),
             mail: Arc::new(mail),
+            boards: Arc::new(boards),
             plants: Arc::new(plants),
             plant_prototypes: Arc::new(plant_prototypes),
             bug_reports: Arc::new(bug_reports),
@@ -220,6 +225,7 @@ impl Db {
         // Purge any pending mail addressed to this recipient before removing
         // the character key — otherwise the messages orphan in the mail tree.
         let _ = self.delete_mail_for_recipient(name)?;
+        let _ = self.delete_board_posts_by_author(name)?;
         self.characters.remove(key.as_bytes())?;
         Ok(())
     }
@@ -2429,6 +2435,92 @@ impl Db {
             }
         }
         Ok(true)
+    }
+
+    // ========== Bulletin Board Functions ==========
+
+    /// Default per-board cap when `ItemData.board_max_messages` is unset.
+    /// Matches stock CircleMUD `gen_board.c`.
+    pub const DEFAULT_BOARD_MAX_MESSAGES: usize = 60;
+
+    /// Store a new bulletin board post. If the destination board (identified
+    /// by `post.board_vnum`) is at or above `max_messages`, the oldest post
+    /// is evicted before insertion. Returns `Ok(())` after the insert.
+    pub fn store_board_post(&self, post: BoardPost, max_messages: Option<i32>) -> Result<()> {
+        let cap = max_messages
+            .filter(|n| *n > 0)
+            .map(|n| n as usize)
+            .unwrap_or(Self::DEFAULT_BOARD_MAX_MESSAGES);
+        // Evict oldest until under cap (typically loops zero or one time).
+        loop {
+            let posts = self.get_board_posts(&post.board_vnum)?;
+            if posts.len() < cap {
+                break;
+            }
+            // posts is oldest-first, so [0] is the eviction target.
+            let oldest_id = posts[0].id;
+            self.delete_board_post(&oldest_id)?;
+        }
+        let key = post.id.as_bytes();
+        let value = serde_json::to_vec(&post)?;
+        self.boards.insert(key, value)?;
+        Ok(())
+    }
+
+    /// Get all posts for a board, sorted oldest-first (stable 1-based
+    /// indexing for `board read N`).
+    pub fn get_board_posts(&self, board_vnum: &str) -> Result<Vec<BoardPost>> {
+        let mut posts = Vec::new();
+        for entry in self.boards.iter() {
+            let (_key, value) = entry?;
+            let post: BoardPost = serde_json::from_slice(&value)?;
+            if post.board_vnum == board_vnum {
+                posts.push(post);
+            }
+        }
+        posts.sort_by_key(|p| p.posted_at);
+        Ok(posts)
+    }
+
+    /// Delete a single post by id. Returns true if a post was removed.
+    pub fn delete_board_post(&self, id: &Uuid) -> Result<bool> {
+        let key = id.as_bytes();
+        Ok(self.boards.remove(key)?.is_some())
+    }
+
+    /// Count posts on a board.
+    pub fn count_board_posts(&self, board_vnum: &str) -> Result<usize> {
+        let mut n = 0usize;
+        for entry in self.boards.iter() {
+            let (_key, value) = entry?;
+            let post: BoardPost = serde_json::from_slice(&value)?;
+            if post.board_vnum == board_vnum {
+                n += 1;
+            }
+        }
+        Ok(n)
+    }
+
+    /// Delete every post authored by `name` across all boards. Called from
+    /// `delete_character_data` to keep the boards tree from accumulating
+    /// orphan posts after character deletion. Returns count removed.
+    pub fn delete_board_posts_by_author(&self, name: &str) -> Result<usize> {
+        let lower = name.to_lowercase();
+        let mut to_delete: Vec<Uuid> = Vec::new();
+        for entry in self.boards.iter() {
+            let (_key, value) = entry?;
+            let post: BoardPost = serde_json::from_slice(&value)?;
+            if post.author.to_lowercase() == lower {
+                to_delete.push(post.id);
+            }
+        }
+        let mut removed = 0usize;
+        for id in &to_delete {
+            if self.delete_board_post(id)? {
+                removed += 1;
+            }
+        }
+        Ok(removed)
     }
 
     // ========== Bug Reporting System Functions ==========

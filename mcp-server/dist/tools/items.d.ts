@@ -93,6 +93,9 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            board_read_admin_only?: undefined;
+            board_write_admin_only?: undefined;
+            board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
@@ -169,6 +172,9 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            board_read_admin_only?: undefined;
+            board_write_admin_only?: undefined;
+            board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
@@ -248,6 +254,9 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            board_read_admin_only?: undefined;
+            board_write_admin_only?: undefined;
+            board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
@@ -327,6 +336,9 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            board_read_admin_only?: undefined;
+            board_write_admin_only?: undefined;
+            board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
@@ -732,6 +744,18 @@ export declare const itemToolDefinitions: ({
                 type: string;
                 description: string;
             };
+            board_read_admin_only: {
+                type: string;
+                description: string;
+            };
+            board_write_admin_only: {
+                type: string;
+                description: string;
+            };
+            board_max_messages: {
+                type: string;
+                description: string;
+            };
             container_key_vnum: {
                 type: string;
                 description: string;
@@ -1194,6 +1218,18 @@ export declare const itemToolDefinitions: ({
                 type: string;
                 description: string;
             };
+            board_read_admin_only: {
+                type: string;
+                description: string;
+            };
+            board_write_admin_only: {
+                type: string;
+                description: string;
+            };
+            board_max_messages: {
+                type: string;
+                description: string;
+            };
             container_key_vnum: {
                 type: string;
                 description: string;
@@ -1326,6 +1362,9 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            board_read_admin_only?: undefined;
+            board_write_admin_only?: undefined;
+            board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
@@ -1408,6 +1447,9 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            board_read_admin_only?: undefined;
+            board_write_admin_only?: undefined;
+            board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
@@ -1507,6 +1549,9 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            board_read_admin_only?: undefined;
+            board_write_admin_only?: undefined;
+            board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
@@ -1586,6 +1631,9 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            board_read_admin_only?: undefined;
+            board_write_admin_only?: undefined;
+            board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
@@ -1673,6 +1721,9 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            board_read_admin_only?: undefined;
+            board_write_admin_only?: undefined;
+            board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;
@@ -1755,6 +1806,9 @@ export declare const itemToolDefinitions: ({
             food_spoil_duration?: undefined;
             food_effects?: undefined;
             note_content?: undefined;
+            board_read_admin_only?: undefined;
+            board_write_admin_only?: undefined;
+            board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
             extra_descs?: undefined;

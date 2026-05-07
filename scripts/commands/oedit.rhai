@@ -312,6 +312,11 @@ fn handle_subcommand(item, item_id, subcommand, parts, char, connection_id) {
         return;
     }
 
+    if subcommand == "board_read_admin" || subcommand == "board_write_admin" || subcommand == "board_max" {
+        handle_board_subcommand(item, uuid, subcommand, parts, connection_id);
+        return;
+    }
+
     if subcommand == "extra" {
         handle_extra_subcommand(item, uuid, parts, connection_id);
         return;
@@ -590,17 +595,17 @@ fn collect_parts(parts, start_idx) {
 
 fn handle_type_subcommand(item_id, parts, connection_id) {
     if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: oedit " + item_id + " type <armor|weapon|ammunition|container|liquid_container|food|key|misc|potion|wand|staff|note|pen>");
+        send_client_message(connection_id, "Usage: oedit " + item_id + " type <armor|weapon|ammunition|container|liquid_container|food|key|misc|potion|wand|staff|note|pen|board>");
         return;
     }
     let type_str = parts[2].to_lower();
-    let valid_types = ["armor", "weapon", "ammunition", "misc", "container", "liquid_container", "food", "key", "potion", "wand", "staff", "note", "pen"];
+    let valid_types = ["armor", "weapon", "ammunition", "misc", "container", "liquid_container", "food", "key", "potion", "wand", "staff", "note", "pen", "board"];
     let is_valid = false;
     for t in valid_types {
         if type_str == t { is_valid = true; }
     }
     if !is_valid {
-        send_client_message(connection_id, "Invalid type. Use: armor, weapon, ammunition, container, liquid_container, food, key, misc, potion, wand, staff, note, pen");
+        send_client_message(connection_id, "Invalid type. Use: armor, weapon, ammunition, container, liquid_container, food, key, misc, potion, wand, staff, note, pen, board");
         return;
     }
     set_item_type(item_id, type_str);
@@ -1637,6 +1642,56 @@ fn set_transport_link(item_id, transport_ref, connection_id) {
     send_client_message(connection_id, "This item will now show transport status when read.");
 }
 
+fn handle_board_subcommand(item, item_id, subcommand, parts, connection_id) {
+    if item.item_type != "board" {
+        send_client_message(connection_id, "This item is not a bulletin board. Set its type to `board` first.");
+        return;
+    }
+    if parts.len() < 3 {
+        send_client_message(connection_id, "Usage: oedit " + item_id + " " + subcommand + " <value>");
+        return;
+    }
+    let raw = parts[2].to_lower();
+    let fresh = get_item_data(item_id);
+    if fresh == () {
+        send_client_message(connection_id, "Item not found.");
+        return;
+    }
+    if subcommand == "board_max" {
+        let n = parse_int(parts[2]);
+        if n == () {
+            send_client_message(connection_id, "Cap must be a whole number (0 = engine default 60).");
+            return;
+        }
+        fresh.board_max_messages = n;
+        save_item_data(fresh);
+        if n <= 0 {
+            send_client_message(connection_id, "Board cap cleared (engine default 60).");
+        } else {
+            send_client_message(connection_id, "Board cap set to " + n + " posts.");
+        }
+        return;
+    }
+    let on = raw == "on" || raw == "true" || raw == "1" || raw == "yes";
+    let off = raw == "off" || raw == "false" || raw == "0" || raw == "no";
+    if !on && !off {
+        send_client_message(connection_id, "Use on/off.");
+        return;
+    }
+    let val = on;
+    let label = "off";
+    if val { label = "on"; }
+    if subcommand == "board_read_admin" {
+        fresh.board_read_admin_only = val;
+        save_item_data(fresh);
+        send_client_message(connection_id, "Board read-admin-only: " + label);
+    } else {
+        fresh.board_write_admin_only = val;
+        save_item_data(fresh);
+        send_client_message(connection_id, "Board write-admin-only: " + label);
+    }
+}
+
 fn handle_note_subcommand(item_id, parts, connection_id) {
     // `oedit <id> note clear` wipes the body without entering the editor.
     if parts.len() >= 3 {
@@ -2544,6 +2599,19 @@ fn show_item_properties(item, item_id, connection_id) {
     output += build_stats_display(item);
 
     output += build_flags_display(item);
+
+    // Bulletin board fields
+    if item.item_type == "board" {
+        let read_lbl = "anyone";
+        if item.board_read_admin_only { read_lbl = "admin only"; }
+        let write_lbl = "anyone";
+        if item.board_write_admin_only { write_lbl = "admin only"; }
+        let max_lbl = "60 (engine default)";
+        if item.has_board_max_messages { max_lbl = "" + item.board_max_messages; }
+        output += olc::c_label("Board Read: ", connection_id) + olc::c_value(read_lbl, connection_id) + "\n";
+        output += olc::c_label("Board Write: ", connection_id) + olc::c_value(write_lbl, connection_id) + "\n";
+        output += olc::c_label("Board Max Posts: ", connection_id) + olc::c_value(max_lbl, connection_id) + "\n";
+    }
 
     // Triggers
     output += build_triggers_display(item_id);

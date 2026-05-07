@@ -603,6 +603,10 @@
     "access": "user",
     "description": "Send and receive in-game mail"
   },
+  "board": {
+    "access": "user",
+    "description": "Use a bulletin board (list, read, write, remove posts)"
+  },
   "bank": {
     "access": "user",
     "description": "Banking - deposit, withdraw, check balance"

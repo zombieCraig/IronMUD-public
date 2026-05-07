@@ -466,7 +466,7 @@ spec parsing is never a hard error.
 | `receptionist` | 3 mobs | sets `MobileFlags.leasing_agent` + Warn ("set `medit <id> leasing area <area>` to bind the agent to a leasable area") |
 | `puff` | 1 mob | OnIdle `@say_random` trigger; quote `args` extracted from `puff()`'s `do_say` literals in `spec_procs.c` |
 | `mayor` | 1 mob | OnAlways `@emote` trigger + Warn ("walks a fixed path; no `daily_routine` generated") |
-| `gen_board` | 4 items | OnExamine `@message` placeholder + Warn ("bulletin boards need a custom item type") |
+| `gen_board` | 4 items | **Implemented (May 2026)** — ITEM_BOARD (type 24) maps to `ItemType::Board`; per-vnum preset table sets stock 3098/3097 to public read/write and 3099/3096 to admin-only (CircleMUD `gen_board.c::board_info[]` levels >=30 collapse to `is_admin`); cap defaults to 60 posts. Player surface: `board [list|read N|write <subject>|remove N]`. |
 | `bank` | 2 items | OnUse `@message` placeholder + Warn ("banking not modeled") |
 | `dump` | 1 room | Periodic `@room_message` flavour trigger + Warn ("auto-disposal not modeled") |
 | `magic_user` | 93 mobs | Sets `MobileData.combat_spells = [magic_missile, frost_bolt, firebolt, lightning_bolt]` + `combat_spell_chance = 50`; combat tick rolls per round to cast a random spell instead of swinging |
@@ -1213,13 +1213,19 @@ warn-only. Gaps ranked below.
 
 #### Medium priority
 
-- **`gen_board` bulletin boards** — 4 items (social/freeze/immortal/
-  mortal). Players read/write/remove posts via `look board` /
-  `write <subject>`. Today imports as a `Misc` item with an OnExamine
-  placeholder. Likely shape: new `ItemType::Board` + a `BoardData`
-  side-table for posts. Tag with `categories: ["board"]` post-import
-  if the builder wants the same item to surface in board-targeting
-  triggers.
+- **`gen_board` bulletin boards** — _Implemented (May 2026)._
+  ITEM_BOARD (CircleMUD type 24) imports as `ItemType::Board` with a
+  per-vnum preset table sourced from `gen_board.c::board_info[]`
+  (levels live in C, not in `.obj` values). Stock vnums:
+  3098 = mortal (public), 3097 = social (public),
+  3099 = immortal (admin-only), 3096 = freeze (admin-only).
+  Non-stock ITEM_BOARD vnums default to public + 60-post cap with an
+  Info warning steering the builder to `oedit <id>
+  board_read_admin|board_write_admin|board_max`. Posts live in a
+  separate `boards` sled tree keyed by the board's vnum; the
+  `board [list|read N|write <subject>|remove N]` command operates on
+  any same-room ITEM_BOARD. Eviction-on-overflow drops the oldest
+  post when the cap is hit.
 - **`bank` ATM** — 2 items (atm + cashcard in Midgaard). Players
   `deposit`/`withdraw` to grow gold balances stored on the player.
   Today imports as a `Misc` item with an OnUse placeholder. Likely

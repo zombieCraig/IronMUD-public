@@ -106,6 +106,17 @@ fn run_command(args, connection_id) {
         output += "(You could read this.)\n";
     }
 
+    if item.item_type == "board" {
+        let n = count_board_posts_for(item.vnum);
+        if n == 0 {
+            output += "(No posts yet — try `board write <subject>`.)\n";
+        } else if n == 1 {
+            output += "(1 post — try `board list`.)\n";
+        } else {
+            output += "(" + n + " posts — try `board list`.)\n";
+        }
+    }
+
     let extras = item.extra_descs;
     if extras.len() > 0 {
         let kw_summary = "";

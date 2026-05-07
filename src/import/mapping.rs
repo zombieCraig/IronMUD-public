@@ -2915,6 +2915,29 @@ fn apply_item_type(item: &IrItem, data: &mut ItemData, warnings: &mut Vec<Warnin
             data.item_type = ItemType::Misc;
             data.flags.boat = true;
         }
+        // ITEM_BOARD — bulletin board. Stock CircleMUD vnums 3096..=3099 ride
+        // hardcoded levels from `gen_board.c::board_info[]` (NOT stored in
+        // .obj values), so we look up the per-vnum preset; non-stock boards
+        // default to all-public + engine default (60-post) cap. The actual
+        // post storage lives in IronMUD's `boards` sled tree, keyed by vnum.
+        24 => {
+            data.item_type = ItemType::Board;
+            let preset = stock_board_preset(item.vnum);
+            data.board_read_admin_only = preset.read_admin_only;
+            data.board_write_admin_only = preset.write_admin_only;
+            data.board_max_messages = preset.max_messages;
+            if !preset.is_stock {
+                warnings.push(Warning::new(
+                    WarningKind::Info,
+                    Severity::Info,
+                    item.source.clone(),
+                    format!(
+                        "ITEM_BOARD vnum {} not in stock-board preset table; defaulting to public read/write. Tune via `oedit {} board_read_admin|board_write_admin|board_max`.",
+                        item.vnum, item.vnum
+                    ),
+                ));
+            }
+        }
         // ITEM_FOUNTAIN — same shape as DRINKCON, but stock Circle fountains
         // refill themselves on use. IronMUD's LiquidContainer treats
         // `liquid_max == -1` as infinite (drink_from / fill_liquid_container
@@ -2951,6 +2974,58 @@ fn apply_item_type(item: &IrItem, data: &mut ItemData, warnings: &mut Vec<Warnin
 /// Map CircleMUD's WEAPON v3 (damage-message verb index) to an IronMUD
 /// `DamageType`. The choice of bucket is the one that best matches the
 /// English verb; a few are lossy (notably `blast` → Lightning).
+/// CircleMUD `gen_board.c::board_info[]` levels translated to IronMUD admin
+/// gating. CircleMUD stores board access by character level (e.g. LVL_IMMORT
+/// ≈ 31 for the immortal/freeze boards); IronMUD has no level system, so
+/// any level >= 30 collapses to `is_admin = true`. Per-vnum because the
+/// source levels are NOT in `.obj` values — they're hardcoded in C.
+struct StockBoardPreset {
+    read_admin_only: bool,
+    write_admin_only: bool,
+    max_messages: Option<i32>,
+    is_stock: bool,
+}
+
+fn stock_board_preset(vnum: i32) -> StockBoardPreset {
+    match vnum {
+        // Mortal board — public read, public write.
+        3098 => StockBoardPreset {
+            read_admin_only: false,
+            write_admin_only: false,
+            max_messages: Some(60),
+            is_stock: true,
+        },
+        // Social board — public, lower-level write floor in stock; collapses
+        // to public for IronMUD.
+        3097 => StockBoardPreset {
+            read_admin_only: false,
+            write_admin_only: false,
+            max_messages: Some(60),
+            is_stock: true,
+        },
+        // Freeze (admin disciplinary) board — admin only.
+        3096 => StockBoardPreset {
+            read_admin_only: true,
+            write_admin_only: true,
+            max_messages: Some(60),
+            is_stock: true,
+        },
+        // Immortal board — admin only.
+        3099 => StockBoardPreset {
+            read_admin_only: true,
+            write_admin_only: true,
+            max_messages: Some(60),
+            is_stock: true,
+        },
+        _ => StockBoardPreset {
+            read_admin_only: false,
+            write_admin_only: false,
+            max_messages: Some(60),
+            is_stock: false,
+        },
+    }
+}
+
 fn circle_weapon_damage_type(v3: i32) -> DamageType {
     match v3 {
         0 | 5 | 6 | 7 | 9 | 10 | 13 => DamageType::Bludgeoning, // hit, bludgeon, crush, pound, maul, thrash, punch
