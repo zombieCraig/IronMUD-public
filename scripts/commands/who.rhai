@@ -24,7 +24,14 @@ fn format_player_line(player) {
     // Get effective level for display
     let eff_level = get_effective_level(player.name);
     let level_tag = " [Eff:" + eff_level + "]";
-    return "  " + player.name + level_tag + glow_tag + afk_tag + idle_tag + " - " + room_name + " [" + player.addr + "]\n";
+    let title_tag = "";
+    if achievements_enabled() {
+        let title_text = get_active_title(player.name);
+        if title_text != "" {
+            title_tag = " " + title_text;
+        }
+    }
+    return "  " + player.name + title_tag + level_tag + glow_tag + afk_tag + idle_tag + " - " + room_name + " [" + player.addr + "]\n";
 }
 
 fn run_command(args, connection_id) {

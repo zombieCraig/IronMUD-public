@@ -347,6 +347,10 @@
     "access": "user",
     "description": "Show your character stats including gold balance"
   },
+  "achievements": {
+    "access": "user",
+    "description": "List, inspect, or set the active title from your achievements"
+  },
   "traits": {
     "access": "user",
     "description": "Spend remaining trait points or view your traits"
@@ -758,6 +762,10 @@
   "recall": {
     "access": "user",
     "description": "Teleport back to your spawn point"
+  },
+  "map": {
+    "access": "user",
+    "description": "Show an ASCII map of the surrounding area"
   },
   "retreat": {
     "access": "user",

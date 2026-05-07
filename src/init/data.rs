@@ -4,7 +4,10 @@ use anyhow::Result;
 use std::collections::HashMap;
 use tracing::{error, info};
 
-use crate::{ClassDefinition, CommandMeta, RaceDefinition, RaceSuggestion, SharedState, SpellDefinition};
+use crate::{
+    AchievementCriterion, AchievementDef, AchievementSource, ClassDefinition, CommandMeta, RaceDefinition,
+    RaceSuggestion, SharedState, SpellDefinition,
+};
 
 /// Load command metadata from scripts/commands.json
 pub fn load_command_metadata() -> Result<HashMap<String, CommandMeta>> {
@@ -199,5 +202,101 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
         }
     }
 
+    // Load achievement definitions: JSON first, then sled tree (DB wins on
+    // collision, with a warning). Builds the counter-key index used by
+    // `notify_achievement_counter`.
+    load_achievements(&mut world);
+
     Ok(())
+}
+
+/// Load achievement definitions into the world. JSON files in
+/// `scripts/data/achievements/` populate the canonical engine-detected set;
+/// the sled `achievements` tree contains builder-authored entries (typically
+/// `criterion: Manual`). On key collision the DB entry wins with a warning.
+fn load_achievements(world: &mut crate::World) {
+    use std::path::PathBuf;
+
+    let mut defs: HashMap<String, AchievementDef> = HashMap::new();
+    let dir = PathBuf::from("scripts/data/achievements");
+    if dir.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(&dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if !path.is_file() {
+                    continue;
+                }
+                if path.extension().and_then(|s| s.to_str()) != Some("json") {
+                    continue;
+                }
+                let file_label = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("?")
+                    .to_string();
+                let content = match std::fs::read_to_string(&path) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        error!("Failed to read achievements file {}: {}", file_label, e);
+                        continue;
+                    }
+                };
+                let parsed: Result<Vec<AchievementDef>, _> = serde_json::from_str(&content);
+                match parsed {
+                    Ok(list) => {
+                        for mut def in list {
+                            def.source = AchievementSource::Json {
+                                file: file_label.clone(),
+                            };
+                            let key = def.key.to_lowercase();
+                            if defs.contains_key(&key) {
+                                tracing::warn!("Duplicate achievement key '{}' in {}", key, file_label);
+                            }
+                            defs.insert(key, def);
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to parse achievements file {}: {}", file_label, e);
+                    }
+                }
+            }
+        }
+    } else {
+        info!("No achievements directory at {}", dir.display());
+    }
+
+    // Sled-stored builder achievements override JSON on key collision.
+    match world.db.list_all_achievements() {
+        Ok(db_defs) => {
+            for def in db_defs {
+                let key = def.key.to_lowercase();
+                if defs.contains_key(&key) {
+                    tracing::warn!(
+                        "Achievement key '{}' from database overrides JSON definition",
+                        key
+                    );
+                }
+                defs.insert(key, def);
+            }
+        }
+        Err(e) => {
+            error!("Failed to load achievements from database: {}", e);
+        }
+    }
+
+    // Build the counter index.
+    let mut index: HashMap<String, Vec<String>> = HashMap::new();
+    for (key, def) in &defs {
+        if let AchievementCriterion::Counter { counter, .. } = &def.criterion {
+            index.entry(counter.clone()).or_default().push(key.clone());
+        }
+    }
+
+    info!(
+        "Loaded {} achievement definitions ({} counter-indexed)",
+        defs.len(),
+        index.values().map(|v| v.len()).sum::<usize>()
+    );
+    world.achievement_definitions = defs;
+    world.achievement_index_by_counter = index;
 }

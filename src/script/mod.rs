@@ -1,6 +1,7 @@
 // src/script/mod.rs
 // Rhai scripting engine registration for IronMUD
 
+pub mod achievements;
 mod ai;
 mod api_keys;
 mod areas;
@@ -17,6 +18,7 @@ mod items;
 #[macro_use]
 pub mod macros;
 mod mail;
+pub mod map;
 mod medical;
 mod mobiles;
 mod property;
@@ -326,6 +328,19 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 .into_iter()
                 .filter_map(|(k, v)| v.as_int().ok().map(|i| (k.to_string(), i)))
                 .collect();
+        })
+        // Achievement system fields
+        .register_get("active_title", |c: &mut CharacterData| {
+            c.active_title.clone().unwrap_or_default()
+        })
+        .register_get("achievements_unlocked_count", |c: &mut CharacterData| {
+            c.achievements_unlocked.len() as i64
+        })
+        .register_get("gold_high_water", |c: &mut CharacterData| c.gold_high_water as i64)
+        // Map system fields
+        .register_get("automap_enabled", |c: &mut CharacterData| c.automap_enabled)
+        .register_set("automap_enabled", |c: &mut CharacterData, val: bool| {
+            c.automap_enabled = val;
         });
 
     // Register CharacterData constructor
@@ -444,6 +459,14 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 envenomed_charges: 0,
                 circle_cooldown: 0,
                 theft_cooldowns: std::collections::HashMap::new(),
+                // Achievement system fields
+                achievement_counters: std::collections::HashMap::new(),
+                achievements_unlocked: std::collections::HashMap::new(),
+                active_title: None,
+                gold_high_water: 0,
+                // Map system fields
+                rooms_visited: std::collections::HashSet::new(),
+                automap_enabled: true,
             }
         },
     );
@@ -1878,4 +1901,6 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     bugs::register(engine, db.clone(), connections.clone());
     simulation::register(engine, db.clone());
     social::register(engine, db.clone());
+    achievements::register(engine, db.clone(), connections.clone(), state.clone());
+    map::register(engine, db.clone(), connections.clone());
 }

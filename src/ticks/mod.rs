@@ -34,6 +34,7 @@
 pub(crate) mod broadcast;
 
 // Submodules for each tick system
+pub mod achievements;
 pub mod aging;
 pub mod bleeding;
 pub mod character;

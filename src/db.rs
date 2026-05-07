@@ -5,9 +5,9 @@ use std::path::Path;
 use std::sync::Arc; // Import Arc
 
 use crate::{
-    ApiKey, AreaData, CharacterData, EscrowData, ItemData, ItemLocation, ItemType, LeaseData, MailMessage, MobileData,
-    PlantInstance, PlantPrototype, PropertyTemplate, Recipe, RoomData, STARTING_ROOM_ID, ShopPreset, SpawnEntityType,
-    SpawnPointData, TransportData,
+    AchievementDef, ApiKey, AreaData, CharacterData, EscrowData, ItemData, ItemLocation, ItemType, LeaseData,
+    MailMessage, MobileData, PlantInstance, PlantPrototype, PropertyTemplate, Recipe, RoomData, STARTING_ROOM_ID,
+    ShopPreset, SpawnEntityType, SpawnPointData, TransportData,
 };
 use uuid::Uuid;
 
@@ -46,6 +46,10 @@ pub struct Db {
     // DgTriggerProto). Imported `.trg` files seed this; the `attach`
     // statement and `trigger dg attach` builder command read from it.
     dg_trigger_protos: Arc<Tree>,
+    // Achievement definitions authored via achedit / REST / MCP.
+    // Canonical engine-detected achievements live in JSON; this tree
+    // stores builder-created Manual ones and admin overrides.
+    achievements: Arc<Tree>,
 }
 
 /// Statistics about the world database
@@ -88,6 +92,7 @@ impl Db {
         let bug_reports = db.open_tree("bug_reports")?;
         let dg_globals = db.open_tree("dg_globals")?;
         let dg_trigger_protos = db.open_tree("dg_trigger_protos")?;
+        let achievements = db.open_tree("achievements")?;
         Ok(Self {
             db: Arc::new(db),                 // Wrap in Arc
             characters: Arc::new(characters), // Wrap in Arc
@@ -111,6 +116,7 @@ impl Db {
             bug_reports: Arc::new(bug_reports),
             dg_globals: Arc::new(dg_globals),
             dg_trigger_protos: Arc::new(dg_trigger_protos),
+            achievements: Arc::new(achievements),
         })
     }
 
@@ -1806,6 +1812,45 @@ impl Db {
             self.save_recipe(recipe)?;
         }
         Ok(())
+    }
+
+    // ========== Achievement Functions ==========
+
+    /// Get achievement definition by key from the sled tree.
+    pub fn get_achievement(&self, key: &str) -> Result<Option<AchievementDef>> {
+        let key = key.to_lowercase();
+        match self.achievements.get(key.as_bytes())? {
+            Some(ivec) => {
+                let def: AchievementDef = serde_json::from_slice(&ivec)?;
+                Ok(Some(def))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Save an achievement definition to the sled tree.
+    pub fn save_achievement(&self, def: AchievementDef) -> Result<()> {
+        let key = def.key.to_lowercase();
+        let value = serde_json::to_vec(&def)?;
+        self.achievements.insert(key.as_bytes(), value)?;
+        Ok(())
+    }
+
+    /// Delete an achievement definition by key.
+    pub fn delete_achievement(&self, key: &str) -> Result<bool> {
+        let key = key.to_lowercase();
+        Ok(self.achievements.remove(key.as_bytes())?.is_some())
+    }
+
+    /// List all achievement definitions in the sled tree.
+    pub fn list_all_achievements(&self) -> Result<Vec<AchievementDef>> {
+        let mut out = Vec::new();
+        for entry in self.achievements.iter() {
+            let (_key, value) = entry?;
+            let def: AchievementDef = serde_json::from_slice(&value)?;
+            out.push(def);
+        }
+        Ok(out)
     }
 
     // ========== Transport Functions ==========

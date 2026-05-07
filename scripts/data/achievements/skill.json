@@ -1,0 +1,50 @@
+[
+  {
+    "key": "novice_forager",
+    "name": "Novice Forager",
+    "description": "Reach level 3 in the foraging skill.",
+    "category": "skill",
+    "criterion": { "kind": "skill_reached", "skill": "foraging", "level": 3 },
+    "reward": { "title": "the Forager" }
+  },
+  {
+    "key": "skilled_cook",
+    "name": "Skilled Cook",
+    "description": "Reach level 5 in the cooking skill.",
+    "category": "skill",
+    "criterion": { "kind": "skill_reached", "skill": "cooking", "level": 5 },
+    "reward": { "title": "the Cook" }
+  },
+  {
+    "key": "field_medic",
+    "name": "Field Medic",
+    "description": "Reach level 5 in the medical skill.",
+    "category": "skill",
+    "criterion": { "kind": "skill_reached", "skill": "medical", "level": 5 },
+    "reward": { "title": "the Field Medic" }
+  },
+  {
+    "key": "swordmaster",
+    "name": "Swordmaster",
+    "description": "Reach level 8 in the swords skill.",
+    "category": "skill",
+    "criterion": { "kind": "skill_reached", "skill": "swords", "level": 8 },
+    "reward": { "title": "the Swordmaster" }
+  },
+  {
+    "key": "polymath",
+    "name": "Polymath",
+    "description": "Reach level 10 in any skill.",
+    "category": "skill",
+    "criterion": { "kind": "counter", "counter": "skills_maxed", "threshold": 1 },
+    "reward": { "title": "the Adept" }
+  },
+  {
+    "key": "renaissance",
+    "name": "Renaissance",
+    "description": "Master five different skills (level 10).",
+    "category": "skill",
+    "criterion": { "kind": "counter", "counter": "skills_maxed", "threshold": 5 },
+    "reward": { "title": "the Renaissance" }
+  }
+]

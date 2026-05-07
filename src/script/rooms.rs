@@ -937,6 +937,32 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 _ => return,
             };
 
+            // Map fog-of-war: record this room in the viewing character's
+            // `rooms_visited`. Debounced: skip if already present in the
+            // session's cached copy.
+            {
+                let already = {
+                    let conns_guard = conns.lock().unwrap();
+                    conns_guard
+                        .get(&conn_uuid)
+                        .and_then(|s| s.character.as_ref().map(|c| (c.name.clone(), c.rooms_visited.contains(&room_uuid))))
+                };
+                if let Some((player_name, already_visited)) = already {
+                    if !already_visited {
+                        if let Ok(Some(mut ch)) = cloned_db.get_character_data(&player_name) {
+                            if ch.rooms_visited.insert(room_uuid) {
+                                let _ = cloned_db.save_character_data(ch.clone());
+                                if let Ok(mut conns_guard) = conns.lock() {
+                                    if let Some(session) = conns_guard.get_mut(&conn_uuid) {
+                                        session.character = Some(ch);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Determine darkness and blindness states
             let is_dark_room = if room.flags.dark {
                 true // Always dark rooms (caves, dungeons)

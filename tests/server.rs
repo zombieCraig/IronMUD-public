@@ -269,6 +269,8 @@ async fn test_character_system_lifecycle() -> Result<()> {
         recipes: std::collections::HashMap::new(),
         transports: std::collections::HashMap::new(),
         spell_definitions: std::collections::HashMap::new(),
+        achievement_definitions: std::collections::HashMap::new(),
+        achievement_index_by_counter: std::collections::HashMap::new(),
         chat_sender: None,
         shutdown_sender: None,
         shutdown_cancel_sender: None,

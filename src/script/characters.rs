@@ -1641,23 +1641,41 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // set_character_gold(char_name, gold) -> bool
     let cloned_db = db.clone();
     let cloned_conns = connections.clone();
+    let state_clone = state.clone();
     engine.register_fn("set_character_gold", move |char_name: String, gold: i64| -> bool {
         match cloned_db.get_character_data(&char_name.to_lowercase()) {
             Ok(Some(mut char)) => {
                 char.gold = gold as i32;
                 let new_gold = char.gold;
+                let prev_high = char.gold_high_water;
+                let crossed_high = new_gold > prev_high;
+                if crossed_high {
+                    char.gold_high_water = new_gold;
+                }
                 let saved = cloned_db.save_character_data(char).is_ok();
                 if saved {
-                    // Sync gold to session cache to prevent stale overwrites by ticks
                     if let Ok(mut conns) = cloned_conns.lock() {
                         for (_, session) in conns.iter_mut() {
                             if let Some(ref mut sc) = session.character {
                                 if sc.name.to_lowercase() == char_name.to_lowercase() {
                                     sc.gold = new_gold;
+                                    if crossed_high {
+                                        sc.gold_high_water = new_gold;
+                                    }
                                     break;
                                 }
                             }
                         }
+                    }
+                    if crossed_high {
+                        crate::script::achievements::notify_event_core(
+                            &cloned_db,
+                            &cloned_conns,
+                            &state_clone,
+                            &char_name,
+                            "gold_high_water",
+                            &new_gold.to_string(),
+                        );
                     }
                 }
                 saved
@@ -1669,6 +1687,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // add_character_gold(char_name, amount) -> bool (returns false if would go negative)
     let cloned_db = db.clone();
     let cloned_conns = connections.clone();
+    let state_clone = state.clone();
     engine.register_fn("add_character_gold", move |char_name: String, amount: i64| -> bool {
         match cloned_db.get_character_data(&char_name.to_lowercase()) {
             Ok(Some(mut char)) => {
@@ -1678,18 +1697,35 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 }
                 char.gold = new_gold as i32;
                 let final_gold = char.gold;
+                let prev_high = char.gold_high_water;
+                let crossed_high = final_gold > prev_high;
+                if crossed_high {
+                    char.gold_high_water = final_gold;
+                }
                 let saved = cloned_db.save_character_data(char).is_ok();
                 if saved {
-                    // Sync gold to session cache to prevent stale overwrites by ticks
                     if let Ok(mut conns) = cloned_conns.lock() {
                         for (_, session) in conns.iter_mut() {
                             if let Some(ref mut sc) = session.character {
                                 if sc.name.to_lowercase() == char_name.to_lowercase() {
                                     sc.gold = final_gold;
+                                    if crossed_high {
+                                        sc.gold_high_water = final_gold;
+                                    }
                                     break;
                                 }
                             }
                         }
+                    }
+                    if crossed_high {
+                        crate::script::achievements::notify_event_core(
+                            &cloned_db,
+                            &cloned_conns,
+                            &state_clone,
+                            &char_name,
+                            "gold_high_water",
+                            &final_gold.to_string(),
+                        );
                     }
                 }
                 saved
@@ -1849,6 +1885,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // set_skill_level(char_name, skill_name, level) -> bool
     let cloned_db = db.clone();
+    let cloned_conns = connections.clone();
+    let state_clone = state.clone();
     engine.register_fn(
         "set_skill_level",
         move |char_name: String, skill_name: String, level: i64| -> bool {
@@ -1856,10 +1894,33 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             match cloned_db.get_character_data(&char_name.to_lowercase()) {
                 Ok(Some(mut char)) => {
                     let skill_key = skill_name.to_lowercase();
-                    let entry = char.skills.entry(skill_key).or_insert(crate::SkillProgress::default());
+                    let entry = char.skills.entry(skill_key.clone()).or_insert(crate::SkillProgress::default());
                     entry.level = level;
                     entry.experience = 0; // Reset XP when setting level directly
-                    cloned_db.save_character_data(char).is_ok()
+                    let saved = cloned_db.save_character_data(char).is_ok();
+                    if saved {
+                        // Achievement event: skill_reached "<skill>:<level>"
+                        crate::script::achievements::notify_event_core(
+                            &cloned_db,
+                            &cloned_conns,
+                            &state_clone,
+                            &char_name,
+                            "skill_reached",
+                            &format!("{}:{}", skill_key, level),
+                        );
+                        // Bump skills_maxed counter when level == 10.
+                        if level >= 10 {
+                            crate::script::achievements::notify_counter_core(
+                                &cloned_db,
+                                &cloned_conns,
+                                &state_clone,
+                                &char_name,
+                                "skills_maxed",
+                                1,
+                            );
+                        }
+                    }
+                    saved
                 }
                 _ => false,
             }
@@ -1868,13 +1929,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // add_skill_experience(char_name, skill_name, amount) -> bool (returns true if leveled up)
     let cloned_db = db.clone();
+    let cloned_conns = connections.clone();
+    let state_clone = state.clone();
     engine.register_fn(
         "add_skill_experience",
         move |char_name: String, skill_name: String, amount: i64| -> bool {
             match cloned_db.get_character_data(&char_name.to_lowercase()) {
                 Ok(Some(mut char)) => {
                     let skill_key = skill_name.to_lowercase();
-                    let entry = char.skills.entry(skill_key).or_insert(crate::SkillProgress::default());
+                    let entry = char.skills.entry(skill_key.clone()).or_insert(crate::SkillProgress::default());
 
                     // Don't add XP if already at max level
                     if entry.level >= 10 {
@@ -1915,7 +1978,30 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         }
                     }
 
+                    let final_level = entry.level;
                     let _ = cloned_db.save_character_data(char);
+
+                    if leveled_up {
+                        crate::script::achievements::notify_event_core(
+                            &cloned_db,
+                            &cloned_conns,
+                            &state_clone,
+                            &char_name,
+                            "skill_reached",
+                            &format!("{}:{}", skill_key, final_level),
+                        );
+                        if final_level >= 10 {
+                            crate::script::achievements::notify_counter_core(
+                                &cloned_db,
+                                &cloned_conns,
+                                &state_clone,
+                                &char_name,
+                                "skills_maxed",
+                                1,
+                            );
+                        }
+                    }
+
                     leveled_up
                 }
                 _ => false,

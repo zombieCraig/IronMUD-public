@@ -59,7 +59,7 @@ fn process_combat_round(db: &db::Db, connections: &SharedConnections, state: &Sh
     for char_name in &char_names {
         let start = Instant::now();
         tracing::trace!("Combat tick: processing character {}", char_name);
-        if let Err(e) = process_character_combat_round(db, connections, char_name) {
+        if let Err(e) = process_character_combat_round(db, connections, state, char_name) {
             debug!("Error processing combat for {}: {}", char_name, e);
         }
         let elapsed = start.elapsed();
@@ -92,7 +92,12 @@ fn process_combat_round(db: &db::Db, connections: &SharedConnections, state: &Sh
 }
 
 /// Process a combat round for a single character
-fn process_character_combat_round(db: &db::Db, connections: &SharedConnections, char_name: &str) -> Result<()> {
+fn process_character_combat_round(
+    db: &db::Db,
+    connections: &SharedConnections,
+    state: &SharedState,
+    char_name: &str,
+) -> Result<()> {
     debug!("Processing combat for character {}", char_name);
     let mut char = match db.get_character_data(char_name)? {
         Some(c) => c,
@@ -322,7 +327,7 @@ fn process_character_combat_round(db: &db::Db, connections: &SharedConnections, 
     // Process attack based on target type
     match target.target_type {
         CombatTargetType::Mobile => {
-            process_character_attacks_mobile(db, connections, &mut char, &target.target_id)?;
+            process_character_attacks_mobile(db, connections, state, &mut char, &target.target_id)?;
         }
         CombatTargetType::Player => {
             process_character_attacks_player(db, connections, &mut char, &target.target_id)?;
@@ -644,6 +649,7 @@ mod tests {
 fn process_character_attacks_mobile(
     db: &db::Db,
     connections: &SharedConnections,
+    state: &SharedState,
     char: &mut CharacterData,
     target_id: &uuid::Uuid,
 ) -> Result<()> {
@@ -1293,7 +1299,10 @@ fn process_character_attacks_mobile(
 
         // Check if target died
         if mobile.current_hp <= 0 {
+            let killed_vnum = mobile.vnum.clone();
+            let killed_name = char.name.clone();
             process_mobile_death(db, connections, &mut mobile, &room_id)?;
+            crate::ticks::achievements::notify_kill_with_state(db, connections, state, &killed_name, &killed_vnum);
 
             char.combat.targets.retain(|t| t.target_id != *target_id);
             if char.combat.targets.is_empty() {
@@ -1567,6 +1576,9 @@ fn process_mobile_combat_round(
                 "Mobile {} died from ongoing effects, calling process_mobile_death",
                 mobile.name
             );
+            // We don't track who applied each ongoing effect, so deaths
+            // here can't be credited to a specific player. Skip the
+            // achievement notify rather than mis-credit the killer.
             process_mobile_death(db, connections, &mut mobile, &room_id)?;
             return Ok(());
         }

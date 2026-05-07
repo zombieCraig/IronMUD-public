@@ -78,6 +78,11 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if setting_name == "automap" {
+        handle_automap(connection_id, value_arg);
+        return;
+    }
+
     // Unknown setting
     send_client_message(connection_id, "Unknown setting: " + setting_name);
     send_client_message(connection_id, "Type 'set' to see available settings.");
@@ -117,6 +122,12 @@ fn show_settings_table(connection_id, is_builder, is_admin) {
     let sm_toggle = make_toggle_link("set summonable", sm_val, connection_id);
     output += "  " + pad_right("summonable", 14) + pad_right(sm_toggle, 10);
     output += "Allow other players to summon you with the summon spell\n";
+
+    // Automap setting (available to all)
+    let am_val = if is_automap_enabled(connection_id) { "on" } else { "off" };
+    let am_toggle = make_toggle_link("set automap", am_val, connection_id);
+    output += "  " + pad_right("automap", 14) + pad_right(am_toggle, 10);
+    output += "Prepend the ASCII map to look output\n";
 
     // Abbrev setting (available to all)
     let ab_val = if is_abbrev_enabled(connection_id) { "on" } else { "off" };
@@ -444,4 +455,38 @@ fn handle_summonable(connection_id, value_arg) {
     }
 
     send_client_message(connection_id, "Usage: set summonable on|off");
+}
+
+fn handle_automap(connection_id, value_arg) {
+    let current = is_automap_enabled(connection_id);
+
+    if value_arg == "" {
+        let status = if current { "enabled" } else { "disabled" };
+        send_client_message(connection_id, "Automap is currently " + status + ".");
+        send_client_message(connection_id, "Usage: set automap on|off");
+        send_client_message(connection_id, "");
+        send_client_message(connection_id, "When enabled, an ASCII map of rooms you've explored is shown above each look.");
+        send_client_message(connection_id, "Use the 'map' command to show the map on demand regardless of this setting.");
+        return;
+    }
+
+    if value_arg == "on" || value_arg == "enable" || value_arg == "true" || value_arg == "1" {
+        if set_automap_enabled_for(connection_id, true) {
+            send_client_message(connection_id, "Automap enabled.");
+        } else {
+            send_client_message(connection_id, "Error enabling automap.");
+        }
+        return;
+    }
+
+    if value_arg == "off" || value_arg == "disable" || value_arg == "false" || value_arg == "0" {
+        if set_automap_enabled_for(connection_id, false) {
+            send_client_message(connection_id, "Automap disabled.");
+        } else {
+            send_client_message(connection_id, "Error disabling automap.");
+        }
+        return;
+    }
+
+    send_client_message(connection_id, "Usage: set automap on|off");
 }

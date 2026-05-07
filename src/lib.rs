@@ -131,6 +131,14 @@ pub struct World {
     pub recipes: HashMap<String, Recipe>,
     // Spell definitions (loaded from scripts/data/spells_*.json)
     pub spell_definitions: HashMap<String, SpellDefinition>,
+    // Achievement definitions (loaded from scripts/data/achievements/*.json
+    // and the sled `achievements` tree). Indexed by stable achievement key.
+    pub achievement_definitions: HashMap<String, AchievementDef>,
+    // Index from counter key -> list of achievement keys whose criterion
+    // is a Counter on that key. Built once at load; rebuilt on hot reload
+    // if/when reload is wired. Used to make `notify_achievement_counter`
+    // O(matching) instead of O(all defs).
+    pub achievement_index_by_counter: HashMap<String, Vec<String>>,
     // Transportation system (elevators, buses, trains, etc.)
     pub transports: HashMap<Uuid, TransportData>,
     // Chat integration sender (for disconnect notifications to Matrix/Discord)

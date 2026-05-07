@@ -246,6 +246,16 @@ fn show_basic_status(char, connection_id) {
     } else {
         output += "Description: (none set - use 'describe <text>' to add one)\n";
     }
+    // Achievements / active title summary (skipped when system disabled)
+    if achievements_enabled() {
+        let unlocked = char.achievements_unlocked_count;
+        let title_text = get_active_title(char.name);
+        let ach_line = "Achievements: " + unlocked + " unlocked";
+        if title_text != "" {
+            ach_line += "   Title: " + title_text;
+        }
+        output += ach_line + "\n";
+    }
     output += "\n";
 
     // HP bar with color based on percentage. Equipment APPLY_MAXHIT bonuses

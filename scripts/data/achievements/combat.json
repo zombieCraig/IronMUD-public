@@ -1,0 +1,42 @@
+[
+  {
+    "key": "first_blood",
+    "name": "First Blood",
+    "description": "Land the killing blow on your first hostile creature.",
+    "category": "combat",
+    "criterion": { "kind": "counter", "counter": "kills.any", "threshold": 1 },
+    "reward": { "title": "the Bloodied" }
+  },
+  {
+    "key": "veteran_slayer",
+    "name": "Veteran Slayer",
+    "description": "Defeat 50 hostile creatures.",
+    "category": "combat",
+    "criterion": { "kind": "counter", "counter": "kills.any", "threshold": 50 },
+    "reward": { "title": "the Veteran" }
+  },
+  {
+    "key": "hunter_hundred",
+    "name": "Hunter of a Hundred",
+    "description": "Defeat 100 hostile creatures.",
+    "category": "combat",
+    "criterion": { "kind": "counter", "counter": "kills.any", "threshold": 100 },
+    "reward": { "title": "the Hunter" }
+  },
+  {
+    "key": "master_at_arms",
+    "name": "Master at Arms",
+    "description": "Defeat 500 hostile creatures.",
+    "category": "combat",
+    "criterion": { "kind": "counter", "counter": "kills.any", "threshold": 500 },
+    "reward": { "title": "Master at Arms" }
+  },
+  {
+    "key": "scourge",
+    "name": "Scourge",
+    "description": "Defeat 1000 hostile creatures.",
+    "category": "combat",
+    "criterion": { "kind": "counter", "counter": "kills.any", "threshold": 1000 },
+    "reward": { "title": "the Scourge" }
+  }
+]
