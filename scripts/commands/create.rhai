@@ -604,6 +604,31 @@ fn finalize_character(connection_id) {
         set_skill_level(char_name, skill, level);
     }
 
+    // Seed languages: Common at level 10 universally, plus the higher of
+    // race/class starting_languages per key. Languages share storage with
+    // skills; the LanguageRegistry decides which keys to surface in
+    // `languages` output.
+    set_skill_level(char_name, "common", 10);
+    let class_langs = class_info["starting_languages"];
+    if class_langs != () {
+        for k in class_langs.keys() {
+            let lvl = class_langs[k];
+            let cur = get_skill_level(char_name, k);
+            if lvl > cur { set_skill_level(char_name, k, lvl); }
+        }
+    }
+    if char_data.race != "" {
+        let race_info_for_lang = get_race_info(char_data.race);
+        let race_langs = race_info_for_lang["starting_languages"];
+        if race_langs != () {
+            for k in race_langs.keys() {
+                let lvl = race_langs[k];
+                let cur = get_skill_level(char_name, k);
+                if lvl > cur { set_skill_level(char_name, k, lvl); }
+            }
+        }
+    }
+
     // Auto-enable mana if race has mana-costing abilities
     if char_data.race != "" {
         let race_info = get_race_info(char_data.race);

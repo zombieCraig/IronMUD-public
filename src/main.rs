@@ -135,6 +135,7 @@ async fn main() -> Result<()> {
         trait_definitions: HashMap::new(),
         race_suggestions: Vec::new(),
         race_definitions: HashMap::new(),
+        language_definitions: HashMap::new(),
         recipes: HashMap::new(),
         spell_definitions: HashMap::new(),
         achievement_definitions: HashMap::new(),

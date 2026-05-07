@@ -179,6 +179,9 @@ pub struct CharacterData {
     pub following_mobile_id: Option<Uuid>, // Mobile instance being followed (mutually exclusive with `following`)
     #[serde(default)]
     pub is_grouped: bool, // Whether actively grouped (not just following)
+    // Active language for say/tell/whisper/shout. Defaults to "common".
+    #[serde(default = "default_language")]
+    pub current_language: String,
     // Character stats (affect carrying capacity, health, stamina, etc.)
     #[serde(default = "default_stat")]
     pub stat_str: i32, // Strength - affects carrying capacity
@@ -454,6 +457,8 @@ pub struct ClassDefinition {
     pub stat_bonuses: HashMap<String, i32>,
     #[serde(default = "default_true")]
     pub available: bool,
+    #[serde(default)]
+    pub starting_languages: HashMap<String, i32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -622,10 +627,28 @@ pub struct RaceDefinition {
     pub active_abilities: Vec<RacialActive>,
     #[serde(default = "default_true")]
     pub available: bool,
+    #[serde(default)]
+    pub starting_languages: HashMap<String, i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LanguageDefinition {
+    pub key: String,
+    pub display_name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub is_lingua_franca: bool,
+    #[serde(default)]
+    pub phonetic_words: Vec<String>,
 }
 
 fn default_spell_xp() -> i32 {
     5
+}
+
+fn default_language() -> String {
+    "common".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

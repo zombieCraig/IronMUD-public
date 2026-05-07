@@ -572,6 +572,26 @@
     "conflicts_with": ["quick_study", "prodigy"],
     "available": true
   },
+  "linguist": {
+    "id": "linguist",
+    "name": "Linguist",
+    "description": "Languages come naturally. You pick up foreign tongues considerably faster than most.",
+    "cost": 2,
+    "category": "positive",
+    "effects": {"language_xp_bonus": 50},
+    "conflicts_with": ["tongue_tied"],
+    "available": true
+  },
+  "tongue_tied": {
+    "id": "tongue_tied",
+    "name": "Tongue-Tied",
+    "description": "Foreign tongues twist on your lips. Languages take longer to master than for most.",
+    "cost": -2,
+    "category": "negative",
+    "effects": {"language_xp_bonus": -35},
+    "conflicts_with": ["linguist"],
+    "available": true
+  },
 
   "shadow_born": {
     "id": "shadow_born",

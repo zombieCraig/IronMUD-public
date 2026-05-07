@@ -71,6 +71,14 @@
     "access": "user",
     "description": "Shout a message that carries to adjacent rooms"
   },
+  "speak": {
+    "access": "user",
+    "description": "Switch the language you're speaking (or show the current one)"
+  },
+  "languages": {
+    "access": "user",
+    "description": "List the languages you know"
+  },
   "dig": {
     "access": "user",
     "description": "Unearth buried items, or (builders) dig a new room in a direction"

@@ -130,6 +130,8 @@ pub struct World {
     pub trait_definitions: HashMap<String, TraitDefinition>,
     pub race_suggestions: Vec<RaceSuggestion>,
     pub race_definitions: HashMap<String, RaceDefinition>,
+    // Language definitions (loaded from scripts/data/languages_*.json)
+    pub language_definitions: HashMap<String, LanguageDefinition>,
     // Crafting/cooking recipes (created via recedit command)
     pub recipes: HashMap<String, Recipe>,
     // Spell definitions (loaded from scripts/data/spells_*.json)
@@ -1246,6 +1248,7 @@ pub async fn handle_connection(
                 shop_preset_vnums,
                 plant_vnums,
                 spell_names,
+                language_keys,
                 online_players,
                 has_builder_access,
             ) = {
@@ -1350,6 +1353,9 @@ pub async fn handle_connection(
 
                 let spell_names: Vec<String> = world.spell_definitions.values().map(|s| s.name.clone()).collect();
 
+                let language_keys: Vec<String> =
+                    world.language_definitions.keys().cloned().collect();
+
                 // Get online player names
                 let online_players: Vec<String> = {
                     let conns = connections.lock().unwrap();
@@ -1374,6 +1380,7 @@ pub async fn handle_connection(
                     shop_preset_vnums,
                     plant_vnums,
                     spell_names,
+                    language_keys,
                     online_players,
                     has_builder_access,
                 )
@@ -1394,6 +1401,7 @@ pub async fn handle_connection(
                 &shop_preset_vnums,
                 &plant_vnums,
                 &spell_names,
+                &language_keys,
                 &online_players,
                 has_builder_access,
             );

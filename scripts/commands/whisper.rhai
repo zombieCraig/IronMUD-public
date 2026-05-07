@@ -50,8 +50,22 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Language garble: worse-of-(speaker, listener) skill.
+    let language_key = char.current_language;
+    let heard = message;
+    if !is_lingua_franca(language_key) {
+        let speaker_skill = get_skill_level(char.name, language_key);
+        let listener_skill = get_skill_level(actual_name, language_key);
+        let effective = if speaker_skill < listener_skill { speaker_skill } else { listener_skill };
+        heard = garble_language(heard, language_key, effective);
+        if listener_skill >= 1 {
+            add_skill_experience(actual_name, language_key, 1);
+        }
+        add_skill_experience(char.name, language_key, 1);
+    }
+
     // Send message to target
-    send_client_message(target_conn, char.name + " whispers: " + message);
+    send_client_message(target_conn, char.name + " whispers: " + heard);
 
     // Confirm to sender
     send_client_message(connection_id, "You whisper to " + actual_name + ": " + message);

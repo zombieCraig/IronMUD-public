@@ -1,0 +1,54 @@
+{
+  "common": {
+    "key": "common",
+    "display_name": "Common",
+    "description": "The shared trade tongue spoken across the realms. Everyone understands it, regardless of skill.",
+    "is_lingua_franca": true,
+    "phonetic_words": []
+  },
+  "elvish": {
+    "key": "elvish",
+    "display_name": "Elvish",
+    "description": "The flowing language of the elven peoples, full of soft consonants and lingering vowels.",
+    "is_lingua_franca": false,
+    "phonetic_words": [
+      "aelin", "mellondir", "naril", "silmaelin", "elenya", "lorien",
+      "aerithel", "mirien", "alarian", "elondir", "vanyar", "aenorel",
+      "tirantha", "fialinde", "menelorn", "anuaril", "rilien", "valanar",
+      "thalassil", "elunore", "celebrion", "finduilas", "thranduin",
+      "amarie", "earen", "noldorel", "telperion", "saelbeth", "ithilven",
+      "celenor", "myrithel", "ealien", "fenarion", "lothriel", "naerinwe",
+      "silvaril", "valethin", "amrothel", "luinarel", "saerithel"
+    ]
+  },
+  "dwarvish": {
+    "key": "dwarvish",
+    "display_name": "Dwarvish",
+    "description": "The hard, stone-edged speech of the mountain folk. Heavy on K, H, and TH sounds.",
+    "is_lingua_franca": false,
+    "phonetic_words": [
+      "khazad", "barukh", "thrumkhul", "khorad", "duraz", "mazark",
+      "khuzdul", "tharbad", "ghalruk", "broggak", "korunmar", "thraknor",
+      "drekkhul", "morthak", "uzbad", "kraghorn", "thordrak", "khelvik",
+      "burzghul", "munzkar", "khazrum", "throkdun", "azaghal", "brunnar",
+      "korumdal", "ghulrak", "tharzun", "molvath", "dazhar", "bolgrim",
+      "thrarn", "khoradan", "uthgrim", "vargdrak", "morukar", "throkhal",
+      "krazgar", "mundak", "thurzak", "brogund"
+    ]
+  },
+  "orcish": {
+    "key": "orcish",
+    "display_name": "Orcish",
+    "description": "The harsh, guttural tongue of the orc clans, full of growls and snarled syllables.",
+    "is_lingua_franca": false,
+    "phonetic_words": [
+      "nargha", "gruzm", "khurzag", "nazhruk", "shaggal", "brakgar",
+      "uzgath", "ghazruk", "morghul", "drogath", "shrakh", "vorzag",
+      "ungrak", "gluzthak", "bolghar", "krazghul", "mokrum", "ghorun",
+      "thrazhar", "ushkar", "morgrak", "skarnak", "vrungar", "dolgmar",
+      "nazgath", "shrukh", "ghulroth", "krezhar", "blorzag", "uthgrak",
+      "morsh", "varghul", "drozak", "mukhar", "gnarsh", "thrugak",
+      "khorzag", "vrakhul", "sharnak", "drekgrum"
+    ]
+  }
+}

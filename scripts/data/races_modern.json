@@ -11,7 +11,9 @@
         "id": "adaptable",
         "name": "Adaptable",
         "description": "Humans' versatility grants a small bonus to all stats.",
-        "effects": {"all_stats": 1}
+        "effects": {
+          "all_stats": 1
+        }
       }
     ],
     "active_abilities": [],
@@ -21,9 +23,17 @@
     "id": "augmented",
     "name": "Augmented",
     "description": "Cybernetically enhanced humans with reflex boosters and low-light optics wired into their nervous system. The implants tax the mind.",
-    "stat_modifiers": {"str": 1, "dex": 1, "wis": -1},
-    "granted_traits": ["dark_adapted"],
-    "resistances": {"lightning": -15},
+    "stat_modifiers": {
+      "str": 1,
+      "dex": 1,
+      "wis": -1
+    },
+    "granted_traits": [
+      "dark_adapted"
+    ],
+    "resistances": {
+      "lightning": -15
+    },
     "passive_abilities": [],
     "active_abilities": [
       {
@@ -35,26 +45,46 @@
         "cooldown_secs": 300
       }
     ],
-    "available": true
+    "available": true,
+    "starting_languages": {
+      "protocol": 4
+    }
   },
   "bioroid": {
     "id": "bioroid",
     "name": "Bioroid",
     "description": "Vat-grown organic constructs engineered for labor and combat. Physically superior but socially stunted, they struggle with human interaction.",
-    "stat_modifiers": {"con": 2, "str": 1, "cha": -2},
+    "stat_modifiers": {
+      "con": 2,
+      "str": 1,
+      "cha": -2
+    },
     "granted_traits": [],
-    "resistances": {"poison": 25, "cold": -25},
+    "resistances": {
+      "poison": 25,
+      "cold": -25
+    },
     "passive_abilities": [],
     "active_abilities": [],
-    "available": true
+    "available": true,
+    "starting_languages": {
+      "protocol": 10
+    }
   },
   "mutant": {
     "id": "mutant",
     "name": "Mutant",
     "description": "Survivors of toxic exposure whose altered DNA grants unnatural resilience. Their appearance marks them as outsiders.",
-    "stat_modifiers": {"con": 2, "str": 1, "cha": -2},
+    "stat_modifiers": {
+      "con": 2,
+      "str": 1,
+      "cha": -2
+    },
     "granted_traits": [],
-    "resistances": {"poison": 25, "acid": 15},
+    "resistances": {
+      "poison": 25,
+      "acid": 15
+    },
     "passive_abilities": [],
     "active_abilities": [
       {
@@ -66,13 +96,20 @@
         "cooldown_secs": 300
       }
     ],
-    "available": true
+    "available": true,
+    "starting_languages": {
+      "street_slang": 10
+    }
   },
   "clone": {
     "id": "clone",
     "name": "Clone",
     "description": "Flash-grown replicas with accelerated neural patterning. Physically identical to their template but subtly fragile, as if mass-produced.",
-    "stat_modifiers": {"dex": 1, "int": 1, "con": -1},
+    "stat_modifiers": {
+      "dex": 1,
+      "int": 1,
+      "con": -1
+    },
     "granted_traits": [],
     "resistances": {},
     "passive_abilities": [
@@ -80,39 +117,72 @@
         "id": "adaptable",
         "name": "Adaptable",
         "description": "Accelerated neural patterning grants flexibility in any situation.",
-        "effects": {"all_stats": 1}
+        "effects": {
+          "all_stats": 1
+        }
       }
     ],
     "active_abilities": [],
-    "available": true
+    "available": true,
+    "starting_languages": {
+      "protocol": 10
+    }
   },
   "synth": {
     "id": "synth",
     "name": "Synth",
     "description": "Artificial beings with synthetic skin over a polymer chassis. Brilliant and perceptive, but their uncanny mannerisms unsettle most people.",
-    "stat_modifiers": {"int": 2, "wis": 1, "cha": -2},
-    "granted_traits": ["night_vision"],
-    "resistances": {"poison": 50, "lightning": -25},
+    "stat_modifiers": {
+      "int": 2,
+      "wis": 1,
+      "cha": -2
+    },
+    "granted_traits": [
+      "night_vision"
+    ],
+    "resistances": {
+      "poison": 50,
+      "lightning": -25
+    },
     "passive_abilities": [],
     "active_abilities": [],
-    "available": true
+    "available": true,
+    "starting_languages": {
+      "protocol": 10
+    }
   },
   "revenant": {
     "id": "revenant",
     "name": "Revenant",
     "description": "Clinically dead and chemically reanimated, revenants are cold-blooded enforcers sustained by a cocktail of military-grade stimulants. Their higher reasoning has deteriorated.",
-    "stat_modifiers": {"str": 2, "con": 1, "int": -2},
-    "granted_traits": ["night_vision"],
-    "resistances": {"cold": 25, "fire": -25},
+    "stat_modifiers": {
+      "str": 2,
+      "con": 1,
+      "int": -2
+    },
+    "granted_traits": [
+      "night_vision"
+    ],
+    "resistances": {
+      "cold": 25,
+      "fire": -25
+    },
     "passive_abilities": [],
     "active_abilities": [],
-    "available": true
+    "available": true,
+    "starting_languages": {
+      "high_speak": 8
+    }
   },
   "psychic": {
     "id": "psychic",
     "name": "Psychic",
     "description": "Rare individuals exhibiting latent psionic ability, believed to be a spontaneous mutation. Mentally formidable but physically frail from the neurological strain.",
-    "stat_modifiers": {"wis": 2, "cha": 1, "str": -2},
+    "stat_modifiers": {
+      "wis": 2,
+      "cha": 1,
+      "str": -2
+    },
     "granted_traits": [],
     "resistances": {},
     "passive_abilities": [],
@@ -126,6 +196,9 @@
         "cooldown_secs": 300
       }
     ],
-    "available": true
+    "available": true,
+    "starting_languages": {
+      "high_speak": 6
+    }
   }
 }

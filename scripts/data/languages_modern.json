@@ -1,0 +1,53 @@
+{
+  "common": {
+    "key": "common",
+    "display_name": "Common",
+    "description": "Everyday spoken language. Universally understood.",
+    "is_lingua_franca": true,
+    "phonetic_words": []
+  },
+  "street_slang": {
+    "key": "street_slang",
+    "display_name": "Street Slang",
+    "description": "The clipped, evolving argot of the underbelly. Outsiders rarely keep up.",
+    "is_lingua_franca": false,
+    "phonetic_words": [
+      "flick", "chrome", "bag", "glitch", "razor", "slice", "static",
+      "burn", "fade", "wire", "creds", "patch", "scrap", "frag",
+      "ghost", "spike", "loop", "gridlock", "drift", "edge", "splice",
+      "fence", "stash", "burner", "ping", "wedge", "scratch", "bricked",
+      "neon", "glaze", "hotwire", "snake", "blackout", "smoke", "clip",
+      "tag", "drift", "flatline", "roll", "scrambler"
+    ]
+  },
+  "high_speak": {
+    "key": "high_speak",
+    "display_name": "High Speak",
+    "description": "The formal, latinate dialect of academia, courts, and old corporate boardrooms.",
+    "is_lingua_franca": false,
+    "phonetic_words": [
+      "eloquent", "assemblage", "parlance", "discourse", "veracity",
+      "obsequious", "perfunctory", "sagacious", "perspicacious", "magnanimous",
+      "exegesis", "axiomatic", "tautology", "syllogism", "predicate",
+      "ratiocination", "adjudicate", "promulgate", "concatenate", "epistemic",
+      "sublimate", "construe", "reconcile", "delineate", "fortuitous",
+      "equanimity", "adumbrate", "verisimilar", "tacit", "ineffable",
+      "supplicant", "convocation", "esoteric", "discernment", "felicitation",
+      "ostensible", "concomitant", "perambulate", "cogitate", "soliloquy"
+    ]
+  },
+  "protocol": {
+    "key": "protocol",
+    "display_name": "Protocol",
+    "description": "The packetized handshake-language of synthetic minds. Compact, terse, and utterly precise.",
+    "is_lingua_franca": false,
+    "phonetic_words": [
+      "ack", "nak", "syn", "fin", "rst", "chk", "crc", "seq",
+      "0x4F", "0x12", "0xA7", "0xB3", "0x2C", "0xD9", "0x88",
+      "ping", "pong", "echo", "null", "pad", "nop", "ret",
+      "frame", "burst", "mux", "demux", "addr", "chan", "tick",
+      "edge", "rise", "fall", "set", "clr", "sig.0", "sig.1",
+      "halt", "boot", "init", "exec", "trap", "irq", "dma"
+    ]
+  }
+}

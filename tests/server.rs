@@ -266,6 +266,7 @@ async fn test_character_system_lifecycle() -> Result<()> {
         trait_definitions: std::collections::HashMap::new(),
         race_suggestions: Vec::new(),
         race_definitions: std::collections::HashMap::new(),
+        language_definitions: std::collections::HashMap::new(),
         recipes: std::collections::HashMap::new(),
         transports: std::collections::HashMap::new(),
         spell_definitions: std::collections::HashMap::new(),

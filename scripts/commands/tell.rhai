@@ -51,8 +51,21 @@ fn run_command(args, connection_id) {
         spoken = garble_jaw_speech(spoken, jaw_penalty);
     }
 
-    // Apply ear garbling for recipient
+    // Language garble: worse-of-(speaker, listener) skill.
+    let language_key = char.current_language;
     let heard = spoken;
+    if !is_lingua_franca(language_key) {
+        let speaker_skill = get_skill_level(char.name, language_key);
+        let listener_skill = get_skill_level(actual_name, language_key);
+        let effective = if speaker_skill < listener_skill { speaker_skill } else { listener_skill };
+        heard = garble_language(heard, language_key, effective);
+        if listener_skill >= 1 {
+            add_skill_experience(actual_name, language_key, 1);
+        }
+        add_skill_experience(char.name, language_key, 1);
+    }
+
+    // Apply ear garbling for recipient
     let ear_penalty = get_ear_wound_penalty(actual_name);
     if ear_penalty > 0 {
         heard = garble_hearing(heard, ear_penalty);

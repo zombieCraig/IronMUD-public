@@ -5,8 +5,8 @@ use std::collections::HashMap;
 use tracing::{error, info};
 
 use crate::{
-    AchievementCriterion, AchievementDef, AchievementSource, ClassDefinition, CommandMeta, RaceDefinition,
-    RaceSuggestion, SharedState, SpellDefinition,
+    AchievementCriterion, AchievementDef, AchievementSource, ClassDefinition, CommandMeta, LanguageDefinition,
+    RaceDefinition, RaceSuggestion, SharedState, SpellDefinition,
 };
 
 /// Load command metadata from scripts/commands.json
@@ -46,6 +46,13 @@ fn resolve_race_definitions_path(preset: Option<String>) -> String {
     format!("scripts/data/races_{}.json", preset)
 }
 
+/// Resolve the language definitions file path. Tracks the same preset as
+/// classes/races by default; admins can override via `language_preset` setting.
+fn resolve_languages_path(preset: Option<String>) -> String {
+    let preset = preset.unwrap_or_else(|| "fantasy".to_string());
+    format!("scripts/data/languages_{}.json", preset)
+}
+
 /// Load game data (classes, traits, race suggestions) from scripts/data/*.json
 pub fn load_game_data(state: SharedState) -> Result<()> {
     let mut world = state.lock().unwrap();
@@ -83,6 +90,7 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
                     starting_skills: HashMap::new(),
                     stat_bonuses: HashMap::new(),
                     available: true,
+                    starting_languages: HashMap::new(),
                 },
             );
         }
@@ -162,6 +170,7 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
                     passive_abilities: Vec::new(),
                     active_abilities: Vec::new(),
                     available: true,
+                    starting_languages: HashMap::new(),
                 },
             );
         }
@@ -186,6 +195,47 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
         },
         Err(_) => {
             info!("No spell definitions file found at {}", spells_path);
+        }
+    }
+
+    // Load language definitions. Falls back to the class_preset (or "fantasy")
+    // if `language_preset` is unset, so a fantasy world gets fantasy languages
+    // without extra config.
+    let language_preset = world
+        .db
+        .get_setting("language_preset")
+        .unwrap_or(None)
+        .or_else(|| world.db.get_setting("class_preset").unwrap_or(None));
+    let languages_path = resolve_languages_path(language_preset);
+    match std::fs::read_to_string(&languages_path) {
+        Ok(content) => match serde_json::from_str::<HashMap<String, LanguageDefinition>>(&content) {
+            Ok(langs) => {
+                info!(
+                    "Loaded {} language definitions from {}",
+                    langs.len(),
+                    languages_path
+                );
+                world.language_definitions = langs;
+            }
+            Err(e) => {
+                error!("Failed to parse {}: {}", languages_path, e);
+            }
+        },
+        Err(_) => {
+            info!(
+                "No language definitions file at {}, seeding Common only",
+                languages_path
+            );
+            world.language_definitions.insert(
+                "common".to_string(),
+                LanguageDefinition {
+                    key: "common".to_string(),
+                    display_name: "Common".to_string(),
+                    description: "The lingua franca; understood by everyone.".to_string(),
+                    is_lingua_franca: true,
+                    phonetic_words: Vec::new(),
+                },
+            );
         }
     }
 

@@ -42,6 +42,11 @@ fn run_command(args, connection_id) {
         spoken = garble_jaw_speech(spoken, jaw_penalty);
     }
 
+    // Speaker side of the language gate.
+    let language_key = char.current_language;
+    let speaker_lang_skill = get_skill_level(char.name, language_key);
+    let lang_active = !is_lingua_franca(language_key);
+
     // Show to shouter (show original)
     send_client_message(connection_id, "You shout: " + args + "!");
 
@@ -54,6 +59,14 @@ fn run_command(args, connection_id) {
         let listener_conn = find_player_connection_by_name(listener_name);
         if listener_conn == "" { continue; }
         let heard = spoken;
+        if lang_active {
+            let listener_skill = get_skill_level(listener_name, language_key);
+            let effective = if speaker_lang_skill < listener_skill { speaker_lang_skill } else { listener_skill };
+            heard = garble_language(heard, language_key, effective);
+            if listener_skill >= 1 {
+                add_skill_experience(listener_name, language_key, 1);
+            }
+        }
         let ear_penalty = get_ear_wound_penalty(listener_name);
         if ear_penalty > 0 { heard = garble_hearing(heard, ear_penalty); }
         send_client_message(listener_conn, char_name + " shouts: " + heard + "!");
@@ -61,6 +74,9 @@ fn run_command(args, connection_id) {
 
     if source_soundproof {
         send_client_message(connection_id, "Your shout dies in the silence of this place.");
+        if lang_active {
+            add_skill_experience(char.name, language_key, 1);
+        }
         return;
     }
 
@@ -82,9 +98,21 @@ fn run_command(args, connection_id) {
             let listener_conn = find_player_connection_by_name(listener_name);
             if listener_conn == "" { continue; }
             let heard = spoken;
+            if lang_active {
+                let listener_skill = get_skill_level(listener_name, language_key);
+                let effective = if speaker_lang_skill < listener_skill { speaker_lang_skill } else { listener_skill };
+                heard = garble_language(heard, language_key, effective);
+                if listener_skill >= 1 {
+                    add_skill_experience(listener_name, language_key, 1);
+                }
+            }
             let ear_penalty = get_ear_wound_penalty(listener_name);
             if ear_penalty > 0 { heard = garble_hearing(heard, ear_penalty); }
             send_client_message(listener_conn, "Someone shouts: " + heard + "!");
         }
+    }
+
+    if lang_active {
+        add_skill_experience(char.name, language_key, 1);
     }
 }

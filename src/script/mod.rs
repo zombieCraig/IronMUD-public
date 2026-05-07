@@ -18,6 +18,7 @@ mod items;
 #[macro_use]
 pub mod macros;
 mod mail;
+pub mod lang;
 pub mod map;
 mod medical;
 mod mobiles;
@@ -349,6 +350,10 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         .register_get("ascii_map", |c: &mut CharacterData| c.ascii_map)
         .register_set("ascii_map", |c: &mut CharacterData, val: bool| {
             c.ascii_map = val;
+        })
+        .register_get("current_language", |c: &mut CharacterData| c.current_language.clone())
+        .register_set("current_language", |c: &mut CharacterData, val: String| {
+            c.current_language = val;
         });
 
     // Register CharacterData constructor
@@ -409,6 +414,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 following: None,
                 following_mobile_id: None,
                 is_grouped: false,
+                current_language: "common".to_string(),
                 // Character stats (default 10)
                 stat_str: 10,
                 stat_dex: 10,
@@ -1913,4 +1919,5 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     social::register(engine, db.clone());
     achievements::register(engine, db.clone(), connections.clone(), state.clone());
     map::register(engine, db.clone(), connections.clone());
+    lang::register(engine, db.clone(), state.clone());
 }

@@ -143,6 +143,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 .map(|(k, v)| (k.clone().into(), rhai::Dynamic::from(*v as i64)))
                 .collect();
             map.insert("stat_bonuses".into(), rhai::Dynamic::from(bonuses_map));
+            let lang_map: rhai::Map = class
+                .starting_languages
+                .iter()
+                .map(|(k, v)| (k.clone().into(), rhai::Dynamic::from(*v as i64)))
+                .collect();
+            map.insert("starting_languages".into(), rhai::Dynamic::from(lang_map));
         }
         map
     });
@@ -313,6 +319,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 })
                 .collect();
             map.insert("active_abilities".into(), rhai::Dynamic::from(actives));
+            let lang_map: rhai::Map = race
+                .starting_languages
+                .iter()
+                .map(|(k, v)| (k.clone().into(), rhai::Dynamic::from(*v as i64)))
+                .collect();
+            map.insert("starting_languages".into(), rhai::Dynamic::from(lang_map));
         }
         map
     });
@@ -1960,6 +1972,21 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     if has_slow_learner {
                         xp = xp * 65 / 100;
                     } // -35%
+                    // Language-only modifiers, stacked multiplicatively on top of
+                    // the general learning traits.
+                    let is_lang = state_clone
+                        .lock()
+                        .ok()
+                        .map(|w| w.language_definitions.contains_key(&skill_key))
+                        .unwrap_or(false);
+                    if is_lang {
+                        if char.traits.iter().any(|t| t == "linguist") {
+                            xp = xp * 150 / 100;
+                        }
+                        if char.traits.iter().any(|t| t == "tongue_tied") {
+                            xp = xp * 65 / 100;
+                        }
+                    }
                     xp = xp.max(1);
                     entry.experience += xp;
 

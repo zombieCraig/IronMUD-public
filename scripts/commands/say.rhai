@@ -46,6 +46,10 @@ fn run_command(args, connection_id) {
         spoken = garble_jaw_speech(spoken, jaw_penalty);
     }
 
+    // Speaker side of the language gate: read once before the listener loop.
+    let language_key = char.current_language;
+    let speaker_lang_skill = get_skill_level(char.name, language_key);
+
     // Show to speaker (show original to self, garbled to others)
     send_client_message(connection_id, "You say: " + args);
 
@@ -56,6 +60,16 @@ fn run_command(args, connection_id) {
         let listener_conn = find_player_connection_by_name(listener_name);
         if listener_conn == "" { continue; }
         let heard = spoken;
+        // Language garble: worse-of-(speaker, listener) skill drives clarity.
+        if !is_lingua_franca(language_key) {
+            let listener_skill = get_skill_level(listener_name, language_key);
+            let effective = if speaker_lang_skill < listener_skill { speaker_lang_skill } else { listener_skill };
+            heard = garble_language(heard, language_key, effective);
+            // Listener gains a bit of XP if they have at least token exposure.
+            if listener_skill >= 1 {
+                add_skill_experience(listener_name, language_key, 1);
+            }
+        }
         let ear_penalty = get_ear_wound_penalty(listener_name);
         if ear_penalty > 0 { heard = garble_hearing(heard, ear_penalty); }
         let listener_char = get_player_character(listener_conn);
@@ -64,6 +78,11 @@ fn run_command(args, connection_id) {
         } else {
             send_client_message(listener_conn, char_name + " says: " + heard);
         }
+    }
+
+    // Speaker XP gain: only on non-lingua-franca and below cap.
+    if !is_lingua_franca(language_key) {
+        add_skill_experience(char.name, language_key, 1);
     }
 
     // Check for NPC dialogue responses (regular dialogue first)
