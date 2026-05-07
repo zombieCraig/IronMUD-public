@@ -823,6 +823,11 @@ fn map_resets(
     let mut warnings: Vec<Warning> = Vec::new();
     let mut last_mob_idx: Option<usize> = None;
     let mut last_obj_idx: Option<usize> = None;
+    // Cross-block P chaining: vnum → spawn index of the most-recently-loaded
+    // O reset for a Container of that vnum in this zone. Falls back here when
+    // an intervening M/non-container O has cleared `last_obj_idx`. Most
+    // recent wins, matching Circle's loader stack semantics.
+    let mut container_idx_by_vnum: HashMap<i32, usize> = HashMap::new();
     // Track NECK_1+NECK_2 collision per-mob (warn-once).
     let mut neck_warned_for: HashSet<usize> = HashSet::new();
     // Track which mob spawn points already had a slot used to detect
@@ -890,7 +895,13 @@ fn map_resets(
                 // Only track O as a P-chain anchor if the item is actually
                 // a container — chaining P onto a non-container is meaningless.
                 last_obj_idx = match item_type_by_source.get(vnum) {
-                    Some(ItemType::Container) => Some(spawns.len() - 1),
+                    Some(ItemType::Container) => {
+                        // Stamp into the cross-block lookup too so a later
+                        // P after an intervening M/non-container O can still
+                        // reach this container by vnum.
+                        container_idx_by_vnum.insert(*vnum, spawns.len() - 1);
+                        Some(spawns.len() - 1)
+                    }
                     _ => None,
                 };
             }
@@ -1016,32 +1027,39 @@ fn map_resets(
                     ));
                     continue;
                 }
-                let Some(parent_idx) = last_obj_idx else {
+                // Resolve the parent container spawn point. Try the
+                // immediately-prior O first (cheap, common path); if that
+                // doesn't match the named container, fall back to the
+                // per-zone vnum→spawn-index map populated by earlier
+                // Container O resets. The fallback is what makes
+                // cross-block chains (P after an intervening M / non-
+                // container O) attach instead of dropping.
+                let parent_container_pref = item_index.get(container_vnum);
+                let mut parent_idx_opt: Option<usize> = None;
+                let mut cross_block = false;
+                if let Some(idx) = last_obj_idx {
+                    let parent_vnum = &spawns[idx].vnum;
+                    if parent_container_pref.map(|p| p == parent_vnum).unwrap_or(false) {
+                        parent_idx_opt = Some(idx);
+                    }
+                }
+                if parent_idx_opt.is_none() {
+                    if let Some(&idx) = container_idx_by_vnum.get(container_vnum) {
+                        parent_idx_opt = Some(idx);
+                        cross_block = true;
+                    }
+                }
+                let Some(parent_idx) = parent_idx_opt else {
                     warnings.push(Warning::new(
                         WarningKind::DeferredFeature,
                         Severity::Warn,
                         reset.source.clone(),
                         format!(
-                            "P reset for obj #{vnum} into container #{container_vnum} — no preceding O of a Container in this zone (cross-block chain) — drop"
+                            "P reset for obj #{vnum} into container #{container_vnum} — no Container O for that vnum in this zone — drop"
                         ),
                     ));
                     continue;
                 };
-                // Verify the immediately-prior O matches the P's container vnum.
-                let parent_container_pref = item_index.get(container_vnum);
-                let parent_vnum = &spawns[parent_idx].vnum;
-                if parent_container_pref.map(|p| p != parent_vnum).unwrap_or(true) {
-                    warnings.push(Warning::new(
-                        WarningKind::DeferredFeature,
-                        Severity::Warn,
-                        reset.source.clone(),
-                        format!(
-                            "P reset target container #{container_vnum} doesn't match prior O ({}); cross-container chains not modelled — drop",
-                            parent_vnum
-                        ),
-                    ));
-                    continue;
-                }
                 let Some(item_pref) = item_index.get(vnum) else {
                     warnings.push(Warning::new(
                         WarningKind::DeferredFeature,
@@ -1051,6 +1069,16 @@ fn map_resets(
                     ));
                     continue;
                 };
+                if cross_block {
+                    warnings.push(Warning::new(
+                        WarningKind::Info,
+                        Severity::Info,
+                        reset.source.clone(),
+                        format!(
+                            "P reset for obj #{vnum} into container #{container_vnum} resolved cross-block (intervening M/non-container O cleared the immediate anchor)"
+                        ),
+                    ));
+                }
                 spawns[parent_idx].dependencies.push(PlannedSpawnDep {
                     item_vnum: item_pref.clone(),
                     destination: SpawnDestination::Container,

@@ -856,9 +856,9 @@ already respects. Revisit if/when summon/teleport spells land.)*
 ### Zone resets backlog
 
 Histogram from stock CircleMUD 3.1 (across all `.zon` files): **1098 M /
-188 O / 328 G / 554 E / 432 D / 77 P / 80 R**. M/O/G/E/D translate
-cleanly today, P translates in the common case, R is warn-only. Gaps
-ranked below.
+188 O / 328 G / 554 E / 432 D / 77 P / 80 R**. M/O/G/E/P/D all translate
+cleanly (P now resolves cross-block via per-zone vnum lookup); R is
+warn-only. Gaps ranked below.
 
 #### Intentionally not imported
 
@@ -873,15 +873,6 @@ ranked below.
   operational concern (clean DB or run a one-off dedupe pass) rather
   than a runtime gap.
 
-#### High priority
-
-- **P cross-block container chaining** — ~10 of 77 `P` resets (zone 25
-  is the worst offender) reference containers declared in earlier reset
-  blocks rather than the immediately-prior `O`. The current importer
-  only chains onto the most recent `O`-of-Container, so these get
-  dropped with a warn. Likely shape: a per-area
-  `last_seen_obj_vnum -> spawn_point_index` map walked in source order.
-
 #### Medium priority
 
 - **WEAR_LIGHT (slot 0)** — no IronMUD hold-light slot. The spawn point
@@ -891,6 +882,17 @@ ranked below.
   per mob).
 
 #### Resolved
+
+- **P cross-block container chaining** — Implemented (May 2026). The
+  importer maintains a per-zone `container_idx_by_vnum: HashMap<i32,
+  usize>` updated on every Container `O` reset. When a `P` reset's
+  immediate `last_obj_idx` doesn't match the named container, the
+  mapper falls back to this map and attaches to the most-recent
+  Container `O` of that vnum (matching Circle's loader stack
+  semantics). The fallback emits an `Info`-severity note for
+  visibility; the zone-25 cross-block chains that previously dropped
+  now land. `P` only stays a `Warn` if no Container `O` of the named
+  vnum exists anywhere in the zone.
 
 - **Max-count semantics** — Circle's `max` ("stop reloading when the
   world has N already") is now imported into IronMUD's prototype-level

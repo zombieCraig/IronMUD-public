@@ -778,8 +778,8 @@ fn translates_zon_resets() {
     let zone = &ir.zones[0];
     // Lifespan 10 → respawn cadence 600s
     assert_eq!(zone.default_respawn_secs, Some(600));
-    // 17 reset commands in the .zon (M+G+E+M+E+O+P+O+P+O+P+M+G+D+D+D+R)
-    assert_eq!(zone.resets.len(), 17, "all resets parsed structurally");
+    // 19 reset commands in the .zon (M+G+E+M+E+O+P+O+P+O+O+P+P+M+G+D+D+D+R)
+    assert_eq!(zone.resets.len(), 19, "all resets parsed structurally");
 
     let opts = MappingOptions {
         circle: mapping::CircleMappingTable::load_default(),
@@ -790,8 +790,8 @@ fn translates_zon_resets() {
     };
     let (plan, warnings) = mapping::ir_to_plan(&ir, &opts);
 
-    // Spawn count: 3 mobs (M ×3) + 3 objs (O ×3) = 6 spawns.
-    assert_eq!(plan.spawns.len(), 6, "one spawn per M and O reset");
+    // Spawn count: 3 mobs (M ×3) + 4 objs (O ×4) = 7 spawns.
+    assert_eq!(plan.spawns.len(), 7, "one spawn per M and O reset");
 
     // Cadence inherited from the zone.
     for sp in &plan.spawns {
@@ -856,26 +856,43 @@ fn translates_zon_resets() {
     ));
     assert_eq!(chest_with_dep.dependencies[0].item_vnum, "reset_test_zone_8050");
 
-    // P targeting a non-Container (orb 8061) → warn + drop. We expect
-    // exactly one such warn.
-    let p_no_container = warnings
+    // Two P resets target a vnum with no Container O in the zone:
+    //   * P 1 8050 1 8061 — 8061 is a non-Container O (not in vnum→idx map)
+    //   * P 1 8050 1 8099 — 8099 has no O at all in this zone
+    // Both fall through cross-block lookup and emit the same warn.
+    let p_unresolved = warnings
         .iter()
         .filter(|w| {
             matches!(w.kind, ironmud::import::WarningKind::DeferredFeature)
-                && w.message.contains("no preceding O of a Container")
+                && w.message.contains("no Container O for that vnum")
         })
         .count();
-    assert_eq!(p_no_container, 1);
+    assert_eq!(p_unresolved, 2);
 
-    // P container_vnum mismatch (target 8099 ≠ prior chest 8060) → warn.
-    let p_mismatch = warnings
+    // Cross-block P (P 1 8052 1 8060 after an intervening non-container O)
+    // resolves via the per-zone vnum→spawn-index map and emits an Info note.
+    let cross_block_info = warnings
         .iter()
         .filter(|w| {
-            matches!(w.kind, ironmud::import::WarningKind::DeferredFeature)
-                && w.message.contains("doesn't match prior O")
+            matches!(w.kind, ironmud::import::WarningKind::Info)
+                && w.message.contains("resolved cross-block")
         })
         .count();
-    assert_eq!(p_mismatch, 1);
+    assert_eq!(cross_block_info, 1, "one cross-block P resolves with an Info");
+    // The cross-block dep landed on the second chest (most-recent 8060).
+    let chest_8060_with_8052 = plan
+        .spawns
+        .iter()
+        .filter(|s| {
+            matches!(s.entity_type, SpawnEntityType::Item) && s.vnum.ends_with("_8060")
+        })
+        .filter(|s| {
+            s.dependencies
+                .iter()
+                .any(|d| d.item_vnum == "reset_test_zone_8052")
+        })
+        .count();
+    assert_eq!(chest_8060_with_8052, 1, "cross-block sword landed in exactly one 8060 spawn");
 
     // G with if=0 (no anchor) → warn.
     let g_if_zero = warnings
@@ -929,9 +946,9 @@ fn translates_zon_resets() {
     {
         let db = Db::open(&db_path).expect("open tmp db");
         let summary = writer::apply(&db, &plan, &warnings).expect("apply");
-        assert_eq!(summary.written_spawns, 6);
+        assert_eq!(summary.written_spawns, 7);
         let stored = db.list_all_spawn_points().unwrap();
-        assert_eq!(stored.len(), 6);
+        assert_eq!(stored.len(), 7);
         // Two wanderer spawn points exist (the second M reset is bare). The
         // first one carries G+E dependencies — find it by dep count.
         let wanderer_sp = stored
@@ -975,6 +992,8 @@ fn write_reset_fixture(root: &PathBuf) -> PathBuf {
          O 0 8061 1 8001         non-container item\n\
          P 1 8050 1 8061                 P after non-Container — drop\n\
          O 0 8060 1 8001         second chest spawn for mismatch test\n\
+         O 0 8061 1 8001         intervening non-container — clears immediate anchor\n\
+         P 1 8052 1 8060                 cross-block P resolves to chest #2\n\
          P 1 8050 1 8099                 P container_vnum mismatch — drop\n\
          M 0 8001 1 8001         second wanderer for if=0 G test\n\
          G 0 8050 1                      G if=0 — drop\n\
@@ -1040,8 +1059,9 @@ fn write_reset_fixture(root: &PathBuf) -> PathBuf {
     )
     .unwrap();
 
-    // Three items: a sword (weapon, vnum 8050), a wand (vnum 8051), a
-    // container (vnum 8060), and a non-container misc item (vnum 8061).
+    // Items: a sword (weapon, vnum 8050), a wand (vnum 8051), a second
+    // sword (vnum 8052) for the cross-block P case, a container (vnum
+    // 8060), and a non-container misc item (vnum 8061).
     std::fs::write(
         world.join("obj/80.obj"),
         "#8050\n\
@@ -1060,6 +1080,14 @@ fn write_reset_fixture(root: &PathBuf) -> PathBuf {
          3 0 1\n\
          0 5 5 0\n\
          2 100 50\n\
+         #8052\n\
+         second sword test~\n\
+         a second test sword~\n\
+         A second test sword lies here.~\n\
+         ~\n\
+         5 0 16385\n\
+         0 1 8 3\n\
+         5 100 100\n\
          #8060\n\
          chest test~\n\
          a test chest~\n\
