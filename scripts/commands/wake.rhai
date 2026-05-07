@@ -65,12 +65,18 @@ fn run_command(args, connection_id) {
     let mobile = find_mobile_by_keyword(target_name, mobiles);
     if mobile != () {
         let activity = get_mobile_activity(mobile.id);
-        if activity != "sleeping" {
+        let position_sleeping = mobile.position == "sleeping";
+        if activity != "sleeping" && !position_sleeping {
             send_client_message(connection_id, mobile.name + " is not asleep.");
             return;
         }
 
-        set_mobile_activity(mobile.id, "working");
+        if activity == "sleeping" {
+            set_mobile_activity(mobile.id, "working");
+        }
+        if position_sleeping {
+            set_mobile_position(mobile.id, "standing");
+        }
 
         send_client_message(connection_id, "You gently shake " + mobile.name + " awake.");
         broadcast_to_room(char.current_room_id, char.name + " shakes " + mobile.name + " awake.", char.name);

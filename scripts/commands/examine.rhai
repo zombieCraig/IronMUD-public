@@ -500,6 +500,10 @@ fn examine_show_mobile(mobile, connection_id) {
     }
     if mobile_has_buff(mobile.id, "sleep") {
         output += "\n" + mobile.name + " is fast asleep.";
+    } else if mobile.position == "sleeping" {
+        output += "\n" + mobile.name + " is curled up, sleeping soundly.";
+    } else if mobile.position == "sitting" {
+        output += "\n" + mobile.name + " is sitting on the ground.";
     }
     if mobile_has_buff(mobile.id, "blind") {
         output += "\n" + mobile.name + "'s eyes are clouded and unseeing.";

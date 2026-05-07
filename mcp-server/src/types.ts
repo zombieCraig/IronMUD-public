@@ -354,6 +354,8 @@ export interface Mobile {
   combat_spell_chance?: number;
   simulation?: SimulationConfig;
   needs?: NeedsState;
+  position?: "standing" | "sitting" | "sleeping";
+  pet_owner?: string;
 }
 
 export interface SimulationConfig {
@@ -408,6 +410,7 @@ export interface MobileFlags {
   no_summon?: boolean;
   no_charm?: boolean;
   hostile_on_steal?: boolean;
+  tameable?: boolean;
 }
 
 export interface SpawnPoint {
@@ -608,6 +611,8 @@ export interface CreateMobileRequest {
   combat_spell_chance?: number;
   // Per-hit effects rolled on every landed natural attack
   on_hit_effects?: OnHitEffect[];
+  // Default physical stance (standing | sitting | sleeping)
+  position?: "standing" | "sitting" | "sleeping";
 }
 
 export interface RoutineEntry {

@@ -317,6 +317,8 @@ export interface Mobile {
     combat_spell_chance?: number;
     simulation?: SimulationConfig;
     needs?: NeedsState;
+    position?: "standing" | "sitting" | "sleeping";
+    pet_owner?: string;
 }
 export interface SimulationConfig {
     home_room_vnum: string;
@@ -368,6 +370,7 @@ export interface MobileFlags {
     no_summon?: boolean;
     no_charm?: boolean;
     hostile_on_steal?: boolean;
+    tameable?: boolean;
 }
 export interface SpawnPoint {
     id: string;
@@ -545,6 +548,7 @@ export interface CreateMobileRequest {
     combat_spells?: string[];
     combat_spell_chance?: number;
     on_hit_effects?: OnHitEffect[];
+    position?: "standing" | "sitting" | "sleeping";
 }
 export interface RoutineEntry {
     start_hour: number;

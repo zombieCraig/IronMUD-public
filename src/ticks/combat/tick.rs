@@ -1198,6 +1198,14 @@ fn process_character_attacks_mobile(
                 .active_buffs
                 .retain(|b| b.effect_type != ironmud::EffectType::Sleep);
         }
+        // Physical stance wake-on-damage: Sleeping → Sitting (mob fights
+        // from sitting next round). Resting CircleMUD imports flow through
+        // here too.
+        let was_position_sleeping =
+            mobile.position == ironmud::types::MobilePosition::Sleeping;
+        if was_position_sleeping {
+            mobile.position = ironmud::types::MobilePosition::Sitting;
+        }
         ironmud::script::record_mob_memory(&mut mobile, &char.name);
 
         // Roll on-hit effects from wielded weapon (bleeding/elemental DOTs/status buffs)
@@ -1214,6 +1222,13 @@ fn process_character_attacks_mobile(
                 connections,
                 &room_id,
                 &format!("{} jolts awake!", mobile.name),
+            );
+        }
+        if was_position_sleeping && !was_sleeping {
+            broadcast_to_room_awake(
+                connections,
+                &room_id,
+                &format!("{} startles awake from a deep sleep!", mobile.name),
             );
         }
 
@@ -1536,6 +1551,19 @@ fn process_mobile_combat_round(
             connections,
             &room_id,
             &format!("{} sleeps peacefully.", mobile_name),
+        );
+        return Ok(());
+    }
+
+    // Handle physical stance — sleeping mobs skip their turn entirely.
+    // Wake-on-damage in `process_character_attacks_mobile` transitions
+    // them to Sitting before this round runs again.
+    if mobile.position == ironmud::types::MobilePosition::Sleeping {
+        let mobile_name = mobile.name.clone();
+        broadcast_to_room_awake(
+            connections,
+            &room_id,
+            &format!("{} sleeps soundly.", mobile_name),
         );
         return Ok(());
     }

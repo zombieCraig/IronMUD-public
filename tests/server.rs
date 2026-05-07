@@ -5517,6 +5517,51 @@ fn test_summonable_field_defaults_off_and_persists() {
 }
 
 #[test]
+fn test_character_gender_persists_and_accepts_free_strings() {
+    use ironmud::db::Db;
+
+    let db_path = format!("test_gender_persists_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut char: ironmud::types::CharacterData =
+            serde_json::from_value(serde_json::json!({
+                "name": "TestGender",
+                "password_hash": "",
+                "current_room_id": uuid::Uuid::nil(),
+            }))
+            .expect("build character");
+        assert_eq!(char.gender, "", "missing gender field defaults to empty");
+
+        // Canonical chargen value.
+        char.gender = "nonbinary".to_string();
+        db.save_character_data(char.clone()).expect("save");
+        let loaded = db
+            .get_character_data(&char.name)
+            .expect("read")
+            .expect("present");
+        assert_eq!(loaded.gender, "nonbinary");
+
+        // Free-text post-creation override (DG falls back to neuter pronouns
+        // for unrecognised values via parse_gender's default arm).
+        char.gender = "starfolk".to_string();
+        db.save_character_data(char.clone()).expect("save");
+        let loaded = db
+            .get_character_data(&char.name)
+            .expect("read")
+            .expect("present");
+        assert_eq!(loaded.gender, "starfolk");
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_charm_spell_definition_loads() {
     use std::fs;
 
@@ -5721,6 +5766,174 @@ fn test_break_all_charms_by_player_clears_only_matching_buffs() {
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
+}
+
+#[test]
+fn test_tameable_flag_persists() {
+    use ironmud::db::Db;
+    use ironmud::types::MobileData;
+
+    let db_path = format!("test_tameable_persists_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut mob = MobileData::new("a stray kitten".to_string());
+        mob.flags.tameable = true;
+        let id = mob.id;
+        db.save_mobile_data(mob).expect("save");
+
+        let loaded = db.get_mobile_data(&id).expect("read").expect("present");
+        assert!(loaded.flags.tameable);
+        // Default for non-tameable mobs is false (graceful upgrade for legacy saves)
+        let plain = MobileData::new("a regular mob".to_string());
+        assert!(!plain.flags.tameable);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_pet_owner_field_persists() {
+    use ironmud::db::Db;
+    use ironmud::types::MobileData;
+
+    let db_path = format!("test_pet_owner_persists_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut pet = MobileData::new("a tabby cat".to_string());
+        pet.is_prototype = false;
+        pet.pet_owner = Some("Alice".to_string());
+        let id = pet.id;
+        db.save_mobile_data(pet).expect("save");
+
+        let loaded = db.get_mobile_data(&id).expect("read").expect("present");
+        assert_eq!(loaded.pet_owner.as_deref(), Some("Alice"));
+
+        // New mobs default to None.
+        let plain = MobileData::new("a passing crow".to_string());
+        assert!(plain.pet_owner.is_none());
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_break_all_charms_skips_pets_of_quitting_player() {
+    use ironmud::break_all_charms_by_player;
+    use ironmud::db::Db;
+    use ironmud::types::{ActiveBuff, EffectType, MobileData};
+
+    let db_path = format!("test_break_charms_pets_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        // A regular charm by Alice (should be cleared).
+        let mut charmed = MobileData::new("a hapless thrall".to_string());
+        charmed.is_prototype = false;
+        charmed.active_buffs.push(ActiveBuff {
+            effect_type: EffectType::Charmed,
+            magnitude: 0,
+            remaining_secs: 300,
+            source: "Alice".to_string(),
+        });
+        let charmed_id = charmed.id;
+        db.save_mobile_data(charmed).expect("save charmed");
+
+        // A pet of Alice with permanent charm + pet_owner stamp (should survive).
+        let mut pet = MobileData::new("a faithful hound".to_string());
+        pet.is_prototype = false;
+        pet.active_buffs.push(ActiveBuff {
+            effect_type: EffectType::Charmed,
+            magnitude: 0,
+            remaining_secs: -1,
+            source: "Alice".to_string(),
+        });
+        pet.pet_owner = Some("Alice".to_string());
+        pet.charm_stay = true;
+        let pet_id = pet.id;
+        db.save_mobile_data(pet).expect("save pet");
+
+        break_all_charms_by_player(&db, "Alice");
+
+        let charmed_after = db
+            .get_mobile_data(&charmed_id)
+            .expect("read")
+            .expect("present");
+        assert!(
+            charmed_after.active_buffs.is_empty(),
+            "regular charm should be cleared on quit"
+        );
+
+        let pet_after = db
+            .get_mobile_data(&pet_id)
+            .expect("read")
+            .expect("present");
+        assert_eq!(pet_after.pet_owner.as_deref(), Some("Alice"));
+        assert_eq!(pet_after.active_buffs.len(), 1, "pet keeps its bond on quit");
+        assert!(pet_after.charm_stay, "pet retains stay/follow overrides");
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_mobile_position_default_and_persists() {
+    use ironmud::db::Db;
+    use ironmud::types::{MobileData, MobilePosition};
+
+    let db_path = format!("test_mob_position_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        // Defaults to Standing.
+        let plain = MobileData::new("a generic mob".to_string());
+        assert_eq!(plain.position, MobilePosition::Standing);
+
+        let mut sleeper = MobileData::new("a sleeping wolf".to_string());
+        sleeper.position = MobilePosition::Sleeping;
+        let id = sleeper.id;
+        db.save_mobile_data(sleeper).expect("save");
+
+        let loaded = db.get_mobile_data(&id).expect("read").expect("present");
+        assert_eq!(loaded.position, MobilePosition::Sleeping);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_mobile_position_parse_handles_aliases() {
+    use ironmud::types::MobilePosition;
+
+    assert_eq!(MobilePosition::parse("standing"), Some(MobilePosition::Standing));
+    assert_eq!(MobilePosition::parse("STAND"), Some(MobilePosition::Standing));
+    assert_eq!(MobilePosition::parse("up"), Some(MobilePosition::Standing));
+    assert_eq!(MobilePosition::parse("sit"), Some(MobilePosition::Sitting));
+    assert_eq!(MobilePosition::parse("sleeping"), Some(MobilePosition::Sleeping));
+    assert_eq!(MobilePosition::parse("asleep"), Some(MobilePosition::Sleeping));
+    assert_eq!(MobilePosition::parse("dancing"), None);
+    assert_eq!(MobilePosition::parse(""), None);
 }
 
 #[test]

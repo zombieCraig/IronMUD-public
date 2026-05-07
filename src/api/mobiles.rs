@@ -130,6 +130,9 @@ pub struct CreateMobileRequest {
     /// Per-hit effects rolled on every landed natural attack.
     #[serde(default)]
     pub on_hit_effects: Option<Vec<crate::api::items::OnHitEffectRequest>>,
+    /// Physical stance: standing | sitting | sleeping. Defaults to standing.
+    #[serde(default)]
+    pub position: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -282,6 +285,8 @@ pub struct MobileFlagsRequest {
     pub no_charm: Option<bool>,
     #[serde(default)]
     pub hostile_on_steal: Option<bool>,
+    #[serde(default)]
+    pub tameable: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -372,6 +377,10 @@ pub struct UpdateMobileRequest {
     /// Per-hit effects rolled on every landed natural attack. Replaces the existing list.
     #[serde(default)]
     pub on_hit_effects: Option<Vec<crate::api::items::OnHitEffectRequest>>,
+    /// Physical stance: standing | sitting | sleeping. Unrecognised values
+    /// leave the field unchanged.
+    #[serde(default)]
+    pub position: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -824,6 +833,7 @@ async fn create_mobile(
             no_summon: req.flags.no_summon.unwrap_or(false),
             no_charm: req.flags.no_charm.unwrap_or(false),
             hostile_on_steal: req.flags.hostile_on_steal.unwrap_or(false),
+            tameable: req.flags.tameable.unwrap_or(false),
         },
         dialogue: HashMap::new(),
         dialogue_tree: None,
@@ -876,6 +886,12 @@ async fn create_mobile(
         charm_stay: false,
         charm_follow_player: None,
         dg_vars: std::collections::HashMap::new(),
+        position: req
+            .position
+            .as_deref()
+            .and_then(crate::types::MobilePosition::parse)
+            .unwrap_or_default(),
+        pet_owner: None,
     };
 
     state
@@ -1038,6 +1054,14 @@ async fn update_mobile(
         }
         if let Some(v) = flags.hostile_on_steal {
             mobile.flags.hostile_on_steal = v;
+        }
+        if let Some(v) = flags.tameable {
+            mobile.flags.tameable = v;
+        }
+    }
+    if let Some(ref pos_str) = req.position {
+        if let Some(parsed) = crate::types::MobilePosition::parse(pos_str) {
+            mobile.position = parsed;
         }
     }
     if let Some(world_max) = req.world_max_count {

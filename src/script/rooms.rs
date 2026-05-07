@@ -1255,8 +1255,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         if effectively_dark || is_blind {
                             output.push_str(&color("Someone is here.", ANSI_GREEN));
                         } else {
-                            let mut line = if mobile.current_activity == crate::ActivityState::Sleeping {
+                            let mut line = if mobile.current_activity
+                                == crate::ActivityState::Sleeping
+                                || mobile.position == crate::types::MobilePosition::Sleeping
+                            {
                                 format!("{} is here, sleeping.", mobile.name)
+                            } else if mobile.position == crate::types::MobilePosition::Sitting {
+                                format!("{} is here, sitting.", mobile.name)
                             } else {
                                 mobile.short_desc.clone()
                             };

@@ -658,6 +658,10 @@ pub struct PlannedMobile {
     /// Permanent buffs stamped onto every spawn (e.g. AFF_SANCTUARY →
     /// `DamageReduction`). Cloned through the prototype at spawn time.
     pub active_buffs: Vec<crate::types::ActiveBuff>,
+    /// Default physical stance derived from CircleMUD `default_position`
+    /// (5/6→Sleeping, 7→Sitting, 8/9→Standing). None = unmapped, applied
+    /// to the prototype as Standing.
+    pub position: Option<crate::types::MobilePosition>,
     pub source: SourceLoc,
 }
 

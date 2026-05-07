@@ -467,14 +467,25 @@ fn cast_charm(connection_id, char, spell, target_arg) {
         return false;
     }
 
-    apply_buff_to_mobile(mob_id, "charmed", 0, spell["buff_duration_secs"], char.name);
+    // Tameable mobs become permanent pets: indefinite buff + pet_owner stamp.
+    // Other mobs get the temporary spell-duration charm.
+    let is_pet_bond = target.flags.tameable;
+    let duration = if is_pet_bond { -1 } else { spell["buff_duration_secs"] };
+
+    apply_buff_to_mobile(mob_id, "charmed", 0, duration, char.name);
     forget_player(mob_id, char.name);
     if is_mobile_in_combat(mob_id) {
         exit_mobile_combat(mob_id);
     }
 
-    send_client_message(connection_id, target.short_desc + "'s eyes glaze over and fall on you.");
-    broadcast_to_room_except(room_id, connection_id, target.short_desc + "'s eyes glaze over.");
+    if is_pet_bond {
+        set_mobile_pet_owner(mob_id, char.name);
+        send_client_message(connection_id, target.short_desc + " bonds with you. " + target.name + " is now your pet.");
+        broadcast_to_room_except(room_id, connection_id, target.short_desc + " bonds with " + char.name + ".");
+    } else {
+        send_client_message(connection_id, target.short_desc + "'s eyes glaze over and fall on you.");
+        broadcast_to_room_except(room_id, connection_id, target.short_desc + "'s eyes glaze over.");
+    }
     return true;
 }
 

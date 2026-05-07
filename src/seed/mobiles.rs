@@ -99,6 +99,8 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
         charm_stay: false,
         charm_follow_player: None,
         dg_vars: std::collections::HashMap::new(),
+        position: MobilePosition::default(),
+        pet_owner: None,
     }
 }
 

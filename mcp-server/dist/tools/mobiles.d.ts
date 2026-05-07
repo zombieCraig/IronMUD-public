@@ -24,6 +24,7 @@ export declare const mobileToolDefinitions: ({
             damage_dice?: undefined;
             armor_class?: undefined;
             flags?: undefined;
+            position?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -101,6 +102,7 @@ export declare const mobileToolDefinitions: ({
             damage_dice?: undefined;
             armor_class?: undefined;
             flags?: undefined;
+            position?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -181,6 +183,7 @@ export declare const mobileToolDefinitions: ({
             damage_dice?: undefined;
             armor_class?: undefined;
             flags?: undefined;
+            position?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -261,6 +264,7 @@ export declare const mobileToolDefinitions: ({
             damage_dice?: undefined;
             armor_class?: undefined;
             flags?: undefined;
+            position?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -477,7 +481,16 @@ export declare const mobileToolDefinitions: ({
                         type: string;
                         description: string;
                     };
+                    tameable: {
+                        type: string;
+                        description: string;
+                    };
                 };
+            };
+            position: {
+                type: string;
+                enum: string[];
+                description: string;
             };
             perception: {
                 type: string;
@@ -895,7 +908,16 @@ export declare const mobileToolDefinitions: ({
                         type: string;
                         description?: undefined;
                     };
+                    tameable: {
+                        type: string;
+                        description?: undefined;
+                    };
                 };
+            };
+            position: {
+                type: string;
+                enum: string[];
+                description: string;
             };
             perception: {
                 type: string;
@@ -1183,6 +1205,7 @@ export declare const mobileToolDefinitions: ({
             damage_dice?: undefined;
             armor_class?: undefined;
             flags?: undefined;
+            position?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -1271,6 +1294,7 @@ export declare const mobileToolDefinitions: ({
             damage_dice?: undefined;
             armor_class?: undefined;
             flags?: undefined;
+            position?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -1353,6 +1377,7 @@ export declare const mobileToolDefinitions: ({
             damage_dice?: undefined;
             armor_class?: undefined;
             flags?: undefined;
+            position?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -1436,6 +1461,7 @@ export declare const mobileToolDefinitions: ({
             damage_dice?: undefined;
             armor_class?: undefined;
             flags?: undefined;
+            position?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -1534,6 +1560,7 @@ export declare const mobileToolDefinitions: ({
             damage_dice?: undefined;
             armor_class?: undefined;
             flags?: undefined;
+            position?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -1630,6 +1657,7 @@ export declare const mobileToolDefinitions: ({
             damage_dice?: undefined;
             armor_class?: undefined;
             flags?: undefined;
+            position?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -1729,6 +1757,7 @@ export declare const mobileToolDefinitions: ({
             damage_dice?: undefined;
             armor_class?: undefined;
             flags?: undefined;
+            position?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -1831,6 +1860,7 @@ export declare const mobileToolDefinitions: ({
             damage_dice?: undefined;
             armor_class?: undefined;
             flags?: undefined;
+            position?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -1912,6 +1942,7 @@ export declare const mobileToolDefinitions: ({
             damage_dice?: undefined;
             armor_class?: undefined;
             flags?: undefined;
+            position?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -2014,6 +2045,7 @@ export declare const mobileToolDefinitions: ({
             damage_dice?: undefined;
             armor_class?: undefined;
             flags?: undefined;
+            position?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -2092,6 +2124,7 @@ export declare const mobileToolDefinitions: ({
             damage_dice?: undefined;
             armor_class?: undefined;
             flags?: undefined;
+            position?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -2174,6 +2207,7 @@ export declare const mobileToolDefinitions: ({
             damage_dice?: undefined;
             armor_class?: undefined;
             flags?: undefined;
+            position?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
@@ -2281,6 +2315,7 @@ export declare const mobileToolDefinitions: ({
             damage_dice?: undefined;
             armor_class?: undefined;
             flags?: undefined;
+            position?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;

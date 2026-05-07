@@ -501,6 +501,36 @@ impl std::fmt::Display for CharacterPosition {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum MobilePosition {
+    #[default]
+    Standing,
+    Sitting,
+    Sleeping,
+}
+
+impl std::fmt::Display for MobilePosition {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MobilePosition::Standing => write!(f, "standing"),
+            MobilePosition::Sitting => write!(f, "sitting"),
+            MobilePosition::Sleeping => write!(f, "sleeping"),
+        }
+    }
+}
+
+impl MobilePosition {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "standing" | "stand" | "up" => Some(MobilePosition::Standing),
+            "sitting" | "sit" => Some(MobilePosition::Sitting),
+            "sleeping" | "sleep" | "asleep" => Some(MobilePosition::Sleeping),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TraitDefinition {
     pub id: String,
@@ -3392,6 +3422,8 @@ pub struct MobileFlags {
     pub no_charm: bool, // Immune to the charm spell (CircleMUD MOB_NOCHARM)
     #[serde(default)]
     pub hostile_on_steal: bool, // Attacks the thief when a steal attempt is caught (CircleMUD shop WILL_START_FIGHT)
+    #[serde(default)]
+    pub tameable: bool, // Casting `charm` on this mob installs a permanent pet bond instead of a temporary buff
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -3801,6 +3833,18 @@ pub struct MobileData {
     /// other scripts. Empty by default.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub dg_vars: HashMap<String, String>,
+    /// Physical stance (independent of `current_activity`, which is the
+    /// scheduler concept). Sleeping mobs skip combat turns and emit an
+    /// "(asleep)" suffix in room listings. Damage transitions Sleeping →
+    /// Sitting (wake-on-damage).
+    #[serde(default)]
+    pub position: MobilePosition,
+    /// When set, this mob is a permanent pet of the named player. Survives
+    /// player logout (skipped by `break_all_charms_by_player`) and rides
+    /// the same charm-propagation machinery for movement. Cleared by
+    /// `pet dismiss`.
+    #[serde(default)]
+    pub pet_owner: Option<String>,
 }
 
 fn default_mobile_hp() -> i32 {
@@ -3924,6 +3968,8 @@ impl MobileData {
             charm_stay: false,
             charm_follow_player: None,
             dg_vars: HashMap::new(),
+            position: MobilePosition::default(),
+            pet_owner: None,
         }
     }
 

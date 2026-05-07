@@ -176,7 +176,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         no_bash,
         no_summon,
         no_charm,
-        hostile_on_steal
+        hostile_on_steal,
+        tameable
     );
 
     // Register MobileData type with getters
@@ -233,6 +234,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_get("stat_wis", |m: &mut MobileData| m.stat_wis as i64)
         .register_get("stat_cha", |m: &mut MobileData| m.stat_cha as i64)
         .register_get("flags", |m: &mut MobileData| m.flags.clone())
+        .register_get("position", |m: &mut MobileData| m.position.to_string())
+        .register_get("pet_owner", |m: &mut MobileData| m.pet_owner.clone().unwrap_or_default())
+        .register_get("has_pet_owner", |m: &mut MobileData| m.pet_owner.is_some())
         .register_get("shop_stock", |m: &mut MobileData| {
             m.shop_stock
                 .iter()
@@ -1051,6 +1055,74 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         }
         String::new()
     });
+
+    // set_mobile_position(mobile_id, "standing"|"sitting"|"sleeping") -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_mobile_position",
+        move |mobile_id: String, value: String| -> bool {
+            let pos = match crate::types::MobilePosition::parse(&value) {
+                Some(p) => p,
+                None => return false,
+            };
+            if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+                if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
+                    mobile.position = pos;
+                    return cloned_db.save_mobile_data(mobile).is_ok();
+                }
+            }
+            false
+        },
+    );
+
+    // set_mobile_pet_owner(mobile_id, owner_name) -> bool. Empty string clears.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_mobile_pet_owner",
+        move |mobile_id: String, owner: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+                if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
+                    mobile.pet_owner = if owner.is_empty() { None } else { Some(owner) };
+                    return cloned_db.save_mobile_data(mobile).is_ok();
+                }
+            }
+            false
+        },
+    );
+
+    // get_mobile_pet_owner(mobile_id) -> String (empty if None)
+    let cloned_db = db.clone();
+    engine.register_fn("get_mobile_pet_owner", move |mobile_id: String| -> String {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+            if let Ok(Some(mobile)) = cloned_db.get_mobile_data(&uuid) {
+                return mobile.pet_owner.unwrap_or_default();
+            }
+        }
+        String::new()
+    });
+
+    // list_pets_for_player(player_name) -> Array<MobileData>
+    // Lists all mobiles whose pet_owner matches the given player name.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "list_pets_for_player",
+        move |player_name: String| -> rhai::Array {
+            let mut out: rhai::Array = Vec::new();
+            if let Ok(mobiles) = cloned_db.list_all_mobiles() {
+                for mob in mobiles {
+                    if mob.is_prototype {
+                        continue;
+                    }
+                    if let Some(ref owner) = mob.pet_owner {
+                        if owner.eq_ignore_ascii_case(&player_name) {
+                            out.push(rhai::Dynamic::from(mob));
+                        }
+                    }
+                }
+            }
+            out
+        },
+    );
 
     // mobile_has_buff(mobile_id, effect_type_str) -> bool
     let cloned_db = db.clone();

@@ -83,6 +83,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         // Character creation wizard field getters/setters
         .register_get("race", |c: &mut CharacterData| c.race.clone())
         .register_set("race", |c: &mut CharacterData, val: String| c.race = val)
+        .register_get("gender", |c: &mut CharacterData| c.gender.clone())
+        .register_set("gender", |c: &mut CharacterData, val: String| c.gender = val)
         .register_get("short_description", |c: &mut CharacterData| c.short_description.clone())
         .register_set("short_description", |c: &mut CharacterData, val: String| {
             c.short_description = val
@@ -1035,15 +1037,22 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 }
                 // Drag this mob if it's either:
                 //   (a) charmed by `player_name` AND has no follow-override, OR
-                //   (b) explicitly told to follow `player_name` (regardless of master).
+                //   (b) a pet of `player_name` AND has no follow-override, OR
+                //   (c) explicitly told to follow `player_name` (regardless of master).
                 let follows_master = mob.is_charmed_by(&player_name)
+                    && mob.charm_follow_player.is_none();
+                let is_pet = mob
+                    .pet_owner
+                    .as_deref()
+                    .map(|o| o.eq_ignore_ascii_case(&player_name))
+                    .unwrap_or(false)
                     && mob.charm_follow_player.is_none();
                 let follows_explicit = mob
                     .charm_follow_player
                     .as_deref()
                     .map(|n| n.eq_ignore_ascii_case(&player_name))
                     .unwrap_or(false);
-                if !follows_master && !follows_explicit {
+                if !follows_master && !is_pet && !follows_explicit {
                     continue;
                 }
                 let mob_name = mob.name.clone();

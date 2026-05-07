@@ -1606,6 +1606,18 @@ fn map_mob(
 
     let vnum = format!("{}_{}", area_prefix, mob.vnum);
 
+    // CircleMUD default_position: 0/4/5/6→Sleeping, 7→Sitting, 8/9→Standing.
+    // Unknown values fall through to Standing. (0 = dead, 1-3 = combat-only
+    // states that don't apply at spawn; 4 = stunned ≈ unconscious, mapped to
+    // Sleeping; 5 = sleeping; 6 = resting → Sitting in IronMUD's 3-state
+    // model; 7 = sitting; 8 = fighting; 9 = standing.)
+    let position = match mob.default_position {
+        0 | 4 | 5 => Some(crate::types::MobilePosition::Sleeping),
+        6 | 7 => Some(crate::types::MobilePosition::Sitting),
+        8 | 9 => Some(crate::types::MobilePosition::Standing),
+        _ => None,
+    };
+
     (
         PlannedMobile {
             area_prefix: area_prefix.to_string(),
@@ -1623,6 +1635,7 @@ fn map_mob(
             flags,
             world_max_count: None,
             active_buffs,
+            position,
             source: mob.source.clone(),
         },
         warnings,

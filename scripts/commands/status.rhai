@@ -480,6 +480,9 @@ fn show_detailed_status(char, connection_id) {
     } else {
         output += "Race: (none)\n";
     }
+    if char.gender != "" {
+        output += "Gender: " + char.gender + "\n";
+    }
     if char.class_name != "" && char.class_name != "unemployed" {
         output += "Class: " + char.class_name + "\n";
     } else {

@@ -197,6 +197,55 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         },
     );
 
+    // resolve_gender_pronouns(value) -> String
+    // Returns "he/him/his" style triple for the resolved gender, mirroring
+    // how DG Scripts parses %actor.heshe%/.himher%/.hisher%. Empty or
+    // unrecognised input resolves to "it/it/its" (neuter).
+    engine.register_fn("resolve_gender_pronouns", move |value: String| -> String {
+        let lc = value.trim().to_ascii_lowercase();
+        let triple = match lc.as_str() {
+            "male" | "m" | "man" => "he/him/his",
+            "female" | "f" | "woman" => "she/her/her",
+            "nonbinary" | "non-binary" | "nb" | "enby" | "they" | "them" => "they/them/their",
+            _ => "it/it/its",
+        };
+        triple.to_string()
+    });
+
+    // set_character_gender(connection_id, value) -> String
+    // Free-string gender setter. Trims, strips control chars, caps at 32 chars.
+    // Returns the stored value (so the caller can echo "Gender set to <X>"),
+    // or empty string on failure / empty input.
+    let conns = connections.clone();
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_character_gender",
+        move |connection_id: String, value: String| -> String {
+            let cleaned: String = value
+                .chars()
+                .filter(|c| !c.is_control())
+                .collect::<String>()
+                .trim()
+                .chars()
+                .take(32)
+                .collect();
+            if cleaned.is_empty() {
+                return String::new();
+            }
+            if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+                let mut conns_lock = conns.lock().unwrap();
+                if let Some(session) = conns_lock.get_mut(&conn_id) {
+                    if let Some(ref mut char) = session.character {
+                        char.gender = cleaned.clone();
+                        let _ = cloned_db.save_character_data(char.clone());
+                        return cleaned;
+                    }
+                }
+            }
+            String::new()
+        },
+    );
+
     // broadcast_to_helpline(message, room_name, area_name) -> i64
     // Broadcasts a message to all players with helpline enabled. Returns count of recipients.
     let conns = connections.clone();

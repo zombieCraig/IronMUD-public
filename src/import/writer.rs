@@ -542,6 +542,9 @@ fn build_mobile(p: &PlannedMobile) -> MobileData {
     m.flags = p.flags.clone();
     m.world_max_count = p.world_max_count;
     m.active_buffs = p.active_buffs.clone();
+    if let Some(pos) = p.position {
+        m.position = pos;
+    }
     m
 }
 

@@ -78,6 +78,11 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if setting_name == "gender" {
+        handle_gender(connection_id, args);
+        return;
+    }
+
     if setting_name == "automap" {
         handle_automap(connection_id, value_arg);
         return;
@@ -132,6 +137,13 @@ fn show_settings_table(connection_id, is_builder, is_admin) {
     let sm_toggle = make_toggle_link("set summonable", sm_val, connection_id);
     output += "  " + pad_right("summonable", 14) + pad_right(sm_toggle, 10);
     output += "Allow other players to summon you with the summon spell\n";
+
+    // Gender (free string)
+    let gender_val = "(unset)";
+    let cur_char = get_player_character(connection_id);
+    if cur_char != () && cur_char.gender != "" { gender_val = cur_char.gender; }
+    output += "  " + pad_right("gender", 14) + pad_right(gender_val, 10);
+    output += "Your gender for pronouns (male/female/nonbinary/custom)\n";
 
     // Automap setting (available to all)
     let am_val = if is_automap_enabled(connection_id) { "on" } else { "off" };
@@ -442,6 +454,38 @@ fn handle_abbrev(connection_id, value_arg) {
     }
 
     send_client_message(connection_id, "Usage: set abbrev on|off");
+}
+
+fn handle_gender(connection_id, args) {
+    // Strip the leading "gender" word; the rest is the value (free text).
+    let value = "";
+    let space_idx = args.index_of(" ");
+    if space_idx > 0 {
+        value = args.sub_string(space_idx + 1, args.len() - (space_idx + 1));
+    }
+
+    let char = get_player_character(connection_id);
+    let current = "";
+    if char != () { current = char.gender; }
+
+    if value == "" {
+        let display = if current == "" { "(unset)" } else { current };
+        send_client_message(connection_id, "Your gender is currently: " + display);
+        send_client_message(connection_id, "Usage: set gender <male|female|nonbinary|custom string>");
+        send_client_message(connection_id, "");
+        send_client_message(connection_id, "Recognised values map to canonical pronouns. Other values fall");
+        send_client_message(connection_id, "back to neuter (it/its) for DG-script pronoun substitution.");
+        return;
+    }
+
+    let stored = set_character_gender(connection_id, value);
+    if stored == "" {
+        send_client_message(connection_id, "Gender cannot be empty.");
+        return;
+    }
+
+    let pronouns = resolve_gender_pronouns(stored);
+    send_client_message(connection_id, "Gender set to: " + stored + " (pronouns: " + pronouns + ")");
 }
 
 fn handle_summonable(connection_id, value_arg) {

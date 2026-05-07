@@ -358,6 +358,7 @@ pub const MOBILE_FLAGS: &[&str] = &[
     "shocking",
     "shopkeeper",
     "stay_zone",
+    "tameable",
     "thief",
     "unique",
 ];

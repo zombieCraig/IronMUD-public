@@ -54,6 +54,7 @@ fn run_command(args, connection_id) {
 
     // Apply defaults/random values
     new_char.race = get_random_race();
+    new_char.gender = "";
     new_char.short_description = get_random_short_desc();
     new_char.class_name = "unemployed";
     new_char.traits = [];
@@ -91,10 +92,13 @@ fn show_wizard_menu(connection_id, char_data) {
 
     let traits_display = format_traits(char_data.traits);
 
+    let gender_display = if char_data.gender == "" { "(not set)" } else { char_data.gender };
+
     output += "  [1] Race:        " + race_display + "\n";
-    output += "  [2] Description: " + desc_display + "\n";
-    output += "  [3] Class:       " + char_data.class_name + "\n";
-    output += "  [4] Traits:      " + traits_display + " (Points: " + char_data.trait_points + ")\n";
+    output += "  [2] Gender:      " + gender_display + "\n";
+    output += "  [3] Description: " + desc_display + "\n";
+    output += "  [4] Class:       " + char_data.class_name + "\n";
+    output += "  [5] Traits:      " + traits_display + " (Points: " + char_data.trait_points + ")\n";
     output += "\n";
     output += "  [R] Randomize all\n";
     output += "  [D] Done - Finish character creation\n";
@@ -113,6 +117,10 @@ fn handle_wizard_input(input, connection_id, mode) {
     }
     if mode == "chargen_race" {
         handle_race_input(input, connection_id);
+        return;
+    }
+    if mode == "chargen_gender" {
+        handle_gender_input(input, connection_id);
         return;
     }
     if mode == "chargen_desc" {
@@ -136,16 +144,21 @@ fn handle_menu_input(trimmed, connection_id) {
         return;
     }
     if trimmed == "2" {
+        show_gender_selection(connection_id);
+        set_olc_mode(connection_id, "chargen_gender");
+        return;
+    }
+    if trimmed == "3" {
         set_olc_mode(connection_id, "chargen_desc");
         send_client_message(connection_id, "\nEnter a short description of your character (or 'random', 'back'):\n> ");
         return;
     }
-    if trimmed == "3" {
+    if trimmed == "4" {
         show_class_selection(connection_id);
         set_olc_mode(connection_id, "chargen_class");
         return;
     }
-    if trimmed == "4" {
+    if trimmed == "5" {
         show_trait_selection(connection_id);
         set_olc_mode(connection_id, "chargen_traits");
         return;
@@ -162,7 +175,7 @@ fn handle_menu_input(trimmed, connection_id) {
         cancel_creation(connection_id);
         return;
     }
-    send_client_message(connection_id, "Invalid option. Enter 1-4, R, D, or Q: ");
+    send_client_message(connection_id, "Invalid option. Enter 1-5, R, D, or Q: ");
 }
 
 // === Race Selection ===
@@ -305,6 +318,48 @@ fn handle_race_input(input, connection_id) {
     update_char_field(connection_id, "race", race_id);
     let info = get_race_info(race_id);
     send_client_message(connection_id, "Race set to: " + info["name"]);
+    return_to_menu(connection_id);
+}
+
+// === Gender Selection ===
+
+fn show_gender_selection(connection_id) {
+    let output = "\n=== Select Your Gender ===\n\n";
+    output += "  [M] Male       (he/him/his)\n";
+    output += "  [F] Female     (she/her/her)\n";
+    output += "  [N] Nonbinary  (they/them/their)\n";
+    output += "\n";
+    output += "Choose M/F/N, or 'random' / 'back':\n> ";
+    send_client_message(connection_id, output);
+}
+
+fn handle_gender_input(input, connection_id) {
+    let lower = input.to_lower();
+
+    if lower == "back" {
+        return_to_menu(connection_id);
+        return;
+    }
+
+    let chosen = "";
+    if lower == "m" || lower == "male" || lower == "1" {
+        chosen = "male";
+    } else if lower == "f" || lower == "female" || lower == "2" {
+        chosen = "female";
+    } else if lower == "n" || lower == "nonbinary" || lower == "nb" || lower == "3" {
+        chosen = "nonbinary";
+    } else if lower == "random" {
+        let roll = random_int(1, 3);
+        if roll == 1 { chosen = "male"; }
+        else if roll == 2 { chosen = "female"; }
+        else { chosen = "nonbinary"; }
+    } else {
+        send_client_message(connection_id, "Invalid choice. Enter M, F, N, 'random', or 'back':\n> ");
+        return;
+    }
+
+    update_char_field(connection_id, "gender", chosen);
+    send_client_message(connection_id, "Gender set to: " + chosen);
     return_to_menu(connection_id);
 }
 
@@ -712,6 +767,7 @@ fn update_char_field(connection_id, field, value) {
     let char_data = get_character_data(char_name);
 
     if field == "race" { char_data.race = value; }
+    else if field == "gender" { char_data.gender = value; }
     else if field == "short_description" { char_data.short_description = value; }
     else if field == "class_name" { char_data.class_name = value; }
 
@@ -910,6 +966,10 @@ fn randomize_all(connection_id) {
     let char_data = get_character_data(char_name);
 
     char_data.race = get_random_race();
+    let g_roll = random_int(1, 3);
+    if g_roll == 1 { char_data.gender = "male"; }
+    else if g_roll == 2 { char_data.gender = "female"; }
+    else { char_data.gender = "nonbinary"; }
     char_data.short_description = get_random_short_desc();
     char_data.class_name = get_random_class();
     save_character_data(char_data);

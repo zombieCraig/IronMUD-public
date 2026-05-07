@@ -253,6 +253,10 @@ fn dispatch_combat_subcommand(uuid, subcommand, parts, connection_id) {
         handle_faction_subcommand(uuid, parts, connection_id);
         return true;
     }
+    if subcommand == "position" || subcommand == "stance" {
+        handle_position_subcommand(uuid, parts, connection_id);
+        return true;
+    }
     return false;
 }
 
@@ -678,6 +682,25 @@ fn handle_world_max_subcommand(mobile_id, parts, connection_id) {
     }
 }
 
+fn handle_position_subcommand(mobile_id, parts, connection_id) {
+    let mobile = get_mobile_data(mobile_id);
+    if mobile == () {
+        send_client_message(connection_id, "Mobile not found.");
+        return;
+    }
+    if parts.len() < 3 {
+        send_client_message(connection_id, "Position: " + mobile.position);
+        send_client_message(connection_id, "Usage: medit " + mobile_id + " position <standing|sitting|sleeping>");
+        return;
+    }
+    let value = parts[2].to_lower();
+    if !set_mobile_position(mobile_id, value) {
+        send_client_message(connection_id, "Invalid position. Choose: standing, sitting, or sleeping.");
+        return;
+    }
+    send_client_message(connection_id, "Position set to: " + value);
+}
+
 fn handle_faction_subcommand(mobile_id, parts, connection_id) {
     if parts.len() < 3 {
         let current = get_mobile_faction(mobile_id);
@@ -804,7 +827,7 @@ fn handle_flag_subcommand(mobile_id, parts, connection_id) {
     // Validate all names before changing anything.
     for name in flag_names {
         if get_mobile_flag_value(mobile, name) == () {
-            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, helper, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim, poisonous, fiery, chilling, corrosive, shocking, unique, stay_zone, aware, memory, no_sleep, no_blind, no_bash, no_summon, no_charm, hostile_on_steal");
+            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, helper, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim, poisonous, fiery, chilling, corrosive, shocking, unique, stay_zone, aware, memory, no_sleep, no_blind, no_bash, no_summon, no_charm, hostile_on_steal, tameable");
             return;
         }
     }
@@ -854,6 +877,7 @@ fn get_mobile_flag_value(mobile, flag_name) {
     if flag_name == "no_summon" || flag_name == "nosummon" { return flags.no_summon; }
     if flag_name == "no_charm" || flag_name == "nocharm" { return flags.no_charm; }
     if flag_name == "hostile_on_steal" || flag_name == "hostileonsteal" { return flags.hostile_on_steal; }
+    if flag_name == "tameable" { return flags.tameable; }
     return ();
 }
 
@@ -1062,6 +1086,7 @@ fn build_flags_display(mobile) {
     if flags.no_summon { flag_str += "no_summon "; }
     if flags.no_charm { flag_str += "no_charm "; }
     if flags.hostile_on_steal { flag_str += "hostile_on_steal "; }
+    if flags.tameable { flag_str += "tameable "; }
     if flag_str == "" { flag_str = "(none)"; }
     output += flag_str + "\n";
     return output;
@@ -1213,6 +1238,7 @@ fn show_mobile_flags(mobile, mobile_id, connection_id) {
     output += build_flag_line("no_summon", flags.no_summon, "Immune to the summon spell (CircleMUD MOB_NOSUMMON)", display_id, connection_id);
     output += build_flag_line("no_charm", flags.no_charm, "Immune to the charm spell (CircleMUD MOB_NOCHARM)", display_id, connection_id);
     output += build_flag_line("hostile_on_steal", flags.hostile_on_steal, "Attacks the thief when a steal attempt is caught (CircleMUD shop WILL_START_FIGHT)", display_id, connection_id);
+    output += build_flag_line("tameable", flags.tameable, "Charm spell installs a permanent pet bond instead of temporary control", display_id, connection_id);
 
     send_mxp_message(connection_id, output);
 }

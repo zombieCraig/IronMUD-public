@@ -24,6 +24,10 @@ use crate::types::{CharacterData, EffectType, ItemData, ItemFlags, ItemLocation,
 /// Also clears `charm_stay` / `charm_follow_player` on those mobs, and clears
 /// dangling `charm_follow_player == player_name` overrides on mobs charmed by
 /// other players (so they fall back to following their own master).
+///
+/// Pets (mobs whose `pet_owner == player_name`) are intentionally skipped —
+/// the bond is permanent and survives logout, so the buff and stay/follow
+/// overrides are preserved untouched.
 pub fn break_all_charms_by_player(db: &Db, player_name: &str) {
     if player_name.is_empty() {
         return;
@@ -35,24 +39,32 @@ pub fn break_all_charms_by_player(db: &Db, player_name: &str) {
         if mobile.is_prototype {
             continue;
         }
-        let mut changed = false;
-        let before = mobile.active_buffs.len();
-        mobile.active_buffs.retain(|b| {
-            !(b.effect_type == EffectType::Charmed && b.source.eq_ignore_ascii_case(player_name))
-        });
-        if mobile.active_buffs.len() != before {
-            mobile.charm_stay = false;
-            mobile.charm_follow_player = None;
-            changed = true;
-        }
-        if let Some(ref name) = mobile.charm_follow_player {
-            if name.eq_ignore_ascii_case(player_name) {
+        let is_pet_of_player = mobile
+            .pet_owner
+            .as_deref()
+            .map(|o| o.eq_ignore_ascii_case(player_name))
+            .unwrap_or(false);
+        if !is_pet_of_player {
+            let mut changed = false;
+            let before = mobile.active_buffs.len();
+            mobile.active_buffs.retain(|b| {
+                !(b.effect_type == EffectType::Charmed
+                    && b.source.eq_ignore_ascii_case(player_name))
+            });
+            if mobile.active_buffs.len() != before {
+                mobile.charm_stay = false;
                 mobile.charm_follow_player = None;
                 changed = true;
             }
-        }
-        if changed {
-            let _ = db.save_mobile_data(mobile);
+            if let Some(ref name) = mobile.charm_follow_player {
+                if name.eq_ignore_ascii_case(player_name) {
+                    mobile.charm_follow_player = None;
+                    changed = true;
+                }
+            }
+            if changed {
+                let _ = db.save_mobile_data(mobile);
+            }
         }
     }
 }
