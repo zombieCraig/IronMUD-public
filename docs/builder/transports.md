@@ -9,155 +9,179 @@ The transportation system provides two types of player movement:
 - **Elevators** - On-demand vertical movement between floors (responds to button presses)
 - **Scheduled Transport** - Buses, trains, ferries, and airships that follow timed routes
 
-Both types use the same underlying system. Players use the `press` command to interact with transports, and dynamic exits appear when vehicles arrive at stops.
+Both types use the same underlying system. Players use the `press` command to interact with transports, and dynamic exits between stops and the vehicle interior are created and removed as the vehicle arrives at and leaves each stop.
+
+## How tedit Works
+
+`tedit` is a stateless OLC command, just like `redit`, `oedit`, and `medit`. There is **no editor mode** to enter or exit — every change is a one-shot command of the form:
+
+```
+tedit <vnum> <subcommand> [args...]
+```
+
+There is no `done` or `quit`; changes are saved as you make them.
 
 ## Transport Commands
 
-| Command | Usage | Description |
-|---------|-------|-------------|
-| `tedit create` | `tedit create <vnum>` | Create a new transport |
-| `tedit` | `tedit <vnum>` | Edit existing transport |
-| `tlist` | `tlist` | List all transports |
-| `tedit delete` | `tedit delete <vnum>` | Delete a transport |
+| Command | Description |
+|---------|-------------|
+| `tedit create <vnum>` | Create a new transport at your current room |
+| `tedit <vnum>` | Show transport configuration |
+| `tedit <vnum> <subcommand> ...` | Apply a subcommand (see below) |
+| `tlist` | List all transports |
 
 ## tedit Subcommands
 
 | Subcommand | Usage | Description |
 |------------|-------|-------------|
-| `show` | `show` | Display transport configuration |
-| `name` | `name <text>` | Set display name |
-| `type` | `type <type>` | Set type (elevator, bus, train, ferry, airship) |
-| `interior` | `interior <room_vnum>` | Set vehicle interior room |
-| `stop add` | `stop add <room_vnum> <name> <exit_dir>` | Add a stop |
-| `stop remove` | `stop remove <index>` | Remove a stop |
-| `stop list` | `stop list` | List all stops |
-| `stop reorder` | `stop reorder <from> <to>` | Reorder stops |
-| `schedule` | `schedule ondemand` | Set on-demand mode (elevators) |
-| `schedule` | `schedule gametime <freq> <start> <end> <dwell>` | Set scheduled mode |
-| `traveltime` | `traveltime <seconds>` | Set travel time between stops |
-| `done` | `done` | Save and exit editor |
+| `show` | `tedit <vnum> show` | Display transport configuration |
+| `vnum` | `tedit <vnum> vnum <new_vnum>` | Rename the transport's vnum |
+| `name` | `tedit <vnum> name <text>` | Set display name |
+| `type` | `tedit <vnum> type <type>` | Set type (elevator, bus, train, ferry, airship) |
+| `interior` | `tedit <vnum> interior <room_vnum>` | Set vehicle interior room |
+| `traveltime` | `tedit <vnum> traveltime <seconds>` | Set travel time between stops |
+| `schedule` | `tedit <vnum> schedule ondemand` | Set on-demand mode (elevators) |
+| `schedule` | `tedit <vnum> schedule gametime <freq> <start> <end> <dwell>` | Set scheduled mode |
+| `stop add` | `tedit <vnum> stop add <room_vnum> <name> <dir>` | Add a stop |
+| `stop remove` | `tedit <vnum> stop remove <index>` | Remove a stop (1-based index) |
+| `stop list` | `tedit <vnum> stop list` | List all stops |
+| `connect` | `tedit <vnum> connect` | Park the vehicle at its current stop (open the doors) |
+| `disconnect` | `tedit <vnum> disconnect` | Close the doors / leave the current stop |
+| `delete` | `tedit <vnum> delete` | Delete the transport prototype |
+
+## Stop Direction Semantics
+
+When you add a stop with `stop add <room> <name> <dir>`, the direction is **the direction a player walks in the stop room to board the vehicle** — not the direction they take to disembark.
+
+For example:
+
+```
+tedit hotel_elevator stop add hotel_lobby Lobby n
+```
+
+means: in *Hotel Lobby*, the `north` exit leads into the elevator car. The opposite direction (`south`) is automatically wired on the interior side as the way back out, so the player rides down by stepping `south` from inside the car.
+
+Valid directions: `n`, `s`, `e`, `w`, `u`, `d` (or the long forms `north`, `south`, `east`, `west`, `up`, `down`).
+
+Note: the exit only exists while the transport is **parked** at that stop. When the elevator moves to another floor or a train pulls out of a station, the direction at the previous stop becomes a dead end again until the vehicle returns.
+
+## Important: Don't Use `dig` for Transport Rooms
+
+The transport system creates and removes the exits between stops and the vehicle interior **dynamically** as the vehicle arrives and departs. If you use `dig` to make these rooms, you will leave behind a permanent two-way exit that the transport system can't manage — the elevator will appear to be at that floor *forever*, even after a player rides it somewhere else.
+
+Use `redit create <title>` to make detached rooms with no fixed exits. The transport will wire up the connections itself via `connect` and the schedule tick.
+
+For the surrounding world rooms (lobby, station platform, etc.) that *aren't* the vehicle interior or stop room itself, `dig` is fine — just don't use it to link a stop room to the interior, or to link interior to interior.
 
 ## Creating an Elevator
 
 Elevators respond instantly when players press the call button.
 
-### 1. Create the Interior Room
+### 1. Create the Stop Rooms
 
-First, create the elevator car room:
-
-```
-> dig up Hotel Elevator
-Created room: Hotel Elevator
-
-> up
-Hotel Elevator
-An empty room...
-
-> redit desc
-> A polished brass elevator car with mirrored walls.
-> A panel displays the available floors.
-> .
-Description saved.
-```
-
-### 2. Create the Stops
-
-Create the rooms where the elevator will stop:
+Move to where the elevator's lowest floor is, then create each floor's room as a detached room. (Use `redit create`, not `dig`.)
 
 ```
-> dig down Hotel Lobby
-> down
-Hotel Lobby
+> redit create Hotel Lobby
+=== Created Detached Room ===
+Vnum: hotel_lobby
+...
 
+> rgoto hotel_lobby
 > redit desc
-> A grand marble lobby with crystal chandeliers.
-> An elevator door is set into the north wall.
-> .
+A grand marble lobby with crystal chandeliers.
+An elevator door is set into the north wall.
+.
 
-> dig up Guest Floor
-> up
-Guest Floor
-
+> redit create Guest Floor
+> rgoto guest_floor
 > redit desc
-> A quiet hallway with numbered doors.
-> The elevator is to the south.
-> .
+A quiet hallway with numbered doors.
+The elevator is to the south.
+.
 
-> dig up Rooftop Bar
-> up
-Rooftop Bar
-
+> redit create Rooftop Bar
+> rgoto rooftop_bar
 > redit desc
-> A chic open-air bar with stunning city views.
-> .
+A chic open-air bar with stunning city views.
+.
+```
+
+These rooms can be linked to the rest of the world however you like (via `redit exit`, `link`, or `dig` *between* the lobby and the street, for instance) — just don't dig between them and the elevator car.
+
+### 2. Create the Elevator Interior
+
+```
+> redit create Hotel Elevator
+> rgoto hotel_elevator
+> redit desc
+A polished brass elevator car with mirrored walls.
+A panel displays the available floors.
+.
 ```
 
 ### 3. Create the Transport
 
 ```
 > tedit create hotel_elevator
-
 Created transport 'hotel_elevator'.
-Entering transport editor...
 
-> name Hotel Elevator
+> tedit hotel_elevator name Hotel Elevator
 Name set to: Hotel Elevator
 
-> type elevator
-Type set to: Elevator
+> tedit hotel_elevator type elevator
+Type set to: elevator
 
-> interior hotel_elevator
-Interior room set.
+> tedit hotel_elevator interior hotel_elevator
+Interior room set to: Hotel Elevator
 ```
 
-Note: Use the vnum of the elevator car room you created.
+(The transport vnum and interior room vnum can match — `tedit` and `redit` keep separate registries.)
 
 ### 4. Add Stops
 
 ```
-> stop add hotel_lobby Lobby elevator
-Added stop: Lobby (exit: elevator)
+> tedit hotel_elevator stop add hotel_lobby Lobby n
+Added stop: Lobby
 
-> stop add guest_floor Guest Rooms elevator
-Added stop: Guest Rooms (exit: elevator)
+> tedit hotel_elevator stop add guest_floor Guest_Rooms n
+Added stop: Guest_Rooms
 
-> stop add rooftop_bar Rooftop Bar elevator
-Added stop: Rooftop Bar (exit: elevator)
+> tedit hotel_elevator stop add rooftop_bar Rooftop_Bar n
+Added stop: Rooftop_Bar
 
-> stop list
+> tedit hotel_elevator stop list
 Stops:
-  [1] Lobby (hotel_lobby) - exit: elevator
-  [2] Guest Rooms (guest_floor) - exit: elevator
-  [3] Rooftop Bar (rooftop_bar) - exit: elevator
+  [1] Lobby - exit: north
+      Room: Hotel Lobby
+  [2] Guest_Rooms - exit: north
+      Room: Guest Floor
+  [3] Rooftop_Bar - exit: north
+      Room: Rooftop Bar
 ```
 
-The exit direction is the command players use to enter the elevator from that stop.
+The `north` here means "from the lobby, walk north to step into the elevator." The stop reads "exit: north" because that's the direction of the door in the stop room.
 
 ### 5. Configure Schedule
 
 ```
-> schedule ondemand
+> tedit hotel_elevator schedule ondemand
 Schedule set to: On-Demand
 
-> traveltime 2
-Travel time set to 2 seconds between floors.
-
-> show
-=== Transport: hotel_elevator ===
-Name: Hotel Elevator
-Type: Elevator
-Interior: Hotel Elevator (hotel_elevator)
-Schedule: On-Demand
-Travel Time: 2 seconds
-
-Stops:
-  [1] Lobby - exit: elevator
-  [2] Guest Rooms - exit: elevator
-  [3] Rooftop Bar - exit: elevator
-
-> done
-Transport saved.
+> tedit hotel_elevator traveltime 2
+Travel time set to: 2 seconds
 ```
+
+### 6. Park the Elevator
+
+A freshly created transport is not yet connected to any stop — the doors are closed everywhere. Park it at its initial stop so players can board:
+
+```
+> tedit hotel_elevator connect
+Connected to stop: Lobby
+```
+
+Now the lobby has a `north` exit into the elevator car, and the car has a `south` exit back to the lobby. Pressing buttons inside the car will move the elevator to other floors automatically (rewiring the exits each time).
 
 ### Player Experience
 
@@ -165,29 +189,22 @@ Transport saved.
 > look
 Hotel Lobby
 A grand marble lobby with crystal chandeliers.
-Exits: [south]
+Exits: [south] [north]
 
 > press button
 You press the call button. A soft *ding* sounds as the elevator arrives.
-The elevator doors slide open.
 
-> elevator
+> north
 Hotel Elevator
 A polished brass elevator car with mirrored walls.
-
-Floors:
-  [1] Lobby (current)
-  [2] Guest Rooms
-  [3] Rooftop Bar
-
-Exits: [out]
+Exits: [south]
 
 > press 3
 The doors slide closed.
 You feel the elevator rise smoothly...
 *Ding!* The elevator stops. The doors slide open to the Rooftop Bar.
 
-> out
+> south
 Rooftop Bar
 A chic open-air bar with stunning city views.
 ```
@@ -199,73 +216,70 @@ Scheduled transports (buses, trains, ferries) follow timed routes and only stop 
 ### 1. Create the Vehicle Interior
 
 ```
-> dig north Eastbound Express - Passenger Car
-> north
-
+> redit create Eastbound Express - Passenger Car
+> rgoto eastbound_express_car
 > redit desc
-> A comfortable train car with rows of padded seats facing large windows.
-> .
+A comfortable train car with rows of padded seats facing large windows.
+.
 ```
 
 ### 2. Create the Station Rooms
 
+Make each platform as a detached room (or `rgoto` an existing one). Don't dig into the train car from the platforms.
+
 ```
-> rgoto town_square
-> dig east Central Station Platform
-> east
-
+> redit create Central Station Platform
+> rgoto central_station
 > redit desc
-> A busy train platform with passengers waiting.
-> A departure sign hangs overhead.
-> .
+A busy train platform with passengers waiting.
+.
 
-> rgoto market_district
-> dig south Market Station
-> south
-
+> redit create Market Station
+> rgoto market_station
 > redit desc
-> A platform near the bustling market stalls.
-> .
+A platform near the bustling market stalls.
+.
 
-> rgoto harbor
-> dig west Harbor Station
-> west
-
+> redit create Harbor Station
+> rgoto harbor_station
 > redit desc
-> A weathered platform overlooking the docks.
-> .
+A weathered platform overlooking the docks.
+.
 ```
+
+(Connect each platform to the rest of the world with `redit exit` or `dig` as you would any other room.)
 
 ### 3. Create the Transport
 
 ```
 > tedit create eastbound_express
-
-> name Eastbound Express
-> type train
-
-> interior eastbound_express_car
-Interior room set.
+> tedit eastbound_express name Eastbound Express
+> tedit eastbound_express type train
+> tedit eastbound_express interior eastbound_express_car
+Interior room set to: Eastbound Express - Passenger Car
 ```
 
 ### 4. Add Stops
 
 ```
-> stop add central_station Central Station train
-> stop add market_station Market District train
-> stop add harbor_station Harbor Town train
+> tedit eastbound_express stop add central_station Central_Station e
+> tedit eastbound_express stop add market_station Market_District e
+> tedit eastbound_express stop add harbor_station Harbor_Town e
 
-> stop list
+> tedit eastbound_express stop list
 Stops:
-  [1] Central Station - exit: train
-  [2] Market District - exit: train
-  [3] Harbor Town - exit: train
+  [1] Central_Station - exit: east
+  [2] Market_District - exit: east
+  [3] Harbor_Town - exit: east
 ```
+
+Here, players board by walking `east` at each platform. They disembark by walking `west` from inside the car.
 
 ### 5. Configure Schedule
 
 ```
-> schedule gametime 2 6 23 30
+> tedit eastbound_express schedule gametime 2 6 23 30
+Schedule set to: every 2h, 6:00-23:00
 ```
 
 Parameters:
@@ -275,25 +289,21 @@ Parameters:
 - `30` - Waits 30 real seconds at each stop for boarding
 
 ```
-> traveltime 60
-Travel time set to 60 seconds between stops.
+> tedit eastbound_express traveltime 60
+Travel time set to: 60 seconds
 
-> show
-=== Transport: eastbound_express ===
+> tedit eastbound_express show
+=== Transport Editor ===
+Vnum: eastbound_express
 Name: Eastbound Express
-Type: Train
-Interior: Eastbound Express - Passenger Car
-Schedule: Every 2 game hours (6:00-23:00), 30s dwell
+Type: train
+Interior Room: ... (Eastbound Express - Passenger Car)
 Travel Time: 60 seconds
-
-Stops:
-  [1] Central Station - exit: train
-  [2] Market District - exit: train
-  [3] Harbor Town - exit: train
-
-> done
-Transport saved.
+Schedule: Game-Time scheduled
+...
 ```
+
+The schedule tick will park the train at its first stop on its first scheduled departure — you usually don't need to call `connect` manually for scheduled transports unless you're testing.
 
 ### Player Experience
 
@@ -311,28 +321,55 @@ The Eastbound Express rumbles into the station and comes to a stop.
 Central Station Platform
 A busy train platform with passengers waiting.
 The Eastbound Express is here, doors open.
-Exits: [west] [train]
+Exits: [west] [east]
 
-> train
+> east
 Eastbound Express - Passenger Car
 A comfortable train car with rows of padded seats.
-Exits: [out]
-
-Next stops: Market District, Harbor Town, Central Station
+Exits: [west]
 
 [... train departs ...]
 
-The conductor calls out "All aboard! Next stop: Market District!"
 The train lurches forward and picks up speed.
 
 [... travel time passes ...]
 
-The train slows to a stop. "Market District! Doors opening."
+The train slows to a stop at Market District.
 
-> out
+> west
 Market Station
 A platform near the bustling market stalls.
 ```
+
+## Connect, Disconnect, and Delete
+
+These three subcommands manage the live state of an existing transport prototype.
+
+### `connect`
+
+`tedit <vnum> connect` parks the vehicle at its **current stop** (the last stop it visited, or stop 1 if it's never moved). It writes the dynamic exits in both directions:
+
+- The stop room gets an exit in the configured direction leading into the vehicle interior.
+- The interior gets an exit in the opposite direction leading back to the stop room.
+
+Use it when:
+- You've just created a transport and want it to start parked at its first stop so players can board immediately (especially elevators, which won't move until pressed).
+- You're testing and want to manually park the vehicle for inspection.
+- A scheduled transport got into a weird state (rare) and you want to force it back onto a stop.
+
+For scheduled transports in normal operation you don't need to use `connect` — the schedule tick will park and depart the vehicle automatically.
+
+### `disconnect`
+
+`tedit <vnum> disconnect` removes the dynamic exits at the current stop, "closing the doors." The transport is no longer reachable from any room until it next connects.
+
+Use it when:
+- You're rearranging stops or rebuilding a route and want the vehicle out of the way.
+- You're about to `delete` the transport (the `delete` handler does this automatically, but it's safe to call first).
+
+### `delete`
+
+`tedit <vnum> delete` permanently removes the transport prototype. It first disconnects from any current stop so no orphaned exits are left behind.
 
 ## Status Signs
 
@@ -388,17 +425,17 @@ You read the floor indicator:
 ### On-Demand (Elevators)
 
 ```
-> schedule ondemand
+tedit <vnum> schedule ondemand
 ```
 
 - Responds immediately to `press button`
 - Players select destination with `press <number>`
-- Brief travel delay based on distance
+- Brief travel delay based on `traveltime`
 
 ### Game Time (Scheduled)
 
 ```
-> schedule gametime <frequency> <start_hour> <end_hour> <dwell_seconds>
+tedit <vnum> schedule gametime <frequency> <start_hour> <end_hour> <dwell_seconds>
 ```
 
 - `frequency` - Departs every N game hours
@@ -410,12 +447,12 @@ You read the floor indicator:
 
 City bus (every 2 hours, 6 AM - midnight):
 ```
-> schedule gametime 2 6 23 30
+tedit citybus schedule gametime 2 6 23 30
 ```
 
 Night owl train (hourly, midnight - 6 AM):
 ```
-> schedule gametime 1 0 5 20
+tedit nighttrain schedule gametime 1 0 5 20
 ```
 
 ## NPC Transport Routes

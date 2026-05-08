@@ -901,9 +901,20 @@ fn run_command(args, connection_id) {
             }
         }
 
-        // Display extra descriptions count
+        // Extra descriptions (sub-keyword lore revealed via `look <keyword>`)
         let extras = room.extra_descs;
-        output += "\n" + olc::c_label("Extra Descriptions: ", connection_id) + olc::c_value("" + extras.len(), connection_id) + "\n";
+        if extras.len() > 0 {
+            let kw_summary = "";
+            for ex in extras {
+                for kw in ex.keywords {
+                    if kw_summary != "" { kw_summary += ", "; }
+                    kw_summary += kw;
+                }
+            }
+            let count = extras.len();
+            let suffix = if count == 1 { " extra desc" } else { " extra descs" };
+            output += "\n" + olc::c_label("Extras: ", connection_id) + olc::c_value("" + count + suffix + " [" + kw_summary + "] (redit extra to edit)", connection_id) + "\n";
+        }
 
         // Display area
         let area_id = room.area_id;
@@ -936,7 +947,6 @@ fn run_command(args, connection_id) {
         // Make commands clickable with MXP
         let cmd_desc = mxp_or(mxp_send("redit desc", "redit desc"), "redit desc", connection_id);
         let cmd_flags = mxp_or(mxp_send("redit flags", "redit flags"), "redit flags", connection_id);
-        let cmd_extra = mxp_or(mxp_send("redit extra list", "redit extra list"), "redit extra list", connection_id);
         let cmd_vnum = mxp_or(mxp_send("redit vnum", "redit vnum"), "redit vnum", connection_id);
         let cmd_area = mxp_or(mxp_send("redit area", "redit area"), "redit area", connection_id);
 
@@ -944,14 +954,13 @@ fn run_command(args, connection_id) {
         output += "  " + cmd_desc + "          - Edit description (AI: help <prompt> | rephrase)\n";
         output += "  " + cmd_flags + "         - Show all flags with status\n";
         output += "  redit flag <name> [on|off] - Toggle/set flag\n";
-        output += "  " + cmd_extra + "    - List extra descriptions\n";
-        output += "  redit extra add <keywords> - Add extra description\n";
-        output += "  redit extra edit <keyword> - Edit extra description\n";
-        output += "  redit extra remove <keyword> - Remove extra description\n";
+        output += "  redit extra [list|add|edit|remove] - Manage extra descriptions\n";
         output += "  " + cmd_vnum + " [alias|clear] - Set or clear room vnum\n";
         output += "  " + cmd_area + " [id|clear] - Set or clear room area\n";
         let cmd_trigger = mxp_or(mxp_send("redit trigger", "redit trigger"), "redit trigger", connection_id);
         output += "  " + cmd_trigger + " - Manage room triggers\n";
+        let cmd_exit = mxp_or(mxp_send("redit exit", "redit exit"), "redit exit", connection_id);
+        output += "  " + cmd_exit + " [list|link|unlink] - List or wire exits to other rooms\n";
         let cmd_door = mxp_or(mxp_send("redit door", "redit door"), "redit door", connection_id);
         output += "  " + cmd_door + "    - Manage doors on exits\n";
         let cmd_seasonal = mxp_or(mxp_send("redit seasonal", "redit seasonal"), "redit seasonal", connection_id);
@@ -1326,6 +1335,11 @@ fn run_command(args, connection_id) {
 
     if subcommand == "trigger" {
         handle_trigger_subcommand(connection_id, room, parts);
+        return;
+    }
+
+    if subcommand == "exit" {
+        handle_exit_subcommand(connection_id, char, room, parts);
         return;
     }
 
@@ -2119,6 +2133,143 @@ fn handle_catch_remove(room_id, parts, connection_id) {
     } else {
         send_client_message(connection_id, "No catch entry found with vnum: " + vnum);
     }
+}
+
+// ========== Exit (link/unlink) Handlers ==========
+
+fn build_exit_list(room, connection_id) {
+    let exits = room.exits;
+    let output = "";
+    let has_exits = false;
+    if exits.north != "" { output += format_exit("north", exits.north, connection_id); has_exits = true; }
+    if exits.south != "" { output += format_exit("south", exits.south, connection_id); has_exits = true; }
+    if exits.east != "" { output += format_exit("east", exits.east, connection_id); has_exits = true; }
+    if exits.west != "" { output += format_exit("west", exits.west, connection_id); has_exits = true; }
+    if exits.up != "" { output += format_exit("up", exits.up, connection_id); has_exits = true; }
+    if exits.down != "" { output += format_exit("down", exits.down, connection_id); has_exits = true; }
+    if !has_exits { output += "  (none)\n"; }
+    return output;
+}
+
+fn show_exit_help(room, connection_id) {
+    let output = olc::c_header("=== Room Exits ===", connection_id) + "\n";
+    output += build_exit_list(room, connection_id);
+    output += "\n" + olc::c_label("Commands:", connection_id) + "\n";
+    output += "  redit exit list                              - List exits in this room\n";
+    output += "  redit exit link <dir> <vnum|room_id> [both]  - Wire exit to a room (alias of 'link')\n";
+    output += "  redit exit unlink <dir>                      - Remove exit (alias of 'unlink')\n";
+    send_mxp_message(connection_id, output);
+}
+
+fn is_valid_compass_dir(dir) {
+    if dir == "north" { return true; }
+    if dir == "south" { return true; }
+    if dir == "east" { return true; }
+    if dir == "west" { return true; }
+    if dir == "up" { return true; }
+    if dir == "down" { return true; }
+    return false;
+}
+
+fn handle_exit_link(connection_id, char, room, parts) {
+    if parts.len() < 4 {
+        send_client_message(connection_id, "Usage: redit exit link <direction> <vnum|room_id> [both]\nExample: redit exit link east tavern_backroom\nAdd 'both' for a bidirectional link.");
+        return;
+    }
+    let direction = normalize_direction(parts[2]);
+    if !is_valid_compass_dir(direction) {
+        send_client_message(connection_id, "Invalid direction. Use: north, south, east, west, up, down");
+        return;
+    }
+    let target_room_id = parts[3];
+    let bidirectional = parts.len() >= 5 && parts[4].to_lower() == "both";
+
+    // Resolve target by vnum first, fall back to UUID
+    let target_room = get_room_by_vnum(target_room_id);
+    if target_room == () {
+        target_room = get_room_data(target_room_id);
+    }
+    if target_room == () {
+        send_client_message(connection_id, "Error: Target room '" + target_room_id + "' not found.\nUse 'rlist' to see available rooms.");
+        return;
+    }
+    let actual_target_id = target_room.id;
+
+    // Need permission on the target area too if we're going both ways
+    if bidirectional {
+        let target_area_id = target_room.area_id;
+        if target_area_id != "" {
+            if !can_edit_area(target_area_id, char.name) {
+                send_client_message(connection_id, "You don't have permission to link exits to rooms in that area. Drop 'both' for a one-way link.");
+                return;
+            }
+        }
+    }
+
+    if !set_room_exit(room.id, direction, actual_target_id) {
+        send_client_message(connection_id, "Error: Failed to create exit.");
+        return;
+    }
+    let output = "Exit linked: " + direction + " -> " + target_room.title;
+    if bidirectional {
+        let opposite = get_opposite_direction(direction);
+        if opposite != "" {
+            if set_room_exit(actual_target_id, opposite, room.id) {
+                output += "\nReverse exit linked: " + opposite + " -> " + room.title;
+            } else {
+                output += "\nWarning: Failed to create reverse exit.";
+            }
+        }
+    }
+    send_client_message(connection_id, output);
+}
+
+fn handle_exit_unlink(connection_id, room, parts) {
+    if parts.len() < 3 {
+        send_client_message(connection_id, "Usage: redit exit unlink <direction>");
+        return;
+    }
+    let direction = normalize_direction(parts[2]);
+    if !is_valid_compass_dir(direction) {
+        send_client_message(connection_id, "Invalid direction. Use: north, south, east, west, up, down");
+        return;
+    }
+    let exits = room.exits;
+    let existing_exit = "";
+    if direction == "north" { existing_exit = exits.north; }
+    if direction == "south" { existing_exit = exits.south; }
+    if direction == "east" { existing_exit = exits.east; }
+    if direction == "west" { existing_exit = exits.west; }
+    if direction == "up" { existing_exit = exits.up; }
+    if direction == "down" { existing_exit = exits.down; }
+    if existing_exit == "" {
+        send_client_message(connection_id, "There is no exit to the " + direction + ".");
+        return;
+    }
+    let target_room = get_room_data(existing_exit);
+    let target_name = if target_room != () { target_room.title } else { "unknown" };
+    if clear_room_exit(room.id, direction) {
+        send_client_message(connection_id, "Removed exit " + direction + " (was: " + target_name + ").");
+    } else {
+        send_client_message(connection_id, "Error: Failed to remove exit.");
+    }
+}
+
+fn handle_exit_subcommand(connection_id, char, room, parts) {
+    if parts.len() < 2 {
+        show_exit_help(room, connection_id);
+        return;
+    }
+    let exit_cmd = parts[1].to_lower();
+    if exit_cmd == "list" {
+        let output = olc::c_header("=== Room Exits ===", connection_id) + "\n";
+        output += build_exit_list(room, connection_id);
+        send_mxp_message(connection_id, output);
+        return;
+    }
+    if exit_cmd == "link" { handle_exit_link(connection_id, char, room, parts); return; }
+    if exit_cmd == "unlink" { handle_exit_unlink(connection_id, room, parts); return; }
+    send_client_message(connection_id, "Unknown exit subcommand: " + exit_cmd + "\nUse 'redit exit' for help.");
 }
 
 fn handle_door_subcommand(connection_id, room, parts) {
