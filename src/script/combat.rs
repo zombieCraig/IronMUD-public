@@ -2346,6 +2346,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 name: format!("corpse of {}", name),
                 short_desc: format!("The corpse of {} lies here.", name),
                 long_desc: format!("The lifeless body of {} lies in a crumpled heap.", name),
+                area_id: None,
                 keywords: vec!["corpse".to_string(), "body".to_string(), name.to_lowercase()],
                 item_type: ItemType::Container,
                 categories: Vec::new(),

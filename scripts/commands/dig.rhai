@@ -109,6 +109,11 @@ fn run_command(args, connection_id) {
             send_client_message(connection_id, "You don't have permission to dig from rooms in this area.");
             return;
         }
+        let quota_err = area_quota_check(room_area_id, "rooms");
+        if quota_err != "" {
+            send_client_message(connection_id, quota_err);
+            return;
+        }
     }
 
     // Check if exit already exists

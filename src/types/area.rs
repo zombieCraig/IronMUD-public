@@ -186,4 +186,18 @@ pub struct AreaData {
     /// their home room (they have to actually be out scrounging). Default 0.
     #[serde(default)]
     pub scavenger_wage_per_hour: i32,
+
+    /// Soft caps on the number of prototypes/rooms attributed to this area.
+    /// `None` = unlimited (default). Enforced at create-time at the API and
+    /// OLC boundaries; existing entities are never retroactively deleted if
+    /// the cap is later set lower than the current count. Mainly a guard
+    /// against runaway create loops by a hostile builder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_rooms: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_items: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_mobiles: Option<i32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_spawn_points: Option<i32>,
 }

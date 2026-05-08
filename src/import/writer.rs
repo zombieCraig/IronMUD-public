@@ -190,6 +190,10 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
             healer_wage_per_hour: 0,
             donation_room_vnum: None,
             scavenger_wage_per_hour: 0,
+            max_rooms: None,
+            max_items: None,
+            max_mobiles: None,
+            max_spawn_points: None,
         };
         db.save_area_data(area)
             .with_context(|| format!("saving area {}", a.prefix))?;

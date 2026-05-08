@@ -101,6 +101,10 @@ export const areaToolDefinitions = [
         guard_wage_per_hour: { type: "number", description: "Hourly area-treasury wage paid to migrant guards anywhere in this area. 0 disables." },
         healer_wage_per_hour: { type: "number", description: "Hourly 'patient visits' wage paid to migrant healers anywhere in this area. 0 disables." },
         scavenger_wage_per_hour: { type: "number", description: "Hourly scrounging wage paid to migrant scavengers while away from home. 0 disables." },
+        max_rooms: { type: "number", description: "Soft cap on rooms attributed to this area. 0 / negative clears (unlimited). Enforced at create-time only." },
+        max_items: { type: "number", description: "Soft cap on item prototypes attributed to this area. 0 / negative clears (unlimited)." },
+        max_mobiles: { type: "number", description: "Soft cap on mobile prototypes attributed to this area. 0 / negative clears (unlimited)." },
+        max_spawn_points: { type: "number", description: "Soft cap on spawn points in this area. 0 / negative clears (unlimited)." },
         default_room_flags: {
           type: "object",
           description: "Template RoomFlags copied into every newly-created room in this area. Existing rooms are not retroactively updated. Absent keys preserve current state.",

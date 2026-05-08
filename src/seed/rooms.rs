@@ -100,6 +100,8 @@ fn seed_oakvale(db: &Db) -> Result<usize> {
                 args: Vec::new(),
                 dg_body: None,
                 dg_name: None,
+                authored_by: None,
+                elevated: false,
             },
             RoomTrigger {
                 trigger_type: TriggerType::Periodic,
@@ -111,6 +113,8 @@ fn seed_oakvale(db: &Db) -> Result<usize> {
                 args: vec!["A sparrow hops along the fountain rim, pecking at crumbs.|The fountain water catches the light, sending ripples of color across the stones.|A child chases a stray cat between the market stalls, laughing.|The village bell tolls the hour from the temple tower.".to_string()],
                 dg_body: None,
                 dg_name: None,
+                authored_by: None,
+                elevated: false,
             },
         ],
         doors: HashMap::new(),
@@ -442,6 +446,8 @@ fn seed_whisperwood(db: &Db) -> Result<usize> {
         args: Vec::new(),
         dg_body: None,
         dg_name: None,
+        authored_by: None,
+        elevated: false,
     });
 
     let mut wolf_den = room(
@@ -736,6 +742,8 @@ fn seed_shadowfang(db: &Db) -> Result<usize> {
         args: vec!["Water drips from the ceiling into an unseen pool.|Something skitters in the darkness ahead.|A cold draft extinguishes a nearby torch, plunging the tunnel into deeper shadow.|You hear a distant, echoing growl.".to_string()],
         dg_body: None,
         dg_name: None,
+        authored_by: None,
+        elevated: false,
     });
 
     let mut goblin_camp = room(

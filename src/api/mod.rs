@@ -14,7 +14,9 @@ pub mod quests;
 pub mod recipes;
 pub mod rooms;
 pub mod spawn;
+pub mod quotas;
 pub mod transports;
+pub mod validate;
 
 use axum::{Json, Router, middleware, routing::get};
 use std::sync::Arc;

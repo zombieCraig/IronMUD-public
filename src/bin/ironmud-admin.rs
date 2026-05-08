@@ -177,7 +177,7 @@ const KNOWN_SETTINGS: &[(&str, &str)] = &[
     ("class_preset", "fantasy"),
     ("race_preset", "fantasy"),
     // Administration
-    ("builder_mode", "all"),
+    ("builder_mode", "granted"),
     ("motd", ""),
     ("recall_enabled", "true"),
     ("login_lockout_duration", "600"),

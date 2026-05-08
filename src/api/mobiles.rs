@@ -12,9 +12,10 @@ use uuid::Uuid;
 
 use super::{
     ApiState,
-    auth::{AuthenticatedUser, can_read, can_write},
+    auth::{authorize_existing_area, parse_and_authorize_area, AuthenticatedUser, can_read, can_write},
     error::ApiError,
     notify_builders,
+    validate::{check_shop_rate, check_stat_bonus, check_text_len, LONG_DESC_MAX, NAME_MAX, SHORT_DESC_MAX},
 };
 use crate::{
     ActivityState, CombatState, DamageType, MobileData, MobileFlags, MobileTrigger, MobileTriggerType, NeedsState,
@@ -64,6 +65,11 @@ pub struct CreateMobileRequest {
     pub short_desc: String,
     pub long_desc: String,
     pub vnum: String,
+    /// Optional owning area UUID. When provided, the caller must have
+    /// `can_edit_area` permission for it. Orphans (None) are editable
+    /// by any builder.
+    #[serde(default)]
+    pub area_id: Option<String>,
     #[serde(default)]
     pub keywords: Vec<String>,
     #[serde(default = "default_level")]
@@ -316,6 +322,11 @@ pub struct UpdateMobileRequest {
     pub short_desc: Option<String>,
     pub long_desc: Option<String>,
     pub vnum: Option<String>,
+    /// Reassign the prototype's owning area. None leaves it unchanged;
+    /// "" clears it back to orphan. Either way, the caller must have
+    /// `can_edit_area` for both the current and target areas.
+    #[serde(default)]
+    pub area_id: Option<String>,
     pub keywords: Option<Vec<String>>,
     pub level: Option<i32>,
     pub max_hp: Option<i32>,
@@ -789,6 +800,16 @@ async fn create_mobile(
         return Err(ApiError::VnumInUse(format!("Vnum '{}' is already in use", req.vnum)));
     }
 
+    check_text_len("name", &req.name, NAME_MAX)?;
+    check_text_len("short_desc", &req.short_desc, SHORT_DESC_MAX)?;
+    check_text_len("long_desc", &req.long_desc, LONG_DESC_MAX)?;
+
+    // Optional area_id: if provided, caller must have edit rights on it.
+    let area_id = parse_and_authorize_area(&state.db, &user, req.area_id.as_deref())?;
+
+    // Per-area soft cap on prototype count (F6). Orphans are uncapped.
+    super::quotas::check_area_quota(&state.db, area_id, super::quotas::QuotaKind::Mobiles)?;
+
     // Use provided damage dice string or default
     let damage_dice = req.damage_dice.clone().unwrap_or_else(|| "1d4".to_string());
 
@@ -797,17 +818,18 @@ async fn create_mobile(
         name: req.name,
         short_desc: req.short_desc,
         long_desc: req.long_desc,
+        area_id,
         vnum: req.vnum.clone(),
         keywords: req.keywords,
         is_prototype: true,
         world_max_count: req.world_max_count,
         current_room_id: None,
-        max_hp: req.max_hp,
-        current_hp: req.max_hp,
+        max_hp: check_stat_bonus("max_hp", req.max_hp)?,
+        current_hp: check_stat_bonus("max_hp", req.max_hp)?,
         max_stamina: 100,
         current_stamina: 100,
         level: req.level,
-        armor_class: req.armor_class,
+        armor_class: check_stat_bonus("armor_class", req.armor_class)?,
         hit_modifier: 0,
         damage_dice,
         damage_type: DamageType::default(),
@@ -868,8 +890,8 @@ async fn create_mobile(
         shop_stock: req.shop_stock.unwrap_or_default(),
         shop_inventory: Vec::new(),
         shop_buys_types: req.shop_buys_types.unwrap_or_default(),
-        shop_sell_rate: req.shop_sell_rate.unwrap_or(150),
-        shop_buy_rate: req.shop_buy_rate.unwrap_or(50),
+        shop_sell_rate: check_shop_rate("shop_sell_rate", req.shop_sell_rate.unwrap_or(150))?,
+        shop_buy_rate: check_shop_rate("shop_buy_rate", req.shop_buy_rate.unwrap_or(50))?,
         healer_type: req.healer_type.unwrap_or_default(),
         healing_free: req.healing_free.unwrap_or(false),
         healing_cost_multiplier: req.healing_cost_multiplier.unwrap_or(100),
@@ -969,14 +991,31 @@ async fn update_mobile(
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
+    // Sandbox: caller must have edit rights on the mobile's owning area.
+    authorize_existing_area(&state.db, &user, mobile.area_id)?;
+
+    // Reassigning the area requires rights on the new area too. Empty
+    // string clears the assignment back to orphan.
+    if let Some(area_id_str) = req.area_id.as_deref() {
+        if area_id_str.trim().is_empty() {
+            mobile.area_id = None;
+        } else {
+            let new_area = parse_and_authorize_area(&state.db, &user, Some(area_id_str))?;
+            mobile.area_id = new_area;
+        }
+    }
+
     // Apply updates
     if let Some(name) = req.name {
+        check_text_len("name", &name, NAME_MAX)?;
         mobile.name = name;
     }
     if let Some(short_desc) = req.short_desc {
+        check_text_len("short_desc", &short_desc, SHORT_DESC_MAX)?;
         mobile.short_desc = short_desc;
     }
     if let Some(long_desc) = req.long_desc {
+        check_text_len("long_desc", &long_desc, LONG_DESC_MAX)?;
         mobile.long_desc = long_desc;
     }
     if let Some(ref new_vnum) = req.vnum {
@@ -998,13 +1037,14 @@ async fn update_mobile(
         mobile.level = level;
     }
     if let Some(max_hp) = req.max_hp {
+        let max_hp = check_stat_bonus("max_hp", max_hp)?;
         mobile.max_hp = max_hp;
         if mobile.current_hp > max_hp {
             mobile.current_hp = max_hp;
         }
     }
     if let Some(armor_class) = req.armor_class {
-        mobile.armor_class = armor_class;
+        mobile.armor_class = check_stat_bonus("armor_class", armor_class)?;
     }
     if let Some(perception) = req.perception {
         mobile.perception = perception;
@@ -1161,10 +1201,10 @@ async fn update_mobile(
     }
     // Shop config
     if let Some(shop_sell_rate) = req.shop_sell_rate {
-        mobile.shop_sell_rate = shop_sell_rate;
+        mobile.shop_sell_rate = check_shop_rate("shop_sell_rate", shop_sell_rate)?;
     }
     if let Some(shop_buy_rate) = req.shop_buy_rate {
-        mobile.shop_buy_rate = shop_buy_rate;
+        mobile.shop_buy_rate = check_shop_rate("shop_buy_rate", shop_buy_rate)?;
     }
     if let Some(shop_buys_types) = req.shop_buys_types {
         mobile.shop_buys_types = shop_buys_types;
@@ -1258,6 +1298,8 @@ async fn delete_mobile(
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
+    authorize_existing_area(&state.db, &user, mobile.area_id)?;
+
     let mobile_name = mobile.vnum.clone();
 
     state
@@ -1295,6 +1337,8 @@ async fn add_dialogue(
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
+    authorize_existing_area(&state.db, &user, mobile.area_id)?;
+
     mobile.dialogue.insert(req.keyword.to_lowercase(), req.response);
 
     state
@@ -1328,6 +1372,8 @@ async fn remove_dialogue(
         .get_mobile_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
+
+    authorize_existing_area(&state.db, &user, mobile.area_id)?;
 
     if mobile.dialogue.remove(&keyword.to_lowercase()).is_none() {
         return Err(ApiError::NotFound(format!("Dialogue keyword '{}' not found", keyword)));
@@ -1395,6 +1441,7 @@ async fn set_dialogue_tree_root(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
     let mut mobile = load_mobile(&state, &id).await?;
+    authorize_existing_area(&state.db, &user, mobile.area_id)?;
     crate::dialogue_edit::set_root(&mut mobile.dialogue_tree, &req.node_name)
         .map_err(map_edit_err)?;
     save_mobile_response(&state, mobile)
@@ -1410,6 +1457,7 @@ async fn add_dialogue_node(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
     let mut mobile = load_mobile(&state, &id).await?;
+    authorize_existing_area(&state.db, &user, mobile.area_id)?;
     // Auto-initialize an empty tree if the mobile has none yet — gives MCP
     // callers a one-shot "stand up dialogue" path: set tree root via the
     // first node added.
@@ -1451,6 +1499,7 @@ async fn update_dialogue_node(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
     let mut mobile = load_mobile(&state, &id).await?;
+    authorize_existing_area(&state.db, &user, mobile.area_id)?;
     let patch = crate::dialogue_edit::NodePatch {
         text: req.text,
         on_enter: req.on_enter,
@@ -1471,6 +1520,7 @@ async fn remove_dialogue_node(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
     let mut mobile = load_mobile(&state, &id).await?;
+    authorize_existing_area(&state.db, &user, mobile.area_id)?;
     crate::dialogue_edit::remove_node(&mut mobile.dialogue_tree, &node_name)
         .map_err(map_edit_err)?;
     save_mobile_response(&state, mobile)
@@ -1486,6 +1536,7 @@ async fn add_dialogue_choice(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
     let mut mobile = load_mobile(&state, &id).await?;
+    authorize_existing_area(&state.db, &user, mobile.area_id)?;
     crate::dialogue_edit::add_choice(&mut mobile.dialogue_tree, &node_name, req.into())
         .map_err(map_edit_err)?;
     save_mobile_response(&state, mobile)
@@ -1501,6 +1552,7 @@ async fn update_dialogue_choice(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
     let mut mobile = load_mobile(&state, &id).await?;
+    authorize_existing_area(&state.db, &user, mobile.area_id)?;
     crate::dialogue_edit::update_choice(&mut mobile.dialogue_tree, &node_name, index, req.into())
         .map_err(map_edit_err)?;
     save_mobile_response(&state, mobile)
@@ -1515,6 +1567,7 @@ async fn remove_dialogue_choice(
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
     let mut mobile = load_mobile(&state, &id).await?;
+    authorize_existing_area(&state.db, &user, mobile.area_id)?;
     crate::dialogue_edit::remove_choice(&mut mobile.dialogue_tree, &node_name, index)
         .map_err(map_edit_err)?;
     save_mobile_response(&state, mobile)
@@ -1538,6 +1591,8 @@ async fn add_routine_entry(
         .get_mobile_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
+
+    authorize_existing_area(&state.db, &user, mobile.area_id)?;
 
     let entry = RoutineEntry {
         start_hour: req.start_hour,
@@ -1584,6 +1639,8 @@ async fn remove_routine_entry(
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
+    authorize_existing_area(&state.db, &user, mobile.area_id)?;
+
     if index >= mobile.daily_routine.len() {
         return Err(ApiError::NotFound(format!("Routine index {} not found", index)));
     }
@@ -1623,6 +1680,8 @@ async fn add_trigger(
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
 
+    authorize_existing_area(&state.db, &user, mobile.area_id)?;
+
     let trigger_type = match req.trigger_type.to_lowercase().as_str() {
         "greet" | "on_greet" => MobileTriggerType::OnGreet,
         "attack" | "on_attack" => MobileTriggerType::OnAttack,
@@ -1649,6 +1708,8 @@ async fn add_trigger(
         last_fired: 0,
         dg_body: None,
         dg_name: None,
+        authored_by: None,
+        elevated: false,
     };
 
     mobile.triggers.push(trigger);
@@ -1684,6 +1745,8 @@ async fn remove_trigger(
         .get_mobile_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
+
+    authorize_existing_area(&state.db, &user, mobile.area_id)?;
 
     if index >= mobile.triggers.len() {
         return Err(ApiError::NotFound(format!("Trigger index {} not found", index)));
@@ -1731,11 +1794,15 @@ async fn spawn_mobile(
     let room_uuid =
         Uuid::parse_str(&req.room_id).map_err(|_| ApiError::InvalidInput("Invalid room_id UUID format".into()))?;
 
-    let _room = state
+    let room = state
         .db
         .get_room_data(&room_uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", req.room_id)))?;
+
+    // Spawning into a room must be authorized against that room's area —
+    // a mobile-prototype's owning area is irrelevant for the destination check.
+    authorize_existing_area(&state.db, &user, room.area_id)?;
 
     // Clone the prototype to create an instance
     let mut instance = prototype.clone();

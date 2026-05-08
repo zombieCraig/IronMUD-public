@@ -11,9 +11,10 @@ use uuid::Uuid;
 
 use super::{
     ApiState,
-    auth::{AuthenticatedUser, can_read, can_write},
+    auth::{authorize_existing_area, parse_and_authorize_area, AuthenticatedUser, can_read, can_write},
     error::ApiError,
     notify_builders,
+    validate::{check_dice_dim, check_stat_bonus, check_text_len, LONG_DESC_MAX, NAME_MAX, SHORT_DESC_MAX},
 };
 use crate::types::{CastOnUse, EffectType, ExtraDesc, ItemEffect, ItemTrigger, ItemTriggerType};
 use crate::{DamageType, ItemData, ItemFlags, ItemLocation, ItemType, LiquidType, OnHitEffect, WeaponSkill, WearLocation};
@@ -87,6 +88,11 @@ pub struct CreateItemRequest {
     pub short_desc: String,
     pub long_desc: String,
     pub vnum: String,
+    /// Optional owning area UUID. When provided, the caller must have
+    /// `can_edit_area` permission for it. Orphans (None) are editable
+    /// by any builder.
+    #[serde(default)]
+    pub area_id: Option<String>,
     #[serde(default)]
     pub keywords: Vec<String>,
     pub item_type: String,
@@ -293,6 +299,11 @@ pub struct UpdateItemRequest {
     pub short_desc: Option<String>,
     pub long_desc: Option<String>,
     pub vnum: Option<String>,
+    /// Reassign the prototype's owning area. None leaves it unchanged;
+    /// "" clears it back to orphan. Either way, the caller must have
+    /// `can_edit_area` for both the current and target areas.
+    #[serde(default)]
+    pub area_id: Option<String>,
     pub keywords: Option<Vec<String>>,
     pub item_type: Option<String>,
     pub weight: Option<i32>,
@@ -712,6 +723,17 @@ async fn create_item(
         return Err(ApiError::VnumInUse(format!("Vnum '{}' is already in use", req.vnum)));
     }
 
+    // Text length caps — overflow safety, not balance.
+    check_text_len("name", &req.name, NAME_MAX)?;
+    check_text_len("short_desc", &req.short_desc, SHORT_DESC_MAX)?;
+    check_text_len("long_desc", &req.long_desc, LONG_DESC_MAX)?;
+
+    // Optional area_id: if provided, caller must have edit rights on it.
+    let area_id = parse_and_authorize_area(&state.db, &user, req.area_id.as_deref())?;
+
+    // Per-area soft cap on prototype count (F6). Orphans are uncapped.
+    super::quotas::check_area_quota(&state.db, area_id, super::quotas::QuotaKind::Items)?;
+
     // Parse item type
     let item_type = parse_item_type(&req.item_type).ok_or_else(|| {
         ApiError::InvalidInput(format!(
@@ -739,6 +761,7 @@ async fn create_item(
         name: req.name,
         short_desc: req.short_desc,
         long_desc: req.long_desc,
+        area_id,
         vnum: Some(req.vnum.clone()),
         keywords: req.keywords,
         item_type,
@@ -767,11 +790,11 @@ async fn create_item(
         world_max_count: req.world_max_count,
         location: ItemLocation::Nowhere,
         wear_locations,
-        armor_class: req.armor_class,
-        hit_bonus: req.hit_bonus.unwrap_or(0),
-        damage_bonus: req.damage_bonus.unwrap_or(0),
-        max_hp_bonus: req.max_hp_bonus.unwrap_or(0),
-        max_mana_bonus: req.max_mana_bonus.unwrap_or(0),
+        armor_class: req.armor_class.map(|v| check_stat_bonus("armor_class", v)).transpose()?,
+        hit_bonus: check_stat_bonus("hit_bonus", req.hit_bonus.unwrap_or(0))?,
+        damage_bonus: check_stat_bonus("damage_bonus", req.damage_bonus.unwrap_or(0))?,
+        max_hp_bonus: check_stat_bonus("max_hp_bonus", req.max_hp_bonus.unwrap_or(0))?,
+        max_mana_bonus: check_stat_bonus("max_mana_bonus", req.max_mana_bonus.unwrap_or(0))?,
         light_hours_remaining: req.light_hours_remaining.unwrap_or(0).max(0),
         cast_on_use: req.cast_on_use.as_ref().and_then(build_cast_on_use_from_req),
         protects: Vec::new(),
@@ -810,8 +833,8 @@ async fn create_item(
             detect_buried: req.flags.detect_buried.unwrap_or(false),
             ..Default::default()
         },
-        damage_dice_count: req.damage_dice_count.unwrap_or(1),
-        damage_dice_sides: req.damage_dice_sides.unwrap_or(4),
+        damage_dice_count: check_dice_dim("damage_dice_count", req.damage_dice_count.unwrap_or(1))?,
+        damage_dice_sides: check_dice_dim("damage_dice_sides", req.damage_dice_sides.unwrap_or(4))?,
         damage_type,
         two_handed: req.two_handed.unwrap_or(false),
         weapon_skill: req.weapon_skill.as_ref().and_then(|s| WeaponSkill::from_str(s)),
@@ -896,7 +919,7 @@ async fn create_item(
         transport_link: None,
         caliber: req.caliber,
         ammo_count: req.ammo_count.unwrap_or(0),
-        ammo_damage_bonus: req.ammo_damage_bonus.unwrap_or(0),
+        ammo_damage_bonus: check_stat_bonus("ammo_damage_bonus", req.ammo_damage_bonus.unwrap_or(0))?,
         ranged_type: req.ranged_type,
         magazine_size: req.magazine_size.unwrap_or(0),
         loaded_ammo: 0,
@@ -965,14 +988,32 @@ async fn update_item(
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
 
+    // Sandbox: if the prototype already belongs to an area, the caller
+    // must have edit rights on that area.
+    authorize_existing_area(&state.db, &user, item.area_id)?;
+
+    // Reassigning the area requires rights on the new area too. Empty
+    // string clears the assignment back to orphan.
+    if let Some(area_id_str) = req.area_id.as_deref() {
+        if area_id_str.trim().is_empty() {
+            item.area_id = None;
+        } else {
+            let new_area = parse_and_authorize_area(&state.db, &user, Some(area_id_str))?;
+            item.area_id = new_area;
+        }
+    }
+
     // Apply updates
     if let Some(name) = req.name {
+        check_text_len("name", &name, NAME_MAX)?;
         item.name = name;
     }
     if let Some(short_desc) = req.short_desc {
+        check_text_len("short_desc", &short_desc, SHORT_DESC_MAX)?;
         item.short_desc = short_desc;
     }
     if let Some(long_desc) = req.long_desc {
+        check_text_len("long_desc", &long_desc, LONG_DESC_MAX)?;
         item.long_desc = long_desc;
     }
     if let Some(note_content) = req.note_content {
@@ -1163,7 +1204,7 @@ async fn update_item(
         item.ammo_count = ammo_count;
     }
     if let Some(ammo_damage_bonus) = req.ammo_damage_bonus {
-        item.ammo_damage_bonus = ammo_damage_bonus;
+        item.ammo_damage_bonus = check_stat_bonus("ammo_damage_bonus", ammo_damage_bonus)?;
     }
     // Attachment fields
     if let Some(attachment_slot) = req.attachment_slot {
@@ -1180,28 +1221,28 @@ async fn update_item(
     }
     // Weapon/armor fields
     if let Some(dice_count) = req.damage_dice_count {
-        item.damage_dice_count = dice_count;
+        item.damage_dice_count = check_dice_dim("damage_dice_count", dice_count)?;
     }
     if let Some(dice_sides) = req.damage_dice_sides {
-        item.damage_dice_sides = dice_sides;
+        item.damage_dice_sides = check_dice_dim("damage_dice_sides", dice_sides)?;
     }
     if let Some(ref dt) = req.damage_type {
         item.damage_type = DamageType::from_str(dt).unwrap_or(item.damage_type);
     }
     if let Some(ac) = req.armor_class {
-        item.armor_class = Some(ac);
+        item.armor_class = Some(check_stat_bonus("armor_class", ac)?);
     }
     if let Some(hb) = req.hit_bonus {
-        item.hit_bonus = hb;
+        item.hit_bonus = check_stat_bonus("hit_bonus", hb)?;
     }
     if let Some(db) = req.damage_bonus {
-        item.damage_bonus = db;
+        item.damage_bonus = check_stat_bonus("damage_bonus", db)?;
     }
     if let Some(mhb) = req.max_hp_bonus {
-        item.max_hp_bonus = mhb;
+        item.max_hp_bonus = check_stat_bonus("max_hp_bonus", mhb)?;
     }
     if let Some(mmb) = req.max_mana_bonus {
-        item.max_mana_bonus = mmb;
+        item.max_mana_bonus = check_stat_bonus("max_mana_bonus", mmb)?;
     }
     if let Some(lhr) = req.light_hours_remaining {
         item.light_hours_remaining = lhr.max(0);
@@ -1328,6 +1369,8 @@ async fn delete_item(
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
 
+    authorize_existing_area(&state.db, &user, item.area_id)?;
+
     let item_name = item.vnum.clone().unwrap_or_else(|| item.id.to_string());
 
     state
@@ -1395,6 +1438,8 @@ async fn add_trigger(
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
 
+    authorize_existing_area(&state.db, &user, item.area_id)?;
+
     let trigger_type = parse_item_trigger_type(&req.trigger_type)?;
 
     item.triggers.push(ItemTrigger {
@@ -1405,6 +1450,8 @@ async fn add_trigger(
         args: req.args,
         dg_body: None,
         dg_name: None,
+        authored_by: None,
+        elevated: false,
     });
 
     state
@@ -1438,6 +1485,8 @@ async fn remove_trigger(
         .get_item_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
+
+    authorize_existing_area(&state.db, &user, item.area_id)?;
 
     if index >= item.triggers.len() {
         return Err(ApiError::NotFound(format!("Trigger index {} not found", index)));
@@ -1478,9 +1527,12 @@ async fn add_extra_desc(
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
 
+    authorize_existing_area(&state.db, &user, item.area_id)?;
+
     if req.keywords.is_empty() {
         return Err(ApiError::InvalidInput("keywords must not be empty".into()));
     }
+    check_text_len("description", &req.description, super::validate::DESCRIPTION_MAX)?;
 
     item.extra_descs.push(ExtraDesc {
         keywords: req.keywords,
@@ -1518,6 +1570,8 @@ async fn remove_extra_desc(
         .get_item_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Item '{}' not found", id)))?;
+
+    authorize_existing_area(&state.db, &user, item.area_id)?;
 
     let keyword_lower = keyword.to_lowercase();
     let original_len = item.extra_descs.len();
@@ -1571,11 +1625,15 @@ async fn spawn_item(
     let room_uuid =
         Uuid::parse_str(&req.room_id).map_err(|_| ApiError::InvalidInput("Invalid room_id UUID format".into()))?;
 
-    let _room = state
+    let room = state
         .db
         .get_room_data(&room_uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Room '{}' not found", req.room_id)))?;
+
+    // Spawning into a room must be authorized against that room's area —
+    // an item-prototype's owning area is irrelevant for the destination check.
+    authorize_existing_area(&state.db, &user, room.area_id)?;
 
     // Clone the prototype to create an instance
     let mut instance = prototype.clone();

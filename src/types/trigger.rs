@@ -86,6 +86,17 @@ pub struct RoomTrigger {
     /// "Mage Guildguard - 3024"). Display only.
     #[serde(default)]
     pub dg_name: Option<String>,
+    /// Character name of the builder who authored / last edited the
+    /// `dg_body`. Empty (None) means importer-seeded or system-authored.
+    /// Used by the DG opcode permission gate to scope dangerous verbs
+    /// (force/at/purge/load/teleport) to the author's area.
+    #[serde(default)]
+    pub authored_by: Option<String>,
+    /// Admin override that lifts the per-author area gate on dangerous
+    /// DG opcodes for this trigger. Only `is_admin` characters can flip
+    /// this on (via `redit/medit/oedit trigger dg elevate`).
+    #[serde(default)]
+    pub elevated: bool,
 }
 
 fn default_trigger_interval() -> i64 {
@@ -108,6 +119,8 @@ impl Default for RoomTrigger {
             args: Vec::new(),
             dg_body: None,
             dg_name: None,
+            authored_by: None,
+            elevated: false,
         }
     }
 }
@@ -148,6 +161,12 @@ pub struct ItemTrigger {
     pub dg_body: Option<String>,
     #[serde(default)]
     pub dg_name: Option<String>,
+    /// See [`RoomTrigger::authored_by`].
+    #[serde(default)]
+    pub authored_by: Option<String>,
+    /// See [`RoomTrigger::elevated`].
+    #[serde(default)]
+    pub elevated: bool,
 }
 
 impl Default for ItemTrigger {
@@ -160,6 +179,8 @@ impl Default for ItemTrigger {
             args: Vec::new(),
             dg_body: None,
             dg_name: None,
+            authored_by: None,
+            elevated: false,
         }
     }
 }
@@ -216,6 +237,12 @@ pub struct MobileTrigger {
     pub dg_body: Option<String>,
     #[serde(default)]
     pub dg_name: Option<String>,
+    /// See [`RoomTrigger::authored_by`].
+    #[serde(default)]
+    pub authored_by: Option<String>,
+    /// See [`RoomTrigger::elevated`].
+    #[serde(default)]
+    pub elevated: bool,
 }
 
 impl Default for MobileTrigger {
@@ -230,6 +257,8 @@ impl Default for MobileTrigger {
             last_fired: 0,
             dg_body: None,
             dg_name: None,
+            authored_by: None,
+            elevated: false,
         }
     }
 }

@@ -134,9 +134,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         },
     );
 
-    // set_shop_buy_rate(mobile_id, rate) -> bool
+    // set_shop_buy_rate(mobile_id, rate) -> bool. Rejects rates outside [SHOP_RATE_MIN, SHOP_RATE_MAX]
+    // to prevent divide-by-zero, sign flips, and gold-arithmetic overflow.
     let cloned_db = db.clone();
     engine.register_fn("set_shop_buy_rate", move |mobile_id: String, rate: i64| -> bool {
+        let lo = crate::api::validate::SHOP_RATE_MIN as i64;
+        let hi = crate::api::validate::SHOP_RATE_MAX as i64;
+        if !(lo..=hi).contains(&rate) {
+            return false;
+        }
         if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
             match cloned_db.get_mobile_data(&uuid) {
                 Ok(Some(mut mobile)) => {
@@ -150,9 +156,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         }
     });
 
-    // set_shop_sell_rate(mobile_id, rate) -> bool
+    // set_shop_sell_rate(mobile_id, rate) -> bool. Same band check as buy_rate.
     let cloned_db = db.clone();
     engine.register_fn("set_shop_sell_rate", move |mobile_id: String, rate: i64| -> bool {
+        let lo = crate::api::validate::SHOP_RATE_MIN as i64;
+        let hi = crate::api::validate::SHOP_RATE_MAX as i64;
+        if !(lo..=hi).contains(&rate) {
+            return false;
+        }
         if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
             match cloned_db.get_mobile_data(&uuid) {
                 Ok(Some(mut mobile)) => {

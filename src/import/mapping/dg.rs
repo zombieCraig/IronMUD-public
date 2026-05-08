@@ -72,6 +72,8 @@ pub(super) fn map_dg_triggers(
                             args: Vec::new(),
                             dg_body: Some(t.body.clone()),
                             dg_name: Some(t.name.clone()),
+                            authored_by: None,
+                            elevated: false,
                         }),
                         source: t.source.clone(),
                     });
@@ -106,6 +108,8 @@ pub(super) fn map_dg_triggers(
                             last_fired: 0,
                             dg_body: Some(t.body.clone()),
                             dg_name: Some(t.name.clone()),
+                            authored_by: None,
+                            elevated: false,
                         }),
                         source: t.source.clone(),
                     });
@@ -138,6 +142,8 @@ pub(super) fn map_dg_triggers(
                             args: Vec::new(),
                             dg_body: Some(t.body.clone()),
                             dg_name: Some(t.name.clone()),
+                            authored_by: None,
+                            elevated: false,
                         }),
                         source: t.source.clone(),
                     });

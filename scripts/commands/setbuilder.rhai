@@ -27,8 +27,9 @@ fn run_command(args, connection_id) {
         return;
     }
 
-    // Get builder_mode setting (default: "all" for backwards compatibility)
-    let builder_mode = get_setting_or_default("builder_mode", "all");
+    // Get builder_mode setting. Default is "granted" (admin-only grant) — the
+    // safer default. Set "builder_mode all" via ironmud-admin to allow self-grant.
+    let builder_mode = get_setting_or_default("builder_mode", "granted");
 
     if builder_mode == "none" {
         send_client_message(connection_id, "Builder access management is disabled. Contact a server administrator.");

@@ -155,6 +155,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     guard_wage_per_hour: args?.guard_wage_per_hour,
                     healer_wage_per_hour: args?.healer_wage_per_hour,
                     scavenger_wage_per_hour: args?.scavenger_wage_per_hour,
+                    max_rooms: args?.max_rooms,
+                    max_items: args?.max_items,
+                    max_mobiles: args?.max_mobiles,
+                    max_spawn_points: args?.max_spawn_points,
                     default_room_flags: args?.default_room_flags,
                     climate: args?.climate,
                 });
@@ -432,6 +436,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     short_desc: args?.short_desc,
                     long_desc: args?.long_desc,
                     vnum: args?.vnum,
+                    area_id: args?.area_id,
                     keywords: args?.keywords,
                     item_type: args?.item_type,
                     weight: args?.weight,
@@ -494,7 +499,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 const resolvedItemId = await resolveItemId(api, id);
                 const updateData = {};
                 const itemFields = [
-                    "name", "short_desc", "long_desc", "vnum", "item_type", "keywords", "weight", "value", "categories", "flags",
+                    "name", "short_desc", "long_desc", "vnum", "area_id", "item_type", "keywords", "weight", "value", "categories", "flags",
                     "damage_dice_count", "damage_dice_sides", "damage_type", "armor_class",
                     "hit_bonus", "damage_bonus", "max_hp_bonus", "max_mana_bonus", "light_hours_remaining", "cast_on_use",
                     "wear_location", "weapon_skill",
@@ -637,6 +642,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     short_desc: args?.short_desc,
                     long_desc: args?.long_desc,
                     vnum: args?.vnum,
+                    area_id: args?.area_id,
                     keywords: args?.keywords,
                     level: args?.level,
                     max_hp: args?.max_hp,
@@ -680,7 +686,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 const resolvedMobileId = await resolveMobileId(api, id);
                 const mobileUpdateData = {};
                 const mobileFields = [
-                    "name", "short_desc", "long_desc", "vnum", "keywords", "level", "max_hp", "armor_class", "gold", "flags",
+                    "name", "short_desc", "long_desc", "vnum", "area_id", "keywords", "level", "max_hp", "armor_class", "gold", "flags",
                     "healer_type", "healing_free", "healing_cost_multiplier",
                     "shop_sell_rate", "shop_buy_rate", "shop_buys_types", "shop_buys_categories",
                     "shop_min_value", "shop_max_value",

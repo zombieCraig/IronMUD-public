@@ -22,6 +22,7 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
             .filter(|w| !["a", "an", "the"].contains(w))
             .map(|s| s.to_string())
             .collect(),
+        area_id: None,
         current_room_id: None,
         is_prototype: true,
         vnum: vnum.to_string(),

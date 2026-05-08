@@ -17,6 +17,7 @@ use super::{
     auth::{AuthenticatedUser, can_edit_area, can_read, can_write},
     error::ApiError,
     notify_builders,
+    validate::{check_text_len, DESCRIPTION_MAX, NAME_MAX},
 };
 use crate::spawn::apply_spawn_dependencies;
 use crate::{AreaData, AreaFlags, AreaPermission, CombatZoneType, ForageEntry, RoomData, RoomFlags, SpawnEntityType};
@@ -79,6 +80,13 @@ pub struct UpdateAreaRequest {
     pub healer_wage_per_hour: Option<i32>,
     /// Hourly scrounging wage paid to migrant scavengers while away from home.
     pub scavenger_wage_per_hour: Option<i32>,
+    /// Soft caps on per-area entity counts (F6). Send 0 / negative to clear
+    /// (back to "unlimited"); positive values set the cap. Absent leaves the
+    /// existing setting alone.
+    pub max_rooms: Option<i32>,
+    pub max_items: Option<i32>,
+    pub max_mobiles: Option<i32>,
+    pub max_spawn_points: Option<i32>,
     /// Optional vnum of a room that accepts `donate <item>`. Empty string clears
     /// (donations refused). Absent leaves the existing setting alone.
     pub donation_room_vnum: Option<String>,
@@ -273,6 +281,9 @@ async fn create_area(
         )));
     }
 
+    check_text_len("name", &req.name, NAME_MAX)?;
+    check_text_len("description", &req.description, DESCRIPTION_MAX)?;
+
     let area = AreaData {
         id: Uuid::new_v4(),
         name: req.name,
@@ -312,6 +323,10 @@ async fn create_area(
         healer_wage_per_hour: 0,
             donation_room_vnum: None,
         scavenger_wage_per_hour: 0,
+        max_rooms: None,
+        max_items: None,
+        max_mobiles: None,
+        max_spawn_points: None,
     };
 
     state
@@ -353,9 +368,11 @@ async fn update_area(
 
     // Apply updates
     if let Some(name) = req.name {
+        check_text_len("name", &name, NAME_MAX)?;
         area.name = name;
     }
     if let Some(description) = req.description {
+        check_text_len("description", &description, DESCRIPTION_MAX)?;
         area.description = description;
     }
     if let Some(level_min) = req.level_min {
@@ -411,6 +428,18 @@ async fn update_area(
     }
     if let Some(v) = req.scavenger_wage_per_hour {
         area.scavenger_wage_per_hour = v.max(0);
+    }
+    if let Some(v) = req.max_rooms {
+        area.max_rooms = if v <= 0 { None } else { Some(v) };
+    }
+    if let Some(v) = req.max_items {
+        area.max_items = if v <= 0 { None } else { Some(v) };
+    }
+    if let Some(v) = req.max_mobiles {
+        area.max_mobiles = if v <= 0 { None } else { Some(v) };
+    }
+    if let Some(v) = req.max_spawn_points {
+        area.max_spawn_points = if v <= 0 { None } else { Some(v) };
     }
     if let Some(map) = req.default_room_flags {
         apply_default_room_flag_overrides(&mut area.default_room_flags, &map);

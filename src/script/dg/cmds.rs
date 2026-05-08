@@ -232,6 +232,17 @@ fn cmd_teleport(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
             _ => return Ok(()),
         },
     };
+    // F3 gate: teleport crosses area boundaries trivially. Authorize
+    // against the destination room's area.
+    let dest_area = ctx
+        .db
+        .get_room_data(&dest_id)
+        .ok()
+        .flatten()
+        .and_then(|r| r.area_id);
+    if !ctx.opcode_authorized("teleport", dest_area) {
+        return Ok(());
+    }
     match actor {
         ActorRef::Player { name, .. } => {
             if let Ok(Some(mut ch)) = ctx.db.get_character_data(&name) {
@@ -249,6 +260,10 @@ fn cmd_teleport(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
 fn cmd_purge(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     let (target_tok, _) = split_verb(rest);
     if target_tok.is_empty() {
+        // Self-purge — gate against the host's own area.
+        if !ctx.opcode_authorized("purge", None) {
+            return Ok(());
+        }
         match ctx.self_kind {
             SelfKind::Mob => {
                 let _ = ctx.db.delete_mobile(&ctx.self_id);
@@ -261,6 +276,17 @@ fn cmd_purge(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
         return Ok(());
     }
     if let Some(ActorRef::Mob { mobile_id, .. }) = resolve_target(&target_tok, ctx) {
+        // F3 gate: deleting a foreign mob crosses areas. Resolve the
+        // target's area before authorizing.
+        let target_area = ctx
+            .db
+            .get_mobile_data(&mobile_id)
+            .ok()
+            .flatten()
+            .and_then(|m| m.area_id);
+        if !ctx.opcode_authorized("purge", target_area) {
+            return Ok(());
+        }
         let _ = ctx.db.delete_mobile(&mobile_id);
     }
     Ok(())
@@ -281,6 +307,18 @@ fn cmd_load(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     let Some(room_id) = ctx.self_room else {
         return Ok(());
     };
+    // F3 gate: load lands content in `room_id`. Authorize against
+    // that room's area (which is the host's room for plain load /
+    // host's location for items in inventory).
+    let target_area = ctx
+        .db
+        .get_room_data(&room_id)
+        .ok()
+        .flatten()
+        .and_then(|r| r.area_id);
+    if !ctx.opcode_authorized("load", target_area) {
+        return Ok(());
+    }
     match kind.as_str() {
         "m" | "mob" | "mobile" => {
             if let Ok(Some(mut spawned)) = ctx.db.spawn_mobile_from_prototype(&vnum) {
@@ -590,17 +628,52 @@ fn cmd_force(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     let Some(actor) = resolve_target(&target_tok, ctx) else {
         return Ok(());
     };
-    if let ActorRef::Player { connection_id, .. } = actor {
+    if let ActorRef::Player { connection_id, name, .. } = actor {
         if connection_id.is_empty() {
             return Ok(());
         }
-        if let Ok(cid) = uuid::Uuid::parse_str(&connection_id) {
-            if let Ok(conns) = ctx.connections.lock() {
-                if let Some(session) = conns.get(&cid) {
-                    let _ = session
-                        .input_sender
-                        .try_send(crate::InputEvent::Line(cmdline.to_string()));
-                }
+        // F3 gate: snapshot the target player's room area + admin bit
+        // so we can authorize without holding the connections lock for
+        // the full opcode_authorized call. opcode_authorized may call
+        // back into the db, which doesn't deadlock with connections
+        // but releasing early keeps the lock window tight.
+        let (cid, target_area, target_is_admin) = {
+            let Ok(cid) = uuid::Uuid::parse_str(&connection_id) else {
+                return Ok(());
+            };
+            let Ok(conns) = ctx.connections.lock() else {
+                return Ok(());
+            };
+            let Some(session) = conns.get(&cid) else {
+                return Ok(());
+            };
+            let ch = session.character.as_ref();
+            let is_admin = ch.is_some_and(|c| c.is_admin);
+            let area = ch
+                .map(|c| c.current_room_id)
+                .and_then(|rid| ctx.db.get_room_data(&rid).ok().flatten())
+                .and_then(|r| r.area_id);
+            (cid, area, is_admin)
+        };
+        // Refuse to force-inject commands into admin sessions. DG
+        // triggers are builder-authored; allowing them to puppeteer
+        // admins is an escalation path.
+        if target_is_admin {
+            tracing::warn!(
+                "[SECURITY] DG force blocked: trigger attempted to force admin '{}' to run '{}'",
+                name,
+                cmdline
+            );
+            return Ok(());
+        }
+        if !ctx.opcode_authorized("force", target_area) {
+            return Ok(());
+        }
+        if let Ok(conns) = ctx.connections.lock() {
+            if let Some(session) = conns.get(&cid) {
+                let _ = session
+                    .input_sender
+                    .try_send(crate::InputEvent::Line(cmdline.to_string()));
             }
         }
     }
@@ -715,6 +788,19 @@ fn cmd_at(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
             _ => return Ok(()),
         },
     };
+    // F3 gate: `at` rebinds self_room to a different area. Authorize
+    // against the destination room's area before running the inner
+    // command. Inner commands also re-authorize themselves, but this
+    // catches the rebind itself (echo/load to a foreign room).
+    let dest_area = ctx
+        .db
+        .get_room_data(&dest_id)
+        .ok()
+        .flatten()
+        .and_then(|r| r.area_id);
+    if !ctx.opcode_authorized("at", dest_area) {
+        return Ok(());
+    }
     let mut sub = ctx.clone();
     sub.self_room = Some(dest_id);
     dispatch(inner, &sub)
@@ -825,6 +911,8 @@ fn apply_attach(proto: &DgTriggerProto, target_tok: &str, ctx: &EvalCtx) {
                         last_fired: 0,
                         dg_body: Some(proto.body.clone()),
                         dg_name: Some(proto.name.clone()),
+                        authored_by: None,
+                        elevated: false,
                     });
                 }
             });
@@ -844,6 +932,8 @@ fn apply_attach(proto: &DgTriggerProto, target_tok: &str, ctx: &EvalCtx) {
                         args: arglist_to_args(&proto.arglist),
                         dg_body: Some(proto.body.clone()),
                         dg_name: Some(proto.name.clone()),
+                        authored_by: None,
+                        elevated: false,
                     });
                 }
             });
@@ -865,6 +955,8 @@ fn apply_attach(proto: &DgTriggerProto, target_tok: &str, ctx: &EvalCtx) {
                         args: arglist_to_args(&proto.arglist),
                         dg_body: Some(proto.body.clone()),
                         dg_name: Some(proto.name.clone()),
+                        authored_by: None,
+                        elevated: false,
                     });
                 }
             });

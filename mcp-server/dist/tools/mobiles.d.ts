@@ -18,6 +18,7 @@ export declare const mobileToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             level?: undefined;
             max_hp?: undefined;
@@ -101,6 +102,7 @@ export declare const mobileToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             level?: undefined;
             max_hp?: undefined;
@@ -187,6 +189,7 @@ export declare const mobileToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             level?: undefined;
             max_hp?: undefined;
@@ -273,6 +276,7 @@ export declare const mobileToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             level?: undefined;
             max_hp?: undefined;
@@ -361,6 +365,10 @@ export declare const mobileToolDefinitions: ({
                 description: string;
             };
             vnum: {
+                type: string;
+                description: string;
+            };
+            area_id: {
                 type: string;
                 description: string;
             };
@@ -799,6 +807,10 @@ export declare const mobileToolDefinitions: ({
                 description?: undefined;
             };
             vnum: {
+                type: string;
+                description: string;
+            };
+            area_id: {
                 type: string;
                 description: string;
             };
@@ -1241,6 +1253,7 @@ export declare const mobileToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             level?: undefined;
             max_hp?: undefined;
@@ -1335,6 +1348,7 @@ export declare const mobileToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             level?: undefined;
             max_hp?: undefined;
@@ -1423,6 +1437,7 @@ export declare const mobileToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             level?: undefined;
             max_hp?: undefined;
@@ -1512,6 +1527,7 @@ export declare const mobileToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             level?: undefined;
             max_hp?: undefined;
@@ -1616,6 +1632,7 @@ export declare const mobileToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             level?: undefined;
             max_hp?: undefined;
@@ -1718,6 +1735,7 @@ export declare const mobileToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             level?: undefined;
             max_hp?: undefined;
@@ -1835,6 +1853,7 @@ export declare const mobileToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             level?: undefined;
             max_hp?: undefined;
@@ -1952,6 +1971,7 @@ export declare const mobileToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             level?: undefined;
             max_hp?: undefined;
@@ -2036,6 +2056,7 @@ export declare const mobileToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             level?: undefined;
             max_hp?: undefined;
@@ -2144,6 +2165,7 @@ export declare const mobileToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             level?: undefined;
             max_hp?: undefined;
@@ -2228,6 +2250,7 @@ export declare const mobileToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             level?: undefined;
             max_hp?: undefined;
@@ -2316,6 +2339,7 @@ export declare const mobileToolDefinitions: ({
             name?: undefined;
             short_desc?: undefined;
             long_desc?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             level?: undefined;
             max_hp?: undefined;
@@ -2429,6 +2453,7 @@ export declare const mobileToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             level?: undefined;
             max_hp?: undefined;

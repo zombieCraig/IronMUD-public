@@ -767,6 +767,41 @@ impl Db {
         Ok(self.get_mobile_instances_by_vnum(vnum)?.len())
     }
 
+    /// Per-area entity counts used by the create-time quota gate (F6).
+    /// Each one filters the relevant tree by `area_id` (and `is_prototype`
+    /// where applicable) and returns the count.
+    pub fn count_rooms_in_area(&self, area_id: &Uuid) -> Result<usize> {
+        Ok(self
+            .list_all_rooms()?
+            .into_iter()
+            .filter(|r| r.area_id.as_ref() == Some(area_id))
+            .count())
+    }
+
+    pub fn count_item_protos_in_area(&self, area_id: &Uuid) -> Result<usize> {
+        Ok(self
+            .list_all_items()?
+            .into_iter()
+            .filter(|i| i.is_prototype && i.area_id.as_ref() == Some(area_id))
+            .count())
+    }
+
+    pub fn count_mobile_protos_in_area(&self, area_id: &Uuid) -> Result<usize> {
+        Ok(self
+            .list_all_mobiles()?
+            .into_iter()
+            .filter(|m| m.is_prototype && m.area_id.as_ref() == Some(area_id))
+            .count())
+    }
+
+    pub fn count_spawn_points_in_area(&self, area_id: &Uuid) -> Result<usize> {
+        Ok(self
+            .list_all_spawn_points()?
+            .into_iter()
+            .filter(|s| &s.area_id == area_id)
+            .count())
+    }
+
     /// Get all items in a room
     pub fn get_items_in_room(&self, room_id: &Uuid) -> Result<Vec<ItemData>> {
         let mut items = Vec::new();

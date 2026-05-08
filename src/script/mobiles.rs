@@ -243,6 +243,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_set("stamina", |m: &mut MobileData, val: i64| m.current_stamina = val as i32)
         .register_get("world_max_count", |m: &mut MobileData| m.world_max_count.unwrap_or(0) as i64)
         .register_get("has_world_max_count", |m: &mut MobileData| m.world_max_count.is_some())
+        .register_get("area_id", |m: &mut MobileData| {
+            m.area_id.map(|u| u.to_string()).unwrap_or_default()
+        })
+        .register_get("has_area_id", |m: &mut MobileData| m.area_id.is_some())
         .register_get("has_spoken_language", |m: &mut MobileData| {
             m.spoken_language.is_some()
         })
@@ -720,8 +724,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     engine.register_fn("set_mobile_hp", move |mobile_id: String, max_hp: i64| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
             if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
-                mobile.max_hp = max_hp as i32;
-                mobile.current_hp = max_hp as i32; // Set current HP to max
+                let bound = crate::api::validate::STAT_BONUS_ABS_MAX as i64;
+                let clamped = max_hp.clamp(0, bound) as i32;
+                mobile.max_hp = clamped;
+                mobile.current_hp = clamped; // Set current HP to max
                 return cloned_db.save_mobile_data(mobile).is_ok();
             }
         }
@@ -757,26 +763,28 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         },
     );
 
-    // set_mobile_ac(mobile_id, armor_class) -> bool
+    // set_mobile_ac(mobile_id, armor_class) -> bool. Clamped to ±STAT_BONUS_ABS_MAX.
     let cloned_db = db.clone();
     engine.register_fn("set_mobile_ac", move |mobile_id: String, armor_class: i64| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
             if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
-                mobile.armor_class = armor_class as i32;
+                let bound = crate::api::validate::STAT_BONUS_ABS_MAX as i64;
+                mobile.armor_class = armor_class.clamp(-bound, bound) as i32;
                 return cloned_db.save_mobile_data(mobile).is_ok();
             }
         }
         false
     });
 
-    // set_mobile_hit_modifier(mobile_id, hit_modifier) -> bool
+    // set_mobile_hit_modifier(mobile_id, hit_modifier) -> bool. Clamped.
     let cloned_db = db.clone();
     engine.register_fn(
         "set_mobile_hit_modifier",
         move |mobile_id: String, hit_modifier: i64| {
             if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
                 if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
-                    mobile.hit_modifier = hit_modifier as i32;
+                    let bound = crate::api::validate::STAT_BONUS_ABS_MAX as i64;
+                    mobile.hit_modifier = hit_modifier.clamp(-bound, bound) as i32;
                     return cloned_db.save_mobile_data(mobile).is_ok();
                 }
             }
@@ -955,6 +963,29 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 mobile.world_max_count = if n <= 0 { None } else { Some(n as i32) };
                 return cloned_db.save_mobile_data(mobile).is_ok();
             }
+        }
+        false
+    });
+
+    // set_mobile_area_id(mobile_id, area_id) -> bool. Empty area_id clears
+    // the assignment back to orphan. Permission gating happens in OLC.
+    let cloned_db = db.clone();
+    engine.register_fn("set_mobile_area_id", move |mobile_id: String, area_id: String| -> bool {
+        let uuid = match uuid::Uuid::parse_str(&mobile_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let new_area = if area_id.trim().is_empty() {
+            None
+        } else {
+            match uuid::Uuid::parse_str(area_id.trim()) {
+                Ok(a) => Some(a),
+                Err(_) => return false,
+            }
+        };
+        if let Ok(Some(mut mob)) = cloned_db.get_mobile_data(&uuid) {
+            mob.area_id = new_area;
+            return cloned_db.save_mobile_data(mob).is_ok();
         }
         false
     });

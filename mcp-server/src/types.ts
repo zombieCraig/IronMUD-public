@@ -247,6 +247,8 @@ export interface Item {
   short_desc: string;
   long_desc: string;
   vnum?: string;
+  /** Owning area for sandbox / permission checks. None = orphan. */
+  area_id?: string;
   keywords: string[];
   item_type: ItemType;
   weight: number;
@@ -343,6 +345,8 @@ export interface Mobile {
   short_desc: string;
   long_desc: string;
   vnum: string;
+  /** Owning area for sandbox / permission checks. None = orphan. */
+  area_id?: string;
   keywords: string[];
   level: number;
   max_hp: number;
@@ -493,6 +497,11 @@ export interface UpdateAreaRequest {
   guard_wage_per_hour?: number;
   healer_wage_per_hour?: number;
   scavenger_wage_per_hour?: number;
+  /** Soft cap on rooms attributed to this area. 0 / null = unlimited. */
+  max_rooms?: number;
+  max_items?: number;
+  max_mobiles?: number;
+  max_spawn_points?: number;
   default_room_flags?: RoomFlags;
   climate?: ClimateProfile;
 }
@@ -510,6 +519,8 @@ export interface CreateItemRequest {
   short_desc: string;
   long_desc: string;
   vnum: string;
+  /** Owning area UUID (or omit/empty for orphan). */
+  area_id?: string;
   keywords?: string[];
   item_type: string;
   weight?: number;
@@ -582,6 +593,8 @@ export interface CreateMobileRequest {
   short_desc: string;
   long_desc: string;
   vnum: string;
+  /** Owning area UUID (or omit/empty for orphan). */
+  area_id?: string;
   keywords?: string[];
   level?: number;
   max_hp?: number;

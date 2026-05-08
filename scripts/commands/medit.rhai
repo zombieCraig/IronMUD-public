@@ -123,6 +123,27 @@ fn run_command(args, connection_id) {
             send_client_message(connection_id, "Usage: medit create <name>\nExample: medit create Town Guard");
             return;
         }
+
+        // Sandbox: new prototype inherits the area of the builder's current
+        // room. Refuse if they don't have edit rights on that area. Orphan
+        // creation (when standing in an area-less room) stays open.
+        let current_room = get_room_data(char.current_room_id);
+        let new_area_id = "";
+        if current_room != () {
+            new_area_id = current_room.area_id;
+        }
+        if new_area_id != "" {
+            if !can_edit_area(new_area_id, char.name) {
+                send_client_message(connection_id, "You don't have permission to author mobiles for this area. Move to a room you can edit, or use a builder area.");
+                return;
+            }
+            let quota_err = area_quota_check(new_area_id, "mobiles");
+            if quota_err != "" {
+                send_client_message(connection_id, quota_err);
+                return;
+            }
+        }
+
         // Join remaining parts as name
         let name = build_string_from_parts(parts, 1);
         let vnum = generate_unique_mobile_vnum(name);
@@ -132,6 +153,9 @@ fn run_command(args, connection_id) {
         set_mobile_vnum(mobile.id, vnum);
         set_mobile_prototype(mobile.id, true);
         set_mobile_short_desc(mobile.id, name + " is standing here.");
+        if new_area_id != "" {
+            set_mobile_area_id(mobile.id, new_area_id);
+        }
 
         // Re-fetch to get updated data for display
         let mobile = get_mobile_data(mobile.id);
@@ -173,6 +197,17 @@ fn run_command(args, connection_id) {
     if subcommand == "" || subcommand == "show" {
         show_mobile_properties(mobile, mobile_id, connection_id);
         return;
+    }
+
+    // Sandbox: stamped prototypes require can_edit_area on their owner.
+    // Orphans (area_id == "") remain editable by any builder. Read-only
+    // `show` above is intentionally not gated.
+    let mob_area_id = mobile.area_id;
+    if mob_area_id != "" {
+        if !can_edit_area(mob_area_id, char.name) {
+            send_client_message(connection_id, "You don't have permission to edit mobiles in that area.");
+            return;
+        }
     }
 
     // Handle subcommands
@@ -2444,6 +2479,7 @@ fn show_trigger_help(mobile_id, connection_id) {
     output += "  medit " + mobile_id + " trigger dg add <type> [name]\n";
     output += "  medit " + mobile_id + " trigger dg edit <index>\n";
     output += "  medit " + mobile_id + " trigger dg attach <vnum>\n";
+    output += "  medit " + mobile_id + " trigger dg elevate <index> [on|off]  (admin)\n";
     output += "  medit " + mobile_id + " trigger dg protos\n";
     send_client_message(connection_id, output);
 }

@@ -543,7 +543,89 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "caps" {
+        handle_caps_subcommand(area, remaining, connection_id);
+        return;
+    }
+
     send_client_message(connection_id, "Unknown subcommand: " + subcommand);
+}
+
+// === Caps subcommand handler ===
+//   aedit caps                        → show current caps + counts
+//   aedit caps set <kind> <n>         → set a cap (n <= 0 clears it)
+//   aedit caps clear <kind>           → clear a cap
+//   `kind` is one of: rooms, items, mobiles, spawn_points
+fn is_known_cap_kind(kind) {
+    if kind == "rooms" { return true; }
+    if kind == "items" { return true; }
+    if kind == "mobiles" { return true; }
+    if kind == "spawn_points" { return true; }
+    return false;
+}
+
+fn fmt_cap_line(area_id, kind) {
+    let cap = get_area_max(area_id, kind);
+    let count = area_count(area_id, kind);
+    let cap_str = if cap == 0 { "unlimited" } else { cap.to_string() };
+    return "  " + kind + ": " + count + " / " + cap_str + "\n";
+}
+
+fn handle_caps_subcommand(area, args, connection_id) {
+    if args.len() == 0 || args[0].to_lower() == "show" {
+        let output = "Caps for area '" + area.name + "':\n";
+        output += fmt_cap_line(area.id, "rooms");
+        output += fmt_cap_line(area.id, "items");
+        output += fmt_cap_line(area.id, "mobiles");
+        output += fmt_cap_line(area.id, "spawn_points");
+        output += "\nUsage: aedit caps set <kind> <n>  |  aedit caps clear <kind>";
+        send_client_message(connection_id, output);
+        return;
+    }
+
+    let action = args[0].to_lower();
+    if action == "set" {
+        if args.len() < 3 {
+            send_client_message(connection_id, "Usage: aedit caps set <rooms|items|mobiles|spawn_points> <n>");
+            return;
+        }
+        let kind = args[1].to_lower();
+        if !is_known_cap_kind(kind) {
+            send_client_message(connection_id, "Unknown cap kind: " + kind + ". Use rooms, items, mobiles, or spawn_points.");
+            return;
+        }
+        let n = parse_int(args[2]);
+        if set_area_max(area.id, kind, n) {
+            if n <= 0 {
+                send_client_message(connection_id, kind + " cap cleared (unlimited).");
+            } else {
+                send_client_message(connection_id, kind + " cap set to " + n + ".");
+            }
+        } else {
+            send_client_message(connection_id, "Failed to update cap.");
+        }
+        return;
+    }
+
+    if action == "clear" {
+        if args.len() < 2 {
+            send_client_message(connection_id, "Usage: aedit caps clear <rooms|items|mobiles|spawn_points>");
+            return;
+        }
+        let kind = args[1].to_lower();
+        if !is_known_cap_kind(kind) {
+            send_client_message(connection_id, "Unknown cap kind: " + kind);
+            return;
+        }
+        if set_area_max(area.id, kind, 0) {
+            send_client_message(connection_id, kind + " cap cleared (unlimited).");
+        } else {
+            send_client_message(connection_id, "Failed to clear cap.");
+        }
+        return;
+    }
+
+    send_client_message(connection_id, "Usage: aedit caps [show | set <kind> <n> | clear <kind>]");
 }
 
 // === Donation subcommand handler ===

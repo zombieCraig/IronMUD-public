@@ -127,6 +127,27 @@ fn run_command(args, connection_id) {
             send_client_message(connection_id, "Usage: oedit create <name>\nExample: oedit create Rusty Sword");
             return;
         }
+
+        // Sandbox: new prototype inherits the area of the builder's current
+        // room. Refuse if they don't have edit rights on that area. Orphan
+        // creation (when standing in an area-less room) stays open.
+        let current_room = get_room_data(char.current_room_id);
+        let new_area_id = "";
+        if current_room != () {
+            new_area_id = current_room.area_id;
+        }
+        if new_area_id != "" {
+            if !can_edit_area(new_area_id, char.name) {
+                send_client_message(connection_id, "You don't have permission to author items for this area. Move to a room you can edit, or use a builder area.");
+                return;
+            }
+            let quota_err = area_quota_check(new_area_id, "items");
+            if quota_err != "" {
+                send_client_message(connection_id, quota_err);
+                return;
+            }
+        }
+
         // Join remaining parts as name
         let name = build_string_from_parts(parts, 1);
         let vnum = generate_unique_item_vnum(name);
@@ -136,6 +157,9 @@ fn run_command(args, connection_id) {
         save_item_data(item);  // Save first to persist
         set_item_vnum(item.id, vnum);
         set_item_prototype(item.id, true);
+        if new_area_id != "" {
+            set_item_area_id(item.id, new_area_id);
+        }
 
         // Re-fetch to get updated data for display
         let item = get_item_data(item.id);
@@ -176,6 +200,17 @@ fn run_command(args, connection_id) {
     if subcommand == "" || subcommand == "show" {
         show_item_properties(item, item_id, connection_id);
         return;
+    }
+
+    // Sandbox: stamped prototypes require can_edit_area on their owner.
+    // Orphans (area_id == "") remain editable by any builder. Read-only
+    // `show` above is intentionally not gated.
+    let item_area_id = item.area_id;
+    if item_area_id != "" {
+        if !can_edit_area(item_area_id, char.name) {
+            send_client_message(connection_id, "You don't have permission to edit items in that area.");
+            return;
+        }
     }
 
     // Handle subcommands

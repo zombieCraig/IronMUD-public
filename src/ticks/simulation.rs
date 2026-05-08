@@ -1972,6 +1972,10 @@ mod tests {
             healer_wage_per_hour: 0,
             donation_room_vnum: None,
             scavenger_wage_per_hour: 0,
+            max_rooms: None,
+            max_items: None,
+            max_mobiles: None,
+            max_spawn_points: None,
         };
         g.db.save_area_data(area).expect("save area");
 
@@ -2044,6 +2048,10 @@ mod tests {
             healer_wage_per_hour: 0,
             donation_room_vnum: None,
             scavenger_wage_per_hour: 7,
+            max_rooms: None,
+            max_items: None,
+            max_mobiles: None,
+            max_spawn_points: None,
         };
         g.db.save_area_data(area).expect("save area");
         let mut home = save_room(&g.db, "t:home2");
@@ -2183,6 +2191,10 @@ mod tests {
             healer_wage_per_hour: healer,
             scavenger_wage_per_hour: scavenger,
             donation_room_vnum: None,
+            max_rooms: None,
+            max_items: None,
+            max_mobiles: None,
+            max_spawn_points: None,
         };
         db.save_area_data(area).expect("save area");
         area_id

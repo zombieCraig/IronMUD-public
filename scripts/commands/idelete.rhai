@@ -19,6 +19,16 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Sandbox: stamped prototypes require can_edit_area on their owner.
+    // Orphans (area_id == "") fall through and remain editable by any builder.
+    let item_area_id = item.area_id;
+    if item_area_id != "" {
+        if !can_edit_area(item_area_id, char.name) {
+            send_client_message(connection_id, "You don't have permission to delete items in that area.");
+            return;
+        }
+    }
+
     let name = item.name;
     if delete_item(args) {
         send_client_message(connection_id, "Deleted item: " + name);

@@ -49,6 +49,7 @@ export declare const itemToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             weight?: undefined;
             value?: undefined;
@@ -128,6 +129,7 @@ export declare const itemToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             weight?: undefined;
             value?: undefined;
@@ -210,6 +212,7 @@ export declare const itemToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             weight?: undefined;
             value?: undefined;
@@ -292,6 +295,7 @@ export declare const itemToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             weight?: undefined;
             value?: undefined;
@@ -375,6 +379,10 @@ export declare const itemToolDefinitions: ({
                 description: string;
             };
             vnum: {
+                type: string;
+                description: string;
+            };
+            area_id: {
                 type: string;
                 description: string;
             };
@@ -849,6 +857,10 @@ export declare const itemToolDefinitions: ({
                 description?: undefined;
             };
             vnum: {
+                type: string;
+                description: string;
+            };
+            area_id: {
                 type: string;
                 description: string;
             };
@@ -1318,6 +1330,7 @@ export declare const itemToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             weight?: undefined;
             value?: undefined;
@@ -1403,6 +1416,7 @@ export declare const itemToolDefinitions: ({
             name?: undefined;
             short_desc?: undefined;
             long_desc?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             weight?: undefined;
             value?: undefined;
@@ -1505,6 +1519,7 @@ export declare const itemToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             weight?: undefined;
             value?: undefined;
@@ -1587,6 +1602,7 @@ export declare const itemToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             weight?: undefined;
             value?: undefined;
@@ -1678,6 +1694,7 @@ export declare const itemToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             weight?: undefined;
             value?: undefined;
             categories?: undefined;
@@ -1762,6 +1779,7 @@ export declare const itemToolDefinitions: ({
             short_desc?: undefined;
             long_desc?: undefined;
             vnum?: undefined;
+            area_id?: undefined;
             keywords?: undefined;
             weight?: undefined;
             value?: undefined;

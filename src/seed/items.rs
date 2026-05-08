@@ -12,6 +12,7 @@ fn item(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str, ite
         name: name.to_string(),
         short_desc: short_desc.to_string(),
         long_desc: long_desc.to_string(),
+        area_id: None,
         keywords: name.to_lowercase().split_whitespace().map(|s| s.to_string()).collect(),
         item_type,
         categories: Vec::new(),

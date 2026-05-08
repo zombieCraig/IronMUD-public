@@ -89,6 +89,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             healer_wage_per_hour: 0,
             donation_room_vnum: None,
             scavenger_wage_per_hour: 0,
+            max_rooms: None,
+            max_items: None,
+            max_mobiles: None,
+            max_spawn_points: None,
         };
         if let Err(e) = cloned_db.save_area_data(area.clone()) {
             tracing::error!("Failed to save new area: {}", e);
@@ -136,6 +140,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 healer_wage_per_hour: 0,
             donation_room_vnum: None,
                 scavenger_wage_per_hour: 0,
+                max_rooms: None,
+                max_items: None,
+                max_mobiles: None,
+                max_spawn_points: None,
             };
             if let Err(e) = cloned_db.save_area_data(area.clone()) {
                 tracing::error!("Failed to save new area: {}", e);
@@ -173,9 +181,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
 
     // ========== Area Setter Functions ==========
 
-    // set_area_name(area_id, name) -> bool
+    // set_area_name(area_id, name) -> bool. Capped at NAME_MAX bytes.
     let cloned_db = db.clone();
     engine.register_fn("set_area_name", move |area_id: String, name: String| {
+        if name.len() > crate::api::validate::NAME_MAX {
+            return false;
+        }
         if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
             if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
                 area.name = name;
@@ -185,9 +196,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         false
     });
 
-    // set_area_description(area_id, desc) -> bool
+    // set_area_description(area_id, desc) -> bool. Capped at MAX_DESC_BYTES.
     let cloned_db = db.clone();
     engine.register_fn("set_area_description", move |area_id: String, desc: String| {
+        if desc.len() > crate::MAX_DESC_BYTES {
+            return false;
+        }
         if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
             if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
                 area.description = desc;
@@ -355,6 +369,97 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             }
         } else {
             true // Invalid ID = allow
+        }
+    });
+
+    // set_area_max(area_id, kind, n) -> bool. n <= 0 clears the cap (None).
+    // `kind` is one of: "rooms", "items", "mobiles", "spawn_points".
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_area_max",
+        move |area_id: String, kind: String, n: i64| -> bool {
+            let uuid = match uuid::Uuid::parse_str(&area_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let new_cap = if n <= 0 { None } else { Some(n.min(i32::MAX as i64) as i32) };
+            if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+                match kind.as_str() {
+                    "rooms" => area.max_rooms = new_cap,
+                    "items" => area.max_items = new_cap,
+                    "mobiles" => area.max_mobiles = new_cap,
+                    "spawn_points" => area.max_spawn_points = new_cap,
+                    _ => return false,
+                }
+                return cloned_db.save_area_data(area).is_ok();
+            }
+            false
+        },
+    );
+
+    // get_area_max(area_id, kind) -> i64. 0 = unlimited (None on the type).
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_area_max",
+        move |area_id: String, kind: String| -> i64 {
+            let uuid = match uuid::Uuid::parse_str(&area_id) {
+                Ok(u) => u,
+                Err(_) => return 0,
+            };
+            if let Ok(Some(area)) = cloned_db.get_area_data(&uuid) {
+                let v = match kind.as_str() {
+                    "rooms" => area.max_rooms,
+                    "items" => area.max_items,
+                    "mobiles" => area.max_mobiles,
+                    "spawn_points" => area.max_spawn_points,
+                    _ => return 0,
+                };
+                return v.unwrap_or(0) as i64;
+            }
+            0
+        },
+    );
+
+    // area_count(area_id, kind) -> i64. Current per-kind population count.
+    let cloned_db = db.clone();
+    engine.register_fn("area_count", move |area_id: String, kind: String| -> i64 {
+        let uuid = match uuid::Uuid::parse_str(&area_id) {
+            Ok(u) => u,
+            Err(_) => return 0,
+        };
+        let count = match kind.as_str() {
+            "rooms" => cloned_db.count_rooms_in_area(&uuid),
+            "items" => cloned_db.count_item_protos_in_area(&uuid),
+            "mobiles" => cloned_db.count_mobile_protos_in_area(&uuid),
+            "spawn_points" => cloned_db.count_spawn_points_in_area(&uuid),
+            _ => return 0,
+        };
+        count.map(|n| n as i64).unwrap_or(0)
+    });
+
+    // area_quota_check(area_id, kind) -> "" on OK, human-readable error on cap reached.
+    // `kind` is one of: "rooms", "items", "mobiles", "spawn_points".
+    // Empty area_id (orphan creation) and unknown kinds short-circuit to OK.
+    let cloned_db = db.clone();
+    engine.register_fn("area_quota_check", move |area_id: String, kind: String| -> String {
+        if area_id.trim().is_empty() {
+            return String::new();
+        }
+        let uuid = match uuid::Uuid::parse_str(&area_id) {
+            Ok(u) => u,
+            Err(_) => return String::new(),
+        };
+        let qkind = match kind.as_str() {
+            "rooms" => crate::api::quotas::QuotaKind::Rooms,
+            "items" => crate::api::quotas::QuotaKind::Items,
+            "mobiles" => crate::api::quotas::QuotaKind::Mobiles,
+            "spawn_points" => crate::api::quotas::QuotaKind::SpawnPoints,
+            _ => return String::new(),
+        };
+        match crate::api::quotas::check_area_quota(&cloned_db, Some(uuid), qkind) {
+            Ok(()) => String::new(),
+            Err(crate::api::error::ApiError::Conflict(msg)) => msg,
+            Err(e) => format!("{:?}", e),
         }
     });
 

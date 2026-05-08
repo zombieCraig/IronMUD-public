@@ -44,6 +44,10 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             healer_wage_per_hour: 0,
             donation_room_vnum: None,
             scavenger_wage_per_hour: 0,
+            max_rooms: None,
+            max_items: None,
+            max_mobiles: None,
+            max_spawn_points: None,
         },
         AreaData {
             id: seed_uuid("area:whisperwood"),
@@ -83,6 +87,10 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             healer_wage_per_hour: 0,
             donation_room_vnum: None,
             scavenger_wage_per_hour: 0,
+            max_rooms: None,
+            max_items: None,
+            max_mobiles: None,
+            max_spawn_points: None,
         },
         AreaData {
             id: seed_uuid("area:ironkeep"),
@@ -119,6 +127,10 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             healer_wage_per_hour: 0,
             donation_room_vnum: None,
             scavenger_wage_per_hour: 0,
+            max_rooms: None,
+            max_items: None,
+            max_mobiles: None,
+            max_spawn_points: None,
         },
         AreaData {
             id: seed_uuid("area:shadowfang"),
@@ -157,6 +169,10 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             healer_wage_per_hour: 0,
             donation_room_vnum: None,
             scavenger_wage_per_hour: 0,
+            max_rooms: None,
+            max_items: None,
+            max_mobiles: None,
+            max_spawn_points: None,
         },
         AreaData {
             id: seed_uuid("area:hilltop"),
@@ -195,6 +211,10 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             healer_wage_per_hour: 0,
             donation_room_vnum: None,
             scavenger_wage_per_hour: 0,
+            max_rooms: None,
+            max_items: None,
+            max_mobiles: None,
+            max_spawn_points: None,
         },
     ];
 

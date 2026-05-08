@@ -121,6 +121,12 @@ pub struct MobileData {
     #[serde(default)]
     pub keywords: Vec<String>, // ["goblin", "guard"]
 
+    /// Owning area for sandbox / permission checks. Orphans (None) are
+    /// editable by any builder; once stamped, only `can_edit_area` callers
+    /// may mutate or delete the prototype.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub area_id: Option<Uuid>,
+
     // Location
     #[serde(default)]
     pub current_room_id: Option<Uuid>,
@@ -417,6 +423,7 @@ impl MobileData {
             short_desc: format!("{} is here.", name),
             long_desc: String::new(),
             keywords: Vec::new(),
+            area_id: None,
             current_room_id: None,
             is_prototype: true,
             vnum: String::new(),

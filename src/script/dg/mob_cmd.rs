@@ -765,6 +765,8 @@ fn do_order(rest: &str, ctx: &EvalCtx) {
         arg: ctx.arg.clone(),
         cmd: ctx.cmd.clone(),
         cmd_canonical: ctx.cmd_canonical.clone(),
+        authored_by: ctx.authored_by.clone(),
+        elevated: ctx.elevated,
     };
     let (sub_verb, sub_rest) = split2(&cmdline);
     let _ = try_dispatch(&sub_verb, &sub_rest, &sub_ctx);
@@ -974,6 +976,8 @@ mod tests {
             arg: String::new(),
             cmd: String::new(),
             cmd_canonical: String::new(),
+            authored_by: None,
+            elevated: false,
         }
     }
 

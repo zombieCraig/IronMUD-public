@@ -1635,6 +1635,14 @@ pub async fn handle_connection(
                     let _ = tx_client.send(msg);
                 }
                 EditorCommandResult::Save(content) => {
+                    if content.len() > crate::api::validate::DESCRIPTION_MAX {
+                        let _ = tx_client.send(format!(
+                            "Description too long ({} bytes, max {}). Trim with .d or .r, then .save.\n",
+                            content.len(),
+                            crate::api::validate::DESCRIPTION_MAX
+                        ));
+                        continue;
+                    }
                     // Save buffer to room description
                     let edit_room_id = {
                         let conns = connections.lock().unwrap();
@@ -1907,7 +1915,7 @@ pub async fn handle_connection(
                             MAX_DG_BODY_BYTES
                         ));
                     } else {
-                        let (host_kind, host_id, idx) = {
+                        let (host_kind, host_id, idx, author, author_is_admin) = {
                             let conns = connections.lock().unwrap();
                             conns
                                 .get(&connection_id)
@@ -1919,20 +1927,39 @@ pub async fn handle_connection(
                                         Some("room") => s.olc_edit_room,
                                         _ => None,
                                     };
-                                    (kind, id, s.olc_edit_trigger_index)
+                                    let (author, is_admin) = s
+                                        .character
+                                        .as_ref()
+                                        .map(|c| (c.name.clone(), c.is_admin))
+                                        .unwrap_or((String::new(), false));
+                                    (kind, id, s.olc_edit_trigger_index, author, is_admin)
                                 })
-                                .unwrap_or((None, None, None))
+                                .unwrap_or((None, None, None, String::new(), false))
                         };
 
+                        // Author stamping policy (F3 full):
+                        // - Always overwrite `authored_by` to the editing
+                        //   character's name. Admins are stamped as well so
+                        //   the audit trail is complete; the opcode gate
+                        //   trusts admin authors via can_edit_area.
+                        // - Non-admin authors must NOT carry `elevated=true`
+                        //   forward; if a builder edits a body that an admin
+                        //   previously elevated, the elevation is dropped to
+                        //   prevent privilege passthrough.
                         let saved = if let (Some(kind), Some(id), Some(idx)) = (host_kind, host_id, idx) {
                             let world = state.lock().unwrap();
                             let body = if content.is_empty() { None } else { Some(content) };
+                            let author_opt = if author.is_empty() { None } else { Some(author.clone()) };
                             match kind.as_str() {
                                 "mobile" => world
                                     .db
                                     .update_mobile(&id, |m| {
                                         if idx < m.triggers.len() {
                                             m.triggers[idx].dg_body = body.clone();
+                                            m.triggers[idx].authored_by = author_opt.clone();
+                                            if !author_is_admin {
+                                                m.triggers[idx].elevated = false;
+                                            }
                                         }
                                     })
                                     .is_ok(),
@@ -1941,6 +1968,10 @@ pub async fn handle_connection(
                                     .update_item(&id, |i| {
                                         if idx < i.triggers.len() {
                                             i.triggers[idx].dg_body = body.clone();
+                                            i.triggers[idx].authored_by = author_opt.clone();
+                                            if !author_is_admin {
+                                                i.triggers[idx].elevated = false;
+                                            }
                                         }
                                     })
                                     .is_ok(),
@@ -1949,6 +1980,10 @@ pub async fn handle_connection(
                                     .update_room(&id, |r| {
                                         if idx < r.triggers.len() {
                                             r.triggers[idx].dg_body = body.clone();
+                                            r.triggers[idx].authored_by = author_opt.clone();
+                                            if !author_is_admin {
+                                                r.triggers[idx].elevated = false;
+                                            }
                                         }
                                     })
                                     .is_ok(),

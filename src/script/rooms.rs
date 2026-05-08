@@ -397,9 +397,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         cloned_db.delete_room(&room_uuid).unwrap_or(false)
     });
 
-    // set_room_title(room_id, title) -> Sets room title
+    // set_room_title(room_id, title) -> Sets room title. Capped at TITLE_MAX bytes.
     let cloned_db = db.clone();
     engine.register_fn("set_room_title", move |room_id: String, title: String| {
+        if title.len() > crate::api::validate::TITLE_MAX {
+            return false;
+        }
         let room_uuid = match uuid::Uuid::parse_str(&room_id) {
             Ok(u) => u,
             Err(_) => return false,

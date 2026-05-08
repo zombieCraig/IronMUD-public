@@ -426,6 +426,12 @@ fn handle_create(area, parts, connection_id) {
         return;
     }
 
+    let quota_err = area_quota_check(area.id, "spawn_points");
+    if quota_err != "" {
+        send_client_message(connection_id, quota_err);
+        return;
+    }
+
     let sp = create_spawn_point(area.id, room.id, entity_type, vnum, max_count, interval_secs);
     if sp == () {
         send_client_message(connection_id, "Failed to create spawn point.");

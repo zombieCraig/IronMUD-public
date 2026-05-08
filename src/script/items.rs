@@ -150,6 +150,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     );
 
     engine
+        .register_get("area_id", |i: &mut ItemData| {
+            i.area_id.map(|u| u.to_string()).unwrap_or_default()
+        })
+        .register_get("has_area_id", |i: &mut ItemData| i.area_id.is_some())
         .register_get("board_max_messages", |i: &mut ItemData| {
             i.board_max_messages.unwrap_or(0) as i64
         })
@@ -610,12 +614,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         false
     });
 
-    // set_item_armor_class(item_id, ac) -> bool (use negative to clear)
+    // set_item_armor_class(item_id, ac) -> bool (use negative to clear; positive values clamped)
     let cloned_db = db.clone();
     engine.register_fn("set_item_armor_class", move |item_id: String, ac: i64| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
             if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
-                item.armor_class = if ac < 0 { None } else { Some(ac as i32) };
+                let bound = crate::api::validate::STAT_BONUS_ABS_MAX as i64;
+                item.armor_class = if ac < 0 { None } else { Some(ac.min(bound) as i32) };
                 return cloned_db.save_item_data(item).is_ok();
             }
         }
@@ -2542,48 +2547,52 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         },
     );
 
-    // set_item_hit_bonus(item_id, value) -> bool
+    // set_item_hit_bonus(item_id, value) -> bool. Clamped to ±STAT_BONUS_ABS_MAX for overflow safety.
     let cloned_db = db.clone();
     engine.register_fn("set_item_hit_bonus", move |item_id: String, value: i64| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
             if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
-                item.hit_bonus = value as i32;
+                let bound = crate::api::validate::STAT_BONUS_ABS_MAX as i64;
+                item.hit_bonus = value.clamp(-bound, bound) as i32;
                 return cloned_db.save_item_data(item).is_ok();
             }
         }
         false
     });
 
-    // set_item_damage_bonus(item_id, value) -> bool
+    // set_item_damage_bonus(item_id, value) -> bool. Clamped to ±STAT_BONUS_ABS_MAX.
     let cloned_db = db.clone();
     engine.register_fn("set_item_damage_bonus", move |item_id: String, value: i64| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
             if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
-                item.damage_bonus = value as i32;
+                let bound = crate::api::validate::STAT_BONUS_ABS_MAX as i64;
+                item.damage_bonus = value.clamp(-bound, bound) as i32;
                 return cloned_db.save_item_data(item).is_ok();
             }
         }
         false
     });
 
-    // set_item_max_hp_bonus(item_id, value) -> bool — APPLY_MAXHIT parity
+    // set_item_max_hp_bonus(item_id, value) -> bool — APPLY_MAXHIT parity. Clamped.
     let cloned_db = db.clone();
     engine.register_fn("set_item_max_hp_bonus", move |item_id: String, value: i64| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
             if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
-                item.max_hp_bonus = value as i32;
+                let bound = crate::api::validate::STAT_BONUS_ABS_MAX as i64;
+                item.max_hp_bonus = value.clamp(-bound, bound) as i32;
                 return cloned_db.save_item_data(item).is_ok();
             }
         }
         false
     });
 
-    // set_item_max_mana_bonus(item_id, value) -> bool — APPLY_MAXMANA parity
+    // set_item_max_mana_bonus(item_id, value) -> bool — APPLY_MAXMANA parity. Clamped.
     let cloned_db = db.clone();
     engine.register_fn("set_item_max_mana_bonus", move |item_id: String, value: i64| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
             if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
-                item.max_mana_bonus = value as i32;
+                let bound = crate::api::validate::STAT_BONUS_ABS_MAX as i64;
+                item.max_mana_bonus = value.clamp(-bound, bound) as i32;
                 return cloned_db.save_item_data(item).is_ok();
             }
         }
@@ -2867,6 +2876,29 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 item.world_max_count = if n <= 0 { None } else { Some(n as i32) };
                 return cloned_db.save_item_data(item).is_ok();
             }
+        }
+        false
+    });
+
+    // set_item_area_id(item_id, area_id) -> bool. Empty area_id clears
+    // the assignment back to orphan. Permission gating happens in OLC.
+    let cloned_db = db.clone();
+    engine.register_fn("set_item_area_id", move |item_id: String, area_id: String| -> bool {
+        let uuid = match uuid::Uuid::parse_str(&item_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let new_area = if area_id.trim().is_empty() {
+            None
+        } else {
+            match uuid::Uuid::parse_str(area_id.trim()) {
+                Ok(a) => Some(a),
+                Err(_) => return false,
+            }
+        };
+        if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+            item.area_id = new_area;
+            return cloned_db.save_item_data(item).is_ok();
         }
         false
     });
@@ -3171,9 +3203,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         },
     );
 
-    // set_item_name(item_id, name) -> bool
+    // set_item_name(item_id, name) -> bool. Capped at NAME_MAX bytes.
     let cloned_db = db.clone();
     engine.register_fn("set_item_name", move |item_id: String, name: String| {
+        if name.len() > crate::api::validate::NAME_MAX {
+            return false;
+        }
         if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
             if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
                 item.name = name;

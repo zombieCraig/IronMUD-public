@@ -1863,6 +1863,8 @@ fn fire_combat_dg_triggers(db: &db::Db, connections: &SharedConnections, mobile:
                     "",
                     db_arc.clone(),
                     connections.clone(),
+                    t.authored_by.clone(),
+                    t.elevated,
                 );
             }
         }

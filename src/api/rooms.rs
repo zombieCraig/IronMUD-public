@@ -15,6 +15,7 @@ use super::{
     auth::{AuthenticatedUser, can_edit_area, can_read, can_write},
     error::ApiError,
     notify_builders,
+    validate::{check_text_len, DESCRIPTION_MAX, TITLE_MAX},
 };
 use crate::{
     CombatZoneType, DoorState, ExtraDesc, RoomData, RoomExits, RoomFlags, RoomTrigger, TriggerType, WaterType,
@@ -442,6 +443,12 @@ async fn create_room(
         }
     }
 
+    check_text_len("title", &req.title, TITLE_MAX)?;
+    check_text_len("description", &req.description, DESCRIPTION_MAX)?;
+
+    // Per-area soft cap on room count (F6). Area-less rooms are uncapped.
+    super::quotas::check_area_quota(&state.db, area_id, super::quotas::QuotaKind::Rooms)?;
+
     let combat_zone = if req.flags.safe.unwrap_or(false) {
         Some(CombatZoneType::Safe)
     } else {
@@ -572,9 +579,11 @@ async fn update_room(
 
     // Apply updates
     if let Some(title) = req.title {
+        check_text_len("title", &title, TITLE_MAX)?;
         room.title = title;
     }
     if let Some(description) = req.description {
+        check_text_len("description", &description, DESCRIPTION_MAX)?;
         room.description = description;
     }
     if let Some(area_id_str) = req.area_id {
@@ -1064,6 +1073,8 @@ async fn add_trigger(
         args: req.args,
         dg_body: None,
         dg_name: None,
+        authored_by: None,
+        elevated: false,
     };
 
     room.triggers.push(trigger);
@@ -1158,6 +1169,8 @@ async fn add_extra_desc(
     } else if !can_write(&user) {
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
+
+    check_text_len("description", &req.description, DESCRIPTION_MAX)?;
 
     let extra = ExtraDesc {
         keywords: req.keywords,

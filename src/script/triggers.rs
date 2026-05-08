@@ -430,6 +430,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 args: Vec::new(),
                 dg_body: None,
                 dg_name: None,
+                authored_by: None,
+                elevated: false,
             });
             cloned_db.save_room_data(room).is_ok()
         },
@@ -464,6 +466,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 args: string_args,
                 dg_body: None,
                 dg_name: None,
+                authored_by: None,
+                elevated: false,
             });
             cloned_db.save_room_data(room).is_ok()
         },
@@ -503,6 +507,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 args: string_args,
                 dg_body: None,
                 dg_name: None,
+                authored_by: None,
+                elevated: false,
             });
             cloned_db.save_room_data(room).is_ok()
         },
@@ -821,6 +827,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         &connection_id,
                         cloned_db.clone(),
                         cloned_conns.clone(),
+                        trigger.authored_by.clone(),
+                        trigger.elevated,
                     );
                     if matches!(outcome, super::dg::Outcome::Return(0)) {
                         return "cancel".to_string();
@@ -1100,6 +1108,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 args: Vec::new(),
                 dg_body: None,
                 dg_name: None,
+                authored_by: None,
+                elevated: false,
             });
             cloned_db.save_item_data(item).is_ok()
         },
@@ -1132,6 +1142,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 args: string_args,
                 dg_body: None,
                 dg_name: None,
+                authored_by: None,
+                elevated: false,
             });
             cloned_db.save_item_data(item).is_ok()
         },
@@ -1411,6 +1423,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         &connection_id,
                         cloned_db.clone(),
                         cloned_conns.clone(),
+                        trigger.authored_by.clone(),
+                        trigger.elevated,
                     );
                     if matches!(outcome, super::dg::Outcome::Return(0)) {
                         return "cancel".to_string();
@@ -1727,6 +1741,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 last_fired: 0,
                 dg_body: None,
                 dg_name: None,
+                authored_by: None,
+                elevated: false,
             });
             cloned_db.save_mobile_data(mobile).is_ok()
         },
@@ -1761,6 +1777,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 last_fired: 0,
                 dg_body: None,
                 dg_name: None,
+                authored_by: None,
+                elevated: false,
             });
             cloned_db.save_mobile_data(mobile).is_ok()
         },
@@ -2197,6 +2215,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         &connection_id,
                         cloned_db.clone(),
                         cloned_conns.clone(),
+                        trigger.authored_by.clone(),
+                        trigger.elevated,
                     );
                     if matches!(outcome, super::dg::Outcome::Return(0)) {
                         return "cancel".to_string();
@@ -2401,6 +2421,101 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         }
     });
 
+    // get_*_trigger_authored_by(host_id, index) -> author name ("" when None).
+    let cloned_db = db.clone();
+    engine.register_fn("get_mobile_trigger_authored_by", move |id: String, index: i64| {
+        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        match cloned_db.get_mobile_data(&uid) {
+            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.authored_by.clone()).unwrap_or_default(),
+            _ => String::new(),
+        }
+    });
+    let cloned_db = db.clone();
+    engine.register_fn("get_item_trigger_authored_by", move |id: String, index: i64| {
+        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        match cloned_db.get_item_data(&uid) {
+            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.authored_by.clone()).unwrap_or_default(),
+            _ => String::new(),
+        }
+    });
+    let cloned_db = db.clone();
+    engine.register_fn("get_room_trigger_authored_by", move |id: String, index: i64| {
+        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        match cloned_db.get_room_data(&uid) {
+            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.authored_by.clone()).unwrap_or_default(),
+            _ => String::new(),
+        }
+    });
+
+    // get_*_trigger_elevated -> bool. Reflects whether the trigger has
+    // been admin-marked to bypass the per-author area gate on dangerous
+    // DG opcodes (force/at/purge/load/teleport).
+    let cloned_db = db.clone();
+    engine.register_fn("get_mobile_trigger_elevated", move |id: String, index: i64| -> bool {
+        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return false };
+        match cloned_db.get_mobile_data(&uid) {
+            Ok(Some(host)) => host.triggers.get(index as usize).map(|t| t.elevated).unwrap_or(false),
+            _ => false,
+        }
+    });
+    let cloned_db = db.clone();
+    engine.register_fn("get_item_trigger_elevated", move |id: String, index: i64| -> bool {
+        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return false };
+        match cloned_db.get_item_data(&uid) {
+            Ok(Some(host)) => host.triggers.get(index as usize).map(|t| t.elevated).unwrap_or(false),
+            _ => false,
+        }
+    });
+    let cloned_db = db.clone();
+    engine.register_fn("get_room_trigger_elevated", move |id: String, index: i64| -> bool {
+        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return false };
+        match cloned_db.get_room_data(&uid) {
+            Ok(Some(host)) => host.triggers.get(index as usize).map(|t| t.elevated).unwrap_or(false),
+            _ => false,
+        }
+    });
+
+    // set_*_trigger_elevated(host_id, index, on) -> bool (true on success).
+    // Caller is responsible for the admin gate; these helpers just write
+    // the field. The `trigger dg elevate` subcommand checks `is_admin`
+    // before invoking these.
+    let cloned_db = db.clone();
+    engine.register_fn("set_mobile_trigger_elevated", move |id: String, index: i64, on: bool| -> bool {
+        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return false };
+        let mut ok = false;
+        let _ = cloned_db.update_mobile(&uid, |m| {
+            if let Some(t) = m.triggers.get_mut(index as usize) {
+                t.elevated = on;
+                ok = true;
+            }
+        });
+        ok
+    });
+    let cloned_db = db.clone();
+    engine.register_fn("set_item_trigger_elevated", move |id: String, index: i64, on: bool| -> bool {
+        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return false };
+        let mut ok = false;
+        let _ = cloned_db.update_item(&uid, |it| {
+            if let Some(t) = it.triggers.get_mut(index as usize) {
+                t.elevated = on;
+                ok = true;
+            }
+        });
+        ok
+    });
+    let cloned_db = db.clone();
+    engine.register_fn("set_room_trigger_elevated", move |id: String, index: i64, on: bool| -> bool {
+        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return false };
+        let mut ok = false;
+        let _ = cloned_db.update_room(&uid, |r| {
+            if let Some(t) = r.triggers.get_mut(index as usize) {
+                t.elevated = on;
+                ok = true;
+            }
+        });
+        ok
+    });
+
     // Append a new dg-bodied trigger and return its index (-1 on failure).
     let cloned_db = db.clone();
     engine.register_fn(
@@ -2426,6 +2541,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     last_fired: 0,
                     dg_body: Some(String::new()),
                     dg_name: if name.is_empty() { None } else { Some(name.clone()) },
+                    authored_by: None,
+                    elevated: false,
                 });
                 idx_out = (m.triggers.len() as i64) - 1;
             });
@@ -2454,6 +2571,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     args: Vec::new(),
                     dg_body: Some(String::new()),
                     dg_name: if name.is_empty() { None } else { Some(name.clone()) },
+                    authored_by: None,
+                    elevated: false,
                 });
                 idx_out = (it.triggers.len() as i64) - 1;
             });
@@ -2484,6 +2603,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     args: Vec::new(),
                     dg_body: Some(String::new()),
                     dg_name: if name.is_empty() { None } else { Some(name.clone()) },
+                    authored_by: None,
+                    elevated: false,
                 });
                 idx_out = (r.triggers.len() as i64) - 1;
             });
@@ -2527,6 +2648,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 arg: String::new(),
                 cmd: String::new(),
                 cmd_canonical: String::new(),
+                authored_by: None,
+                elevated: false,
             };
             let _ = name;
             crate::script::dg::cmds::attach_trigger_proto(&proto.vnum, &uid.to_string(), &ctx);

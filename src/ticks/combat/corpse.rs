@@ -55,6 +55,7 @@ impl CorpseBuilder {
             name: format!("corpse of {}", self.name),
             short_desc: format!("The corpse of {} lies here.", self.name),
             long_desc: format!("The lifeless body of {} lies in a crumpled heap.", self.name),
+            area_id: None,
             keywords: vec!["corpse".to_string(), "body".to_string(), self.name.to_lowercase()],
             item_type: ItemType::Container,
             categories: Vec::new(),

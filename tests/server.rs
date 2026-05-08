@@ -1567,6 +1567,10 @@ mod migration_tests {
             healer_wage_per_hour: 0,
             scavenger_wage_per_hour: 0,
             donation_room_vnum: None,
+            max_rooms: None,
+            max_items: None,
+            max_mobiles: None,
+            max_spawn_points: None,
         }
     }
 
@@ -3941,6 +3945,164 @@ fn test_item_magical_flag_auto_adds_category() {
 }
 
 #[test]
+fn test_area_caps_persist_and_count_helpers_match() {
+    // Persistence round-trip for the new max_* cap fields, plus a check
+    // that the per-area count helpers used by F6's create-time gate
+    // distinguish in-area, orphan, and other-area entities correctly.
+    use ironmud::db::Db;
+    use ironmud::types::{
+        AreaData, AreaFlags, AreaPermission, ClimateProfile, CombatZoneType, GoldRange,
+        ImmigrationFamilyChance, ImmigrationVariationChances, RoomFlags,
+    };
+    use ironmud::{ItemData, MobileData};
+    use uuid::Uuid;
+
+    let db_path = format!("test_area_caps_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let area_id = Uuid::new_v4();
+        let area = AreaData {
+            id: area_id,
+            name: "Capped".into(),
+            prefix: "cap".into(),
+            description: String::new(),
+            level_min: 0,
+            level_max: 0,
+            theme: String::new(),
+            owner: None,
+            permission_level: AreaPermission::AllBuilders,
+            trusted_builders: Vec::new(),
+            city_forage_table: Vec::new(),
+            wilderness_forage_table: Vec::new(),
+            shallow_water_forage_table: Vec::new(),
+            deep_water_forage_table: Vec::new(),
+            underwater_forage_table: Vec::new(),
+            combat_zone: CombatZoneType::Pve,
+            flags: AreaFlags::default(),
+            default_room_flags: RoomFlags::default(),
+            climate: ClimateProfile::default(),
+            immigration_enabled: false,
+            immigration_room_vnum: String::new(),
+            immigration_name_pool: String::new(),
+            immigration_visual_profile: String::new(),
+            migration_interval_days: 0,
+            migration_max_per_check: 0,
+            migrant_sim_defaults: None,
+            last_migration_check_day: None,
+            immigration_variation_chances: ImmigrationVariationChances::default(),
+            immigration_family_chance: ImmigrationFamilyChance::default(),
+            migrant_starting_gold: GoldRange::default(),
+            guard_wage_per_hour: 0,
+            healer_wage_per_hour: 0,
+            scavenger_wage_per_hour: 0,
+            donation_room_vnum: None,
+            max_rooms: Some(2),
+            max_items: Some(3),
+            max_mobiles: None,
+            max_spawn_points: None,
+        };
+        db.save_area_data(area).expect("save area");
+
+        let loaded = db.get_area_data(&area_id).expect("get area").expect("present");
+        assert_eq!(loaded.max_rooms, Some(2), "max_rooms round-trips");
+        assert_eq!(loaded.max_items, Some(3), "max_items round-trips");
+        assert!(loaded.max_mobiles.is_none(), "None persists for max_mobiles");
+        assert!(loaded.max_spawn_points.is_none(), "None persists for max_spawn_points");
+
+        // Items: one in-area proto, one orphan proto, one in a different area.
+        let other_area = Uuid::new_v4();
+        let mut in_area = ItemData::new("torch".into(), "a torch".into(), "A torch.".into());
+        in_area.is_prototype = true;
+        in_area.area_id = Some(area_id);
+        db.save_item_data(in_area).expect("save in-area item");
+
+        let mut orphan = ItemData::new("loose".into(), "a loose stick".into(), "A stick.".into());
+        orphan.is_prototype = true;
+        db.save_item_data(orphan).expect("save orphan");
+
+        let mut other = ItemData::new("rope".into(), "a rope".into(), "A rope.".into());
+        other.is_prototype = true;
+        other.area_id = Some(other_area);
+        db.save_item_data(other).expect("save other-area item");
+
+        assert_eq!(
+            db.count_item_protos_in_area(&area_id).expect("count"),
+            1,
+            "count includes only in-area protos (orphans + other areas excluded)"
+        );
+        assert_eq!(
+            db.count_item_protos_in_area(&other_area).expect("count"),
+            1,
+            "other area sees its own proto only"
+        );
+
+        // Mobile attribution.
+        let mut m = MobileData::new("guard".into());
+        m.is_prototype = true;
+        m.area_id = Some(area_id);
+        db.save_mobile_data(m).expect("save mob");
+        assert_eq!(db.count_mobile_protos_in_area(&area_id).expect("count"), 1);
+
+        // Empty areas count to zero (no panics on the absence path).
+        assert_eq!(db.count_rooms_in_area(&area_id).expect("count"), 0);
+        assert_eq!(db.count_spawn_points_in_area(&area_id).expect("count"), 0);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_item_and_mobile_area_id_persists() {
+    use ironmud::db::Db;
+    use ironmud::{ItemData, MobileData};
+    use uuid::Uuid;
+
+    let db_path = format!("test_proto_area_id_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let area_uuid = Uuid::new_v4();
+
+        // Item: defaults to None (orphan), survives a None → Some → None round-trip.
+        let mut item = ItemData::new("torch".to_string(), "a torch".to_string(), "A torch.".to_string());
+        assert!(item.area_id.is_none(), "freshly-constructed items default to orphan");
+        item.area_id = Some(area_uuid);
+        let item_id = item.id;
+        db.save_item_data(item).expect("save item");
+        let loaded = db.get_item_data(&item_id).expect("get").expect("present");
+        assert_eq!(loaded.area_id, Some(area_uuid), "area_id round-trips through sled");
+
+        let mut cleared = loaded;
+        cleared.area_id = None;
+        db.save_item_data(cleared).expect("save cleared");
+        let loaded2 = db.get_item_data(&item_id).expect("get").expect("present");
+        assert!(loaded2.area_id.is_none(), "clearing back to orphan persists");
+
+        // Mobile: same shape.
+        let mut mob = MobileData::new("guard".to_string());
+        assert!(mob.area_id.is_none(), "freshly-constructed mobiles default to orphan");
+        mob.area_id = Some(area_uuid);
+        let mob_id = mob.id;
+        db.save_mobile_data(mob).expect("save mob");
+        let loaded_mob = db.get_mobile_data(&mob_id).expect("get").expect("present");
+        assert_eq!(loaded_mob.area_id, Some(area_uuid), "mobile area_id round-trips");
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_item_note_content_persists() {
     use ironmud::ItemData;
     use ironmud::db::Db;
@@ -4178,6 +4340,10 @@ fn test_donation_fields_round_trip() {
             healer_wage_per_hour: 0,
             scavenger_wage_per_hour: 0,
             donation_room_vnum: None,
+            max_rooms: None,
+            max_items: None,
+            max_mobiles: None,
+            max_spawn_points: None,
         };
         let area_id = area.id;
         db.save_area_data(area.clone()).expect("save area");
@@ -4407,6 +4573,10 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
             healer_wage_per_hour: 0,
             scavenger_wage_per_hour: 0,
             donation_room_vnum: None,
+            max_rooms: None,
+            max_items: None,
+            max_mobiles: None,
+            max_spawn_points: None,
         };
         db.save_area_data(area.clone()).expect("save area");
 
@@ -4639,6 +4809,10 @@ fn test_area_climate_persists() {
             healer_wage_per_hour: 0,
             scavenger_wage_per_hour: 0,
             donation_room_vnum: None,
+            max_rooms: None,
+            max_items: None,
+            max_mobiles: None,
+            max_spawn_points: None,
         };
         let area_id = area.id;
         db.save_area_data(area).expect("save area");

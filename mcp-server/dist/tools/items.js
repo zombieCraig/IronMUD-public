@@ -135,6 +135,7 @@ export const itemToolDefinitions = [
                 short_desc: { type: "string", description: "Short description when on ground" },
                 long_desc: { type: "string", description: "Full description when examined" },
                 vnum: { type: "string", description: "Unique vnum (e.g., 'weapons:iron_sword')" },
+                area_id: { type: "string", description: "Optional owning area UUID. Caller must have edit rights on it (per AreaPermission). Omit/empty for an orphan prototype editable by any builder." },
                 keywords: { type: "array", items: { type: "string" } },
                 item_type: {
                     type: "string",
@@ -269,6 +270,7 @@ export const itemToolDefinitions = [
                 short_desc: { type: "string" },
                 long_desc: { type: "string" },
                 vnum: { type: "string", description: "New vnum (must be unique)" },
+                area_id: { type: "string", description: "Reassign owning area. Empty string clears the assignment back to orphan. Caller must have edit rights on both current and target areas." },
                 item_type: { type: "string", enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold", "ammunition", "potion", "wand", "staff", "note", "pen"], description: "Change item type" },
                 keywords: { type: "array", items: { type: "string" } },
                 weight: { type: "number" },

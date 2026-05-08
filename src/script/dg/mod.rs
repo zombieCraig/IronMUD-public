@@ -150,6 +150,86 @@ pub struct EvalCtx {
     /// canonical form when they used an abbreviation (e.g. `cmd="dr"` →
     /// `cmd_canonical="drop"`).
     pub cmd_canonical: String,
+    /// Character name of the trigger's author (set on `dg_body` save).
+    /// `None` for importer-seeded / system-authored triggers — these get
+    /// the legacy "trusted" pass on dangerous opcodes.
+    pub authored_by: Option<String>,
+    /// Trigger-level elevation set by an admin via `trigger dg elevate`.
+    /// When true, dangerous DG opcodes (force/at/purge/load/teleport)
+    /// bypass the per-author area gate.
+    pub elevated: bool,
+}
+
+impl EvalCtx {
+    /// Permission gate consulted by dangerous DG commands (force, at,
+    /// purge, load, teleport). The contract:
+    ///
+    /// - `elevated=true`         → allowed (admin-set override).
+    /// - `authored_by=None`      → allowed (importer/system-authored).
+    /// - admin-authored          → allowed regardless of area.
+    /// - else                    → allowed only when the author can edit
+    ///                             `target_area` (or the host's own area
+    ///                             if `target_area` is None).
+    ///
+    /// Failure logs a warn and the caller no-ops the opcode.
+    pub fn opcode_authorized(&self, opcode: &str, target_area: Option<Uuid>) -> bool {
+        if self.elevated {
+            return true;
+        }
+        let Some(author) = self.authored_by.as_deref() else {
+            return true;
+        };
+        if let Ok(Some(ch)) = self.db.get_character_data(author) {
+            if ch.is_admin {
+                return true;
+            }
+        }
+        let area_id = target_area.or_else(|| self.host_area_id());
+        let Some(area_id) = area_id else {
+            tracing::warn!(
+                "[SECURITY] DG opcode '{}' blocked: trigger author '{}' tried to act on un-areaed target",
+                opcode, author
+            );
+            return false;
+        };
+        let area = match self.db.get_area_data(&area_id) {
+            Ok(Some(a)) => a,
+            _ => return false,
+        };
+        let allowed = crate::api::auth::author_can_edit_area(author, &area);
+        if !allowed {
+            tracing::warn!(
+                "[SECURITY] DG opcode '{}' blocked: author '{}' lacks edit permission on area '{}'",
+                opcode, author, area.name
+            );
+        }
+        allowed
+    }
+
+    /// Best-effort lookup of the host entity's area id, used as the
+    /// default target area when the opcode caller doesn't supply one.
+    fn host_area_id(&self) -> Option<Uuid> {
+        match self.self_kind {
+            SelfKind::Mob => self
+                .db
+                .get_mobile_data(&self.self_id)
+                .ok()
+                .flatten()
+                .and_then(|m| m.area_id),
+            SelfKind::Obj => self
+                .db
+                .get_item_data(&self.self_id)
+                .ok()
+                .flatten()
+                .and_then(|i| i.area_id),
+            SelfKind::Room => self
+                .db
+                .get_room_data(&self.self_id)
+                .ok()
+                .flatten()
+                .and_then(|r| r.area_id),
+        }
+    }
 }
 
 /// Result of evaluating a DG body.
@@ -237,12 +317,20 @@ pub fn fire_dg(body: &str, ctx: &EvalCtx) -> Outcome {
 
 /// Bridge helper for the Rhai-side `fire_room_trigger`: builds an
 /// [`EvalCtx`] from the entity + event data and runs the body.
+///
+/// `authored_by` / `elevated` are propagated from the caller's
+/// `RoomTrigger` so the DG opcode gate can scope dangerous verbs.
+/// Pass `(None, false)` for legacy/test sites that don't have a
+/// trigger struct on hand — those run with the "system-authored"
+/// trusted pass.
 pub fn fire_room_dg(
     body: &str,
     room: &crate::types::RoomData,
     connection_id: &str,
     db: Arc<Db>,
     connections: SharedConnections,
+    authored_by: Option<String>,
+    elevated: bool,
 ) -> Outcome {
     let actor = actor_from_connection(connection_id, &connections);
     let ctx = EvalCtx {
@@ -258,17 +346,22 @@ pub fn fire_room_dg(
         arg: String::new(),
         cmd: String::new(),
         cmd_canonical: String::new(),
+        authored_by,
+        elevated,
     };
     fire_dg(body, &ctx)
 }
 
-/// Bridge helper for `fire_item_trigger`.
+/// Bridge helper for `fire_item_trigger`. See [`fire_room_dg`] for
+/// `authored_by` / `elevated` semantics.
 pub fn fire_item_dg(
     body: &str,
     item: &crate::types::ItemData,
     connection_id: &str,
     db: Arc<Db>,
     connections: SharedConnections,
+    authored_by: Option<String>,
+    elevated: bool,
 ) -> Outcome {
     let actor = actor_from_connection(connection_id, &connections);
     let self_room = match &item.location {
@@ -288,17 +381,22 @@ pub fn fire_item_dg(
         arg: String::new(),
         cmd: String::new(),
         cmd_canonical: String::new(),
+        authored_by,
+        elevated,
     };
     fire_dg(body, &ctx)
 }
 
-/// Bridge helper for `fire_mobile_trigger`.
+/// Bridge helper for `fire_mobile_trigger`. See [`fire_room_dg`] for
+/// `authored_by` / `elevated` semantics.
 pub fn fire_mobile_dg(
     body: &str,
     mobile: &crate::types::MobileData,
     connection_id: &str,
     db: Arc<Db>,
     connections: SharedConnections,
+    authored_by: Option<String>,
+    elevated: bool,
 ) -> Outcome {
     let actor = actor_from_connection(connection_id, &connections);
     let ctx = EvalCtx {
@@ -314,6 +412,8 @@ pub fn fire_mobile_dg(
         arg: String::new(),
         cmd: String::new(),
         cmd_canonical: String::new(),
+        authored_by,
+        elevated,
     };
     fire_dg(body, &ctx)
 }
@@ -337,7 +437,15 @@ pub fn fire_item_dg_triggers(
         let Some(body) = t.dg_body.as_deref() else {
             continue;
         };
-        let outcome = fire_item_dg(body, item, connection_id, db.clone(), connections.clone());
+        let outcome = fire_item_dg(
+            body,
+            item,
+            connection_id,
+            db.clone(),
+            connections.clone(),
+            t.authored_by.clone(),
+            t.elevated,
+        );
         if matches!(outcome, Outcome::Return(0)) {
             cancelled = true;
         }
@@ -392,6 +500,8 @@ pub fn fire_room_dg_triggers(
             } else {
                 cmd_canonical.to_string()
             },
+            authored_by: t.authored_by.clone(),
+            elevated: t.elevated,
         };
         if matches!(fire_dg(body, &ctx), Outcome::Return(0)) {
             cancelled = true;
@@ -446,6 +556,8 @@ pub fn fire_mobile_dg_triggers(
             } else {
                 cmd_canonical.to_string()
             },
+            authored_by: t.authored_by.clone(),
+            elevated: t.elevated,
         };
         if matches!(fire_dg(body, &ctx), Outcome::Return(0)) {
             cancelled = true;
@@ -578,6 +690,8 @@ fn fire_item_dg_oncommand(
             } else {
                 cmd_canonical.to_string()
             },
+            authored_by: t.authored_by.clone(),
+            elevated: t.elevated,
         };
         if matches!(fire_dg(body, &ctx), Outcome::Return(0)) {
             cancelled = true;
@@ -657,6 +771,8 @@ mod tests {
             arg: String::new(),
             cmd: String::new(),
             cmd_canonical: String::new(),
+            authored_by: None,
+            elevated: false,
         }
     }
 
@@ -1104,6 +1220,8 @@ end";
             last_fired: 0,
             dg_body: Some("halt".to_string()),
             dg_name: Some("removable".to_string()),
+            authored_by: None,
+            elevated: false,
         });
         let host_id = host.id;
         let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "self_mob");
@@ -1307,6 +1425,8 @@ end";
             last_fired: 0,
             dg_body: Some("set fired pan\nglobal fired\nhalt".to_string()),
             dg_name: None,
+            authored_by: None,
+            elevated: false,
         });
         mob.triggers.push(crate::MobileTrigger {
             trigger_type: crate::MobileTriggerType::OnCommand,
@@ -1318,6 +1438,8 @@ end";
             last_fired: 0,
             dg_body: Some("set fired shovel\nglobal fired\nhalt".to_string()),
             dg_name: None,
+            authored_by: None,
+            elevated: false,
         });
         let mob_id = mob.id;
         let ctx = make_ctx(SelfKind::Mob, mob_id, "guardian");
@@ -1340,6 +1462,124 @@ end";
         assert_eq!(
             ctx.db.get_dg_global("fired").expect("get").as_deref(),
             Some("pan")
+        );
+    }
+
+    // ---------- F3 (author-stamped DG opcode gate) ----------
+
+    /// Build an `AreaData` with the given owner + AllBuilders permission.
+    /// `permission` controls whether the author can edit the area.
+    fn make_area(name: &str, owner: Option<&str>, perm: crate::AreaPermission) -> crate::AreaData {
+        serde_json::from_value(serde_json::json!({
+            "id": uuid::Uuid::new_v4(),
+            "name": name,
+            "prefix": name.to_lowercase(),
+            "owner": owner,
+            "permission_level": match perm {
+                crate::AreaPermission::AllBuilders => "all_builders",
+                crate::AreaPermission::OwnerOnly => "owner_only",
+                crate::AreaPermission::Trusted => "trusted",
+            },
+            "trusted_builders": [],
+        }))
+        .expect("build area")
+    }
+
+    /// Returns true when an authored trigger purges a target mob in the
+    /// supplied target area. The target mob is created here, the gate is
+    /// queried via cmd_purge, and the assertion is "is the mob still in
+    /// the db after the trigger ran".
+    fn purge_test(
+        author_name: &str,
+        author_owns_target: bool,
+        elevated: bool,
+    ) -> bool {
+        // Author is a non-admin builder.
+        let author_char: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": author_name,
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+            "is_admin": false,
+            "is_builder": true,
+        }))
+        .expect("build author");
+        let mut ctx = make_ctx(SelfKind::Mob, uuid::Uuid::new_v4(), "host");
+        ctx.db.save_character_data(author_char).expect("save author");
+
+        // Build two areas. Author owns the first either way; the second
+        // is owned by someone else and gated OwnerOnly so the author
+        // can NOT edit it.
+        let owner_area = make_area("home", Some(author_name), crate::AreaPermission::AllBuilders);
+        ctx.db.save_area_data(owner_area.clone()).expect("save home");
+        let foreign_area = make_area("foreign", Some("other"), crate::AreaPermission::OwnerOnly);
+        ctx.db.save_area_data(foreign_area.clone()).expect("save foreign");
+
+        let target_area_id = if author_owns_target { owner_area.id } else { foreign_area.id };
+
+        // Target mob lives in the chosen area.
+        let mut target = crate::types::MobileData::new("victim".to_string());
+        target.area_id = Some(target_area_id);
+        let target_id = target.id;
+        ctx.db.save_mobile_data(target).expect("save target");
+
+        // Set the author + elevation on the eval context (mirrors what
+        // fire_mobile_dg_triggers would set from t.authored_by/t.elevated).
+        ctx.authored_by = Some(author_name.to_string());
+        ctx.elevated = elevated;
+
+        // Fire `purge <target_uuid>` directly — exercises the gate.
+        let body = format!("purge {tid}\nhalt", tid = target_id);
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Halt);
+
+        // If the mob is gone the gate let it through.
+        ctx.db.get_mobile_data(&target_id).expect("get").is_none()
+    }
+
+    #[test]
+    fn dg_purge_blocked_when_author_lacks_target_area_permission() {
+        // Builder authored a trigger; the trigger tries to purge a mob
+        // in a foreign OwnerOnly area. Gate must refuse and the mob
+        // must survive.
+        let purged = purge_test("rogue_builder", /* owns_target */ false, /* elevated */ false);
+        assert!(!purged, "DG purge across area boundary must be blocked");
+    }
+
+    #[test]
+    fn dg_purge_allowed_when_author_owns_target_area() {
+        // Same author, but the target lives in their own area. Gate
+        // should let the purge through.
+        let purged = purge_test("home_builder", /* owns_target */ true, /* elevated */ false);
+        assert!(purged, "DG purge within author's area must be allowed");
+    }
+
+    #[test]
+    fn dg_purge_allowed_when_trigger_is_admin_elevated() {
+        // Cross-area purge with `elevated=true` must bypass the gate.
+        // This is the admin-set escape hatch for legitimate cross-area
+        // automation (city-wide cleanup mobs, etc.).
+        let purged = purge_test("rogue_builder", /* owns_target */ false, /* elevated */ true);
+        assert!(purged, "elevated triggers must bypass the area gate");
+    }
+
+    #[test]
+    fn dg_purge_allowed_when_authored_by_is_none() {
+        // Importer-seeded triggers (None author) keep their legacy
+        // trusted-pass behavior; otherwise importing tbamud would break.
+        let mut ctx = make_ctx(SelfKind::Mob, uuid::Uuid::new_v4(), "host");
+        let foreign_area = make_area("foreign", Some("other"), crate::AreaPermission::OwnerOnly);
+        ctx.db.save_area_data(foreign_area.clone()).expect("save");
+        let mut target = crate::types::MobileData::new("victim".to_string());
+        target.area_id = Some(foreign_area.id);
+        let target_id = target.id;
+        ctx.db.save_mobile_data(target).expect("save");
+
+        ctx.authored_by = None;
+        ctx.elevated = false;
+        let body = format!("purge {tid}\nhalt", tid = target_id);
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Halt);
+        assert!(
+            ctx.db.get_mobile_data(&target_id).expect("get").is_none(),
+            "system-authored triggers (authored_by=None) keep legacy permission"
         );
     }
 }

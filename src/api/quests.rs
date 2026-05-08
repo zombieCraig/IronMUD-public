@@ -15,6 +15,7 @@ use super::{
     auth::{AuthenticatedUser, can_read, can_write},
     error::ApiError,
     notify_builders,
+    validate::{check_text_len, DESCRIPTION_MAX, NAME_MAX, SHORT_DESC_MAX},
 };
 use crate::types::{QuestData, QuestObjective, QuestReward};
 
@@ -265,6 +266,11 @@ async fn create_quest(
         )));
     }
 
+    check_text_len("name", &req.name, NAME_MAX)?;
+    check_text_len("summary", &req.summary, SHORT_DESC_MAX)?;
+    check_text_len("description", &req.description, DESCRIPTION_MAX)?;
+    check_text_len("completion_text", &req.completion_text, DESCRIPTION_MAX)?;
+
     let objectives = req
         .objectives
         .iter()
@@ -329,18 +335,22 @@ async fn update_quest(
         if name.trim().is_empty() {
             return Err(ApiError::InvalidInput("name cannot be empty".into()));
         }
+        check_text_len("name", &name, NAME_MAX)?;
         quest.name = name;
     }
     if let Some(kws) = req.keywords {
         quest.keywords = kws;
     }
     if let Some(s) = req.summary {
+        check_text_len("summary", &s, SHORT_DESC_MAX)?;
         quest.summary = s;
     }
     if let Some(s) = req.description {
+        check_text_len("description", &s, DESCRIPTION_MAX)?;
         quest.description = s;
     }
     if let Some(s) = req.completion_text {
+        check_text_len("completion_text", &s, DESCRIPTION_MAX)?;
         quest.completion_text = s;
     }
     if let Some(objs) = req.objectives {

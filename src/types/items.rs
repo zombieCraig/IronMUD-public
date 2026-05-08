@@ -599,6 +599,11 @@ pub struct ItemData {
     pub name: String,
     pub short_desc: String,
     pub long_desc: String,
+    /// Owning area for sandbox / permission checks. Orphans (None) are
+    /// editable by any builder; once stamped, only `can_edit_area` callers
+    /// may mutate or delete the prototype.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub area_id: Option<Uuid>,
     #[serde(default)]
     pub keywords: Vec<String>,
     #[serde(default)]
@@ -859,6 +864,7 @@ impl ItemData {
             name,
             short_desc,
             long_desc,
+            area_id: None,
             keywords: Vec::new(),
             item_type: ItemType::Misc,
             categories: Vec::new(),

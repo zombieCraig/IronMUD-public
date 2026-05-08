@@ -64,6 +64,93 @@ pub fn can_write(user: &AuthenticatedUser) -> bool {
     user.api_key.permissions.write
 }
 
+/// Parse an optional area_id string from a request body and check the
+/// caller is allowed to author content into that area. Returns:
+/// - `Ok(None)` when the input is None / empty / blank — the caller is
+///   creating an orphan prototype, which any builder may do.
+/// - `Ok(Some(uuid))` when the area exists and `can_edit_area` permits.
+/// - `Err(InvalidInput)` for malformed UUIDs / `NotFound` for missing areas
+///   / `Forbidden` when the caller lacks rights.
+pub fn parse_and_authorize_area(
+    db: &crate::db::Db,
+    user: &AuthenticatedUser,
+    area_id_str: Option<&str>,
+) -> Result<Option<uuid::Uuid>, super::error::ApiError> {
+    use super::error::ApiError;
+    let raw = match area_id_str {
+        Some(s) if !s.trim().is_empty() => s,
+        _ => return Ok(None),
+    };
+    let uuid = uuid::Uuid::parse_str(raw.trim()).map_err(|_| ApiError::InvalidInput("Invalid area_id UUID format".into()))?;
+    let area = db
+        .get_area_data(&uuid)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound(format!("Area '{}' not found", uuid)))?;
+    if !can_edit_area(user, &area) {
+        return Err(ApiError::Forbidden(
+            "You don't have permission to author content for this area".into(),
+        ));
+    }
+    Ok(Some(uuid))
+}
+
+/// Permission gate for mutating an existing prototype that may have an
+/// owning area. Orphans (None) are editable by any builder; stamped
+/// prototypes require `can_edit_area` rights. Returns Err(Forbidden)
+/// when the caller is not allowed.
+pub fn authorize_existing_area(
+    db: &crate::db::Db,
+    user: &AuthenticatedUser,
+    area_id: Option<uuid::Uuid>,
+) -> Result<(), super::error::ApiError> {
+    use super::error::ApiError;
+    let Some(uuid) = area_id else {
+        return Ok(());
+    };
+    let area = match db
+        .get_area_data(&uuid)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+    {
+        Some(a) => a,
+        // Dangling area_id (the area was deleted out from under the
+        // prototype): treat as orphan and allow.
+        None => return Ok(()),
+    };
+    if !can_edit_area(user, &area) {
+        return Err(ApiError::Forbidden(
+            "You don't have permission to edit prototypes owned by this area".into(),
+        ));
+    }
+    Ok(())
+}
+
+/// Name-based area permission check used by non-API call sites
+/// (DG opcode gate, in-game scripts, etc.). Mirrors `can_edit_area`'s
+/// area-permission semantics but skips the API-key admin/write bits
+/// since callers already have a character context. Owner-less areas
+/// are open to any builder.
+///
+/// Note: this does NOT check `is_admin` on the named character. The
+/// DG gate and Rhai-side paths handle admin bypass before calling
+/// here, since they may want different short-circuit policies (e.g.
+/// admin authors are pre-authorized in the opcode gate).
+pub fn author_can_edit_area(character_name: &str, area: &AreaData) -> bool {
+    let Some(owner) = area.owner.as_ref() else {
+        return true;
+    };
+    match area.permission_level {
+        AreaPermission::AllBuilders => true,
+        AreaPermission::OwnerOnly => owner.eq_ignore_ascii_case(character_name),
+        AreaPermission::Trusted => {
+            owner.eq_ignore_ascii_case(character_name)
+                || area
+                    .trusted_builders
+                    .iter()
+                    .any(|t| t.eq_ignore_ascii_case(character_name))
+        }
+    }
+}
+
 /// Check if a user can edit an area based on area permissions
 pub fn can_edit_area(user: &AuthenticatedUser, area: &AreaData) -> bool {
     // Admin keys bypass all permission checks
@@ -88,5 +175,116 @@ pub fn can_edit_area(user: &AuthenticatedUser, area: &AreaData) -> bool {
                     .iter()
                     .any(|b| b.to_lowercase() == character_name.to_lowercase())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ApiKey, ApiPermissions};
+    use uuid::Uuid;
+
+    fn open_temp_db(tag: &str) -> (crate::db::Db, String) {
+        let path = format!(
+            "test_authz_{}_{}_{}.db",
+            tag,
+            std::process::id(),
+            Uuid::new_v4().simple()
+        );
+        let _ = std::fs::remove_dir_all(&path);
+        let db = crate::db::Db::open(&path).expect("open db");
+        (db, path)
+    }
+
+    fn cleanup(path: &str) {
+        let _ = std::fs::remove_dir_all(path);
+    }
+
+    fn user_for(character: &str, write: bool, admin: bool) -> AuthenticatedUser {
+        AuthenticatedUser {
+            api_key: ApiKey {
+                id: Uuid::new_v4(),
+                key_hash: String::new(),
+                name: format!("{character}-key"),
+                owner_character: character.to_string(),
+                permissions: ApiPermissions { read: true, write, admin },
+                created_at: 0,
+                last_used_at: None,
+                enabled: true,
+            },
+        }
+    }
+
+    fn save_area(db: &crate::db::Db, owner: Option<&str>, perm: AreaPermission) -> Uuid {
+        let area: AreaData = serde_json::from_value(serde_json::json!({
+            "id": Uuid::new_v4(),
+            "name": "test-area",
+            "prefix": "ta",
+            "owner": owner,
+            "permission_level": match perm {
+                AreaPermission::AllBuilders => "all_builders",
+                AreaPermission::OwnerOnly => "owner_only",
+                AreaPermission::Trusted => "trusted",
+            },
+            "trusted_builders": [],
+        }))
+        .expect("build area");
+        let id = area.id;
+        db.save_area_data(area).expect("save area");
+        id
+    }
+
+    #[test]
+    fn authorize_existing_area_blocks_non_owner_on_owner_only() {
+        let (db, path) = open_temp_db("owner_only_block");
+        let area_id = save_area(&db, Some("alice"), AreaPermission::OwnerOnly);
+        let bob = user_for("bob", true, false);
+        let res = authorize_existing_area(&db, &bob, Some(area_id));
+        assert!(matches!(res, Err(super::super::error::ApiError::Forbidden(_))));
+        cleanup(&path);
+    }
+
+    #[test]
+    fn authorize_existing_area_allows_owner_on_owner_only() {
+        let (db, path) = open_temp_db("owner_only_allow");
+        let area_id = save_area(&db, Some("alice"), AreaPermission::OwnerOnly);
+        let alice = user_for("alice", true, false);
+        assert!(authorize_existing_area(&db, &alice, Some(area_id)).is_ok());
+        cleanup(&path);
+    }
+
+    #[test]
+    fn authorize_existing_area_allows_all_builders() {
+        let (db, path) = open_temp_db("all_builders");
+        let area_id = save_area(&db, Some("alice"), AreaPermission::AllBuilders);
+        let bob = user_for("bob", true, false);
+        assert!(authorize_existing_area(&db, &bob, Some(area_id)).is_ok());
+        cleanup(&path);
+    }
+
+    #[test]
+    fn authorize_existing_area_admin_bypasses_owner_only() {
+        let (db, path) = open_temp_db("admin_bypass");
+        let area_id = save_area(&db, Some("alice"), AreaPermission::OwnerOnly);
+        let admin = user_for("eve", true, true);
+        assert!(authorize_existing_area(&db, &admin, Some(area_id)).is_ok());
+        cleanup(&path);
+    }
+
+    #[test]
+    fn authorize_existing_area_passes_orphans() {
+        let (db, path) = open_temp_db("orphan");
+        let bob = user_for("bob", true, false);
+        assert!(authorize_existing_area(&db, &bob, None).is_ok());
+        cleanup(&path);
+    }
+
+    #[test]
+    fn authorize_existing_area_passes_dangling_uuid() {
+        let (db, path) = open_temp_db("dangling");
+        let bob = user_for("bob", true, false);
+        // Random UUID that has no area row — historically treated as orphan.
+        assert!(authorize_existing_area(&db, &bob, Some(Uuid::new_v4())).is_ok());
+        cleanup(&path);
     }
 }

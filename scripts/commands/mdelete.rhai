@@ -29,6 +29,16 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Sandbox: stamped prototypes require can_edit_area on their owner.
+    // Orphans (area_id == "") fall through and remain editable by any builder.
+    let mob_area_id = mobile.area_id;
+    if mob_area_id != "" {
+        if !can_edit_area(mob_area_id, char.name) {
+            send_client_message(connection_id, "You don't have permission to delete mobiles in that area.");
+            return;
+        }
+    }
+
     if mobile.is_prototype {
         // Prototype requires confirmation
         if !confirm {

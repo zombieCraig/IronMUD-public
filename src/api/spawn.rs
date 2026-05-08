@@ -188,6 +188,9 @@ async fn create_spawn_point(
         ));
     }
 
+    // Per-area soft cap on spawn-point count (F6).
+    super::quotas::check_area_quota(&state.db, Some(area_uuid), super::quotas::QuotaKind::SpawnPoints)?;
+
     // Parse and validate room_id
     let room_uuid =
         Uuid::parse_str(&req.room_id).map_err(|_| ApiError::InvalidInput("Invalid room_id UUID format".into()))?;

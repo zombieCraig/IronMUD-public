@@ -16,6 +16,7 @@ fn handle(host_kind, host_id, action, rest, connection_id) {
     if act == "edit" { edit_trigger(host_kind, host_id, rest, connection_id); return; }
     if act == "attach" { attach_proto(host_kind, host_id, rest, connection_id); return; }
     if act == "protos" { protos_list(connection_id); return; }
+    if act == "elevate" { elevate_trigger(host_kind, host_id, rest, connection_id); return; }
 
     show_help(host_kind, host_id, connection_id);
 }
@@ -31,6 +32,7 @@ fn show_help(host_kind, host_id, connection_id) {
         + "  " + cmd + " " + id_part + "trigger dg add <type> [name]  - Append empty body, open editor\n"
         + "  " + cmd + " " + id_part + "trigger dg edit <idx>     - Re-open the editor\n"
         + "  " + cmd + " " + id_part + "trigger dg attach <vnum>  - Attach an imported prototype by vnum\n"
+        + "  " + cmd + " " + id_part + "trigger dg elevate <idx> [on|off]  - (admin) Bypass area gate on dangerous opcodes\n"
         + "  " + cmd + " " + id_part + "trigger dg protos         - List imported prototypes";
     send_client_message(connection_id, output);
 }
@@ -59,6 +61,24 @@ fn name_for(host_kind, host_id, idx) {
     return get_room_trigger_dg_name(host_id, idx);
 }
 
+fn author_for(host_kind, host_id, idx) {
+    if host_kind == "mobile" { return get_mobile_trigger_authored_by(host_id, idx); }
+    if host_kind == "item"   { return get_item_trigger_authored_by(host_id, idx); }
+    return get_room_trigger_authored_by(host_id, idx);
+}
+
+fn elevated_for(host_kind, host_id, idx) {
+    if host_kind == "mobile" { return get_mobile_trigger_elevated(host_id, idx); }
+    if host_kind == "item"   { return get_item_trigger_elevated(host_id, idx); }
+    return get_room_trigger_elevated(host_id, idx);
+}
+
+fn set_elevated_for(host_kind, host_id, idx, on) {
+    if host_kind == "mobile" { return set_mobile_trigger_elevated(host_id, idx, on); }
+    if host_kind == "item"   { return set_item_trigger_elevated(host_id, idx, on); }
+    return set_room_trigger_elevated(host_id, idx, on);
+}
+
 fn list_triggers(host_kind, host_id, connection_id) {
     let triggers = triggers_for(host_kind, host_id);
     if triggers.len() == 0 {
@@ -72,11 +92,41 @@ fn list_triggers(host_kind, host_id, connection_id) {
         let name = name_for(host_kind, host_id, i);
         let kind_tag = if body == "" { "[rhai]" } else { "[ dg ]" };
         let label = if name == "" { "(unnamed)" } else { name };
+        let author = author_for(host_kind, host_id, i);
+        let elev = elevated_for(host_kind, host_id, i);
+        let suffix = "";
+        if author != "" { suffix += "  by " + author; }
+        if elev { suffix += " [elevated]"; }
         output += "  " + i.to_string() + ". " + kind_tag + " "
-                + type_str(host_kind, t) + " - " + label + "\n";
+                + type_str(host_kind, t) + " - " + label + suffix + "\n";
         i += 1;
     }
     send_client_message(connection_id, output);
+}
+
+fn elevate_trigger(host_kind, host_id, rest, connection_id) {
+    if rest.len() < 1 {
+        send_client_message(connection_id, "Usage: trigger dg elevate <index> [on|off]  (admin only)");
+        return;
+    }
+    let actor = get_character_data(connection_id);
+    if actor == () || !actor.is_admin {
+        send_client_message(connection_id, "Only admins can elevate DG triggers.");
+        return;
+    }
+    let idx = parse_int(rest[0]);
+    if idx == () { send_client_message(connection_id, "Index must be a number."); return; }
+    let want_on = true;
+    if rest.len() >= 2 {
+        let arg = rest[1].to_lower();
+        if arg == "off" || arg == "false" || arg == "no" || arg == "0" { want_on = false; }
+    }
+    if set_elevated_for(host_kind, host_id, idx, want_on) {
+        let state = if want_on { "ON" } else { "OFF" };
+        send_client_message(connection_id, "DG trigger #" + idx + " elevation: " + state);
+    } else {
+        send_client_message(connection_id, "Could not update trigger #" + idx + " (bad index?).");
+    }
 }
 
 fn view_trigger(host_kind, host_id, rest, connection_id) {

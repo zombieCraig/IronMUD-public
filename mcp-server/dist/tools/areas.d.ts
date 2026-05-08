@@ -25,6 +25,10 @@ export declare const areaToolDefinitions: ({
             guard_wage_per_hour?: undefined;
             healer_wage_per_hour?: undefined;
             scavenger_wage_per_hour?: undefined;
+            max_rooms?: undefined;
+            max_items?: undefined;
+            max_mobiles?: undefined;
+            max_spawn_points?: undefined;
             default_room_flags?: undefined;
             area_id?: undefined;
             forage_type?: undefined;
@@ -64,6 +68,10 @@ export declare const areaToolDefinitions: ({
             guard_wage_per_hour?: undefined;
             healer_wage_per_hour?: undefined;
             scavenger_wage_per_hour?: undefined;
+            max_rooms?: undefined;
+            max_items?: undefined;
+            max_mobiles?: undefined;
+            max_spawn_points?: undefined;
             default_room_flags?: undefined;
             area_id?: undefined;
             forage_type?: undefined;
@@ -122,6 +130,10 @@ export declare const areaToolDefinitions: ({
             guard_wage_per_hour?: undefined;
             healer_wage_per_hour?: undefined;
             scavenger_wage_per_hour?: undefined;
+            max_rooms?: undefined;
+            max_items?: undefined;
+            max_mobiles?: undefined;
+            max_spawn_points?: undefined;
             default_room_flags?: undefined;
             area_id?: undefined;
             forage_type?: undefined;
@@ -229,6 +241,22 @@ export declare const areaToolDefinitions: ({
                 type: string;
                 description: string;
             };
+            max_rooms: {
+                type: string;
+                description: string;
+            };
+            max_items: {
+                type: string;
+                description: string;
+            };
+            max_mobiles: {
+                type: string;
+                description: string;
+            };
+            max_spawn_points: {
+                type: string;
+                description: string;
+            };
             default_room_flags: {
                 type: string;
                 description: string;
@@ -332,6 +360,10 @@ export declare const areaToolDefinitions: ({
             guard_wage_per_hour?: undefined;
             healer_wage_per_hour?: undefined;
             scavenger_wage_per_hour?: undefined;
+            max_rooms?: undefined;
+            max_items?: undefined;
+            max_mobiles?: undefined;
+            max_spawn_points?: undefined;
             default_room_flags?: undefined;
             area_id?: undefined;
             forage_type?: undefined;
@@ -372,6 +404,10 @@ export declare const areaToolDefinitions: ({
             guard_wage_per_hour?: undefined;
             healer_wage_per_hour?: undefined;
             scavenger_wage_per_hour?: undefined;
+            max_rooms?: undefined;
+            max_items?: undefined;
+            max_mobiles?: undefined;
+            max_spawn_points?: undefined;
             default_room_flags?: undefined;
             forage_type?: undefined;
             vnum?: undefined;
@@ -429,6 +465,10 @@ export declare const areaToolDefinitions: ({
             guard_wage_per_hour?: undefined;
             healer_wage_per_hour?: undefined;
             scavenger_wage_per_hour?: undefined;
+            max_rooms?: undefined;
+            max_items?: undefined;
+            max_mobiles?: undefined;
+            max_spawn_points?: undefined;
             default_room_flags?: undefined;
         };
         required: string[];
@@ -473,6 +513,10 @@ export declare const areaToolDefinitions: ({
             guard_wage_per_hour?: undefined;
             healer_wage_per_hour?: undefined;
             scavenger_wage_per_hour?: undefined;
+            max_rooms?: undefined;
+            max_items?: undefined;
+            max_mobiles?: undefined;
+            max_spawn_points?: undefined;
             default_room_flags?: undefined;
             min_skill?: undefined;
             rarity?: undefined;

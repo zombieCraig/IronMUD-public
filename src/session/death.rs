@@ -79,6 +79,7 @@ fn build_player_corpse(name: &str, room_id: Uuid, gold: i64) -> ItemData {
         name: format!("corpse of {}", name),
         short_desc: format!("The corpse of {} lies here.", name),
         long_desc: format!("The lifeless body of {} lies in a crumpled heap.", name),
+        area_id: None,
         keywords: vec!["corpse".to_string(), "body".to_string(), name.to_lowercase()],
         item_type: ItemType::Container,
         categories: Vec::new(),

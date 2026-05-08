@@ -172,6 +172,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           guard_wage_per_hour: args?.guard_wage_per_hour as number | undefined,
           healer_wage_per_hour: args?.healer_wage_per_hour as number | undefined,
           scavenger_wage_per_hour: args?.scavenger_wage_per_hour as number | undefined,
+          max_rooms: args?.max_rooms as number | undefined,
+          max_items: args?.max_items as number | undefined,
+          max_mobiles: args?.max_mobiles as number | undefined,
+          max_spawn_points: args?.max_spawn_points as number | undefined,
           default_room_flags: args?.default_room_flags as RoomFlags | undefined,
           climate: args?.climate as ClimateProfile | undefined,
         });
@@ -449,6 +453,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           short_desc: args?.short_desc as string,
           long_desc: args?.long_desc as string,
           vnum: args?.vnum as string,
+          area_id: args?.area_id as string | undefined,
           keywords: args?.keywords as string[] | undefined,
           item_type: args?.item_type as string,
           weight: args?.weight as number | undefined,
@@ -510,7 +515,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const resolvedItemId = await resolveItemId(api, id);
         const updateData: Record<string, unknown> = {};
         const itemFields = [
-          "name", "short_desc", "long_desc", "vnum", "item_type", "keywords", "weight", "value", "categories", "flags",
+          "name", "short_desc", "long_desc", "vnum", "area_id", "item_type", "keywords", "weight", "value", "categories", "flags",
           "damage_dice_count", "damage_dice_sides", "damage_type", "armor_class",
           "hit_bonus", "damage_bonus", "max_hp_bonus", "max_mana_bonus", "light_hours_remaining", "cast_on_use",
           "wear_location", "weapon_skill",
@@ -655,6 +660,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           short_desc: args?.short_desc as string,
           long_desc: args?.long_desc as string,
           vnum: args?.vnum as string,
+          area_id: args?.area_id as string | undefined,
           keywords: args?.keywords as string[] | undefined,
           level: args?.level as number | undefined,
           max_hp: args?.max_hp as number | undefined,
@@ -697,7 +703,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const resolvedMobileId = await resolveMobileId(api, id);
         const mobileUpdateData: Record<string, unknown> = {};
         const mobileFields = [
-          "name", "short_desc", "long_desc", "vnum", "keywords", "level", "max_hp", "armor_class", "gold", "flags",
+          "name", "short_desc", "long_desc", "vnum", "area_id", "keywords", "level", "max_hp", "armor_class", "gold", "flags",
           "healer_type", "healing_free", "healing_cost_multiplier",
           "shop_sell_rate", "shop_buy_rate", "shop_buys_types", "shop_buys_categories",
           "shop_min_value", "shop_max_value",
