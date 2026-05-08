@@ -2964,6 +2964,8 @@ pub struct ItemFlags {
     #[serde(default)]
     pub corpse_gold: i64, // Gold carried by the corpse
     #[serde(default)]
+    pub corpse_source_vnum: Option<String>, // Source mob prototype vnum (for animate_dead). None on player/legacy corpses.
+    #[serde(default)]
     pub broken: bool, // Broken arrows/bolts cannot be used as ammo
     // Gardening system flags
     #[serde(default)]

@@ -11,6 +11,7 @@ pub struct CorpseBuilder {
     room_id: Uuid,
     gold: i64,
     is_player: bool,
+    source_vnum: Option<String>,
 }
 
 impl CorpseBuilder {
@@ -21,6 +22,7 @@ impl CorpseBuilder {
             room_id,
             gold,
             is_player: true,
+            source_vnum: None,
         }
     }
 
@@ -31,7 +33,14 @@ impl CorpseBuilder {
             room_id,
             gold,
             is_player: false,
+            source_vnum: None,
         }
+    }
+
+    /// Record the source mob's prototype vnum so animate_dead can reanimate it.
+    pub fn with_source_vnum(mut self, vnum: Option<String>) -> Self {
+        self.source_vnum = vnum;
+        self
     }
 
     /// Build the corpse ItemData
@@ -73,6 +82,7 @@ impl CorpseBuilder {
                 corpse_created_at: now,
                 corpse_is_player: self.is_player,
                 corpse_gold: self.gold,
+                corpse_source_vnum: self.source_vnum.clone(),
                 ..Default::default()
             },
             weight: 100,

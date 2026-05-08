@@ -715,6 +715,8 @@ fn test_scripts_access_registered_properties() {
         ("get_mobile_data", "MobileData"),
         ("get_mobile_by_id", "MobileData"),
         ("find_mobile_by_keyword_anywhere", "MobileData"),
+        ("spawn_mobile_from_prototype", "MobileData"),
+        ("find_item_in_room", "ItemData"),
         ("get_room_data", "RoomData"),
         ("get_room_by_id", "RoomData"),
         ("get_character_data", "CharacterData"),
@@ -6992,4 +6994,80 @@ fn test_mobile_flags_completion_matches_medit_advertisement() {
         completion_set.len() >= 28,
         "MOBILE_FLAGS shrank below the post-fix size — possible regression"
     );
+}
+
+#[test]
+fn test_animate_dead_spell_definition_loads() {
+    use std::fs;
+
+    let json = fs::read_to_string("scripts/data/spells_fantasy.json").expect("read spells_fantasy");
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+    let spell = parsed
+        .get("animate_dead")
+        .expect("animate_dead entry present")
+        .as_object()
+        .expect("animate_dead is an object");
+
+    assert_eq!(spell.get("spell_type").and_then(|v| v.as_str()), Some("animate_dead"));
+    assert_eq!(spell.get("target_type").and_then(|v| v.as_str()), Some("corpse_in_room"));
+    assert_eq!(spell.get("skill_required").and_then(|v| v.as_i64()), Some(5));
+}
+
+#[test]
+fn test_control_weather_spell_definition_loads() {
+    use std::fs;
+
+    let json = fs::read_to_string("scripts/data/spells_fantasy.json").expect("read spells_fantasy");
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+    let spell = parsed
+        .get("control_weather")
+        .expect("control_weather entry present")
+        .as_object()
+        .expect("control_weather is an object");
+
+    assert_eq!(spell.get("spell_type").and_then(|v| v.as_str()), Some("control_weather"));
+    assert_eq!(spell.get("target_type").and_then(|v| v.as_str()), Some("self"));
+    assert_eq!(spell.get("skill_required").and_then(|v| v.as_i64()), Some(4));
+}
+
+#[test]
+fn test_corpse_source_vnum_persists() {
+    use ironmud::db::Db;
+    use ironmud::types::{ItemData, ItemFlags, ItemLocation};
+    use uuid::Uuid;
+
+    let db_path = format!("test_corpse_source_vnum_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        // Default: corpse_source_vnum is None.
+        let flags_default = ItemFlags::default();
+        assert!(flags_default.corpse_source_vnum.is_none());
+
+        let room_id = Uuid::new_v4();
+        let mut item = ItemData::new(
+            "corpse of a goblin".to_string(),
+            "The corpse of a goblin lies here.".to_string(),
+            "The lifeless body of a goblin lies in a crumpled heap.".to_string(),
+        );
+        item.flags.is_corpse = true;
+        item.flags.corpse_owner = "a goblin".to_string();
+        item.flags.corpse_source_vnum = Some("goblin_warrior".to_string());
+        item.location = ItemLocation::Room(room_id);
+        let id = item.id;
+        db.save_item_data(item).expect("save corpse");
+
+        let loaded = db.get_item_data(&id).expect("read").expect("present");
+        assert_eq!(
+            loaded.flags.corpse_source_vnum.as_deref(),
+            Some("goblin_warrior")
+        );
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
 }

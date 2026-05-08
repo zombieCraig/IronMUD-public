@@ -857,6 +857,122 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         fire_environmental_triggers_impl(&cloned_db, &conns, tt, &ctx)
     });
 
+    // shift_global_weather(direction) -> Map { changed: bool, old: String, new: String }
+    // Direction: "better" snaps cleaner; "worse" snaps stormier. Severity scale
+    // (Clear..Thunderstorm) — snow/blizzard/fog map onto the scale at Cloudy and
+    // Thunderstorm endpoints. Mutates GameTime, saves it, and fires OnWeatherChange.
+    let cloned_db = db.clone();
+    let conns = connections.clone();
+    engine.register_fn("shift_global_weather", move |direction: String| -> rhai::Map {
+        use crate::WeatherCondition;
+        let mut result = rhai::Map::new();
+        result.insert("changed".into(), rhai::Dynamic::from(false));
+
+        // Severity ladder, ascending. Snow/Blizzard/Fog/LightSnow are off-scale —
+        // collapse them to scale endpoints so the spell still has an effect.
+        const SCALE: &[WeatherCondition] = &[
+            WeatherCondition::Clear,
+            WeatherCondition::PartlyCloudy,
+            WeatherCondition::Cloudy,
+            WeatherCondition::Overcast,
+            WeatherCondition::LightRain,
+            WeatherCondition::Rain,
+            WeatherCondition::HeavyRain,
+            WeatherCondition::Thunderstorm,
+        ];
+
+        let mut game_time = match cloned_db.get_game_time() {
+            Ok(g) => g,
+            Err(_) => return result,
+        };
+        let old_weather = game_time.weather;
+        let scale_pos: i32 = SCALE.iter().position(|&w| w == old_weather).map(|p| p as i32).unwrap_or_else(
+            || match old_weather {
+                WeatherCondition::Fog => 2,           // ~Cloudy
+                WeatherCondition::LightSnow => 4,     // ~LightRain
+                WeatherCondition::Snow => 5,          // ~Rain
+                WeatherCondition::Blizzard => 7,      // ~Thunderstorm
+                _ => 0,
+            },
+        );
+
+        let next_pos: i32 = match direction.to_lowercase().as_str() {
+            "better" | "clearer" | "calm" => scale_pos - 1,
+            "worse" | "stormier" | "foul" => scale_pos + 1,
+            _ => scale_pos,
+        };
+
+        result.insert(
+            "old".into(),
+            rhai::Dynamic::from(format!("{:?}", old_weather).to_lowercase()),
+        );
+
+        if next_pos < 0 || next_pos as usize >= SCALE.len() {
+            // At endpoint — return unchanged with current weather as new
+            result.insert(
+                "new".into(),
+                rhai::Dynamic::from(format!("{:?}", old_weather).to_lowercase()),
+            );
+            result.insert(
+                "at_endpoint".into(),
+                rhai::Dynamic::from(if next_pos < 0 { "clear" } else { "storm" }),
+            );
+            return result;
+        }
+
+        let new_weather = SCALE[next_pos as usize];
+        if new_weather == old_weather {
+            result.insert(
+                "new".into(),
+                rhai::Dynamic::from(format!("{:?}", new_weather).to_lowercase()),
+            );
+            return result;
+        }
+
+        game_time.weather = new_weather;
+        // Reset the rng cooldown so the natural tick respects this change for at least one cycle.
+        game_time.last_weather_change = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        if cloned_db.save_game_time(&game_time).is_err() {
+            return result;
+        }
+
+        // Fire OnWeatherChange triggers, mirroring the natural-tick context.
+        let is_raining = matches!(
+            new_weather,
+            WeatherCondition::LightRain | WeatherCondition::Rain | WeatherCondition::HeavyRain | WeatherCondition::Thunderstorm
+        );
+        let is_snowing = matches!(
+            new_weather,
+            WeatherCondition::LightSnow | WeatherCondition::Snow | WeatherCondition::Blizzard
+        );
+        let is_clear = matches!(
+            new_weather,
+            WeatherCondition::Clear | WeatherCondition::PartlyCloudy
+        );
+        let mut ctx: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        ctx.insert("old_weather".to_string(), format!("{:?}", old_weather).to_lowercase());
+        ctx.insert("new_weather".to_string(), format!("{:?}", new_weather).to_lowercase());
+        ctx.insert("is_raining".to_string(), is_raining.to_string());
+        ctx.insert("is_snowing".to_string(), is_snowing.to_string());
+        ctx.insert("is_clear".to_string(), is_clear.to_string());
+        let _ = fire_environmental_triggers_impl(
+            &cloned_db,
+            &conns,
+            crate::TriggerType::OnWeatherChange,
+            &ctx,
+        );
+
+        result.insert("changed".into(), rhai::Dynamic::from(true));
+        result.insert(
+            "new".into(),
+            rhai::Dynamic::from(format!("{:?}", new_weather).to_lowercase()),
+        );
+        result
+    });
+
     // ========== Thirst Functions ==========
 
     // get_character_thirst(connection_id) -> Map with thirst/max_thirst/percent

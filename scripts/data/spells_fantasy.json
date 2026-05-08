@@ -307,5 +307,31 @@
     "target_type": "enemy",
     "requires_combat": true,
     "xp_award": 10
+  },
+  "animate_dead": {
+    "id": "animate_dead",
+    "name": "Animate Dead",
+    "description": "Raises a fresh corpse as an undead servant under your command.",
+    "skill_required": 5,
+    "scroll_only": false,
+    "mana_cost": 60,
+    "cooldown_secs": 180,
+    "spell_type": "animate_dead",
+    "target_type": "corpse_in_room",
+    "requires_combat": false,
+    "xp_award": 25
+  },
+  "control_weather": {
+    "id": "control_weather",
+    "name": "Control Weather",
+    "description": "Bend the weather to your will. Specify 'better' or 'worse'.",
+    "skill_required": 4,
+    "scroll_only": false,
+    "mana_cost": 35,
+    "cooldown_secs": 600,
+    "spell_type": "control_weather",
+    "target_type": "self",
+    "requires_combat": false,
+    "xp_award": 15
   }
 }

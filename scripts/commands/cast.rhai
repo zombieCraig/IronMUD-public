@@ -512,6 +512,103 @@ fn cast_dispel(connection_id, char, spell, target_arg) {
     return true;
 }
 
+fn cast_animate_dead(connection_id, char, spell, target_arg) {
+    let room_id = char.current_room_id;
+
+    if target_arg == "" {
+        send_client_message(connection_id, "Animate which corpse?");
+        return false;
+    }
+
+    let zone = get_combat_zone(room_id);
+    let in_build = is_in_build_mode(char.name, room_id);
+    if zone == "safe" && !char.god_mode && !in_build {
+        send_client_message(connection_id, "A peaceful aura suppresses your dark magic here.");
+        return false;
+    }
+
+    let item = find_item_in_room(room_id, target_arg);
+    if type_of(item) == "()" || !item.flags.is_corpse {
+        send_client_message(connection_id, "There is no corpse here by that name.");
+        return false;
+    }
+
+    if item.flags.corpse_is_player {
+        send_client_message(connection_id, "You cannot raise the body of a fallen adventurer.");
+        return false;
+    }
+
+    let source_vnum = item.flags.corpse_source_vnum;
+    if source_vnum == "" {
+        send_client_message(connection_id, "This corpse is too far gone to animate.");
+        return false;
+    }
+
+    broadcast_to_room_except(room_id, connection_id, char.name + " traces dark sigils over " + item.name + ", and it shudders...");
+    send_client_message(connection_id, "You trace dark sigils over " + item.name + ", and it shudders...");
+
+    // Despawn the corpse (its contents may orphan; that mirrors corpse decay behavior).
+    delete_item(item.id);
+
+    // Spawn a fresh instance of the source mob.
+    let undead = spawn_mobile_from_prototype(source_vnum);
+    if type_of(undead) == "()" {
+        send_client_message(connection_id, "The dark magic fizzles — the body refuses to rise.");
+        return true;
+    }
+
+    // Stamp it as undead: weakened HP, shambling description, placed at caster's feet.
+    let undead_max_hp = undead.max_hp * 60 / 100;
+    if undead_max_hp < 1 { undead_max_hp = 1; }
+    set_mobile_hp(undead.id, undead_max_hp);
+    set_mobile_short_desc(undead.id, "the zombie of " + undead.short_desc);
+    move_mobile_to_room(undead.id, room_id);
+
+    // Permanent charm bond — clears on caster quit/death via break_all_charms_by_player.
+    apply_buff_to_mobile(undead.id, "charmed", 0, -1, char.name);
+    forget_player(undead.id, char.name);
+    if is_mobile_in_combat(undead.id) {
+        exit_mobile_combat(undead.id);
+    }
+
+    let risen = get_mobile_data(undead.id);
+    let risen_desc = if type_of(risen) != "()" { risen.short_desc } else { "the zombie" };
+    send_client_message(connection_id, risen_desc + " rises jerkily, its eyes fixed on you.");
+    broadcast_to_room_except(room_id, connection_id, risen_desc + " rises jerkily, its eyes fixed on " + char.name + ".");
+    return true;
+}
+
+fn cast_control_weather(connection_id, char, spell, target_arg) {
+    let arg = target_arg.to_lower();
+    if arg != "better" && arg != "worse" {
+        send_client_message(connection_id, "You must specify 'better' or 'worse' (e.g. cast 'control weather' better).");
+        return false;
+    }
+
+    let room_id = char.current_room_id;
+    broadcast_to_room_except(room_id, connection_id, char.name + " gestures skyward, weaving an incantation into the air.");
+    send_client_message(connection_id, "You gesture skyward and weave the spell into the air...");
+
+    let result = shift_global_weather(arg);
+    if result["changed"] {
+        if arg == "better" {
+            send_client_message(connection_id, "The skies obey: the weather grows calmer.");
+        } else {
+            send_client_message(connection_id, "The skies obey: the weather turns fouler.");
+        }
+    } else {
+        let endpoint = result["at_endpoint"];
+        if type_of(endpoint) != "()" && endpoint == "clear" {
+            send_client_message(connection_id, "The skies are already as clear as they can be.");
+        } else if type_of(endpoint) != "()" && endpoint == "storm" {
+            send_client_message(connection_id, "The skies are already as foul as they can be.");
+        } else {
+            send_client_message(connection_id, "The spell stirs the air, but nothing changes.");
+        }
+    }
+    return true;
+}
+
 fn run_command(args, connection_id) {
     let char = get_player_character(connection_id);
     if type_of(char) == "()" { return; }
@@ -654,6 +751,12 @@ fn run_command(args, connection_id) {
     }
     if stype == "charm" {
         success = cast_charm(connection_id, char, spell, target_arg);
+    }
+    if stype == "animate_dead" {
+        success = cast_animate_dead(connection_id, char, spell, target_arg);
+    }
+    if stype == "control_weather" {
+        success = cast_control_weather(connection_id, char, spell, target_arg);
     }
 
     if !success {

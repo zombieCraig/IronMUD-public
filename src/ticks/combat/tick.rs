@@ -3299,7 +3299,9 @@ pub fn process_mobile_death(
 
     // Create corpse using builder with random gold variance
     let gold = mobile_gold_with_variance(mobile.gold as i64);
-    let corpse = CorpseBuilder::for_mobile(&mobile_name, *room_id, gold).build();
+    let corpse = CorpseBuilder::for_mobile(&mobile_name, *room_id, gold)
+        .with_source_vnum(Some(mobile.vnum.clone()))
+        .build();
 
     // Save corpse initially
     debug!("process_mobile_death: saving corpse");

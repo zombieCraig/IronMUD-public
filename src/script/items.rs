@@ -68,6 +68,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         reduces_glare,
         medical_tool,
         is_corpse,
+        corpse_is_player,
         preserves_contents,
         death_only,
         atm,
@@ -80,6 +81,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         can_dig,
         detect_buried
     );
+
+    // Non-bool ItemFlags fields exposed to Rhai. Option<String> serializes as
+    // "" when unset so cast.rhai can do `if vnum == "" { ... }` without type
+    // gymnastics.
+    engine
+        .register_get("corpse_owner", |f: &mut ItemFlags| f.corpse_owner.clone())
+        .register_get("corpse_source_vnum", |f: &mut ItemFlags| {
+            f.corpse_source_vnum.clone().unwrap_or_default()
+        });
 
     // Register ItemData type with getters
     engine
