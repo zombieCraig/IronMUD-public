@@ -2942,10 +2942,7 @@ fn build_commands_help(item_id, item) {
     output += "  oedit " + display_id + " cast_on_use clear\n";
     output += "  oedit " + display_id + " transport <vnum|clear>     (transport status sign)\n";
     output += "  oedit " + display_id + " note [clear]               (multi-line readable body)\n";
-    output += "  oedit " + display_id + " extra list                 - List extra descriptions\n";
-    output += "  oedit " + display_id + " extra add <keywords>       - Add extra description\n";
-    output += "  oedit " + display_id + " extra edit <keyword>       - Edit extra description\n";
-    output += "  oedit " + display_id + " extra remove <keyword>     - Remove extra description\n";
+    output += "  oedit " + display_id + " extra [list|add|edit|remove] - Manage extra descriptions\n";
 
     // Weapon commands
     if item.item_type == "weapon" {
