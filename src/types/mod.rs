@@ -3483,6 +3483,17 @@ pub struct DialogueChoice {
     pub conditions: Vec<DialogueCondition>,
     #[serde(default)]
     pub effects: Vec<DialogueEffect>,
+    /// When `conditions` fail, this string is surfaced in the menu in place of
+    /// the choice line. If `None`, the choice is hidden silently (default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
+    /// After the player picks this choice, they cannot pick it again until this
+    /// many seconds have elapsed. `None` means no cooldown.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cooldown_secs: Option<i64>,
+    /// When set, this choice can only be picked once per player per mob vnum.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub once_per_player: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3598,6 +3609,14 @@ pub struct DialoguePairState {
     /// `on_enter` (first-visit only) versus `on_each_visit`.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub visit_counts: HashMap<String, u32>,
+    /// Per-choice cooldown timestamps (epoch seconds of last pick). Key shape
+    /// is `"<node>:<keyword>"`.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub choice_cooldowns: HashMap<String, i64>,
+    /// Choices that this player has already picked once and are flagged
+    /// `once_per_player`. Same `"<node>:<keyword>"` key shape.
+    #[serde(default, skip_serializing_if = "std::collections::HashSet::is_empty")]
+    pub choices_picked_once: std::collections::HashSet<String>,
 }
 
 fn default_qty_one() -> i32 {

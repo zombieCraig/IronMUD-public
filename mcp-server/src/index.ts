@@ -811,6 +811,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           target,
           conditions: args?.conditions as any,
           effects: args?.effects as any,
+          hint: args?.hint as string | undefined,
+          cooldown_secs: args?.cooldown_secs as number | undefined,
+          once_per_player: args?.once_per_player as boolean | undefined,
         });
         return { content: [{ type: "text", text: JSON.stringify(r.data, null, 2) + formatRefreshSuffix(r.refreshed_instances) }] };
       }
@@ -831,6 +834,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           target,
           conditions: args?.conditions as any,
           effects: args?.effects as any,
+          hint: args?.hint as string | undefined,
+          cooldown_secs: args?.cooldown_secs as number | undefined,
+          once_per_player: args?.once_per_player as boolean | undefined,
         });
         return { content: [{ type: "text", text: JSON.stringify(r.data, null, 2) + formatRefreshSuffix(r.refreshed_instances) }] };
       }

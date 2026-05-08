@@ -149,15 +149,40 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         Some(n) => n,
                         None => continue,
                     };
-                    let visible = visible_choices(node, &ch_mut, &mob, &cloned_db);
-                    let choice = visible
+                    let classified = classify_choices(
+                        &cur_node,
+                        node,
+                        &ch_mut,
+                        &mob,
+                        &cloned_db,
+                        now_epoch_secs(),
+                    );
+                    let entry = classified
                         .iter()
-                        .find(|c| c.keyword.eq_ignore_ascii_case(&needle));
-                    let Some(choice) = choice else {
+                        .find(|e| e.choice.keyword.eq_ignore_ascii_case(&needle));
+                    let Some(entry) = entry else {
                         continue;
                     };
-                    let (response, menu, finished) =
-                        take_choice(&cloned_db, &conns, &mut ch_mut, &mob, choice);
+                    let (response, menu, finished) = match &entry.visibility {
+                        ChoiceVisibility::Available => take_choice_at_node(
+                            &cloned_db,
+                            &conns,
+                            &mut ch_mut,
+                            &mob,
+                            &cur_node,
+                            &entry.choice,
+                        ),
+                        ChoiceVisibility::Locked { .. } => (
+                            "That doesn't seem available right now.".to_string(),
+                            render_classified_menu(&classified),
+                            false,
+                        ),
+                        ChoiceVisibility::Cooldown { .. } => (
+                            "You'll need to wait before raising that again.".to_string(),
+                            render_classified_menu(&classified),
+                            false,
+                        ),
+                    };
                     let _ = cloned_db.save_character_data(ch_mut);
                     if finished {
                         set_session_dialogue_partner(&conns, conn_uuid, None);
@@ -216,13 +241,38 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     Some(n) => n,
                     None => return err(out, "node missing"),
                 };
-                let visible = visible_choices(node, &ch_mut, &mob, &cloned_db);
-                if idx < 1 || (idx as usize) > visible.len() {
+                let classified = classify_choices(
+                    &cur_node,
+                    node,
+                    &ch_mut,
+                    &mob,
+                    &cloned_db,
+                    now_epoch_secs(),
+                );
+                if idx < 1 || (idx as usize) > classified.len() {
                     return err(out, "invalid choice");
                 }
-                let choice = visible[(idx as usize) - 1].clone();
-                let (response, menu, finished) =
-                    take_choice(&cloned_db, &conns, &mut ch_mut, &mob, &choice);
+                let entry = classified[(idx as usize) - 1].clone();
+                let (response, menu, finished) = match &entry.visibility {
+                    ChoiceVisibility::Available => take_choice_at_node(
+                        &cloned_db,
+                        &conns,
+                        &mut ch_mut,
+                        &mob,
+                        &cur_node,
+                        &entry.choice,
+                    ),
+                    ChoiceVisibility::Locked { .. } => (
+                        "That doesn't seem available right now.".to_string(),
+                        render_classified_menu(&classified),
+                        false,
+                    ),
+                    ChoiceVisibility::Cooldown { .. } => (
+                        "You'll need to wait before raising that again.".to_string(),
+                        render_classified_menu(&classified),
+                        false,
+                    ),
+                };
                 let _ = cloned_db.save_character_data(ch_mut);
                 if finished {
                     set_session_dialogue_partner(&conns, conn_uuid, None);
@@ -314,7 +364,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 let Some(node) = tree.nodes.get(&cur) else {
                     return String::new();
                 };
-                render_menu(&visible_choices(node, &ch, &mob, &cloned_db))
+                render_classified_menu(&classify_choices(
+                    &cur,
+                    node,
+                    &ch,
+                    &mob,
+                    &cloned_db,
+                    now_epoch_secs(),
+                ))
             },
         );
     }
@@ -531,6 +588,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     target,
                     conditions: vec![],
                     effects: vec![],
+                    hint: None,
+                    cooldown_secs: None,
+                    once_per_player: false,
                 };
                 mutate_tree(&cloned_db, &mobile_id, |slot| {
                     crate::dialogue_edit::add_choice(slot, &node_name, choice)
@@ -550,6 +610,81 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 let idx = index as usize;
                 mutate_tree(&cloned_db, &mobile_id, |slot| {
                     crate::dialogue_edit::remove_choice(slot, &node_name, idx)
+                })
+            },
+        );
+    }
+
+    // olc_set_dialogue_choice_field(mobile_id, node_name, index, field, value)
+    //   field: "hint" | "cooldown" | "once"
+    //   value: free-form string. Empty hint clears; cooldown=="0" clears; once "on"|"off".
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "olc_set_dialogue_choice_field",
+            move |mobile_id: String,
+                  node_name: String,
+                  index: i64,
+                  field: String,
+                  value: String|
+                  -> String {
+                if index < 0 {
+                    return "index must be >= 0".to_string();
+                }
+                let idx = index as usize;
+                let field_lc = field.to_lowercase();
+                mutate_tree(&cloned_db, &mobile_id, |slot| {
+                    let tree = match slot.as_mut() {
+                        Some(t) => t,
+                        None => return Err(crate::dialogue_edit::DialogueEditError::NoTree),
+                    };
+                    let node = match tree.nodes.get_mut(&node_name) {
+                        Some(n) => n,
+                        None => {
+                            return Err(crate::dialogue_edit::DialogueEditError::NodeMissing(
+                                node_name.clone(),
+                            ))
+                        }
+                    };
+                    if idx >= node.choices.len() {
+                        return Err(
+                            crate::dialogue_edit::DialogueEditError::ChoiceIndexOutOfRange(
+                                idx,
+                                node.choices.len(),
+                            ),
+                        );
+                    }
+                    let choice = &mut node.choices[idx];
+                    match field_lc.as_str() {
+                        "hint" => {
+                            choice.hint = if value.is_empty() {
+                                None
+                            } else {
+                                Some(value.clone())
+                            };
+                        }
+                        "cooldown" | "cooldown_secs" => {
+                            let secs: i64 = value.trim().parse().unwrap_or(-1);
+                            if secs < 0 {
+                                return Err(crate::dialogue_edit::DialogueEditError::Invalid(
+                                    "cooldown must be a non-negative integer".into(),
+                                ));
+                            }
+                            choice.cooldown_secs = if secs == 0 { None } else { Some(secs) };
+                        }
+                        "once" | "once_per_player" => {
+                            let v = value.trim().to_lowercase();
+                            choice.once_per_player =
+                                matches!(v.as_str(), "1" | "on" | "true" | "yes");
+                        }
+                        other => {
+                            return Err(crate::dialogue_edit::DialogueEditError::Invalid(format!(
+                                "unknown field `{}` (use hint|cooldown|once)",
+                                other
+                            )));
+                        }
+                    }
+                    Ok(())
                 })
             },
         );
@@ -625,9 +760,19 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         } else {
                             format!(" ({} fx)", c.effects.len())
                         };
+                        let mut slice3_tags = String::new();
+                        if c.hint.as_ref().filter(|s| !s.is_empty()).is_some() {
+                            slice3_tags.push_str(" [hint]");
+                        }
+                        if let Some(cd) = c.cooldown_secs.filter(|n| *n > 0) {
+                            slice3_tags.push_str(&format!(" [cd:{}s]", cd));
+                        }
+                        if c.once_per_player {
+                            slice3_tags.push_str(" [once]");
+                        }
                         out.push_str(&format!(
-                            "    {}. [{}] {} {}{}{}\n",
-                            i, c.keyword, c.label, target_tag, cond_tag, eff_tag
+                            "    {}. [{}] {} {}{}{}{}\n",
+                            i, c.keyword, c.label, target_tag, cond_tag, eff_tag, slice3_tags
                         ));
                     }
                 }
@@ -800,16 +945,30 @@ fn walk_choice_internal(
     let Some(node) = tree.nodes.get(&cur) else {
         return DialogueDispatch::Fallthrough;
     };
-    let visible = visible_choices(node, &ch, &mob, db);
-    if idx < 1 || (idx as usize) > visible.len() {
-        actor_lines.push(format!("Choose 1-{} or 'bye' to leave.", visible.len()));
+    let classified = classify_choices(&cur, node, &ch, &mob, db, now_epoch_secs());
+    if idx < 1 || (idx as usize) > classified.len() {
+        actor_lines.push(format!("Choose 1-{} or 'bye' to leave.", classified.len()));
         return DialogueDispatch::Handled {
             actor_lines,
             room_broadcasts,
         };
     }
-    let choice = visible[(idx as usize) - 1].clone();
-    let (response, menu, finished) = take_choice(db, connections, &mut ch, &mob, &choice);
+    let entry = classified[(idx as usize) - 1].clone();
+    let (response, menu, finished) = match &entry.visibility {
+        ChoiceVisibility::Available => {
+            take_choice_at_node(db, connections, &mut ch, &mob, &cur, &entry.choice)
+        }
+        ChoiceVisibility::Locked { .. } => (
+            "That doesn't seem available right now.".to_string(),
+            render_classified_menu(&classified),
+            false,
+        ),
+        ChoiceVisibility::Cooldown { .. } => (
+            "You'll need to wait before raising that again.".to_string(),
+            render_classified_menu(&classified),
+            false,
+        ),
+    };
     let _ = db.save_character_data(ch);
     if finished {
         clear_partner(connections, connection_id);
@@ -861,12 +1020,29 @@ fn walk_keyword_internal(
     let Some(node) = tree.nodes.get(&cur) else {
         return DialogueDispatch::Fallthrough;
     };
-    let visible = visible_choices(node, &ch, &mob, db);
-    let Some(choice) = visible.iter().find(|c| c.keyword.eq_ignore_ascii_case(keyword)) else {
+    let classified = classify_choices(&cur, node, &ch, &mob, db, now_epoch_secs());
+    let Some(entry) = classified
+        .iter()
+        .find(|e| e.choice.keyword.eq_ignore_ascii_case(keyword))
+    else {
         return DialogueDispatch::Fallthrough;
     };
-    let choice = choice.clone();
-    let (response, menu, finished) = take_choice(db, connections, &mut ch, &mob, &choice);
+    let entry = entry.clone();
+    let (response, menu, finished) = match &entry.visibility {
+        ChoiceVisibility::Available => {
+            take_choice_at_node(db, connections, &mut ch, &mob, &cur, &entry.choice)
+        }
+        ChoiceVisibility::Locked { .. } => (
+            "That doesn't seem available right now.".to_string(),
+            render_classified_menu(&classified),
+            false,
+        ),
+        ChoiceVisibility::Cooldown { .. } => (
+            "You'll need to wait before raising that again.".to_string(),
+            render_classified_menu(&classified),
+            false,
+        ),
+    };
     let _ = db.save_character_data(ch);
     if finished {
         clear_partner(connections, connection_id);
@@ -1090,7 +1266,14 @@ fn enter_root_or_keep(db: &Db, ch: &mut CharacterData, mob: &MobileData) -> View
     };
     let tree = mob.dialogue_tree.as_ref().unwrap();
     let node = tree.nodes.get(&cur).unwrap();
-    let menu = render_menu(&visible_choices(node, ch, mob, db));
+    let menu = render_classified_menu(&classify_choices(
+        &cur,
+        node,
+        ch,
+        mob,
+        db,
+        now_epoch_secs(),
+    ));
     let response = if extra.is_empty() {
         node.text.clone()
     } else {
@@ -1170,21 +1353,35 @@ fn bump_visit_count(ch: &mut CharacterData, vnum: &str, node_name: &str) {
     *counter = counter.saturating_add(1);
 }
 
+#[cfg(test)]
 fn take_choice(
     db: &Db,
-    _connections: &SharedConnections,
+    connections: &SharedConnections,
     ch: &mut CharacterData,
     mob: &MobileData,
     choice: &DialogueChoice,
 ) -> (String, String, bool) {
+    let cur = current_node_for(ch, mob);
+    take_choice_at_node(db, connections, ch, mob, &cur, choice)
+}
+
+fn take_choice_at_node(
+    db: &Db,
+    _connections: &SharedConnections,
+    ch: &mut CharacterData,
+    mob: &MobileData,
+    src_node_name: &str,
+    choice: &DialogueChoice,
+) -> (String, String, bool) {
+    // 0. Record cooldown / once-per-player BEFORE effects execute, so an
+    //    effect that exits dialogue still leaves the marker behind.
+    record_choice_pick(ch, &mob.vnum, src_node_name, choice);
     // 1. Apply the choice's effects.
     let mut effect_messages = apply_effects_collect_messages(db, ch, mob, &choice.effects);
     // 2. Navigate.
     match &choice.target {
         DialogueTarget::Exit => {
-            // Fire on_exit for the current node (if any) before clearing.
-            let cur = current_node_for(ch, mob);
-            let exit_msg = exit_node(db, ch, mob, &cur);
+            let exit_msg = exit_node(db, ch, mob, src_node_name);
             append_msg(&mut effect_messages, &exit_msg);
             set_current_node(ch, &mob.vnum, None);
             let response = if effect_messages.is_empty() {
@@ -1205,16 +1402,22 @@ fn take_choice(
                     true,
                 );
             }
-            // Fire on_exit for the current node before moving.
-            let cur = current_node_for(ch, mob);
-            let exit_msg = exit_node(db, ch, mob, &cur);
+            // Fire on_exit for the source node before moving.
+            let exit_msg = exit_node(db, ch, mob, src_node_name);
             append_msg(&mut effect_messages, &exit_msg);
             // Enter the target — fires on_each_visit + on_enter (first visit).
             let entry_msg = enter_node(db, ch, mob, node);
             append_msg(&mut effect_messages, &entry_msg);
             let tree = mob.dialogue_tree.as_ref().unwrap();
             let target = tree.nodes.get(node).unwrap();
-            let menu = render_menu(&visible_choices(target, ch, mob, db));
+            let menu = render_classified_menu(&classify_choices(
+                node,
+                target,
+                ch,
+                mob,
+                db,
+                now_epoch_secs(),
+            ));
             let response = if effect_messages.is_empty() {
                 target.text.clone()
             } else {
@@ -1224,10 +1427,16 @@ fn take_choice(
         }
         DialogueTarget::Repeat => {
             // Repeat is a refresh — no exit/enter triggers fire.
-            let cur = current_node_for(ch, mob);
             let tree = mob.dialogue_tree.as_ref().unwrap();
-            let node = tree.nodes.get(&cur).unwrap();
-            let menu = render_menu(&visible_choices(node, ch, mob, db));
+            let node = tree.nodes.get(src_node_name).unwrap();
+            let menu = render_classified_menu(&classify_choices(
+                src_node_name,
+                node,
+                ch,
+                mob,
+                db,
+                now_epoch_secs(),
+            ));
             let response = if effect_messages.is_empty() {
                 node.text.clone()
             } else {
@@ -1235,6 +1444,29 @@ fn take_choice(
             };
             (response, menu, false)
         }
+    }
+}
+
+/// Record cooldown timestamp and once-per-player marker on a successful pick.
+fn record_choice_pick(
+    ch: &mut CharacterData,
+    vnum: &str,
+    node_name: &str,
+    choice: &DialogueChoice,
+) {
+    if choice.cooldown_secs.unwrap_or(0) <= 0 && !choice.once_per_player {
+        return;
+    }
+    let entry = ch
+        .dialogue_pair_state
+        .entry(vnum.to_string())
+        .or_insert_with(DialoguePairState::default);
+    let key = cooldown_key(node_name, &choice.keyword);
+    if choice.cooldown_secs.filter(|n| *n > 0).is_some() {
+        entry.choice_cooldowns.insert(key.clone(), now_epoch_secs());
+    }
+    if choice.once_per_player {
+        entry.choices_picked_once.insert(key);
     }
 }
 
@@ -1260,29 +1492,154 @@ fn set_current_node(ch: &mut CharacterData, vnum: &str, node: Option<&str>) {
         .unwrap_or(0);
 }
 
+/// Classification for a single choice that survived the silent-hide filter.
+/// Hidden choices (failed conditions with no hint, or once_per_player already
+/// picked) are dropped from `classify_choices` output entirely.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum ChoiceVisibility {
+    Available,
+    Locked { hint: String },
+    Cooldown { remaining_secs: i64 },
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct ClassifiedChoice {
+    pub choice: DialogueChoice,
+    pub visibility: ChoiceVisibility,
+}
+
+fn now_epoch_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+fn cooldown_key(node_name: &str, keyword: &str) -> String {
+    format!("{}:{}", node_name, keyword)
+}
+
+/// Classify each choice on `node` for the given (player, mob) pair. Hidden
+/// entries (silently-failed conditions, or `once_per_player` already picked)
+/// are dropped from the returned list. Locked-with-hint and Cooldown entries
+/// are kept so the menu renderer can show flavor lines for them.
+fn classify_choices(
+    node_name: &str,
+    node: &DialogueNode,
+    ch: &CharacterData,
+    mob: &MobileData,
+    db: &Db,
+    now_secs: i64,
+) -> Vec<ClassifiedChoice> {
+    let pair = ch.dialogue_pair_state.get(&mob.vnum);
+    let mut out = Vec::with_capacity(node.choices.len());
+    for c in node.choices.iter() {
+        let key = cooldown_key(node_name, &c.keyword);
+        // once_per_player wins outright when already picked.
+        if c.once_per_player
+            && pair
+                .map(|s| s.choices_picked_once.contains(&key))
+                .unwrap_or(false)
+        {
+            continue;
+        }
+        let conditions_ok = c
+            .conditions
+            .iter()
+            .all(|cond| evaluate_condition(cond, ch, mob, db));
+        if !conditions_ok {
+            if let Some(hint) = c.hint.as_ref().filter(|s| !s.is_empty()) {
+                out.push(ClassifiedChoice {
+                    choice: c.clone(),
+                    visibility: ChoiceVisibility::Locked { hint: hint.clone() },
+                });
+            }
+            // No hint => silently hidden.
+            continue;
+        }
+        // Conditions pass. Check cooldown.
+        if let Some(cd) = c.cooldown_secs.filter(|n| *n > 0) {
+            let last = pair
+                .and_then(|s| s.choice_cooldowns.get(&key).copied())
+                .unwrap_or(0);
+            let elapsed = now_secs.saturating_sub(last);
+            if elapsed < cd {
+                let remaining = cd - elapsed;
+                out.push(ClassifiedChoice {
+                    choice: c.clone(),
+                    visibility: ChoiceVisibility::Cooldown {
+                        remaining_secs: remaining,
+                    },
+                });
+                continue;
+            }
+        }
+        out.push(ClassifiedChoice {
+            choice: c.clone(),
+            visibility: ChoiceVisibility::Available,
+        });
+    }
+    out
+}
+
+fn fmt_cooldown(secs: i64) -> String {
+    if secs >= 3600 {
+        format!("{}h{}m", secs / 3600, (secs % 3600) / 60)
+    } else if secs >= 60 {
+        let m = secs / 60;
+        let s = secs % 60;
+        if s == 0 {
+            format!("{}m", m)
+        } else {
+            format!("{}m{}s", m, s)
+        }
+    } else {
+        format!("{}s", secs.max(1))
+    }
+}
+
+fn render_classified_menu(entries: &[ClassifiedChoice]) -> String {
+    if entries.is_empty() {
+        return "  bye. (leave)".to_string();
+    }
+    let mut out = String::new();
+    for (i, e) in entries.iter().enumerate() {
+        match &e.visibility {
+            ChoiceVisibility::Available => {
+                out.push_str(&format!("  {}. {}\n", i + 1, e.choice.label));
+            }
+            ChoiceVisibility::Locked { hint } => {
+                out.push_str(&format!("  {}. (?) {}\n", i + 1, hint));
+            }
+            ChoiceVisibility::Cooldown { remaining_secs } => {
+                out.push_str(&format!(
+                    "  {}. (available in {}) {}\n",
+                    i + 1,
+                    fmt_cooldown(*remaining_secs),
+                    e.choice.label
+                ));
+            }
+        }
+    }
+    out.push_str("  bye. (leave)");
+    out
+}
+
+/// Back-compat wrapper for the in-file test that only needs the pickable
+/// subset of choices.
+#[cfg(test)]
 fn visible_choices<'a>(
     node: &'a DialogueNode,
     ch: &CharacterData,
     mob: &MobileData,
     db: &Db,
 ) -> Vec<DialogueChoice> {
-    node.choices
-        .iter()
-        .filter(|c| c.conditions.iter().all(|cond| evaluate_condition(cond, ch, mob, db)))
-        .cloned()
+    let cur = current_node_for(ch, mob);
+    classify_choices(&cur, node, ch, mob, db, now_epoch_secs())
+        .into_iter()
+        .filter(|e| matches!(e.visibility, ChoiceVisibility::Available))
+        .map(|e| e.choice)
         .collect()
-}
-
-fn render_menu(choices: &[DialogueChoice]) -> String {
-    if choices.is_empty() {
-        return "  bye. (leave)".to_string();
-    }
-    let mut out = String::new();
-    for (i, c) in choices.iter().enumerate() {
-        out.push_str(&format!("  {}. {}\n", i + 1, c.label));
-    }
-    out.push_str("  bye. (leave)");
-    out
 }
 
 fn evaluate_condition(cond: &DialogueCondition, ch: &CharacterData, mob: &MobileData, db: &Db) -> bool {
@@ -1608,6 +1965,9 @@ mod tests {
                     },
                     conditions: vec![],
                     effects: vec![],
+                    hint: None,
+                    cooldown_secs: None,
+                    once_per_player: false,
                 }],
                 on_enter: vec![],
                 on_each_visit: vec![],
@@ -1875,6 +2235,9 @@ mod tests {
                         target: DialogueTarget::Exit,
                         conditions: vec![],
                         effects: vec![],
+                        hint: None,
+                        cooldown_secs: None,
+                        once_per_player: false,
                     },
                     DialogueChoice {
                         keyword: "gated".into(),
@@ -1885,6 +2248,9 @@ mod tests {
                             scope: FlagScope::Local,
                         }],
                         effects: vec![],
+                        hint: None,
+                        cooldown_secs: None,
+                        once_per_player: false,
                     },
                 ],
                 on_enter: vec![],
@@ -1933,6 +2299,8 @@ mod tests {
                 current_node: Some("mayor".into()),
                 last_seen_secs: 0,
                 visit_counts: std::collections::HashMap::new(),
+                choice_cooldowns: HashMap::new(),
+                choices_picked_once: std::collections::HashSet::new(),
             },
         );
         assert_eq!(current_node_for(&ch2, &mob), "mayor");
@@ -1944,6 +2312,8 @@ mod tests {
                 current_node: Some("ghost".into()),
                 last_seen_secs: 0,
                 visit_counts: std::collections::HashMap::new(),
+                choice_cooldowns: HashMap::new(),
+                choices_picked_once: std::collections::HashSet::new(),
             },
         );
         assert_eq!(current_node_for(&ch3, &mob), "root");
@@ -2000,6 +2370,9 @@ mod tests {
                             arg: String::new(),
                         },
                     ],
+                    hint: None,
+                    cooldown_secs: None,
+                    once_per_player: false,
                 }],
                 on_enter: vec![],
                 on_each_visit: vec![],
@@ -2016,6 +2389,9 @@ mod tests {
                     target: DialogueTarget::Exit,
                     conditions: vec![],
                     effects: vec![],
+                    hint: None,
+                    cooldown_secs: None,
+                    once_per_player: false,
                 }],
                 on_enter: vec![],
                 on_each_visit: vec![],
@@ -2052,6 +2428,9 @@ mod tests {
                         },
                         conditions: vec![],
                         effects: vec![],
+                        hint: None,
+                        cooldown_secs: None,
+                        once_per_player: false,
                     },
                     DialogueChoice {
                         keyword: "leave".into(),
@@ -2061,6 +2440,9 @@ mod tests {
                         },
                         conditions: vec![],
                         effects: vec![],
+                        hint: None,
+                        cooldown_secs: None,
+                        once_per_player: false,
                     },
                 ],
                 on_enter: vec![],
@@ -2080,6 +2462,9 @@ mod tests {
                     },
                     conditions: vec![],
                     effects: vec![],
+                    hint: None,
+                    cooldown_secs: None,
+                    once_per_player: false,
                 }],
                 on_enter: vec![DialogueEffect::SetCounter {
                     key: "shop.first_visit".into(),
@@ -2114,6 +2499,9 @@ mod tests {
                 target: DialogueTarget::Goto { node: "shop".into() },
                 conditions: vec![],
                 effects: vec![],
+                hint: None,
+                cooldown_secs: None,
+                once_per_player: false,
             };
             let back_to_root = DialogueChoice {
                 keyword: "back".into(),
@@ -2121,6 +2509,9 @@ mod tests {
                 target: DialogueTarget::Goto { node: "root".into() },
                 conditions: vec![],
                 effects: vec![],
+                hint: None,
+                cooldown_secs: None,
+                once_per_player: false,
             };
             // Visit shop first time: on_enter + on_each_visit fire.
             take_choice(&db, &conns, &mut ch, &mob, &go_to_shop);
@@ -2160,6 +2551,9 @@ mod tests {
                     target: DialogueTarget::Exit,
                     conditions: vec![],
                     effects: vec![],
+                    hint: None,
+                    cooldown_secs: None,
+                    once_per_player: false,
                 }],
                 on_enter: vec![],
                 on_each_visit: vec![],
@@ -2183,6 +2577,8 @@ mod tests {
                 current_node: Some("root".into()),
                 last_seen_secs: 0,
                 visit_counts: std::collections::HashMap::new(),
+                choice_cooldowns: HashMap::new(),
+                choices_picked_once: std::collections::HashSet::new(),
             },
         );
         let path = format!("test_dialogue_on_exit_{}.db", std::process::id());
@@ -2196,6 +2592,9 @@ mod tests {
                 target: DialogueTarget::Exit,
                 conditions: vec![],
                 effects: vec![],
+                hint: None,
+                cooldown_secs: None,
+                once_per_player: false,
             };
             let (_, _, finished) = take_choice(&db, &conns, &mut ch, &mob, &bye);
             assert!(finished);
@@ -2218,6 +2617,9 @@ mod tests {
                     target: DialogueTarget::Repeat,
                     conditions: vec![],
                     effects: vec![],
+                    hint: None,
+                    cooldown_secs: None,
+                    once_per_player: false,
                 }],
                 on_enter: vec![DialogueEffect::IncrementCounter {
                     key: "enters".into(),
@@ -2250,6 +2652,8 @@ mod tests {
                     m.insert("root".to_string(), 1u32);
                     m
                 },
+                choice_cooldowns: HashMap::new(),
+                choices_picked_once: std::collections::HashSet::new(),
             },
         );
         let path = format!("test_dialogue_repeat_{}.db", std::process::id());
@@ -2263,12 +2667,217 @@ mod tests {
                 target: DialogueTarget::Repeat,
                 conditions: vec![],
                 effects: vec![],
+                hint: None,
+                cooldown_secs: None,
+                once_per_player: false,
             };
             take_choice(&db, &conns, &mut ch, &mob, &again);
             // None of the trigger sets fired on Repeat.
             assert!(ch.achievement_counters.get("enters").is_none());
             assert!(ch.achievement_counters.get("visits").is_none());
             assert!(ch.achievement_counters.get("exits").is_none());
+        }));
+        let _ = std::fs::remove_dir_all(&path);
+        result.unwrap();
+    }
+
+    /// Helper for slice 3 tests: build a one-node tree whose root has the
+    /// given choices and stamp it onto the mob.
+    fn mk_mob_with_choices(vnum: &str, choices: Vec<DialogueChoice>) -> MobileData {
+        let mut nodes = HashMap::new();
+        nodes.insert(
+            "root".to_string(),
+            DialogueNode {
+                text: "Hi.".into(),
+                choices,
+                on_enter: vec![],
+                on_each_visit: vec![],
+                on_exit: vec![],
+            },
+        );
+        let mut mob = MobileData::new("npc".into());
+        mob.vnum = vnum.to_string();
+        mob.dialogue_tree = Some(DialogueTree {
+            root_node: "root".into(),
+            nodes,
+        });
+        mob
+    }
+
+    #[test]
+    fn classify_locked_with_hint_surfaces_in_menu() {
+        let ch = make_character("hero");
+        let mob = mk_mob_with_choices(
+            "9301",
+            vec![DialogueChoice {
+                keyword: "smith".into(),
+                label: "Ask about smithing".into(),
+                target: DialogueTarget::Repeat,
+                conditions: vec![DialogueCondition::FlagSet {
+                    name: "knows_smith".into(),
+                    scope: FlagScope::Local,
+                }],
+                effects: vec![],
+                hint: Some("She gauges your hands — you don't look the type.".into()),
+                cooldown_secs: None,
+                once_per_player: false,
+            }],
+        );
+        let (db, path) = open_temp_db("classify_locked_hint");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let node = mob.dialogue_tree.as_ref().unwrap().nodes.get("root").unwrap();
+            let classified = classify_choices("root", node, &ch, &mob, &db, 1_000);
+            assert_eq!(classified.len(), 1);
+            match &classified[0].visibility {
+                ChoiceVisibility::Locked { hint } => {
+                    assert!(hint.contains("gauges your hands"));
+                }
+                other => panic!("expected Locked, got {:?}", other),
+            }
+            let menu = render_classified_menu(&classified);
+            assert!(menu.contains("(?)"), "menu line should mark locked: {}", menu);
+            assert!(menu.contains("gauges your hands"));
+        }));
+        let _ = std::fs::remove_dir_all(&path);
+        result.unwrap();
+    }
+
+    #[test]
+    fn classify_locked_without_hint_is_silently_hidden() {
+        let ch = make_character("hero");
+        let mob = mk_mob_with_choices(
+            "9302",
+            vec![DialogueChoice {
+                keyword: "smith".into(),
+                label: "Ask about smithing".into(),
+                target: DialogueTarget::Repeat,
+                conditions: vec![DialogueCondition::FlagSet {
+                    name: "knows_smith".into(),
+                    scope: FlagScope::Local,
+                }],
+                effects: vec![],
+                hint: None,
+                cooldown_secs: None,
+                once_per_player: false,
+            }],
+        );
+        let (db, path) = open_temp_db("classify_no_hint_hidden");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let node = mob.dialogue_tree.as_ref().unwrap().nodes.get("root").unwrap();
+            let classified = classify_choices("root", node, &ch, &mob, &db, 1_000);
+            assert!(
+                classified.is_empty(),
+                "no-hint locked choice must drop from output"
+            );
+            let menu = render_classified_menu(&classified);
+            assert_eq!(menu, "  bye. (leave)");
+        }));
+        let _ = std::fs::remove_dir_all(&path);
+        result.unwrap();
+    }
+
+    #[test]
+    fn classify_cooldown_blocks_then_clears_after_elapsed() {
+        let mut ch = make_character("hero");
+        let mob = mk_mob_with_choices(
+            "9303",
+            vec![DialogueChoice {
+                keyword: "rumor".into(),
+                label: "Press for rumors".into(),
+                target: DialogueTarget::Repeat,
+                conditions: vec![],
+                effects: vec![],
+                hint: None,
+                cooldown_secs: Some(60),
+                once_per_player: false,
+            }],
+        );
+        let (db, path) = open_temp_db("classify_cd_blocks");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let node = mob
+                .dialogue_tree
+                .as_ref()
+                .unwrap()
+                .nodes
+                .get("root")
+                .unwrap()
+                .clone();
+            // Stamp last-pick at t=1000 directly to avoid time skew on take_choice.
+            let pair = ch
+                .dialogue_pair_state
+                .entry(mob.vnum.clone())
+                .or_insert_with(DialoguePairState::default);
+            pair.choice_cooldowns
+                .insert(cooldown_key("root", "rumor"), 1_000);
+
+            // 30s later — still cooling.
+            let classified = classify_choices("root", &node, &ch, &mob, &db, 1_030);
+            assert_eq!(classified.len(), 1);
+            match classified[0].visibility {
+                ChoiceVisibility::Cooldown { remaining_secs } => {
+                    assert_eq!(remaining_secs, 30);
+                }
+                ref other => panic!("expected Cooldown, got {:?}", other),
+            }
+            let menu = render_classified_menu(&classified);
+            assert!(menu.contains("(available in"), "got: {}", menu);
+
+            // 65s later — fully elapsed.
+            let classified = classify_choices("root", &node, &ch, &mob, &db, 1_065);
+            assert_eq!(classified.len(), 1);
+            assert_eq!(classified[0].visibility, ChoiceVisibility::Available);
+        }));
+        let _ = std::fs::remove_dir_all(&path);
+        result.unwrap();
+    }
+
+    #[test]
+    fn classify_once_per_player_disappears_after_first_pick() {
+        let mut ch = make_character("hero");
+        let mob = mk_mob_with_choices(
+            "9304",
+            vec![DialogueChoice {
+                keyword: "gift".into(),
+                label: "Accept the heirloom".into(),
+                target: DialogueTarget::Exit,
+                conditions: vec![],
+                effects: vec![],
+                hint: None,
+                cooldown_secs: None,
+                once_per_player: true,
+            }],
+        );
+        let (db, path) = open_temp_db("classify_once");
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let node = mob
+                .dialogue_tree
+                .as_ref()
+                .unwrap()
+                .nodes
+                .get("root")
+                .unwrap()
+                .clone();
+            // First classify: visible, available.
+            let classified = classify_choices("root", &node, &ch, &mob, &db, 100);
+            assert_eq!(classified.len(), 1);
+            assert_eq!(classified[0].visibility, ChoiceVisibility::Available);
+
+            // Simulate the pick by recording it.
+            record_choice_pick(&mut ch, &mob.vnum, "root", &node.choices[0]);
+            let key = cooldown_key("root", "gift");
+            assert!(ch
+                .dialogue_pair_state
+                .get(&mob.vnum)
+                .unwrap()
+                .choices_picked_once
+                .contains(&key));
+
+            // Second classify: gone from output.
+            let classified = classify_choices("root", &node, &ch, &mob, &db, 100);
+            assert!(
+                classified.is_empty(),
+                "once-picked choice must drop from output"
+            );
         }));
         let _ = std::fs::remove_dir_all(&path);
         result.unwrap();

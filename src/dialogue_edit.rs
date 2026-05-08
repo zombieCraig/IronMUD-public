@@ -22,6 +22,7 @@ pub enum DialogueEditError {
     ChoiceIndexOutOfRange(usize, usize),
     BrokenChoiceTarget(String),
     EmptyNodeName,
+    Invalid(String),
 }
 
 impl std::fmt::Display for DialogueEditError {
@@ -41,6 +42,7 @@ impl std::fmt::Display for DialogueEditError {
                 write!(f, "choice target points to missing node `{}`", n)
             }
             Self::EmptyNodeName => write!(f, "node name must not be empty"),
+            Self::Invalid(msg) => write!(f, "{}", msg),
         }
     }
 }
@@ -274,6 +276,9 @@ mod tests {
             target: DialogueTarget::Goto { node: "shop".into() },
             conditions: vec![],
             effects: vec![],
+            hint: None,
+            cooldown_secs: None,
+            once_per_player: false,
         };
         add_choice(&mut slot, "root", go_to_shop).unwrap();
         let err = remove_node(&mut slot, "shop").unwrap_err();
@@ -300,6 +305,9 @@ mod tests {
             },
             conditions: vec![],
             effects: vec![],
+            hint: None,
+            cooldown_secs: None,
+            once_per_player: false,
         };
         assert!(matches!(
             add_choice(&mut slot, "root", bad).unwrap_err(),
@@ -319,6 +327,9 @@ mod tests {
             target: DialogueTarget::Goto { node: "a".into() },
             conditions: vec![],
             effects: vec![],
+            hint: None,
+            cooldown_secs: None,
+            once_per_player: false,
         };
         let to_b = DialogueChoice {
             keyword: "b".into(),
@@ -326,6 +337,9 @@ mod tests {
             target: DialogueTarget::Goto { node: "b".into() },
             conditions: vec![],
             effects: vec![],
+            hint: None,
+            cooldown_secs: None,
+            once_per_player: false,
         };
         add_choice(&mut slot, "root", to_a).unwrap();
         add_choice(&mut slot, "root", to_b).unwrap();

@@ -433,6 +433,12 @@ pub struct DialogueChoiceRequest {
     pub conditions: Vec<crate::types::DialogueCondition>,
     #[serde(default)]
     pub effects: Vec<crate::types::DialogueEffect>,
+    #[serde(default)]
+    pub hint: Option<String>,
+    #[serde(default)]
+    pub cooldown_secs: Option<i64>,
+    #[serde(default)]
+    pub once_per_player: bool,
 }
 
 impl From<DialogueChoiceRequest> for crate::types::DialogueChoice {
@@ -443,6 +449,9 @@ impl From<DialogueChoiceRequest> for crate::types::DialogueChoice {
             target: r.target,
             conditions: r.conditions,
             effects: r.effects,
+            hint: r.hint.filter(|s| !s.is_empty()),
+            cooldown_secs: r.cooldown_secs.filter(|n| *n > 0),
+            once_per_player: r.once_per_player,
         }
     }
 }

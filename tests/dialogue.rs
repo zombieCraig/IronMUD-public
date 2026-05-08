@@ -33,6 +33,9 @@ fn dialogue_tree_round_trips_through_json() {
                     scope: FlagScope::Local,
                 }],
                 effects: vec![],
+                hint: None,
+                cooldown_secs: None,
+                once_per_player: false,
             }],
             on_enter: vec![],
             on_each_visit: vec![],
@@ -69,6 +72,9 @@ fn dialogue_tree_round_trips_through_json() {
                         arg: "".into(),
                     },
                 ],
+                hint: None,
+                cooldown_secs: None,
+                once_per_player: false,
             }],
             on_enter: vec![],
             on_each_visit: vec![],
@@ -244,6 +250,43 @@ fn mobile_data_dialogue_tree_is_optional_and_defaults_none() {
 }
 
 #[test]
+fn dialogue_choice_round_trips_slice3_fields() {
+    // Explicit JSON with all three new fields set.
+    let json = serde_json::json!({
+        "keyword": "secret",
+        "label": "Ask about the smith",
+        "target": { "kind": "exit" },
+        "hint": "You sense she might say more if you'd ever sailed.",
+        "cooldown_secs": 90,
+        "once_per_player": true,
+    });
+    let c: DialogueChoice = serde_json::from_value(json).expect("deserialize");
+    assert_eq!(c.hint.as_deref(), Some("You sense she might say more if you'd ever sailed."));
+    assert_eq!(c.cooldown_secs, Some(90));
+    assert!(c.once_per_player);
+    let back = serde_json::to_value(&c).expect("serialize");
+    assert_eq!(back["hint"], "You sense she might say more if you'd ever sailed.");
+    assert_eq!(back["cooldown_secs"], 90);
+    assert_eq!(back["once_per_player"], true);
+
+    // Default JSON without new fields stays byte-clean — missing fields
+    // deserialize to None/false, and serialization back drops them.
+    let plain = serde_json::json!({
+        "keyword": "bye",
+        "label": "Farewell",
+        "target": { "kind": "exit" },
+    });
+    let c2: DialogueChoice = serde_json::from_value(plain).expect("deserialize");
+    assert!(c2.hint.is_none());
+    assert!(c2.cooldown_secs.is_none());
+    assert!(!c2.once_per_player);
+    let back = serde_json::to_string(&c2).expect("serialize");
+    assert!(!back.contains("hint"), "absent fields should not serialize");
+    assert!(!back.contains("cooldown_secs"));
+    assert!(!back.contains("once_per_player"));
+}
+
+#[test]
 fn dialogue_tree_attaches_to_mobile_data() {
     let mut m = MobileData::new("barkeep".into());
     m.vnum = "3001".into();
@@ -335,6 +378,9 @@ fn granular_helpers_compose_a_full_tree_via_db() {
                     target: DialogueTarget::Goto { node: "shop".into() },
                     conditions: vec![],
                     effects: vec![],
+                    hint: None,
+                    cooldown_secs: None,
+                    once_per_player: false,
                 },
             )
         });

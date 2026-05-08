@@ -306,6 +306,7 @@ fn handle_tree_subcommand(mobile_id, parts, connection_id) {
     if action == "edittext" { tree_edittext(mobile_id, parts, connection_id); return; }
     if action == "addchoice" { tree_addchoice(mobile_id, parts, connection_id); return; }
     if action == "delchoice" { tree_delchoice(mobile_id, parts, connection_id); return; }
+    if action == "editchoice" { tree_editchoice(mobile_id, parts, connection_id); return; }
     tree_help(connection_id);
 }
 
@@ -320,6 +321,9 @@ fn tree_help(connection_id) {
         + "  medit <id> tree edittext <node>    - Open multi-line editor for node text\n"
         + "  medit <id> tree addchoice <node> <kw> | <label> | <goto|exit|repeat> [target]\n"
         + "  medit <id> tree delchoice <node> <index>\n"
+        + "  medit <id> tree editchoice <node> <index> hint <text...>   (empty clears)\n"
+        + "  medit <id> tree editchoice <node> <index> cooldown <secs>  (0 clears)\n"
+        + "  medit <id> tree editchoice <node> <index> once <on|off>\n"
         + "  medit <id> tree set <json>         - Replace whole tree from JSON\n"
         + "  medit <id> tree clear              - Remove the dialogue tree";
     send_client_message(connection_id, m);
@@ -508,6 +512,35 @@ fn tree_delchoice(mobile_id, parts, connection_id) {
     let err = olc_remove_dialogue_choice(mobile_id, parts[2], idx);
     if err == "" {
         send_client_message(connection_id, "Choice " + idx + " removed from `" + parts[2] + "`.");
+    } else {
+        send_client_message(connection_id, "Error: " + err);
+    }
+}
+
+fn tree_editchoice(mobile_id, parts, connection_id) {
+    // Form: tree editchoice <node> <index> <field> [value...]
+    if parts.len() < 5 {
+        send_client_message(connection_id,
+            "Usage: medit <id> tree editchoice <node> <index> <hint|cooldown|once> [value]");
+        return;
+    }
+    let node = parts[2];
+    let idx = parse_int(parts[3]);
+    if idx == () {
+        send_client_message(connection_id, "Index must be a non-negative number.");
+        return;
+    }
+    let field = parts[4].to_lower();
+    // Re-join the rest as the value (preserving spaces in hint text).
+    let value = "";
+    for i in 5..parts.len() {
+        if i > 5 { value += " "; }
+        value += parts[i];
+    }
+    let err = olc_set_dialogue_choice_field(mobile_id, node, idx, field, value);
+    if err == "" {
+        send_client_message(connection_id,
+            "Choice " + idx + " on `" + node + "` updated (" + field + ").");
     } else {
         send_client_message(connection_id, "Error: " + err);
     }

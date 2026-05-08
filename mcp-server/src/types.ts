@@ -155,6 +155,9 @@ export interface DialogueChoice {
   target: DialogueTarget;
   conditions?: DialogueCondition[];
   effects?: DialogueEffect[];
+  hint?: string;
+  cooldown_secs?: number;
+  once_per_player?: boolean;
 }
 
 export interface DialogueNode {
@@ -191,6 +194,9 @@ export interface DialogueChoiceRequest {
   target: DialogueTarget;
   conditions?: DialogueCondition[];
   effects?: DialogueEffect[];
+  hint?: string;
+  cooldown_secs?: number;
+  once_per_player?: boolean;
 }
 
 export interface MobileTrigger {

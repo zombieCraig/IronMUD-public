@@ -66,6 +66,9 @@ export declare const mobileToolDefinitions: ({
             target?: undefined;
             conditions?: undefined;
             effects?: undefined;
+            hint?: undefined;
+            cooldown_secs?: undefined;
+            once_per_player?: undefined;
             index?: undefined;
             start_hour?: undefined;
             activity?: undefined;
@@ -145,6 +148,9 @@ export declare const mobileToolDefinitions: ({
             target?: undefined;
             conditions?: undefined;
             effects?: undefined;
+            hint?: undefined;
+            cooldown_secs?: undefined;
+            once_per_player?: undefined;
             index?: undefined;
             start_hour?: undefined;
             activity?: undefined;
@@ -227,6 +233,9 @@ export declare const mobileToolDefinitions: ({
             target?: undefined;
             conditions?: undefined;
             effects?: undefined;
+            hint?: undefined;
+            cooldown_secs?: undefined;
+            once_per_player?: undefined;
             index?: undefined;
             start_hour?: undefined;
             activity?: undefined;
@@ -309,6 +318,9 @@ export declare const mobileToolDefinitions: ({
             target?: undefined;
             conditions?: undefined;
             effects?: undefined;
+            hint?: undefined;
+            cooldown_secs?: undefined;
+            once_per_player?: undefined;
             index?: undefined;
             start_hour?: undefined;
             activity?: undefined;
@@ -736,6 +748,9 @@ export declare const mobileToolDefinitions: ({
             target?: undefined;
             conditions?: undefined;
             effects?: undefined;
+            hint?: undefined;
+            cooldown_secs?: undefined;
+            once_per_player?: undefined;
             index?: undefined;
             start_hour?: undefined;
             activity?: undefined;
@@ -1176,6 +1191,9 @@ export declare const mobileToolDefinitions: ({
             target?: undefined;
             conditions?: undefined;
             effects?: undefined;
+            hint?: undefined;
+            cooldown_secs?: undefined;
+            once_per_player?: undefined;
             index?: undefined;
             start_hour?: undefined;
             activity?: undefined;
@@ -1258,6 +1276,9 @@ export declare const mobileToolDefinitions: ({
             target?: undefined;
             conditions?: undefined;
             effects?: undefined;
+            hint?: undefined;
+            cooldown_secs?: undefined;
+            once_per_player?: undefined;
             index?: undefined;
             start_hour?: undefined;
             activity?: undefined;
@@ -1346,6 +1367,9 @@ export declare const mobileToolDefinitions: ({
             target?: undefined;
             conditions?: undefined;
             effects?: undefined;
+            hint?: undefined;
+            cooldown_secs?: undefined;
+            once_per_player?: undefined;
             index?: undefined;
             start_hour?: undefined;
             activity?: undefined;
@@ -1431,6 +1455,9 @@ export declare const mobileToolDefinitions: ({
             target?: undefined;
             conditions?: undefined;
             effects?: undefined;
+            hint?: undefined;
+            cooldown_secs?: undefined;
+            once_per_player?: undefined;
             index?: undefined;
             start_hour?: undefined;
             activity?: undefined;
@@ -1516,6 +1543,9 @@ export declare const mobileToolDefinitions: ({
             target?: undefined;
             conditions?: undefined;
             effects?: undefined;
+            hint?: undefined;
+            cooldown_secs?: undefined;
+            once_per_player?: undefined;
             index?: undefined;
             start_hour?: undefined;
             activity?: undefined;
@@ -1613,6 +1643,9 @@ export declare const mobileToolDefinitions: ({
             target?: undefined;
             conditions?: undefined;
             effects?: undefined;
+            hint?: undefined;
+            cooldown_secs?: undefined;
+            once_per_player?: undefined;
             index?: undefined;
             start_hour?: undefined;
             activity?: undefined;
@@ -1710,6 +1743,9 @@ export declare const mobileToolDefinitions: ({
             target?: undefined;
             conditions?: undefined;
             effects?: undefined;
+            hint?: undefined;
+            cooldown_secs?: undefined;
+            once_per_player?: undefined;
             index?: undefined;
             start_hour?: undefined;
             activity?: undefined;
@@ -1758,6 +1794,18 @@ export declare const mobileToolDefinitions: ({
                 description: string;
             };
             effects: {
+                type: string;
+                description: string;
+            };
+            hint: {
+                type: string;
+                description: string;
+            };
+            cooldown_secs: {
+                type: string;
+                description: string;
+            };
+            once_per_player: {
                 type: string;
                 description: string;
             };
@@ -1864,6 +1912,18 @@ export declare const mobileToolDefinitions: ({
             effects: {
                 type: string;
                 description?: undefined;
+            };
+            hint: {
+                type: string;
+                description: string;
+            };
+            cooldown_secs: {
+                type: string;
+                description: string;
+            };
+            once_per_player: {
+                type: string;
+                description: string;
             };
             limit?: undefined;
             offset?: undefined;
@@ -2002,6 +2062,9 @@ export declare const mobileToolDefinitions: ({
             target?: undefined;
             conditions?: undefined;
             effects?: undefined;
+            hint?: undefined;
+            cooldown_secs?: undefined;
+            once_per_player?: undefined;
             start_hour?: undefined;
             activity?: undefined;
             destination_vnum?: undefined;
@@ -2107,6 +2170,9 @@ export declare const mobileToolDefinitions: ({
             target?: undefined;
             conditions?: undefined;
             effects?: undefined;
+            hint?: undefined;
+            cooldown_secs?: undefined;
+            once_per_player?: undefined;
             index?: undefined;
             room_id?: undefined;
             trigger_type?: undefined;
@@ -2187,6 +2253,9 @@ export declare const mobileToolDefinitions: ({
             target?: undefined;
             conditions?: undefined;
             effects?: undefined;
+            hint?: undefined;
+            cooldown_secs?: undefined;
+            once_per_player?: undefined;
             start_hour?: undefined;
             activity?: undefined;
             destination_vnum?: undefined;
@@ -2272,6 +2341,9 @@ export declare const mobileToolDefinitions: ({
             target?: undefined;
             conditions?: undefined;
             effects?: undefined;
+            hint?: undefined;
+            cooldown_secs?: undefined;
+            once_per_player?: undefined;
             index?: undefined;
             start_hour?: undefined;
             activity?: undefined;
@@ -2380,6 +2452,9 @@ export declare const mobileToolDefinitions: ({
             target?: undefined;
             conditions?: undefined;
             effects?: undefined;
+            hint?: undefined;
+            cooldown_secs?: undefined;
+            once_per_player?: undefined;
             index?: undefined;
             start_hour?: undefined;
             activity?: undefined;
