@@ -1115,22 +1115,28 @@ fn test_commands_json_covers_all_scripts() {
     }
 }
 
-/// Extract bool field names from a Rust struct defined in src/types/mod.rs.
+/// Extract bool field names from a Rust struct defined anywhere under
+/// src/types/. Scans every `*.rs` file in the directory until the named
+/// struct is found, so callers don't have to know which submodule a type
+/// lives in.
 fn extract_bool_field_names(struct_name: &str) -> Vec<String> {
     use regex::Regex;
-    let types_content = std::fs::read_to_string("src/types/mod.rs").expect("read src/types/mod.rs");
 
     let struct_re = Regex::new(&format!(r"pub struct {} \{{([^}}]+)\}}", struct_name)).unwrap();
-    let struct_body = struct_re
-        .captures(&types_content)
-        .unwrap_or_else(|| panic!("{} struct not found", struct_name))
-        .get(1)
-        .unwrap()
-        .as_str()
-        .to_string();
-
     let field_re = Regex::new(r"pub\s+(\w+)\s*:\s*bool").unwrap();
-    field_re.captures_iter(&struct_body).map(|c| c[1].to_string()).collect()
+
+    for entry in std::fs::read_dir("src/types").expect("read src/types") {
+        let path = entry.expect("dir entry").path();
+        if path.extension().and_then(|s| s.to_str()) != Some("rs") {
+            continue;
+        }
+        let content = std::fs::read_to_string(&path).unwrap_or_default();
+        if let Some(caps) = struct_re.captures(&content) {
+            let body = caps.get(1).unwrap().as_str();
+            return field_re.captures_iter(body).map(|c| c[1].to_string()).collect();
+        }
+    }
+    panic!("{} struct not found anywhere under src/types/", struct_name);
 }
 
 /// Extract the body of a Rhai function by name.
