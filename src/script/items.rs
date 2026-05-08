@@ -4,7 +4,7 @@
 use crate::db::Db;
 use crate::{
     BodyPart, DamageType, EffectType, ItemData, ItemEffect, ItemFlags, ItemLocation, ItemType, LiquidType, OnHitEffect,
-    WeaponSkill, WearLocation, register_bool_flags,
+    WeaponSkill, WearLocation,
 };
 use rhai::{Dynamic, Engine, Map};
 use std::sync::Arc;
@@ -91,30 +91,65 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             f.corpse_source_vnum.clone().unwrap_or_default()
         });
 
-    // Register ItemData type with getters
+    // Register ItemData type
+    engine.register_type_with_name::<ItemData>("ItemData");
+
+    // String getter+setter pairs
+    register_string!(engine, ItemData, name, short_desc, long_desc);
+
+    // Bool getter+setter pairs
+    register_bool_flags!(engine, ItemData, board_read_admin_only, board_write_admin_only);
+
+    // Read-only bool getters (computed/plain bool fields exposed without setters)
+    register_bool_ro!(engine, ItemData, two_handed, container_closed, container_locked,
+        liquid_poisoned, food_poisoned, is_prototype);
+
+    // i32 fields exposed as i64 with setters
+    register_i32!(engine, ItemData, weight, value);
+
+    // Read-only i32 fields exposed as i64
+    register_i32_ro!(engine, ItemData,
+        damage_dice_count, damage_dice_sides,
+        container_max_items, container_max_weight,
+        liquid_current, liquid_max, food_nutrition,
+        level_requirement,
+        stat_str, stat_dex, stat_con, stat_int, stat_wis, stat_cha,
+        hit_bonus, damage_bonus, max_hp_bonus, max_mana_bonus,
+        light_hours_remaining, insulation, vending_sell_rate,
+        bait_uses, quality, weight_reduction,
+        medical_tier, medical_uses, preservation_level,
+        ammo_count, ammo_damage_bonus, magazine_size, loaded_ammo, loaded_ammo_bonus,
+        ammo_effect_duration, ammo_effect_damage,
+        loaded_ammo_effect_duration, loaded_ammo_effect_damage,
+        attachment_accuracy_bonus, attachment_noise_reduction, attachment_magazine_bonus);
+
+    // Read-only String getters (clone)
+    register_string_ro!(engine, ItemData,
+        fire_mode, noise_level, ammo_effect_type, loaded_ammo_effect_type,
+        attachment_slot, max_treatable_wound, treats_infestation, plant_prototype_vnum);
+
+    // Specials: id (uuid), Option<T> handlers, computed booleans, struct/array views.
+    register_uuid_ro!(engine, ItemData, id);
+    register_option_string!(engine, ItemData, note_content);
+    register_option_string_ro!(
+        engine,
+        ItemData,
+        vnum,
+        container_key_vnum,
+        caliber,
+        ranged_type
+    );
+    register_string_vec_ro!(
+        engine,
+        ItemData,
+        keywords,
+        vending_stock,
+        treats_wound_types,
+        supported_fire_modes,
+        attachment_compatible_types
+    );
+
     engine
-        .register_type_with_name::<ItemData>("ItemData")
-        .register_get("id", |i: &mut ItemData| i.id.to_string())
-        .register_get("name", |i: &mut ItemData| i.name.clone())
-        .register_set("name", |i: &mut ItemData, v: String| i.name = v)
-        .register_get("short_desc", |i: &mut ItemData| i.short_desc.clone())
-        .register_set("short_desc", |i: &mut ItemData, v: String| i.short_desc = v)
-        .register_get("long_desc", |i: &mut ItemData| i.long_desc.clone())
-        .register_set("long_desc", |i: &mut ItemData, v: String| i.long_desc = v)
-        .register_get("note_content", |i: &mut ItemData| {
-            i.note_content.clone().unwrap_or_default()
-        })
-        .register_set("note_content", |i: &mut ItemData, v: String| {
-            i.note_content = if v.is_empty() { None } else { Some(v) };
-        })
-        .register_get("board_read_admin_only", |i: &mut ItemData| i.board_read_admin_only)
-        .register_set("board_read_admin_only", |i: &mut ItemData, v: bool| {
-            i.board_read_admin_only = v;
-        })
-        .register_get("board_write_admin_only", |i: &mut ItemData| i.board_write_admin_only)
-        .register_set("board_write_admin_only", |i: &mut ItemData, v: bool| {
-            i.board_write_admin_only = v;
-        })
         .register_get("board_max_messages", |i: &mut ItemData| {
             i.board_max_messages.unwrap_or(0) as i64
         })
@@ -130,12 +165,6 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 .map(|e| rhai::Dynamic::from(e.clone()))
                 .collect::<Vec<_>>()
         })
-        .register_get("keywords", |i: &mut ItemData| {
-            i.keywords
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect::<Vec<_>>()
-        })
         .register_get("item_type", |i: &mut ItemData| {
             i.item_type.to_display_string().to_string()
         })
@@ -148,45 +177,25 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_get("armor_class", |i: &mut ItemData| i.armor_class.unwrap_or(0))
         .register_get("has_armor_class", |i: &mut ItemData| i.armor_class.is_some())
         .register_get("flags", |i: &mut ItemData| i.flags.clone())
-        .register_get("weight", |i: &mut ItemData| i.weight as i64)
-        .register_set("weight", |i: &mut ItemData, v: i64| i.weight = v as i32)
-        .register_get("value", |i: &mut ItemData| i.value as i64)
-        .register_set("value", |i: &mut ItemData, v: i64| i.value = v as i32)
         .register_get("world_max_count", |i: &mut ItemData| i.world_max_count.unwrap_or(0) as i64)
         .register_get("has_world_max_count", |i: &mut ItemData| i.world_max_count.is_some())
-        // Weapon properties
-        .register_get("damage_dice_count", |i: &mut ItemData| i.damage_dice_count as i64)
-        .register_get("damage_dice_sides", |i: &mut ItemData| i.damage_dice_sides as i64)
         .register_get("damage_type", |i: &mut ItemData| {
             i.damage_type.to_display_string().to_string()
         })
-        .register_get("two_handed", |i: &mut ItemData| i.two_handed)
         .register_get("has_damage", |i: &mut ItemData| {
             i.damage_dice_count > 0 && i.damage_dice_sides > 0
         })
-        // Container properties
         .register_get("container_contents", |i: &mut ItemData| {
             i.container_contents
                 .iter()
                 .map(|u| rhai::Dynamic::from(u.to_string()))
                 .collect::<Vec<_>>()
         })
-        .register_get("container_max_items", |i: &mut ItemData| i.container_max_items as i64)
-        .register_get("container_max_weight", |i: &mut ItemData| i.container_max_weight as i64)
-        .register_get("container_closed", |i: &mut ItemData| i.container_closed)
-        .register_get("container_locked", |i: &mut ItemData| i.container_locked)
-        .register_get("container_key_vnum", |i: &mut ItemData| {
-            i.container_key_vnum.clone().unwrap_or_default()
-        })
         .register_get("is_container", |i: &mut ItemData| i.item_type == ItemType::Container)
         .register_get("is_key", |i: &mut ItemData| i.item_type == ItemType::Key)
-        // Liquid container properties
         .register_get("liquid_type", |i: &mut ItemData| {
             i.liquid_type.to_display_string().to_string()
         })
-        .register_get("liquid_current", |i: &mut ItemData| i.liquid_current as i64)
-        .register_get("liquid_max", |i: &mut ItemData| i.liquid_max as i64)
-        .register_get("liquid_poisoned", |i: &mut ItemData| i.liquid_poisoned)
         .register_get("liquid_effects", |i: &mut ItemData| {
             i.liquid_effects
                 .iter()
@@ -202,8 +211,6 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             _ => true,
         })
         // Food properties
-        .register_get("food_nutrition", |i: &mut ItemData| i.food_nutrition as i64)
-        .register_get("food_poisoned", |i: &mut ItemData| i.food_poisoned)
         .register_get("food_spoil_duration", |i: &mut ItemData| i.food_spoil_duration)
         .register_get("food_created_at", |i: &mut ItemData| i.food_created_at.unwrap_or(0))
         .register_get("food_effects", |i: &mut ItemData| {
@@ -238,7 +245,6 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             false
         })
         .register_get("food_spoilage_points", |i: &mut ItemData| i.food_spoilage_points)
-        .register_get("preservation_level", |i: &mut ItemData| i.preservation_level as i64)
         .register_get("freshness_label", |i: &mut ItemData| {
             if i.item_type != ItemType::Food {
                 return "preserved".to_string();
@@ -262,24 +268,6 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             }
             "fresh".to_string()
         })
-        // Level requirement and stat bonuses
-        .register_get("level_requirement", |i: &mut ItemData| i.level_requirement as i64)
-        .register_get("stat_str", |i: &mut ItemData| i.stat_str as i64)
-        .register_get("stat_dex", |i: &mut ItemData| i.stat_dex as i64)
-        .register_get("stat_con", |i: &mut ItemData| i.stat_con as i64)
-        .register_get("stat_int", |i: &mut ItemData| i.stat_int as i64)
-        .register_get("stat_wis", |i: &mut ItemData| i.stat_wis as i64)
-        .register_get("stat_cha", |i: &mut ItemData| i.stat_cha as i64)
-        // CircleMUD APPLY_HITROLL / APPLY_DAMROLL parity: flat to-hit and
-        // damage bonuses summed across all worn equipment in combat.
-        .register_get("hit_bonus", |i: &mut ItemData| i.hit_bonus as i64)
-        .register_get("damage_bonus", |i: &mut ItemData| i.damage_bonus as i64)
-        // CircleMUD APPLY_MAXHIT / APPLY_MAXMANA parity: flat ceiling lift
-        // while equipped (any slot).
-        .register_get("max_hp_bonus", |i: &mut ItemData| i.max_hp_bonus as i64)
-        .register_get("max_mana_bonus", |i: &mut ItemData| i.max_mana_bonus as i64)
-        // CircleMUD ITEM_LIGHT capacity hours: 0 = permanent, N>0 = burn time left.
-        .register_get("light_hours_remaining", |i: &mut ItemData| i.light_hours_remaining as i64)
         // CircleMUD POTION/WAND/STAFF on-use spell payload. Returns Rhai Map
         // `#{spell, min_level, charges, max_charges}` or `()` when unset.
         .register_get("cast_on_use", |i: &mut ItemData| match &i.cast_on_use {
@@ -294,8 +282,6 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             None => rhai::Dynamic::UNIT,
         })
         .register_get("has_cast_on_use", |i: &mut ItemData| i.cast_on_use.is_some())
-        // Insulation for temperature/weather system
-        .register_get("insulation", |i: &mut ItemData| i.insulation as i64)
         .register_get("has_stats", |i: &mut ItemData| {
             i.stat_str != 0
                 || i.stat_dex != 0
@@ -306,99 +292,19 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 || i.hit_bonus != 0
                 || i.damage_bonus != 0
         })
-        // Prototype fields
-        .register_get("is_prototype", |i: &mut ItemData| i.is_prototype)
-        .register_get("vnum", |i: &mut ItemData| i.vnum.clone().unwrap_or_default())
-        // Vending machine fields
+        // Computed booleans backed by item_type or flag fields
         .register_get("is_vending", |i: &mut ItemData| i.flags.vending)
-        .register_get("vending_stock", |i: &mut ItemData| {
-            i.vending_stock
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect::<Vec<_>>()
-        })
-        .register_get("vending_sell_rate", |i: &mut ItemData| i.vending_sell_rate as i64)
-        // Fishing rod fields
         .register_get("is_fishing_rod", |i: &mut ItemData| i.flags.fishing_rod)
-        // Bait fields
         .register_get("is_bait", |i: &mut ItemData| i.flags.bait)
-        .register_get("bait_uses", |i: &mut ItemData| i.bait_uses as i64)
-        // Foraging tool field
         .register_get("is_foraging_tool", |i: &mut ItemData| i.flags.foraging_tool)
-        // Generic quality field (used by fishing rods, bait, foraging tools, etc.)
-        .register_get("quality", |i: &mut ItemData| i.quality as i64)
-        // Weight reduction for worn containers (0-100 percent)
-        .register_get("weight_reduction", |i: &mut ItemData| i.weight_reduction as i64)
-        // Medical tool properties
         .register_get("is_medical_tool", |i: &mut ItemData| i.flags.medical_tool)
-        .register_get("medical_tier", |i: &mut ItemData| i.medical_tier as i64)
-        .register_get("medical_uses", |i: &mut ItemData| i.medical_uses as i64)
-        .register_get("treats_wound_types", |i: &mut ItemData| {
-            i.treats_wound_types
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect::<Vec<_>>()
-        })
-        .register_get("max_treatable_wound", |i: &mut ItemData| i.max_treatable_wound.clone())
-        // Ammunition fields
-        .register_get("caliber", |i: &mut ItemData| i.caliber.clone().unwrap_or_default())
-        .register_get("has_caliber", |i: &mut ItemData| i.caliber.is_some())
-        .register_get("ammo_count", |i: &mut ItemData| i.ammo_count as i64)
-        .register_get("ammo_damage_bonus", |i: &mut ItemData| i.ammo_damage_bonus as i64)
         .register_get("is_ammunition", |i: &mut ItemData| i.item_type == ItemType::Ammunition)
-        // Crossbow/Firearm fields
-        .register_get("ranged_type", |i: &mut ItemData| {
-            i.ranged_type.clone().unwrap_or_default()
-        })
+        .register_get("is_plant_pot", |i: &mut ItemData| i.flags.plant_pot)
+        // Has-flags for the option_string fields above
+        .register_get("has_caliber", |i: &mut ItemData| i.caliber.is_some())
         .register_get("has_ranged_type", |i: &mut ItemData| i.ranged_type.is_some())
-        .register_get("magazine_size", |i: &mut ItemData| i.magazine_size as i64)
-        .register_get("loaded_ammo", |i: &mut ItemData| i.loaded_ammo as i64)
-        .register_get("loaded_ammo_bonus", |i: &mut ItemData| i.loaded_ammo_bonus as i64)
-        .register_get("fire_mode", |i: &mut ItemData| i.fire_mode.clone())
-        .register_get("supported_fire_modes", |i: &mut ItemData| {
-            i.supported_fire_modes
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect::<Vec<_>>()
-        })
-        .register_get("noise_level", |i: &mut ItemData| i.noise_level.clone())
-        // Special ammo effect fields
-        .register_get("ammo_effect_type", |i: &mut ItemData| i.ammo_effect_type.clone())
-        .register_get("ammo_effect_duration", |i: &mut ItemData| i.ammo_effect_duration as i64)
-        .register_get("ammo_effect_damage", |i: &mut ItemData| i.ammo_effect_damage as i64)
-        .register_get("loaded_ammo_effect_type", |i: &mut ItemData| {
-            i.loaded_ammo_effect_type.clone()
-        })
-        .register_get("loaded_ammo_effect_duration", |i: &mut ItemData| {
-            i.loaded_ammo_effect_duration as i64
-        })
-        .register_get("loaded_ammo_effect_damage", |i: &mut ItemData| {
-            i.loaded_ammo_effect_damage as i64
-        })
-        // Attachment fields
-        .register_get("attachment_slot", |i: &mut ItemData| i.attachment_slot.clone())
-        .register_get("attachment_accuracy_bonus", |i: &mut ItemData| {
-            i.attachment_accuracy_bonus as i64
-        })
-        .register_get("attachment_noise_reduction", |i: &mut ItemData| {
-            i.attachment_noise_reduction as i64
-        })
-        .register_get("attachment_magazine_bonus", |i: &mut ItemData| {
-            i.attachment_magazine_bonus as i64
-        })
-        .register_get("attachment_compatible_types", |i: &mut ItemData| {
-            i.attachment_compatible_types
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect::<Vec<_>>()
-        })
-        // Gardening fields
-        .register_get("plant_prototype_vnum", |i: &mut ItemData| {
-            i.plant_prototype_vnum.clone()
-        })
-        .register_get("fertilizer_duration", |i: &mut ItemData| i.fertilizer_duration)
-        .register_get("treats_infestation", |i: &mut ItemData| i.treats_infestation.clone())
-        .register_get("is_plant_pot", |i: &mut ItemData| i.flags.plant_pot);
+        // Misc untyped fields kept inline (i64 already, no cast)
+        .register_get("fertilizer_duration", |i: &mut ItemData| i.fertilizer_duration);
 
     // Register ItemEffect type
     engine
@@ -407,10 +313,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             e.effect_type.to_display_string().to_string()
         })
         .register_get("magnitude", |e: &mut ItemEffect| e.magnitude as i64)
-        .register_get("duration", |e: &mut ItemEffect| e.duration as i64)
-        .register_get("script_callback", |e: &mut ItemEffect| {
-            e.script_callback.clone().unwrap_or_default()
-        });
+        .register_get("duration", |e: &mut ItemEffect| e.duration as i64);
+    register_option_string_ro!(engine, ItemEffect, script_callback);
 
     // new_effect(effect_type, magnitude, duration) -> ItemEffect
     engine.register_fn(

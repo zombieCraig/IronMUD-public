@@ -180,70 +180,78 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         tameable
     );
 
-    // Register MobileData type with getters
+    // Register MobileData type
+    engine.register_type_with_name::<MobileData>("MobileData");
+
+    // String getter+setter pairs
+    register_string!(engine, MobileData, name, short_desc, long_desc);
+
+    // Read-only String (clone) — fields that are bare String, no Option
+    register_string_ro!(engine, MobileData,
+        vnum, damage_dice, healer_type, shop_preset_vnum,
+        pursuit_target_name, pursuit_direction);
+
+    // Read-only bool getters
+    register_bool_ro!(engine, MobileData, is_prototype, healing_free, pursuit_certain);
+
+    // Read-only i32 fields exposed as i64
+    register_i32_ro!(engine, MobileData,
+        combat_spell_chance, level, max_hp, current_hp, max_stamina, current_stamina,
+        armor_class, hit_modifier, gold,
+        stat_str, stat_dex, stat_con, stat_int, stat_wis, stat_cha,
+        shop_buy_rate, shop_sell_rate, healing_cost_multiplier,
+        shop_min_value, shop_max_value, perception);
+
+    // Specials: aliases (hp/stamina), uuids, options, computed views.
+    register_uuid_ro!(engine, MobileData, id);
+    register_option_string_ro!(
+        engine,
+        MobileData,
+        faction,
+        spoken_language,
+        pet_owner,
+        nickname,
+        resident_of
+    );
+    register_option_uuid_ro!(
+        engine,
+        MobileData,
+        current_room_id,
+        leasing_area_id,
+        pursuit_target_room,
+        household_id
+    );
+    register_string_vec_ro!(
+        engine,
+        MobileData,
+        keywords,
+        combat_spells,
+        shop_stock,
+        property_templates,
+        shop_buys_categories,
+        shop_extra_types,
+        shop_extra_categories,
+        shop_deny_types,
+        shop_deny_categories,
+        embedded_projectiles
+    );
+
     engine
-        .register_type_with_name::<MobileData>("MobileData")
-        .register_get("id", |m: &mut MobileData| m.id.to_string())
-        .register_get("name", |m: &mut MobileData| m.name.clone())
-        .register_set("name", |m: &mut MobileData, v: String| m.name = v)
-        .register_get("short_desc", |m: &mut MobileData| m.short_desc.clone())
-        .register_set("short_desc", |m: &mut MobileData, v: String| m.short_desc = v)
-        .register_get("long_desc", |m: &mut MobileData| m.long_desc.clone())
-        .register_set("long_desc", |m: &mut MobileData, v: String| m.long_desc = v)
-        .register_get("keywords", |m: &mut MobileData| {
-            m.keywords
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect::<Vec<_>>()
-        })
-        .register_get("current_room_id", |m: &mut MobileData| {
-            m.current_room_id.map(|u| u.to_string()).unwrap_or_default()
-        })
-        .register_get("is_prototype", |m: &mut MobileData| m.is_prototype)
-        .register_get("vnum", |m: &mut MobileData| m.vnum.clone())
+        .register_get("hp", |m: &mut MobileData| m.current_hp as i64)
+        .register_set("hp", |m: &mut MobileData, val: i64| m.current_hp = val as i32)
+        .register_get("stamina", |m: &mut MobileData| m.current_stamina as i64)
+        .register_set("stamina", |m: &mut MobileData, val: i64| m.current_stamina = val as i32)
         .register_get("world_max_count", |m: &mut MobileData| m.world_max_count.unwrap_or(0) as i64)
         .register_get("has_world_max_count", |m: &mut MobileData| m.world_max_count.is_some())
-        .register_get("faction", |m: &mut MobileData| m.faction.clone().unwrap_or_default())
-        .register_get("spoken_language", |m: &mut MobileData| {
-            m.spoken_language.clone().unwrap_or_default()
-        })
         .register_get("has_spoken_language", |m: &mut MobileData| {
             m.spoken_language.is_some()
         })
-        .register_get("combat_spells", |m: &mut MobileData| {
-            m.combat_spells
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect::<Vec<_>>()
-        })
-        .register_get("combat_spell_chance", |m: &mut MobileData| m.combat_spell_chance as i64)
-        .register_get("level", |m: &mut MobileData| m.level as i64)
-        .register_get("max_hp", |m: &mut MobileData| m.max_hp as i64)
-        .register_get("current_hp", |m: &mut MobileData| m.current_hp as i64)
-        .register_get("hp", |m: &mut MobileData| m.current_hp as i64)
-        .register_set("hp", |m: &mut MobileData, val: i64| m.current_hp = val as i32)
-        .register_get("max_stamina", |m: &mut MobileData| m.max_stamina as i64)
-        .register_get("current_stamina", |m: &mut MobileData| m.current_stamina as i64)
-        .register_get("stamina", |m: &mut MobileData| m.current_stamina as i64)
-        .register_set("stamina", |m: &mut MobileData, val: i64| m.current_stamina = val as i32)
-        .register_get("damage_dice", |m: &mut MobileData| m.damage_dice.clone())
         .register_get("damage_type", |m: &mut MobileData| {
             m.damage_type.to_display_string().to_string()
         })
-        .register_get("armor_class", |m: &mut MobileData| m.armor_class as i64)
-        .register_get("hit_modifier", |m: &mut MobileData| m.hit_modifier as i64)
-        .register_get("gold", |m: &mut MobileData| m.gold as i64)
-        .register_get("stat_str", |m: &mut MobileData| m.stat_str as i64)
-        .register_get("stat_dex", |m: &mut MobileData| m.stat_dex as i64)
-        .register_get("stat_con", |m: &mut MobileData| m.stat_con as i64)
-        .register_get("stat_int", |m: &mut MobileData| m.stat_int as i64)
-        .register_get("stat_wis", |m: &mut MobileData| m.stat_wis as i64)
-        .register_get("stat_cha", |m: &mut MobileData| m.stat_cha as i64)
         .register_get("flags", |m: &mut MobileData| m.flags.clone())
         .register_get("position", |m: &mut MobileData| m.position.to_string())
-        .register_get("pet_owner", |m: &mut MobileData| m.pet_owner.clone().unwrap_or_default())
         .register_get("has_pet_owner", |m: &mut MobileData| m.pet_owner.is_some())
-        .register_get("nickname", |m: &mut MobileData| m.nickname.clone().unwrap_or_default())
         .register_get("has_nickname", |m: &mut MobileData| {
             m.nickname.as_deref().filter(|s| !s.is_empty()).is_some()
         })
@@ -254,83 +262,6 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 .map(|c| c.gender.clone())
                 .filter(|g| !g.is_empty())
                 .unwrap_or_default()
-        })
-        .register_get("shop_stock", |m: &mut MobileData| {
-            m.shop_stock
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect::<Vec<_>>()
-        })
-        .register_get("shop_buy_rate", |m: &mut MobileData| m.shop_buy_rate as i64)
-        .register_get("shop_sell_rate", |m: &mut MobileData| m.shop_sell_rate as i64)
-        .register_get("healer_type", |m: &mut MobileData| m.healer_type.clone())
-        .register_get("healing_free", |m: &mut MobileData| m.healing_free)
-        .register_get("healing_cost_multiplier", |m: &mut MobileData| {
-            m.healing_cost_multiplier as i64
-        })
-        .register_get("leasing_area_id", |m: &mut MobileData| {
-            m.leasing_area_id.map(|u| u.to_string()).unwrap_or_default()
-        })
-        .register_get("property_templates", |m: &mut MobileData| {
-            m.property_templates
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect::<Vec<_>>()
-        })
-        .register_get("shop_buys_categories", |m: &mut MobileData| {
-            m.shop_buys_categories
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect::<Vec<_>>()
-        })
-        .register_get("shop_preset_vnum", |m: &mut MobileData| m.shop_preset_vnum.clone())
-        .register_get("shop_extra_types", |m: &mut MobileData| {
-            m.shop_extra_types
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect::<Vec<_>>()
-        })
-        .register_get("shop_extra_categories", |m: &mut MobileData| {
-            m.shop_extra_categories
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect::<Vec<_>>()
-        })
-        .register_get("shop_deny_types", |m: &mut MobileData| {
-            m.shop_deny_types
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect::<Vec<_>>()
-        })
-        .register_get("shop_deny_categories", |m: &mut MobileData| {
-            m.shop_deny_categories
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect::<Vec<_>>()
-        })
-        .register_get("shop_min_value", |m: &mut MobileData| m.shop_min_value as i64)
-        .register_get("shop_max_value", |m: &mut MobileData| m.shop_max_value as i64)
-        .register_get("pursuit_target_name", |m: &mut MobileData| {
-            m.pursuit_target_name.clone()
-        })
-        .register_get("pursuit_direction", |m: &mut MobileData| m.pursuit_direction.clone())
-        .register_get("pursuit_certain", |m: &mut MobileData| m.pursuit_certain)
-        .register_get("pursuit_target_room", |m: &mut MobileData| {
-            m.pursuit_target_room.map(|u| u.to_string()).unwrap_or_default()
-        })
-        .register_get("embedded_projectiles", |m: &mut MobileData| {
-            m.embedded_projectiles
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect::<Vec<_>>()
-        })
-        .register_get("perception", |m: &mut MobileData| m.perception as i64)
-        // Migrant/resident fields
-        .register_get("resident_of", |m: &mut MobileData| {
-            m.resident_of.clone().unwrap_or_default()
-        })
-        .register_get("household_id", |m: &mut MobileData| {
-            m.household_id.map(|u| u.to_string()).unwrap_or_default()
         })
         .register_get("has_characteristics", |m: &mut MobileData| m.characteristics.is_some())
         .register_get("age", |m: &mut MobileData| {

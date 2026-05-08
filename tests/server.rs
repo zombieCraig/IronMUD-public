@@ -649,8 +649,20 @@ fn test_scripts_access_registered_properties() {
     let register_get_re =
         Regex::new(r#"\.register_get\s*\(\s*"([^"]+)"[^|]*\|\s*\w+\s*:\s*&mut\s+(\w+)\s*\|"#).unwrap();
 
-    // Match: register_bool_flags!(engine, TypeName, flag1, flag2, ...)
-    let bool_flags_re = Regex::new(r"register_bool_flags!\s*\(\s*\w+\s*,\s*(\w+)\s*,\s*([\s\S]*?)\);").unwrap();
+    // Match field-list registration macros:
+    //   register_bool_flags!(engine, TypeName, flag1, flag2, ...)
+    //   register_bool_ro!(engine, TypeName, field1, field2, ...)
+    //   register_string!(engine, TypeName, field1, field2, ...)
+    //   register_string_ro!(engine, TypeName, field1, field2, ...)
+    //   register_i32!(engine, TypeName, field1, field2, ...)
+    //   register_i32_ro!(engine, TypeName, field1, field2, ...)
+    //   register_option_string{,_ro}!(engine, TypeName, ...)
+    //   register_uuid_ro!, register_option_uuid{,_ro}!(engine, TypeName, ...)
+    //   register_string_vec{,_ro}!(engine, TypeName, ...)
+    let field_list_macro_re = Regex::new(
+        r"register_(?:bool_flags|bool_ro|string|string_ro|i32|i32_ro|option_string|option_string_ro|uuid_ro|option_uuid|option_uuid_ro|string_vec|string_vec_ro)!\s*\(\s*\w+\s*,\s*(\w+)\s*,\s*([\s\S]*?)\);",
+    )
+    .unwrap();
 
     for entry in glob("src/script/**/*.rs").expect("Failed to glob src/script") {
         if let Ok(path) = entry {
@@ -661,7 +673,7 @@ fn test_scripts_access_registered_properties() {
                         .or_default()
                         .insert(cap[1].to_string());
                 }
-                for cap in bool_flags_re.captures_iter(&content) {
+                for cap in field_list_macro_re.captures_iter(&content) {
                     let type_name = cap[1].to_string();
                     for flag in cap[2].split(',') {
                         let flag = flag.trim();
@@ -981,7 +993,11 @@ fn test_rhai_property_writes_have_registered_setters() {
 
     // Step 1: Collect all registered setter property names from Rust source.
     // If register_set("foo", ...) exists on ANY type, "foo" is considered valid.
+    // Setter-bearing macros (register_string!, register_i32!, register_bool_flags!) also
+    // count - the *_ro variants are read-only and intentionally excluded.
     let setter_re = Regex::new(r#"register_set\s*\(\s*"([^"]+)""#).unwrap();
+    let setter_macro_re =
+        Regex::new(r"register_(?:bool_flags|string|i32|option_string|option_uuid|string_vec)!\s*\(\s*\w+\s*,\s*\w+\s*,\s*([\s\S]*?)\);").unwrap();
     let mut registered_setters: HashSet<String> = HashSet::new();
 
     for entry in glob("src/script/**/*.rs").expect("glob src/script") {
@@ -989,6 +1005,14 @@ fn test_rhai_property_writes_have_registered_setters() {
             if let Ok(content) = fs::read_to_string(&path) {
                 for cap in setter_re.captures_iter(&content) {
                     registered_setters.insert(cap[1].to_string());
+                }
+                for cap in setter_macro_re.captures_iter(&content) {
+                    for field in cap[1].split(',') {
+                        let field = field.trim();
+                        if !field.is_empty() {
+                            registered_setters.insert(field.to_string());
+                        }
+                    }
                 }
             }
         }

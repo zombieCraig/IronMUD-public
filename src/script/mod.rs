@@ -1,6 +1,13 @@
 // src/script/mod.rs
 // Rhai scripting engine registration for IronMUD
 
+// IMPORTANT: macros must be declared FIRST so the #[macro_use] cascade brings
+// register_bool_flags!/register_string!/register_i32!/etc. into scope for every
+// other submodule below. Without this, files like items.rs would need explicit
+// `use crate::register_bool_flags;` imports to call the macros unqualified.
+#[macro_use]
+pub mod macros;
+
 pub mod achievements;
 mod ai;
 mod api_keys;
@@ -16,8 +23,6 @@ mod garden;
 mod groups;
 mod healers;
 mod items;
-#[macro_use]
-pub mod macros;
 mod boards;
 mod mail;
 pub mod lang;
@@ -59,123 +64,58 @@ use rhai::{Engine, EvalAltResult, Position};
 use std::sync::Arc;
 
 pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, state: SharedState) {
-    // Register CharacterData type with getters/setters
+    // Register CharacterData type
+    engine.register_type_with_name::<CharacterData>("CharacterData");
+
+    // Bool getter+setter pairs
+    register_bool_flags!(engine, CharacterData,
+        summonable, creation_complete, must_change_password, show_room_flags,
+        mana_enabled, is_grouped, is_wet, has_hypothermia, is_unconscious,
+        has_heat_exhaustion, has_heat_stroke, has_illness, food_sick, on_tour,
+        automap_enabled, ascii_map);
+
+    // Read-only bool getters
+    register_bool_ro!(engine, CharacterData, is_builder, is_admin, god_mode, build_mode);
+
+    // String getter+setter pairs
+    register_string!(engine, CharacterData,
+        name, race, gender, short_description, class_name, prompt_mode, current_language);
+
+    // Read-only String getter
+    register_string_ro!(engine, CharacterData, password_hash);
+
+    // i32 fields exposed as i64
+    register_i32!(engine, CharacterData,
+        level, gold, trait_points,
+        thirst, max_thirst, hunger, max_hunger, hp, max_hp,
+        stamina, max_stamina, mana, max_mana, breath, max_breath,
+        stat_str, stat_dex, stat_con, stat_int, stat_wis, stat_cha,
+        wet_level, cold_exposure, heat_exposure, illness_progress,
+        bleedout_rounds_remaining);
+
+    // Read-only i32 as i64
+    register_i32_ro!(engine, CharacterData, gold_high_water);
+
+    // Special accessors: uuid coercion, enum/option/collection translation, computed reads.
+    register_option_string!(engine, CharacterData, following);
+    register_option_string_ro!(engine, CharacterData, active_title);
+    register_option_uuid!(
+        engine,
+        CharacterData,
+        following_mobile_id,
+        tour_origin_room,
+        spawn_room_id
+    );
+    register_string_vec!(engine, CharacterData, traits, learned_spells);
+
     engine
-        .register_type_with_name::<CharacterData>("CharacterData")
-        .register_get("name", |c: &mut CharacterData| c.name.clone())
-        .register_set("name", |c: &mut CharacterData, val: String| c.name = val)
-        .register_get("password_hash", |c: &mut CharacterData| c.password_hash.clone())
+        .register_get("bank_gold", |c: &mut CharacterData| c.bank_gold)
         .register_get("current_room_id", |c: &mut CharacterData| c.current_room_id.to_string())
         .register_set("current_room_id", |c: &mut CharacterData, val: String| {
             if let Ok(uuid) = uuid::Uuid::parse_str(&val) {
                 c.current_room_id = uuid;
             }
         })
-        .register_get("is_builder", |c: &mut CharacterData| c.is_builder)
-        .register_get("is_admin", |c: &mut CharacterData| c.is_admin)
-        .register_get("god_mode", |c: &mut CharacterData| c.god_mode)
-        .register_get("build_mode", |c: &mut CharacterData| c.build_mode)
-        .register_get("summonable", |c: &mut CharacterData| c.summonable)
-        .register_set("summonable", |c: &mut CharacterData, val: bool| c.summonable = val)
-        .register_get("level", |c: &mut CharacterData| c.level as i64)
-        .register_set("level", |c: &mut CharacterData, val: i64| c.level = val as i32)
-        .register_get("gold", |c: &mut CharacterData| c.gold as i64)
-        .register_set("gold", |c: &mut CharacterData, val: i64| c.gold = val as i32)
-        .register_get("bank_gold", |c: &mut CharacterData| c.bank_gold)
-        // Character creation wizard field getters/setters
-        .register_get("race", |c: &mut CharacterData| c.race.clone())
-        .register_set("race", |c: &mut CharacterData, val: String| c.race = val)
-        .register_get("gender", |c: &mut CharacterData| c.gender.clone())
-        .register_set("gender", |c: &mut CharacterData, val: String| c.gender = val)
-        .register_get("short_description", |c: &mut CharacterData| c.short_description.clone())
-        .register_set("short_description", |c: &mut CharacterData, val: String| {
-            c.short_description = val
-        })
-        .register_get("class_name", |c: &mut CharacterData| c.class_name.clone())
-        .register_set("class_name", |c: &mut CharacterData, val: String| c.class_name = val)
-        .register_get("traits", |c: &mut CharacterData| {
-            c.traits
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect::<Vec<_>>()
-        })
-        .register_set("traits", |c: &mut CharacterData, val: rhai::Array| {
-            c.traits = val.into_iter().filter_map(|d| d.try_cast::<String>()).collect();
-        })
-        .register_get("trait_points", |c: &mut CharacterData| c.trait_points as i64)
-        .register_set("trait_points", |c: &mut CharacterData, val: i64| {
-            c.trait_points = val as i32
-        })
-        .register_get("creation_complete", |c: &mut CharacterData| c.creation_complete)
-        .register_set("creation_complete", |c: &mut CharacterData, val: bool| {
-            c.creation_complete = val
-        })
-        // Thirst system getters/setters
-        .register_get("thirst", |c: &mut CharacterData| c.thirst as i64)
-        .register_set("thirst", |c: &mut CharacterData, val: i64| c.thirst = val as i32)
-        .register_get("max_thirst", |c: &mut CharacterData| c.max_thirst as i64)
-        .register_set("max_thirst", |c: &mut CharacterData, val: i64| {
-            c.max_thirst = val as i32
-        })
-        // Hunger system getters/setters
-        .register_get("hunger", |c: &mut CharacterData| c.hunger as i64)
-        .register_set("hunger", |c: &mut CharacterData, val: i64| c.hunger = val as i32)
-        .register_get("max_hunger", |c: &mut CharacterData| c.max_hunger as i64)
-        .register_set("max_hunger", |c: &mut CharacterData, val: i64| {
-            c.max_hunger = val as i32
-        })
-        // HP system getters/setters
-        .register_get("hp", |c: &mut CharacterData| c.hp as i64)
-        .register_set("hp", |c: &mut CharacterData, val: i64| c.hp = val as i32)
-        .register_get("max_hp", |c: &mut CharacterData| c.max_hp as i64)
-        .register_set("max_hp", |c: &mut CharacterData, val: i64| c.max_hp = val as i32)
-        // Prompt settings
-        .register_get("prompt_mode", |c: &mut CharacterData| c.prompt_mode.clone())
-        .register_set("prompt_mode", |c: &mut CharacterData, val: String| c.prompt_mode = val)
-        // Password management
-        .register_get("must_change_password", |c: &mut CharacterData| c.must_change_password)
-        .register_set("must_change_password", |c: &mut CharacterData, val: bool| {
-            c.must_change_password = val
-        })
-        // Builder mode: show room flags
-        .register_get("show_room_flags", |c: &mut CharacterData| c.show_room_flags)
-        .register_set("show_room_flags", |c: &mut CharacterData, val: bool| {
-            c.show_room_flags = val
-        })
-        // Stamina system
-        .register_get("stamina", |c: &mut CharacterData| c.stamina as i64)
-        .register_set("stamina", |c: &mut CharacterData, val: i64| c.stamina = val as i32)
-        .register_get("max_stamina", |c: &mut CharacterData| c.max_stamina as i64)
-        .register_set("max_stamina", |c: &mut CharacterData, val: i64| {
-            c.max_stamina = val as i32
-        })
-        // Mana system
-        .register_get("mana", |c: &mut CharacterData| c.mana as i64)
-        .register_set("mana", |c: &mut CharacterData, val: i64| c.mana = val as i32)
-        .register_get("max_mana", |c: &mut CharacterData| c.max_mana as i64)
-        .register_set("max_mana", |c: &mut CharacterData, val: i64| c.max_mana = val as i32)
-        .register_get("mana_enabled", |c: &mut CharacterData| c.mana_enabled)
-        .register_set("mana_enabled", |c: &mut CharacterData, val: bool| c.mana_enabled = val)
-        // Breath/drowning system
-        .register_get("breath", |c: &mut CharacterData| c.breath as i64)
-        .register_set("breath", |c: &mut CharacterData, val: i64| c.breath = val as i32)
-        .register_get("max_breath", |c: &mut CharacterData| c.max_breath as i64)
-        .register_set("max_breath", |c: &mut CharacterData, val: i64| {
-            c.max_breath = val as i32
-        })
-        // Character stats
-        .register_get("stat_str", |c: &mut CharacterData| c.stat_str as i64)
-        .register_set("stat_str", |c: &mut CharacterData, val: i64| c.stat_str = val as i32)
-        .register_get("stat_dex", |c: &mut CharacterData| c.stat_dex as i64)
-        .register_set("stat_dex", |c: &mut CharacterData, val: i64| c.stat_dex = val as i32)
-        .register_get("stat_con", |c: &mut CharacterData| c.stat_con as i64)
-        .register_set("stat_con", |c: &mut CharacterData, val: i64| c.stat_con = val as i32)
-        .register_get("stat_int", |c: &mut CharacterData| c.stat_int as i64)
-        .register_set("stat_int", |c: &mut CharacterData, val: i64| c.stat_int = val as i32)
-        .register_get("stat_wis", |c: &mut CharacterData| c.stat_wis as i64)
-        .register_set("stat_wis", |c: &mut CharacterData, val: i64| c.stat_wis = val as i32)
-        .register_get("stat_cha", |c: &mut CharacterData| c.stat_cha as i64)
-        .register_set("stat_cha", |c: &mut CharacterData, val: i64| c.stat_cha = val as i32)
         .register_get("position", |c: &mut CharacterData| c.position.to_string())
         .register_set("position", |c: &mut CharacterData, val: String| {
             c.position = match val.to_lowercase().as_str() {
@@ -184,42 +124,6 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 "swimming" => crate::CharacterPosition::Swimming,
                 _ => crate::CharacterPosition::Standing,
             };
-        })
-        // Group/Party system
-        .register_get("following", |c: &mut CharacterData| {
-            c.following.clone().unwrap_or_default()
-        })
-        .register_set("following", |c: &mut CharacterData, val: String| {
-            c.following = if val.is_empty() { None } else { Some(val) };
-        })
-        .register_get("following_mobile_id", |c: &mut CharacterData| {
-            c.following_mobile_id.map(|u| u.to_string()).unwrap_or_default()
-        })
-        .register_set("following_mobile_id", |c: &mut CharacterData, val: String| {
-            c.following_mobile_id = if val.is_empty() {
-                None
-            } else {
-                uuid::Uuid::parse_str(&val).ok()
-            };
-        })
-        .register_get("is_grouped", |c: &mut CharacterData| c.is_grouped)
-        .register_set("is_grouped", |c: &mut CharacterData, val: bool| c.is_grouped = val)
-        // Weather exposure and medical conditions
-        .register_get("is_wet", |c: &mut CharacterData| c.is_wet)
-        .register_set("is_wet", |c: &mut CharacterData, val: bool| c.is_wet = val)
-        .register_get("wet_level", |c: &mut CharacterData| c.wet_level as i64)
-        .register_set("wet_level", |c: &mut CharacterData, val: i64| c.wet_level = val as i32)
-        .register_get("cold_exposure", |c: &mut CharacterData| c.cold_exposure as i64)
-        .register_set("cold_exposure", |c: &mut CharacterData, val: i64| {
-            c.cold_exposure = val as i32
-        })
-        .register_get("heat_exposure", |c: &mut CharacterData| c.heat_exposure as i64)
-        .register_set("heat_exposure", |c: &mut CharacterData, val: i64| {
-            c.heat_exposure = val as i32
-        })
-        .register_get("has_hypothermia", |c: &mut CharacterData| c.has_hypothermia)
-        .register_set("has_hypothermia", |c: &mut CharacterData, val: bool| {
-            c.has_hypothermia = val
         })
         .register_get("has_frostbite", |c: &mut CharacterData| {
             c.has_frostbite
@@ -249,58 +153,6 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 })
                 .collect();
         })
-        // Unconscious/bleedout state
-        .register_get("is_unconscious", |c: &mut CharacterData| c.is_unconscious)
-        .register_set("is_unconscious", |c: &mut CharacterData, val: bool| {
-            c.is_unconscious = val
-        })
-        .register_get("bleedout_rounds_remaining", |c: &mut CharacterData| {
-            c.bleedout_rounds_remaining as i64
-        })
-        .register_set("bleedout_rounds_remaining", |c: &mut CharacterData, val: i64| {
-            c.bleedout_rounds_remaining = val as i32
-        })
-        .register_get("has_heat_exhaustion", |c: &mut CharacterData| c.has_heat_exhaustion)
-        .register_set("has_heat_exhaustion", |c: &mut CharacterData, val: bool| {
-            c.has_heat_exhaustion = val
-        })
-        .register_get("has_heat_stroke", |c: &mut CharacterData| c.has_heat_stroke)
-        .register_set("has_heat_stroke", |c: &mut CharacterData, val: bool| {
-            c.has_heat_stroke = val
-        })
-        .register_get("has_illness", |c: &mut CharacterData| c.has_illness)
-        .register_set("has_illness", |c: &mut CharacterData, val: bool| c.has_illness = val)
-        .register_get("illness_progress", |c: &mut CharacterData| c.illness_progress as i64)
-        .register_set("illness_progress", |c: &mut CharacterData, val: i64| {
-            c.illness_progress = val as i32
-        })
-        .register_get("food_sick", |c: &mut CharacterData| c.food_sick)
-        .register_set("food_sick", |c: &mut CharacterData, val: bool| c.food_sick = val)
-        // Property tour state
-        .register_get("tour_origin_room", |c: &mut CharacterData| {
-            c.tour_origin_room.map(|u| u.to_string()).unwrap_or_default()
-        })
-        .register_set("tour_origin_room", |c: &mut CharacterData, val: String| {
-            c.tour_origin_room = if val.is_empty() {
-                None
-            } else {
-                uuid::Uuid::parse_str(&val).ok()
-            };
-        })
-        .register_get("on_tour", |c: &mut CharacterData| c.on_tour)
-        .register_set("on_tour", |c: &mut CharacterData, val: bool| c.on_tour = val)
-        // Spawn room
-        .register_get("spawn_room_id", |c: &mut CharacterData| {
-            c.spawn_room_id.map(|u| u.to_string()).unwrap_or_default()
-        })
-        .register_set("spawn_room_id", |c: &mut CharacterData, val: String| {
-            c.spawn_room_id = if val.is_empty() {
-                None
-            } else {
-                uuid::Uuid::parse_str(&val).ok()
-            };
-        })
-        // Racial cooldowns (ability_id -> unix timestamp)
         .register_get("racial_cooldowns", |c: &mut CharacterData| -> rhai::Map {
             c.racial_cooldowns
                 .iter()
@@ -312,16 +164,6 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 .into_iter()
                 .filter_map(|(k, v)| v.as_int().ok().map(|i| (k.to_string(), i)))
                 .collect();
-        })
-        // Spell system fields
-        .register_get("learned_spells", |c: &mut CharacterData| -> rhai::Array {
-            c.learned_spells
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect()
-        })
-        .register_set("learned_spells", |c: &mut CharacterData, val: rhai::Array| {
-            c.learned_spells = val.into_iter().filter_map(|d| d.try_cast::<String>()).collect();
         })
         .register_get("spell_cooldowns", |c: &mut CharacterData| -> rhai::Map {
             c.spell_cooldowns
@@ -335,30 +177,13 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 .filter_map(|(k, v)| v.as_int().ok().map(|i| (k.to_string(), i)))
                 .collect();
         })
-        // Achievement system fields
-        .register_get("active_title", |c: &mut CharacterData| {
-            c.active_title.clone().unwrap_or_default()
-        })
         .register_get("achievements_unlocked_count", |c: &mut CharacterData| {
             c.achievements_unlocked.len() as i64
         })
-        .register_get("gold_high_water", |c: &mut CharacterData| c.gold_high_water as i64)
-        // Map system fields
-        .register_get("automap_enabled", |c: &mut CharacterData| c.automap_enabled)
-        .register_set("automap_enabled", |c: &mut CharacterData, val: bool| {
-            c.automap_enabled = val;
-        })
+        // Clamped automap radius (1..=8) — kept custom since the macro can't clamp.
         .register_get("automap_radius", |c: &mut CharacterData| c.automap_radius as i64)
         .register_set("automap_radius", |c: &mut CharacterData, val: i64| {
             c.automap_radius = val.clamp(1, 8) as i32;
-        })
-        .register_get("ascii_map", |c: &mut CharacterData| c.ascii_map)
-        .register_set("ascii_map", |c: &mut CharacterData, val: bool| {
-            c.ascii_map = val;
-        })
-        .register_get("current_language", |c: &mut CharacterData| c.current_language.clone())
-        .register_set("current_language", |c: &mut CharacterData, val: String| {
-            c.current_language = val;
         });
 
     // Register CharacterData constructor

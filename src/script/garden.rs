@@ -21,26 +21,21 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_get("examine_desc", |s: &mut GrowthStageDef| s.examine_desc.clone());
 
     // Register PlantPrototype type
+    engine.register_type_with_name::<PlantPrototype>("PlantPrototype");
+    register_string!(engine, PlantPrototype, name, seed_vnum, harvest_vnum);
+    register_i32!(engine, PlantPrototype, harvest_min, harvest_max, min_skill_to_plant, base_xp, pest_resistance);
+    register_bool_flags!(engine, PlantPrototype, multi_harvest);
+    register_bool_ro!(engine, PlantPrototype, indoor_only, is_prototype);
+
     engine
-        .register_type_with_name::<PlantPrototype>("PlantPrototype")
         .register_get("id", |p: &mut PlantPrototype| p.id.to_string())
         .register_get("vnum", |p: &mut PlantPrototype| p.vnum.clone().unwrap_or_default())
-        .register_get("name", |p: &mut PlantPrototype| p.name.clone())
-        .register_set("name", |p: &mut PlantPrototype, v: String| p.name = v)
         .register_get("keywords", |p: &mut PlantPrototype| {
             p.keywords
                 .iter()
                 .map(|s| rhai::Dynamic::from(s.clone()))
                 .collect::<Vec<_>>()
         })
-        .register_get("seed_vnum", |p: &mut PlantPrototype| p.seed_vnum.clone())
-        .register_set("seed_vnum", |p: &mut PlantPrototype, v: String| p.seed_vnum = v)
-        .register_get("harvest_vnum", |p: &mut PlantPrototype| p.harvest_vnum.clone())
-        .register_set("harvest_vnum", |p: &mut PlantPrototype, v: String| p.harvest_vnum = v)
-        .register_get("harvest_min", |p: &mut PlantPrototype| p.harvest_min as i64)
-        .register_set("harvest_min", |p: &mut PlantPrototype, v: i64| p.harvest_min = v as i32)
-        .register_get("harvest_max", |p: &mut PlantPrototype| p.harvest_max as i64)
-        .register_set("harvest_max", |p: &mut PlantPrototype, v: i64| p.harvest_max = v as i32)
         .register_get("category", |p: &mut PlantPrototype| {
             p.category.to_display_string().to_string()
         })
@@ -65,23 +60,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_get("water_consumption_per_hour", |p: &mut PlantPrototype| {
             p.water_consumption_per_hour
         })
-        .register_get("water_capacity", |p: &mut PlantPrototype| p.water_capacity)
-        .register_get("indoor_only", |p: &mut PlantPrototype| p.indoor_only)
-        .register_get("min_skill_to_plant", |p: &mut PlantPrototype| {
-            p.min_skill_to_plant as i64
-        })
-        .register_set("min_skill_to_plant", |p: &mut PlantPrototype, v: i64| {
-            p.min_skill_to_plant = v as i32
-        })
-        .register_get("base_xp", |p: &mut PlantPrototype| p.base_xp as i64)
-        .register_set("base_xp", |p: &mut PlantPrototype, v: i64| p.base_xp = v as i32)
-        .register_get("pest_resistance", |p: &mut PlantPrototype| p.pest_resistance as i64)
-        .register_set("pest_resistance", |p: &mut PlantPrototype, v: i64| {
-            p.pest_resistance = v as i32
-        })
-        .register_get("multi_harvest", |p: &mut PlantPrototype| p.multi_harvest)
-        .register_set("multi_harvest", |p: &mut PlantPrototype, v: bool| p.multi_harvest = v)
-        .register_get("is_prototype", |p: &mut PlantPrototype| p.is_prototype);
+        .register_get("water_capacity", |p: &mut PlantPrototype| p.water_capacity);
 
     // Register PlantInstance type
     engine

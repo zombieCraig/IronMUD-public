@@ -24,21 +24,12 @@ fn get_character_name_from_connection(conns: &SharedConnections, connection_id: 
 pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections) {
     // ========== Property Template Registration ==========
 
+    engine.register_type_with_name::<PropertyTemplate>("PropertyTemplate");
+    register_string!(engine, PropertyTemplate, vnum, name, description);
+    register_i32!(engine, PropertyTemplate, monthly_rent, max_instances, level_requirement);
+
     engine
-        .register_type_with_name::<PropertyTemplate>("PropertyTemplate")
         .register_get("id", |t: &mut PropertyTemplate| t.id.to_string())
-        .register_get("vnum", |t: &mut PropertyTemplate| t.vnum.clone())
-        .register_set("vnum", |t: &mut PropertyTemplate, val: String| t.vnum = val)
-        .register_get("name", |t: &mut PropertyTemplate| t.name.clone())
-        .register_set("name", |t: &mut PropertyTemplate, val: String| t.name = val)
-        .register_get("description", |t: &mut PropertyTemplate| t.description.clone())
-        .register_set("description", |t: &mut PropertyTemplate, val: String| {
-            t.description = val
-        })
-        .register_get("monthly_rent", |t: &mut PropertyTemplate| t.monthly_rent as i64)
-        .register_set("monthly_rent", |t: &mut PropertyTemplate, val: i64| {
-            t.monthly_rent = val as i32
-        })
         .register_get("entrance_room_id", |t: &mut PropertyTemplate| {
             t.entrance_room_id.to_string()
         })
@@ -46,16 +37,6 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if let Ok(uuid) = uuid::Uuid::parse_str(&val) {
                 t.entrance_room_id = uuid;
             }
-        })
-        .register_get("max_instances", |t: &mut PropertyTemplate| t.max_instances as i64)
-        .register_set("max_instances", |t: &mut PropertyTemplate, val: i64| {
-            t.max_instances = val as i32
-        })
-        .register_get("level_requirement", |t: &mut PropertyTemplate| {
-            t.level_requirement as i64
-        })
-        .register_set("level_requirement", |t: &mut PropertyTemplate, val: i64| {
-            t.level_requirement = val as i32
         })
         .register_get("area_id", |t: &mut PropertyTemplate| {
             t.area_id.map(|u| u.to_string()).unwrap_or_default()
@@ -70,11 +51,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // ========== LeaseData Registration ==========
 
+    engine.register_type_with_name::<LeaseData>("LeaseData");
+    register_string_ro!(engine, LeaseData, template_vnum, owner_name);
+    register_i32_ro!(engine, LeaseData, monthly_rent);
+    register_bool_ro!(engine, LeaseData, is_evicted);
+
     engine
-        .register_type_with_name::<LeaseData>("LeaseData")
         .register_get("id", |l: &mut LeaseData| l.id.to_string())
-        .register_get("template_vnum", |l: &mut LeaseData| l.template_vnum.clone())
-        .register_get("owner_name", |l: &mut LeaseData| l.owner_name.clone())
         .register_get("leasing_agent_id", |l: &mut LeaseData| l.leasing_agent_id.to_string())
         .register_get("leasing_office_room_id", |l: &mut LeaseData| {
             l.leasing_office_room_id.to_string()
@@ -87,10 +70,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 .collect::<Vec<_>>()
         })
         .register_get("entrance_room_id", |l: &mut LeaseData| l.entrance_room_id.to_string())
-        .register_get("monthly_rent", |l: &mut LeaseData| l.monthly_rent as i64)
         .register_get("rent_paid_until", |l: &mut LeaseData| l.rent_paid_until)
         .register_get("created_at", |l: &mut LeaseData| l.created_at)
-        .register_get("is_evicted", |l: &mut LeaseData| l.is_evicted)
         .register_get("party_access", |l: &mut LeaseData| {
             l.party_access.to_display_string().to_string()
         })
@@ -103,10 +84,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // ========== EscrowData Registration ==========
 
+    engine.register_type_with_name::<EscrowData>("EscrowData");
+    register_string_ro!(engine, EscrowData, owner_name);
+    register_i32_ro!(engine, EscrowData, retrieval_fee);
+
     engine
-        .register_type_with_name::<EscrowData>("EscrowData")
         .register_get("id", |e: &mut EscrowData| e.id.to_string())
-        .register_get("owner_name", |e: &mut EscrowData| e.owner_name.clone())
         .register_get("items", |e: &mut EscrowData| {
             e.items
                 .iter()
@@ -115,8 +98,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         })
         .register_get("source_lease_id", |e: &mut EscrowData| e.source_lease_id.to_string())
         .register_get("created_at", |e: &mut EscrowData| e.created_at)
-        .register_get("expires_at", |e: &mut EscrowData| e.expires_at)
-        .register_get("retrieval_fee", |e: &mut EscrowData| e.retrieval_fee as i64);
+        .register_get("expires_at", |e: &mut EscrowData| e.expires_at);
 
     // ========== Property Template Functions ==========
 
