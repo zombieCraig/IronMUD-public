@@ -7,7 +7,9 @@
 pub mod broadcast;
 pub mod connection;
 pub mod death;
+pub mod sanitize;
 
 pub use broadcast::*;
 pub use connection::*;
 pub use death::{break_all_charms_by_player, kill_player_at_room};
+pub use sanitize::sanitize_player_text;

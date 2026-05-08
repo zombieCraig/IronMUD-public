@@ -599,7 +599,7 @@ fn cmd_force(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
                 if let Some(session) = conns.get(&cid) {
                     let _ = session
                         .input_sender
-                        .send(crate::InputEvent::Line(cmdline.to_string()));
+                        .try_send(crate::InputEvent::Line(cmdline.to_string()));
                 }
             }
         }

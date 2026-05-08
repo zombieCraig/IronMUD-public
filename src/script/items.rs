@@ -2734,6 +2734,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // set_item_note_content(item_id, body) -> bool (empty body clears)
     let cloned_db = db.clone();
     engine.register_fn("set_item_note_content", move |item_id: String, body: String| -> bool {
+        if body.len() > crate::MAX_DESC_BYTES {
+            return false;
+        }
         if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
             if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
                 item.note_content = if body.is_empty() { None } else { Some(body) };
@@ -2806,6 +2809,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     engine.register_fn(
         "add_item_extra_desc",
         move |item_id: String, keywords: String, description: String| -> bool {
+            if description.len() > crate::MAX_DESC_BYTES {
+                return false;
+            }
             let item_uuid = match uuid::Uuid::parse_str(&item_id) {
                 Ok(u) => u,
                 Err(_) => return false,
@@ -3180,6 +3186,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // set_item_short_desc(item_id, desc) -> bool
     let cloned_db = db.clone();
     engine.register_fn("set_item_short_desc", move |item_id: String, desc: String| {
+        if desc.len() > crate::MAX_DESC_BYTES {
+            return false;
+        }
         if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
             if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
                 item.short_desc = desc;
@@ -3192,6 +3201,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // set_item_long_desc(item_id, desc) -> bool
     let cloned_db = db.clone();
     engine.register_fn("set_item_long_desc", move |item_id: String, desc: String| {
+        if desc.len() > crate::MAX_DESC_BYTES {
+            return false;
+        }
         if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
             if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
                 item.long_desc = desc;

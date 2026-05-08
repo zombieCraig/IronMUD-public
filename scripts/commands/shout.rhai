@@ -12,6 +12,16 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Spam guard: shout has a wide blast radius, so a 5s cooldown
+    // stops automated spam without inhibiting normal conversation.
+    if !char.god_mode {
+        let wait = try_throttle_command(char.name, "shout", 5);
+        if wait > 0 {
+            send_client_message(connection_id, "You must catch your breath. (" + wait + "s)");
+            return;
+        }
+    }
+
     // Cannot shout underwater
     let room = get_room_data(char.current_room_id);
     if room != () && room.flags.underwater && !char.god_mode {

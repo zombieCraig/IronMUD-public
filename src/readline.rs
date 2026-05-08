@@ -390,6 +390,12 @@ pub fn handle_readline_insert_char(
 ) {
     let mut conns = connections.lock().unwrap();
     if let Some(session) = conns.get_mut(&connection_id) {
+        // Refuse to grow the line past the global cap. Outer read loop
+        // disconnects on the same condition; this is belt-and-braces for
+        // any non-keystroke caller (tab completion, paste handling).
+        if session.input_buffer.len() + c.len_utf8() > crate::MAX_INPUT_LINE {
+            return;
+        }
         let char_count = session.input_buffer.chars().count();
 
         if session.cursor_pos >= char_count {

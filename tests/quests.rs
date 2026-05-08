@@ -51,6 +51,8 @@ fn make_state(db: &Db, connections: &SharedConnections) -> ironmud::SharedState 
         chat_sender: None,
         shutdown_sender: None,
         shutdown_cancel_sender: None,
+        ip_limiter: Arc::new(ironmud::ratelimit::IpRateLimiter::new()),
+        command_throttle: Arc::new(ironmud::throttle::CommandThrottle::new()),
     }))
 }
 

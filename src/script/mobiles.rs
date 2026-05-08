@@ -634,6 +634,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // set_mobile_short_desc(mobile_id, desc) -> bool
     let cloned_db = db.clone();
     engine.register_fn("set_mobile_short_desc", move |mobile_id: String, desc: String| {
+        if desc.len() > crate::MAX_DESC_BYTES {
+            return false;
+        }
         if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
             if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
                 mobile.short_desc = desc;
@@ -646,6 +649,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // set_mobile_long_desc(mobile_id, desc) -> bool
     let cloned_db = db.clone();
     engine.register_fn("set_mobile_long_desc", move |mobile_id: String, desc: String| {
+        if desc.len() > crate::MAX_DESC_BYTES {
+            return false;
+        }
         if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
             if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
                 mobile.long_desc = desc;

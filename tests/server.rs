@@ -275,6 +275,8 @@ async fn test_character_system_lifecycle() -> Result<()> {
         chat_sender: None,
         shutdown_sender: None,
         shutdown_cancel_sender: None,
+        ip_limiter: Arc::new(ironmud::ratelimit::IpRateLimiter::new()),
+        command_throttle: Arc::new(ironmud::throttle::CommandThrottle::new()),
     }));
 
     // Register Rhai functions for character system

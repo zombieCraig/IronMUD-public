@@ -147,6 +147,43 @@ cargo test
 
 The first character created on a fresh database automatically becomes an administrator with full builder permissions.
 
+## TLS / Encrypted Connections
+
+IronMUD speaks plaintext telnet on its TCP port. This is acceptable on a LAN or a private VPN but exposes login passwords on the wire if the server is reachable across the public internet. The supported deployment pattern is to run a TLS-terminating proxy in front of the MUD process — most MUD clients do not speak TLS natively, so doing this in-process would not help typical users.
+
+### stunnel example
+
+`stunnel` is the simplest option. Install it from your distro's package manager, then create `/etc/stunnel/ironmud.conf`:
+
+```ini
+[ironmud-tls]
+accept = 0.0.0.0:4443
+connect = 127.0.0.1:4000
+cert = /etc/letsencrypt/live/mud.example.com/fullchain.pem
+key  = /etc/letsencrypt/live/mud.example.com/privkey.pem
+```
+
+Players who use a TLS-capable client (Mudlet, MUSHclient with the SSL plugin, telnet wrappers like `socat`) connect to `mud.example.com:4443`. Bind IronMUD itself to `127.0.0.1` so plaintext access from outside the host is impossible.
+
+### haproxy example
+
+For sites already running haproxy, add a frontend / backend pair:
+
+```
+frontend ironmud_tls
+    bind :4443 ssl crt /etc/haproxy/certs/mud.pem
+    mode tcp
+    default_backend ironmud_local
+
+backend ironmud_local
+    mode tcp
+    server mud 127.0.0.1:4000
+```
+
+### Certificate renewal
+
+Both options work cleanly with Let's Encrypt's `certbot` in standalone or webroot mode. Reload the proxy (`systemctl reload stunnel` / `haproxy`) after each renewal — IronMUD itself is unaffected.
+
 ## Next Steps
 
 - [Getting Started](getting-started.md) - Explore the demo world and start building

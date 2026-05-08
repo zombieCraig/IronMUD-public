@@ -2208,6 +2208,8 @@ mod tests {
             chat_sender: None,
             shutdown_sender: None,
             shutdown_cancel_sender: None,
+            ip_limiter: Arc::new(crate::ratelimit::IpRateLimiter::new()),
+            command_throttle: Arc::new(crate::throttle::CommandThrottle::new()),
         };
         let state: SharedState = Arc::new(Mutex::new(world));
         (conns, state)

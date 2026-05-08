@@ -27,7 +27,9 @@ pub mod init;
 pub mod matrix;
 pub mod migration;
 pub mod quest;
+pub mod ratelimit;
 pub mod readline;
+pub mod throttle;
 pub mod script;
 pub mod seed;
 pub mod session;
@@ -52,13 +54,41 @@ pub use session::{
 // Starting room UUID constant
 pub const STARTING_ROOM_ID: &str = "00000000-0000-0000-0000-000000000001";
 
+/// Hard cap on the byte length of a single command line. The Rhai engine
+/// caps strings at 1 MiB only after a line is dispatched; without a cap on
+/// the inbound buffer itself, an unauthenticated client can stream gigabytes
+/// of non-newline bytes and exhaust RAM before any newline arrives.
+pub const MAX_INPUT_LINE: usize = 8 * 1024;
+
+/// Bound on the per-session `InputEvent` channel. 64 in-flight commands is
+/// roomy for any human typist; a scripted client that fills it triggers a
+/// "slow down" message and a dropped line rather than unbounded queueing.
+pub const INPUT_CHANNEL_CAPACITY: usize = 64;
+
+/// Hard cap on description-like text fields written through Rhai-registered
+/// setters (long_desc, short_desc, room description, extra descs, item note
+/// content). Mirrors the existing `MAX_NOTE_BYTES` already enforced on the
+/// REST and OLC text-collection paths.
+pub const MAX_DESC_BYTES: usize = 32 * 1024;
+
+/// Idle disconnect threshold for a connected session, in seconds. Updated
+/// each time a command is dispatched (`session.last_activity_time`); the
+/// read loop checks it on every poll and terminates inactive sessions to
+/// reclaim per-session memory and file descriptors.
+pub const IDLE_DISCONNECT_SECS: i64 = 1800;
+
+/// Hard cap on total characters in the database. Stops account-flood DoS
+/// from filling sled with junk accounts. Five thousand is comfortably
+/// above any realistic active player population for a single shard.
+pub const MAX_CHARACTERS: i64 = 5000;
+
 // Session types that depend on tokio/runtime
 pub type ConnectionId = Uuid;
 
 pub struct PlayerSession {
     pub character: Option<CharacterData>,
     pub sender: mpsc::UnboundedSender<String>,
-    pub input_sender: mpsc::UnboundedSender<InputEvent>,
+    pub input_sender: mpsc::Sender<InputEvent>,
     pub addr: std::net::SocketAddr,
     // OLC (Online Creation) fields
     pub olc_mode: Option<String>,
@@ -170,6 +200,14 @@ pub struct World {
     pub shutdown_sender: Option<tokio::sync::mpsc::UnboundedSender<ShutdownCommand>>,
     // Shutdown cancellation sender (to abort pending shutdown)
     pub shutdown_cancel_sender: Option<tokio::sync::watch::Sender<bool>>,
+    /// Per-IP connection / failed-auth rate limiter. Lives behind its own
+    /// internal mutex so callers don't have to take the World lock to
+    /// check a rate limit on every accepted socket.
+    pub ip_limiter: Arc<ratelimit::IpRateLimiter>,
+    /// Per-character per-command cooldown table. Used by wide-blast chat
+    /// commands (`shout`, `tell`) to suppress spam without throttling
+    /// the rest of the game.
+    pub command_throttle: Arc<throttle::CommandThrottle>,
 }
 
 /// Command sent to trigger server shutdown
@@ -1138,7 +1176,10 @@ pub async fn handle_connection(
     let (reader, writer) = socket.into_split();
 
     let (tx_client, rx_client) = mpsc::unbounded_channel::<String>();
-    let (tx_input, mut rx_input) = mpsc::unbounded_channel::<InputEvent>();
+    // Bounded — see HIGH-1 in the security audit. Try-send semantics drop
+    // overflow lines and warn the client rather than letting a fast typist
+    // (or a scripted attacker) inflate the queue without limit.
+    let (tx_input, mut rx_input) = mpsc::channel::<InputEvent>(INPUT_CHANNEL_CAPACITY);
     let (tx_raw, rx_raw) = mpsc::unbounded_channel::<Vec<u8>>();
 
     // Get the connections map from World and store the PlayerSession
@@ -1549,9 +1590,15 @@ pub async fn handle_connection(
             continue;
         }
 
-        // Extract input string from event
+        // Extract input string from event. Player-controlled text is
+        // sanitized once here so any path that downstreams a command's
+        // args into a broadcast (say/tell/shout/emote, board posts,
+        // OLC descriptions) is automatically free of ANSI escapes,
+        // CRLF protocol breaks, and other control chars. Server-emitted
+        // output is unaffected because it never passes through this
+        // boundary.
         let input = match event {
-            InputEvent::Line(s) | InputEvent::RawLine(s) => s,
+            InputEvent::Line(s) | InputEvent::RawLine(s) => session::sanitize_player_text(&s),
             InputEvent::Tab => continue, // Already handled above
         };
 
@@ -2759,7 +2806,7 @@ async fn handle_read_char_mode(
     mut reader: tokio::net::tcp::OwnedReadHalf,
     addr: std::net::SocketAddr,
     connection_id: ConnectionId,
-    tx_input: mpsc::UnboundedSender<InputEvent>,
+    tx_input: mpsc::Sender<InputEvent>,
     connections: SharedConnections,
     tx_raw: mpsc::UnboundedSender<Vec<u8>>,
 ) {
@@ -2786,6 +2833,26 @@ async fn handle_read_char_mode(
         };
         if !is_connected {
             info!("Read task: connection {} removed, exiting.", addr);
+            break;
+        }
+
+        // Idle disconnect — drop sessions whose `last_activity_time` has not
+        // advanced within the threshold. Reclaims sockets/RAM held by idle
+        // or abandoned connections (HIGH-3 in the security audit).
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let idle_secs = {
+            let conns = connections.lock().unwrap();
+            conns
+                .get(&connection_id)
+                .map(|s| now_secs.saturating_sub(s.last_activity_time))
+                .unwrap_or(0)
+        };
+        if idle_secs > IDLE_DISCONNECT_SECS {
+            info!("Client {} idle for {}s, disconnecting.", addr, idle_secs);
+            let _ = tx_raw.send(b"\r\nDisconnected for inactivity.\r\n".to_vec());
             break;
         }
 
@@ -3000,7 +3067,9 @@ async fn handle_read_char_mode(
                             use telnet::KeyEvent;
                             match key {
                                 KeyEvent::Tab => {
-                                    let _ = tx_input.send(InputEvent::Tab);
+                                    if tx_input.try_send(InputEvent::Tab).is_err() {
+                                        let _ = tx_raw.send(b"\r\nSlow down -- input queue full.\r\n".to_vec());
+                                    }
                                 }
                                 KeyEvent::Enter => {
                                     // Submit line and add to history
@@ -3033,7 +3102,9 @@ async fn handle_read_char_mode(
                                     };
                                     line_buffer.clear();
                                     let _ = tx_raw.send(b"\r\n".to_vec());
-                                    let _ = tx_input.send(InputEvent::Line(line));
+                                    if tx_input.try_send(InputEvent::Line(line)).is_err() {
+                                        let _ = tx_raw.send(b"Slow down -- input queue full.\r\n".to_vec());
+                                    }
                                 }
                                 KeyEvent::Backspace => {
                                     handle_readline_backspace(&connections, connection_id, &tx_raw);
@@ -3087,10 +3158,15 @@ async fn handle_read_char_mode(
                                             .unwrap_or(false)
                                     };
                                     if should_logout {
-                                        let _ = tx_input.send(InputEvent::Line("quit".to_string()));
+                                        let _ = tx_input.try_send(InputEvent::Line("quit".to_string()));
                                     }
                                 }
                                 KeyEvent::Char(c) => {
+                                    if line_buffer.len() + c.len_utf8() > MAX_INPUT_LINE {
+                                        let _ = tx_raw.send(b"\r\nInput line too long.\r\n".to_vec());
+                                        info!("Client {} sent oversized line, disconnecting.", addr);
+                                        return;
+                                    }
                                     handle_readline_insert_char(&connections, connection_id, c, &tx_raw);
                                     line_buffer.push(c);
                                 }
@@ -3106,10 +3182,21 @@ async fn handle_read_char_mode(
                             CHAR_LF => {
                                 let line = line_buffer.trim().to_string();
                                 line_buffer.clear();
-                                let _ = tx_input.send(InputEvent::RawLine(line));
+                                if tx_input.try_send(InputEvent::RawLine(line)).is_err() {
+                                    let _ = tx_raw.send(b"Slow down -- input queue full.\r\n".to_vec());
+                                }
                             }
                             _ => {
                                 if let Some(c) = char::from_u32(byte as u32) {
+                                    if line_buffer.len() + c.len_utf8() > MAX_INPUT_LINE {
+                                        // Pre-auth memory DoS guard. Drop the
+                                        // connection rather than silently
+                                        // truncating — a legitimate client
+                                        // never sends an 8 KiB+ line.
+                                        let _ = tx_raw.send(b"\r\nInput line too long.\r\n".to_vec());
+                                        info!("Client {} sent oversized line, disconnecting.", addr);
+                                        return;
+                                    }
                                     line_buffer.push(c);
                                 }
                             }
@@ -3165,10 +3252,26 @@ async fn handle_write_with_raw(
 }
 
 pub async fn run_server(state: SharedState, listener: TcpListener, shutdown_rx: tokio::sync::oneshot::Receiver<()>) {
+    let limiter = {
+        let world = state.lock().unwrap();
+        world.ip_limiter.clone()
+    };
     tokio::select! {
         _ = async {
             loop {
-                let (socket, addr) = listener.accept().await.unwrap();
+                let (mut socket, addr) = listener.accept().await.unwrap();
+
+                // Per-IP connection cap. An attacker that opens hundreds of
+                // sockets from one IP would otherwise exhaust file descriptors
+                // and per-session memory.
+                if !limiter.try_acquire(addr.ip()) {
+                    info!("Rejecting connection from {} -- IP at simultaneous-connection cap.", addr);
+                    let _ = socket
+                        .write_all(b"Too many connections from your address. Try again later.\r\n")
+                        .await;
+                    let _ = socket.shutdown().await;
+                    continue;
+                }
                 info!("New connection: {}", addr);
 
                 // Cloud NATs (e.g. GCP VPC) silently drop idle TCP flows after ~10 min.
@@ -3182,8 +3285,12 @@ pub async fn run_server(state: SharedState, listener: TcpListener, shutdown_rx: 
 
                 let state = state.clone();
                 let connection_id = Uuid::new_v4();
+                let limiter_for_conn = limiter.clone();
                 tokio::spawn(async move {
                     handle_connection(socket, addr, state, connection_id).await;
+                    // Always release, even if handle_connection returned
+                    // early; pairs with the try_acquire above.
+                    limiter_for_conn.release(addr.ip());
                 });
             }
         } => {},

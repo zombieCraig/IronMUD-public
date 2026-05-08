@@ -10,6 +10,21 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Per-IP creation throttle. Stops scripted account-flood DoS;
+    // legitimate players creating alts at human speed never trip it.
+    if is_ip_creation_throttled(connection_id) {
+        send_client_message(connection_id, "Too many recent character creations from your address. Try again later.");
+        return;
+    }
+
+    // Global account cap. The world has a hard ceiling on total
+    // characters to keep sled bounded against attackers willing to
+    // pace themselves under the per-IP window.
+    if count_characters() >= max_characters() {
+        send_client_message(connection_id, "This world has reached its character cap. Contact an administrator.");
+        return;
+    }
+
     // Initial create command: create <name> <password>
     let parts = args.split(" ");
     if parts.len() < 2 {
@@ -22,6 +37,11 @@ fn run_command(args, connection_id) {
 
     if name == "" {
         send_client_message(connection_id, "Character name cannot be empty.");
+        return;
+    }
+
+    if !is_valid_username(name) {
+        send_client_message(connection_id, "Names must be 3-32 characters: a letter (any script) followed by letters, digits, '-', or '_'.");
         return;
     }
 
@@ -42,6 +62,12 @@ fn run_command(args, connection_id) {
         send_client_message(connection_id, "Character '" + name + "' already exists.");
         return;
     }
+
+    // Stamp the creation against the per-IP window now that all
+    // pre-creation gates have passed. Done before save_character_data
+    // so a failed save still counts toward the throttle (otherwise an
+    // attacker could probe with names that fail downstream checks).
+    record_ip_creation(connection_id);
 
     // Check if this is the first character (will become admin)
     let is_first_character = count_characters() == 0;

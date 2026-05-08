@@ -7,6 +7,12 @@
 
 use unicode_width::UnicodeWidthStr;
 
+/// Hard cap on subnegotiation payload size. The largest legitimate option
+/// (TTYPE) carries ~40 bytes; NAWS is 4 bytes. A misbehaving or hostile
+/// client that streams `IAC SB <opt>` without ever sending `IAC SE` would
+/// otherwise grow the buffer without bound, exhausting RAM pre-auth.
+pub const MAX_SUBNEG_BUFFER: usize = 4096;
+
 // Telnet protocol constants (RFC 854)
 pub const IAC: u8 = 255; // Interpret As Command
 pub const DONT: u8 = 254; // Refuse to perform option
@@ -475,6 +481,12 @@ impl TelnetParser {
                 ParserState::InSubnegotiationData(opt) => {
                     if byte == IAC {
                         self.state = ParserState::InSubnegotiationIAC(opt);
+                    } else if self.subneg_buffer.len() >= MAX_SUBNEG_BUFFER {
+                        // Pre-auth DoS guard: a malicious client can stream
+                        // unbounded bytes between IAC SB and IAC SE. No real
+                        // telnet option carries this much payload, so drop
+                        // the in-flight subneg and resync.
+                        self.reset();
                     } else {
                         self.subneg_buffer.push(byte);
                     }
@@ -488,13 +500,21 @@ impl TelnetParser {
                         self.state = ParserState::Normal;
                     } else if byte == IAC {
                         // Escaped IAC within subnegotiation
-                        self.subneg_buffer.push(IAC);
-                        self.state = ParserState::InSubnegotiationData(opt);
+                        if self.subneg_buffer.len() >= MAX_SUBNEG_BUFFER {
+                            self.reset();
+                        } else {
+                            self.subneg_buffer.push(IAC);
+                            self.state = ParserState::InSubnegotiationData(opt);
+                        }
                     } else {
                         // Unexpected byte after IAC in subneg, treat as data
-                        self.subneg_buffer.push(IAC);
-                        self.subneg_buffer.push(byte);
-                        self.state = ParserState::InSubnegotiationData(opt);
+                        if self.subneg_buffer.len() + 2 > MAX_SUBNEG_BUFFER {
+                            self.reset();
+                        } else {
+                            self.subneg_buffer.push(IAC);
+                            self.subneg_buffer.push(byte);
+                            self.state = ParserState::InSubnegotiationData(opt);
+                        }
                     }
                 }
             }
@@ -765,6 +785,26 @@ mod tests {
         let data = &[0, 132, 0, 43]; // 132x43
         let result = parse_naws(data);
         assert_eq!(result, Some((132, 43)));
+    }
+
+    #[test]
+    fn test_subneg_buffer_caps_unbounded_payload() {
+        // Hostile client opens IAC SB <opt> and streams non-IAC bytes
+        // forever without ever sending IAC SE. Without a cap the parser
+        // would grow subneg_buffer to consume all available memory.
+        let mut parser = TelnetParser::new();
+        // Open subnegotiation
+        parser.process_bytes(&[IAC, SB, OPT_NAWS]);
+        // Stream payload well past the cap
+        let payload = vec![b'A'; MAX_SUBNEG_BUFFER * 4];
+        parser.process_bytes(&payload);
+        // Buffer must not exceed the cap; on overflow the parser resets.
+        assert!(
+            parser.subneg_buffer.len() <= MAX_SUBNEG_BUFFER,
+            "subneg_buffer grew to {} bytes (cap {})",
+            parser.subneg_buffer.len(),
+            MAX_SUBNEG_BUFFER
+        );
     }
 
     #[test]

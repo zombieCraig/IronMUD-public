@@ -420,6 +420,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // set_room_description(room_id, description) -> Sets room description
     let cloned_db = db.clone();
     engine.register_fn("set_room_description", move |room_id: String, description: String| {
+        if description.len() > crate::MAX_DESC_BYTES {
+            return false;
+        }
         let room_uuid = match uuid::Uuid::parse_str(&room_id) {
             Ok(u) => u,
             Err(_) => return false,
@@ -440,6 +443,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // set_room_spring_desc(room_id, desc) -> Sets spring seasonal description
     let cloned_db = db.clone();
     engine.register_fn("set_room_spring_desc", move |room_id: String, description: String| {
+        if description.len() > crate::MAX_DESC_BYTES {
+            return false;
+        }
         let room_uuid = match uuid::Uuid::parse_str(&room_id) {
             Ok(u) => u,
             Err(_) => return false,
@@ -464,6 +470,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // set_room_summer_desc(room_id, desc) -> Sets summer seasonal description
     let cloned_db = db.clone();
     engine.register_fn("set_room_summer_desc", move |room_id: String, description: String| {
+        if description.len() > crate::MAX_DESC_BYTES {
+            return false;
+        }
         let room_uuid = match uuid::Uuid::parse_str(&room_id) {
             Ok(u) => u,
             Err(_) => return false,
@@ -488,6 +497,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // set_room_autumn_desc(room_id, desc) -> Sets autumn seasonal description
     let cloned_db = db.clone();
     engine.register_fn("set_room_autumn_desc", move |room_id: String, description: String| {
+        if description.len() > crate::MAX_DESC_BYTES {
+            return false;
+        }
         let room_uuid = match uuid::Uuid::parse_str(&room_id) {
             Ok(u) => u,
             Err(_) => return false,
@@ -512,6 +524,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // set_room_winter_desc(room_id, desc) -> Sets winter seasonal description
     let cloned_db = db.clone();
     engine.register_fn("set_room_winter_desc", move |room_id: String, description: String| {
+        if description.len() > crate::MAX_DESC_BYTES {
+            return false;
+        }
         let room_uuid = match uuid::Uuid::parse_str(&room_id) {
             Ok(u) => u,
             Err(_) => return false,
@@ -817,6 +832,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     engine.register_fn(
         "set_room_extra_desc",
         move |room_id: String, keyword: String, description: String| {
+            if description.len() > crate::MAX_DESC_BYTES {
+                return false;
+            }
             let room_uuid = match uuid::Uuid::parse_str(&room_id) {
                 Ok(u) => u,
                 Err(_) => return false,

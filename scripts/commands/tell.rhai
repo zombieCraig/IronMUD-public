@@ -27,6 +27,16 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Spam guard: a 2s cooldown still allows back-and-forth conversation
+    // but stops scripted tell-flooding of any single target.
+    if !char.god_mode {
+        let wait = try_throttle_command(char.name, "tell", 2);
+        if wait > 0 {
+            send_client_message(connection_id, "You're sending tells too fast. (" + wait + "s)");
+            return;
+        }
+    }
+
     // Can't tell yourself
     if target_name.to_lower() == char.name.to_lower() {
         send_client_message(connection_id, "Talking to yourself?");

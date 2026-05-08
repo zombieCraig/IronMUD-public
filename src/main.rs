@@ -72,6 +72,12 @@ async fn main() -> Result<()> {
     engine.set_max_array_size(10_000);
     engine.set_max_map_size(10_000);
 
+    // Defense-in-depth: no command or trigger script needs to evaluate
+    // dynamically constructed Rhai source. Disabling `eval` removes the
+    // worst-case escalation path if a script ever concatenates player
+    // input into a string passed to `eval` by accident.
+    engine.disable_symbol("eval");
+
     // Set up module resolver for shared Rhai libraries (scripts/lib/*.rhai)
     let mut resolver = FileModuleResolver::new();
     resolver.set_base_path("scripts/lib");
@@ -145,6 +151,8 @@ async fn main() -> Result<()> {
         chat_sender: None,            // Set after chat bridge channel is created
         shutdown_sender: None,        // Set after shutdown channel is created
         shutdown_cancel_sender: None, // Set after shutdown channel is created
+        ip_limiter: Arc::new(ironmud::ratelimit::IpRateLimiter::new()),
+        command_throttle: Arc::new(ironmud::throttle::CommandThrottle::new()),
     }));
 
     // Register types and functions

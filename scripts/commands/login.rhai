@@ -27,6 +27,14 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Per-IP brute-force throttle. Catches attackers who spray many
+    // usernames from the same IP -- the per-account lockout below only
+    // slows them down on a specific name, not across names.
+    if is_ip_login_throttled(connection_id) {
+        send_client_message(connection_id, "Too many failed login attempts from your address. Wait a minute and try again.");
+        return;
+    }
+
     let parts = args.split(" ");
     if parts.len() < 2 {
         send_client_message(connection_id, "Usage: login <character_name> <password>");
@@ -50,6 +58,9 @@ fn run_command(args, connection_id) {
     let existing_char = get_character_data(name);
 
     if existing_char == () {
+        // Treat unknown-character lookups as auth failures too -- otherwise
+        // the IP throttle never engages on username enumeration sweeps.
+        record_auth_failure(connection_id);
         send_client_message(connection_id, "Character '" + name + "' not found.");
         return;
     }
@@ -66,6 +77,7 @@ fn run_command(args, connection_id) {
     let is_valid = verify_password(password, password_hash);
 
     if !is_valid {
+        record_auth_failure(connection_id);
         let result = record_failed_attempt(name);
         send_client_message(connection_id, result.message);
         return;

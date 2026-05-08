@@ -2332,6 +2332,158 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         tracing::warn!("[SECURITY] {}", message);
     });
 
+    // is_valid_username(name) -> bool
+    // Centralized server-side username validation called from create.rhai.
+    // Allows Unicode letters (any script — Latin, CJK, Cyrillic, etc.)
+    // plus ASCII digits, hyphen, and underscore. The first character
+    // must be a letter; total length 3-32 Unicode code points.
+    // Rejects whitespace, control chars, punctuation, and emoji so
+    // names render predictably in tells, room descriptions, and logs.
+    engine.register_fn("is_valid_username", |name: String| -> bool {
+        let chars: Vec<char> = name.chars().collect();
+        if chars.len() < 3 || chars.len() > 32 {
+            return false;
+        }
+        if !chars[0].is_alphabetic() {
+            return false;
+        }
+        chars
+            .iter()
+            .all(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+    });
+
+    // ========== Per-IP Login Throttle ==========
+    // These bind the connection_id-keyed scripting layer to the IP-keyed
+    // rate limiter so login.rhai can ask "is this IP locked out?" and
+    // "register this attempt as a failure" without ever seeing raw IPs.
+    //
+    // The limiter Arc lives inside World, but we cannot extract it here:
+    // `register_rhai_functions` is called while main.rs already holds the
+    // World mutex (std::sync::Mutex is not reentrant). Instead, each
+    // closure clones the state Arc and locks it lazily on call. The
+    // dispatcher releases the World lock before invoking Rhai, so the
+    // call-time lock acquires cleanly.
+
+    // is_ip_login_throttled(connection_id) -> bool
+    let st = state.clone();
+    let conns = connections.clone();
+    engine.register_fn("is_ip_login_throttled", move |connection_id: String| -> bool {
+        let cid = match uuid::Uuid::parse_str(&connection_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let ip = {
+            let conns_guard = conns.lock().unwrap();
+            match conns_guard.get(&cid) {
+                Some(s) => s.addr.ip(),
+                None => return false,
+            }
+        };
+        let lim = {
+            let world = st.lock().unwrap();
+            world.ip_limiter.clone()
+        };
+        lim.is_login_throttled(ip)
+    });
+
+    // try_throttle_command(player_name, command, cooldown_secs) -> i64
+    // Atomic check-and-stamp on the per-character cooldown table.
+    // Returns 0 if the call is allowed (and the timestamp is updated),
+    // or the integer seconds remaining on the cooldown otherwise.
+    // Used by wide-blast chat commands (shout, tell) to suppress spam.
+    let st = state.clone();
+    engine.register_fn(
+        "try_throttle_command",
+        move |player: String, command: String, cooldown_secs: i64| -> i64 {
+            if cooldown_secs <= 0 {
+                return 0;
+            }
+            let throttle = {
+                let world = st.lock().unwrap();
+                world.command_throttle.clone()
+            };
+            let cooldown = std::time::Duration::from_secs(cooldown_secs as u64);
+            throttle.try_consume(&player, &command, cooldown) as i64
+        },
+    );
+
+    // is_ip_creation_throttled(connection_id) -> bool
+    // Sliding-window check on per-IP character creations.
+    let st = state.clone();
+    let conns = connections.clone();
+    engine.register_fn("is_ip_creation_throttled", move |connection_id: String| -> bool {
+        let cid = match uuid::Uuid::parse_str(&connection_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let ip = {
+            let conns_guard = conns.lock().unwrap();
+            match conns_guard.get(&cid) {
+                Some(s) => s.addr.ip(),
+                None => return false,
+            }
+        };
+        let lim = {
+            let world = st.lock().unwrap();
+            world.ip_limiter.clone()
+        };
+        lim.is_creation_throttled(ip)
+    });
+
+    // record_ip_creation(connection_id) -> bool
+    // Stamps a creation event for the connection's source IP.
+    let st = state.clone();
+    let conns = connections.clone();
+    engine.register_fn("record_ip_creation", move |connection_id: String| -> bool {
+        let cid = match uuid::Uuid::parse_str(&connection_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let ip = {
+            let conns_guard = conns.lock().unwrap();
+            match conns_guard.get(&cid) {
+                Some(s) => s.addr.ip(),
+                None => return false,
+            }
+        };
+        let lim = {
+            let world = st.lock().unwrap();
+            world.ip_limiter.clone()
+        };
+        lim.record_creation(ip);
+        true
+    });
+
+    // max_characters() -> i64
+    // Returns the configured global account cap so create.rhai can compare
+    // against count_characters() without hard-coding the constant in script.
+    engine.register_fn("max_characters", || -> i64 { crate::MAX_CHARACTERS });
+
+    // record_auth_failure(connection_id) -> bool
+    // Returns true if the failure was recorded; false if the connection
+    // was not found. login.rhai calls this after every wrong password.
+    let st = state.clone();
+    let conns = connections.clone();
+    engine.register_fn("record_auth_failure", move |connection_id: String| -> bool {
+        let cid = match uuid::Uuid::parse_str(&connection_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let ip = {
+            let conns_guard = conns.lock().unwrap();
+            match conns_guard.get(&cid) {
+                Some(s) => s.addr.ip(),
+                None => return false,
+            }
+        };
+        let lim = {
+            let world = st.lock().unwrap();
+            world.ip_limiter.clone()
+        };
+        lim.record_auth_failure(ip);
+        true
+    });
+
     // ========== Admin User Management Functions ==========
 
     // list_all_characters() -> Array of CharacterData

@@ -1145,7 +1145,9 @@ pub fn propagate_mobile_followers(
         let _ = session
             .sender
             .send(format!("You follow {} {}.\r\n", mobile_name, direction));
-        let _ = session.input_sender.send(InputEvent::Line(direction.to_string()));
+        let _ = session
+            .input_sender
+            .try_send(InputEvent::Line(direction.to_string()));
     }
 }
 

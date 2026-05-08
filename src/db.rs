@@ -11,6 +11,11 @@ use crate::{
 };
 use uuid::Uuid;
 
+/// Hard cap on password length accepted by `hash_password` / `verify_password`.
+/// Argon2 cost is roughly linear in input size; without a cap, a single
+/// pre-auth login attempt with a multi-MB password stalls a CPU core.
+pub const MAX_PASSWORD_LEN: usize = 128;
+
 #[derive(Clone)] // Derive Clone
 pub struct Db {
     db: Arc<SledDb>,       // Use Arc
@@ -290,6 +295,12 @@ impl Db {
             password_hash::{PasswordHasher, SaltString, rand_core::OsRng},
         };
 
+        // Reject oversized passwords before they reach Argon2: a multi-MB
+        // password would burn seconds of CPU per request, enabling pre-auth DoS.
+        if password.len() > MAX_PASSWORD_LEN {
+            anyhow::bail!("password exceeds maximum length");
+        }
+
         let salt = SaltString::generate(&mut OsRng);
         let password_hash = Argon2::default()
             .hash_password(password.as_bytes(), &salt)
@@ -302,6 +313,12 @@ impl Db {
     pub fn verify_password(&self, password: &str, hash: &str) -> Result<bool> {
         use argon2::Argon2;
         use argon2::password_hash::PasswordVerifier;
+
+        // Same DoS gate as hash_password — if the input is bigger than any
+        // legitimate password, fail-fast without invoking Argon2.
+        if password.len() > MAX_PASSWORD_LEN {
+            return Ok(false);
+        }
 
         let parsed_hash = argon2::password_hash::PasswordHash::new(hash)
             .map_err(|e| anyhow::anyhow!("Argon2 parsing hash error: {}", e))?;
@@ -2965,5 +2982,26 @@ mod tests {
         assert_eq!(post.gold, 111);
         let reloaded = t.db.get_mobile_data(&id).unwrap().unwrap();
         assert_eq!(reloaded.gold, 111);
+    }
+
+    #[test]
+    fn hash_password_rejects_oversized_input() {
+        let t = open_temp("pw_long");
+        let oversized = "a".repeat(MAX_PASSWORD_LEN + 1);
+        assert!(t.db.hash_password(&oversized).is_err());
+        // Boundary: exactly the cap is accepted.
+        let at_cap = "a".repeat(MAX_PASSWORD_LEN);
+        assert!(t.db.hash_password(&at_cap).is_ok());
+    }
+
+    #[test]
+    fn verify_password_short_circuits_oversized_input() {
+        let t = open_temp("pw_verify_long");
+        let hash = t.db.hash_password("hunter2").expect("hash");
+        let oversized = "a".repeat(MAX_PASSWORD_LEN + 1);
+        // Must return Ok(false) without invoking Argon2 — no panic, no error.
+        assert_eq!(t.db.verify_password(&oversized, &hash).unwrap(), false);
+        // Sanity: the real password still verifies.
+        assert_eq!(t.db.verify_password("hunter2", &hash).unwrap(), true);
     }
 }

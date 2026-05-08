@@ -113,6 +113,8 @@ fn build_state(db: Db, defs: Vec<AchievementDef>) -> (SharedState, SharedConnect
         chat_sender: None,
         shutdown_sender: None,
         shutdown_cancel_sender: None,
+        ip_limiter: Arc::new(ironmud::ratelimit::IpRateLimiter::new()),
+        command_throttle: Arc::new(ironmud::throttle::CommandThrottle::new()),
     };
     (Arc::new(Mutex::new(world)), connections)
 }
