@@ -174,6 +174,7 @@ fn run_command(args, connection_id) {
                     transfer_mobile_items_to_corpse(target_id, corpse_id);
                     set_corpse_gold(corpse_id, mobile.gold);
                 }
+                quest_credit_mob_kill(char.name, mobile.vnum);
                 delete_mobile(target_id);
             } else {
                 // Enter combat

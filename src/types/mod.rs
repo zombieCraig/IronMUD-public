@@ -3682,6 +3682,11 @@ pub struct QuestData {
     /// Reserved for slice 3 (soft level gate). Sum of skill levels.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_player_skill_total: Option<i32>,
+    /// Slice 3b: optional expiry. When set, the quest expiry tick drops the
+    /// quest from a player's `active_quests` if more than `duration_secs`
+    /// have elapsed since `started_at`. None = no expiry.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_secs: Option<i64>,
 }
 
 impl QuestData {
@@ -3699,6 +3704,7 @@ impl QuestData {
             giver_mob_vnum: None,
             prereq_quest_vnum: None,
             min_player_skill_total: None,
+            duration_secs: None,
         }
     }
 }

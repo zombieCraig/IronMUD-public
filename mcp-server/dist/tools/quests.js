@@ -138,11 +138,15 @@ export const questToolDefinitions = [
                 },
                 prereq_quest_vnum: {
                     type: "string",
-                    description: "Reserved for slice 3 (chain support). Stored verbatim today.",
+                    description: "Optional vnum of a quest that must be completed before this one can be accepted. Empty/clear/none clears.",
                 },
                 min_player_skill_total: {
                     type: "number",
-                    description: "Reserved for slice 3 (soft level gate).",
+                    description: "Soft level gate: sum of player skill levels must meet this to accept. 0 clears.",
+                },
+                duration_secs: {
+                    type: "number",
+                    description: "Time limit in seconds (None / 0 = no expiry). Active instances are dropped after duration_secs since started_at.",
                 },
             },
             required: ["vnum", "name"],
@@ -166,6 +170,7 @@ export const questToolDefinitions = [
                 giver_mob_vnum: { type: "string" },
                 prereq_quest_vnum: { type: "string" },
                 min_player_skill_total: { type: "number" },
+                duration_secs: { type: "number" },
             },
             required: ["vnum"],
         },

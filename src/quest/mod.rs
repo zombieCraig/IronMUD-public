@@ -39,6 +39,61 @@ fn now_secs() -> i64 {
         .unwrap_or(0)
 }
 
+/// Public wrapper for tick code outside this module that needs a clock
+/// source matching the one ActiveQuest.started_at uses.
+pub fn now_secs_pub() -> i64 {
+    now_secs()
+}
+
+/// Walk an online player's active quests and drop any whose
+/// duration_secs has elapsed since started_at. Sends a "[ Quest expired:
+/// X ]" line per drop. Saves once at the end if anything changed.
+pub fn expire_quests_for(
+    db: &Db,
+    connections: &SharedConnections,
+    char_name: &str,
+    now: i64,
+) {
+    let mut ch = match db.get_character_data(&char_name.to_lowercase()) {
+        Ok(Some(c)) => c,
+        _ => return,
+    };
+    if ch.active_quests.is_empty() {
+        return;
+    }
+    let mut expired: Vec<(String, String)> = Vec::new();
+    let active_keys: Vec<String> = ch.active_quests.keys().cloned().collect();
+    for qvnum in &active_keys {
+        let quest = match db.get_quest_data(qvnum) {
+            Ok(Some(q)) => q,
+            _ => continue,
+        };
+        let duration = match quest.duration_secs {
+            Some(d) if d > 0 => d,
+            _ => continue,
+        };
+        let started = ch
+            .active_quests
+            .get(qvnum)
+            .map(|aq| aq.started_at)
+            .unwrap_or(0);
+        if now.saturating_sub(started) >= duration {
+            expired.push((quest.vnum.clone(), quest.name.clone()));
+        }
+    }
+    if expired.is_empty() {
+        return;
+    }
+    for (vnum, _) in &expired {
+        ch.active_quests.remove(vnum);
+    }
+    let _ = db.save_character_data(ch);
+    for (_, name) in expired {
+        let line = format!("\x1b[1;31m[ Quest expired: {} ]\x1b[0m", name);
+        notify(connections, char_name, &line);
+    }
+}
+
 /// Resolve a `keyword_or_vnum` to a quest prototype. Tries vnum exact-match
 /// first, then case-insensitive name contains, then keyword contains.
 pub fn find_quest(db: &Db, keyword_or_vnum: &str) -> Option<QuestData> {
@@ -85,6 +140,27 @@ pub fn offer(db: &Db, char_name: &str, vnum: &str) -> String {
     }
     if ch.completed_quests.contains(&quest.vnum) && !quest.repeatable {
         return format!("You have already completed `{}`.", quest.name);
+    }
+    // Slice 3a: prereq + skill gates.
+    if let Some(prereq) = &quest.prereq_quest_vnum {
+        if !ch.completed_quests.contains(prereq) {
+            let pname = db
+                .get_quest_data(prereq)
+                .ok()
+                .flatten()
+                .map(|q| q.name)
+                .unwrap_or_else(|| prereq.clone());
+            return format!("You must first complete `{}`.", pname);
+        }
+    }
+    if let Some(min_total) = quest.min_player_skill_total {
+        let total: i32 = ch.skills.values().map(|sp| sp.level).sum();
+        if total < min_total {
+            return format!(
+                "You're not skilled enough yet ({} / {}).",
+                total, min_total
+            );
+        }
     }
     let aq = ActiveQuest {
         started_at: now_secs(),
@@ -342,20 +418,47 @@ fn apply_reward(
     }
 }
 
-/// Mob-death listener entry point. Increments the killer's `kill_progress`
-/// for every active quest whose `KillMob` objective matches `mob_proto_vnum`,
-/// sends a progress line, and saves.
+/// Mob-death listener entry point. Increments `kill_progress` for every
+/// active quest whose `KillMob` objective matches `mob_proto_vnum`. Slice 3c:
+/// credits all players in `damaged_by` (any non-zero damage), plus the
+/// killing-blow `killer_name`. Sends a progress line, saves, and auto-completes
+/// kill-only quests.
 pub fn handle_mob_kill(
     db: &Db,
     connections: &SharedConnections,
     state: &SharedState,
     killer_name: &str,
     mob_proto_vnum: &str,
+    damaged_by: &std::collections::HashMap<String, i32>,
 ) {
-    if killer_name.is_empty() || mob_proto_vnum.is_empty() {
+    if mob_proto_vnum.is_empty() {
         return;
     }
-    let mut ch = match db.get_character_data(&killer_name.to_lowercase()) {
+    // Build deduped recipient list: every name in damaged_by + the killer.
+    let mut recipients: std::collections::HashSet<String> = damaged_by
+        .iter()
+        .filter(|(_, dmg)| **dmg > 0)
+        .map(|(name, _)| name.to_lowercase())
+        .collect();
+    if !killer_name.is_empty() {
+        recipients.insert(killer_name.to_lowercase());
+    }
+    if recipients.is_empty() {
+        return;
+    }
+    for name in recipients {
+        credit_one_kill(db, connections, state, &name, mob_proto_vnum);
+    }
+}
+
+fn credit_one_kill(
+    db: &Db,
+    connections: &SharedConnections,
+    state: &SharedState,
+    char_name: &str,
+    mob_proto_vnum: &str,
+) {
+    let mut ch = match db.get_character_data(&char_name.to_lowercase()) {
         Ok(Some(c)) => c,
         _ => return,
     };
@@ -378,18 +481,12 @@ pub fn handle_mob_kill(
                     if *entry < *count {
                         *entry += 1;
                         dirty = true;
-                        let line = format!(
-                            "[ {}: {}/{} ]",
-                            quest.name,
-                            *entry,
-                            count
-                        );
-                        notify(connections, killer_name, &line);
+                        let line = format!("[ {}: {}/{} ]", quest.name, *entry, count);
+                        notify(connections, char_name, &line);
                     }
                 }
             }
         }
-        // Drop borrow before scheduling auto-complete.
         if has_only_kill_objectives(&quest) && is_completable_owned(db, &ch, &quest) {
             auto_complete.push(quest.vnum.clone());
         }
@@ -398,7 +495,7 @@ pub fn handle_mob_kill(
         let _ = db.save_character_data(ch);
     }
     for vnum in auto_complete {
-        try_complete(db, connections, state, killer_name, &vnum);
+        try_complete(db, connections, state, char_name, &vnum);
     }
 }
 
@@ -517,6 +614,178 @@ pub fn handle_item_to_mob(
 
     // Optionally: surface "(quest available)" hook here later.
     true
+}
+
+/// Room-visit listener entry point. Called from `go.rhai` after the player
+/// enters a new room. `room_vnum` is the room's prototype vnum (resilient
+/// across instance respawns); empty / non-prototype rooms are no-ops.
+pub fn handle_room_visit(
+    db: &Db,
+    connections: &SharedConnections,
+    state: &SharedState,
+    char_name: &str,
+    room_vnum: &str,
+) -> bool {
+    if char_name.is_empty() || room_vnum.is_empty() {
+        return false;
+    }
+    let mut ch = match db.get_character_data(&char_name.to_lowercase()) {
+        Ok(Some(c)) => c,
+        _ => return false,
+    };
+    let mut dirty = false;
+    let mut auto_complete: Vec<String> = Vec::new();
+    let active_keys: Vec<String> = ch.active_quests.keys().cloned().collect();
+    for qvnum in &active_keys {
+        let quest = match db.get_quest_data(qvnum) {
+            Ok(Some(q)) => q,
+            _ => continue,
+        };
+        let progress = match ch.active_quests.get_mut(qvnum) {
+            Some(p) => p,
+            None => continue,
+        };
+        let mut matched = false;
+        for obj in &quest.objectives {
+            if let QuestObjective::VisitRoom { vnum } = obj {
+                if vnum == room_vnum && !progress.rooms_visited.contains(vnum) {
+                    progress.rooms_visited.insert(vnum.clone());
+                    matched = true;
+                    dirty = true;
+                    let line = format!("[ {}: visited {} ]", quest.name, vnum);
+                    notify(connections, char_name, &line);
+                }
+            }
+        }
+        if matched && has_only_visit_objectives(&quest) && is_completable_owned(db, &ch, &quest) {
+            auto_complete.push(quest.vnum.clone());
+        }
+    }
+    if dirty {
+        let _ = db.save_character_data(ch);
+    }
+    for vnum in auto_complete {
+        try_complete(db, connections, state, char_name, &vnum);
+    }
+    dirty
+}
+
+fn has_only_visit_objectives(quest: &QuestData) -> bool {
+    !quest.objectives.is_empty()
+        && quest
+            .objectives
+            .iter()
+            .all(|o| matches!(o, QuestObjective::VisitRoom { .. }))
+}
+
+/// DG-var-set listener entry point. Called from `src/script/dg/eval.rs` after
+/// a character-scoped DG var write. Advances any `DgFlag` objective whose
+/// (var, value) matches; auto-completes flag-only quests.
+pub fn handle_dg_flag_set(
+    db: &Db,
+    connections: &SharedConnections,
+    state: &SharedState,
+    char_name: &str,
+    var: &str,
+    value: &str,
+) -> bool {
+    if char_name.is_empty() || var.is_empty() {
+        return false;
+    }
+    let mut ch = match db.get_character_data(&char_name.to_lowercase()) {
+        Ok(Some(c)) => c,
+        _ => return false,
+    };
+    let mut dirty = false;
+    let mut auto_complete: Vec<String> = Vec::new();
+    let active_keys: Vec<String> = ch.active_quests.keys().cloned().collect();
+    for qvnum in &active_keys {
+        let quest = match db.get_quest_data(qvnum) {
+            Ok(Some(q)) => q,
+            _ => continue,
+        };
+        let progress = match ch.active_quests.get_mut(qvnum) {
+            Some(p) => p,
+            None => continue,
+        };
+        let mut matched = false;
+        for obj in &quest.objectives {
+            if let QuestObjective::DgFlag { var: ovar, value: oval } = obj {
+                if ovar == var && oval == value && !progress.flags_set.contains(ovar) {
+                    progress.flags_set.insert(ovar.clone());
+                    matched = true;
+                    dirty = true;
+                    let line = format!("[ {}: flag {}={} set ]", quest.name, ovar, oval);
+                    notify(connections, char_name, &line);
+                }
+            }
+        }
+        if matched && has_only_flag_objectives(&quest) && is_completable_owned(db, &ch, &quest) {
+            auto_complete.push(quest.vnum.clone());
+        }
+    }
+    if dirty {
+        let _ = db.save_character_data(ch);
+    }
+    for vnum in auto_complete {
+        try_complete(db, connections, state, char_name, &vnum);
+    }
+    dirty
+}
+
+fn has_only_flag_objectives(quest: &QuestData) -> bool {
+    !quest.objectives.is_empty()
+        && quest
+            .objectives
+            .iter()
+            .all(|o| matches!(o, QuestObjective::DgFlag { .. }))
+}
+
+/// Describe whether a viewer has a quest cue for a mob (questgiver). Returns
+/// the bracketed cue line (or None when no cue applies). Used by look/examine
+/// rendering to surface "(has a quest for you)" / "(awaits your return)".
+pub fn describe_quest_offers(db: &Db, viewer_name: &str, mob_vnum: &str) -> Option<String> {
+    if viewer_name.is_empty() || mob_vnum.is_empty() {
+        return None;
+    }
+    let ch = db.get_character_data(&viewer_name.to_lowercase()).ok().flatten()?;
+    let quests = db.find_quests_by_giver_mob_vnum(mob_vnum).ok()?;
+    if quests.is_empty() {
+        return None;
+    }
+    let mut has_completable = false;
+    let mut has_offerable = false;
+    for q in &quests {
+        if ch.active_quests.contains_key(&q.vnum) {
+            if is_completable(db, &ch, q) {
+                has_completable = true;
+            }
+            continue;
+        }
+        if !ch.completed_quests.contains(&q.vnum) || q.repeatable {
+            // Slice 3 gates: if a prereq exists, require it to be completed.
+            // If a min skill total exists, require it.
+            if let Some(prereq) = &q.prereq_quest_vnum {
+                if !ch.completed_quests.contains(prereq) {
+                    continue;
+                }
+            }
+            if let Some(min_total) = q.min_player_skill_total {
+                let total: i32 = ch.skills.values().map(|sp| sp.level).sum();
+                if total < min_total {
+                    continue;
+                }
+            }
+            has_offerable = true;
+        }
+    }
+    if has_completable {
+        Some("(awaits your return)".to_string())
+    } else if has_offerable {
+        Some("(has a quest for you)".to_string())
+    } else {
+        None
+    }
 }
 
 fn has_all_returnto_bringitem(quest: &QuestData) -> bool {

@@ -16,6 +16,7 @@ export declare const questToolDefinitions: ({
             giver_mob_vnum?: undefined;
             prereq_quest_vnum?: undefined;
             min_player_skill_total?: undefined;
+            duration_secs?: undefined;
         };
         required?: undefined;
     };
@@ -40,6 +41,7 @@ export declare const questToolDefinitions: ({
             giver_mob_vnum?: undefined;
             prereq_quest_vnum?: undefined;
             min_player_skill_total?: undefined;
+            duration_secs?: undefined;
         };
         required: string[];
     };
@@ -275,6 +277,10 @@ export declare const questToolDefinitions: ({
                 type: string;
                 description: string;
             };
+            duration_secs: {
+                type: string;
+                description: string;
+            };
         };
         required: string[];
     };
@@ -507,6 +513,10 @@ export declare const questToolDefinitions: ({
                 description?: undefined;
             };
             min_player_skill_total: {
+                type: string;
+                description?: undefined;
+            };
+            duration_secs: {
                 type: string;
                 description?: undefined;
             };

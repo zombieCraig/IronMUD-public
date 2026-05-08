@@ -1287,6 +1287,16 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                             {
                                 line.push_str(" (invisible)");
                             }
+                            if !mobile.vnum.is_empty() {
+                                if let Some(cue) = crate::quest::describe_quest_offers(
+                                    &cloned_db,
+                                    &exclude_char_name,
+                                    &mobile.vnum,
+                                ) {
+                                    line.push(' ');
+                                    line.push_str(&cue);
+                                }
+                            }
                             output.push_str(&color(&line, ANSI_GREEN));
                         }
                         output.push('\n');

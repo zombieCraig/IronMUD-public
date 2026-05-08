@@ -704,6 +704,7 @@ fn translate_quest(q: &IrQuest, warnings: &mut Vec<Warning>) -> Option<PlannedQu
         giver_mob_vnum,
         prereq_quest_vnum: None,
         min_player_skill_total: None,
+        duration_secs: None,
     };
 
     Some(PlannedQuest {

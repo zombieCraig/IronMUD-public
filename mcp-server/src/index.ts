@@ -1290,6 +1290,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           giver_mob_vnum: args?.giver_mob_vnum as string | undefined,
           prereq_quest_vnum: args?.prereq_quest_vnum as string | undefined,
           min_player_skill_total: args?.min_player_skill_total as number | undefined,
+          duration_secs: args?.duration_secs as number | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(quest, null, 2) }],
@@ -1302,7 +1303,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const fields = [
           "name", "keywords", "summary", "description", "completion_text",
           "objectives", "rewards", "repeatable", "giver_mob_vnum",
-          "prereq_quest_vnum", "min_player_skill_total",
+          "prereq_quest_vnum", "min_player_skill_total", "duration_secs",
         ];
         for (const field of fields) {
           if (args?.[field] !== undefined) {

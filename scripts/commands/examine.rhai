@@ -554,6 +554,17 @@ fn examine_show_mobile(mobile, connection_id) {
         }
     }
 
+    // Quest cue: "(has a quest for you)" / "(awaits your return)".
+    if mobile.vnum != "" {
+        let viewer = get_player_character(connection_id);
+        if type_of(viewer) != "()" {
+            let cue = describe_quest_offers(viewer.name, mobile.vnum);
+            if cue != "" {
+                output += "\n" + cue;
+            }
+        }
+    }
+
     send_client_message(connection_id, output);
 }
 

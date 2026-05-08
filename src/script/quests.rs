@@ -24,6 +24,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         .register_get("giver_mob_vnum", |q: &mut QuestData| {
             q.giver_mob_vnum.clone().unwrap_or_default()
         })
+        .register_get("prereq_quest_vnum", |q: &mut QuestData| {
+            q.prereq_quest_vnum.clone().unwrap_or_default()
+        })
+        .register_get("min_player_skill_total", |q: &mut QuestData| {
+            q.min_player_skill_total.unwrap_or(0) as i64
+        })
+        .register_get("duration_secs", |q: &mut QuestData| q.duration_secs.unwrap_or(0))
         .register_get("keywords", |q: &mut QuestData| {
             q.keywords
                 .iter()
@@ -198,6 +205,71 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             }
             String::new()
         });
+    }
+
+    // set_quest_prereq(vnum, prereq_vnum) -> String — empty/clear/none clears.
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "set_quest_prereq",
+            move |vnum: String, prereq_vnum: String| -> String {
+                let mut q = match cloned_db.get_quest_data(&vnum) {
+                    Ok(Some(q)) => q,
+                    _ => return format!("no such quest `{}`", vnum),
+                };
+                let trimmed = prereq_vnum.trim();
+                q.prereq_quest_vnum = if trimmed.is_empty()
+                    || trimmed.eq_ignore_ascii_case("clear")
+                    || trimmed.eq_ignore_ascii_case("none")
+                {
+                    None
+                } else {
+                    Some(trimmed.to_string())
+                };
+                if let Err(e) = cloned_db.save_quest_data(&q) {
+                    return format!("save error: {}", e);
+                }
+                String::new()
+            },
+        );
+    }
+
+    // set_quest_min_skill(vnum, n) -> String — 0 or negative clears.
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "set_quest_min_skill",
+            move |vnum: String, n: i64| -> String {
+                let mut q = match cloned_db.get_quest_data(&vnum) {
+                    Ok(Some(q)) => q,
+                    _ => return format!("no such quest `{}`", vnum),
+                };
+                q.min_player_skill_total = if n <= 0 { None } else { Some(n as i32) };
+                if let Err(e) = cloned_db.save_quest_data(&q) {
+                    return format!("save error: {}", e);
+                }
+                String::new()
+            },
+        );
+    }
+
+    // set_quest_duration(vnum, secs) -> String — 0 or negative clears (no expiry).
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "set_quest_duration",
+            move |vnum: String, secs: i64| -> String {
+                let mut q = match cloned_db.get_quest_data(&vnum) {
+                    Ok(Some(q)) => q,
+                    _ => return format!("no such quest `{}`", vnum),
+                };
+                q.duration_secs = if secs <= 0 { None } else { Some(secs) };
+                if let Err(e) = cloned_db.save_quest_data(&q) {
+                    return format!("save error: {}", e);
+                }
+                String::new()
+            },
+        );
     }
 
     // === Objective add/remove ===
@@ -422,6 +494,121 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     &mob,
                     &item,
                 )
+            },
+        );
+    }
+
+    // record_mob_damaged_by(mobile_id, char_name, dmg) -> bool
+    // Accumulate per-fight damage attribution on a mob's CombatState. Used by
+    // script-side damage paths (cast_damage, etc.) so handle_mob_kill from the
+    // combat tick credits all contributors (slice 3c party credit).
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "record_mob_damaged_by",
+            move |mobile_id: String, char_name: String, dmg: i64| -> bool {
+                if dmg <= 0 || char_name.is_empty() {
+                    return false;
+                }
+                let mid = match uuid::Uuid::parse_str(&mobile_id) {
+                    Ok(u) => u,
+                    Err(_) => return false,
+                };
+                let mut mob = match cloned_db.get_mobile_data(&mid) {
+                    Ok(Some(m)) => m,
+                    _ => return false,
+                };
+                *mob.combat
+                    .damaged_by
+                    .entry(char_name.to_lowercase())
+                    .or_insert(0) += dmg as i32;
+                cloned_db.save_mobile_data(mob).is_ok()
+            },
+        );
+    }
+
+    // quest_credit_mob_kill(killer_name, mob_proto_vnum) -> bool
+    // Single-killer convenience used from script-side kill sites (bash,
+    // backstab, etc.) that don't share the combat tick's damaged_by map.
+    // Returns true (always — the underlying handle_mob_kill is best-effort).
+    {
+        let cloned_db = db.clone();
+        let cloned_conns = connections.clone();
+        let cloned_state = state.clone();
+        engine.register_fn(
+            "quest_credit_mob_kill",
+            move |killer_name: String, mob_proto_vnum: String| -> bool {
+                let damaged_by: std::collections::HashMap<String, i32> =
+                    std::collections::HashMap::new();
+                crate::quest::handle_mob_kill(
+                    &cloned_db,
+                    &cloned_conns,
+                    &cloned_state,
+                    &killer_name,
+                    &mob_proto_vnum,
+                    &damaged_by,
+                );
+                true
+            },
+        );
+    }
+
+    // quest_handle_room_visit(player_name, room_vnum) -> bool
+    // Called from go.rhai immediately after display_room. Advances any
+    // VisitRoom objective whose vnum matches; auto-completes visit-only
+    // quests. Returns true when at least one quest progressed (info only;
+    // go.rhai discards the result today).
+    {
+        let cloned_db = db.clone();
+        let cloned_conns = connections.clone();
+        let cloned_state = state.clone();
+        engine.register_fn(
+            "quest_handle_room_visit",
+            move |player_name: String, room_vnum: String| -> bool {
+                crate::quest::handle_room_visit(
+                    &cloned_db,
+                    &cloned_conns,
+                    &cloned_state,
+                    &player_name,
+                    &room_vnum,
+                )
+            },
+        );
+    }
+
+    // quest_handle_dg_flag_set(player_name, var, value) -> bool
+    // Called from src/script/dg/eval.rs after a character-scoped DG var write.
+    // Advances any DgFlag objective whose (var, value) matches; auto-completes
+    // flag-only quests.
+    {
+        let cloned_db = db.clone();
+        let cloned_conns = connections.clone();
+        let cloned_state = state.clone();
+        engine.register_fn(
+            "quest_handle_dg_flag_set",
+            move |player_name: String, var: String, value: String| -> bool {
+                crate::quest::handle_dg_flag_set(
+                    &cloned_db,
+                    &cloned_conns,
+                    &cloned_state,
+                    &player_name,
+                    &var,
+                    &value,
+                )
+            },
+        );
+    }
+
+    // describe_quest_offers(viewer_name, mob_vnum) -> String
+    // Returns "(awaits your return)" / "(has a quest for you)" / "" cue
+    // for use in look + examine. Empty string means no cue.
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "describe_quest_offers",
+            move |viewer_name: String, mob_vnum: String| -> String {
+                crate::quest::describe_quest_offers(&cloned_db, &viewer_name, &mob_vnum)
+                    .unwrap_or_default()
             },
         );
     }

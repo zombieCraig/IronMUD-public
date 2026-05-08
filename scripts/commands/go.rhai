@@ -488,6 +488,12 @@ fn run_command(args, connection_id) {
     // Display the room
     display_room(target_room_id, connection_id, char.name);
 
+    // Quest VisitRoom listener — uses the prototype vnum (resilient across
+    // instance respawns; empty for non-prototype rooms is a no-op).
+    if new_room.vnum != "" {
+        quest_handle_room_visit(char.name, new_room.vnum);
+    }
+
     // ROOM_DEATH: instant kill on entry. god_mode + build_mode bypass.
     if new_room.flags.death && !char.god_mode && !is_in_build_mode(char.name, target_room_id) {
         send_client_message(connection_id, "\x1b[1;31mA terrible fate befalls you here!\x1b[0m");

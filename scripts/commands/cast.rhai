@@ -148,6 +148,9 @@ fn cast_damage(connection_id, char, spell, target_arg) {
     // Apply damage
     mob.hp -= damage;
     save_mobile_data(mob);
+    // Slice 3c: attribute damage so handle_mob_kill credits this caster
+    // when the combat tick eventually finishes off the mob.
+    record_mob_damaged_by(mob_id, char.name, damage);
 
     // Start combat if not already
     if !is_in_combat(char.name) {

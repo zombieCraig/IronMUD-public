@@ -95,6 +95,8 @@ pub struct CreateQuestRequest {
     pub prereq_quest_vnum: Option<String>,
     #[serde(default)]
     pub min_player_skill_total: Option<i32>,
+    #[serde(default)]
+    pub duration_secs: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -110,6 +112,7 @@ pub struct UpdateQuestRequest {
     pub giver_mob_vnum: Option<String>,
     pub prereq_quest_vnum: Option<String>,
     pub min_player_skill_total: Option<i32>,
+    pub duration_secs: Option<i64>,
 }
 
 fn default_one_i32() -> i32 {
@@ -290,6 +293,7 @@ async fn create_quest(
             .prereq_quest_vnum
             .and_then(|s| if s.trim().is_empty() { None } else { Some(s) }),
         min_player_skill_total: req.min_player_skill_total,
+        duration_secs: req.duration_secs.and_then(|n| if n <= 0 { None } else { Some(n) }),
     };
 
     state
@@ -356,6 +360,9 @@ async fn update_quest(
     }
     if let Some(v) = req.min_player_skill_total {
         quest.min_player_skill_total = if v <= 0 { None } else { Some(v) };
+    }
+    if let Some(v) = req.duration_secs {
+        quest.duration_secs = if v <= 0 { None } else { Some(v) };
     }
 
     state

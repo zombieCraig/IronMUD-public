@@ -29,10 +29,10 @@ use crate::types::{
 
 // ===== Public Rhai-callable API =====
 
-pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, _state: SharedState) {
-    // _state is reserved for future quest effects that need world-state lookups
-    // (e.g. Achievement reward grants from CompleteQuest). Slice 1 handles
-    // gold/item/skill_xp/recipe rewards inline without state.
+pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, state: SharedState) {
+    // state is plumbed through apply_effect so the CompleteQuest dialogue effect
+    // can call crate::quest::try_complete (which needs SharedState to grant
+    // Achievement rewards via crate::script::achievements::award_core).
     // is_in_dialogue(connection_id) -> bool
     {
         let conns = connections.clone();
@@ -60,6 +60,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     {
         let cloned_db = db.clone();
         let conns = connections.clone();
+        let st = state.clone();
         engine.register_fn(
             "start_talk",
             move |connection_id: String, mob_keyword: String| -> Map {
@@ -83,7 +84,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 };
                 set_session_dialogue_partner(&conns, conn_uuid, Some(mob.id));
                 let mut ch_mut = ch;
-                let view = enter_root_or_keep(&cloned_db, &mut ch_mut, &mob);
+                let view = enter_root_or_keep(&cloned_db, &conns, &st, &mut ch_mut, &mob);
                 let _ = cloned_db.save_character_data(ch_mut);
                 out.insert("ok".into(), rhai::Dynamic::from(true));
                 out.insert("mob_id".into(), rhai::Dynamic::from(mob.id.to_string()));
@@ -112,6 +113,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     {
         let cloned_db = db.clone();
         let conns = connections.clone();
+        let st = state.clone();
         engine.register_fn(
             "walk_dialogue_keyword",
             move |connection_id: String, keyword: String| -> Map {
@@ -170,6 +172,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         ChoiceVisibility::Available => take_choice_at_node(
                             &cloned_db,
                             &conns,
+                            &st,
                             &mut ch_mut,
                             &mob,
                             &cur_node,
@@ -217,6 +220,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     {
         let cloned_db = db.clone();
         let conns = connections.clone();
+        let st = state.clone();
         engine.register_fn(
             "walk_dialogue_choice",
             move |connection_id: String, idx: i64| -> Map {
@@ -260,6 +264,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     ChoiceVisibility::Available => take_choice_at_node(
                         &cloned_db,
                         &conns,
+                        &st,
                         &mut ch_mut,
                         &mob,
                         &cur_node,
@@ -302,6 +307,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     {
         let cloned_db = db.clone();
         let conns = connections.clone();
+        let st = state.clone();
         engine.register_fn("exit_dialogue", move |connection_id: String| -> Map {
             let mut out = empty_result();
             let conn_uuid = match Uuid::parse_str(&connection_id) {
@@ -318,7 +324,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if let Some(mob) = cloned_db.get_mobile_data(&partner_id).ok().flatten() {
                 if let Some(mut ch) = get_character_for_conn(&conns, conn_uuid) {
                     let cur = current_node_for(&ch, &mob);
-                    exit_msg = exit_node(&cloned_db, &mut ch, &mob, &cur);
+                    exit_msg = exit_node(&cloned_db, &conns, &st, &mut ch, &mob, &cur);
                     if let Some(state) = ch.dialogue_pair_state.get_mut(&mob.vnum) {
                         state.current_node = None;
                     }
@@ -892,6 +898,7 @@ pub enum DialogueDispatch {
 pub fn dispatch_sticky_input(
     db: &Db,
     connections: &SharedConnections,
+    state: &SharedState,
     connection_id: Uuid,
     input: &str,
 ) -> DialogueDispatch {
@@ -906,7 +913,7 @@ pub fn dispatch_sticky_input(
         if let Some(c) = first_word.chars().next() {
             if let Some(idx) = c.to_digit(10) {
                 if idx >= 1 {
-                    return walk_choice_internal(db, connections, connection_id, idx as i64);
+                    return walk_choice_internal(db, connections, state, connection_id, idx as i64);
                 }
             }
         }
@@ -914,12 +921,12 @@ pub fn dispatch_sticky_input(
 
     // Exit phrases.
     if matches!(first_word.as_str(), "bye" | "leave" | "quit") {
-        return exit_internal(db, connections, connection_id);
+        return exit_internal(db, connections, state, connection_id);
     }
 
     // Movement directions exit and fall through.
     if is_movement_direction(&first_word) {
-        let outcome = exit_internal(db, connections, connection_id);
+        let outcome = exit_internal(db, connections, state, connection_id);
         return match outcome {
             DialogueDispatch::Handled {
                 actor_lines,
@@ -935,12 +942,13 @@ pub fn dispatch_sticky_input(
     }
 
     // Otherwise try to walk by keyword (whole-word match).
-    walk_keyword_internal(db, connections, connection_id, &first_word)
+    walk_keyword_internal(db, connections, state, connection_id, &first_word)
 }
 
 fn walk_choice_internal(
     db: &Db,
     connections: &SharedConnections,
+    state: &SharedState,
     connection_id: Uuid,
     idx: i64,
 ) -> DialogueDispatch {
@@ -979,7 +987,7 @@ fn walk_choice_internal(
     let entry = classified[(idx as usize) - 1].clone();
     let (response, menu, finished) = match &entry.visibility {
         ChoiceVisibility::Available => {
-            take_choice_at_node(db, connections, &mut ch, &mob, &cur, &entry.choice)
+            take_choice_at_node(db, connections, state, &mut ch, &mob, &cur, &entry.choice)
         }
         ChoiceVisibility::Locked { .. } => (
             "That doesn't seem available right now.".to_string(),
@@ -1023,6 +1031,7 @@ fn walk_choice_internal(
 fn walk_keyword_internal(
     db: &Db,
     connections: &SharedConnections,
+    state: &SharedState,
     connection_id: Uuid,
     keyword: &str,
 ) -> DialogueDispatch {
@@ -1059,7 +1068,7 @@ fn walk_keyword_internal(
     let entry = entry.clone();
     let (response, menu, finished) = match &entry.visibility {
         ChoiceVisibility::Available => {
-            take_choice_at_node(db, connections, &mut ch, &mob, &cur, &entry.choice)
+            take_choice_at_node(db, connections, state, &mut ch, &mob, &cur, &entry.choice)
         }
         ChoiceVisibility::Locked { .. } => (
             "That doesn't seem available right now.".to_string(),
@@ -1103,6 +1112,7 @@ fn walk_keyword_internal(
 fn exit_internal(
     db: &Db,
     connections: &SharedConnections,
+    state: &SharedState,
     connection_id: Uuid,
 ) -> DialogueDispatch {
     let mut actor_lines = Vec::new();
@@ -1115,9 +1125,9 @@ fn exit_internal(
         let mut exit_msg = String::new();
         if let Some(mut ch) = get_character_for_conn(connections, connection_id) {
             let cur = current_node_for(&ch, &mob);
-            exit_msg = exit_node(db, &mut ch, &mob, &cur);
-            if let Some(state) = ch.dialogue_pair_state.get_mut(&mob.vnum) {
-                state.current_node = None;
+            exit_msg = exit_node(db, connections, state, &mut ch, &mob, &cur);
+            if let Some(s) = ch.dialogue_pair_state.get_mut(&mob.vnum) {
+                s.current_node = None;
             }
             let _ = db.save_character_data(ch);
         }
@@ -1269,7 +1279,13 @@ struct ViewParts {
     finished: bool,
 }
 
-fn enter_root_or_keep(db: &Db, ch: &mut CharacterData, mob: &MobileData) -> ViewParts {
+fn enter_root_or_keep(
+    db: &Db,
+    connections: &SharedConnections,
+    state: &SharedState,
+    ch: &mut CharacterData,
+    mob: &MobileData,
+) -> ViewParts {
     // If the player already had a current_node from a prior session, treat
     // this as a resume — do NOT fire entry triggers, just re-render the menu.
     let had_cursor = ch
@@ -1298,7 +1314,7 @@ fn enter_root_or_keep(db: &Db, ch: &mut CharacterData, mob: &MobileData) -> View
         String::new()
     } else {
         // Fresh start: enter the node properly.
-        enter_node(db, ch, mob, &cur)
+        enter_node(db, connections, state, ch, mob, &cur)
     };
     let tree = mob.dialogue_tree.as_ref().unwrap();
     let node = tree.nodes.get(&cur).unwrap();
@@ -1325,7 +1341,14 @@ fn enter_root_or_keep(db: &Db, ch: &mut CharacterData, mob: &MobileData) -> View
 /// Move the cursor to `node_name`, firing on_each_visit (always) and on_enter
 /// (first visit only). Bumps the per-node visit counter. Returns the
 /// concatenated effect-message lines.
-fn enter_node(db: &Db, ch: &mut CharacterData, mob: &MobileData, node_name: &str) -> String {
+fn enter_node(
+    db: &Db,
+    connections: &SharedConnections,
+    state: &SharedState,
+    ch: &mut CharacterData,
+    mob: &MobileData,
+    node_name: &str,
+) -> String {
     set_current_node(ch, &mob.vnum, Some(node_name));
     let tree = match mob.dialogue_tree.as_ref() {
         Some(t) => t,
@@ -1346,13 +1369,13 @@ fn enter_node(db: &Db, ch: &mut CharacterData, mob: &MobileData, node_name: &str
     bump_visit_count(ch, &mob.vnum, node_name);
     let mut messages = String::new();
     if !node.on_each_visit.is_empty() {
-        let m = apply_effects_collect_messages(db, ch, mob, &node.on_each_visit);
+        let m = apply_effects_collect_messages(db, connections, state, ch, mob, &node.on_each_visit);
         if !m.is_empty() {
             messages.push_str(&m);
         }
     }
     if prior_visits == 0 && !node.on_enter.is_empty() {
-        let m = apply_effects_collect_messages(db, ch, mob, &node.on_enter);
+        let m = apply_effects_collect_messages(db, connections, state, ch, mob, &node.on_enter);
         if !m.is_empty() {
             if !messages.is_empty() {
                 messages.push('\n');
@@ -1365,7 +1388,14 @@ fn enter_node(db: &Db, ch: &mut CharacterData, mob: &MobileData, node_name: &str
 
 /// Fire the current node's on_exit effects (if the named node exists).
 /// Caller is responsible for then setting the cursor to the new node (or None).
-fn exit_node(db: &Db, ch: &mut CharacterData, mob: &MobileData, node_name: &str) -> String {
+fn exit_node(
+    db: &Db,
+    connections: &SharedConnections,
+    state: &SharedState,
+    ch: &mut CharacterData,
+    mob: &MobileData,
+    node_name: &str,
+) -> String {
     let tree = match mob.dialogue_tree.as_ref() {
         Some(t) => t,
         None => return String::new(),
@@ -1377,7 +1407,7 @@ fn exit_node(db: &Db, ch: &mut CharacterData, mob: &MobileData, node_name: &str)
     if node.on_exit.is_empty() {
         return String::new();
     }
-    apply_effects_collect_messages(db, ch, mob, &node.on_exit)
+    apply_effects_collect_messages(db, connections, state, ch, mob, &node.on_exit)
 }
 
 fn bump_visit_count(ch: &mut CharacterData, vnum: &str, node_name: &str) {
@@ -1393,17 +1423,19 @@ fn bump_visit_count(ch: &mut CharacterData, vnum: &str, node_name: &str) {
 fn take_choice(
     db: &Db,
     connections: &SharedConnections,
+    state: &SharedState,
     ch: &mut CharacterData,
     mob: &MobileData,
     choice: &DialogueChoice,
 ) -> (String, String, bool) {
     let cur = current_node_for(ch, mob);
-    take_choice_at_node(db, connections, ch, mob, &cur, choice)
+    take_choice_at_node(db, connections, state, ch, mob, &cur, choice)
 }
 
 fn take_choice_at_node(
     db: &Db,
-    _connections: &SharedConnections,
+    connections: &SharedConnections,
+    state: &SharedState,
     ch: &mut CharacterData,
     mob: &MobileData,
     src_node_name: &str,
@@ -1413,11 +1445,11 @@ fn take_choice_at_node(
     //    effect that exits dialogue still leaves the marker behind.
     record_choice_pick(ch, &mob.vnum, src_node_name, choice);
     // 1. Apply the choice's effects.
-    let mut effect_messages = apply_effects_collect_messages(db, ch, mob, &choice.effects);
+    let mut effect_messages = apply_effects_collect_messages(db, connections, state, ch, mob, &choice.effects);
     // 2. Navigate.
     match &choice.target {
         DialogueTarget::Exit => {
-            let exit_msg = exit_node(db, ch, mob, src_node_name);
+            let exit_msg = exit_node(db, connections, state, ch, mob, src_node_name);
             append_msg(&mut effect_messages, &exit_msg);
             set_current_node(ch, &mob.vnum, None);
             let response = if effect_messages.is_empty() {
@@ -1439,10 +1471,10 @@ fn take_choice_at_node(
                 );
             }
             // Fire on_exit for the source node before moving.
-            let exit_msg = exit_node(db, ch, mob, src_node_name);
+            let exit_msg = exit_node(db, connections, state, ch, mob, src_node_name);
             append_msg(&mut effect_messages, &exit_msg);
             // Enter the target — fires on_each_visit + on_enter (first visit).
-            let entry_msg = enter_node(db, ch, mob, node);
+            let entry_msg = enter_node(db, connections, state, ch, mob, node);
             append_msg(&mut effect_messages, &entry_msg);
             let tree = mob.dialogue_tree.as_ref().unwrap();
             let target = tree.nodes.get(node).unwrap();
@@ -1713,13 +1745,15 @@ fn evaluate_condition(cond: &DialogueCondition, ch: &CharacterData, mob: &Mobile
 
 fn apply_effects_collect_messages(
     db: &Db,
+    connections: &SharedConnections,
+    state: &SharedState,
     ch: &mut CharacterData,
     mob: &MobileData,
     effects: &[DialogueEffect],
 ) -> String {
     let mut messages: Vec<String> = Vec::new();
     for e in effects {
-        if let Some(msg) = apply_effect(db, ch, mob, e) {
+        if let Some(msg) = apply_effect(db, connections, state, ch, mob, e) {
             messages.push(msg);
         }
     }
@@ -1728,6 +1762,8 @@ fn apply_effects_collect_messages(
 
 fn apply_effect(
     db: &Db,
+    connections: &SharedConnections,
+    state: &SharedState,
     ch: &mut CharacterData,
     mob: &MobileData,
     effect: &DialogueEffect,
@@ -1840,6 +1876,15 @@ fn apply_effect(
             match scope {
                 DgScope::Player => {
                     ch.dg_vars.insert(key.clone(), value.clone());
+                    // Slice 2b: surface the write to the quest listener so a
+                    // DgFlag objective tracking (key, value) can advance.
+                    // Persist ch first (handle_dg_flag_set loads its own copy)
+                    // and reload after so reward grants land back on `ch`.
+                    let _ = db.save_character_data(ch.clone());
+                    crate::quest::handle_dg_flag_set(db, connections, state, &ch.name, key, value);
+                    if let Ok(Some(reloaded)) = db.get_character_data(&ch.name.to_lowercase()) {
+                        *ch = reloaded;
+                    }
                 }
                 DgScope::Mob => {
                     if let Some(mut mob_mut) = db.get_mobile_data(&mob.id).ok().flatten() {
@@ -1881,7 +1926,32 @@ fn apply_effect(
                 Some(format!("[ Not on quest {} ]", vnum))
             }
         }
-        DialogueEffect::CompleteQuest { vnum } => apply_complete_quest_inline(db, ch, vnum),
+        DialogueEffect::CompleteQuest { vnum } => {
+            // Persist any in-progress mutations on `ch` first so try_complete
+            // (which loads its own copy) sees a consistent state. Then call the
+            // canonical reward grantor and reload `ch` so the outer caller's
+            // save doesn't overwrite the rewards.
+            let _ = db.save_character_data(ch.clone());
+            let completed = crate::quest::try_complete(db, connections, state, &ch.name, vnum);
+            if let Ok(Some(reloaded)) = db.get_character_data(&ch.name.to_lowercase()) {
+                *ch = reloaded;
+            }
+            if completed {
+                None
+            } else {
+                let qname = db
+                    .get_quest_data(vnum)
+                    .ok()
+                    .flatten()
+                    .map(|q| q.name)
+                    .unwrap_or_else(|| vnum.clone());
+                if !ch.active_quests.contains_key(vnum) && !ch.completed_quests.contains(vnum) {
+                    Some(format!("[ Not on quest: {} ]", qname))
+                } else {
+                    Some(format!("[ Quest not yet complete: {} ]", qname))
+                }
+            }
+        }
         DialogueEffect::FireDgTrigger { trigger_type, arg } => {
             let trig_type = match parse_mob_trigger_type(trigger_type) {
                 Some(t) => t,
@@ -1907,141 +1977,6 @@ fn apply_effect(
             None
         }
     }
-}
-
-/// Inline reward grant for `CompleteQuest` dialogue effect. Handles gold,
-/// item, skill xp, and recipe rewards by mutating `ch` directly (or saving
-/// items via db). Achievement rewards are skipped — the achievement system
-/// requires `SharedState` which isn't plumbed into the dialogue effect
-/// pipeline; quests that need to award an achievement should be granted via
-/// `try_complete` from the quest listener path (kill / give-to-mob), not via
-/// a hand-authored dialogue choice.
-fn apply_complete_quest_inline(
-    db: &Db,
-    ch: &mut CharacterData,
-    quest_vnum: &str,
-) -> Option<String> {
-    use crate::types::{ItemLocation, QuestObjective, QuestReward};
-    let quest = match db.get_quest_data(quest_vnum) {
-        Ok(Some(q)) => q,
-        _ => return Some(format!("[ unknown quest {} ]", quest_vnum)),
-    };
-    if !ch.active_quests.contains_key(&quest.vnum) {
-        return Some(format!("[ Not on quest: {} ]", quest.name));
-    }
-    if !crate::quest::is_completable(db, ch, &quest) {
-        return Some(format!("[ Quest not yet complete: {} ]", quest.name));
-    }
-    // Consume inline-turn-in items (BringItem objectives without return mob).
-    for obj in &quest.objectives {
-        if let QuestObjective::BringItem {
-            vnum,
-            qty,
-            return_to_mob_vnum,
-        } = obj
-        {
-            if return_to_mob_vnum.is_none() {
-                let mut consumed = 0;
-                if let Ok(items) = db.list_all_items() {
-                    for item in items {
-                        if consumed >= *qty {
-                            break;
-                        }
-                        if item.is_prototype || item.vnum.as_deref() != Some(vnum.as_str()) {
-                            continue;
-                        }
-                        if let ItemLocation::Inventory(ref name) = item.location {
-                            if name.eq_ignore_ascii_case(&ch.name) {
-                                if db.delete_item(&item.id).is_ok() {
-                                    consumed += 1;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    // Apply rewards inline.
-    let mut lines: Vec<String> = Vec::new();
-    let mut skipped_achievement = false;
-    for reward in &quest.rewards {
-        match reward {
-            QuestReward::Gold { amount } => {
-                let next = (ch.gold as i64).saturating_add(*amount);
-                ch.gold = next.clamp(0, i32::MAX as i64) as i32;
-                lines.push(format!("[ +{} gold ]", amount));
-            }
-            QuestReward::Item { vnum, qty } => {
-                let mut given = 0;
-                for _ in 0..*qty {
-                    match db.spawn_item_from_prototype(vnum) {
-                        Ok(Some(mut item)) => {
-                            item.location = ItemLocation::Inventory(ch.name.clone());
-                            if db.save_item_data(item.clone()).is_ok() {
-                                given += 1;
-                            }
-                        }
-                        _ => break,
-                    }
-                }
-                if given > 0 {
-                    let label = db
-                        .get_item_by_vnum(vnum)
-                        .ok()
-                        .flatten()
-                        .map(|i| i.short_desc)
-                        .unwrap_or_else(|| format!("item {}", vnum));
-                    lines.push(format!("[ You receive: {} ]", label));
-                }
-            }
-            QuestReward::SkillXp { skill, amount } => {
-                let key = skill.to_lowercase();
-                let entry = ch.skills.entry(key.clone()).or_insert(crate::SkillProgress::default());
-                if entry.level < 10 {
-                    entry.experience += *amount;
-                    let mut leveled = false;
-                    while entry.experience >= 100 && entry.level < 10 {
-                        entry.experience -= 100;
-                        entry.level += 1;
-                        leveled = true;
-                    }
-                    if leveled {
-                        lines.push(format!("[ Your {} skill increases. ]", key.replace('_', " ")));
-                    } else {
-                        lines.push(format!("[ +{} {} xp ]", amount, key.replace('_', " ")));
-                    }
-                }
-            }
-            QuestReward::Achievement { .. } => {
-                skipped_achievement = true;
-            }
-            QuestReward::LearnRecipe { recipe_id } => {
-                if ch.learned_recipes.insert(recipe_id.clone()) {
-                    lines.push(format!("[ You have learned a new recipe: {} ]", recipe_id));
-                }
-            }
-        }
-    }
-    // Move quest from active to completed.
-    ch.active_quests.remove(&quest.vnum);
-    ch.completed_quests.insert(quest.vnum.clone());
-
-    let mut out = String::new();
-    if !quest.completion_text.is_empty() {
-        out.push_str(&quest.completion_text);
-        out.push('\n');
-    }
-    out.push_str(&format!("\x1b[1;33m[ Quest complete: {} ]\x1b[0m", quest.name));
-    for line in lines {
-        out.push('\n');
-        out.push_str(&line);
-    }
-    if skipped_achievement {
-        out.push('\n');
-        out.push_str("[ (achievement reward pending — grant via the listener path) ]");
-    }
-    Some(out)
 }
 
 fn parse_mob_trigger_type(s: &str) -> Option<MobileTriggerType> {
@@ -2247,6 +2182,37 @@ mod tests {
         (db, path)
     }
 
+    /// Build dummy SharedConnections + SharedState for tests that don't need
+    /// a live world. apply_effect signatures require both, but most condition/
+    /// effect tests don't actually exercise CompleteQuest (the only effect
+    /// that reads either).
+    fn dummy_conns_and_state(db: &Db) -> (SharedConnections, SharedState) {
+        use std::sync::{Arc, Mutex};
+        let conns: SharedConnections = Arc::new(Mutex::new(HashMap::new()));
+        let world = crate::World {
+            engine: rhai::Engine::new(),
+            db: db.clone(),
+            connections: conns.clone(),
+            scripts: HashMap::new(),
+            command_metadata: HashMap::new(),
+            class_definitions: HashMap::new(),
+            trait_definitions: HashMap::new(),
+            race_suggestions: Vec::new(),
+            race_definitions: HashMap::new(),
+            language_definitions: HashMap::new(),
+            recipes: HashMap::new(),
+            spell_definitions: HashMap::new(),
+            achievement_definitions: HashMap::new(),
+            achievement_index_by_counter: HashMap::new(),
+            transports: HashMap::new(),
+            chat_sender: None,
+            shutdown_sender: None,
+            shutdown_cancel_sender: None,
+        };
+        let state: SharedState = Arc::new(Mutex::new(world));
+        (conns, state)
+    }
+
     #[test]
     fn flag_set_and_unset_conditions_round_trip() {
         let mut ch = make_character("hero");
@@ -2266,11 +2232,14 @@ mod tests {
         let _ = std::fs::remove_dir_all(&path);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let db = Db::open(&path).expect("open db");
+            let (conns, st) = dummy_conns_and_state(&db);
             assert!(!evaluate_condition(&local_set, &ch, &mob, &db));
             assert!(evaluate_condition(&local_unset, &ch, &mob, &db));
             // SetFlag effect makes condition true.
             let _ = apply_effect(
                 &db,
+                &conns,
+                &st,
                 &mut ch,
                 &mob,
                 &DialogueEffect::SetFlag {
@@ -2284,6 +2253,8 @@ mod tests {
             // ClearFlag inverts.
             let _ = apply_effect(
                 &db,
+                &conns,
+                &st,
                 &mut ch,
                 &mob,
                 &DialogueEffect::ClearFlag {
@@ -2295,6 +2266,8 @@ mod tests {
             // Global scope: stored without prefix.
             let _ = apply_effect(
                 &db,
+                &conns,
+                &st,
                 &mut ch,
                 &mob,
                 &DialogueEffect::SetFlag {
@@ -2410,8 +2383,11 @@ mod tests {
         let _ = std::fs::remove_dir_all(&path);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let db = Db::open(&path).expect("open db");
+            let (conns, st) = dummy_conns_and_state(&db);
             let _ = apply_effect(
                 &db,
+                &conns,
+                &st,
                 &mut ch,
                 &mob,
                 &DialogueEffect::SetCounter {
@@ -2422,6 +2398,8 @@ mod tests {
             assert_eq!(ch.achievement_counters.get("shipments.delivered"), Some(&3));
             let _ = apply_effect(
                 &db,
+                &conns,
+                &st,
                 &mut ch,
                 &mob,
                 &DialogueEffect::IncrementCounter {
@@ -2705,8 +2683,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&path);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let db = Db::open(&path).expect("open db");
-            // Conn map (unused — take_choice doesn't need conns for these effects).
-            let conns = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+            let (conns, st) = dummy_conns_and_state(&db);
             let go_to_shop = DialogueChoice {
                 keyword: "shop".into(),
                 label: "Visit the shop".into(),
@@ -2728,15 +2705,15 @@ mod tests {
                 once_per_player: false,
             };
             // Visit shop first time: on_enter + on_each_visit fire.
-            take_choice(&db, &conns, &mut ch, &mob, &go_to_shop);
+            take_choice(&db, &conns, &st, &mut ch, &mob, &go_to_shop);
             assert_eq!(ch.achievement_counters.get("shop.first_visit"), Some(&1));
             assert_eq!(ch.achievement_counters.get("shop.visits"), Some(&1));
             // Leaving shop fires on_exit.
-            take_choice(&db, &conns, &mut ch, &mob, &back_to_root);
+            take_choice(&db, &conns, &st, &mut ch, &mob, &back_to_root);
             assert_eq!(ch.achievement_counters.get("shop.exits"), Some(&1));
             // Visit shop second time: on_enter must NOT re-fire (still 1);
             // on_each_visit increments to 2.
-            take_choice(&db, &conns, &mut ch, &mob, &go_to_shop);
+            take_choice(&db, &conns, &st, &mut ch, &mob, &go_to_shop);
             assert_eq!(ch.achievement_counters.get("shop.first_visit"), Some(&1));
             assert_eq!(ch.achievement_counters.get("shop.visits"), Some(&2));
             // Visit counter on the pair-state matches.
@@ -2799,7 +2776,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&path);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let db = Db::open(&path).expect("open db");
-            let conns = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+            let (conns, st) = dummy_conns_and_state(&db);
             let bye = DialogueChoice {
                 keyword: "bye".into(),
                 label: "Goodbye".into(),
@@ -2810,7 +2787,7 @@ mod tests {
                 cooldown_secs: None,
                 once_per_player: false,
             };
-            let (_, _, finished) = take_choice(&db, &conns, &mut ch, &mob, &bye);
+            let (_, _, finished) = take_choice(&db, &conns, &st, &mut ch, &mob, &bye);
             assert!(finished);
             assert_eq!(ch.dialogue_flags.get("9001:said_goodbye"), Some(&true));
         }));
@@ -2874,7 +2851,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&path);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let db = Db::open(&path).expect("open db");
-            let conns = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+            let (conns, st) = dummy_conns_and_state(&db);
             let again = DialogueChoice {
                 keyword: "again".into(),
                 label: "Repeat".into(),
@@ -2885,7 +2862,7 @@ mod tests {
                 cooldown_secs: None,
                 once_per_player: false,
             };
-            take_choice(&db, &conns, &mut ch, &mob, &again);
+            take_choice(&db, &conns, &st, &mut ch, &mob, &again);
             // None of the trigger sets fired on Repeat.
             assert!(ch.achievement_counters.get("enters").is_none());
             assert!(ch.achievement_counters.get("visits").is_none());

@@ -896,6 +896,7 @@ export interface Quest {
   giver_mob_vnum?: string | null;
   prereq_quest_vnum?: string | null;
   min_player_skill_total?: number | null;
+  duration_secs?: number | null;
 }
 
 export interface CreateQuestRequest {
@@ -911,6 +912,7 @@ export interface CreateQuestRequest {
   giver_mob_vnum?: string;
   prereq_quest_vnum?: string;
   min_player_skill_total?: number;
+  duration_secs?: number;
 }
 
 export interface UpdateQuestRequest {
@@ -925,6 +927,7 @@ export interface UpdateQuestRequest {
   giver_mob_vnum?: string;
   prereq_quest_vnum?: string;
   min_player_skill_total?: number;
+  duration_secs?: number;
 }
 
 // Forage tables (per-area)

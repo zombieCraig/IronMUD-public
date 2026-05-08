@@ -155,6 +155,12 @@ pub struct CombatState {
     /// Whether character is reloading (costs one combat turn)
     #[serde(default)]
     pub reloading: bool,
+    /// Slice 3c: per-fight damage attribution. Keyed by player name (lower-cased
+    /// at insertion site). Reset on combat entry. Read at kill time to credit
+    /// every contributor's quest progress; killing-blow always lands here from
+    /// the final hit. Empty for prototypes / mobs that never entered combat.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub damaged_by: HashMap<String, i32>,
 }
 
 /// Deserialize ammo_depleted from either bool (legacy) or u8

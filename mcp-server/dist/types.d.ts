@@ -811,6 +811,7 @@ export interface Quest {
     giver_mob_vnum?: string | null;
     prereq_quest_vnum?: string | null;
     min_player_skill_total?: number | null;
+    duration_secs?: number | null;
 }
 export interface CreateQuestRequest {
     vnum: string;
@@ -825,6 +826,7 @@ export interface CreateQuestRequest {
     giver_mob_vnum?: string;
     prereq_quest_vnum?: string;
     min_player_skill_total?: number;
+    duration_secs?: number;
 }
 export interface UpdateQuestRequest {
     name?: string;
@@ -838,6 +840,7 @@ export interface UpdateQuestRequest {
     giver_mob_vnum?: string;
     prereq_quest_vnum?: string;
     min_player_skill_total?: number;
+    duration_secs?: number;
 }
 export type ForageType = "city" | "wilderness" | "shallow_water" | "deep_water" | "underwater";
 export interface ForageEntry {

@@ -89,6 +89,39 @@ fn run_command(args, connection_id) {
         report(err, "Repeatable: " + (if on { "on" } else { "off" }) + ".", connection_id);
         return;
     }
+    if sub == "prereq" {
+        let prereq_vnum = if parts.len() < 3 { "" } else { parts[2] };
+        let err = set_quest_prereq(vnum, prereq_vnum);
+        let label = if prereq_vnum == "" || prereq_vnum.to_lower() == "clear" || prereq_vnum.to_lower() == "none" {
+            "cleared"
+        } else {
+            "set to " + prereq_vnum
+        };
+        report(err, "Prereq quest " + label + ".", connection_id);
+        return;
+    }
+    if sub == "min_skill" {
+        if parts.len() < 3 {
+            send_client_message(connection_id, "Usage: quedit <vnum> min_skill <n>  (0 clears)");
+            return;
+        }
+        let n = parse_int(parts[2]);
+        let err = set_quest_min_skill(vnum, n);
+        let label = if n <= 0 { "cleared" } else { "set to " + n };
+        report(err, "Min skill total " + label + ".", connection_id);
+        return;
+    }
+    if sub == "duration" {
+        if parts.len() < 3 {
+            send_client_message(connection_id, "Usage: quedit <vnum> duration <secs>  (0 clears, no expiry)");
+            return;
+        }
+        let secs = parse_int(parts[2]);
+        let err = set_quest_duration(vnum, secs);
+        let label = if secs <= 0 { "cleared (no expiry)" } else { "set to " + secs + " seconds" };
+        report(err, "Duration " + label + ".", connection_id);
+        return;
+    }
     if sub == "objective" {
         handle_objective(vnum, parts, connection_id);
         return;
@@ -292,6 +325,9 @@ fn show_quest(vnum, connection_id) {
     out += "  " + (if quest.completion_text == "" { "(none)" } else { quest.completion_text }) + "\n";
     out += "Giver: " + (if quest.giver_mob_vnum == "" { "(none)" } else { quest.giver_mob_vnum }) + "\n";
     out += "Repeatable: " + (if quest.repeatable { "yes" } else { "no" }) + "\n";
+    out += "Prereq: " + (if quest.prereq_quest_vnum == "" { "(none)" } else { quest.prereq_quest_vnum }) + "\n";
+    out += "Min skill total: " + (if quest.min_player_skill_total == 0 { "(none)" } else { "" + quest.min_player_skill_total }) + "\n";
+    out += "Duration: " + (if quest.duration_secs == 0 { "(none)" } else { "" + quest.duration_secs + " seconds" }) + "\n";
     let kws = quest.keywords;
     let kw_str = "";
     for k in kws {
@@ -335,6 +371,9 @@ fn send_help(connection_id) {
         "  quedit <vnum> giver <mob_vnum>",
         "  quedit <vnum> keywords <kw1 kw2 ...>",
         "  quedit <vnum> repeatable on|off",
+        "  quedit <vnum> prereq <quest_vnum|clear>",
+        "  quedit <vnum> min_skill <n>     (sum of skill levels; 0 clears)",
+        "  quedit <vnum> duration <secs>   (0 clears, no expiry)",
         "  quedit <vnum> objective add kill <mob_vnum> <count>",
         "  quedit <vnum> objective add bring <item_vnum> <qty> [<return_mob>]",
         "  quedit <vnum> objective add visit <room_vnum>",

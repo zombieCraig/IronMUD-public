@@ -1188,6 +1188,15 @@ fn process_character_attacks_mobile(
         // Apply damage
         damage = ironmud::script::apply_damage_reduction(damage, &mobile.active_buffs);
         mobile.current_hp -= damage;
+        // Slice 3c: party kill credit. Track every player that contributed
+        // damage so handle_mob_kill can credit each one's quest progress.
+        if damage > 0 {
+            *mobile
+                .combat
+                .damaged_by
+                .entry(char.name.to_lowercase())
+                .or_insert(0) += damage;
+        }
         // Magical sleep breaks on any damage taken.
         let was_sleeping = mobile
             .active_buffs
@@ -1316,9 +1325,19 @@ fn process_character_attacks_mobile(
         if mobile.current_hp <= 0 {
             let killed_vnum = mobile.vnum.clone();
             let killed_name = char.name.clone();
+            // Snapshot the damage map BEFORE process_mobile_death so all
+            // contributing players can be credited (slice 3c party credit).
+            let damaged_by = mobile.combat.damaged_by.clone();
             process_mobile_death(db, connections, &mut mobile, &room_id)?;
             crate::ticks::achievements::notify_kill_with_state(db, connections, state, &killed_name, &killed_vnum);
-            ironmud::quest::handle_mob_kill(db, connections, state, &killed_name, &killed_vnum);
+            ironmud::quest::handle_mob_kill(
+                db,
+                connections,
+                state,
+                &killed_name,
+                &killed_vnum,
+                &damaged_by,
+            );
 
             char.combat.targets.retain(|t| t.target_id != *target_id);
             if char.combat.targets.is_empty() {

@@ -2391,7 +2391,7 @@ pub async fn handle_connection(
                 world.db.clone()
             };
             let outcome =
-                crate::script::dialogue::dispatch_sticky_input(&db_clone, &connections, connection_id, &input);
+                crate::script::dialogue::dispatch_sticky_input(&db_clone, &connections, &state, connection_id, &input);
             match outcome {
                 crate::script::dialogue::DialogueDispatch::Handled {
                     actor_lines,
