@@ -12,6 +12,9 @@ import type {
   Recipe,
   CreateRecipeRequest,
   UpdateRecipeRequest,
+  Quest,
+  CreateQuestRequest,
+  UpdateQuestRequest,
   ForageTables,
   AddForageEntryRequest,
   ForageType,
@@ -769,6 +772,31 @@ export class IronMUDApiClient {
 
   async deleteRecipe(vnum: string): Promise<void> {
     await this.request("delete", `/recipes/${encodeURIComponent(vnum)}`);
+  }
+
+  // Quests
+  async listQuests(): Promise<Quest[]> {
+    return this.listRequest<Quest>("/quests");
+  }
+
+  async getQuest(vnum: string): Promise<Quest> {
+    return this.request<Quest>("get", `/quests/${encodeURIComponent(vnum)}`);
+  }
+
+  async createQuest(data: CreateQuestRequest): Promise<Quest> {
+    return this.request<Quest>("post", "/quests", data);
+  }
+
+  async updateQuest(vnum: string, data: UpdateQuestRequest): Promise<Quest> {
+    return this.request<Quest>(
+      "put",
+      `/quests/${encodeURIComponent(vnum)}`,
+      data
+    );
+  }
+
+  async deleteQuest(vnum: string): Promise<void> {
+    await this.request("delete", `/quests/${encodeURIComponent(vnum)}`);
   }
 
   // Area forage tables

@@ -26,6 +26,7 @@ pub mod import;
 pub mod init;
 pub mod matrix;
 pub mod migration;
+pub mod quest;
 pub mod script;
 pub mod seed;
 pub mod session;

@@ -82,10 +82,15 @@ fn parses_tba_fixture_cleanly() {
     assert_eq!(trig555.attach_type_raw, 2, "wld attach");
     assert_eq!(trig555.trigger_flags, "g");
 
-    // Quests: one .qst record.
+    // Quests: one .qst record. Body fields captured in slice 1.
     assert_eq!(ir.quests.len(), 1);
-    assert_eq!(ir.quests[0].vnum, 30);
-    assert_eq!(ir.quests[0].name, "The Reading Quest");
+    let q = &ir.quests[0];
+    assert_eq!(q.vnum, 30);
+    assert_eq!(q.name, "The Reading Quest");
+    assert_eq!(q.quest_type, 3, "fixture quest is AQ_MOB_KILL");
+    assert_eq!(q.qm_vnum, 3000);
+    assert_eq!(q.target_vnum, 3001);
+    assert!(!q.accept_msg.is_empty());
 }
 
 #[test]
@@ -122,7 +127,8 @@ fn maps_tba_ir_to_plan() {
         .count();
     assert_eq!(dg_info_warns, 1, "MTRIG_LEAVE surfaces as Info");
 
-    // Quest Warn.
+    // Quest translation: fixture quest #30 is AQ_MOB_KILL — translates to a
+    // PlannedQuest with no warning.
     let quest_warns = warnings
         .iter()
         .filter(|w| {
@@ -130,7 +136,19 @@ fn maps_tba_ir_to_plan() {
                 && w.message.contains("quest #")
         })
         .count();
-    assert_eq!(quest_warns, 1, "one Warn per quest");
+    assert_eq!(quest_warns, 0, "AQ_MOB_KILL translates cleanly without warns");
+    assert_eq!(plan.quests.len(), 1, "fixture quest produces one PlannedQuest");
+    let pq = &plan.quests[0];
+    assert_eq!(pq.quest_data.vnum, "qst:30");
+    assert_eq!(pq.quest_data.name, "The Reading Quest");
+    assert_eq!(pq.quest_data.giver_mob_vnum.as_deref(), Some("3000"));
+    use ironmud::types::QuestObjective;
+    if let QuestObjective::KillMob { vnum, count } = &pq.quest_data.objectives[0] {
+        assert_eq!(vnum, "3001");
+        assert_eq!(*count, 1);
+    } else {
+        panic!("expected KillMob objective");
+    }
 
     // No Block warnings on a clean fixture.
     let blocks = warnings.iter().filter(|w| w.severity == Severity::Block).count();

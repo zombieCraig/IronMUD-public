@@ -30,6 +30,7 @@ mod shop_presets;
 mod shops;
 mod simulation;
 pub mod social;
+mod quests;
 mod spawn;
 mod spells;
 mod stealth;
@@ -490,6 +491,9 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 automap_enabled: false,
                 automap_radius: crate::script::map::AUTOMAP_DEFAULT_RADIUS,
                 ascii_map: false,
+                // Quest system fields
+                active_quests: std::collections::HashMap::new(),
+                completed_quests: std::collections::HashSet::new(),
             }
         },
     );
@@ -1979,5 +1983,6 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     achievements::register(engine, db.clone(), connections.clone(), state.clone());
     map::register(engine, db.clone(), connections.clone());
     lang::register(engine, db.clone(), state.clone());
-    dialogue::register(engine, db.clone(), connections.clone());
+    dialogue::register(engine, db.clone(), connections.clone(), state.clone());
+    quests::register(engine, db.clone(), connections.clone(), state.clone());
 }

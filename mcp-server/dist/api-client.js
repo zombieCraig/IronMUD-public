@@ -379,6 +379,22 @@ export class IronMUDApiClient {
     async deleteRecipe(vnum) {
         await this.request("delete", `/recipes/${encodeURIComponent(vnum)}`);
     }
+    // Quests
+    async listQuests() {
+        return this.listRequest("/quests");
+    }
+    async getQuest(vnum) {
+        return this.request("get", `/quests/${encodeURIComponent(vnum)}`);
+    }
+    async createQuest(data) {
+        return this.request("post", "/quests", data);
+    }
+    async updateQuest(vnum, data) {
+        return this.request("put", `/quests/${encodeURIComponent(vnum)}`, data);
+    }
+    async deleteQuest(vnum) {
+        await this.request("delete", `/quests/${encodeURIComponent(vnum)}`);
+    }
     // Area forage tables
     async listForageTables(areaId) {
         return this.request("get", `/areas/${areaId}/forage`);

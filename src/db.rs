@@ -53,6 +53,9 @@ pub struct Db {
     // Canonical engine-detected achievements live in JSON; this tree
     // stores builder-created Manual ones and admin overrides.
     achievements: Arc<Tree>,
+    // Quest prototypes (key = vnum bytes, value = JSON QuestData). Per-player
+    // progress lives on CharacterData; this tree only holds prototypes.
+    quests: Arc<Tree>,
 }
 
 /// Statistics about the world database
@@ -97,6 +100,7 @@ impl Db {
         let dg_globals = db.open_tree("dg_globals")?;
         let dg_trigger_protos = db.open_tree("dg_trigger_protos")?;
         let achievements = db.open_tree("achievements")?;
+        let quests = db.open_tree("quests")?;
         Ok(Self {
             db: Arc::new(db),                 // Wrap in Arc
             characters: Arc::new(characters), // Wrap in Arc
@@ -122,6 +126,7 @@ impl Db {
             dg_globals: Arc::new(dg_globals),
             dg_trigger_protos: Arc::new(dg_trigger_protos),
             achievements: Arc::new(achievements),
+            quests: Arc::new(quests),
         })
     }
 
@@ -182,6 +187,54 @@ impl Db {
     pub fn delete_dg_trigger_proto(&self, vnum: &str) -> Result<()> {
         self.dg_trigger_protos.remove(vnum.as_bytes())?;
         Ok(())
+    }
+
+    // === Quest prototypes ===
+    //
+    // Backed by the `quests` sled tree. Stores `QuestData` keyed by vnum. Per-
+    // player progress lives on `CharacterData.active_quests` /
+    // `completed_quests` and rides the existing character save path.
+
+    /// Read a quest prototype by vnum.
+    pub fn get_quest_data(&self, vnum: &str) -> Result<Option<crate::types::QuestData>> {
+        match self.quests.get(vnum.as_bytes())? {
+            Some(ivec) => Ok(Some(serde_json::from_slice(&ivec)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Save (or overwrite) a quest prototype.
+    pub fn save_quest_data(&self, quest: &crate::types::QuestData) -> Result<()> {
+        let value = serde_json::to_vec(quest)?;
+        self.quests.insert(quest.vnum.as_bytes(), value)?;
+        Ok(())
+    }
+
+    /// Delete a quest prototype by vnum. No-op if not present.
+    pub fn delete_quest(&self, vnum: &str) -> Result<()> {
+        self.quests.remove(vnum.as_bytes())?;
+        Ok(())
+    }
+
+    /// List all quest prototypes.
+    pub fn list_all_quests(&self) -> Result<Vec<crate::types::QuestData>> {
+        let mut out = Vec::new();
+        for kv in self.quests.iter() {
+            let (_, ivec) = kv?;
+            if let Ok(q) = serde_json::from_slice::<crate::types::QuestData>(&ivec) {
+                out.push(q);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Find quests whose canonical questgiver is the given mob vnum.
+    pub fn find_quests_by_giver_mob_vnum(&self, mob_vnum: &str) -> Result<Vec<crate::types::QuestData>> {
+        Ok(self
+            .list_all_quests()?
+            .into_iter()
+            .filter(|q| q.giver_mob_vnum.as_deref() == Some(mob_vnum))
+            .collect())
     }
 
     /// Flush all pending writes to disk. Call before shutdown.

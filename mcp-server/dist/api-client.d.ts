@@ -1,4 +1,4 @@
-import type { Area, Room, Item, Mobile, SpawnPoint, Transport, PlantPrototype, Recipe, CreateRecipeRequest, UpdateRecipeRequest, ForageTables, AddForageEntryRequest, ForageType, ItemSummary, RoomSummary, MobileSummary, AreaOverview, CreateAreaRequest, UpdateAreaRequest, CreateRoomRequest, CreateItemRequest, CreateMobileRequest, CreateSpawnPointRequest, CreateTransportRequest, CreatePlantPrototypeRequest, AddTransportStopRequest, SetExitRequest, AddDoorRequest, AddTriggerRequest, AddExtraDescRequest, AddDialogueRequest, AddDialogueNodeRequest, UpdateDialogueNodeRequest, DialogueChoiceRequest, AddMobileTriggerRequest, AddItemTriggerRequest, AddSpawnDependencyRequest, SpawnEntityRequest, BugReport, UpdateBugReportRequest, AddBugNoteRequest } from "./types.js";
+import type { Area, Room, Item, Mobile, SpawnPoint, Transport, PlantPrototype, Recipe, CreateRecipeRequest, UpdateRecipeRequest, Quest, CreateQuestRequest, UpdateQuestRequest, ForageTables, AddForageEntryRequest, ForageType, ItemSummary, RoomSummary, MobileSummary, AreaOverview, CreateAreaRequest, UpdateAreaRequest, CreateRoomRequest, CreateItemRequest, CreateMobileRequest, CreateSpawnPointRequest, CreateTransportRequest, CreatePlantPrototypeRequest, AddTransportStopRequest, SetExitRequest, AddDoorRequest, AddTriggerRequest, AddExtraDescRequest, AddDialogueRequest, AddDialogueNodeRequest, UpdateDialogueNodeRequest, DialogueChoiceRequest, AddMobileTriggerRequest, AddItemTriggerRequest, AddSpawnDependencyRequest, SpawnEntityRequest, BugReport, UpdateBugReportRequest, AddBugNoteRequest } from "./types.js";
 export declare class IronMUDApiClient {
     private client;
     constructor(baseUrl: string, apiKey: string);
@@ -162,6 +162,11 @@ export declare class IronMUDApiClient {
     createRecipe(data: CreateRecipeRequest): Promise<Recipe>;
     updateRecipe(vnum: string, data: UpdateRecipeRequest): Promise<Recipe>;
     deleteRecipe(vnum: string): Promise<void>;
+    listQuests(): Promise<Quest[]>;
+    getQuest(vnum: string): Promise<Quest>;
+    createQuest(data: CreateQuestRequest): Promise<Quest>;
+    updateQuest(vnum: string, data: UpdateQuestRequest): Promise<Quest>;
+    deleteQuest(vnum: string): Promise<void>;
     listForageTables(areaId: string): Promise<ForageTables>;
     addForageEntry(areaId: string, data: AddForageEntryRequest): Promise<Area>;
     removeForageEntry(areaId: string, forageType: ForageType, vnum: string): Promise<Area>;

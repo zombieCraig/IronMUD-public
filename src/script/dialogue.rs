@@ -20,7 +20,7 @@ use std::sync::Arc;
 use rhai::{Engine, Map};
 use uuid::Uuid;
 
-use crate::SharedConnections;
+use crate::{SharedConnections, SharedState};
 use crate::db::Db;
 use crate::types::{
     CharacterData, DgScope, DialogueChoice, DialogueCondition, DialogueEffect, DialogueNode,
@@ -29,7 +29,10 @@ use crate::types::{
 
 // ===== Public Rhai-callable API =====
 
-pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections) {
+pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, _state: SharedState) {
+    // _state is reserved for future quest effects that need world-state lookups
+    // (e.g. Achievement reward grants from CompleteQuest). Slice 1 handles
+    // gold/item/skill_xp/recipe rewards inline without state.
     // is_in_dialogue(connection_id) -> bool
     {
         let conns = connections.clone();
@@ -1694,6 +1697,17 @@ fn evaluate_condition(cond: &DialogueCondition, ch: &CharacterData, mob: &Mobile
             DgScope::Player => ch.dg_vars.get(key).map(|v| v == value).unwrap_or(false),
             DgScope::Mob => mob.dg_vars.get(key).map(|v| v == value).unwrap_or(false),
         },
+        DialogueCondition::QuestActive { vnum } => ch.active_quests.contains_key(vnum),
+        DialogueCondition::QuestComplete { vnum } => ch.completed_quests.contains(vnum),
+        DialogueCondition::QuestCompletable { vnum } => {
+            if !ch.active_quests.contains_key(vnum) {
+                return false;
+            }
+            match db.get_quest_data(vnum) {
+                Ok(Some(quest)) => crate::quest::is_completable(db, ch, &quest),
+                _ => false,
+            }
+        }
     }
 }
 
@@ -1836,6 +1850,38 @@ fn apply_effect(
             }
             None
         }
+        DialogueEffect::OfferQuest { vnum } => {
+            let quest = match db.get_quest_data(vnum) {
+                Ok(Some(q)) => q,
+                _ => return Some(format!("[ unknown quest {} ]", vnum)),
+            };
+            if ch.active_quests.contains_key(&quest.vnum) {
+                return Some(format!("[ Already on quest: {} ]", quest.name));
+            }
+            if ch.completed_quests.contains(&quest.vnum) && !quest.repeatable {
+                return Some(format!("[ Already completed: {} ]", quest.name));
+            }
+            ch.active_quests.insert(
+                quest.vnum.clone(),
+                crate::types::ActiveQuest {
+                    started_at: now_epoch_secs() as i64,
+                    ..Default::default()
+                },
+            );
+            Some(format!("\x1b[1;33m[ Quest accepted: {} ]\x1b[0m", quest.name))
+        }
+        DialogueEffect::AbandonQuest { vnum } => {
+            let quest = db.get_quest_data(vnum).ok().flatten();
+            if ch.active_quests.remove(vnum).is_some() {
+                Some(format!(
+                    "[ Abandoned: {} ]",
+                    quest.map(|q| q.name).unwrap_or_else(|| vnum.clone())
+                ))
+            } else {
+                Some(format!("[ Not on quest {} ]", vnum))
+            }
+        }
+        DialogueEffect::CompleteQuest { vnum } => apply_complete_quest_inline(db, ch, vnum),
         DialogueEffect::FireDgTrigger { trigger_type, arg } => {
             let trig_type = match parse_mob_trigger_type(trigger_type) {
                 Some(t) => t,
@@ -1861,6 +1907,141 @@ fn apply_effect(
             None
         }
     }
+}
+
+/// Inline reward grant for `CompleteQuest` dialogue effect. Handles gold,
+/// item, skill xp, and recipe rewards by mutating `ch` directly (or saving
+/// items via db). Achievement rewards are skipped — the achievement system
+/// requires `SharedState` which isn't plumbed into the dialogue effect
+/// pipeline; quests that need to award an achievement should be granted via
+/// `try_complete` from the quest listener path (kill / give-to-mob), not via
+/// a hand-authored dialogue choice.
+fn apply_complete_quest_inline(
+    db: &Db,
+    ch: &mut CharacterData,
+    quest_vnum: &str,
+) -> Option<String> {
+    use crate::types::{ItemLocation, QuestObjective, QuestReward};
+    let quest = match db.get_quest_data(quest_vnum) {
+        Ok(Some(q)) => q,
+        _ => return Some(format!("[ unknown quest {} ]", quest_vnum)),
+    };
+    if !ch.active_quests.contains_key(&quest.vnum) {
+        return Some(format!("[ Not on quest: {} ]", quest.name));
+    }
+    if !crate::quest::is_completable(db, ch, &quest) {
+        return Some(format!("[ Quest not yet complete: {} ]", quest.name));
+    }
+    // Consume inline-turn-in items (BringItem objectives without return mob).
+    for obj in &quest.objectives {
+        if let QuestObjective::BringItem {
+            vnum,
+            qty,
+            return_to_mob_vnum,
+        } = obj
+        {
+            if return_to_mob_vnum.is_none() {
+                let mut consumed = 0;
+                if let Ok(items) = db.list_all_items() {
+                    for item in items {
+                        if consumed >= *qty {
+                            break;
+                        }
+                        if item.is_prototype || item.vnum.as_deref() != Some(vnum.as_str()) {
+                            continue;
+                        }
+                        if let ItemLocation::Inventory(ref name) = item.location {
+                            if name.eq_ignore_ascii_case(&ch.name) {
+                                if db.delete_item(&item.id).is_ok() {
+                                    consumed += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    // Apply rewards inline.
+    let mut lines: Vec<String> = Vec::new();
+    let mut skipped_achievement = false;
+    for reward in &quest.rewards {
+        match reward {
+            QuestReward::Gold { amount } => {
+                let next = (ch.gold as i64).saturating_add(*amount);
+                ch.gold = next.clamp(0, i32::MAX as i64) as i32;
+                lines.push(format!("[ +{} gold ]", amount));
+            }
+            QuestReward::Item { vnum, qty } => {
+                let mut given = 0;
+                for _ in 0..*qty {
+                    match db.spawn_item_from_prototype(vnum) {
+                        Ok(Some(mut item)) => {
+                            item.location = ItemLocation::Inventory(ch.name.clone());
+                            if db.save_item_data(item.clone()).is_ok() {
+                                given += 1;
+                            }
+                        }
+                        _ => break,
+                    }
+                }
+                if given > 0 {
+                    let label = db
+                        .get_item_by_vnum(vnum)
+                        .ok()
+                        .flatten()
+                        .map(|i| i.short_desc)
+                        .unwrap_or_else(|| format!("item {}", vnum));
+                    lines.push(format!("[ You receive: {} ]", label));
+                }
+            }
+            QuestReward::SkillXp { skill, amount } => {
+                let key = skill.to_lowercase();
+                let entry = ch.skills.entry(key.clone()).or_insert(crate::SkillProgress::default());
+                if entry.level < 10 {
+                    entry.experience += *amount;
+                    let mut leveled = false;
+                    while entry.experience >= 100 && entry.level < 10 {
+                        entry.experience -= 100;
+                        entry.level += 1;
+                        leveled = true;
+                    }
+                    if leveled {
+                        lines.push(format!("[ Your {} skill increases. ]", key.replace('_', " ")));
+                    } else {
+                        lines.push(format!("[ +{} {} xp ]", amount, key.replace('_', " ")));
+                    }
+                }
+            }
+            QuestReward::Achievement { .. } => {
+                skipped_achievement = true;
+            }
+            QuestReward::LearnRecipe { recipe_id } => {
+                if ch.learned_recipes.insert(recipe_id.clone()) {
+                    lines.push(format!("[ You have learned a new recipe: {} ]", recipe_id));
+                }
+            }
+        }
+    }
+    // Move quest from active to completed.
+    ch.active_quests.remove(&quest.vnum);
+    ch.completed_quests.insert(quest.vnum.clone());
+
+    let mut out = String::new();
+    if !quest.completion_text.is_empty() {
+        out.push_str(&quest.completion_text);
+        out.push('\n');
+    }
+    out.push_str(&format!("\x1b[1;33m[ Quest complete: {} ]\x1b[0m", quest.name));
+    for line in lines {
+        out.push('\n');
+        out.push_str(&line);
+    }
+    if skipped_achievement {
+        out.push('\n');
+        out.push_str("[ (achievement reward pending — grant via the listener path) ]");
+    }
+    Some(out)
 }
 
 fn parse_mob_trigger_type(s: &str) -> Option<MobileTriggerType> {

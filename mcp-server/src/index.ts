@@ -18,6 +18,7 @@ import { transportToolDefinitions } from "./tools/transports.js";
 import { descriptionToolDefinitions } from "./tools/descriptions.js";
 import { plantToolDefinitions } from "./tools/plants.js";
 import { recipeToolDefinitions } from "./tools/recipes.js";
+import { questToolDefinitions } from "./tools/quests.js";
 import { bugToolDefinitions } from "./tools/bugs.js";
 import {
   buildRoomContext,
@@ -98,6 +99,7 @@ const allTools = [
   ...descriptionToolDefinitions,
   ...plantToolDefinitions,
   ...recipeToolDefinitions,
+  ...questToolDefinitions,
   ...bugToolDefinitions,
 ];
 
@@ -1256,6 +1258,68 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         await api.deleteRecipe(vnum);
         return {
           content: [{ type: "text", text: `Recipe ${vnum} deleted successfully` }],
+        };
+      }
+
+      // Quest tools
+      case "list_quests": {
+        const quests = await api.listQuests();
+        return {
+          content: [{ type: "text", text: JSON.stringify(quests, null, 2) }],
+        };
+      }
+      case "get_quest": {
+        const vnum = args?.vnum as string;
+        if (!vnum) throw new Error("vnum is required");
+        const quest = await api.getQuest(vnum);
+        return {
+          content: [{ type: "text", text: JSON.stringify(quest, null, 2) }],
+        };
+      }
+      case "create_quest": {
+        const quest = await api.createQuest({
+          vnum: args?.vnum as string,
+          name: args?.name as string,
+          keywords: args?.keywords as string[] | undefined,
+          summary: args?.summary as string | undefined,
+          description: args?.description as string | undefined,
+          completion_text: args?.completion_text as string | undefined,
+          objectives: args?.objectives as any[] | undefined,
+          rewards: args?.rewards as any[] | undefined,
+          repeatable: args?.repeatable as boolean | undefined,
+          giver_mob_vnum: args?.giver_mob_vnum as string | undefined,
+          prereq_quest_vnum: args?.prereq_quest_vnum as string | undefined,
+          min_player_skill_total: args?.min_player_skill_total as number | undefined,
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(quest, null, 2) }],
+        };
+      }
+      case "update_quest": {
+        const vnum = args?.vnum as string;
+        if (!vnum) throw new Error("vnum is required");
+        const updateData: Record<string, unknown> = {};
+        const fields = [
+          "name", "keywords", "summary", "description", "completion_text",
+          "objectives", "rewards", "repeatable", "giver_mob_vnum",
+          "prereq_quest_vnum", "min_player_skill_total",
+        ];
+        for (const field of fields) {
+          if (args?.[field] !== undefined) {
+            updateData[field] = args[field];
+          }
+        }
+        const quest = await api.updateQuest(vnum, updateData);
+        return {
+          content: [{ type: "text", text: JSON.stringify(quest, null, 2) }],
+        };
+      }
+      case "delete_quest": {
+        const vnum = args?.vnum as string;
+        if (!vnum) throw new Error("vnum is required");
+        await api.deleteQuest(vnum);
+        return {
+          content: [{ type: "text", text: `Quest ${vnum} deleted successfully` }],
         };
       }
 

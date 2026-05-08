@@ -810,5 +810,17 @@
   "summon": {
     "access": "admin",
     "description": "Summon a mobile or player to your location or a room"
+  },
+  "quest": {
+    "access": "user",
+    "description": "List active quests, view detail, or abandon a quest"
+  },
+  "quests": {
+    "access": "user",
+    "description": "List active quests"
+  },
+  "quedit": {
+    "access": "builder",
+    "description": "Create or edit quests"
   }
 }

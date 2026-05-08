@@ -367,16 +367,33 @@ pub struct IrDgTrigger {
     pub source: SourceLoc,
 }
 
-/// tbaMUD quest definition (one record in a `.qst` file). IronMUD has no
-/// quest system; mapping emits a single Warn per quest so the audit trail
-/// shows which zones expected them.
-#[derive(Debug, Clone)]
+/// tbaMUD quest definition (one record in a `.qst` file). The mapper
+/// translates supported AQ_* types into [`PlannedQuest`] records that get
+/// persisted as `QuestData` in the `quests` sled tree.
+#[derive(Debug, Clone, Default)]
 pub struct IrQuest {
     pub vnum: i32,
     pub name: String,
     /// Keywords used in the `quest` command (e.g. `mice`).
     pub keywords: String,
     pub source: SourceLoc,
+    /// Questmaster mob vnum (the canonical questgiver).
+    pub qm_vnum: i32,
+    /// CircleMUD/tbamud `AQ_*` type code:
+    /// 0 = AQ_OBJ_FIND, 1 = AQ_ROOM_FIND, 2 = AQ_MOB_FIND, 3 = AQ_MOB_KILL,
+    /// 4 = AQ_MOB_SAVE, 5 = AQ_OBJ_RETURN, 6 = AQ_ROOM_CLEAR.
+    pub quest_type: i32,
+    /// Target vnum (mob/item/room depending on `quest_type`).
+    pub target_vnum: i32,
+    /// How many of `target_vnum` are required (kills, items, etc.).
+    pub quantity: i32,
+    pub gold_reward: i64,
+    pub obj_reward_vnum: i32,
+    /// Bitfield. Bit 1 (`AQ_QUEST_REPEATABLE`) flips repeatable on.
+    pub flags: i32,
+    pub accept_msg: String,
+    pub complete_msg: String,
+    pub quit_msg: String,
 }
 
 /// A planned overlay onto a [`PlannedMobile`]. Shops cross-cut zones
@@ -585,6 +602,16 @@ pub struct Plan {
     /// `dg_trigger_protos` sled tree so the runtime `attach` statement and
     /// `trigger dg attach <vnum>` builder command can resolve bodies.
     pub dg_trigger_protos: Vec<crate::types::DgTriggerProto>,
+    /// Quest prototypes derived from `.qst` files. Persist into the `quests`
+    /// sled tree.
+    pub quests: Vec<PlannedQuest>,
+}
+
+/// Planned quest prototype ready for the writer pass.
+#[derive(Debug, Clone)]
+pub struct PlannedQuest {
+    pub quest_data: crate::types::QuestData,
+    pub source: SourceLoc,
 }
 
 #[derive(Debug, Clone)]

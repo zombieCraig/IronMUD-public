@@ -500,6 +500,15 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
         written_dg_protos += 1;
     }
 
+    // Pass 9: Quest prototypes from `.qst` files.
+    let mut written_quests = 0usize;
+    for planned in &plan.quests {
+        db.save_quest_data(&planned.quest_data)
+            .with_context(|| format!("saving quest {}", planned.quest_data.vnum))?;
+        written_quests += 1;
+    }
+    let _ = written_quests;
+
     let summary = summarize(
         plan,
         warnings,

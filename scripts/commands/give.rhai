@@ -200,6 +200,17 @@ fn give_item_to_mobile(char, target_mobile, item_keyword, connection_id) {
     let item = resolve_giveable_item(char, item_keyword, connection_id);
     if item == () { return; }
 
+    // Quest item turn-in: if this (item, mob) pair satisfies a BringItem
+    // objective on an active quest, the item is consumed and progress
+    // advances. Skip the normal hand-off (item is gone) and the on_receive
+    // trigger (the quest's own listener handles state).
+    let consumed_by_quest = quest_handle_item_to_mob(char.name, target_mobile.id.to_string(), item.id.to_string());
+    if consumed_by_quest {
+        send_client_message(connection_id, "You hand " + item.name + " to " + target_mobile.name + ".");
+        broadcast_to_room(char.current_room_id, char.name + " hands " + target_mobile.name + " something.", char.name);
+        return;
+    }
+
     move_item_to_mobile_inventory(item.id, target_mobile.id);
 
     send_client_message(connection_id, "You give " + item.name + " to " + target_mobile.name + ".");
@@ -269,6 +280,11 @@ fn give_all_items_to_mobile(char, target_mobile, filter_keyword, connection_id) 
     for item in items_to_give {
         if item.flags.no_drop && !char.god_mode { skipped += 1; continue; }
         if item.flags.quest_item && !char.god_mode { skipped += 1; continue; }
+        let consumed_by_quest = quest_handle_item_to_mob(char.name, target_mobile.id.to_string(), item.id.to_string());
+        if consumed_by_quest {
+            given += 1;
+            continue;
+        }
         move_item_to_mobile_inventory(item.id, target_mobile.id);
         given += 1;
         fire_mobile_trigger(target_mobile.id, "on_receive", connection_id, #{

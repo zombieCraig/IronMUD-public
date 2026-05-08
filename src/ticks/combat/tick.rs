@@ -1318,6 +1318,7 @@ fn process_character_attacks_mobile(
             let killed_name = char.name.clone();
             process_mobile_death(db, connections, &mut mobile, &room_id)?;
             crate::ticks::achievements::notify_kill_with_state(db, connections, state, &killed_name, &killed_vnum);
+            ironmud::quest::handle_mob_kill(db, connections, state, &killed_name, &killed_vnum);
 
             char.combat.targets.retain(|t| t.target_id != *target_id);
             if char.combat.targets.is_empty() {

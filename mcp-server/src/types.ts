@@ -867,6 +867,66 @@ export interface UpdateRecipeRequest {
   difficulty?: number;
 }
 
+// Quests
+
+export type QuestObjective =
+  | { kind: "kill_mob"; vnum: string; count: number }
+  | { kind: "bring_item"; vnum: string; qty: number; return_to_mob_vnum?: string | null }
+  | { kind: "visit_room"; vnum: string }
+  | { kind: "dg_flag"; var: string; value: string };
+
+export type QuestReward =
+  | { kind: "gold"; amount: number }
+  | { kind: "item"; vnum: string; qty: number }
+  | { kind: "skill_xp"; skill: string; amount: number }
+  | { kind: "achievement"; key: string }
+  | { kind: "learn_recipe"; recipe_id: string };
+
+export interface Quest {
+  /** Quest vnum (e.g. "qst:100"); canonical id. */
+  vnum: string;
+  name: string;
+  keywords: string[];
+  summary: string;
+  description: string;
+  completion_text: string;
+  objectives: QuestObjective[];
+  rewards: QuestReward[];
+  repeatable: boolean;
+  giver_mob_vnum?: string | null;
+  prereq_quest_vnum?: string | null;
+  min_player_skill_total?: number | null;
+}
+
+export interface CreateQuestRequest {
+  vnum: string;
+  name: string;
+  keywords?: string[];
+  summary?: string;
+  description?: string;
+  completion_text?: string;
+  objectives?: QuestObjective[];
+  rewards?: QuestReward[];
+  repeatable?: boolean;
+  giver_mob_vnum?: string;
+  prereq_quest_vnum?: string;
+  min_player_skill_total?: number;
+}
+
+export interface UpdateQuestRequest {
+  name?: string;
+  keywords?: string[];
+  summary?: string;
+  description?: string;
+  completion_text?: string;
+  objectives?: QuestObjective[];
+  rewards?: QuestReward[];
+  repeatable?: boolean;
+  giver_mob_vnum?: string;
+  prereq_quest_vnum?: string;
+  min_player_skill_total?: number;
+}
+
 // Forage tables (per-area)
 
 export type ForageType =
