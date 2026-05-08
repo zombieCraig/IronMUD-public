@@ -317,6 +317,7 @@ export interface Mobile {
     current_room_id?: string;
     flags: MobileFlags;
     faction?: string;
+    spoken_language?: string;
     dialogue: Record<string, string>;
     triggers: MobileTrigger[];
     combat_spells?: string[];
@@ -555,6 +556,7 @@ export interface CreateMobileRequest {
     dialogue_tree?: DialogueTree;
     clear_dialogue_tree?: boolean;
     faction?: string;
+    spoken_language?: string;
     combat_spells?: string[];
     combat_spell_chance?: number;
     on_hit_effects?: OnHitEffect[];

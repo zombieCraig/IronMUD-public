@@ -204,6 +204,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_get("world_max_count", |m: &mut MobileData| m.world_max_count.unwrap_or(0) as i64)
         .register_get("has_world_max_count", |m: &mut MobileData| m.world_max_count.is_some())
         .register_get("faction", |m: &mut MobileData| m.faction.clone().unwrap_or_default())
+        .register_get("spoken_language", |m: &mut MobileData| {
+            m.spoken_language.clone().unwrap_or_default()
+        })
+        .register_get("has_spoken_language", |m: &mut MobileData| {
+            m.spoken_language.is_some()
+        })
         .register_get("combat_spells", |m: &mut MobileData| {
             m.combat_spells
                 .iter()

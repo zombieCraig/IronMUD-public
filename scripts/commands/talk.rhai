@@ -34,14 +34,26 @@ fn run_command(args, connection_id) {
     }
 
     let room_id = result.mob_room_id;
+    let mob_id = result.mob_id;
     let short = result.mob_short_desc;
     let response = result.response;
     let menu = result.menu;
 
     if response != "" {
         let say_line = short + " says: " + response;
-        send_client_message(connection_id, say_line);
-        broadcast_to_room_except(room_id, connection_id, say_line);
+        let lang = get_mobile_spoken_language(mob_id);
+        if lang == "" || is_lingua_franca(lang) {
+            send_client_message(connection_id, say_line);
+            broadcast_to_room_except(room_id, connection_id, say_line);
+        } else {
+            for listener in get_characters_in_room(room_id) {
+                let listener_conn = find_player_connection_by_name(listener);
+                if listener_conn != "" {
+                    let heard = garble_for_mob_listener(response, lang, listener);
+                    send_client_message(listener_conn, short + " says: " + heard);
+                }
+            }
+        }
     }
     if menu != "" {
         send_client_message(connection_id, menu);

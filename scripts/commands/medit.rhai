@@ -253,6 +253,10 @@ fn dispatch_combat_subcommand(uuid, subcommand, parts, connection_id) {
         handle_faction_subcommand(uuid, parts, connection_id);
         return true;
     }
+    if subcommand == "language" || subcommand == "lang" {
+        handle_language_subcommand(uuid, parts, connection_id);
+        return true;
+    }
     if subcommand == "position" || subcommand == "stance" {
         handle_position_subcommand(uuid, parts, connection_id);
         return true;
@@ -784,6 +788,34 @@ fn handle_faction_subcommand(mobile_id, parts, connection_id) {
     send_client_message(connection_id, "Faction set to: " + value);
 }
 
+fn handle_language_subcommand(mobile_id, parts, connection_id) {
+    if parts.len() < 3 {
+        let current = get_mobile_spoken_language(mobile_id);
+        let shown = if current == "" { "(none — speaks Common)" } else { get_language_display_name(current) };
+        send_client_message(connection_id,
+            "Speaks: " + shown
+            + "\nUsage: medit " + mobile_id + " language <key|clear>"
+            + "\nKnown languages: " + olc::join_array(get_language_keys()));
+        return;
+    }
+    let value = parts[2];
+    if value.to_lower() == "clear" || value == "" {
+        let err = set_mobile_spoken_language(mobile_id, "");
+        if err == "" {
+            send_client_message(connection_id, "Spoken language cleared (mob now speaks Common).");
+        } else {
+            send_client_message(connection_id, "Error: " + err);
+        }
+        return;
+    }
+    let err = set_mobile_spoken_language(mobile_id, value);
+    if err == "" {
+        send_client_message(connection_id, "Spoken language set to: " + get_language_display_name(value));
+    } else {
+        send_client_message(connection_id, "Error: " + err);
+    }
+}
+
 fn handle_damtype_subcommand(mobile_id, parts, connection_id) {
     if parts.len() < 3 {
         let all_types = get_all_damage_types();
@@ -1048,6 +1080,10 @@ fn show_mobile_properties(mobile, mobile_id, connection_id) {
     }
     if mobile.faction != "" {
         output += olc::c_label("Faction: ", connection_id) + olc::c_value(mobile.faction, connection_id) + "\n";
+    }
+    if mobile.has_spoken_language {
+        let lang_label = get_language_display_name(mobile.spoken_language);
+        output += olc::c_label("Speaks: ", connection_id) + olc::c_value(lang_label, connection_id) + "\n";
     }
     let mob_on_hit = get_mobile_on_hit_effects(mobile_id);
     if mob_on_hit.len() > 0 {

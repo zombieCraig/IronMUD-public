@@ -63,16 +63,32 @@ fn run_command(args, connection_id) {
 
     let rel = describe_mobile_relationship(subject.id, target_keyword);
     if rel == () {
-        let line = subject.name + " says: \"I don't know anyone by that name.\"";
-        send_client_message(connection_id, line);
-        broadcast_to_room(room_id, line, char_name);
+        broadcast_subject_speech(subject, room_id, "I don't know anyone by that name.", connection_id, char_name);
         return;
     }
 
     let reply = feelings_reply(rel.name, rel.affinity, rel.kind);
-    let line = subject.name + " says: \"" + reply + "\"";
-    send_client_message(connection_id, line);
-    broadcast_to_room(room_id, line, char_name);
+    broadcast_subject_speech(subject, room_id, reply, connection_id, char_name);
+}
+
+// Emit `<subject> says: "<reply>"` to the room with per-listener garble when
+// the subject mob speaks a non-lingua-franca language. Falls back to a single
+// broadcast for the common case.
+fn broadcast_subject_speech(subject, room_id, reply, actor_connection_id, actor_name) {
+    let lang = subject.spoken_language;
+    if lang == "" || is_lingua_franca(lang) {
+        let line = subject.name + " says: \"" + reply + "\"";
+        send_client_message(actor_connection_id, line);
+        broadcast_to_room(room_id, line, actor_name);
+        return;
+    }
+    for listener in get_characters_in_room(room_id) {
+        let listener_conn = find_player_connection_by_name(listener);
+        if listener_conn != "" {
+            let heard = garble_for_mob_listener(reply, lang, listener);
+            send_client_message(listener_conn, subject.name + " says: \"" + heard + "\"");
+        }
+    }
 }
 
 // Split the raw args on the literal word " about ". Returns an empty array

@@ -6,13 +6,66 @@
 //! skill keys to surface as languages and supplies phonetic word pools used
 //! to garble speech for listeners with insufficient skill.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use rand::Rng;
 use rhai::Engine;
+use uuid::Uuid;
 
 use crate::SharedState;
 use crate::db::Db;
+use crate::types::LanguageDefinition;
+
+/// Apply `LanguageDefinition`-driven garble to `text` based on `effective_skill`.
+/// - Lingua francas pass through unchanged.
+/// - Each word survives with probability `effective_skill/10`; otherwise it's
+///   replaced with a random entry from the language's phonetic pool. Punctuation
+///   and leading-capital case are preserved.
+pub fn garble_text(text: &str, lang: &LanguageDefinition, effective_skill: i32) -> String {
+    if lang.is_lingua_franca {
+        return text.to_string();
+    }
+    if lang.phonetic_words.is_empty() {
+        return "<garbled speech>".to_string();
+    }
+    let skill = effective_skill.clamp(0, 10) as f32;
+    let pass_prob = skill / 10.0;
+    let mut rng = rand::thread_rng();
+    let mut out: Vec<String> = Vec::new();
+    for word in text.split_whitespace() {
+        if word.is_empty() {
+            continue;
+        }
+        if rng.r#gen::<f32>() < pass_prob {
+            out.push(word.to_string());
+            continue;
+        }
+        out.push(garble_one_word(word, &lang.phonetic_words, &mut rng));
+    }
+    out.join(" ")
+}
+
+/// Listener-aware wrapper around `garble_text`. Admin and lingua-franca
+/// listeners short-circuit to plain `text`. An unknown language or empty
+/// key passes through unchanged (callers handle the None-language case
+/// upstream by short-circuiting before calling this).
+pub fn garble_for_listener(
+    text: &str,
+    language_key: &str,
+    listener_skill: i32,
+    listener_is_admin: bool,
+    languages: &HashMap<String, LanguageDefinition>,
+) -> String {
+    if listener_is_admin || language_key.is_empty() {
+        return text.to_string();
+    }
+    let lang = match languages.get(&language_key.to_lowercase()) {
+        Some(l) => l,
+        None => return text.to_string(),
+    };
+    garble_text(text, lang, listener_skill)
+}
 
 pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // is_language(key) -> bool
@@ -84,12 +137,6 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     }
 
     // garble_language(text, language_key, effective_skill) -> String
-    //
-    // - Lingua francas pass through unchanged regardless of skill.
-    // - Each word in `text` survives with probability effective_skill/10;
-    //   otherwise it's replaced with a random word from the language's
-    //   phonetic pool. Punctuation is preserved; capitalization on the
-    //   original word's leading letter is mirrored on the replacement.
     {
         let state_clone = state.clone();
         engine.register_fn(
@@ -100,27 +147,100 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
                     Some(d) => d,
                     None => return "<garbled speech>".to_string(),
                 };
-                if lang.is_lingua_franca {
+                garble_text(&text, lang, effective_skill as i32)
+            },
+        );
+    }
+
+    // garble_for_mob_listener(text, language_key, listener_name) -> String
+    //
+    // Look up the listener by name; admin or lingua-franca passes through.
+    // Otherwise the listener's skill level in `language_key` drives the
+    // garble. Unknown listener / language gracefully returns `text`.
+    {
+        let state_clone = state.clone();
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "garble_for_mob_listener",
+            move |text: String, language_key: String, listener_name: String| -> String {
+                if language_key.is_empty() {
                     return text;
                 }
-                if lang.phonetic_words.is_empty() {
-                    return "<garbled speech>".to_string();
+                let ch = match cloned_db.get_character_data(&listener_name.to_lowercase()) {
+                    Ok(Some(c)) => c,
+                    _ => return text,
+                };
+                if ch.is_admin {
+                    return text;
                 }
-                let skill = effective_skill.clamp(0, 10) as f32;
-                let pass_prob = skill / 10.0;
-                let mut rng = rand::thread_rng();
-                let mut out: Vec<String> = Vec::new();
-                for word in text.split_whitespace() {
-                    if word.is_empty() {
-                        continue;
+                let world = state_clone.lock().unwrap();
+                let lang_lc = language_key.to_lowercase();
+                let lang = match world.language_definitions.get(&lang_lc) {
+                    Some(d) => d,
+                    None => return text,
+                };
+                let skill_level = ch
+                    .skills
+                    .get(&lang_lc)
+                    .map(|p| p.level)
+                    .unwrap_or(0);
+                garble_text(&text, lang, skill_level)
+            },
+        );
+    }
+
+    // set_mobile_spoken_language(mobile_id, key) -> String
+    //   "" on success, error message otherwise. Empty key clears (back to
+    //   lingua franca / Common). Unknown key is rejected.
+    {
+        let state_clone = state.clone();
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "set_mobile_spoken_language",
+            move |mobile_id: String, key: String| -> String {
+                let mob_uuid = match Uuid::parse_str(&mobile_id) {
+                    Ok(u) => u,
+                    Err(_) => return "invalid mobile id".to_string(),
+                };
+                let mut mob = match cloned_db.get_mobile_data(&mob_uuid) {
+                    Ok(Some(m)) => m,
+                    _ => return "mobile not found".to_string(),
+                };
+                if key.is_empty() {
+                    mob.spoken_language = None;
+                } else {
+                    let lc = key.to_lowercase();
+                    let world = state_clone.lock().unwrap();
+                    if !world.language_definitions.contains_key(&lc) {
+                        return format!("unknown language `{}`", key);
                     }
-                    if rng.r#gen::<f32>() < pass_prob {
-                        out.push(word.to_string());
-                        continue;
-                    }
-                    out.push(garble_one_word(word, &lang.phonetic_words, &mut rng));
+                    drop(world);
+                    mob.spoken_language = Some(lc);
                 }
-                out.join(" ")
+                if let Err(e) = cloned_db.save_mobile_data(mob) {
+                    return format!("save error: {}", e);
+                }
+                String::new()
+            },
+        );
+    }
+
+    // get_mobile_spoken_language(mobile_id) -> String (empty if None)
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "get_mobile_spoken_language",
+            move |mobile_id: String| -> String {
+                let mob_uuid = match Uuid::parse_str(&mobile_id) {
+                    Ok(u) => u,
+                    Err(_) => return String::new(),
+                };
+                cloned_db
+                    .get_mobile_data(&mob_uuid)
+                    .ok()
+                    .flatten()
+                    .and_then(|m| m.spoken_language)
+                    .unwrap_or_default()
             },
         );
     }

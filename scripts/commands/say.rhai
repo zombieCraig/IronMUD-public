@@ -1,5 +1,25 @@
 // scripts/commands/say.rhai
 
+// Emit a mob's spoken response to the room, applying per-listener garble
+// when the mob speaks a non-lingua-franca language. For the common case
+// (None or Common) this falls back to a single broadcast.
+fn broadcast_mob_speech(mobile, room_id, response, actor_connection_id) {
+    let lang = mobile.spoken_language;
+    if lang == "" || is_lingua_franca(lang) {
+        let say_line = mobile.name + " says: " + response;
+        send_client_message(actor_connection_id, say_line);
+        broadcast_to_room_except(room_id, actor_connection_id, say_line);
+        return;
+    }
+    for listener in get_characters_in_room(room_id) {
+        let listener_conn = find_player_connection_by_name(listener);
+        if listener_conn != "" {
+            let heard = garble_for_mob_listener(response, lang, listener);
+            send_client_message(listener_conn, mobile.name + " says: " + heard);
+        }
+    }
+}
+
 fn run_command(args, connection_id) {
     let char = get_player_character(connection_id);
     if char == () {
@@ -158,9 +178,7 @@ fn check_npc_dialogue(room_id, message, connection_id) {
             if has_needs_keyword(words) {
                 let response = get_npc_needs_dialogue(mobile.id);
                 if response != "" {
-                    let npc_msg = mobile.name + " says: " + response;
-                    send_client_message(connection_id, npc_msg);
-                    broadcast_to_room_except(room_id, connection_id, npc_msg);
+                    broadcast_mob_speech(mobile, room_id, response, connection_id);
                     return true;
                 }
             }
@@ -172,9 +190,7 @@ fn check_npc_dialogue(room_id, message, connection_id) {
             if clean == "" { continue; }
             let routine_response = get_routine_dialogue(mobile.id, clean);
             if routine_response != "" {
-                let npc_msg = mobile.name + " says: " + routine_response;
-                send_client_message(connection_id, npc_msg);
-                broadcast_to_room_except(room_id, connection_id, npc_msg);
+                broadcast_mob_speech(mobile, room_id, routine_response, connection_id);
                 return true;
             }
         }
@@ -192,9 +208,7 @@ fn check_npc_dialogue(room_id, message, connection_id) {
         let response = check_mobile_words(mobile.id, words);
         if response != "" {
             // NPC responds
-            let npc_msg = mobile.name + " says: " + response;
-            send_client_message(connection_id, npc_msg);
-            broadcast_to_room_except(room_id, connection_id, npc_msg);
+            broadcast_mob_speech(mobile, room_id, response, connection_id);
             return true; // Handled
         }
     }

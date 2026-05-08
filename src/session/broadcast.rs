@@ -3,7 +3,9 @@
 use uuid::Uuid;
 
 use crate::db;
-use crate::{CharacterPosition, SharedConnections};
+use crate::script::dialogue::DialogueSayLine;
+use crate::script::lang::garble_for_listener;
+use crate::{CharacterPosition, SharedConnections, SharedState};
 
 /// Get all character names in a specific room
 pub fn get_characters_in_room(connections: &SharedConnections, room_id: Uuid) -> Vec<String> {
@@ -40,6 +42,44 @@ pub fn get_characters_in_room_with_positions(
             })
         })
         .collect()
+}
+
+/// Emit a mob's spoken response to every player in the room, applying
+/// per-listener language-aware garbling. Lingua-franca and admin listeners
+/// hear the raw text; everyone else hears it through `garble_for_listener`
+/// based on their skill in the mob's spoken language.
+pub fn emit_mob_speech(
+    connections: &SharedConnections,
+    state: &SharedState,
+    speech: &DialogueSayLine,
+) {
+    let world = match state.lock() {
+        Ok(w) => w,
+        Err(_) => return,
+    };
+    let conns = match connections.lock() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    for (_id, session) in conns.iter() {
+        let Some(ref ch) = session.character else {
+            continue;
+        };
+        if ch.current_room_id != speech.room_id {
+            continue;
+        }
+        let lang_lc = speech.language_key.to_lowercase();
+        let listener_skill = ch.skills.get(&lang_lc).map(|p| p.level).unwrap_or(0);
+        let heard = garble_for_listener(
+            &speech.raw_response,
+            &speech.language_key,
+            listener_skill,
+            ch.is_admin,
+            &world.language_definitions,
+        );
+        let line = format!("{} says: {}\n", speech.mob_short, heard);
+        let _ = session.sender.send(line);
+    }
 }
 
 /// Broadcast a message to all players in a room

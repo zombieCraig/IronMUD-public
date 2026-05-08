@@ -660,6 +660,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     simulation: args?.simulation,
                     world_max_count: args?.world_max_count,
                     faction: args?.faction,
+                    spoken_language: args?.spoken_language,
                     combat_spells: args?.combat_spells,
                     combat_spell_chance: args?.combat_spell_chance,
                     on_hit_effects: args?.on_hit_effects,
@@ -685,7 +686,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     "shop_stock", "shop_preset_vnum",
                     "daily_routine", "simulation", "remove_simulation", "world_max_count",
                     "dialogue_tree", "clear_dialogue_tree",
-                    "faction", "combat_spells", "combat_spell_chance", "on_hit_effects",
+                    "faction", "spoken_language", "combat_spells", "combat_spell_chance", "on_hit_effects",
                     "position", "gender",
                 ];
                 for (const field of mobileFields) {

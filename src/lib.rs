@@ -2395,6 +2395,7 @@ pub async fn handle_connection(
                 crate::script::dialogue::DialogueDispatch::Handled {
                     actor_lines,
                     room_broadcasts,
+                    speech,
                 } => {
                     for line in actor_lines {
                         let _ = tx_client.send(format!("{}\n", line));
@@ -2405,6 +2406,9 @@ pub async fn handle_connection(
                             .get(&connection_id)
                             .and_then(|s| s.character.as_ref().map(|c| c.name.clone()))
                     };
+                    if let Some(s) = speech {
+                        crate::session::emit_mob_speech(&connections, &state, &s);
+                    }
                     for (room_id, msg) in room_broadcasts {
                         crate::session::broadcast_to_room(
                             &connections,
@@ -2420,6 +2424,7 @@ pub async fn handle_connection(
                 crate::script::dialogue::DialogueDispatch::ExitedFallthrough {
                     actor_lines,
                     room_broadcasts,
+                    speech,
                 } => {
                     for line in actor_lines {
                         let _ = tx_client.send(format!("{}\n", line));
@@ -2430,6 +2435,9 @@ pub async fn handle_connection(
                             .get(&connection_id)
                             .and_then(|s| s.character.as_ref().map(|c| c.name.clone()))
                     };
+                    if let Some(s) = speech {
+                        crate::session::emit_mob_speech(&connections, &state, &s);
+                    }
                     for (room_id, msg) in room_broadcasts {
                         crate::session::broadcast_to_room(
                             &connections,

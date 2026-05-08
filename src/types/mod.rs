@@ -3696,6 +3696,12 @@ pub struct MobileData {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dialogue_tree: Option<DialogueTree>,
 
+    // Language this mob speaks. None or a lingua-franca key means everyone
+    // hears them in plain text; otherwise listeners' skill in the language
+    // governs how garbled the speech sounds. See src/script/lang.rs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spoken_language: Option<String>,
+
     // Shop system (requires shopkeeper flag)
     #[serde(default)]
     pub shop_stock: Vec<String>, // Vnums for infinite base stock
@@ -3949,6 +3955,7 @@ impl MobileData {
             flags: MobileFlags::default(),
             dialogue: HashMap::new(),
             dialogue_tree: None,
+            spoken_language: None,
             shop_stock: Vec::new(),
             shop_inventory: Vec::new(),
             shop_buy_rate: 50,

@@ -842,6 +842,19 @@ pub fn session_in_dialogue(connections: &SharedConnections, connection_id: &Uuid
         .unwrap_or(false)
 }
 
+/// A mob's spoken response that the caller (lib.rs) is expected to garble
+/// per-listener and emit. Carries the raw response + language key so the
+/// caller can apply `garble_for_listener` based on each listener's skill.
+#[derive(Debug, Clone)]
+pub struct DialogueSayLine {
+    pub mob_short: String,
+    /// Ungarbled response text. lib.rs prepends `"<short> says: "`.
+    pub raw_response: String,
+    /// Mob's spoken_language. Empty / lingua-franca short-circuits to plain.
+    pub language_key: String,
+    pub room_id: Uuid,
+}
+
 /// Outcome of a sticky-mode input dispatch.
 #[derive(Debug, Clone)]
 pub enum DialogueDispatch {
@@ -851,12 +864,15 @@ pub enum DialogueDispatch {
         actor_lines: Vec<String>,
         /// Room broadcasts: (room_id, message). Sent to all but actor.
         room_broadcasts: Vec<(Uuid, String)>,
+        /// Mob speech to emit per-listener (with language-aware garbling).
+        speech: Option<DialogueSayLine>,
     },
     /// Player ended dialogue and the input should fall through to normal
     /// command parsing (e.g. typed a movement direction).
     ExitedFallthrough {
         actor_lines: Vec<String>,
         room_broadcasts: Vec<(Uuid, String)>,
+        speech: Option<DialogueSayLine>,
     },
     /// Not in dialogue, or dialogue couldn't handle this input. Caller
     /// should run normal command parsing as if dialogue weren't active.
@@ -902,12 +918,15 @@ pub fn dispatch_sticky_input(
     if is_movement_direction(&first_word) {
         let outcome = exit_internal(db, connections, connection_id);
         return match outcome {
-            DialogueDispatch::Handled { actor_lines, room_broadcasts } => {
-                DialogueDispatch::ExitedFallthrough {
-                    actor_lines,
-                    room_broadcasts,
-                }
-            }
+            DialogueDispatch::Handled {
+                actor_lines,
+                room_broadcasts,
+                speech,
+            } => DialogueDispatch::ExitedFallthrough {
+                actor_lines,
+                room_broadcasts,
+                speech,
+            },
             other => other,
         };
     }
@@ -923,7 +942,7 @@ fn walk_choice_internal(
     idx: i64,
 ) -> DialogueDispatch {
     let mut actor_lines = Vec::new();
-    let mut room_broadcasts = Vec::new();
+    let room_broadcasts: Vec<(Uuid, String)> = Vec::new();
 
     let Some(partner_id) = connection_partner(connections, connection_id) else {
         return DialogueDispatch::Fallthrough;
@@ -951,6 +970,7 @@ fn walk_choice_internal(
         return DialogueDispatch::Handled {
             actor_lines,
             room_broadcasts,
+            speech: None,
         };
     }
     let entry = classified[(idx as usize) - 1].clone();
@@ -974,11 +994,16 @@ fn walk_choice_internal(
         clear_partner(connections, connection_id);
     }
     let mob_room = mob.current_room_id.unwrap_or(Uuid::nil());
-    if !response.is_empty() {
-        let line = format!("{} says: {}", mob.short_desc, response);
-        actor_lines.push(line.clone());
-        room_broadcasts.push((mob_room, line));
-    }
+    let speech = if response.is_empty() {
+        None
+    } else {
+        Some(DialogueSayLine {
+            mob_short: mob.short_desc.clone(),
+            raw_response: response,
+            language_key: mob.spoken_language.clone().unwrap_or_default(),
+            room_id: mob_room,
+        })
+    };
     if !finished && !menu.is_empty() {
         actor_lines.push(menu);
     }
@@ -988,6 +1013,7 @@ fn walk_choice_internal(
     DialogueDispatch::Handled {
         actor_lines,
         room_broadcasts,
+        speech,
     }
 }
 
@@ -998,7 +1024,7 @@ fn walk_keyword_internal(
     keyword: &str,
 ) -> DialogueDispatch {
     let mut actor_lines = Vec::new();
-    let mut room_broadcasts = Vec::new();
+    let room_broadcasts: Vec<(Uuid, String)> = Vec::new();
 
     let Some(partner_id) = connection_partner(connections, connection_id) else {
         return DialogueDispatch::Fallthrough;
@@ -1048,11 +1074,16 @@ fn walk_keyword_internal(
         clear_partner(connections, connection_id);
     }
     let mob_room = mob.current_room_id.unwrap_or(Uuid::nil());
-    if !response.is_empty() {
-        let line = format!("{} says: {}", mob.short_desc, response);
-        actor_lines.push(line.clone());
-        room_broadcasts.push((mob_room, line));
-    }
+    let speech = if response.is_empty() {
+        None
+    } else {
+        Some(DialogueSayLine {
+            mob_short: mob.short_desc.clone(),
+            raw_response: response,
+            language_key: mob.spoken_language.clone().unwrap_or_default(),
+            room_id: mob_room,
+        })
+    };
     if !finished && !menu.is_empty() {
         actor_lines.push(menu);
     }
@@ -1062,6 +1093,7 @@ fn walk_keyword_internal(
     DialogueDispatch::Handled {
         actor_lines,
         room_broadcasts,
+        speech,
     }
 }
 
@@ -1098,6 +1130,7 @@ fn exit_internal(
     DialogueDispatch::Handled {
         actor_lines,
         room_broadcasts,
+        speech: None,
     }
 }
 

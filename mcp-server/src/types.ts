@@ -354,6 +354,7 @@ export interface Mobile {
   current_room_id?: string;
   flags: MobileFlags;
   faction?: string;
+  spoken_language?: string;
   dialogue: Record<string, string>;
   triggers: MobileTrigger[];
   combat_spells?: string[];
@@ -618,6 +619,8 @@ export interface CreateMobileRequest {
   clear_dialogue_tree?: boolean;
   // Helper-system ally tag. Empty = Circle-stock fallback.
   faction?: string;
+  // Language the mob speaks. Empty = lingua franca / Common (no garble).
+  spoken_language?: string;
   // Spell IDs the mob may cast in combat (CircleMUD `magic_user` analog)
   combat_spells?: string[];
   // Per-round percent chance to cast (0-100). Default 50.

@@ -137,6 +137,9 @@ pub struct CreateMobileRequest {
     /// neuter for unrecognised values. Lazy-instantiates `Characteristics`.
     #[serde(default)]
     pub gender: Option<String>,
+    /// Language this mob speaks. Empty/omitted = lingua franca (no garble).
+    #[serde(default)]
+    pub spoken_language: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -389,6 +392,9 @@ pub struct UpdateMobileRequest {
     /// the gender (Characteristics survives so age/visuals are kept).
     #[serde(default)]
     pub gender: Option<String>,
+    /// Language this mob speaks. Empty string clears (back to lingua franca).
+    #[serde(default)]
+    pub spoken_language: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -854,6 +860,11 @@ async fn create_mobile(
         },
         dialogue: HashMap::new(),
         dialogue_tree: None,
+        spoken_language: req
+            .spoken_language
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .cloned(),
         shop_stock: req.shop_stock.unwrap_or_default(),
         shop_inventory: Vec::new(),
         shop_buys_types: req.shop_buys_types.unwrap_or_default(),
@@ -1125,6 +1136,9 @@ async fn update_mobile(
     }
     if let Some(faction) = req.faction {
         mobile.faction = if faction.is_empty() { None } else { Some(faction) };
+    }
+    if let Some(lang) = req.spoken_language {
+        mobile.spoken_language = if lang.is_empty() { None } else { Some(lang) };
     }
     if let Some(combat_spells) = req.combat_spells {
         mobile.combat_spells = combat_spells;

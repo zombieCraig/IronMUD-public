@@ -45,6 +45,7 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
         flags: MobileFlags::default(),
         dialogue: HashMap::new(),
         dialogue_tree: None,
+        spoken_language: None,
         shop_stock: Vec::new(),
         shop_inventory: Vec::new(),
         shop_buy_rate: 50,

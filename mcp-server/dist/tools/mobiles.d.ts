@@ -29,6 +29,7 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            spoken_language?: undefined;
             combat_spells?: undefined;
             combat_spell_chance?: undefined;
             on_hit_effects?: undefined;
@@ -111,6 +112,7 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            spoken_language?: undefined;
             combat_spells?: undefined;
             combat_spell_chance?: undefined;
             on_hit_effects?: undefined;
@@ -196,6 +198,7 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            spoken_language?: undefined;
             combat_spells?: undefined;
             combat_spell_chance?: undefined;
             on_hit_effects?: undefined;
@@ -281,6 +284,7 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            spoken_language?: undefined;
             combat_spells?: undefined;
             combat_spell_chance?: undefined;
             on_hit_effects?: undefined;
@@ -521,6 +525,10 @@ export declare const mobileToolDefinitions: ({
                 description: string;
             };
             faction: {
+                type: string;
+                description: string;
+            };
+            spoken_language: {
                 type: string;
                 description: string;
             };
@@ -967,6 +975,10 @@ export declare const mobileToolDefinitions: ({
                 type: string;
                 description: string;
             };
+            spoken_language: {
+                type: string;
+                description: string;
+            };
             combat_spells: {
                 type: string;
                 items: {
@@ -1240,6 +1252,7 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            spoken_language?: undefined;
             combat_spells?: undefined;
             combat_spell_chance?: undefined;
             on_hit_effects?: undefined;
@@ -1333,6 +1346,7 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            spoken_language?: undefined;
             combat_spells?: undefined;
             combat_spell_chance?: undefined;
             on_hit_effects?: undefined;
@@ -1420,6 +1434,7 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            spoken_language?: undefined;
             combat_spells?: undefined;
             combat_spell_chance?: undefined;
             on_hit_effects?: undefined;
@@ -1508,6 +1523,7 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            spoken_language?: undefined;
             combat_spells?: undefined;
             combat_spell_chance?: undefined;
             on_hit_effects?: undefined;
@@ -1611,6 +1627,7 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            spoken_language?: undefined;
             combat_spells?: undefined;
             combat_spell_chance?: undefined;
             on_hit_effects?: undefined;
@@ -1712,6 +1729,7 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            spoken_language?: undefined;
             combat_spells?: undefined;
             combat_spell_chance?: undefined;
             on_hit_effects?: undefined;
@@ -1828,6 +1846,7 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            spoken_language?: undefined;
             combat_spells?: undefined;
             combat_spell_chance?: undefined;
             on_hit_effects?: undefined;
@@ -1944,6 +1963,7 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            spoken_language?: undefined;
             combat_spells?: undefined;
             combat_spell_chance?: undefined;
             on_hit_effects?: undefined;
@@ -2027,6 +2047,7 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            spoken_language?: undefined;
             combat_spells?: undefined;
             combat_spell_chance?: undefined;
             on_hit_effects?: undefined;
@@ -2134,6 +2155,7 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            spoken_language?: undefined;
             combat_spells?: undefined;
             combat_spell_chance?: undefined;
             on_hit_effects?: undefined;
@@ -2217,6 +2239,7 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            spoken_language?: undefined;
             combat_spells?: undefined;
             combat_spell_chance?: undefined;
             on_hit_effects?: undefined;
@@ -2304,6 +2327,7 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            spoken_language?: undefined;
             combat_spells?: undefined;
             combat_spell_chance?: undefined;
             on_hit_effects?: undefined;
@@ -2416,6 +2440,7 @@ export declare const mobileToolDefinitions: ({
             perception?: undefined;
             world_max_count?: undefined;
             faction?: undefined;
+            spoken_language?: undefined;
             combat_spells?: undefined;
             combat_spell_chance?: undefined;
             on_hit_effects?: undefined;
