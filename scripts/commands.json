@@ -207,13 +207,9 @@
     "access": "builder",
     "description": "Create or edit items (object editor)"
   },
-  "ilist": {
+  "olist": {
     "access": "builder",
-    "description": "List all items in the database"
-  },
-  "ifind": {
-    "access": "builder",
-    "description": "Search for items by keyword"
+    "description": "List item prototypes in the current area, or 'olist all' / 'olist <search>'"
   },
   "idelete": {
     "access": "builder",
@@ -485,6 +481,7 @@
   },
   "revive": {
     "access": "user",
+    "requires": { "skill": { "medical": 6 } },
     "description": "Revive an unconscious player (requires medical skill 6+)"
   },
   "distress": {
@@ -681,50 +678,62 @@
   },
   "sneak": {
     "access": "user",
+    "requires": { "skill": { "stealth": 1 } },
     "description": "Toggle sneaking mode to move silently (stealth 1+)"
   },
   "hide": {
     "access": "user",
+    "requires": { "skill": { "stealth": 1 } },
     "description": "Hide in the shadows of the current room (stealth 1+)"
   },
   "search": {
     "access": "user",
+    "requires": { "skill": { "tracking": 1 } },
     "description": "Search the room for hidden characters and traps (tracking 1+)"
   },
   "steal": {
     "access": "user",
+    "requires": { "skill": { "thievery": 1 } },
     "description": "Steal gold or items from a target (thievery 1+)"
   },
   "peek": {
     "access": "user",
+    "requires": { "skill": { "thievery": 1 } },
     "description": "Peek at a target's inventory (thievery 1+)"
   },
   "pick": {
     "access": "user",
+    "requires": { "skill": { "thievery": 2 } },
     "description": "Pick a lock on a door or container (thievery 2+)"
   },
   "track": {
     "access": "user",
+    "requires": { "skill": { "tracking": 2 } },
     "description": "Search for tracks of a target in the current room (tracking 2+)"
   },
   "scout": {
     "access": "user",
+    "requires": { "skill": { "stealth": 2 } },
     "description": "Scan adjacent rooms for occupants (stealth 2+)"
   },
   "covertracks": {
     "access": "user",
+    "requires": { "skill": { "tracking": 2 } },
     "description": "Obscure your tracks in the current room (tracking 2+)"
   },
   "lore": {
     "access": "user",
+    "requires": { "skill": { "tracking": 2 } },
     "description": "Study a creature's capabilities and weaknesses (tracking 2+)"
   },
   "camouflage": {
     "access": "user",
+    "requires": { "skill": { "tracking": 3 } },
     "description": "Blend into wilderness terrain for enhanced concealment (tracking 3+)"
   },
   "backstab": {
     "access": "user",
+    "requires": { "skill": { "stealth": 3 } },
     "description": "Attack from hiding with a devastating strike (stealth 3+)"
   },
   "bash": {
@@ -733,10 +742,12 @@
   },
   "circle": {
     "access": "user",
+    "requires": { "skill": { "stealth": 4 } },
     "description": "Flank your opponent mid-combat for a bonus attack (stealth 4+)"
   },
   "envenom": {
     "access": "user",
+    "requires": { "skill": { "thievery": 4 } },
     "description": "Apply poison from a vial to your wielded weapon (thievery 4+)"
   },
   "poison": {
@@ -745,26 +756,32 @@
   },
   "imbue": {
     "access": "user",
+    "requires": { "skill": { "thievery": 4 } },
     "description": "Coat a stack of ammunition with poison from a vial (thievery 4+)"
   },
   "settrap": {
     "access": "user",
+    "requires": { "skill": { "thievery": 3 } },
     "description": "Place a trap in the room using a trap kit (thievery 3+)"
   },
   "disarm": {
     "access": "user",
+    "requires": { "skill": { "thievery": 3 } },
     "description": "Attempt to disarm a visible trap (thievery 3+)"
   },
   "hunt": {
     "access": "user",
+    "requires": { "skill": { "tracking": 4 } },
     "description": "Automatically track and follow a target (tracking 4+)"
   },
   "butcher": {
     "access": "user",
+    "requires": { "skill": { "tracking": 2 } },
     "description": "Butcher a corpse for meat, pelts, and bones (tracking 2+)"
   },
   "disguise": {
     "access": "user",
+    "requires": { "skill": { "stealth": 5 } },
     "description": "Assume a false identity using a disguise kit (stealth 5+)"
   },
   "undisguise": {

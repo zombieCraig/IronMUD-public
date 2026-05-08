@@ -1,9 +1,9 @@
-// scripts/commands/ilist.rhai
-// ilist - List items (builder command)
-// Usage: ilist [search]      - Search items in current area by name/vnum
-//        ilist detail        - Show verbose output for current area
-//        ilist all [search]  - Search all items across all areas
-//        ilist all detail    - Verbose output globally
+// scripts/commands/olist.rhai
+// olist - List items (builder command)
+// Usage: olist [search]      - Search items in current area by name/vnum/keyword
+//        olist detail        - Show verbose output for current area
+//        olist all [search]  - Search all items across all areas
+//        olist all detail    - Verbose output globally
 
 fn c_header(text, conn_id) {
     color_or(ansi_green(text), text, conn_id)
@@ -82,12 +82,22 @@ fn run_command(args, connection_id) {
         }
     }
 
-    // Filter by search term if provided
+    // Filter by search term if provided (matches name, vnum, or keywords)
     if search_term != "" {
         let filtered = [];
         let term_lower = search_term.to_lower();
         for item in items {
-            if item.name.to_lower().contains(term_lower) || item.vnum.to_lower().contains(term_lower) {
+            let matched = item.name.to_lower().contains(term_lower)
+                || item.vnum.to_lower().contains(term_lower);
+            if !matched {
+                for kw in item.keywords {
+                    if kw.to_lower().contains(term_lower) {
+                        matched = true;
+                        break;
+                    }
+                }
+            }
+            if matched {
                 filtered.push(item);
             }
         }
@@ -140,9 +150,9 @@ fn run_command(args, connection_id) {
     }
 
     if !show_all && current_area_id != "" {
-        output += "\nUse 'ilist all' to see all items across all areas.";
+        output += "\nUse 'olist all' to see all items across all areas.";
     }
-    output += "\nUse 'ilist <search>' to search, 'ilist detail' for verbose output.";
+    output += "\nUse 'olist <search>' to search, 'olist detail' for verbose output.";
 
     send_mxp_message(connection_id, output);
 }

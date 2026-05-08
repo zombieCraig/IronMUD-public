@@ -4206,6 +4206,18 @@ impl MobileData {
 pub struct CommandMeta {
     pub access: String, // "guest", "any", "user", "admin"
     pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requires: Option<CommandRequirements>,
+}
+
+/// Optional gating beyond `access`. A command with skill requirements is
+/// hidden from the help listing when the viewer doesn't meet them. Builders
+/// and admins are not exempt — gates are about ability, not permission.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CommandRequirements {
+    /// Map of skill key (lowercase, e.g. "thievery") -> minimum level.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub skill: HashMap<String, i32>,
 }
 
 /// State for an active fishing session

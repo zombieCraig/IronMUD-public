@@ -8,8 +8,9 @@ This guide covers creating and editing items using IronMUD's Online Creation (OL
 |---------|-------|-------------|
 | `oedit create` | `oedit create <name>` | Create a new item prototype |
 | `oedit` | `oedit <id\|vnum> [subcommand]` | Edit item properties |
-| `ilist` | `ilist` | List all items |
-| `ifind` | `ifind <keyword>` | Search items by name/keywords |
+| `olist` | `olist [search]` | List item prototypes in current area (with optional name/vnum/keyword search) |
+| `olist all` | `olist all [search]` | List item prototypes across all areas |
+| `olist detail` | `olist detail` | Verbose output for current area |
 | `idelete` | `idelete <item_id>` | Delete an item |
 | `ospawn` | `ospawn <vnum> [room\|inv]` | Spawn item from prototype |
 

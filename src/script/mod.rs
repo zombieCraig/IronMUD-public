@@ -1327,24 +1327,35 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let conns = connections.clone();
     let cloned_state = state.clone();
     engine.register_fn("get_available_commands", move |connection_id: String| {
-        // Get login status and permissions
-        let (is_logged_in, is_builder, is_admin) = if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let conns = conns.lock().unwrap();
-            conns
-                .get(&uuid)
-                .map(|s| {
-                    let logged_in = s.character.is_some();
-                    let (builder, admin) = s
-                        .character
-                        .as_ref()
-                        .map(|c| (c.is_builder || c.is_admin, c.is_admin))
-                        .unwrap_or((false, false));
-                    (logged_in, builder, admin)
-                })
-                .unwrap_or((false, false, false))
-        } else {
-            (false, false, false)
-        };
+        // Get login status, permissions, and skill levels (for ability gates)
+        let (is_logged_in, is_builder, is_admin, skill_levels) =
+            if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
+                let conns = conns.lock().unwrap();
+                conns
+                    .get(&uuid)
+                    .map(|s| {
+                        let logged_in = s.character.is_some();
+                        let (builder, admin) = s
+                            .character
+                            .as_ref()
+                            .map(|c| (c.is_builder || c.is_admin, c.is_admin))
+                            .unwrap_or((false, false));
+                        let skills: std::collections::HashMap<String, i32> = s
+                            .character
+                            .as_ref()
+                            .map(|c| {
+                                c.skills
+                                    .iter()
+                                    .map(|(k, v)| (k.to_lowercase(), v.level))
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        (logged_in, builder, admin, skills)
+                    })
+                    .unwrap_or((false, false, false, std::collections::HashMap::new()))
+            } else {
+                (false, false, false, std::collections::HashMap::new())
+            };
 
         let world = cloned_state.lock().unwrap();
         let mut commands: Vec<rhai::Dynamic> = Vec::new();
@@ -1359,7 +1370,16 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 _ => is_logged_in,
             };
 
-            if accessible {
+            // Hide commands whose ability gates the viewer doesn't meet.
+            // Admins still see everything — gates are informational for them.
+            let meets_requirements = is_admin
+                || meta.requires.as_ref().map_or(true, |req| {
+                    req.skill
+                        .iter()
+                        .all(|(skill, min)| skill_levels.get(&skill.to_lowercase()).copied().unwrap_or(0) >= *min)
+                });
+
+            if accessible && meets_requirements {
                 let mut map = rhai::Map::new();
                 map.insert("name".into(), rhai::Dynamic::from(name.clone()));
                 map.insert("description".into(), rhai::Dynamic::from(meta.description.clone()));

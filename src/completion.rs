@@ -524,6 +524,7 @@ pub const OEDIT_SUBCOMMANDS: &[&str] = &[
     "treats",
     "teaches_spell",
     "note",
+    "extra",
 ];
 
 /// Item trigger actions
@@ -1464,6 +1465,14 @@ fn complete_oedit(
         // oedit <vnum> type <partial_type> - complete item type
         4 if completing_word && words[2].to_lowercase() == "type" => {
             filter_static(ITEM_TYPES, &partial, CompletionType::ItemType)
+        }
+        // oedit <vnum> extra - show extra actions
+        3 if !completing_word && words[2].to_lowercase() == "extra" => {
+            all_static(EXTRA_DESC_ACTIONS, CompletionType::ExtraDescAction)
+        }
+        // oedit <vnum> extra <partial_action> - complete extra action
+        4 if completing_word && words[2].to_lowercase() == "extra" => {
+            filter_static(EXTRA_DESC_ACTIONS, &partial, CompletionType::ExtraDescAction)
         }
         // oedit <vnum> trigger - show all trigger actions
         3 if !completing_word && words[2].to_lowercase() == "trigger" => {
