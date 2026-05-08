@@ -276,6 +276,35 @@ You say: room
 The Innkeeper says: Rooms are 5 gold per night.
 ```
 
+NPCs that have a **dialogue tree** instead of simple keywords will offer numbered choices when you initiate the conversation. Type the keyword next to a choice to follow it. Some choices are limited (one-shot per player) or have a cooldown — the NPC will let you know.
+
+### Asking About Other People
+
+Simulated NPCs (townsfolk, neighbours) keep track of how they feel about each other. You can ask them:
+
+```
+> ask gregor about esme
+Gregor smiles. "Esme? I'm very fond of her. We share a home."
+```
+
+The NPC must be in your room and the subject must be someone they actually know. `examine` also surfaces social cues — mood, recent bereavement, who they live with.
+
+### NPC Schedules
+
+Many NPCs follow a daily routine. If they've made their schedule visible, ask:
+
+```
+> schedule blacksmith
+=== Schedule for Old Gregor ===
+Currently: working
+
+  8am  (Morning):  working
+  8pm  (Evening):  off_duty
+  10pm (Night):    sleeping
+```
+
+Shopkeepers and healers won't serve you when they're sleeping or off duty.
+
 ### Shopping
 
 Find a shopkeeper and browse their wares:
@@ -293,6 +322,53 @@ You buy an Iron Sword for 50 gold.
 > sell cap
 You sell the leather cap for 5 gold.
 ```
+
+## Quests
+
+NPCs may offer quests through their dialogue trees. When you accept one, it appears in your quest log. Objectives can be kill counts, item turn-ins, room visits, or world-state flags — they update automatically as you play.
+
+| Command | Description |
+|---------|-------------|
+| `quests` | List your active and completed quests |
+| `quest <id>` | Show full detail for a quest (objectives, time remaining, rewards) |
+| `quest abandon <id>` | Drop an active quest (forfeits any progress) |
+
+Some quests are **time-limited** — abandon or complete them before the timer expires. Party kill credit is shared: anyone who damaged the target during the fight gets credit.
+
+## Bulletin Boards
+
+Some rooms contain bulletin boards (a piece of furniture or a notice board). Use the `board` command while standing next to one:
+
+```
+> board list
+=== Town Notices ===
+  1. [Mayor]    Tax day reminder       (3 days ago)
+  2. [Innkeeper] Lost cat              (1 day ago)
+
+> board read 2
+[Lost cat] My tabby slipped out the back door...
+
+> board write Looking for adventurers
+(opens the multi-line editor — `.save` to post, `.abort` to cancel)
+
+> board remove 5
+```
+
+Some boards are admin-only for reading or writing — the board will tell you if you don't have access.
+
+## Pets and Charmed Mobs
+
+Casting `charm` on a non-immune NPC compels them to follow your orders. Most charms are **temporary** (the duration is the spell's effect length); NPCs flagged `tameable` form a **permanent pet bond** instead.
+
+| Command | Description |
+|---------|-------------|
+| `order <mob> attack <target>` | Make a charmed mob attack |
+| `order <mob> stay` | Tell the mob to remain in its current room |
+| `order <mob> follow [<player>]` | Follow you or another (online) player |
+| `order <mob> drop` | Release the charm |
+| `order group <subcommand>` | Issue the same order to every charmed mob in your room |
+
+Charmed mobs follow you between rooms by default unless told to `stay` or to follow another player. Mobs flagged `no_charm` are immune. Logging out (`quit`) breaks all charms you've cast.
 
 ## Property Rental
 
@@ -648,20 +724,32 @@ Casting spells costs mana. Your current mana is shown in the `status` command an
 
 | Spell | Magic Skill | Mana | Description |
 |-------|-------------|------|-------------|
-| Magic Missile | 1 | 5 | Fires a bolt of arcane energy at a target |
-| Light | 1 | 3 | Creates a magical light source |
-| Firebolt | 2 | 8 | Hurls a bolt of fire at a target |
-| Arcane Shield | 2 | 10 | Grants a temporary armor bonus |
-| Cure Wounds | 3 | 12 | Heals yourself or an ally |
-| Detect Invisible | 3 | 8 | Reveals invisible creatures |
-| Lightning Bolt | 4 | 15 | Strikes a target with lightning |
-| Invisibility | 5 | 20 | Makes yourself invisible |
-| Dispel Magic | 5 | 18 | Removes magical buffs from a target |
-| Haste | 6 | 25 | Increases your movement speed |
-| Greater Heal | 6 | 30 | Powerful healing spell |
-| Meteor Storm | 8 | 50 | Devastating area attack (scroll-only) |
+| Magic Missile | 1 | 15 | Fires a bolt of arcane energy at a target |
+| Light | 1 | 10 | Creates a magical light source |
+| Firebolt | 2 | 25 | Hurls a bolt of fire at a target |
+| Frost Bolt | 2 | 25 | Hurls a bolt of cold at a target |
+| Arcane Shield | 2 | 20 | Grants a temporary armor bonus |
+| Detect Magic | 2 | 15 | Reveals magical auras on items and creatures |
+| Night Vision | 2 | 15 | Lets you see in dark rooms (CircleMUD AFF_INFRAVISION) |
+| Cure Wounds | 3 | 25 | Heals yourself or an ally |
+| Detect Invisible | 3 | 20 | Reveals invisible creatures |
+| Sleep | 3 | 25 | Puts a target to sleep — they skip turns until damaged or the buff expires |
+| Blind | 3 | 25 | Reduces a target's hit chance |
+| Charm | 4 | 35 | Compels an NPC to obey you (see [Pets and Charmed Mobs](#pets-and-charmed-mobs)) |
+| Summon | 4 | 40 | Yanks a willing target to your room from anywhere in the world |
+| Lightning Bolt | 4 | 40 | Strikes a target with lightning |
+| Control Weather | 4 | 35 | Influence the weather in your area |
+| Animate Dead | 5 | 60 | Raise a corpse as a temporary undead servant |
+| Invisibility | 5 | 35 | Makes yourself invisible |
+| Dispel Magic | 5 | 30 | Removes magical buffs from a target |
+| Haste | 6 | 45 | Increases your movement speed |
+| Greater Heal | 6 | 50 | Powerful healing spell |
+| Sanctuary | 7 | 50 | Powerful damage reduction |
+| Meteor Storm | 8 | 80 | Devastating area attack (scroll-only) |
 
 Spells marked "scroll-only" cannot be learned through skill advancement alone and must be found on scrolls in the world.
+
+**Resists:** mobs flagged `no_charm`, `no_summon`, `no_sleep`, or `no_blind` are immune to the matching spell — the cast still consumes mana but has no effect. Players consenting to be summoned set this with `set summonable on`.
 
 ## Stealth and Subterfuge
 
@@ -683,6 +771,12 @@ Three skill trees provide rogue-archetype gameplay: **stealth**, **thievery**, a
 **Hiding**: Once hidden, you are invisible to others unless they use `search`. Taking most actions (attacking, speaking, moving) breaks your concealment.
 
 **Backstab**: Strike from hiding with a powerful multiplied attack. Requires a short blade weapon and stealth concealment. 60-second cooldown.
+
+### Combat Maneuvers
+
+| Command | Description |
+|---------|-------------|
+| `bash <target>` | Charge a target for modest damage and a brief stun on hit. Standing-only; spends 15 stamina even on a miss. Mobs flagged `no_bash` resist the stun. |
 
 ### Thievery Skills
 

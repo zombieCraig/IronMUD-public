@@ -59,10 +59,22 @@ Flag shopkeeper set to: ON
 | `level` | `medit <id> level <value>` | Set mobile level |
 | `hp` | `medit <id> hp <value>` | Set max HP |
 | `damage` | `medit <id> damage <dice>` | Set damage (e.g., 2d6+3) |
+| `damtype` | `medit <id> damtype <type>` | Set natural-attack damage type (slash/pierce/blunt/fire/...) |
 | `ac` | `medit <id> ac <value>` | Set armor class |
 | `stat` | `medit <id> stat <attr> <value>` | Set attribute (str/dex/con/int/wis/cha) |
+| `autostats` | `medit <id> autostats` | Auto-derive stats from level |
+| `gold` | `medit <id> gold <value>` | Set gold carried |
 | `perception` | `medit <id> perception <0-10>` | Set stealth detection ability (higher = better at spotting hidden players) |
 | `on_hit` | `medit <id> on_hit [list\|add\|remove\|clear]` | Manage per-hit effects (composes with the legacy `poisonous`/`fiery`/`chilling`/`corrosive`/`shocking` flags). See [Items > On-hit effects](items.md#on-hit-effects) for the dispatch table. |
+
+### Identity and Behavior
+
+| Subcommand | Usage | Description |
+|------------|-------|-------------|
+| `gender` | `medit <id> gender <male\|female\|nonbinary\|clear\|<custom>>` | Set gender / pronouns (drives DG `%hisher%` etc.) |
+| `position` | `medit <id> position <standing\|sitting\|sleeping>` | Set default stance |
+| `language` | `medit <id> language <key\|clear>` | Set spoken language (default Common; affects garbling for low-skill listeners) |
+| `world_max` | `medit <id> world_max <n>` | Cap concurrent live instances of this vnum (0 = unlimited; `flag unique` is sugar for 1) |
 
 ### Flags and Triggers
 
@@ -86,6 +98,7 @@ Flag shopkeeper set to: ON
 |------|--------|
 | `aggressive` | Attacks players on sight |
 | `sentinel` | Never wanders from spawn room |
+| `stay_zone` | Wandering and pursuit stay inside the home area |
 | `scavenger` | Picks up items from ground |
 | `shopkeeper` | Can buy/sell items |
 | `no_attack` | Cannot be attacked |
@@ -96,6 +109,34 @@ Flag shopkeeper set to: ON
 | `guard` | Enhanced perception, responds to nearby theft |
 | `helper` | Joins combat to defend faction allies attacked by a player (see Helper System below) |
 | `thief` | Steals gold from players |
+| `cant_swim` | Cannot enter water rooms; takes damage if forced into water |
+| `aware` | Sees through hidden / sneaking / invisibility |
+| `memory` | Remembers PC attackers and attacks them on sight |
+| `unique` | Only one live (non-prototype) instance of this vnum allowed worldwide (sugar for `world_max 1`) |
+| `tameable` | Casting `charm` installs a permanent pet bond instead of a temporary buff |
+| `hostile_on_steal` | Attacks the thief when a steal attempt is caught |
+
+### Spell/Skill Immunities (CircleMUD parity)
+
+| Flag | Effect |
+|------|--------|
+| `no_charm` | Immune to the `charm` spell |
+| `no_summon` | Immune to the `summon` spell |
+| `no_sleep` | Immune to the `sleep` spell |
+| `no_blind` | Immune to the `blind` spell |
+| `no_bash` | Immune to the `bash` skill's stun |
+
+### On-Hit Elemental Flags
+
+These compose with `medit on_hit` and apply DoTs/effects on a successful melee hit:
+
+| Flag | Effect |
+|------|--------|
+| `poisonous` | Melee hits apply a poison DoT |
+| `fiery` | Melee hits apply a fire DoT |
+| `chilling` | Melee hits apply a cold DoT |
+| `corrosive` | Melee hits apply an acid DoT |
+| `shocking` | Melee hits apply a lightning DoT |
 
 Mobiles produced by the [immigration system](areas.md#immigration-migrant-spawning) carry `migrant:<role>:<prefix>` vnums and are tagged with role-specific flags (guard, healer, scavenger). They're attached to a liveable room via `resident_of` and released when they die.
 
@@ -157,6 +198,26 @@ Players trigger dialogue by saying the keyword:
 You say: hello
 The Innkeeper says: Welcome to my inn, traveler!
 ```
+
+## Dialogue Trees
+
+For richer, branching conversations — multiple nodes, conditional choices, quest hooks, cooldowns, once-per-player reveals — use a **dialogue tree**. The full reference is in [Dialogue Trees](dialogue-trees.md); this is a quick orientation.
+
+A tree is a graph of named **nodes** (each with text the NPC says) and **choices** that jump to other nodes, exit the conversation, or repeat. Choices can carry conditions, effects, per-player cooldowns, and once-per-player limits. Author with `medit <id> tree <subcommand>`:
+
+```
+> medit innkeeper tree addnode greeting Welcome, traveler. Looking for a room?
+> medit innkeeper tree addnode rates Rooms are five gold a night.
+
+> medit innkeeper tree addchoice greeting rates | How much for a room? | goto rates
+> medit innkeeper tree addchoice greeting bye | Just passing through. | exit
+> medit innkeeper tree addchoice rates back | Anything else? | goto greeting
+
+> medit innkeeper tree editchoice rates 0 cooldown 60   # ≥60s between asks
+> medit innkeeper tree editchoice rates 0 once on        # one-shot per player
+```
+
+Conditions (e.g., `quest_active`, `has_item`, `skill_at_least`), effects (`offer_quest`, `give_item`, `set_dg_var`), and node-level hooks (`on_enter`, `on_exit`) are set through `tree set <json>` or the MCP authoring tools — see [Dialogue Trees](dialogue-trees.md) for the full schema and a worked example with quest integration.
 
 ## Shop System
 

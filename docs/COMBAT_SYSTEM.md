@@ -463,6 +463,104 @@ If combat state issues recur, check for:
 
 ---
 
+## Spells, Skills, and the Active Buff Layer
+
+Round-based melee is the core of the system, but several spells and a skill layer attach to it. This section is the reference for what each ability does, the immunity gates that short-circuit them, and the active-buff bookkeeping that runs them.
+
+### The Active Buff System
+
+Both `CharacterData` and `MobileData` carry `active_buffs: Vec<ActiveBuff>`. An `ActiveBuff` has:
+
+| Field | Purpose |
+|-------|---------|
+| `effect_type` | `EffectType` enum — `Sleep`, `Blind`, `Charmed`, `NightVision`, `Bless`, `Haste`, `Slow`, `Curse`, `Silence`, `Regeneration`, `DamageReduction`, `ArmorClassBoost`, `Poison`, etc. |
+| `magnitude` | Buff strength (Blind hit penalty %, Regeneration HP/tick, stat boost amount, ...). |
+| `remaining_secs` | Countdown in seconds. `-1` is permanent — used for pet bonds (`Charmed` with `remaining_secs = -1` from a `tameable` mob) and mood-driven simulation buffs. |
+| `source` | Label — usually the spell name or caster's character name. The `source` is what the engine reads to identify a charm master. |
+
+A periodic mob-effects tick decrements every non-permanent `remaining_secs` and removes expired buffs. `Regeneration` ticks heal `magnitude` HP per cycle, capped at max HP. `Sleep` is special: incoming combat damage strips it immediately and transitions the target from a `Sleeping` stance to `Sitting` so they can act next round.
+
+### Spells
+
+All player-castable spells live in `scripts/data/spells_fantasy.json` (the modern ruleset has its own list); handlers live in `scripts/commands/cast.rhai`. Mana cost, cooldown, and skill requirement come from the JSON.
+
+#### Charm
+
+- **Cost / cooldown / skill**: 35 mana, 90s cooldown, skill 4.
+- **Target**: in-room NPC. Hard-immune if `flags.no_attack` or `flags.no_charm`.
+- **Behavior**: applies a `Charmed` buff (`source` = caster's name) to the mob. Default duration is 300s. If the target has `flags.tameable`, the buff is permanent (`remaining_secs = -1`) — a pet bond that survives logout. The mob exits combat and forgets the caster as an enemy. Charmed mobs follow the caster between rooms (subject to `order stay` / `order follow <player>`) and obey `order` commands.
+- **Cleanup**: `quit` and player-death break all charms cast by that player. Pets owned by `tameable` mobs that survive their bonded master need explicit handling.
+
+#### Summon
+
+- **Cost / cooldown / skill**: 40 mana, 60s cooldown, skill 4.
+- **Target**: any NPC or PC anywhere in the world. World-wide lookup uses `find_mobile_by_keyword_anywhere` for NPCs.
+- **Gates**: NPCs with `flags.no_summon` and `flags.no_attack` are immune. Players are protected unless they have `summonable: true` set on their character (toggled via `set summonable on|off`).
+- **Behavior**: yanks the target to the caster's room. The caster broadcasts a vanish/arrive message. Both ends drop combat and save.
+
+#### Sleep
+
+- **Cost / cooldown / skill**: 25 mana, 30s cooldown, 60s duration, skill 3.
+- **Target**: enemy in room. Hard-immune if `flags.no_sleep`.
+- **Behavior**: applies a `Sleep` buff (magnitude 0). The combat tick treats Sleep targets as skipping their turn — they get a "You sleep deeply and cannot act" message — until the buff expires or they take damage. Damage strips the buff inline.
+
+#### Blind
+
+- **Cost / cooldown / skill**: 25 mana, 30s cooldown, 90s duration, skill 3.
+- **Target**: enemy in room. Hard-immune if `flags.no_blind`.
+- **Behavior**: applies a `Blind` buff with `magnitude = 50`. Both attackers and defenders carrying the buff have `magnitude` percentage points subtracted from their `base_hit_chance`, clamped 5–95. For players, blindness also ORs into the dark-room and lighting-penalty checks — a blind player can't see room descriptions.
+
+#### Night Vision
+
+- **Cost / cooldown / skill**: 15 mana, 60s cooldown, 600s duration, skill 2.
+- **Target**: self or friendly.
+- **Behavior**: applies a `NightVision` buff. Dark-room display, `can_see` checks, and lighting penalties all OR together three sources of night vision: this buff, the `night_vision` character trait, and any equipped item with the `night_vision` flag. Maps onto CircleMUD `AFF_INFRAVISION` for imports.
+
+#### Animate Dead
+
+- **Cost / cooldown / skill**: 60 mana, 180s cooldown, skill 5.
+- **Target**: a corpse item in the room.
+- **Behavior**: looks up `item.flags.corpse_source_vnum` and re-spawns that mob prototype at 60% of its max HP, relabeled "the zombie of <name>". The new mob gets a permanent `Charmed` buff (`source` = caster's name) — a pet bond following the same rules as a tameable charm. Player corpses cannot be raised.
+
+#### Control Weather
+
+- **Cost / cooldown / skill**: 35 mana, 600s cooldown, skill 4.
+- **Behavior**: shifts global weather one step along the `Clear → PartlyCloudy → Cloudy → Overcast → LightRain → Rain → HeavyRain → Thunderstorm` ladder, in either direction. Off-ladder conditions (Snow, Blizzard, Fog) map to ladder endpoints. The shift is global to all areas' projected weather and persists until the next natural weather change.
+
+#### Dispel Magic
+
+- **Cost / cooldown / skill**: 30 mana, 15s cooldown, skill 5. Requires combat.
+- **Status**: the cast handler currently broadcasts the spell but the buff-stripping logic is not yet wired up. Treat this as scaffolded but not feature-complete.
+
+### Skills
+
+#### Bash
+
+- **Cost**: 15 stamina, spent upfront whether the swing connects or not.
+- **Stance**: standing-only.
+- **Gate**: `flags.no_bash` shrugs off the stun and inflicts no damage; the stamina is still spent.
+- **To-hit**: `50 + (bash_skill * 5) + (attacker_str_mod * 2) - defender_dex_mod`, clamped 20–95.
+- **Damage**: `1d4 + str_mod + (bash_skill / 2)` — modest, but armor doesn't apply.
+- **Stun**: a successful hit applies a 2-second stun via `apply_mobile_stun`, suppressing the target's next combat action.
+- **XP**: 4 XP on hit, 5 XP on kill, 1 XP on miss. Always initiates or continues melee combat.
+
+### Immunity Summary
+
+| Flag | Blocks |
+|------|--------|
+| `flags.no_attack` | All hostile spells and direct attacks (charm, summon, sleep, blind, bash, weapon hits) |
+| `flags.no_charm` | Charm |
+| `flags.no_summon` | Summon (NPC side; players use `summonable`) |
+| `flags.no_sleep` | Sleep |
+| `flags.no_blind` | Blind |
+| `flags.no_bash` | Bash stun (the swing still spends stamina) |
+| `flags.tameable` | Inverted gate — flips Charm from temporary to permanent pet bond |
+| `summonable` (PC field) | Players opt in to being summoned |
+
+CircleMUD imports map their `MOB_NO*` bits onto these flags directly.
+
+---
+
 ## Out of Scope (Future Work)
 
 - First aid / wound treatment system
@@ -472,3 +570,4 @@ If combat state issues recur, check for:
 - Ranged combat details
 - Combat groups/parties
 - Armor repair (smithing/crafting)
+- Dispel Magic buff-stripping (handler scaffolded, mechanics not yet wired)

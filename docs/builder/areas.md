@@ -258,6 +258,33 @@ Spawn point enabled.
 Spawn point 1 max count set to 10.
 ```
 
+### Spawn Dependencies
+
+A spawn point can carry **dependencies**: items that spawn alongside the parent and attach as inventory, worn equipment, wielded weapons, or container contents. This is the same mechanism CircleMUD `G`/`E`/`P` resets translate into during import — when a guard spawns, his uniform spawns equipped on him; when a chest spawns, the loot inside spawns in it.
+
+| Subcommand | Usage | Description |
+|------------|-------|-------------|
+| `dep list` | `spedit dep [filter] list <index>` | Show dependencies for a spawn point |
+| `dep add inv` | `spedit dep add <index> inv <vnum> [count] [chance%]` | Add to spawned mob's inventory |
+| `dep add equip` | `spedit dep add <index> equip <vnum> <slot> [chance%]` | Equip on the mob |
+| `dep add wield` | `spedit dep add <index> wield <vnum> [count] [chance%]` | Wield as weapon |
+| `dep add contain` | `spedit dep add <index> contain <vnum> [count] [chance%]` | Place inside a Container item |
+| `dep remove` | `spedit dep [filter] remove <index> <dep_index>` | Remove a single dependency |
+| `dep clear` | `spedit dep [filter] clear <index>` | Remove all dependencies |
+
+```
+> spedit create . mobile town_guard 3 300
+Created spawn point: town_guard (max 3, every 300s)
+
+> spedit dep add 0 equip town_uniform torso
+> spedit dep add 0 wield iron_spear
+> spedit dep add 0 inv silver_coin 5 50
+```
+
+`chance` is a 1–100 percent roll evaluated each spawn; default 100. Equipment slots match the standard wear locations (head, neck, shoulders, torso, back, arms, hands, waist, legs, feet, wrists, ankles, wielded, offhand, ears).
+
+Dependencies are evaluated by the shared `apply_spawn_dependencies` helper, so the periodic spawn tick, `areset`, and the REST `POST /api/areas/<id>/reset` all produce identical equipment state. CircleMUD imports populate this automatically — `G` becomes an `inv` dep, `E` becomes `equip`, `P` becomes `contain` on the parent container's spawn point.
+
 ### Manual Reset
 
 Force all spawn points to spawn immediately:

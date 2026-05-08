@@ -100,6 +100,7 @@ oedit pirate_cutlass on_hit add bleeding 70 2 0
 |------------|-------|-------------|
 | `prototype` | `oedit <id> prototype [on\|off]` | Mark as prototype template |
 | `vnum` | `oedit <id> vnum <name\|none>` | Set prototype vnum |
+| `world_max` | `oedit <id> world_max <n>` | Cap concurrent live instances of this vnum (0 = unlimited; `flag unique` is sugar for 1) |
 | `spawn` | `oedit <id> spawn` | Spawn copy into current room |
 
 ## Item Types
@@ -113,6 +114,14 @@ oedit pirate_cutlass on_hit add bleeding 70 2 0
 | `liquid_container` | Holds drinks |
 | `food` | Consumable food |
 | `key` | Opens locks |
+| `gold` | Stack of coins |
+| `ammunition` | Arrows / bolts (consumed by ranged weapons) |
+| `potion` | Single-use bottled spell |
+| `wand` | Targeted casting implement with charges |
+| `staff` | Area-effect casting implement with charges |
+| `note` | Writable paper (use `write` with a `pen` in inventory to author) |
+| `pen` | Writing tool — required in inventory to author a `note` |
+| `board` | Bulletin board — players use the `board` command to read/post (see [Player Guide > Bulletin Boards](../player-guide.md)) |
 
 Set type with:
 ```
@@ -154,14 +163,32 @@ Wear locations set to: finger
 | `invisible` | Hidden from normal view |
 | `glow` | Emits light |
 | `hum` | Makes humming sound |
+| `magical` | Reveals "(magical aura)" cue when viewer has DetectMagic |
 | `no_sell` | Cannot be sold to shops |
-| `unique` | Only one can exist in world |
+| `no_donate` | Cannot be donated |
+| `unique` | Only one live instance allowed worldwide (sugar for `world_max 1`) |
 | `quest_item` | Special quest item |
 | `death_only` | Only visible in corpse after death |
 | `plant_pot` | Item serves as a plant pot (gardening) |
 | `lockpick` | Can be used to pick locks (thievery skill) |
 | `boat` | Allows traversing deep_water rooms when carried in inventory |
+| `buried` | Hidden in a `dirt_floor` room until dug up |
+| `can_dig` | Held/equipped item lets the player `dig` in dirt-floor rooms |
+| `detect_buried` | Surfaces a hint when buried items are nearby |
 | `is_skinned` | Corpse has been butchered/skinned (set by butcher command) |
+| `broken` | Broken arrows/bolts cannot be used as ammo |
+| `provides_light` | Provides light when equipped/wielded |
+| `night_vision` | Grants the wearer night vision while equipped (CircleMUD AFF_INFRAVISION parity) |
+| `provides_warmth` | Radiates warmth to the room (campfire, fireplace) |
+| `waterproof` | Protects from rain/water when worn |
+| `reduces_glare` | Reduces bright-light penalty (sunglasses) |
+| `fishing_rod` | Can be used for fishing when held |
+| `bait` | Can be used as fishing bait |
+| `foraging_tool` | Tool for foraging (uses `quality` for bonus) |
+| `medical_tool` | Can be used for medical treatment |
+| `preserves_contents` | Container preserves food inside (fridge/freezer) |
+| `vending` | Container functions as a vending machine |
+| `atm` | Item functions as a banking ATM |
 
 ### Gardening Fields
 
