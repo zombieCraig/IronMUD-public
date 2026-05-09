@@ -103,6 +103,10 @@ fn run_authenticated_create(args, connection_id, account_id) {
     // Link the new character into the account's roster.
     add_character_to_account(account_id, name);
 
+    // Stamp the account's saved character-creation defaults onto the new
+    // character (no-op when the player hasn't run `set defaults save`).
+    apply_account_defaults_to_new_character(account_id, name);
+
     // Drop into the chargen wizard.
     let wizard_state = "char_name=" + name + ";is_first=false";
     set_wizard_data(connection_id, wizard_state);
@@ -245,6 +249,11 @@ fn run_unauthenticated_create(args, connection_id) {
     new_char.creation_complete = false;
     save_character_data(new_char);
     add_character_to_account(account_id, name);
+
+    // Stamp account-saved character defaults (no-op for the very first
+    // character on a fresh account; meaningful when the same player creates
+    // additional alts after `set defaults save`).
+    apply_account_defaults_to_new_character(account_id, name);
 
     // Stamp the connection as authenticated to the new account so the user
     // can immediately use roster commands without a separate login round-trip.

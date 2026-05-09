@@ -434,6 +434,14 @@ fn complete_login(connection_id, char_data) {
 
     set_player_character(connection_id, char_data);
 
+    // Stamp session-resident account defaults (colors / mxp / abbrev) onto
+    // the connection so each alt inherits the player's preferences without
+    // re-running `set color on` etc. No-op when defaults aren't saved.
+    let acct_id_for_prefs = get_authenticated_account_id(connection_id);
+    if acct_id_for_prefs != "" {
+        apply_account_session_defaults(connection_id, acct_id_for_prefs);
+    }
+
     // Safety net: verify room exists, relocate if not
     let room = get_room_data(char_data.current_room_id);
     if room == () {

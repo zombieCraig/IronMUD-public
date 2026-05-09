@@ -381,6 +381,44 @@ impl Db {
         Ok(self.accounts.len())
     }
 
+    /// Apply `delta` to `account.shared_bank_gold` and save. Refuses to drop
+    /// the balance below zero (returns `Ok(None)` in that case). Returns the
+    /// new balance on success.
+    pub fn add_shared_bank_gold(
+        &self,
+        account_id: &Uuid,
+        delta: i64,
+    ) -> Result<Option<i64>> {
+        let mut account = match self.get_account_by_id(account_id)? {
+            Some(a) => a,
+            None => return Ok(None),
+        };
+        let new_balance = account.shared_bank_gold.saturating_add(delta);
+        if new_balance < 0 {
+            return Ok(None);
+        }
+        account.shared_bank_gold = new_balance;
+        self.save_account(account)?;
+        Ok(Some(new_balance))
+    }
+
+    /// Replace `account.character_defaults` wholesale and save. The caller is
+    /// expected to set `is_set = true` (or `false` for clear) on `prefs`
+    /// before calling.
+    pub fn save_account_preferences(
+        &self,
+        account_id: &Uuid,
+        prefs: crate::types::AccountPreferences,
+    ) -> Result<bool> {
+        let mut account = match self.get_account_by_id(account_id)? {
+            Some(a) => a,
+            None => return Ok(false),
+        };
+        account.character_defaults = prefs;
+        self.save_account(account)?;
+        Ok(true)
+    }
+
     pub fn add_character_to_account(
         &self,
         account_id: &Uuid,
@@ -721,6 +759,8 @@ impl Db {
                 normalized_email: None,
                 created_at: now,
                 last_login_at: 0,
+                shared_bank_gold: 0,
+                character_defaults: crate::types::AccountPreferences::default(),
             };
             self.save_account(account)?;
             migrated += 1;

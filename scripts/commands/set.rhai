@@ -98,9 +98,46 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if setting_name == "defaults" {
+        handle_defaults(connection_id, value_arg);
+        return;
+    }
+
     // Unknown setting
     send_client_message(connection_id, "Unknown setting: " + setting_name);
     send_client_message(connection_id, "Type 'set' to see available settings.");
+}
+
+// `set defaults save | clear | show` — manage account-wide character-creation
+// defaults. New alts on this account inherit the saved settings.
+fn handle_defaults(connection_id, value_arg) {
+    let acct_id = get_authenticated_account_id(connection_id);
+    if acct_id == "" {
+        send_client_message(connection_id, "Your character isn't bound to an account.");
+        return;
+    }
+    let sub = value_arg.to_lower();
+    if sub == "save" {
+        if save_account_defaults_from_connection(connection_id) {
+            send_client_message(connection_id, "Account defaults saved. New characters on this account will inherit your current settings.");
+        } else {
+            send_client_message(connection_id, "Failed to save account defaults.");
+        }
+        return;
+    }
+    if sub == "clear" {
+        if clear_account_defaults(acct_id) {
+            send_client_message(connection_id, "Account defaults cleared. New characters will use the engine defaults.");
+        } else {
+            send_client_message(connection_id, "Failed to clear account defaults.");
+        }
+        return;
+    }
+    if sub == "show" || sub == "" {
+        send_client_message(connection_id, format_account_defaults(acct_id));
+        return;
+    }
+    send_client_message(connection_id, "Usage: set defaults save | clear | show");
 }
 
 fn show_settings_table(connection_id, is_builder, is_admin) {

@@ -25,6 +25,63 @@ pub struct SiteBanRecord {
     pub expires_at: Option<i64>,
 }
 
+/// Account-wide character preference defaults. Stamped onto each freshly
+/// created character so the player doesn't have to re-run `set` for every alt.
+/// `is_set = false` means the player hasn't opted in yet — alt creation skips
+/// the stamp and the engine's per-character defaults stand.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountPreferences {
+    #[serde(default)]
+    pub prompt_mode: String,
+    #[serde(default = "default_colors_enabled")]
+    pub colors_enabled: bool,
+    #[serde(default)]
+    pub mxp_enabled: bool,
+    #[serde(default = "default_abbrev_enabled")]
+    pub abbrev_enabled: bool,
+    #[serde(default)]
+    pub helpline_enabled: bool,
+    #[serde(default)]
+    pub summonable: bool,
+    #[serde(default)]
+    pub automap_enabled: bool,
+    #[serde(default = "default_pref_automap_radius")]
+    pub automap_radius: i32,
+    #[serde(default)]
+    pub ascii_map: bool,
+    #[serde(default)]
+    pub is_set: bool,
+}
+
+fn default_colors_enabled() -> bool {
+    true
+}
+
+fn default_abbrev_enabled() -> bool {
+    true
+}
+
+fn default_pref_automap_radius() -> i32 {
+    crate::script::map::AUTOMAP_DEFAULT_RADIUS
+}
+
+impl Default for AccountPreferences {
+    fn default() -> Self {
+        AccountPreferences {
+            prompt_mode: String::new(),
+            colors_enabled: true,
+            mxp_enabled: false,
+            abbrev_enabled: true,
+            helpline_enabled: false,
+            summonable: false,
+            automap_enabled: false,
+            automap_radius: crate::script::map::AUTOMAP_DEFAULT_RADIUS,
+            ascii_map: false,
+            is_set: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountData {
     pub id: Uuid,
@@ -96,6 +153,16 @@ pub struct AccountData {
     pub created_at: i64,
     #[serde(default)]
     pub last_login_at: i64,
+    /// Account-wide pile of gold accessible to any character on this account
+    /// via `bank shared deposit|withdraw`. Distinct from each character's
+    /// per-character `bank_gold`.
+    #[serde(default)]
+    pub shared_bank_gold: i64,
+    /// Per-account character-creation defaults. `is_set = false` (the default)
+    /// means the player hasn't saved any defaults; new alts get the engine's
+    /// blank defaults. Player opts in via `set defaults save`.
+    #[serde(default)]
+    pub character_defaults: AccountPreferences,
 }
 
 fn default_created_at() -> i64 {
@@ -130,6 +197,8 @@ impl AccountData {
             normalized_email: None,
             created_at: default_created_at(),
             last_login_at: 0,
+            shared_bank_gold: 0,
+            character_defaults: AccountPreferences::default(),
         }
     }
 }

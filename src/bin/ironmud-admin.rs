@@ -148,6 +148,14 @@ enum AccountAction {
         /// Account name
         name: String,
     },
+    /// Adjust the account's shared bank balance by a signed amount
+    AdjustBank {
+        /// Account name
+        name: String,
+        /// Signed delta in gold (negative to debit). Refuses to drop below zero.
+        #[arg(long, allow_hyphen_values = true)]
+        amount: i64,
+    },
 }
 
 #[derive(Subcommand)]
@@ -981,6 +989,30 @@ fn handle_account_command(db: &Db, action: AccountAction) -> Result<()> {
             );
             println!("Created at:    {}", a.created_at);
             println!("Last login at: {}", a.last_login_at);
+            println!("Shared bank:   {} gold", a.shared_bank_gold);
+            let d = &a.character_defaults;
+            if d.is_set {
+                println!("Character defaults (applied to new alts):");
+                println!(
+                    "  prompt={} colors={} mxp={} abbrev={} helpline={} summonable={}",
+                    if d.prompt_mode.is_empty() {
+                        "default"
+                    } else {
+                        d.prompt_mode.as_str()
+                    },
+                    d.colors_enabled,
+                    d.mxp_enabled,
+                    d.abbrev_enabled,
+                    d.helpline_enabled,
+                    d.summonable,
+                );
+                println!(
+                    "  automap={} radius={} ascii_map={}",
+                    d.automap_enabled, d.automap_radius, d.ascii_map,
+                );
+            } else {
+                println!("Character defaults: (none)");
+            }
             println!("Characters ({}):", a.character_names.len());
             for n in &a.character_names {
                 println!("  - {}", n);
@@ -1179,6 +1211,21 @@ fn handle_account_command(db: &Db, action: AccountAction) -> Result<()> {
                 Err(e) => println!(
                     "Code stored on account but SMTP send failed: {}. Code: {} (admin can communicate it directly).",
                     e, code
+                ),
+            }
+        }
+        AccountAction::AdjustBank { name, amount } => {
+            let a = db
+                .get_account(&name)?
+                .context(format!("Account '{}' not found", name))?;
+            match db.add_shared_bank_gold(&a.id, amount)? {
+                Some(new_balance) => println!(
+                    "Account '{}' shared bank adjusted by {}; new balance: {} gold.",
+                    name, amount, new_balance
+                ),
+                None => anyhow::bail!(
+                    "Adjustment refused (would drop balance below zero). Current: {} gold.",
+                    a.shared_bank_gold
                 ),
             }
         }

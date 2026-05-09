@@ -75,6 +75,68 @@ If you don't see the email, type `resend` (limited to once a minute, five per
 hour). `cancel` rolls back the half-created account so you can try again with
 a different name or email.
 
+### Shared Bank Account
+
+Each character has a personal bank balance, but every account also has a
+**shared pile** that any character on the roster can deposit into or withdraw
+from. Useful for funding a new alt or pooling gold from a crafting character
+back into your main.
+
+Both banks use the same bank rooms and ATMs (no extra travel):
+
+```
+> bank
+=== Bank Account ===
+Personal Balance: 1,250 gold
+Shared (account): 4,000 gold
+Carried Gold:     180 gold
+Total Wealth:     5,430 gold
+
+> bank shared deposit 200
+You deposit 200 gold into the shared account.
+Shared balance: 4,200 gold
+
+> bank shared withdraw all
+You withdraw 4,200 gold from the shared account.
+Shared balance: 0 gold
+You are now carrying 4,380 gold.
+```
+
+`bank help` lists every subcommand. The personal `bank deposit/withdraw`
+flow is unchanged.
+
+### Saving Default Settings for New Alts
+
+If you've tuned your settings the way you like — automap on, a particular
+prompt mode, color/MXP toggles, etc. — you can save them as account
+defaults so every future alt inherits them at creation, and every alt's
+session inherits the colors/MXP/abbreviations preferences at login:
+
+```
+> set automap on
+> set color on
+> set defaults save
+Account defaults saved. New characters on this account will inherit your
+current settings.
+
+> set defaults show
+Account defaults (applied to new alts):
+  prompt: default
+  colors: on
+  mxp: off
+  abbrev: on
+  helpline: off
+  summonable: off
+  automap: on  (radius 3, ascii off)
+
+> set defaults clear
+Account defaults cleared. New characters will use the engine defaults.
+```
+
+Defaults are a one-shot stamp at creation/login — once an alt diverges with
+its own `set X off`, that character keeps its own value. Run `set defaults
+save` again any time to refresh the snapshot.
+
 ## Your First 5 Minutes
 
 ### Look around

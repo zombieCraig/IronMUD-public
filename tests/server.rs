@@ -8570,3 +8570,214 @@ fn test_bans_rhai_module_is_registered() {
     assert!(src.contains("pub mod bans;"));
     assert!(src.contains("bans::register("));
 }
+
+// ===========================================================================
+// Account-wide bank + character-default-preferences slice tests
+// ===========================================================================
+
+#[test]
+fn test_account_preferences_default_is_unset() {
+    use ironmud::types::AccountPreferences;
+    let p = AccountPreferences::default();
+    assert!(!p.is_set);
+    assert!(p.colors_enabled, "default colors should be on");
+    assert!(p.abbrev_enabled, "default abbreviations should be on");
+    assert!(!p.automap_enabled);
+}
+
+#[test]
+fn test_legacy_account_without_shared_fields_loads() {
+    // Pre-slice account JSON has neither `shared_bank_gold` nor
+    // `character_defaults`. Both must default cleanly thanks to #[serde(default)].
+    use ironmud::types::AccountData;
+    let json = serde_json::json!({
+        "id": "00000000-0000-0000-0000-000000000001",
+        "name": "Legacy",
+        "password_hash": "h",
+        "character_names": ["Legacy"],
+        "is_banned": false
+    });
+    let a: AccountData = serde_json::from_value(json).expect("legacy account loads");
+    assert_eq!(a.shared_bank_gold, 0);
+    assert!(!a.character_defaults.is_set);
+}
+
+#[test]
+fn test_shared_bank_gold_round_trips() {
+    use ironmud::db::Db;
+    use ironmud::types::AccountData;
+
+    let db_path = fresh_account_db_path("shared_bank_roundtrip");
+    let _ = std::fs::remove_dir_all(&db_path);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+        let mut a = AccountData::new("Vault".into(), "h".into());
+        a.shared_bank_gold = 12345;
+        db.save_account(a).unwrap();
+        let reloaded = db.get_account("vault").unwrap().expect("account");
+        assert_eq!(reloaded.shared_bank_gold, 12345);
+    }));
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_add_shared_bank_gold_refuses_negative_balance() {
+    use ironmud::db::Db;
+    use ironmud::types::AccountData;
+
+    let db_path = fresh_account_db_path("shared_bank_negative");
+    let _ = std::fs::remove_dir_all(&db_path);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+        let mut a = AccountData::new("Coffers".into(), "h".into());
+        a.shared_bank_gold = 50;
+        let id = a.id;
+        db.save_account(a).unwrap();
+
+        // Crediting 100 succeeds, balance 150.
+        let new_balance = db.add_shared_bank_gold(&id, 100).unwrap();
+        assert_eq!(new_balance, Some(150));
+
+        // Debiting 200 (would be -50) is refused.
+        let refused = db.add_shared_bank_gold(&id, -200).unwrap();
+        assert_eq!(refused, None);
+
+        // Account state is unchanged after the refused debit.
+        let after = db.get_account_by_id(&id).unwrap().expect("account");
+        assert_eq!(after.shared_bank_gold, 150);
+    }));
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_save_account_preferences_marks_is_set() {
+    use ironmud::db::Db;
+    use ironmud::types::{AccountData, AccountPreferences};
+
+    let db_path = fresh_account_db_path("save_account_prefs");
+    let _ = std::fs::remove_dir_all(&db_path);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+        let a = AccountData::new("Prefs".into(), "h".into());
+        let id = a.id;
+        db.save_account(a).unwrap();
+
+        let mut p = AccountPreferences::default();
+        p.prompt_mode = "verbose".into();
+        p.automap_enabled = true;
+        p.automap_radius = 5;
+        p.helpline_enabled = true;
+        p.is_set = true;
+        let ok = db.save_account_preferences(&id, p).unwrap();
+        assert!(ok);
+
+        let reloaded = db.get_account_by_id(&id).unwrap().expect("account");
+        let d = reloaded.character_defaults;
+        assert!(d.is_set);
+        assert_eq!(d.prompt_mode, "verbose");
+        assert!(d.automap_enabled);
+        assert_eq!(d.automap_radius, 5);
+        assert!(d.helpline_enabled);
+    }));
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_clear_account_preferences_resets_is_set() {
+    use ironmud::db::Db;
+    use ironmud::types::{AccountData, AccountPreferences};
+
+    let db_path = fresh_account_db_path("clear_account_prefs");
+    let _ = std::fs::remove_dir_all(&db_path);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+        let a = AccountData::new("Prefs2".into(), "h".into());
+        let id = a.id;
+        db.save_account(a).unwrap();
+
+        let mut p = AccountPreferences::default();
+        p.is_set = true;
+        p.prompt_mode = "simple".into();
+        db.save_account_preferences(&id, p).unwrap();
+
+        // Clear by saving the engine default (is_set=false).
+        db.save_account_preferences(&id, AccountPreferences::default())
+            .unwrap();
+        let reloaded = db.get_account_by_id(&id).unwrap().expect("account");
+        assert!(!reloaded.character_defaults.is_set);
+        assert_eq!(reloaded.character_defaults.prompt_mode, "");
+    }));
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_bank_rhai_has_shared_subcommand() {
+    use std::fs;
+    let src = fs::read_to_string("scripts/commands/bank.rhai").expect("read bank.rhai");
+    assert!(
+        src.contains("\"shared\""),
+        "bank.rhai must dispatch a `shared` arm"
+    );
+    assert!(src.contains("cmd_shared_balance"));
+    assert!(src.contains("cmd_shared_deposit"));
+    assert!(src.contains("cmd_shared_withdraw"));
+    assert!(src.contains("transfer_pocket_to_shared_bank"));
+    assert!(src.contains("transfer_shared_bank_to_pocket"));
+}
+
+#[test]
+fn test_set_rhai_has_defaults_subcommand() {
+    use std::fs;
+    let src = fs::read_to_string("scripts/commands/set.rhai").expect("read set.rhai");
+    assert!(
+        src.contains("\"defaults\""),
+        "set.rhai must recognize the `defaults` arm"
+    );
+    assert!(src.contains("save_account_defaults_from_connection"));
+    assert!(src.contains("clear_account_defaults"));
+    assert!(src.contains("format_account_defaults"));
+}
+
+#[test]
+fn test_create_rhai_calls_apply_account_defaults() {
+    // Source-level: both insertion sites in create.rhai (auth'd alt path and
+    // first-character path) must invoke apply_account_defaults_to_new_character
+    // so saved defaults get stamped onto each freshly-saved character.
+    use std::fs;
+    let src = fs::read_to_string("scripts/commands/create.rhai").expect("read create.rhai");
+    let count = src.matches("apply_account_defaults_to_new_character").count();
+    assert!(
+        count >= 2,
+        "expected at least 2 calls (alt + first character), got {}",
+        count
+    );
+}
+
+#[test]
+fn test_login_rhai_applies_session_defaults() {
+    // The session-resident defaults (colors / mxp / abbrev) are stamped onto
+    // the connection at every login so each alt inherits them.
+    use std::fs;
+    let src = fs::read_to_string("scripts/commands/login.rhai").expect("read login.rhai");
+    assert!(src.contains("apply_account_session_defaults"));
+}
+
+#[test]
+fn test_account_prefs_module_is_registered() {
+    use std::fs;
+    let src = fs::read_to_string("src/script/mod.rs").expect("read script/mod.rs");
+    assert!(src.contains("pub mod account_prefs;"));
+    assert!(src.contains("account_prefs::register("));
+}

@@ -91,7 +91,8 @@ operate on the account, not the character that happens to share its name.
 ironmud-admin account list
 
 # Show one account's details (id, ban metadata, email + normalized email,
-# verified state, last_login_ip / creation_ip, owned characters)
+# verified state, last_login_ip / creation_ip, shared bank balance,
+# saved character defaults, owned characters)
 ironmud-admin account show <name>
 
 # Ban an account. Optional reason and duration; default is permanent.
@@ -105,6 +106,12 @@ ironmud-admin account unban <name>
 # Surface possible alts for an account (last 30d shared IP, or matching
 # Gmail-canonical email). Banned alts are flagged.
 ironmud-admin account alts <name>
+
+# Adjust the account's shared bank balance by a signed amount (refuses
+# to drop the balance below zero). For corrections only — players move
+# gold themselves via `bank shared deposit/withdraw`.
+ironmud-admin account adjust-bank <name> --amount -500
+ironmud-admin account adjust-bank <name> --amount 1000
 
 # Cascade-delete an account and every character it owns (prompts for confirmation)
 ironmud-admin account delete <name>
@@ -141,6 +148,26 @@ Banned IPs see a generic *"Connections from your address are not permitted on
 this server."* line — the server doesn't confirm the ban exists, so admins can
 quietly block hosts without painting a target. CIDR ranges are not yet
 supported (parking lot).
+
+### Shared Account State
+
+Each account carries two pieces of cross-character state that players manage
+themselves in-game; admins mostly see them surface in `account show` and very
+occasionally adjust:
+
+- **`shared_bank_gold`** — an account-wide pile of gold any character on the
+  account can move via `bank shared deposit|withdraw`. Same bank-room / ATM
+  gate as the per-character bank, no per-day cap or character-age gate.
+  Admin corrections via `account adjust-bank --amount <signed>` (refuses to
+  go below zero). Items aren't supported in the shared bank yet.
+- **`character_defaults`** — an opt-in snapshot of a player's settings
+  (prompt mode, automap config, helpline / summonable, colors / MXP /
+  abbreviations) that gets stamped onto every new alt at character creation
+  and onto every alt's session at login. Players opt in with `set defaults
+  save`, refresh by re-running it, and clear with `set defaults clear`.
+  Defaults are a one-shot stamp — once an alt diverges with its own `set X`,
+  that character keeps its own value. Admins don't typically touch this; the
+  state shows up in `account show` for support visibility.
 
 ### World Management
 

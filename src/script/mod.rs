@@ -8,6 +8,7 @@
 #[macro_use]
 pub mod macros;
 
+pub mod account_prefs;
 pub mod achievements;
 pub mod accounts;
 pub mod bans;
@@ -1854,4 +1855,5 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     accounts::register(engine, db.clone(), connections.clone());
     email::register(engine, db.clone());
     bans::register(engine, db.clone(), connections.clone());
+    account_prefs::register(engine, db.clone(), connections.clone());
 }
