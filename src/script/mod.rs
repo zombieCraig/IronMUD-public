@@ -963,9 +963,21 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         },
     );
 
+    // get_player_character(connection_id) -> CharacterData | ()
+    // Returns unit when the connection has no character yet (roster screen,
+    // unauthenticated connections) so scripts can use `if char == ()` guards.
+    // The underlying Rust helper errors on those cases — fine for Rust callers,
+    // hostile to script ergonomics, so we collapse them here.
     let conns = connections.clone();
-    engine.register_fn("get_player_character", move |connection_id: String| {
-        crate::get_character_for_connection(&conns, connection_id)
+    engine.register_fn("get_player_character", move |connection_id: String| -> rhai::Dynamic {
+        let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) else {
+            return rhai::Dynamic::UNIT;
+        };
+        let guard = conns.lock().unwrap();
+        match guard.get(&uuid).and_then(|s| s.character.clone()) {
+            Some(c) => rhai::Dynamic::from(c),
+            None => rhai::Dynamic::UNIT,
+        }
     });
 
     let conns = connections.clone();
