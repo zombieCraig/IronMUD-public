@@ -12,6 +12,10 @@ use rhai::Engine;
 /// Register chat integration functions in the Rhai engine
 /// This is called after the engine is created to add chat_broadcast and matrix_broadcast functions
 pub fn set_chat_sender(engine: &mut Engine, sender: ChatSender) {
+    // Mirror the chat sender into the email module so the quota path can
+    // broadcast a one-shot admin warning when the daily/monthly cap is hit.
+    crate::email::set_email_chat_sender(sender.clone());
+
     // Register chat_broadcast function for Rhai scripts
     let sender2 = sender.clone();
     engine.register_fn("chat_broadcast", move |message: String| {

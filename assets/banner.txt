@@ -8,7 +8,7 @@
 [33m ═══════════════════════════════════════════[0m
 [37m   Commands:[0m
 [93m     login[0m [name] [password]  [90m- Log in[0m
-[93m     create[0m [name] [password] [90m- New account[0m
-[93m     quit[0m                     [90m- Disconnect[0m
+{{CREATE_LINE}}
+{{FORGOT_LINE}}[93m     quit[0m                     [90m- Disconnect[0m
 [33m ═══════════════════════════════════════════[0m
 

@@ -1245,8 +1245,13 @@ pub async fn handle_connection(
         );
     }
 
-    // Send welcome banner
-    if let Ok(banner) = std::fs::read_to_string("assets/banner.txt") {
+    // Send welcome banner. Rendered with the create / forgot lines swapped
+    // for their three-arg variants when email verification is required.
+    let banner = {
+        let world = state.lock().unwrap();
+        crate::session::banner::render_login_banner(&world.db)
+    };
+    if !banner.is_empty() {
         let _ = tx_client.send(banner);
     }
 

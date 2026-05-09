@@ -75,6 +75,29 @@ pub struct Db {
     // by `<ip>\0` prefix to find accounts sharing an IP. GC'd lazily on read
     // (drop entries older than 30 days).
     ip_account_history: Arc<Tree>,
+    // Bounded ring of outbound-email audit entries. Key = u64 big-endian
+    // monotonic id, value = JSON `EmailAuditEntry`. Trimmed to the most
+    // recent EMAIL_AUDIT_RING_SIZE rows on every insert.
+    email_audit: Arc<Tree>,
+}
+
+/// Maximum entries retained in the email-audit ring. One row per send
+/// attempt — outcome included, so quota refusals and SMTP failures are
+/// preserved alongside successes for incident review.
+pub const EMAIL_AUDIT_RING_SIZE: usize = 1000;
+
+/// One row in the email-audit ring.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct EmailAuditEntry {
+    pub timestamp: i64,
+    /// "verification" or "reset" today; extend if more flows ship.
+    pub kind: String,
+    /// Account name when known; "" otherwise. We deliberately do NOT log
+    /// audit entries for misses on the forgot flow, so this is non-empty in
+    /// practice — but kept optional in the schema for future flows.
+    pub account_name: String,
+    /// "sent" / "quota_daily" / "quota_monthly" / "smtp_failed" / "config_missing".
+    pub outcome: String,
 }
 
 /// Statistics about the world database
@@ -124,6 +147,7 @@ impl Db {
         let quests = db.open_tree("quests")?;
         let bans = db.open_tree("bans")?;
         let ip_account_history = db.open_tree("ip_account_history")?;
+        let email_audit = db.open_tree("email_audit")?;
         let me = Self {
             db: Arc::new(db),                 // Wrap in Arc
             characters: Arc::new(characters), // Wrap in Arc
@@ -154,6 +178,7 @@ impl Db {
             quests: Arc::new(quests),
             bans: Arc::new(bans),
             ip_account_history: Arc::new(ip_account_history),
+            email_audit: Arc::new(email_audit),
         };
         // One-shot migration: synthesize a 1:1 Account for every pre-feature
         // character that doesn't already have one. Idempotent.
@@ -752,6 +777,13 @@ impl Db {
                 email_verification_last_sent_at: 0,
                 email_verification_resend_count: 0,
                 email_verification_resend_window_started_at: 0,
+                email_verification_resend_day_count: 0,
+                email_verification_resend_day_started_at: 0,
+                password_reset_last_sent_at: 0,
+                password_reset_window_started_at: 0,
+                password_reset_count: 0,
+                password_reset_day_count: 0,
+                password_reset_day_started_at: 0,
                 is_banned: false,
                 ban_record: None,
                 last_login_ip: String::new(),
@@ -2232,6 +2264,52 @@ impl Db {
         Ok(self.get_setting(key)?.unwrap_or_else(|| default.to_string()))
     }
 
+    // ========== Email Audit Log ==========
+
+    /// Append a row to the bounded email-audit ring. Drops the oldest entries
+    /// when the ring exceeds `EMAIL_AUDIT_RING_SIZE`. Errors are surfaced —
+    /// the email-send path treats audit-write failure as non-fatal so a
+    /// failed audit doesn't block actually delivering the email.
+    pub fn record_email_audit(&self, entry: EmailAuditEntry) -> Result<()> {
+        // Monotonic 8-byte big-endian key keeps natural sled ordering oldest
+        // → newest. Use `generate_id` for atomicity under concurrent writers.
+        let id = self.db.generate_id()?;
+        let key = id.to_be_bytes();
+        let value = serde_json::to_vec(&entry)?;
+        self.email_audit.insert(key, value)?;
+
+        // Trim old entries. Cheap: the tree iter is in key order, so we
+        // pop fronts until length ≤ ring size. Not exact under concurrent
+        // writers, but bounded.
+        let mut len = self.email_audit.len();
+        while len > EMAIL_AUDIT_RING_SIZE {
+            if let Some((k, _)) = self.email_audit.iter().next().transpose()? {
+                self.email_audit.remove(k)?;
+                len -= 1;
+            } else {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    /// Most recent `limit` audit entries, newest first. Caller decides how
+    /// many to surface. Errors propagate; callers commonly fall back to an
+    /// empty list rather than refusing the admin command.
+    pub fn list_email_audit(&self, limit: usize) -> Result<Vec<EmailAuditEntry>> {
+        let mut entries = Vec::new();
+        for entry in self.email_audit.iter().rev() {
+            if entries.len() >= limit {
+                break;
+            }
+            let (_, v) = entry?;
+            if let Ok(parsed) = serde_json::from_slice::<EmailAuditEntry>(&v) {
+                entries.push(parsed);
+            }
+        }
+        Ok(entries)
+    }
+
     // ========== Game Time Functions ==========
 
     /// Get the current game time, or create a default if not set
@@ -3455,6 +3533,45 @@ mod tests {
 
         let reloaded = t.db.get_mobile_data(&id).unwrap().unwrap();
         assert_eq!(reloaded.gold, 15);
+    }
+
+    #[test]
+    fn email_audit_ring_trims_to_max_size() {
+        let t = open_temp("audit_trim");
+        // Insert one over the cap and confirm the oldest entry is dropped.
+        for i in 0..=EMAIL_AUDIT_RING_SIZE {
+            t.db.record_email_audit(EmailAuditEntry {
+                timestamp: i as i64,
+                kind: "verification".into(),
+                account_name: format!("user{}", i),
+                outcome: "sent".into(),
+            })
+            .expect("record audit");
+        }
+        let entries = t.db.list_email_audit(EMAIL_AUDIT_RING_SIZE * 2).unwrap();
+        assert_eq!(entries.len(), EMAIL_AUDIT_RING_SIZE);
+        // Newest first — the very latest insert (i = RING_SIZE) is at index 0.
+        assert_eq!(entries[0].timestamp, EMAIL_AUDIT_RING_SIZE as i64);
+        // Oldest survivor is the second insert (i = 1) since i = 0 fell out.
+        assert_eq!(entries.last().unwrap().timestamp, 1);
+    }
+
+    #[test]
+    fn email_audit_returns_newest_first_capped_to_limit() {
+        let t = open_temp("audit_limit");
+        for i in 0..5 {
+            t.db.record_email_audit(EmailAuditEntry {
+                timestamp: i,
+                kind: "reset".into(),
+                account_name: "alice".into(),
+                outcome: "sent".into(),
+            })
+            .unwrap();
+        }
+        let entries = t.db.list_email_audit(3).unwrap();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].timestamp, 4);
+        assert_eq!(entries[2].timestamp, 2);
     }
 
     #[test]

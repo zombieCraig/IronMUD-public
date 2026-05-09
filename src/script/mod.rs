@@ -755,6 +755,17 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
             .map(rhai::Dynamic::from)
     });
 
+    // do_dummy_password_work() -> bool
+    // Burn one Argon2 hash and discard the result. Used by `forgot.rhai` on
+    // the no-account-found and throttled branches so all paths spend roughly
+    // the same time on cryptographic work, defeating timing-based account
+    // enumeration. Result is discarded; caller treats as fire-and-forget.
+    let cloned_db = db.clone();
+    engine.register_fn("do_dummy_password_work", move || -> bool {
+        let _ = cloned_db.hash_password("dummy-timing-anchor-not-a-real-password");
+        true
+    });
+
     let cloned_db = db.clone();
     engine.register_fn("verify_password", move |password: String, hash: String| {
         cloned_db

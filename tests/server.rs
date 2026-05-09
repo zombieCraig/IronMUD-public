@@ -7812,6 +7812,83 @@ fn test_add_and_remove_character_from_account_roundtrips() {
 }
 
 #[test]
+fn test_forgot_command_uses_verified_email_lookup_and_throttle() {
+    // Source-level: forgot.rhai must gate on is_email_verification_required,
+    // route the email through find_verified_account_id_by_email (so unverified
+    // accounts don't leak), respect both the per-account and per-IP throttle,
+    // record the IP send only when a real email was dispatched, and always
+    // reply with the same generic message to prevent enumeration.
+    use std::fs;
+    let src = fs::read_to_string("scripts/commands/forgot.rhai").expect("read forgot.rhai");
+    assert!(
+        src.contains("is_email_verification_required"),
+        "forgot.rhai must gate on the email-verification master switch"
+    );
+    assert!(
+        src.contains("find_verified_account_id_by_email"),
+        "forgot.rhai must look up by verified email, not bare normalized email"
+    );
+    assert!(
+        src.contains("can_request_password_reset"),
+        "forgot.rhai must check the per-account reset throttle"
+    );
+    assert!(
+        src.contains("is_email_send_throttled"),
+        "forgot.rhai must check the per-IP email-send rate limiter"
+    );
+    assert!(
+        src.contains("record_email_send"),
+        "forgot.rhai must stamp successful sends against the per-IP limiter"
+    );
+    assert!(
+        src.contains("issue_password_reset"),
+        "forgot.rhai must call issue_password_reset to rotate the password"
+    );
+    assert!(
+        src.contains("If an account with that email exists"),
+        "forgot.rhai must reply with the same generic message regardless of match"
+    );
+    assert!(
+        src.contains("do_dummy_password_work"),
+        "forgot.rhai must burn dummy Argon2 work on no-match / throttled branches to defeat timing-based account enumeration"
+    );
+    // Specifically: every early-exit branch (per-IP throttled, no account,
+    // per-account throttled) must call dummy work. Three call sites total.
+    let dummy_calls = src.matches("do_dummy_password_work").count();
+    assert!(
+        dummy_calls >= 3,
+        "forgot.rhai needs dummy work on all three early-exit branches; found {}",
+        dummy_calls
+    );
+}
+
+#[test]
+fn test_create_command_throttles_email_sends() {
+    // Source-level: create.rhai must gate the verification email + resend on
+    // the per-IP send throttle (paired with the global daily/monthly cap in
+    // src/email/mod.rs) so a flooder can't drive the SES bill via fresh
+    // accounts or repeated resend requests.
+    use std::fs;
+    let src = fs::read_to_string("scripts/commands/create.rhai").expect("read create.rhai");
+    assert!(
+        src.contains("is_email_send_throttled"),
+        "create.rhai must check is_email_send_throttled before sending verification mail"
+    );
+    assert!(
+        src.contains("record_email_send"),
+        "create.rhai must stamp successful sends against the per-IP limiter"
+    );
+    // Both the initial send and the resend path need the gate. The simplest
+    // check: count occurrences and require >= 2.
+    let occurrences = src.matches("is_email_send_throttled").count();
+    assert!(
+        occurrences >= 2,
+        "create.rhai must gate BOTH the initial send and the resend path; found {}",
+        occurrences
+    );
+}
+
+#[test]
 fn test_login_uses_account_password_hash_not_character_hash() {
     // Source-level: login.rhai must verify against account.password_hash, not
     // existing_char.password_hash. If this drifts, the auth path is reading a

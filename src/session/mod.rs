@@ -4,6 +4,7 @@
 //! - Connection management (login, logout, messaging)
 //! - Broadcasting messages to players (room, global, conditional)
 
+pub mod banner;
 pub mod broadcast;
 pub mod connection;
 pub mod death;

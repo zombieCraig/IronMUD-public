@@ -2454,6 +2454,63 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         true
     });
 
+    // is_email_send_throttled(connection_id) -> bool
+    // Per-IP email-send rate limiter, shared across verification + resend +
+    // password reset. Pairs with the global daily/monthly cap in
+    // crate::email so a single IP can't drive the budget on its own.
+    let st = state.clone();
+    let conns = connections.clone();
+    engine.register_fn(
+        "is_email_send_throttled",
+        move |connection_id: String| -> bool {
+            let cid = match uuid::Uuid::parse_str(&connection_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let ip = {
+                let conns_guard = conns.lock().unwrap();
+                match conns_guard.get(&cid) {
+                    Some(s) => s.addr.ip(),
+                    None => return false,
+                }
+            };
+            let lim = {
+                let world = st.lock().unwrap();
+                world.ip_limiter.clone()
+            };
+            lim.is_email_send_throttled(ip)
+        },
+    );
+
+    // record_email_send(connection_id) -> bool
+    // Stamps a successful send against the connection's source IP. Callers
+    // must invoke this only AFTER the underlying send succeeded — failed
+    // sends should not count against the per-IP budget.
+    let st = state.clone();
+    let conns = connections.clone();
+    engine.register_fn(
+        "record_email_send",
+        move |connection_id: String| -> bool {
+            let cid = match uuid::Uuid::parse_str(&connection_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let ip = {
+                let conns_guard = conns.lock().unwrap();
+                match conns_guard.get(&cid) {
+                    Some(s) => s.addr.ip(),
+                    None => return false,
+                }
+            };
+            let lim = {
+                let world = st.lock().unwrap();
+                world.ip_limiter.clone()
+            };
+            lim.record_email_send(ip);
+            true
+        },
+    );
+
     // max_characters() -> i64
     // Returns the configured global account cap so create.rhai can compare
     // against count_characters() without hard-coding the constant in script.

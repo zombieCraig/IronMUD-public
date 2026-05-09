@@ -7,6 +7,10 @@
     "access": "guest",
     "description": "Create a new character"
   },
+  "forgot": {
+    "access": "guest",
+    "description": "Email a temporary password to a verified account"
+  },
   "quit": {
     "access": "any",
     "description": "Disconnect from the server"

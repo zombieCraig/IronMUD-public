@@ -271,6 +271,19 @@ fn run_unauthenticated_create(args, connection_id) {
     set_wizard_data(connection_id, wizard_state);
 
     if need_email {
+        // Per-IP email-send cap (separate from the per-IP creation throttle:
+        // creation could succeed but the verification email is what costs
+        // money via SES). If the cap is hit, roll back the half-account so
+        // the name stays free.
+        if is_email_send_throttled(connection_id) {
+            delete_account(name);
+            delete_character(name);
+            clear_authenticated_account(connection_id);
+            clear_wizard_data(connection_id);
+            send_client_message(connection_id,
+                "Too many recent verification emails from your address. Try again later.");
+            return;
+        }
         // Mark the account unverified, store the email, fire off a code, and
         // gate further input through email_verify_prompt mode. Failure to
         // send (missing SMTP config etc.) rolls the half-state back so we
@@ -285,6 +298,7 @@ fn run_unauthenticated_create(args, connection_id) {
                 "Email verification is required but the server can't send mail right now. Contact an administrator.");
             return;
         }
+        record_email_send(connection_id);
         set_olc_mode(connection_id, "email_verify_prompt");
         send_client_message(connection_id,
             "\nA 6-digit verification code has been sent to " + email + ".\n"
@@ -333,6 +347,17 @@ fn handle_email_verify_input(args, connection_id) {
             send_client_message(connection_id, "You've requested too many codes recently. Wait an hour and try again.\n> ");
             return;
         }
+        if gate == 3 {
+            send_client_message(connection_id, "You've requested too many codes today. Try again tomorrow or 'cancel' to abort.\n> ");
+            return;
+        }
+        // Per-IP email-send cap. Sits above the per-account resend throttle
+        // so a single attacker can't ride the resend flow on many in-flight
+        // half-created accounts.
+        if is_email_send_throttled(connection_id) {
+            send_client_message(connection_id, "Too many recent verification emails from your address. Try again later.\n> ");
+            return;
+        }
         let account = get_account_by_id(account_id);
         if account == () || account.email == "" {
             send_client_message(connection_id, "No email is on file for your account. Type 'cancel' to abort.\n> ");
@@ -342,6 +367,7 @@ fn handle_email_verify_input(args, connection_id) {
             send_client_message(connection_id, "Failed to send a new code. Contact an administrator.\n> ");
             return;
         }
+        record_email_send(connection_id);
         send_client_message(connection_id, "A new code has been sent. Check " + account.email + ".\n> ");
         return;
     }

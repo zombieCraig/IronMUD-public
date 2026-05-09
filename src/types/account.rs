@@ -123,6 +123,28 @@ pub struct AccountData {
     /// Unix seconds anchoring the rolling-hour window for the resend cap.
     #[serde(default)]
     pub email_verification_resend_window_started_at: i64,
+    /// Number of verification-code sends in the current rolling-day window.
+    #[serde(default)]
+    pub email_verification_resend_day_count: i32,
+    /// Unix seconds anchoring the rolling-day window for the resend cap.
+    #[serde(default)]
+    pub email_verification_resend_day_started_at: i64,
+    /// Unix seconds of the most recent password-reset send. Drives the
+    /// 1-per-minute throttle on `forgot <email>`.
+    #[serde(default)]
+    pub password_reset_last_sent_at: i64,
+    /// Unix seconds anchoring the rolling-hour window for the password-reset cap.
+    #[serde(default)]
+    pub password_reset_window_started_at: i64,
+    /// Number of password-reset sends in the current rolling-hour window.
+    #[serde(default)]
+    pub password_reset_count: i32,
+    /// Number of password-reset sends in the current rolling-day window.
+    #[serde(default)]
+    pub password_reset_day_count: i32,
+    /// Unix seconds anchoring the rolling-day window for the password-reset cap.
+    #[serde(default)]
+    pub password_reset_day_started_at: i64,
     /// Fast-check flag mirrored from `ban_record.is_some()`. Kept for legacy
     /// boolean bans saved before the metadata slice — those rows are honored
     /// without a structured record (login shows the generic suspended message).
@@ -190,6 +212,13 @@ impl AccountData {
             email_verification_last_sent_at: 0,
             email_verification_resend_count: 0,
             email_verification_resend_window_started_at: 0,
+            email_verification_resend_day_count: 0,
+            email_verification_resend_day_started_at: 0,
+            password_reset_last_sent_at: 0,
+            password_reset_window_started_at: 0,
+            password_reset_count: 0,
+            password_reset_day_count: 0,
+            password_reset_day_started_at: 0,
             is_banned: false,
             ban_record: None,
             last_login_ip: String::new(),

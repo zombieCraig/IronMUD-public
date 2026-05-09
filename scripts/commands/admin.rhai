@@ -111,6 +111,16 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "email-stats" {
+        handle_email_stats(connection_id);
+        return;
+    }
+
+    if subcommand == "email-audit" {
+        handle_email_audit(connection_id, args);
+        return;
+    }
+
     send_client_message(connection_id, "Unknown subcommand. Type 'admin help' for commands.");
 }
 
@@ -133,6 +143,8 @@ fn show_help(connection_id) {
     help += "  admin alts <account>              - Show accounts sharing IP / normalized email\n";
     help += "  admin preset <name>               - Switch world preset (fantasy/modern/...) and hot-reload definitions\n";
     help += "  admin reload                      - Reload class/race/spell/language definitions from disk\n";
+    help += "  admin email-stats                 - Show email send counters vs daily/monthly caps\n";
+    help += "  admin email-audit [N]             - Show last N email send attempts (default 20)\n";
     help += "  admin help                        - Show this help\n";
     send_client_message(connection_id, help);
 }
@@ -1440,4 +1452,45 @@ fn handle_reload_game_data(connection_id) {
     } else {
         send_client_message(connection_id, "Reload failed; check server logs.");
     }
+}
+
+fn handle_email_stats(connection_id) {
+    let stats = get_email_send_stats();
+    let day_count = stats.day_count;
+    let day_cap = stats.day_cap;
+    let month_count = stats.month_count;
+    let month_cap = stats.month_cap;
+
+    let day_pct = if day_cap > 0 { (day_count * 100) / day_cap } else { 0 };
+    let month_pct = if month_cap > 0 { (month_count * 100) / month_cap } else { 0 };
+
+    let out = "Email send budget:\n";
+    out += "  Today:      " + day_count + " / " + day_cap + " (" + day_pct + "%)\n";
+    out += "  This month: " + month_count + " / " + month_cap + " (" + month_pct + "%)\n";
+    out += "\nOverride caps via settings 'email_daily_cap' and 'email_monthly_cap'.";
+    send_client_message(connection_id, out);
+}
+
+fn handle_email_audit(connection_id, args) {
+    let parts = args.split(" ");
+    let limit = 20;
+    if parts.len() >= 2 && parts[1] != "" {
+        let n = try_parse_int(parts[1]);
+        if n != () && n > 0 {
+            limit = n;
+        }
+    }
+
+    let entries = list_email_audit_entries(limit);
+    if entries.len() == 0 {
+        send_client_message(connection_id, "No email audit entries recorded.");
+        return;
+    }
+
+    let out = "Recent email send attempts (newest first, " + entries.len() + " entries):\n";
+    for entry in entries {
+        let acct = if entry.account_name == "" { "-" } else { entry.account_name };
+        out += "  " + entry.timestamp + "  " + entry.kind + "  " + acct + "  " + entry.outcome + "\n";
+    }
+    send_client_message(connection_id, out);
 }

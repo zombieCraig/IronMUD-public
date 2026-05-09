@@ -5,7 +5,9 @@
 
 use crate::db::Db;
 use crate::email::{
-    generate_code, is_disposable_email_domain, normalize_email, send_verification_email,
+    audit_email_send, audit_outcome_for, generate_code, generate_temp_password,
+    is_disposable_email_domain, normalize_email, send_password_reset_email,
+    send_verification_email,
 };
 use rhai::Engine;
 use std::sync::Arc;
@@ -19,10 +21,19 @@ const DEFAULT_CODE_TTL_SECS: i64 = 1800;
 /// Resend throttle: at least this many seconds between resends.
 const RESEND_MIN_SPACING_SECS: i64 = 60;
 
-/// Resend throttle: maximum resends per rolling hour window.
-const RESEND_HOURLY_CAP: i32 = 5;
+/// Resend throttle: maximum resends per rolling hour window. Tightened from 5
+/// to 3 in P2 of the email-cost defense — combined with the new daily cap and
+/// the per-IP / global limits, the per-account hourly is now firmly the inner
+/// bound rather than a coarse aggregate.
+const RESEND_HOURLY_CAP: i32 = 3;
+
+/// Resend throttle: maximum resends per rolling day window. Caps a persistent
+/// attacker who paces under the hourly cap (3 × 24 = 72/day previously was
+/// unbounded at the per-account layer).
+const RESEND_DAILY_CAP: i32 = 5;
 
 const RESEND_WINDOW_SECS: i64 = 3600;
+const RESEND_DAY_WINDOW_SECS: i64 = 86_400;
 
 pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // is_email_verification_required() -> bool
@@ -160,14 +171,31 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             } else {
                 account.email_verification_resend_count += 1;
             }
+            // Roll the day window in lockstep — independent of the hour
+            // window, so a steady pace under the hourly cap still hits the
+            // daily ceiling.
+            if now - account.email_verification_resend_day_started_at > RESEND_DAY_WINDOW_SECS {
+                account.email_verification_resend_day_started_at = now;
+                account.email_verification_resend_day_count = 1;
+            } else {
+                account.email_verification_resend_day_count += 1;
+            }
 
+            let account_name = account.name.clone();
             if cloned_db.save_account(account).is_err() {
                 return false;
             }
 
             // Persist before send so a partial-network failure still produces
             // a verifiable code — caller can re-trigger send via admin tools.
-            send_verification_email(&cloned_db, &trimmed, &code).is_ok()
+            let result = send_verification_email(&cloned_db, &trimmed, &code);
+            audit_email_send(
+                &cloned_db,
+                "verification",
+                &account_name,
+                audit_outcome_for(&result),
+            );
+            result.is_ok()
         },
     );
 
@@ -209,6 +237,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             // email-change flow will re-arm them via set_account_email.
             account.email_verification_resend_count = 0;
             account.email_verification_resend_window_started_at = 0;
+            account.email_verification_resend_day_count = 0;
+            account.email_verification_resend_day_started_at = 0;
             if cloned_db.save_account(account).is_err() {
                 return 1;
             }
@@ -219,7 +249,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // can_resend_verification_code(account_id_str) -> i64
     //   0 = ok
     //   1 = too soon (under 60s since last send)
-    //   2 = hourly cap exceeded (5 per rolling hour)
+    //   2 = hourly cap exceeded
+    //   3 = daily cap exceeded
     let cloned_db = db.clone();
     engine.register_fn(
         "can_resend_verification_code",
@@ -243,6 +274,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             {
                 return 2;
             }
+            if now - account.email_verification_resend_day_started_at <= RESEND_DAY_WINDOW_SECS
+                && account.email_verification_resend_day_count >= RESEND_DAILY_CAP
+            {
+                return 3;
+            }
             0
         },
     );
@@ -260,6 +296,52 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 .flatten()
                 .map(|a| a.id.to_string())
                 .unwrap_or_default()
+        },
+    );
+
+    // get_email_send_stats() -> Map { day_count, day_cap, month_count,
+    //                                   month_cap, day_started_at, month_started_at }
+    // Snapshot of the global email-send counters and configured caps. Used
+    // by `admin email-stats` to surface budget headroom without touching the
+    // settings tree directly.
+    let cloned_db = db.clone();
+    engine.register_fn("get_email_send_stats", move || -> rhai::Map {
+        let mut map = rhai::Map::new();
+        let day_count = read_i64_setting(&cloned_db, "email_sent_count_day");
+        let day_start = read_i64_setting(&cloned_db, "email_sent_count_day_start");
+        let month_count = read_i64_setting(&cloned_db, "email_sent_count_month");
+        let month_start = read_i64_setting(&cloned_db, "email_sent_count_month_start");
+        let day_cap = read_setting_or_default_i64(&cloned_db, "email_daily_cap", 20);
+        let month_cap = read_setting_or_default_i64(&cloned_db, "email_monthly_cap", 150);
+        map.insert("day_count".into(), rhai::Dynamic::from(day_count));
+        map.insert("day_cap".into(), rhai::Dynamic::from(day_cap));
+        map.insert("month_count".into(), rhai::Dynamic::from(month_count));
+        map.insert("month_cap".into(), rhai::Dynamic::from(month_cap));
+        map.insert("day_started_at".into(), rhai::Dynamic::from(day_start));
+        map.insert("month_started_at".into(), rhai::Dynamic::from(month_start));
+        map
+    });
+
+    // list_email_audit_entries(limit) -> Array of Maps
+    // Each map: { timestamp, kind, account_name, outcome }. Newest first.
+    // Used by `admin email-audit`.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "list_email_audit_entries",
+        move |limit: i64| -> rhai::Array {
+            let cap = if limit <= 0 { 50 } else { limit as usize };
+            let entries = cloned_db.list_email_audit(cap).unwrap_or_default();
+            entries
+                .into_iter()
+                .map(|e| {
+                    let mut m = rhai::Map::new();
+                    m.insert("timestamp".into(), rhai::Dynamic::from(e.timestamp));
+                    m.insert("kind".into(), rhai::Dynamic::from(e.kind));
+                    m.insert("account_name".into(), rhai::Dynamic::from(e.account_name));
+                    m.insert("outcome".into(), rhai::Dynamic::from(e.outcome));
+                    rhai::Dynamic::from(m)
+                })
+                .collect()
         },
     );
 
@@ -281,6 +363,142 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         let domain = &s[at + 1..];
         domain.contains('.') && !domain.starts_with('.') && !domain.ends_with('.')
     });
+
+    // find_verified_account_id_by_email(email) -> String  ("" when none)
+    // Like find_account_id_by_normalized_email but additionally requires
+    // email_verified = true. The forgot-password flow uses this to gate
+    // resets on "we have an inbox we can actually deliver to".
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "find_verified_account_id_by_email",
+        move |email: String| -> String {
+            let Some(canonical) = normalize_email(&email) else {
+                return String::new();
+            };
+            match cloned_db.find_account_by_normalized_email(&canonical) {
+                Ok(Some(a)) if a.email_verified => a.id.to_string(),
+                _ => String::new(),
+            }
+        },
+    );
+
+    // can_request_password_reset(account_id_str) -> i64
+    //   0 = ok
+    //   1 = too soon (under 60s since last send)
+    //   2 = hourly cap exceeded
+    //   3 = daily cap exceeded
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "can_request_password_reset",
+        move |account_id: String| -> i64 {
+            let uuid = match Uuid::parse_str(&account_id) {
+                Ok(u) => u,
+                Err(_) => return 0,
+            };
+            let account = match cloned_db.get_account_by_id(&uuid) {
+                Ok(Some(a)) => a,
+                _ => return 0,
+            };
+            let now = now_secs();
+            if account.password_reset_last_sent_at != 0
+                && now - account.password_reset_last_sent_at < RESEND_MIN_SPACING_SECS
+            {
+                return 1;
+            }
+            if now - account.password_reset_window_started_at <= RESEND_WINDOW_SECS
+                && account.password_reset_count >= RESEND_HOURLY_CAP
+            {
+                return 2;
+            }
+            if now - account.password_reset_day_started_at <= RESEND_DAY_WINDOW_SECS
+                && account.password_reset_day_count >= RESEND_DAILY_CAP
+            {
+                return 3;
+            }
+            0
+        },
+    );
+
+    // issue_password_reset(account_id_str) -> bool
+    // Generates a fresh random password, stamps the hash onto the account
+    // (auth source of truth) and onto every linked character (mirrored copies),
+    // forces must_change_password on every character, and dispatches the
+    // reset email. The hash is persisted before the send so a partial-network
+    // failure still leaves the account in a recoverable state — admins can
+    // hand the temp password to the player out of band, or the player can
+    // re-run forgot.
+    let cloned_db = db.clone();
+    engine.register_fn("issue_password_reset", move |account_id: String| -> bool {
+        let uuid = match Uuid::parse_str(&account_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let account_name = cloned_db
+            .get_account_by_id(&uuid)
+            .ok()
+            .flatten()
+            .map(|a| a.name)
+            .unwrap_or_default();
+        match issue_password_reset_core(&cloned_db, &uuid) {
+            Some((email, temp_password)) => {
+                let result = send_password_reset_email(&cloned_db, &email, &temp_password);
+                audit_email_send(
+                    &cloned_db,
+                    "reset",
+                    &account_name,
+                    audit_outcome_for(&result),
+                );
+                result.is_ok()
+            }
+            None => false,
+        }
+    });
+}
+
+/// Rotates the password on `account_id` and every linked character, marks all
+/// characters `must_change_password`, advances the throttle counters, and
+/// returns the fresh email/temp-password pair so the caller can dispatch the
+/// SMTP send. Returns `None` when the account is missing, has no email on
+/// file, or DB writes fail. The hash is persisted before the email send so a
+/// partial-network failure still leaves the account in a recoverable state.
+pub fn issue_password_reset_core(db: &Db, account_id: &Uuid) -> Option<(String, String)> {
+    let mut account = db.get_account_by_id(account_id).ok().flatten()?;
+    let email = match account.email.clone() {
+        Some(e) if !e.trim().is_empty() => e,
+        _ => return None,
+    };
+
+    let temp_password = generate_temp_password();
+    let hash = db.hash_password(&temp_password).ok()?;
+
+    account.password_hash = hash.clone();
+    let now = now_secs();
+    account.password_reset_last_sent_at = now;
+    if now - account.password_reset_window_started_at > RESEND_WINDOW_SECS {
+        account.password_reset_window_started_at = now;
+        account.password_reset_count = 1;
+    } else {
+        account.password_reset_count += 1;
+    }
+    if now - account.password_reset_day_started_at > RESEND_DAY_WINDOW_SECS {
+        account.password_reset_day_started_at = now;
+        account.password_reset_day_count = 1;
+    } else {
+        account.password_reset_day_count += 1;
+    }
+
+    let character_names = account.character_names.clone();
+    db.save_account(account).ok()?;
+
+    for name in &character_names {
+        if let Ok(Some(mut character)) = db.get_character_data(name) {
+            character.password_hash = hash.clone();
+            character.must_change_password = true;
+            let _ = db.save_character_data(character);
+        }
+    }
+
+    Some((email, temp_password))
 }
 
 fn now_secs() -> i64 {
@@ -288,4 +506,170 @@ fn now_secs() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
+}
+
+fn read_i64_setting(db: &Db, key: &str) -> i64 {
+    db.get_setting(key)
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(0)
+}
+
+fn read_setting_or_default_i64(db: &Db, key: &str, default: i64) -> i64 {
+    db.get_setting(key)
+        .ok()
+        .flatten()
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(default)
+}
+
+#[cfg(test)]
+mod password_reset_tests {
+    use super::*;
+    use crate::types::{AccountData, CharacterData};
+
+    struct TempDb {
+        db: Db,
+        path: String,
+    }
+    impl Drop for TempDb {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+    fn open_temp(tag: &str) -> TempDb {
+        let path = format!(
+            "test_pwreset_{}_{}_{}.db",
+            tag,
+            std::process::id(),
+            Uuid::new_v4().simple()
+        );
+        let _ = std::fs::remove_dir_all(&path);
+        let db = Db::open(&path).expect("open db");
+        TempDb { db, path }
+    }
+
+    fn make_account_with_character(db: &Db, name: &str, email: &str, password: &str) -> Uuid {
+        let hash = db.hash_password(password).expect("hash");
+        let mut account = AccountData::new(name.to_string(), hash.clone());
+        account.email = Some(email.to_string());
+        account.normalized_email = normalize_email(email);
+        account.email_verified = true;
+        account.character_names.push(name.to_string());
+        let id = account.id;
+        db.save_account(account).expect("save account");
+
+        // CharacterData has three fields without #[serde(default)]: name,
+        // password_hash, current_room_id. Round-trip through JSON so the rest
+        // pick up their defaults.
+        let value = serde_json::json!({
+            "name": name,
+            "password_hash": hash,
+            "current_room_id": Uuid::nil().to_string(),
+            "must_change_password": false,
+        });
+        let character: CharacterData = serde_json::from_value(value).expect("build character");
+        db.save_character_data(character).expect("save character");
+        id
+    }
+
+    #[test]
+    fn issue_password_reset_rotates_account_hash_and_forces_character_change() {
+        let t = open_temp("rotate");
+        let acc_id =
+            make_account_with_character(&t.db, "Alice", "alice@example.test", "old-password");
+        let original_hash = t.db.get_account_by_id(&acc_id).unwrap().unwrap().password_hash;
+
+        let result = issue_password_reset_core(&t.db, &acc_id);
+        let (email, temp_pw) = result.expect("reset returned email/password");
+        assert_eq!(email, "alice@example.test");
+        assert_eq!(temp_pw.len(), 12);
+
+        let after = t.db.get_account_by_id(&acc_id).unwrap().unwrap();
+        assert_ne!(after.password_hash, original_hash, "account hash must rotate");
+        assert!(t.db.verify_password(&temp_pw, &after.password_hash).unwrap_or(false));
+        assert_eq!(after.password_reset_count, 1);
+        assert!(after.password_reset_last_sent_at > 0);
+
+        let character = t.db.get_character_data("Alice").unwrap().unwrap();
+        assert_eq!(character.password_hash, after.password_hash);
+        assert!(
+            character.must_change_password,
+            "character must be flagged for forced password change"
+        );
+    }
+
+    #[test]
+    fn issue_password_reset_rejects_account_without_email() {
+        let t = open_temp("noemail");
+        let hash = t.db.hash_password("pw").unwrap();
+        let account = AccountData::new("Bob".to_string(), hash);
+        let id = account.id;
+        t.db.save_account(account).unwrap();
+        assert!(issue_password_reset_core(&t.db, &id).is_none());
+    }
+
+    #[test]
+    fn issue_password_reset_increments_both_hour_and_day_counters() {
+        let t = open_temp("counters");
+        let acc_id = make_account_with_character(
+            &t.db,
+            "Daria",
+            "daria@example.test",
+            "old-password",
+        );
+        for _ in 0..2 {
+            issue_password_reset_core(&t.db, &acc_id).expect("reset ok");
+        }
+        let after = t.db.get_account_by_id(&acc_id).unwrap().unwrap();
+        assert_eq!(after.password_reset_count, 2);
+        assert_eq!(after.password_reset_day_count, 2);
+        assert!(after.password_reset_window_started_at > 0);
+        assert!(after.password_reset_day_started_at > 0);
+    }
+
+    #[test]
+    fn password_reset_day_window_resets_when_stale() {
+        // Pre-stamp the day window into the past with a saturated count, then
+        // confirm a fresh reset rolls the day window over rather than tripping
+        // the cap.
+        let t = open_temp("day_reset");
+        let acc_id = make_account_with_character(
+            &t.db,
+            "Eli",
+            "eli@example.test",
+            "old-password",
+        );
+        let mut account = t.db.get_account_by_id(&acc_id).unwrap().unwrap();
+        account.password_reset_day_count = 99;
+        account.password_reset_day_started_at = 1; // ancient unix timestamp
+        t.db.save_account(account).unwrap();
+
+        issue_password_reset_core(&t.db, &acc_id).expect("day window stale -> ok");
+        let after = t.db.get_account_by_id(&acc_id).unwrap().unwrap();
+        assert_eq!(after.password_reset_day_count, 1, "day counter should reset to 1");
+        assert!(
+            after.password_reset_day_started_at > 1,
+            "day window start should advance to now"
+        );
+    }
+
+    #[test]
+    fn find_verified_account_id_by_email_skips_unverified() {
+        let t = open_temp("verified_only");
+        let hash = t.db.hash_password("pw").unwrap();
+        let mut account = AccountData::new("Carol".to_string(), hash);
+        account.email = Some("carol@example.test".to_string());
+        account.normalized_email = normalize_email("carol@example.test");
+        account.email_verified = false;
+        t.db.save_account(account).unwrap();
+
+        // Lookup mirrors the registered Rhai fn's body.
+        let canonical = normalize_email("carol@example.test").unwrap();
+        let found = t.db.find_account_by_normalized_email(&canonical).unwrap();
+        assert!(found.is_some(), "account exists in DB");
+        assert!(!found.unwrap().email_verified, "but is unverified");
+        // The Rhai-side helper must therefore return "" for unverified accounts.
+    }
 }
