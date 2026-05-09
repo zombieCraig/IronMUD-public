@@ -7847,13 +7847,20 @@ fn test_login_auto_selects_when_one_character() {
 
 #[test]
 fn test_login_refuses_banned_account() {
-    // Source-level: the login.rhai auth path must check account.is_banned and
-    // refuse with a generic message before calling set_authenticated_account.
+    // Source-level: the login.rhai auth path must run the structured ban check
+    // and refuse the login before stamping auth or surfacing the roster. The
+    // ban-tooling slice replaced the bare `account.is_banned` boolean check
+    // with `check_account_ban` + `format_ban_message` so expiry and reason are
+    // honored uniformly.
     use std::fs;
     let src = fs::read_to_string("scripts/commands/login.rhai").expect("read login.rhai");
     assert!(
-        src.contains("account.is_banned"),
-        "login.rhai must check is_banned before stamping auth"
+        src.contains("check_account_ban"),
+        "login.rhai must call check_account_ban before stamping auth"
+    );
+    assert!(
+        src.contains("format_ban_message"),
+        "login.rhai must use format_ban_message for the ban refusal text"
     );
 }
 
@@ -8249,4 +8256,317 @@ fn test_generate_code_is_six_digit() {
             code
         );
     }
+}
+
+// ===========================================================================
+// Ban-tooling slice tests
+// ===========================================================================
+
+#[test]
+fn test_ban_record_round_trips() {
+    use ironmud::db::Db;
+    use ironmud::types::{AccountData, BanRecord};
+
+    let db_path = fresh_account_db_path("ban_record_roundtrip");
+    let _ = std::fs::remove_dir_all(&db_path);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+        let mut a = AccountData::new("BanRT".into(), "h".into());
+        a.is_banned = true;
+        a.ban_record = Some(BanRecord {
+            reason: "abuse".into(),
+            banned_by: "admin".into(),
+            banned_at: 1_700_000_000,
+            expires_at: Some(1_900_000_000),
+        });
+        db.save_account(a).unwrap();
+        let reloaded = db.get_account("banrt").unwrap().expect("account");
+        assert!(reloaded.is_banned);
+        let r = reloaded.ban_record.expect("record");
+        assert_eq!(r.reason, "abuse");
+        assert_eq!(r.banned_by, "admin");
+        assert_eq!(r.banned_at, 1_700_000_000);
+        assert_eq!(r.expires_at, Some(1_900_000_000));
+    }));
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_legacy_is_banned_without_record_deserializes() {
+    // Accounts saved before the metadata slice have only `is_banned: true` and
+    // no `ban_record`. They must still load and the boolean must still flip
+    // the login gate. Grandfather behavior is the whole point of #[serde(default)]
+    // on every new field.
+    use ironmud::types::AccountData;
+    let json = serde_json::json!({
+        "id": "00000000-0000-0000-0000-000000000001",
+        "name": "Legacy",
+        "password_hash": "h",
+        "character_names": ["Legacy"],
+        "is_banned": true
+    });
+    let a: AccountData = serde_json::from_value(json).expect("legacy account loads");
+    assert!(a.is_banned);
+    assert!(a.ban_record.is_none());
+    assert_eq!(a.last_login_ip, "");
+    assert_eq!(a.creation_ip, "");
+    assert!(a.normalized_email.is_none());
+}
+
+#[test]
+fn test_site_ban_round_trips_and_lazy_expires() {
+    use ironmud::db::Db;
+    use ironmud::types::SiteBanRecord;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let db_path = fresh_account_db_path("siteban_roundtrip");
+    let _ = std::fs::remove_dir_all(&db_path);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        // Permanent ban round-trips.
+        db.put_site_ban(&SiteBanRecord {
+            ip: "10.0.0.1".into(),
+            reason: "scrape".into(),
+            banned_by: "cli".into(),
+            banned_at: now,
+            expires_at: None,
+        })
+        .unwrap();
+        let r = db
+            .get_site_ban("10.0.0.1")
+            .unwrap()
+            .expect("permanent ban present");
+        assert_eq!(r.reason, "scrape");
+        assert!(r.expires_at.is_none());
+
+        // Already-expired ban gets lazily cleared on read.
+        db.put_site_ban(&SiteBanRecord {
+            ip: "10.0.0.2".into(),
+            reason: "old".into(),
+            banned_by: "cli".into(),
+            banned_at: now - 100,
+            expires_at: Some(now - 1),
+        })
+        .unwrap();
+        assert!(
+            db.get_site_ban("10.0.0.2").unwrap().is_none(),
+            "expired ban must lazy-clear on get_site_ban"
+        );
+
+        // list_site_bans reflects the cleanup.
+        let active = db.list_site_bans().unwrap();
+        assert_eq!(active.len(), 1, "only 10.0.0.1 should remain");
+        assert_eq!(active[0].ip, "10.0.0.1");
+
+        // remove_site_ban returns true on hit, false on miss.
+        assert!(db.remove_site_ban("10.0.0.1").unwrap());
+        assert!(!db.remove_site_ban("10.0.0.1").unwrap());
+    }));
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_record_account_ip_seen_and_lookup() {
+    use ironmud::db::Db;
+    use ironmud::types::AccountData;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let db_path = fresh_account_db_path("ip_history");
+    let _ = std::fs::remove_dir_all(&db_path);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+        let alpha = AccountData::new("Alpha".into(), "h".into());
+        let beta = AccountData::new("Beta".into(), "h".into());
+        let alpha_id = alpha.id;
+        let beta_id = beta.id;
+        db.save_account(alpha).unwrap();
+        db.save_account(beta).unwrap();
+
+        db.record_account_ip_seen(alpha_id, "192.168.1.42").unwrap();
+        db.record_account_ip_seen(beta_id, "192.168.1.42").unwrap();
+        db.record_account_ip_seen(beta_id, "10.0.0.1").unwrap();
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let since = now - 30 * 24 * 3600;
+
+        let mut shared = db.list_accounts_by_ip("192.168.1.42", since).unwrap();
+        shared.sort();
+        let mut expected = vec![alpha_id, beta_id];
+        expected.sort();
+        assert_eq!(shared, expected);
+
+        let single = db.list_accounts_by_ip("10.0.0.1", since).unwrap();
+        assert_eq!(single, vec![beta_id]);
+
+        let none = db.list_accounts_by_ip("10.0.0.99", since).unwrap();
+        assert!(none.is_empty());
+    }));
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_normalize_email_canonical_form() {
+    use ironmud::email::normalize_email;
+    assert_eq!(
+        normalize_email("Test.User+spam@Gmail.com").as_deref(),
+        Some("testuser@gmail.com")
+    );
+    assert_eq!(
+        normalize_email("foo.bar@googlemail.com").as_deref(),
+        Some("foobar@gmail.com")
+    );
+    assert_eq!(
+        normalize_email("test.user@mail.example").as_deref(),
+        Some("test.user@mail.example")
+    );
+    assert!(normalize_email("notanemail").is_none());
+    assert!(normalize_email("").is_none());
+}
+
+#[test]
+fn test_disposable_domain_blocklist_matches_known_provider() {
+    use ironmud::email::is_disposable_email_domain;
+    // The blocklist file is loaded relative to CWD = repo root for tests.
+    assert!(is_disposable_email_domain("foo@mailinator.com"));
+    assert!(is_disposable_email_domain("FOO@yopmail.com"));
+    assert!(!is_disposable_email_domain("foo@gmail.com"));
+    assert!(!is_disposable_email_domain("not-an-email"));
+}
+
+#[test]
+fn test_find_account_by_normalized_email() {
+    use ironmud::db::Db;
+    use ironmud::email::normalize_email;
+    use ironmud::types::AccountData;
+
+    let db_path = fresh_account_db_path("normalized_email");
+    let _ = std::fs::remove_dir_all(&db_path);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+        let mut a = AccountData::new("Alpha".into(), "h".into());
+        a.email = Some("Test.User+stuff@Gmail.com".into());
+        a.normalized_email = normalize_email("Test.User+stuff@Gmail.com");
+        db.save_account(a).unwrap();
+
+        // Different surface form, same normalized form → match.
+        let canonical = normalize_email("testuser@gmail.com").unwrap();
+        let hit = db
+            .find_account_by_normalized_email(&canonical)
+            .unwrap()
+            .expect("alpha found by normalized email");
+        assert_eq!(hit.name, "Alpha");
+
+        // Truly different normalized form → no match.
+        let other = normalize_email("someone-else@gmail.com").unwrap();
+        assert!(db.find_account_by_normalized_email(&other).unwrap().is_none());
+    }));
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_login_records_ip_after_auth() {
+    // Source-level: login.rhai stamps source IP on the account row + the
+    // ip_account_history reverse index after a successful auth, so admin alts
+    // can correlate. Ordering matters — IP recording must come after
+    // touch_account_login (which writes last_login_at).
+    use std::fs;
+    let src = fs::read_to_string("scripts/commands/login.rhai").expect("read login.rhai");
+    assert!(src.contains("get_connection_ip"), "must read connection IP");
+    assert!(src.contains("record_account_ip"), "must record IP after auth");
+    let touch = src.find("touch_account_login").expect("touch_account_login present");
+    let record = src.find("record_account_ip").expect("record_account_ip present");
+    assert!(record > touch, "record_account_ip must come after touch_account_login");
+}
+
+#[test]
+fn test_create_rejects_disposable_domain_when_verification_on() {
+    // Source-level: create.rhai must short-circuit on disposable-provider
+    // emails before sending a verification code, only when verification is
+    // required.
+    use std::fs;
+    let src = fs::read_to_string("scripts/commands/create.rhai").expect("read create.rhai");
+    assert!(src.contains("is_disposable_email"), "must call is_disposable_email");
+    let disp_idx = src.find("is_disposable_email").unwrap();
+    let send_idx = src.find("send_verification_code").unwrap();
+    assert!(
+        disp_idx < send_idx,
+        "is_disposable_email must be checked before send_verification_code"
+    );
+    // Normalized-email duplicate check too.
+    assert!(src.contains("find_account_id_by_normalized_email"));
+}
+
+#[test]
+fn test_admin_rhai_has_ban_handlers() {
+    use std::fs;
+    let src = fs::read_to_string("scripts/commands/admin.rhai").expect("read admin.rhai");
+    for needle in &[
+        "handle_ban",
+        "handle_unban",
+        "handle_siteban",
+        "handle_sitebans",
+        "handle_alts",
+        "ban_account",
+        "unban_account",
+        "add_site_ban",
+        "list_site_bans",
+        "find_alts_by_account",
+        "parse_duration_to_expires_at",
+    ] {
+        assert!(src.contains(needle), "admin.rhai missing: {}", needle);
+    }
+}
+
+#[test]
+fn test_accept_loop_calls_get_site_ban() {
+    // Source-level: src/lib.rs's TCP accept loop must consult the bans tree
+    // before spawning handle_connection. The siteban gate sits between the
+    // per-IP rate-limit acquire and the handle_connection spawn.
+    use std::fs;
+    let src = fs::read_to_string("src/lib.rs").expect("read lib.rs");
+    let acquire_idx = src.find("limiter.try_acquire(addr.ip())").expect("rate-limit gate");
+    let siteban_idx = src.find("get_site_ban").expect("siteban gate");
+    let spawn_idx = src
+        .find("tokio::spawn(async move {\n                    handle_connection")
+        .or_else(|| src.find("handle_connection(socket, addr"))
+        .expect("handle_connection spawn");
+    assert!(
+        siteban_idx > acquire_idx,
+        "site-ban gate must come after the rate-limit acquire"
+    );
+    assert!(
+        siteban_idx < spawn_idx,
+        "site-ban gate must come before the handle_connection spawn"
+    );
+}
+
+#[test]
+fn test_bans_rhai_module_is_registered() {
+    // Source-level: ensure script/mod.rs declares the `bans` submodule and
+    // calls `bans::register` so all the ban_*, *_site_ban, and alts fns are
+    // actually available from Rhai.
+    use std::fs;
+    let src = fs::read_to_string("src/script/mod.rs").expect("read script/mod.rs");
+    assert!(src.contains("pub mod bans;"));
+    assert!(src.contains("bans::register("));
 }

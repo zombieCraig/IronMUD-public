@@ -94,16 +94,27 @@ fn run_command(args, connection_id) {
     // Successful auth - clear any lockout data
     clear_lockout_data(name);
 
-    // Refuse banned accounts. Generic message — don't leak the ban state to
-    // an attacker who could map account-existence by message variance.
-    if account.is_banned {
-        send_client_message(connection_id, "This account is suspended. Contact an administrator.");
+    // Refuse banned accounts. The banned user already knows their account
+    // exists (they just typed its name + password), so showing reason +
+    // expiry is acceptable; we still keep the message shape generic for
+    // legacy boolean-only bans via format_ban_message.
+    let ban_status = check_account_ban(account.id);
+    if ban_status != () {
+        send_client_message(connection_id, format_ban_message(ban_status));
         return;
     }
 
     // Stamp authentication on the connection.
     set_authenticated_account(connection_id, account.id, account.name);
     touch_account_login(account.id);
+
+    // Record the source IP for evasion-detection (admin alts) and as
+    // last_login_ip on the account row. Skipped silently for synthetic /
+    // test connections that don't surface an IP.
+    let login_ip = get_connection_ip(connection_id);
+    if login_ip != "" {
+        record_account_ip(account.id, login_ip);
+    }
 
     // Email verification gate. When the server requires verification and this
     // account hasn't completed it (e.g. they disconnected mid-create, or an

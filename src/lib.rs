@@ -3332,6 +3332,12 @@ pub async fn run_server(state: SharedState, listener: TcpListener, shutdown_rx: 
         let world = state.lock().unwrap();
         world.ip_limiter.clone()
     };
+    // Clone the Db arc once for site-ban lookups in the accept loop. Keeping
+    // it outside the loop avoids relocking the World mutex on every accept.
+    let db_for_bans = {
+        let world = state.lock().unwrap();
+        world.db.clone()
+    };
     tokio::select! {
         _ = async {
             loop {
@@ -3346,6 +3352,25 @@ pub async fn run_server(state: SharedState, listener: TcpListener, shutdown_rx: 
                         .write_all(b"Too many connections from your address. Try again later.\r\n")
                         .await;
                     let _ = socket.shutdown().await;
+                    continue;
+                }
+
+                // Site-ban gate. Refused IPs see a generic refusal — we don't
+                // confirm "you are banned" so admins can quietly block scrapers
+                // without painting a target. Lazy expiry inside get_site_ban
+                // means a banned IP becomes unbanned automatically when the
+                // expires_at passes (next connect attempt succeeds).
+                if let Ok(Some(record)) = db_for_bans.get_site_ban(&addr.ip().to_string()) {
+                    info!(
+                        "Refusing connection from site-banned IP {} (reason: {})",
+                        addr.ip(),
+                        record.reason
+                    );
+                    let _ = socket
+                        .write_all(b"Connections from your address are not permitted on this server.\r\n")
+                        .await;
+                    let _ = socket.shutdown().await;
+                    limiter.release(addr.ip());
                     continue;
                 }
                 info!("New connection: {}", addr);

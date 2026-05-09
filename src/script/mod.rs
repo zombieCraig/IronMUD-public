@@ -10,6 +10,7 @@ pub mod macros;
 
 pub mod achievements;
 pub mod accounts;
+pub mod bans;
 pub mod email;
 mod ai;
 mod api_keys;
@@ -1852,4 +1853,5 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     quests::register(engine, db.clone(), connections.clone(), state.clone());
     accounts::register(engine, db.clone(), connections.clone());
     email::register(engine, db.clone());
+    bans::register(engine, db.clone(), connections.clone());
 }

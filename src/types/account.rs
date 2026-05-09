@@ -6,6 +6,25 @@ use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BanRecord {
+    pub reason: String,
+    pub banned_by: String,
+    pub banned_at: i64,
+    #[serde(default)]
+    pub expires_at: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SiteBanRecord {
+    pub ip: String,
+    pub reason: String,
+    pub banned_by: String,
+    pub banned_at: i64,
+    #[serde(default)]
+    pub expires_at: Option<i64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountData {
     pub id: Uuid,
@@ -47,11 +66,32 @@ pub struct AccountData {
     /// Unix seconds anchoring the rolling-hour window for the resend cap.
     #[serde(default)]
     pub email_verification_resend_window_started_at: i64,
-    /// Reserved for the future ban-tooling slice. The login flow does already
-    /// refuse banned accounts; what's missing is the admin UI and IP/email-graph
-    /// evasion detection.
+    /// Fast-check flag mirrored from `ban_record.is_some()`. Kept for legacy
+    /// boolean bans saved before the metadata slice — those rows are honored
+    /// without a structured record (login shows the generic suspended message).
     #[serde(default)]
     pub is_banned: bool,
+    /// Structured ban metadata: reason, banned_by, banned_at, optional expiry.
+    /// `None` for grandfathered legacy bans (only `is_banned` is true) and for
+    /// unbanned accounts. Set by the in-game `admin ban` command and the CLI
+    /// `ironmud-admin account ban` flow.
+    #[serde(default)]
+    pub ban_record: Option<BanRecord>,
+    /// Last IP this account logged in from, in canonical "a.b.c.d" form.
+    /// Stamped after a successful login. Empty for accounts that haven't logged
+    /// in since the ban-tooling slice landed.
+    #[serde(default)]
+    pub last_login_ip: String,
+    /// IP the account was created from, stamped during account creation.
+    /// Empty for accounts created before the ban-tooling slice.
+    #[serde(default)]
+    pub creation_ip: String,
+    /// Canonical form of `email` for evasion detection. For Gmail / Googlemail
+    /// addresses, dots and `+tags` are stripped from the local part; other
+    /// domains pass through with just trim + lowercase. None when `email` is
+    /// None. Backfilled once on `Db::open` for accounts that pre-date the slice.
+    #[serde(default)]
+    pub normalized_email: Option<String>,
     #[serde(default = "default_created_at")]
     pub created_at: i64,
     #[serde(default)]
@@ -84,6 +124,10 @@ impl AccountData {
             email_verification_resend_count: 0,
             email_verification_resend_window_started_at: 0,
             is_banned: false,
+            ban_record: None,
+            last_login_ip: String::new(),
+            creation_ip: String::new(),
+            normalized_email: None,
             created_at: default_created_at(),
             last_login_at: 0,
         }

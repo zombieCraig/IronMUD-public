@@ -177,10 +177,23 @@ fn run_unauthenticated_create(args, connection_id) {
             send_client_message(connection_id, "That email address doesn't look right. Use: create <account_name> <password> <email>");
             return;
         }
-        // One account per inbox when verification is required. Off when
-        // disabled — private servers don't care.
+        // Reject throwaway providers up front. The blocklist at
+        // scripts/data/email/disposable_domains.txt keeps the door open for
+        // real addresses while raising the cost of rebanning evaders.
+        if is_disposable_email(email) {
+            send_client_message(connection_id, "That email provider isn't accepted on this server. Please use a different address.");
+            return;
+        }
+        // One account per inbox when verification is required. Compare on
+        // both raw and Gmail-canonical forms so the dot/+tag tricks
+        // (foo.bar+spam@gmail.com == foobar@gmail.com) don't slip past.
         let owner_id = find_account_id_by_email(email);
         if owner_id != "" {
+            send_client_message(connection_id, "An account is already registered to that email.");
+            return;
+        }
+        let normalized_owner_id = find_account_id_by_normalized_email(email);
+        if normalized_owner_id != "" {
             send_client_message(connection_id, "An account is already registered to that email.");
             return;
         }
@@ -211,6 +224,14 @@ fn run_unauthenticated_create(args, connection_id) {
     if account_id == "" {
         send_client_message(connection_id, "Failed to create account. Contact an administrator.");
         return;
+    }
+
+    // Stamp creation_ip on the new account row so admin alts can correlate
+    // future registrations from the same source IP. Skipped silently for
+    // synthetic / test connections that don't surface an IP.
+    let creation_ip = get_connection_ip(connection_id);
+    if creation_ip != "" {
+        record_creation_ip(account_id, creation_ip);
     }
 
     // Create the first character bound to the account.

@@ -13,6 +13,30 @@ This guide covers server administration for IronMUD.
 
 Note: Admins cannot remove their own admin status in-game.
 
+### `admin` subcommands
+
+The `admin` command groups in-game moderation under a single dispatcher.
+Type `admin help` for the live list. Highlights:
+
+| Subcommand | Description |
+|------------|-------------|
+| `admin kick <player> [reason]` | Forcibly disconnect a player (no ban) |
+| `admin ban <account> [duration] [reason]` | Suspend an account. Duration: `perm` (default), `1d`, `7d`, `30d`, or `<n>{h\|d}`. Kicks any owned character that's online. |
+| `admin unban <account>` | Lift an account suspension |
+| `admin siteban <ip> [duration] [reason]` | Refuse connections from an IP (also kicks active sessions on that IP) |
+| `admin siteban remove <ip>` | Remove a specific site ban |
+| `admin sitebans` | List active site bans |
+| `admin alts <account>` | Show accounts sharing the subject's IP (last 30d) or normalized email — banned alts are flagged |
+| `admin summon <player>` | Teleport a player to your location |
+| `admin heal <player>` | Fully heal a player |
+| `admin broadcast <message>` | Server-wide announcement |
+| `admin shutdown <secs> [reason]` | Schedule shutdown with countdown |
+| `admin god` | Toggle invulnerability for the admin character |
+
+Bans are honored everywhere: account bans gate `login.rhai`, site bans gate
+the TCP accept loop. Both expire lazily — the next read after `expires_at`
+silently lifts the ban.
+
 ### Builder Mode Setting
 
 The `builder_mode` setting controls how the `setbuilder` command works:
@@ -66,12 +90,21 @@ operate on the account, not the character that happens to share its name.
 # List every account, character count, and ban state
 ironmud-admin account list
 
-# Show one account's details (id, email, verified state, owned characters)
+# Show one account's details (id, ban metadata, email + normalized email,
+# verified state, last_login_ip / creation_ip, owned characters)
 ironmud-admin account show <name>
 
-# Ban/unban an account (refuses login with a generic message)
-ironmud-admin account ban <name>
+# Ban an account. Optional reason and duration; default is permanent.
+# Duration accepts perm, 1d, 7d, 30d, or <n>{h|d}.
+ironmud-admin account ban <name> --reason "abuse" --duration 7d
+ironmud-admin account ban <name>                 # permanent, no reason
+
+# Lift a ban (clears both the boolean flag and the structured record)
 ironmud-admin account unban <name>
+
+# Surface possible alts for an account (last 30d shared IP, or matching
+# Gmail-canonical email). Banned alts are flagged.
+ironmud-admin account alts <name>
 
 # Cascade-delete an account and every character it owns (prompts for confirmation)
 ironmud-admin account delete <name>
@@ -83,8 +116,31 @@ ironmud-admin account set-email <name> <email>  # update email; clears verified 
 ironmud-admin account send-code <name>       # send a fresh code (bypasses rate limits)
 ```
 
-Bans are enforced at login: a banned account sees "This account is suspended."
-and is dropped without leaking whether the name exists.
+Bans are enforced at login. Banned users see the reason and the lift time
+(or "Permanent."). Legacy boolean-only bans saved before the metadata slice
+keep working — they show the generic "This account is suspended." line.
+
+### Site (IP-level) Bans
+
+Site bans refuse connections at the TCP accept layer, before login.rhai
+runs. Useful for blocking scrapers, abusive hosts, or evasion attempts that
+cycle account names from the same address.
+
+```bash
+# Add a site ban. Same duration grammar as account ban.
+ironmud-admin siteban add 203.0.113.42 --reason "scrape" --duration 7d
+
+# Remove a site ban (also fires lazily when expires_at passes)
+ironmud-admin siteban remove 203.0.113.42
+
+# List every active site ban (lazy-cleans expired rows on read)
+ironmud-admin siteban list
+```
+
+Banned IPs see a generic *"Connections from your address are not permitted on
+this server."* line — the server doesn't confirm the ban exists, so admins can
+quietly block hosts without painting a target. CIDR ranges are not yet
+supported (parking lot).
 
 ### World Management
 
@@ -178,6 +234,32 @@ Behavior when enabled:
 When a user is stuck (lost their email, mistyped it, etc.), use
 `ironmud-admin account set-email` and `account send-code`, or skip verification
 entirely with `ironmud-admin account verify`.
+
+#### Ban evasion detection
+
+Active when `email_verification_required = true`. Three layers, all
+conservative — no auto-rejection beyond throwaway providers.
+
+**Email normalization.** Before storage and uniqueness comparison, Gmail and
+Googlemail addresses are canonicalized: dots are stripped from the local
+part, `+suffix` tags are dropped, and `googlemail.com` rewrites to
+`gmail.com`. So `Test.User+spam@Gmail.com` and `testuser@gmail.com` are
+treated as the same inbox. Other domains pass through with just trim +
+lowercase — dots elsewhere are significant.
+
+**Disposable-domain blocklist.** Throwaway providers (mailinator,
+guerrillamail, yopmail, etc.) are refused at registration with a generic
+*"That email provider isn't accepted on this server."* The list lives at
+`scripts/data/email/disposable_domains.txt` — one domain per line, `#`
+comments allowed. Loaded once on first lookup; restart the server to pick
+up edits.
+
+**Cross-account correlation (admin-facing only).** `admin alts <account>`
+and `ironmud-admin account alts <name>` surface other accounts that share
+the subject's `last_login_ip`, `creation_ip` (last 30d), or normalized
+email. Banned alts are flagged with `[BANNED]`. This never auto-acts — it
+just gives the admin one place to check for evasion before deciding whether
+to ban.
 
 ### Database Path
 

@@ -67,6 +67,14 @@ pub struct Db {
     // Quest prototypes (key = vnum bytes, value = JSON QuestData). Per-player
     // progress lives on CharacterData; this tree only holds prototypes.
     quests: Arc<Tree>,
+    // Site (IP-level) bans. Key = canonical IP string ("a.b.c.d" or v6 form),
+    // value = JSON `SiteBanRecord`. Read pre-auth in the TCP accept loop.
+    bans: Arc<Tree>,
+    // Per-IP account history for evasion detection. Key =
+    // `<ip>\0<account_id>`, value = unix-secs `i64` of last seen. Range-scan
+    // by `<ip>\0` prefix to find accounts sharing an IP. GC'd lazily on read
+    // (drop entries older than 30 days).
+    ip_account_history: Arc<Tree>,
 }
 
 /// Statistics about the world database
@@ -114,6 +122,8 @@ impl Db {
         let dg_trigger_protos = db.open_tree("dg_trigger_protos")?;
         let achievements = db.open_tree("achievements")?;
         let quests = db.open_tree("quests")?;
+        let bans = db.open_tree("bans")?;
+        let ip_account_history = db.open_tree("ip_account_history")?;
         let me = Self {
             db: Arc::new(db),                 // Wrap in Arc
             characters: Arc::new(characters), // Wrap in Arc
@@ -142,10 +152,15 @@ impl Db {
             dg_trigger_protos: Arc::new(dg_trigger_protos),
             achievements: Arc::new(achievements),
             quests: Arc::new(quests),
+            bans: Arc::new(bans),
+            ip_account_history: Arc::new(ip_account_history),
         };
         // One-shot migration: synthesize a 1:1 Account for every pre-feature
         // character that doesn't already have one. Idempotent.
         me.run_account_migration_if_needed()?;
+        // One-shot backfill: compute `normalized_email` for accounts that
+        // have an `email` set but were saved before the ban-tooling slice.
+        me.run_normalized_email_backfill_if_needed()?;
         Ok(me)
     }
 
@@ -444,6 +459,207 @@ impl Db {
         Ok(None)
     }
 
+    /// Find an account by its **normalized** email (Gmail dot/+tag stripping
+    /// applied). The ban-tooling slice's evasion-detection layer compares on
+    /// this canonical form so `agent.craig+spam@gmail.com` and
+    /// `agentcraig@gmail.com` collide. Linear scan — same cost shape as
+    /// `find_account_by_email`.
+    pub fn find_account_by_normalized_email(
+        &self,
+        normalized: &str,
+    ) -> Result<Option<crate::types::AccountData>> {
+        let needle = normalized.trim().to_lowercase();
+        if needle.is_empty() {
+            return Ok(None);
+        }
+        for account in self.list_accounts()? {
+            if let Some(existing) = &account.normalized_email {
+                if existing == &needle {
+                    return Ok(Some(account));
+                }
+            }
+        }
+        Ok(None)
+    }
+
+    /// Insert / replace a site ban. Lazy-expiry: callers should treat the
+    /// row as authoritative until `expires_at` passes — `get_site_ban`
+    /// eagerly drops expired rows on read.
+    pub fn put_site_ban(&self, record: &crate::types::SiteBanRecord) -> Result<()> {
+        let key = record.ip.trim().to_lowercase();
+        let bytes = serde_json::to_vec(record)?;
+        self.bans.insert(key.as_bytes(), bytes)?;
+        Ok(())
+    }
+
+    /// Remove a site ban. Returns true if a row existed.
+    pub fn remove_site_ban(&self, ip: &str) -> Result<bool> {
+        let key = ip.trim().to_lowercase();
+        Ok(self.bans.remove(key.as_bytes())?.is_some())
+    }
+
+    /// Look up a site ban for an IP. Returns `None` for IPs that have never
+    /// been banned, or whose ban has expired (the row is eagerly removed in
+    /// the expired case so subsequent reads short-circuit cheaply).
+    pub fn get_site_ban(&self, ip: &str) -> Result<Option<crate::types::SiteBanRecord>> {
+        let key = ip.trim().to_lowercase();
+        let Some(ivec) = self.bans.get(key.as_bytes())? else {
+            return Ok(None);
+        };
+        let record: crate::types::SiteBanRecord = match serde_json::from_slice(&ivec) {
+            Ok(r) => r,
+            Err(_) => {
+                let _ = self.bans.remove(key.as_bytes());
+                return Ok(None);
+            }
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        if let Some(expires) = record.expires_at {
+            if now >= expires {
+                let _ = self.bans.remove(key.as_bytes());
+                return Ok(None);
+            }
+        }
+        Ok(Some(record))
+    }
+
+    /// Enumerate every active site ban. Lazy-cleans expired rows during the
+    /// scan so `admin sitebans` always shows fresh data without a separate
+    /// reaper task.
+    pub fn list_site_bans(&self) -> Result<Vec<crate::types::SiteBanRecord>> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let mut out = Vec::new();
+        let mut to_remove: Vec<Vec<u8>> = Vec::new();
+        for kv in self.bans.iter() {
+            let (k, v) = kv?;
+            match serde_json::from_slice::<crate::types::SiteBanRecord>(&v) {
+                Ok(r) => {
+                    if let Some(expires) = r.expires_at {
+                        if now >= expires {
+                            to_remove.push(k.to_vec());
+                            continue;
+                        }
+                    }
+                    out.push(r);
+                }
+                Err(_) => to_remove.push(k.to_vec()),
+            }
+        }
+        for k in to_remove {
+            let _ = self.bans.remove(&k);
+        }
+        Ok(out)
+    }
+
+    /// Stamp `<ip>\0<account_id>` → now() in the ip_account_history tree.
+    /// Idempotent: re-stamping just refreshes the timestamp.
+    pub fn record_account_ip_seen(&self, account_id: Uuid, ip: &str) -> Result<()> {
+        let ip = ip.trim().to_lowercase();
+        if ip.is_empty() {
+            return Ok(());
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let mut key = Vec::with_capacity(ip.len() + 1 + 16);
+        key.extend_from_slice(ip.as_bytes());
+        key.push(0);
+        key.extend_from_slice(account_id.as_bytes());
+        self.ip_account_history.insert(key, &now.to_be_bytes())?;
+        Ok(())
+    }
+
+    /// Return every account_id stamped against this IP whose `last_seen >=
+    /// since_secs`. Lazy-cleans entries older than 30 days during the scan.
+    pub fn list_accounts_by_ip(&self, ip: &str, since_secs: i64) -> Result<Vec<Uuid>> {
+        let ip = ip.trim().to_lowercase();
+        if ip.is_empty() {
+            return Ok(Vec::new());
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let stale_before = now - (30 * 24 * 3600);
+        let mut prefix = Vec::with_capacity(ip.len() + 1);
+        prefix.extend_from_slice(ip.as_bytes());
+        prefix.push(0);
+        let mut out = Vec::new();
+        let mut to_remove: Vec<Vec<u8>> = Vec::new();
+        for kv in self.ip_account_history.scan_prefix(&prefix) {
+            let (k, v) = kv?;
+            if v.len() != 8 {
+                to_remove.push(k.to_vec());
+                continue;
+            }
+            let mut ts_bytes = [0u8; 8];
+            ts_bytes.copy_from_slice(&v);
+            let ts = i64::from_be_bytes(ts_bytes);
+            if ts < stale_before {
+                to_remove.push(k.to_vec());
+                continue;
+            }
+            if ts < since_secs {
+                continue;
+            }
+            // key = <ip>\0<16 byte uuid>
+            if k.len() < prefix.len() + 16 {
+                to_remove.push(k.to_vec());
+                continue;
+            }
+            let id_bytes = &k[prefix.len()..prefix.len() + 16];
+            if let Ok(arr) = <[u8; 16]>::try_from(id_bytes) {
+                out.push(Uuid::from_bytes(arr));
+            }
+        }
+        for k in to_remove {
+            let _ = self.ip_account_history.remove(&k);
+        }
+        Ok(out)
+    }
+
+    /// One-shot backfill: compute and persist `normalized_email` for every
+    /// account that has `email = Some(_)` but `normalized_email = None`.
+    /// Gated on the `accounts_normalized_email_backfilled` settings flag.
+    fn run_normalized_email_backfill_if_needed(&self) -> Result<()> {
+        if self
+            .get_setting("accounts_normalized_email_backfilled")?
+            .map(|v| v == "true")
+            .unwrap_or(false)
+        {
+            return Ok(());
+        }
+        let mut backfilled = 0usize;
+        for mut account in self.list_accounts()? {
+            if account.normalized_email.is_some() {
+                continue;
+            }
+            let Some(raw) = account.email.clone() else {
+                continue;
+            };
+            let normalized = crate::email::normalize_email(&raw);
+            if normalized.is_some() {
+                account.normalized_email = normalized;
+                self.save_account(account)?;
+                backfilled += 1;
+            }
+        }
+        self.set_setting("accounts_normalized_email_backfilled", "true")?;
+        if backfilled > 0 {
+            tracing::info!(
+                "Account normalization backfill: stamped normalized_email on {backfilled} row(s)"
+            );
+        }
+        Ok(())
+    }
+
     /// Resolve which account owns this character name (linear scan; account
     /// counts are tiny compared to characters, so this is fine for now).
     pub fn find_account_for_character(
@@ -499,6 +715,10 @@ impl Db {
                 email_verification_resend_count: 0,
                 email_verification_resend_window_started_at: 0,
                 is_banned: false,
+                ban_record: None,
+                last_login_ip: String::new(),
+                creation_ip: String::new(),
+                normalized_email: None,
                 created_at: now,
                 last_login_at: 0,
             };

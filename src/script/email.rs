@@ -4,7 +4,9 @@
 // is a no-op or returns the "feature disabled" branch when it's false.
 
 use crate::db::Db;
-use crate::email::{generate_code, send_verification_email};
+use crate::email::{
+    generate_code, is_disposable_email_domain, normalize_email, send_verification_email,
+};
 use rhai::Engine;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -71,11 +73,43 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 _ => return false,
             };
             let trimmed = email.trim().to_string();
-            account.email = if trimmed.is_empty() { None } else { Some(trimmed) };
+            if trimmed.is_empty() {
+                account.email = None;
+                account.normalized_email = None;
+            } else {
+                account.normalized_email = normalize_email(&trimmed);
+                account.email = Some(trimmed);
+            }
             account.email_verified = false;
             account.email_verification_code = None;
             account.email_verification_code_expires_at = 0;
             cloned_db.save_account(account).is_ok()
+        },
+    );
+
+    // is_disposable_email(addr) -> bool
+    // True when the address's domain is on the disposable-provider blocklist
+    // at scripts/data/email/disposable_domains.txt.
+    engine.register_fn("is_disposable_email", |email: String| -> bool {
+        is_disposable_email_domain(&email)
+    });
+
+    // find_account_id_by_normalized_email(email) -> String  ("" when none)
+    // Compares on Gmail-canonical form so dot/+tag tricks don't fool the
+    // duplicate-email check.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "find_account_id_by_normalized_email",
+        move |email: String| -> String {
+            let Some(canonical) = normalize_email(&email) else {
+                return String::new();
+            };
+            cloned_db
+                .find_account_by_normalized_email(&canonical)
+                .ok()
+                .flatten()
+                .map(|a| a.id.to_string())
+                .unwrap_or_default()
         },
     );
 
@@ -102,6 +136,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             }
             // Stamp email if absent or stale; code+expiry+resend-window all
             // get a fresh write below.
+            account.normalized_email = normalize_email(&trimmed);
             account.email = Some(trimmed.clone());
 
             let code = generate_code();

@@ -62,6 +62,33 @@ enum Commands {
         #[command(subcommand)]
         action: AccountAction,
     },
+    /// Site (IP-level) ban management — refused at TCP accept
+    SiteBan {
+        #[command(subcommand)]
+        action: SiteBanAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum SiteBanAction {
+    /// Add a site ban for an IP
+    Add {
+        /// IPv4 or IPv6 address (exact match — no CIDR yet)
+        ip: String,
+        /// Reason recorded on the ban
+        #[arg(long)]
+        reason: Option<String>,
+        /// Duration: perm (default), 1d, 7d, 30d, or <n>{h|d}
+        #[arg(long)]
+        duration: Option<String>,
+    },
+    /// Remove a site ban
+    Remove {
+        /// IPv4 or IPv6 address
+        ip: String,
+    },
+    /// List active site bans (lazy-cleans expired rows)
+    List,
 }
 
 #[derive(Subcommand)]
@@ -77,9 +104,20 @@ enum AccountAction {
     Ban {
         /// Account name
         name: String,
+        /// Reason recorded on the ban (shown to the user at login)
+        #[arg(long)]
+        reason: Option<String>,
+        /// Duration: perm (default), 1d, 7d, 30d, or <n>{h|d}
+        #[arg(long)]
+        duration: Option<String>,
     },
     /// Lift an account suspension
     Unban {
+        /// Account name
+        name: String,
+    },
+    /// List accounts sharing the subject's IP (last 30d) or normalized email
+    Alts {
         /// Account name
         name: String,
     },
@@ -294,7 +332,99 @@ fn main() -> Result<()> {
         Commands::World { action } => handle_world_command(&db, action),
         Commands::Broadcast { .. } => unreachable!("handled above"),
         Commands::Account { action } => handle_account_command(&db, action),
+        Commands::SiteBan { action } => handle_site_ban_command(&db, action),
     }
+}
+
+/// Parse a duration token (e.g. "perm", "7d", "12h", "30") into an
+/// `Option<i64>` expires-at. `None` = permanent. Anchored on `now` so the
+/// caller doesn't have to compute the timestamp twice.
+fn parse_duration_to_expires_at(tok: &str, now: i64) -> Result<Option<i64>> {
+    let s = tok.trim().to_lowercase();
+    if s.is_empty() || s == "perm" || s == "permanent" {
+        return Ok(None);
+    }
+    let last_char = s.chars().last().context("empty duration token")?;
+    let (num_str, mult) = match last_char {
+        'h' => (&s[..s.len() - 1], 3600_i64),
+        'd' => (&s[..s.len() - 1], 86_400_i64),
+        _ => bail!("Bad duration '{}': use perm, 1d, 7d, 30d, or <n>{{h|d}}", tok),
+    };
+    let n: i64 = num_str
+        .parse()
+        .with_context(|| format!("Bad duration '{}': not a number before suffix", tok))?;
+    if n <= 0 {
+        bail!("Bad duration '{}': must be positive", tok);
+    }
+    Ok(Some(now + n * mult))
+}
+
+fn handle_site_ban_command(db: &Db, action: SiteBanAction) -> Result<()> {
+    match action {
+        SiteBanAction::Add {
+            ip,
+            reason,
+            duration,
+        } => {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let expires_at =
+                parse_duration_to_expires_at(duration.as_deref().unwrap_or(""), now)?;
+            let reason_text = reason
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("No reason given")
+                .to_string();
+            let normalized = ip.trim().to_lowercase();
+            if normalized.is_empty() {
+                bail!("IP cannot be empty");
+            }
+            let record = ironmud::types::SiteBanRecord {
+                ip: normalized.clone(),
+                reason: reason_text.clone(),
+                banned_by: "cli".to_string(),
+                banned_at: now,
+                expires_at,
+            };
+            db.put_site_ban(&record)?;
+            match expires_at {
+                Some(t) => println!(
+                    "Site ban added for {} until unix {}. Reason: {}",
+                    normalized, t, reason_text
+                ),
+                None => println!(
+                    "Site ban added for {} (permanent). Reason: {}",
+                    normalized, reason_text
+                ),
+            }
+        }
+        SiteBanAction::Remove { ip } => {
+            if db.remove_site_ban(&ip)? {
+                println!("Site ban on {} removed.", ip.trim());
+            } else {
+                println!("No site ban found for {}.", ip.trim());
+            }
+        }
+        SiteBanAction::List => {
+            let bans = db.list_site_bans()?;
+            if bans.is_empty() {
+                println!("No active site bans.");
+                return Ok(());
+            }
+            println!("{:<40} {:<12} {:<20} {}", "IP", "EXPIRES", "BY", "REASON");
+            for b in bans {
+                let exp = match b.expires_at {
+                    Some(t) => t.to_string(),
+                    None => "permanent".to_string(),
+                };
+                println!("{:<40} {:<12} {:<20} {}", b.ip, exp, b.banned_by, b.reason);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn resolve_socket_path(cli: &Cli) -> PathBuf {
@@ -812,7 +942,20 @@ fn handle_account_command(db: &Db, action: AccountAction) -> Result<()> {
             println!("Name:          {}", a.name);
             println!("ID:            {}", a.id);
             println!("Banned:        {}", a.is_banned);
+            if let Some(record) = &a.ban_record {
+                println!("  Reason:      {}", record.reason);
+                println!("  By:          {}", record.banned_by);
+                println!("  At:          {}", record.banned_at);
+                match record.expires_at {
+                    Some(t) => println!("  Expires at:  {} (unix)", t),
+                    None => println!("  Expires at:  permanent"),
+                }
+            }
             println!("Email:         {}", a.email.as_deref().unwrap_or("(none)"));
+            println!(
+                "Normalized:    {}",
+                a.normalized_email.as_deref().unwrap_or("(none)")
+            );
             println!("Email verified: {}", a.email_verified);
             if a.email_verification_code.is_some() {
                 println!(
@@ -820,6 +963,22 @@ fn handle_account_command(db: &Db, action: AccountAction) -> Result<()> {
                     a.email_verification_code_expires_at
                 );
             }
+            println!(
+                "Last login IP: {}",
+                if a.last_login_ip.is_empty() {
+                    "(none)"
+                } else {
+                    a.last_login_ip.as_str()
+                }
+            );
+            println!(
+                "Creation IP:   {}",
+                if a.creation_ip.is_empty() {
+                    "(none)"
+                } else {
+                    a.creation_ip.as_str()
+                }
+            );
             println!("Created at:    {}", a.created_at);
             println!("Last login at: {}", a.last_login_at);
             println!("Characters ({}):", a.character_names.len());
@@ -827,21 +986,99 @@ fn handle_account_command(db: &Db, action: AccountAction) -> Result<()> {
                 println!("  - {}", n);
             }
         }
-        AccountAction::Ban { name } => {
+        AccountAction::Ban {
+            name,
+            reason,
+            duration,
+        } => {
             let mut a = db
                 .get_account(&name)?
                 .context(format!("Account '{}' not found", name))?;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let expires_at =
+                parse_duration_to_expires_at(duration.as_deref().unwrap_or(""), now)?;
+            let reason_text = reason
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("No reason given")
+                .to_string();
             a.is_banned = true;
+            a.ban_record = Some(ironmud::types::BanRecord {
+                reason: reason_text.clone(),
+                banned_by: "cli".to_string(),
+                banned_at: now,
+                expires_at,
+            });
             db.save_account(a)?;
-            println!("Account '{}' suspended.", name);
+            match expires_at {
+                Some(t) => println!(
+                    "Account '{}' suspended until unix {}. Reason: {}",
+                    name, t, reason_text
+                ),
+                None => println!(
+                    "Account '{}' suspended permanently. Reason: {}",
+                    name, reason_text
+                ),
+            }
         }
         AccountAction::Unban { name } => {
             let mut a = db
                 .get_account(&name)?
                 .context(format!("Account '{}' not found", name))?;
             a.is_banned = false;
+            a.ban_record = None;
             db.save_account(a)?;
             println!("Account '{}' reinstated.", name);
+        }
+        AccountAction::Alts { name } => {
+            let subject = db
+                .get_account(&name)?
+                .context(format!("Account '{}' not found", name))?;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let since = now - 30 * 24 * 3600;
+            let mut hits: Vec<(String, bool, &'static str, String)> = Vec::new();
+            let mut seen: std::collections::HashSet<uuid::Uuid> =
+                std::collections::HashSet::new();
+            seen.insert(subject.id);
+            for ip in [&subject.creation_ip, &subject.last_login_ip] {
+                if ip.is_empty() {
+                    continue;
+                }
+                for other_id in db.list_accounts_by_ip(ip, since).unwrap_or_default() {
+                    if !seen.insert(other_id) {
+                        continue;
+                    }
+                    if let Ok(Some(other)) = db.get_account_by_id(&other_id) {
+                        hits.push((other.name, other.is_banned, "ip", ip.clone()));
+                    }
+                }
+            }
+            if let Some(canonical) = &subject.normalized_email {
+                for other in db.list_accounts().unwrap_or_default() {
+                    if !seen.insert(other.id) {
+                        continue;
+                    }
+                    if other.normalized_email.as_deref() == Some(canonical.as_str()) {
+                        hits.push((other.name, other.is_banned, "email", canonical.clone()));
+                    }
+                }
+            }
+            if hits.is_empty() {
+                println!("No alts found for '{}'.", subject.name);
+            } else {
+                println!("Possible alts for '{}':", subject.name);
+                for (other_name, banned, match_type, match_value) in hits {
+                    let flag = if banned { "[BANNED]" } else { "        " };
+                    println!("  {} {:<24} via {}={}", flag, other_name, match_type, match_value);
+                }
+            }
         }
         AccountAction::Delete { name } => {
             let a = db

@@ -10,8 +10,10 @@
 use crate::db::Db;
 use lettre::{Message, SmtpTransport, Transport};
 use lettre::transport::smtp::authentication::Credentials;
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
+use std::sync::OnceLock;
 
 #[derive(Debug)]
 pub enum EmailError {
@@ -132,4 +134,110 @@ pub fn generate_code() -> String {
     use rand::Rng;
     let n: u32 = rand::thread_rng().gen_range(0..1_000_000);
     format!("{:06}", n)
+}
+
+// ===========================================================================
+// Email normalization (Gmail-style canonical form)
+// ===========================================================================
+
+/// Providers that ignore dots and `+tag` suffixes in the local part. We only
+/// canonicalize for these — anywhere else, dots are significant and stripping
+/// them creates false positives. Conservative on purpose.
+const KNOWN_DOT_PLUS_PROVIDERS: &[&str] = &["gmail.com", "googlemail.com"];
+
+/// Canonicalize an email for evasion-detection comparisons. Returns `None`
+/// if the input doesn't contain `@`. For Gmail/Googlemail: strip dots and
+/// `+suffix`, rewrite `googlemail.com` to `gmail.com`. Other domains pass
+/// through with just trim + lowercase.
+pub fn normalize_email(raw: &str) -> Option<String> {
+    let trimmed = raw.trim().to_lowercase();
+    let (local, domain) = trimmed.split_once('@')?;
+    if KNOWN_DOT_PLUS_PROVIDERS.contains(&domain) {
+        let local_no_plus = local.split('+').next().unwrap_or("");
+        let local_no_dots: String = local_no_plus.chars().filter(|c| *c != '.').collect();
+        let canonical_domain = if domain == "googlemail.com" { "gmail.com" } else { domain };
+        if local_no_dots.is_empty() {
+            return None;
+        }
+        Some(format!("{}@{}", local_no_dots, canonical_domain))
+    } else {
+        if local.is_empty() || domain.is_empty() {
+            return None;
+        }
+        Some(trimmed)
+    }
+}
+
+// ===========================================================================
+// Disposable-domain blocklist
+// ===========================================================================
+
+const DISPOSABLE_DOMAINS_PATH: &str = "scripts/data/email/disposable_domains.txt";
+
+/// Cached lazy-loaded blocklist. ~3000 lines parsed once on first access; an
+/// admin who edits the file needs to restart (or we add a hot-reload later —
+/// not worth the complexity for a near-static list).
+static DISPOSABLE_DOMAINS: OnceLock<HashSet<String>> = OnceLock::new();
+
+fn load_disposable_domains() -> HashSet<String> {
+    let mut set = HashSet::new();
+    if let Ok(contents) = fs::read_to_string(DISPOSABLE_DOMAINS_PATH) {
+        for line in contents.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() || trimmed.starts_with('#') {
+                continue;
+            }
+            set.insert(trimmed.to_lowercase());
+        }
+    }
+    set
+}
+
+fn disposable_domains() -> &'static HashSet<String> {
+    DISPOSABLE_DOMAINS.get_or_init(load_disposable_domains)
+}
+
+/// True if the email's domain is on the disposable-provider blocklist.
+/// Returns false for malformed input — the SMTP send path is the real
+/// validator, this is just an early-reject.
+pub fn is_disposable_email_domain(email: &str) -> bool {
+    let trimmed = email.trim().to_lowercase();
+    let Some((_, domain)) = trimmed.split_once('@') else {
+        return false;
+    };
+    disposable_domains().contains(domain)
+}
+
+#[cfg(test)]
+mod normalization_tests {
+    use super::*;
+
+    #[test]
+    fn gmail_strips_dots_and_plus() {
+        assert_eq!(
+            normalize_email("Test.User+spam@Gmail.com").as_deref(),
+            Some("testuser@gmail.com")
+        );
+    }
+
+    #[test]
+    fn googlemail_rewrites_to_gmail() {
+        assert_eq!(
+            normalize_email("foo.bar@googlemail.com").as_deref(),
+            Some("foobar@gmail.com")
+        );
+    }
+
+    #[test]
+    fn non_gmail_passthrough() {
+        assert_eq!(
+            normalize_email("test.user@mail.example").as_deref(),
+            Some("test.user@mail.example")
+        );
+    }
+
+    #[test]
+    fn missing_at_returns_none() {
+        assert!(normalize_email("notanemail").is_none());
+    }
 }

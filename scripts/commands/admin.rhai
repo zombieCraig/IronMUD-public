@@ -76,6 +76,31 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "ban" {
+        handle_ban(connection_id, args, char);
+        return;
+    }
+
+    if subcommand == "unban" {
+        handle_unban(connection_id, args, char);
+        return;
+    }
+
+    if subcommand == "siteban" {
+        handle_siteban(connection_id, args, char);
+        return;
+    }
+
+    if subcommand == "sitebans" {
+        handle_sitebans(connection_id);
+        return;
+    }
+
+    if subcommand == "alts" {
+        handle_alts(connection_id, args);
+        return;
+    }
+
     send_client_message(connection_id, "Unknown subcommand. Type 'admin help' for commands.");
 }
 
@@ -91,6 +116,11 @@ fn show_help(connection_id) {
     help += "  admin god                         - Toggle god mode (invulnerability)\n";
     help += "  admin user ...                    - User management (type 'admin user' for help)\n";
     help += "  admin api-key ...                 - API key management (type 'admin api-key' for help)\n";
+    help += "  admin ban <account> [duration] [reason]   - Suspend an account (perm/1d/7d/30d/<n>{h|d})\n";
+    help += "  admin unban <account>             - Lift an account suspension\n";
+    help += "  admin siteban <ip> [duration] [reason]    - Refuse connections from an IP\n";
+    help += "  admin sitebans                    - List active site bans\n";
+    help += "  admin alts <account>              - Show accounts sharing IP / normalized email\n";
     help += "  admin help                        - Show this help\n";
     send_client_message(connection_id, help);
 }
@@ -1143,4 +1173,213 @@ fn pad_right(text, width) {
         s = s.sub_string(0, width);
     }
     return s;
+}
+
+// ===========================================================================
+// Ban / unban / siteban / alts (ban-tooling slice)
+// ===========================================================================
+
+// Parse a duration token into absolute unix-secs.
+//   "perm" or empty   → 0  (permanent — caller treats 0 as None expiry)
+//   "1d", "7d", "30d" → secs offset from now()
+//   "<n>h" / "<n>d"   → free-form hours / days
+// Returns -1 on parse failure so callers can show a usage message.
+fn parse_duration_to_expires_at(tok) {
+    let s = tok.to_lower();
+    if s == "" || s == "perm" || s == "permanent" {
+        return 0;
+    }
+    if s.len() < 2 {
+        return -1;
+    }
+    let suffix = s.sub_string(s.len() - 1, 1);
+    let num_str = s.sub_string(0, s.len() - 1);
+    let mult = if suffix == "h" {
+        3600
+    } else if suffix == "d" {
+        86400
+    } else {
+        return -1;
+    };
+    let n = parse_int(num_str);
+    if n == () || n <= 0 {
+        return -1;
+    }
+    return now_unix_secs() + (n * mult);
+}
+
+fn handle_ban(connection_id, args, admin_char) {
+    // Parse: "ban <account> [duration] [reason]"
+    let parts = args.split(" ");
+    if parts.len() < 2 || parts[1] == "" {
+        send_client_message(connection_id,
+            "Usage: admin ban <account> [duration] [reason]\n" +
+            "  Duration: perm (default), 1d, 7d, 30d, or <n>{h|d}");
+        return;
+    }
+    let target_name = parts[1];
+    let account = get_account_by_name(target_name);
+    if account == () {
+        send_client_message(connection_id, "No account named '" + target_name + "'.");
+        return;
+    }
+
+    // Optional duration token at parts[2]; if it doesn't parse as a duration,
+    // treat it as the first reason word and default to permanent.
+    let expires_at = 0;
+    let reason_start_idx = 2;
+    if parts.len() > 2 {
+        let parsed = parse_duration_to_expires_at(parts[2]);
+        if parsed >= 0 {
+            expires_at = parsed;
+            reason_start_idx = 3;
+        }
+    }
+
+    let reason = "";
+    if parts.len() > reason_start_idx {
+        let reason_parts = [];
+        for i in reason_start_idx..parts.len() {
+            reason_parts.push(parts[i]);
+        }
+        reason = reason_parts.join(" ");
+    }
+    if reason == "" {
+        reason = "No reason given";
+    }
+
+    if !ban_account(account.id, reason, admin_char.name, expires_at) {
+        send_client_message(connection_id, "Failed to ban account.");
+        return;
+    }
+
+    // Kick any character on this account that's currently online. We try
+    // every character_name on the roster — kick_player is a no-op when
+    // nobody by that name is connected.
+    let names = account.character_names;
+    for n in names {
+        kick_player(n, "Banned: " + reason, admin_char.name);
+    }
+
+    let when = if expires_at == 0 { "permanent" } else { "until " + format_unix_time(expires_at) };
+    send_client_message(connection_id,
+        "Banned account '" + account.name + "' (" + when + "). Reason: " + reason);
+}
+
+fn handle_unban(connection_id, args, admin_char) {
+    let parts = args.split(" ");
+    if parts.len() < 2 || parts[1] == "" {
+        send_client_message(connection_id, "Usage: admin unban <account>");
+        return;
+    }
+    let target_name = parts[1];
+    let account = get_account_by_name(target_name);
+    if account == () {
+        send_client_message(connection_id, "No account named '" + target_name + "'.");
+        return;
+    }
+    if !unban_account(account.id) {
+        send_client_message(connection_id, "Failed to unban account.");
+        return;
+    }
+    send_client_message(connection_id, "Account '" + account.name + "' is no longer suspended.");
+}
+
+fn handle_siteban(connection_id, args, admin_char) {
+    let parts = args.split(" ");
+    if parts.len() < 2 || parts[1] == "" {
+        send_client_message(connection_id,
+            "Usage: admin siteban <ip|remove <ip>> [duration] [reason]");
+        return;
+    }
+    if parts[1].to_lower() == "remove" {
+        if parts.len() < 3 || parts[2] == "" {
+            send_client_message(connection_id, "Usage: admin siteban remove <ip>");
+            return;
+        }
+        if remove_site_ban(parts[2]) {
+            send_client_message(connection_id, "Site ban on " + parts[2] + " removed.");
+        } else {
+            send_client_message(connection_id, "No site ban found for " + parts[2] + ".");
+        }
+        return;
+    }
+    let ip = parts[1];
+
+    let expires_at = 0;
+    let reason_start_idx = 2;
+    if parts.len() > 2 {
+        let parsed = parse_duration_to_expires_at(parts[2]);
+        if parsed >= 0 {
+            expires_at = parsed;
+            reason_start_idx = 3;
+        }
+    }
+    let reason = "";
+    if parts.len() > reason_start_idx {
+        let reason_parts = [];
+        for i in reason_start_idx..parts.len() {
+            reason_parts.push(parts[i]);
+        }
+        reason = reason_parts.join(" ");
+    }
+    if reason == "" {
+        reason = "No reason given";
+    }
+
+    if !add_site_ban(ip, reason, admin_char.name, expires_at) {
+        send_client_message(connection_id, "Failed to add site ban (bad IP?).");
+        return;
+    }
+    let kicked = siteban_kick_active(ip, reason, admin_char.name);
+    let when = if expires_at == 0 { "permanent" } else { "until " + format_unix_time(expires_at) };
+    let msg = "Site ban added for " + ip + " (" + when + "). Reason: " + reason + ".";
+    if kicked > 0 {
+        msg += " Kicked " + kicked + " active session(s) from that IP.";
+    }
+    send_client_message(connection_id, msg);
+}
+
+fn handle_sitebans(connection_id) {
+    let bans = list_site_bans();
+    if bans.len() == 0 {
+        send_client_message(connection_id, "No active site bans.");
+        return;
+    }
+    let out = "Active site bans (" + bans.len() + "):\n";
+    for b in bans {
+        let exp = if b.expires_at == () {
+            "permanent"
+        } else {
+            "until " + format_unix_time(b.expires_at)
+        };
+        out += "  " + b.ip + "  [" + exp + "]  by " + b.banned_by + ": " + b.reason + "\n";
+    }
+    send_client_message(connection_id, out);
+}
+
+fn handle_alts(connection_id, args) {
+    let parts = args.split(" ");
+    if parts.len() < 2 || parts[1] == "" {
+        send_client_message(connection_id, "Usage: admin alts <account>");
+        return;
+    }
+    let target_name = parts[1];
+    let account = get_account_by_name(target_name);
+    if account == () {
+        send_client_message(connection_id, "No account named '" + target_name + "'.");
+        return;
+    }
+    let alts = find_alts_by_account(account.id);
+    if alts.len() == 0 {
+        send_client_message(connection_id,
+            "No alts found for '" + account.name + "' (no shared IP / email).");
+        return;
+    }
+    let out = "Possible alts for '" + account.name + "':\n";
+    for a in alts {
+        let flag = if a.banned { "[BANNED] " } else { "         " };
+        out += "  " + flag + a.name + "  via " + a.match_type + "=" + a.match_value + "\n";
+    }
+    send_client_message(connection_id, out);
 }
