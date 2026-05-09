@@ -1,0 +1,13 @@
+{
+  "types": {
+    "WEAPON": "weapon",
+    "ARMOR": "armor",
+    "POTION": "potion",
+    "CONTAINER": "container",
+    "KEY": "key",
+    "FOOD": "food",
+    "SCROLL": "misc",
+    "WAND": "wand",
+    "STAFF": "staff"
+  }
+}

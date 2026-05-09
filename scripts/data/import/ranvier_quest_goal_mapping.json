@@ -1,0 +1,12 @@
+{
+  "goals": {
+    "KillGoal": "kill_mob",
+    "FetchGoal": "bring_item",
+    "EquipGoal": "warn",
+    "BountyGoal": "warn"
+  },
+  "rewards": {
+    "CurrencyReward": "gold",
+    "ExperienceReward": "skill_xp"
+  }
+}

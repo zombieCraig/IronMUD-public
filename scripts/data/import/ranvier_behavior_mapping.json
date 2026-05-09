@@ -1,0 +1,19 @@
+{
+  "behaviors": {
+    "combat": { "kind": "no_op" },
+    "ranvier-aggro": { "kind": "set_mob_flag", "flag": "aggressive" },
+    "ranvier-wander": {
+      "kind": "info",
+      "message": "wander interval/restrictTo not preserved; IronMUD wander is area-scoped"
+    },
+    "lootable": {
+      "kind": "info",
+      "message": "lootable currencies/pools handled inline; behavior entry itself is informational"
+    },
+    "decay": {
+      "kind": "warn",
+      "message": "item decay timer not modeled in IronMUD"
+    },
+    "progressive-respawn": { "kind": "no_op" }
+  }
+}

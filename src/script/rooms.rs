@@ -44,6 +44,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             living_capacity: 0,
             residents: Vec::new(),
             dg_vars: std::collections::HashMap::new(),
+            coordinates: None,
         };
         if let Err(e) = cloned_db.save_room_data(room.clone()) {
             tracing::error!("Failed to save new room: {}", e);

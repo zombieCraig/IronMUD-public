@@ -21,7 +21,8 @@ use clap::{Parser, Subcommand};
 
 use ironmud::db::Db;
 use ironmud::import::{
-    MappingOptions, MudEngine, Severity, engines::circle::CircleEngine, engines::tba::TbaEngine, mapping, writer,
+    MappingOptions, MudEngine, Severity, engines::circle::CircleEngine, engines::ranvier, engines::tba::TbaEngine,
+    mapping, writer,
 };
 
 #[derive(Parser)]
@@ -57,6 +58,39 @@ enum Engine {
         /// Override the default mapping JSON. See docs/import-guide.md.
         #[arg(long)]
         mapping: Option<PathBuf>,
+
+        /// Also write a JSON report of warnings + summary to this path.
+        #[arg(long)]
+        report: Option<PathBuf>,
+    },
+    /// Import a Ranvier (Node.js MUD) bundle. Walks
+    /// `<bundle>/areas/<area>/{manifest,rooms,npcs,items,quests,loot-pools}.yml`.
+    /// JS scripts under `<area>/scripts/` are skipped with warnings.
+    Ranvier {
+        /// Path to a Ranvier bundle directory (the one containing `areas/`),
+        /// or directly to its `areas/` subdirectory.
+        #[arg(short, long)]
+        source: PathBuf,
+
+        /// Commit changes to the DB. Without this flag the importer runs as
+        /// a dry-run and never writes.
+        #[arg(long)]
+        apply: bool,
+
+        /// Override the bundle name used for the vnum-map sidecar
+        /// (`imports/<bundle-name>.vnum-map.json`). Defaults to the source
+        /// directory's basename.
+        #[arg(long)]
+        bundle_name: Option<String>,
+
+        /// Base vnum for the first area's window. Each area gets a
+        /// 1000-vnum window starting here.
+        #[arg(long, default_value_t = 60000)]
+        vnum_base: i32,
+
+        /// Base vnum for synthesized quests in this bundle.
+        #[arg(long, default_value_t = 9000)]
+        quest_vnum_base: i32,
 
         /// Also write a JSON report of warnings + summary to this path.
         #[arg(long)]
@@ -117,6 +151,126 @@ fn run(cli: Cli) -> Result<ExitCode> {
             mapping: mapping_path,
             report,
         } => run_engine(&TbaEngine, &cli.database, source, apply, zone, mapping_path, report),
+        Engine::Ranvier {
+            source,
+            apply,
+            bundle_name,
+            vnum_base,
+            quest_vnum_base,
+            report,
+        } => run_ranvier(
+            &cli.database,
+            source,
+            apply,
+            bundle_name,
+            vnum_base,
+            quest_vnum_base,
+            report,
+        ),
+    }
+}
+
+fn run_ranvier(
+    database: &str,
+    source: PathBuf,
+    apply: bool,
+    bundle_name: Option<String>,
+    vnum_base: i32,
+    quest_vnum_base: i32,
+    report_path: Option<PathBuf>,
+) -> Result<ExitCode> {
+    let bundle_name = bundle_name.unwrap_or_else(|| {
+        source
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("ranvier-bundle")
+            .to_string()
+    });
+    println!(
+        "ironmud-import: engine=ranvier source={} bundle={} mode={}",
+        source.display(),
+        bundle_name,
+        if apply { "apply" } else { "dry-run" }
+    );
+
+    let db = open_db(database)?;
+    let existing_area_prefixes: Vec<String> = db
+        .list_all_areas()?
+        .into_iter()
+        .map(|a| a.prefix.to_lowercase())
+        .collect();
+    let existing_room_vnums: Vec<String> = db.list_all_rooms()?.into_iter().filter_map(|r| r.vnum).collect();
+    let existing_mobile_vnums: Vec<String> = db
+        .list_all_mobiles()?
+        .into_iter()
+        .filter(|m| m.is_prototype)
+        .map(|m| m.vnum.to_lowercase())
+        .filter(|v| !v.is_empty())
+        .collect();
+    let existing_item_vnums: Vec<String> = db
+        .list_all_items()?
+        .into_iter()
+        .filter(|i| i.is_prototype)
+        .filter_map(|i| i.vnum.map(|v| v.to_lowercase()))
+        .filter(|v| !v.is_empty())
+        .collect();
+
+    let import = ranvier::import_bundle(
+        &source,
+        &bundle_name,
+        vnum_base,
+        quest_vnum_base,
+        &existing_room_vnums,
+        &existing_mobile_vnums,
+        &existing_item_vnums,
+        &existing_area_prefixes,
+    )?;
+    let ranvier::RanvierImport {
+        plan,
+        warnings,
+        post_patches,
+    } = import;
+
+    let blocking = warnings.iter().filter(|w| w.severity == Severity::Block).count();
+
+    if !apply {
+        let summary = writer::print_dry_run(&plan, &warnings);
+        if let Some(p) = report_path {
+            writer::write_report_file(&p, &plan, &warnings, &summary)?;
+            println!("report: {}", p.display());
+        }
+        if blocking > 0 {
+            return Ok(ExitCode::from(2));
+        }
+        return Ok(ExitCode::from(0));
+    }
+
+    if blocking > 0 {
+        eprintln!("refusing to --apply: {blocking} blocking warning(s) — re-run without --apply to review.");
+        writer::print_warnings(&warnings);
+        return Ok(ExitCode::from(2));
+    }
+    match writer::apply(&db, &plan, &warnings) {
+        Ok(summary) => {
+            ranvier::post::apply_post_patches(&db, &post_patches)?;
+            writer::print_warnings(&warnings);
+            if !post_patches.room_coordinates.is_empty() || !post_patches.replace_on_respawn.is_empty() {
+                println!(
+                    "  ranvier post-pass: {} coordinate stamps, {} replace_on_respawn flags",
+                    post_patches.room_coordinates.len(),
+                    post_patches.replace_on_respawn.len()
+                );
+            }
+            if let Some(p) = report_path {
+                writer::write_report_file(&p, &plan, &warnings, &summary)?;
+                println!("report: {}", p.display());
+            }
+            Ok(ExitCode::from(0))
+        }
+        Err(e) => {
+            eprintln!("apply failed: {e:#}");
+            Ok(ExitCode::from(3))
+        }
     }
 }
 

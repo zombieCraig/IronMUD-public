@@ -111,6 +111,23 @@ fn process_spawn_points(db: &db::Db, connections: &SharedConnections) -> Result<
             None => continue,
         };
 
+        // Ranvier `replaceOnRespawn` semantic: when set, force-delete every
+        // tracked alive instance so the spawn path below re-creates them
+        // fresh (refreshed inventory/equipment/container contents).
+        if sp.replace_on_respawn && !sp.spawned_entities.is_empty() {
+            for entity_id in std::mem::take(&mut sp.spawned_entities) {
+                match sp.entity_type {
+                    SpawnEntityType::Mobile => {
+                        let _ = db.delete_mobile(&entity_id);
+                    }
+                    SpawnEntityType::Item => {
+                        let _ = db.delete_item(&entity_id);
+                    }
+                }
+            }
+            db.save_spawn_point(sp.clone())?;
+        }
+
         // Check current count - only spawn new entity if below max
         let current_count = sp.spawned_entities.len() as i32;
 

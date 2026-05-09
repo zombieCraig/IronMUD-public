@@ -1544,6 +1544,7 @@ mod pair_housing_tests {
             living_capacity: capacity,
             residents: Vec::new(),
             dg_vars: std::collections::HashMap::new(),
+            coordinates: None,
         };
         db.save_room_data(room.clone()).expect("save room");
         db.set_room_vnum(&room.id, vnum).expect("vnum index");

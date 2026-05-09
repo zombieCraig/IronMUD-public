@@ -625,6 +625,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         living_capacity: 0,
         residents: Vec::new(),
         dg_vars: std::collections::HashMap::new(),
+        coordinates: None,
     });
 
     // Register get_available_exits helper

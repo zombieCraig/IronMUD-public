@@ -1607,6 +1607,7 @@ mod migration_tests {
             living_capacity: capacity,
             residents: Vec::new(),
             dg_vars: std::collections::HashMap::new(),
+            coordinates: None,
         }
     }
 
@@ -4643,6 +4644,7 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
             living_capacity: 0,
             residents: Vec::new(),
             dg_vars: std::collections::HashMap::new(),
+            coordinates: None,
         };
         let room_id = room.id;
         db.save_room_data(room).expect("save room");
@@ -5024,6 +5026,7 @@ fn test_spawn_point_bury_on_spawn_field_persists() {
             spawned_entities: Vec::new(),
             dependencies: Vec::new(),
             bury_on_spawn: true,
+            replace_on_respawn: false,
         };
         let sp_id = sp.id;
         db.save_spawn_point(sp).expect("save spawn point");
@@ -5045,6 +5048,7 @@ fn test_spawn_point_bury_on_spawn_field_persists() {
             spawned_entities: Vec::new(),
             dependencies: Vec::new(),
             bury_on_spawn: false,
+            replace_on_respawn: false,
         };
         let sp_no_id = sp_no_bury.id;
         db.save_spawn_point(sp_no_bury).expect("save");
@@ -5245,6 +5249,7 @@ fn test_spawn_dependencies_apply_inventory_equip_container() {
                 },
             ],
             bury_on_spawn: false,
+            replace_on_respawn: false,
         };
 
         // Container spawn point with Container dep.
@@ -5266,6 +5271,7 @@ fn test_spawn_dependencies_apply_inventory_equip_container() {
                 chance: 100,
             }],
             bury_on_spawn: false,
+            replace_on_respawn: false,
         };
 
         // Spawn the mob and apply its deps.
@@ -5348,6 +5354,7 @@ fn test_spawn_dependencies_skip_equip_when_wear_locations_mismatch() {
                 chance: 100,
             }],
             bury_on_spawn: false,
+            replace_on_respawn: false,
         };
 
         let mob = db.spawn_mobile_from_prototype("test:sentry").expect("spawn mob").expect("mob present");
@@ -5477,6 +5484,7 @@ fn stay_zone_test_room(area_id: Option<uuid::Uuid>) -> ironmud::types::RoomData 
         living_capacity: 0,
         residents: Vec::new(),
         dg_vars: std::collections::HashMap::new(),
+        coordinates: None,
     }
 }
 

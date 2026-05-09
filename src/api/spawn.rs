@@ -243,6 +243,7 @@ async fn create_spawn_point(
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
         bury_on_spawn: req.bury_on_spawn,
+        replace_on_respawn: false,
     };
 
     state

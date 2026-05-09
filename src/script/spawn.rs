@@ -80,6 +80,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         spawned_entities: Vec::new(),
                         dependencies: Vec::new(),
                         bury_on_spawn: false,
+                        replace_on_respawn: false,
                     };
                     if cloned_db.save_spawn_point(sp.clone()).is_ok() {
                         rhai::Dynamic::from(sp)

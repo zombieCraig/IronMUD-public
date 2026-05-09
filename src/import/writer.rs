@@ -253,6 +253,7 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
             living_capacity: 0,
             residents: Vec::new(),
             dg_vars: std::collections::HashMap::new(),
+            coordinates: None,
         };
         db.save_room_data(room)
             .with_context(|| format!("saving room {}", r.vnum))?;
@@ -405,6 +406,7 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
             spawned_entities: Vec::new(),
             dependencies,
             bury_on_spawn: false,
+            replace_on_respawn: false,
         };
         let dep_count = data.dependencies.len();
         db.save_spawn_point(data)

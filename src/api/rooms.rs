@@ -511,6 +511,7 @@ async fn create_room(
         living_capacity: 0,
         residents: Vec::new(),
         dg_vars: std::collections::HashMap::new(),
+        coordinates: None,
     };
 
     if room.flags.liveable && room.living_capacity <= 0 {

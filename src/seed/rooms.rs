@@ -40,6 +40,7 @@ fn room(id: Uuid, area_id: Uuid, vnum: &str, title: &str, description: &str) -> 
         living_capacity: 0,
         residents: Vec::new(),
         dg_vars: std::collections::HashMap::new(),
+        coordinates: None,
     }
 }
 
@@ -136,6 +137,7 @@ fn seed_oakvale(db: &Db) -> Result<usize> {
         living_capacity: 0,
         residents: Vec::new(),
         dg_vars: std::collections::HashMap::new(),
+        coordinates: None,
     };
 
     // --- Tavern ---

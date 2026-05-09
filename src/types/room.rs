@@ -73,6 +73,11 @@ pub struct RoomData {
     /// DG Scripts persistent vars (see MobileData.dg_vars).
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub dg_vars: HashMap<String, String>,
+    /// Optional grid coordinates `(x, y, z)`. Filled by importers (Ranvier
+    /// `coordinates: [x, y, z]`); future ASCII-map / spatial features can
+    /// build on it.
+    #[serde(default)]
+    pub coordinates: Option<(i32, i32, i32)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

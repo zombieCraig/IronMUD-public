@@ -63,6 +63,12 @@ pub struct SpawnPointData {
     /// When true (and entity_type is Item), spawned items have flags.buried set.
     #[serde(default)]
     pub bury_on_spawn: bool,
+    /// When true, the respawn tick force-despawns existing tracked instances
+    /// at each respawn cycle so the next spawn applies fresh dependencies.
+    /// Mirrors Ranvier's `replaceOnRespawn` semantic — useful for chests
+    /// whose contents should be fully refreshed rather than topped up.
+    #[serde(default)]
+    pub replace_on_respawn: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

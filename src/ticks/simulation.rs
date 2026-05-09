@@ -1797,6 +1797,7 @@ mod tests {
             living_capacity: 0,
             residents: Vec::new(),
             dg_vars: std::collections::HashMap::new(),
+            coordinates: None,
         };
         db.save_room_data(r.clone()).expect("save room");
         db.set_room_vnum(&r.id, vnum).expect("vnum");
