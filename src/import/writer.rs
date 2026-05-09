@@ -254,6 +254,7 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
             residents: Vec::new(),
             dg_vars: std::collections::HashMap::new(),
             coordinates: None,
+            contextual_commands: Vec::new(),
         };
         db.save_room_data(room)
             .with_context(|| format!("saving room {}", r.vnum))?;

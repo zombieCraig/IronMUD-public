@@ -1332,7 +1332,7 @@ pub async fn handle_connection(
                         .unwrap_or((false, false))
                 };
 
-                let available_commands: Vec<String> = world
+                let mut available_commands: Vec<String> = world
                     .command_metadata
                     .iter()
                     .filter(|(_, meta)| match meta.access.as_str() {
@@ -1344,6 +1344,28 @@ pub async fn handle_connection(
                     })
                     .map(|(name, _)| name.clone())
                     .collect();
+
+                // Append the player's current room contextual verbs (deduped).
+                // Runtime dispatch is still handled by DG OnCommand triggers;
+                // this just lets the verbs surface in TAB completion.
+                let current_room_id = {
+                    let conns = connections.lock().unwrap();
+                    conns
+                        .get(&connection_id)
+                        .and_then(|s| s.character.as_ref())
+                        .map(|c| c.current_room_id)
+                };
+                if let Some(room_id) = current_room_id {
+                    if room_id != Uuid::nil() {
+                        if let Ok(Some(room)) = world.db.get_room_data(&room_id) {
+                            for cc in &room.contextual_commands {
+                                if !available_commands.iter().any(|c| c == &cc.verb) {
+                                    available_commands.push(cc.verb.clone());
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // Get vnums from database
                 let room_vnums: Vec<String> = world

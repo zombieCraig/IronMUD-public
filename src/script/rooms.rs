@@ -45,6 +45,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             residents: Vec::new(),
             dg_vars: std::collections::HashMap::new(),
             coordinates: None,
+            contextual_commands: Vec::new(),
         };
         if let Err(e) = cloned_db.save_room_data(room.clone()) {
             tracing::error!("Failed to save new room: {}", e);
@@ -875,6 +876,108 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         },
     );
 
+    // ========== Contextual Commands ==========
+
+    // add_room_contextual_command(room_id, verb, hint) -> bool
+    // Upserts: replaces an existing entry with the same verb. Empty hint clears it.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "add_room_contextual_command",
+        move |room_id: String, verb: String, hint: String| {
+            let verb = verb.trim().to_lowercase();
+            if verb.is_empty() || verb.contains(char::is_whitespace) {
+                return false;
+            }
+            let hint_trimmed = hint.trim();
+            let hint_opt = if hint_trimmed.is_empty() {
+                None
+            } else {
+                Some(hint_trimmed.to_string())
+            };
+            let room_uuid = match uuid::Uuid::parse_str(&room_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            if let Ok(Some(mut room)) = cloned_db.get_room_data(&room_uuid) {
+                let mut found = false;
+                for cc in room.contextual_commands.iter_mut() {
+                    if cc.verb == verb {
+                        cc.hint = hint_opt.clone();
+                        found = true;
+                        break;
+                    }
+                }
+                if !found {
+                    room.contextual_commands.push(crate::ContextualCommand {
+                        verb,
+                        hint: hint_opt,
+                    });
+                }
+                if let Err(e) = cloned_db.save_room_data(room) {
+                    tracing::error!(
+                        "Failed to save room after adding contextual command: {}",
+                        e
+                    );
+                    return false;
+                }
+                return true;
+            }
+            false
+        },
+    );
+
+    // remove_room_contextual_command(room_id, verb) -> bool (false if not found)
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "remove_room_contextual_command",
+        move |room_id: String, verb: String| {
+            let verb = verb.trim().to_lowercase();
+            let room_uuid = match uuid::Uuid::parse_str(&room_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            if let Ok(Some(mut room)) = cloned_db.get_room_data(&room_uuid) {
+                let original_len = room.contextual_commands.len();
+                room.contextual_commands.retain(|cc| cc.verb != verb);
+                if room.contextual_commands.len() < original_len {
+                    if let Err(e) = cloned_db.save_room_data(room) {
+                        tracing::error!(
+                            "Failed to save room after removing contextual command: {}",
+                            e
+                        );
+                        return false;
+                    }
+                    return true;
+                }
+            }
+            false
+        },
+    );
+
+    // clear_room_contextual_commands(room_id) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn("clear_room_contextual_commands", move |room_id: String| {
+        let room_uuid = match uuid::Uuid::parse_str(&room_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        if let Ok(Some(mut room)) = cloned_db.get_room_data(&room_uuid) {
+            if room.contextual_commands.is_empty() {
+                return false;
+            }
+            room.contextual_commands.clear();
+            if let Err(e) = cloned_db.save_room_data(room) {
+                tracing::error!(
+                    "Failed to save room after clearing contextual commands: {}",
+                    e
+                );
+                return false;
+            }
+            return true;
+        }
+        false
+    });
+
     // ========== Vnum Functions ==========
 
     // set_room_vnum(room_id, vnum) -> Sets vnum for a room (returns false if vnum already in use)
@@ -1476,6 +1579,26 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     })
                     .collect();
                 output.push_str(&exit_strs.join(", "));
+            }
+
+            // Builder-declared verbs the room exposes (DG OnCommand triggers
+            // typically back the runtime; this line just surfaces them).
+            if !room.contextual_commands.is_empty() {
+                output.push('\n');
+                output.push_str(&color("Here you can: ", ANSI_MAGENTA));
+                let parts: Vec<String> = room
+                    .contextual_commands
+                    .iter()
+                    .map(|cc| {
+                        let label = match cc.hint.as_deref() {
+                            Some(h) if !h.is_empty() => format!("{} ({})", cc.verb, h),
+                            _ => cc.verb.clone(),
+                        };
+                        let link = mxp_link(&cc.verb, &label);
+                        color(&link, ANSI_MAGENTA)
+                    })
+                    .collect();
+                output.push_str(&parts.join(", "));
             }
 
             // Weather/environment line for outdoor rooms (gray/dim)

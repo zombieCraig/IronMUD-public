@@ -41,6 +41,7 @@ fn room(id: Uuid, area_id: Uuid, vnum: &str, title: &str, description: &str) -> 
         residents: Vec::new(),
         dg_vars: std::collections::HashMap::new(),
         coordinates: None,
+        contextual_commands: Vec::new(),
     }
 }
 
@@ -138,6 +139,7 @@ fn seed_oakvale(db: &Db) -> Result<usize> {
         residents: Vec::new(),
         dg_vars: std::collections::HashMap::new(),
         coordinates: None,
+        contextual_commands: Vec::new(),
     };
 
     // --- Tavern ---

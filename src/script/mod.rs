@@ -594,7 +594,21 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         .register_get("property_entrance", |r: &mut RoomData| r.property_entrance)
         // Migrant housing
         .register_get("living_capacity", |r: &mut RoomData| r.living_capacity as i64)
-        .register_get("resident_count", |r: &mut RoomData| r.residents.len() as i64);
+        .register_get("resident_count", |r: &mut RoomData| r.residents.len() as i64)
+        .register_get("contextual_commands", |r: &mut RoomData| {
+            r.contextual_commands
+                .iter()
+                .map(|cc| {
+                    let mut entry = rhai::Map::new();
+                    entry.insert("verb".into(), rhai::Dynamic::from(cc.verb.clone()));
+                    entry.insert(
+                        "hint".into(),
+                        rhai::Dynamic::from(cc.hint.clone().unwrap_or_default()),
+                    );
+                    rhai::Dynamic::from_map(entry)
+                })
+                .collect::<Vec<_>>()
+        });
 
     // Register RoomData constructor
     engine.register_fn("new_room", |id: String, title: String, description: String| RoomData {
@@ -627,6 +641,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         residents: Vec::new(),
         dg_vars: std::collections::HashMap::new(),
         coordinates: None,
+        contextual_commands: Vec::new(),
     });
 
     // Register get_available_exits helper

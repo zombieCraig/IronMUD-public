@@ -901,6 +901,17 @@ fn run_command(args, connection_id) {
             }
         }
 
+        // Contextual commands (verbs declared on this room — TAB + look surface)
+        let cctx = room.contextual_commands;
+        if cctx.len() > 0 {
+            let verb_summary = "";
+            for cc in cctx {
+                if verb_summary != "" { verb_summary += ", "; }
+                verb_summary += cc.verb;
+            }
+            output += "\n" + olc::c_label("Cmds: ", connection_id) + olc::c_value(verb_summary + " (redit cmd to edit)", connection_id) + "\n";
+        }
+
         // Extra descriptions (sub-keyword lore revealed via `look <keyword>`)
         let extras = room.extra_descs;
         if extras.len() > 0 {
@@ -955,6 +966,7 @@ fn run_command(args, connection_id) {
         output += "  " + cmd_flags + "         - Show all flags with status\n";
         output += "  redit flag <name> [on|off] - Toggle/set flag\n";
         output += "  redit extra [list|add|edit|remove] - Manage extra descriptions\n";
+        output += "  redit cmd [list|add|rm|clear] - Manage contextual commands (TAB + look hints)\n";
         output += "  " + cmd_vnum + " [alias|clear] - Set or clear room vnum\n";
         output += "  " + cmd_area + " [id|clear] - Set or clear room area\n";
         let cmd_trigger = mxp_or(mxp_send("redit trigger", "redit trigger"), "redit trigger", connection_id);
@@ -1300,6 +1312,107 @@ fn run_command(args, connection_id) {
         }
 
         send_client_message(connection_id, "Usage: redit extra <list|add|edit|remove>");
+        return;
+    }
+
+    if subcommand == "cmd" {
+        // Builder-declared verbs surfaced via TAB and the `look` "Here you can:" line.
+        // Runtime dispatch is still handled by DG OnCommand triggers.
+        if parts.len() < 2 {
+            let cmds = room.contextual_commands;
+            if cmds.len() == 0 {
+                send_client_message(connection_id,
+                    "No contextual commands set.\nUsage: redit cmd <add|rm|clear|list>\n  redit cmd add <verb> [hint...]\n  redit cmd rm <verb>\n  redit cmd clear");
+            } else {
+                let output = olc::c_header("=== Contextual Commands ===", connection_id) + "\n";
+                for cc in cmds {
+                    let hint = cc.hint;
+                    if hint != "" {
+                        output += "  " + olc::c_value(cc.verb, connection_id) + "  — " + hint + "\n";
+                    } else {
+                        output += "  " + olc::c_value(cc.verb, connection_id) + "\n";
+                    }
+                }
+                output += "\nReminder: pair these with `redit trigger add command <verb> <script>` to wire behavior.";
+                send_client_message(connection_id, output);
+            }
+            return;
+        }
+
+        let cmd_sub = parts[1].to_lower();
+
+        if cmd_sub == "list" {
+            let cmds = room.contextual_commands;
+            if cmds.len() == 0 {
+                send_client_message(connection_id, "No contextual commands set.");
+                return;
+            }
+            let output = olc::c_header("=== Contextual Commands ===", connection_id) + "\n";
+            for cc in cmds {
+                let hint = cc.hint;
+                if hint != "" {
+                    output += "  " + olc::c_value(cc.verb, connection_id) + "  — " + hint + "\n";
+                } else {
+                    output += "  " + olc::c_value(cc.verb, connection_id) + "\n";
+                }
+            }
+            send_client_message(connection_id, output);
+            return;
+        }
+
+        if cmd_sub == "clear" {
+            let cleared = clear_room_contextual_commands(room.id);
+            if cleared {
+                send_client_message(connection_id, "Contextual commands cleared.");
+            } else {
+                send_client_message(connection_id, "No contextual commands to clear.");
+            }
+            return;
+        }
+
+        if cmd_sub == "add" {
+            if parts.len() < 3 {
+                send_client_message(connection_id, "Usage: redit cmd add <verb> [hint...]");
+                return;
+            }
+            let verb = parts[2].to_lower();
+            let hint = "";
+            if parts.len() >= 4 {
+                let hint_parts = [];
+                for i in 3..parts.len() {
+                    hint_parts.push(parts[i]);
+                }
+                hint = hint_parts.join(" ");
+            }
+            let ok = add_room_contextual_command(room.id, verb, hint);
+            if ok {
+                if hint != "" {
+                    send_client_message(connection_id, "Set contextual command: " + verb + " (" + hint + ")");
+                } else {
+                    send_client_message(connection_id, "Set contextual command: " + verb);
+                }
+            } else {
+                send_client_message(connection_id, "Could not set contextual command (verb must be a single token).");
+            }
+            return;
+        }
+
+        if cmd_sub == "rm" || cmd_sub == "remove" || cmd_sub == "del" {
+            if parts.len() < 3 {
+                send_client_message(connection_id, "Usage: redit cmd rm <verb>");
+                return;
+            }
+            let verb = parts[2].to_lower();
+            let removed = remove_room_contextual_command(room.id, verb);
+            if removed {
+                send_client_message(connection_id, "Removed contextual command: " + verb);
+            } else {
+                send_client_message(connection_id, "No contextual command for: " + verb);
+            }
+            return;
+        }
+
+        send_client_message(connection_id, "Usage: redit cmd <add|rm|clear|list>");
         return;
     }
 

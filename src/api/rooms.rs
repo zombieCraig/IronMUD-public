@@ -18,7 +18,7 @@ use super::{
     validate::{check_text_len, DESCRIPTION_MAX, TITLE_MAX},
 };
 use crate::{
-    CombatZoneType, DoorState, ExtraDesc, RoomData, RoomExits, RoomFlags, RoomTrigger, TriggerType, WaterType,
+    CombatZoneType, ContextualCommand, DoorState, ExtraDesc, RoomData, RoomExits, RoomFlags, RoomTrigger, TriggerType, WaterType,
 };
 
 pub fn routes() -> Router<Arc<ApiState>> {
@@ -50,6 +50,15 @@ pub struct CreateRoomRequest {
     pub vnum: Option<String>,
     #[serde(default)]
     pub flags: RoomFlagsRequest,
+    #[serde(default)]
+    pub contextual_commands: Option<Vec<ContextualCommandRequest>>,
+}
+
+#[derive(Deserialize)]
+pub struct ContextualCommandRequest {
+    pub verb: String,
+    #[serde(default)]
+    pub hint: Option<String>,
 }
 
 /// Builder-facing subset of `RoomFlags`. Every field is optional so callers
@@ -119,6 +128,8 @@ pub struct UpdateRoomRequest {
     pub area_id: Option<String>,
     pub flags: Option<RoomFlagsRequest>,
     pub living_capacity: Option<i32>,
+    #[serde(default)]
+    pub contextual_commands: Option<Vec<ContextualCommandRequest>>,
 }
 
 #[derive(Deserialize)]
@@ -512,6 +523,26 @@ async fn create_room(
         residents: Vec::new(),
         dg_vars: std::collections::HashMap::new(),
         coordinates: None,
+        contextual_commands: req
+            .contextual_commands
+            .as_ref()
+            .map(|list| {
+                list.iter()
+                    .filter_map(|c| {
+                        let verb = c.verb.trim().to_lowercase();
+                        if verb.is_empty() || verb.contains(char::is_whitespace) {
+                            return None;
+                        }
+                        let hint = c
+                            .hint
+                            .as_ref()
+                            .map(|s| s.trim().to_string())
+                            .filter(|s| !s.is_empty());
+                        Some(ContextualCommand { verb, hint })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
     };
 
     if room.flags.liveable && room.living_capacity <= 0 {
@@ -677,6 +708,22 @@ async fn update_room(
     }
     if let Some(cap) = req.living_capacity {
         room.living_capacity = cap.max(0);
+    }
+    if let Some(list) = req.contextual_commands {
+        room.contextual_commands = list
+            .into_iter()
+            .filter_map(|c| {
+                let verb = c.verb.trim().to_lowercase();
+                if verb.is_empty() || verb.contains(char::is_whitespace) {
+                    return None;
+                }
+                let hint = c
+                    .hint
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty());
+                Some(ContextualCommand { verb, hint })
+            })
+            .collect();
     }
 
     state

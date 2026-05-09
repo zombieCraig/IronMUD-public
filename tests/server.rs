@@ -1608,6 +1608,7 @@ mod migration_tests {
             residents: Vec::new(),
             dg_vars: std::collections::HashMap::new(),
             coordinates: None,
+            contextual_commands: Vec::new(),
         }
     }
 
@@ -4646,6 +4647,7 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
             residents: Vec::new(),
             dg_vars: std::collections::HashMap::new(),
             coordinates: None,
+            contextual_commands: Vec::new(),
         };
         let room_id = room.id;
         db.save_room_data(room).expect("save room");
@@ -5486,6 +5488,7 @@ fn stay_zone_test_room(area_id: Option<uuid::Uuid>) -> ironmud::types::RoomData 
         residents: Vec::new(),
         dg_vars: std::collections::HashMap::new(),
         coordinates: None,
+        contextual_commands: Vec::new(),
     }
 }
 
@@ -7468,5 +7471,168 @@ fn test_lookup_effect_cross_ref_uses_buff_effect_match() {
     assert!(
         src.contains("s.buff_effect == display"),
         "effect cross-ref must filter spells by buff_effect == display"
+    );
+}
+
+// ===== Per-room contextual commands =====
+
+#[test]
+fn test_contextual_commands_round_trip() {
+    use ironmud::db::Db;
+    use ironmud::types::{ContextualCommand, RoomData, RoomExits, RoomFlags, WaterType};
+    use std::collections::HashMap;
+
+    let db_path = format!("test_contextual_commands_round_trip_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let room = RoomData {
+            id: uuid::Uuid::new_v4(),
+            title: "Puzzle chamber".to_string(),
+            description: "An odd room.".to_string(),
+            exits: RoomExits::default(),
+            flags: RoomFlags::default(),
+            extra_descs: Vec::new(),
+            vnum: None,
+            area_id: None,
+            triggers: Vec::new(),
+            doors: HashMap::new(),
+            spring_desc: None,
+            summer_desc: None,
+            autumn_desc: None,
+            winter_desc: None,
+            dynamic_desc: None,
+            water_type: WaterType::None,
+            catch_table: Vec::new(),
+            is_property_template: false,
+            property_template_id: None,
+            is_template_entrance: false,
+            property_lease_id: None,
+            property_entrance: false,
+            recent_departures: Vec::new(),
+            blood_trails: Vec::new(),
+            traps: Vec::new(),
+            living_capacity: 0,
+            residents: Vec::new(),
+            dg_vars: std::collections::HashMap::new(),
+            coordinates: None,
+            contextual_commands: vec![
+                ContextualCommand {
+                    verb: "pull".to_string(),
+                    hint: Some("the rusty lever".to_string()),
+                },
+                ContextualCommand {
+                    verb: "examine".to_string(),
+                    hint: None,
+                },
+            ],
+        };
+        let room_id = room.id;
+        db.save_room_data(room).expect("save");
+
+        let loaded = db.get_room_data(&room_id).expect("get").expect("present");
+        assert_eq!(
+            loaded.contextual_commands.len(),
+            2,
+            "both entries persist"
+        );
+        assert_eq!(loaded.contextual_commands[0].verb, "pull");
+        assert_eq!(
+            loaded.contextual_commands[0].hint.as_deref(),
+            Some("the rusty lever"),
+            "hint round-trips"
+        );
+        assert_eq!(loaded.contextual_commands[1].verb, "examine");
+        assert!(
+            loaded.contextual_commands[1].hint.is_none(),
+            "missing hint stays None"
+        );
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_contextual_commands_field_default_empty_on_old_room_json() {
+    // Old persisted RoomData (pre-feature) has no contextual_commands key.
+    // #[serde(default)] must allow that to deserialize cleanly with an empty Vec.
+    use ironmud::types::RoomData;
+
+    let raw = r#"{
+        "id": "00000000-0000-0000-0000-000000000001",
+        "title": "Old room",
+        "description": "predates the feature",
+        "exits": {
+            "north": null, "east": null, "south": null, "west": null,
+            "up": null, "down": null
+        }
+    }"#;
+    let room: RoomData = serde_json::from_str(raw).expect("old shape deserializes");
+    assert!(
+        room.contextual_commands.is_empty(),
+        "default empty Vec when key absent"
+    );
+}
+
+#[test]
+fn test_display_room_renders_contextual_commands_block() {
+    // Source-level: src/script/rooms.rs must contain the "Here you can:"
+    // block keyed off room.contextual_commands.
+    use std::fs;
+
+    let src = fs::read_to_string("src/script/rooms.rs").expect("read rooms.rs");
+    assert!(
+        src.contains("Here you can: "),
+        "display_room missing 'Here you can:' line"
+    );
+    assert!(
+        src.contains("room.contextual_commands.is_empty()"),
+        "display_room must short-circuit when contextual_commands is empty"
+    );
+}
+
+#[test]
+fn test_redit_cmd_subcommand_present() {
+    // Source-level: redit.rhai must have a `cmd` dispatcher with add/rm/clear/list.
+    use std::fs;
+
+    let src = fs::read_to_string("scripts/commands/redit.rhai").expect("read redit.rhai");
+    assert!(
+        src.contains("subcommand == \"cmd\""),
+        "redit.rhai missing the cmd subcommand dispatch"
+    );
+    for sub in &["\"add\"", "\"clear\"", "\"list\""] {
+        assert!(
+            src.contains(&format!("cmd_sub == {}", sub)),
+            "redit cmd missing {sub} branch"
+        );
+    }
+    assert!(
+        src.contains("add_room_contextual_command")
+            && src.contains("remove_room_contextual_command")
+            && src.contains("clear_room_contextual_commands"),
+        "redit cmd must call all three Rhai helper fns"
+    );
+}
+
+#[test]
+fn test_tab_completion_appends_room_contextual_verbs() {
+    // Source-level: src/lib.rs must extend available_commands with the
+    // current room's contextual_commands.verb entries (deduped).
+    use std::fs;
+
+    let src = fs::read_to_string("src/lib.rs").expect("read lib.rs");
+    assert!(
+        src.contains("contextual_commands"),
+        "lib.rs TAB path doesn't reference contextual_commands"
+    );
+    assert!(
+        src.contains("available_commands.push(cc.verb.clone())"),
+        "lib.rs must push room contextual verbs into available_commands"
     );
 }

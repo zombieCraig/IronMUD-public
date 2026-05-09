@@ -78,6 +78,21 @@ pub struct RoomData {
     /// build on it.
     #[serde(default)]
     pub coordinates: Option<(i32, i32, i32)>,
+    /// Builder-declared verbs the room exposes (e.g. `pull` for a lever
+    /// puzzle). Surfaced via TAB completion and the `look` "Here you can:"
+    /// line. Runtime dispatch is still handled by DG OnCommand triggers.
+    #[serde(default)]
+    pub contextual_commands: Vec<ContextualCommand>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct ContextualCommand {
+    /// Single keyword, lowercased on insert. Matches DG OnCommand `args[0]`.
+    pub verb: String,
+    /// Short flavor displayed alongside the verb in `look`. None / empty =
+    /// bare verb only.
+    #[serde(default)]
+    pub hint: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

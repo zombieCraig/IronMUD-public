@@ -261,6 +261,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           area_id: args?.area_id as string | undefined,
           vnum: args?.vnum as string | undefined,
           flags: args?.flags as Record<string, boolean> | undefined,
+          contextual_commands: args?.contextual_commands as
+            | { verb: string; hint?: string }[]
+            | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(room, null, 2) }],
@@ -274,6 +277,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           title: args?.title as string | undefined,
           description: args?.description as string | undefined,
           flags: args?.flags as Record<string, boolean> | undefined,
+          contextual_commands: args?.contextual_commands as
+            | { verb: string; hint?: string }[]
+            | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(room, null, 2) }],

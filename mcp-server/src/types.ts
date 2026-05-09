@@ -59,6 +59,15 @@ export interface Room {
   // Migrant housing
   living_capacity?: number;
   residents?: string[];
+  /** Builder-declared verbs the room exposes (TAB completion + look hints). */
+  contextual_commands?: ContextualCommand[];
+}
+
+export interface ContextualCommand {
+  /** Single keyword, lowercased. Pair with a DG OnCommand trigger to wire behavior. */
+  verb: string;
+  /** Short flavor displayed alongside the verb in `look`. */
+  hint?: string;
 }
 
 export interface RoomExits {
@@ -513,6 +522,7 @@ export interface CreateRoomRequest {
   area_id?: string;
   vnum?: string;
   flags?: RoomFlags;
+  contextual_commands?: ContextualCommand[];
 }
 
 export interface CreateItemRequest {
