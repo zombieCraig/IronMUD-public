@@ -127,7 +127,13 @@ pub fn complete(
                 ArgumentContext::ItemVnum => {
                     // For oedit, provide context-aware completion based on position
                     if command.to_lowercase() == "oedit" {
-                        return complete_oedit(&words, completing_word, item_vnums, transport_vnums);
+                        return complete_oedit(
+                            &words,
+                            completing_word,
+                            item_vnums,
+                            transport_vnums,
+                            spell_names,
+                        );
                     }
                     // Default item vnum completion for ospawn, idelete
                     let matches: Vec<String> = item_vnums

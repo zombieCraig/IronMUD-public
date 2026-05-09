@@ -532,6 +532,10 @@
     "access": "builder",
     "description": "List all transports in the database"
   },
+  "lookup": {
+    "access": "builder",
+    "description": "Browse spells/traits/effects/skills knowledge base"
+  },
   "assist": {
     "access": "user",
     "description": "Join combat by attacking your ally's target"

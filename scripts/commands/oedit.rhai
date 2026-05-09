@@ -2120,7 +2120,9 @@ fn copy_item_flags(item, new_item_id) {
     if item.light_hours_remaining > 0 { set_item_light_hours(new_item_id, item.light_hours_remaining); }
     if item.has_cast_on_use {
         let cou = item.cast_on_use;
-        set_item_cast_on_use(new_item_id, cou["spell"], cou["min_level"], cou["max_charges"]);
+        let cd = cou["cooldown_secs"];
+        let cd_arg = if type_of(cd) != "()" && cd > 0 { cd } else { -1 };
+        set_item_cast_on_use(new_item_id, cou["spell"], cou["min_level"], cou["max_charges"], cd_arg);
     }
     if item.flags.night_vision { set_item_flag(new_item_id, "night_vision", true); }
     if item.flags.fishing_rod { set_item_flag(new_item_id, "fishing_rod", true); }
@@ -2580,7 +2582,12 @@ fn show_item_properties(item, item_id, connection_id) {
         let cou_spell = get_spell_info(sid);
         let label = if cou_spell.len() > 0 { sid + " (" + cou_spell["name"] + ")" } else { sid + " (UNKNOWN!)" };
         output += olc::c_label("Cast on use: ", connection_id) + olc::c_value(label, connection_id);
-        output += olc::c_value(" lvl>=" + cou["min_level"] + ", " + cou["charges"] + "/" + cou["max_charges"] + " charges", connection_id) + "\n";
+        output += olc::c_value(" lvl>=" + cou["min_level"] + ", " + cou["charges"] + "/" + cou["max_charges"] + " charges", connection_id);
+        let item_cd = cou["cooldown_secs"];
+        if type_of(item_cd) != "()" && item_cd > 0 {
+            output += olc::c_value(", cd " + item_cd + "s", connection_id);
+        }
+        output += "\n";
     }
 
     // Note body (readable via `read`)
@@ -2973,8 +2980,8 @@ fn build_commands_help(item_id, item) {
     output += "  oedit " + display_id + " category                    (recipe category management)\n";
     output += "  oedit " + display_id + " teaches <recipe_id|clear>  (recipe book/scroll)\n";
     output += "  oedit " + display_id + " teaches_spell <spell_id|clear>  (spell scroll)\n";
-    output += "  oedit " + display_id + " cast_on_use <spell_id> <min_level> <charges>   (potion/wand/staff)\n";
-    output += "  oedit " + display_id + " cast_on_use clear\n";
+    output += "  oedit " + display_id + " cast_on_use <spell_id> <min_level> <charges> [cooldown_secs]\n";
+    output += "  oedit " + display_id + " cast_on_use show | clear\n";
     output += "  oedit " + display_id + " transport <vnum|clear>     (transport status sign)\n";
     output += "  oedit " + display_id + " note [clear]               (multi-line readable body)\n";
     output += "  oedit " + display_id + " extra [list|add|edit|remove] - Manage extra descriptions\n";
@@ -3326,12 +3333,12 @@ fn handle_light_hours_subcommand(item_id, parts, connection_id) {
     }
 }
 
-// oedit <item> cast_on_use <spell_id> <min_level> <charges>
+// oedit <item> cast_on_use show
 // oedit <item> cast_on_use clear
+// oedit <item> cast_on_use <spell_id> <min_level> <charges> [<cooldown_secs>]
 fn handle_cast_on_use_subcommand(item_id, parts, connection_id) {
     if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: oedit " + item_id + " cast_on_use <spell_id> <min_level> <charges>");
-        send_client_message(connection_id, "       oedit " + item_id + " cast_on_use clear");
+        send_cast_on_use_usage(item_id, connection_id);
         return;
     }
     let arg = parts[2].to_lower();
@@ -3340,14 +3347,18 @@ fn handle_cast_on_use_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Cast-on-use cleared.");
         return;
     }
+    if arg == "show" {
+        show_cast_on_use(item_id, connection_id);
+        return;
+    }
     if parts.len() < 5 {
-        send_client_message(connection_id, "Usage: oedit " + item_id + " cast_on_use <spell_id> <min_level> <charges>");
+        send_cast_on_use_usage(item_id, connection_id);
         return;
     }
     let spell_id = parts[2];
     let spell_info = get_spell_info(spell_id);
     if type_of(spell_info) == "()" {
-        send_client_message(connection_id, "Unknown spell id: " + spell_id);
+        send_client_message(connection_id, "Unknown spell id: " + spell_id + " (use `lookup spell` to browse).");
         return;
     }
     let min_level = parse_int(parts[3]);
@@ -3360,11 +3371,60 @@ fn handle_cast_on_use_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Invalid charges (must be >= 0).");
         return;
     }
-    if set_item_cast_on_use(item_id, spell_id, min_level, charges) {
-        send_client_message(connection_id, "Cast-on-use set: " + spell_id + " (min level " + min_level + ", " + charges + " charges).");
+    // Optional 4th positional: per-item cooldown override.
+    let cooldown_secs = -1;
+    if parts.len() >= 6 {
+        let cd = parse_int(parts[5]);
+        if cd == () || cd < 0 {
+            send_client_message(connection_id, "Invalid cooldown_secs (must be >= 0; 0 clears the override).");
+            return;
+        }
+        cooldown_secs = cd;
+    }
+    if set_item_cast_on_use(item_id, spell_id, min_level, charges, cooldown_secs) {
+        let cd_text = if cooldown_secs > 0 {
+            ", cooldown override " + cooldown_secs + "s"
+        } else {
+            ", uses spell default cooldown"
+        };
+        send_client_message(connection_id, "Cast-on-use set: " + spell_id + " (min level " + min_level + ", " + charges + " charges" + cd_text + ").");
     } else {
         send_client_message(connection_id, "Failed to set cast-on-use.");
     }
+}
+
+fn send_cast_on_use_usage(item_id, connection_id) {
+    send_client_message(connection_id, "Usage: oedit " + item_id + " cast_on_use <spell_id> <min_level> <charges> [<cooldown_secs>]");
+    send_client_message(connection_id, "       oedit " + item_id + " cast_on_use show");
+    send_client_message(connection_id, "       oedit " + item_id + " cast_on_use clear");
+}
+
+fn show_cast_on_use(item_id, connection_id) {
+    let item = get_item_data(item_id);
+    if type_of(item) == "()" {
+        send_client_message(connection_id, "Item not found.");
+        return;
+    }
+    if !item.has_cast_on_use {
+        send_client_message(connection_id, "No cast-on-use binding on this item.");
+        return;
+    }
+    let cou = item.cast_on_use;
+    let spell_id = cou["spell"];
+    let spell = get_spell_info(spell_id);
+    let spell_name = if type_of(spell) != "()" { spell["name"] } else { spell_id };
+    let spell_cd = if type_of(spell) != "()" { spell["cooldown_secs"] } else { 0 };
+    let item_cd = cou["cooldown_secs"];
+    let cd_line = if type_of(item_cd) != "()" && item_cd > 0 {
+        "  cooldown:    " + item_cd + "s (item override; spell default is " + spell_cd + "s)"
+    } else {
+        "  cooldown:    " + spell_cd + "s (uses spell default)"
+    };
+    send_client_message(connection_id, "Cast-on-use binding:");
+    send_client_message(connection_id, "  spell:       " + spell_id + " (" + spell_name + ")");
+    send_client_message(connection_id, "  min_level:   " + cou["min_level"]);
+    send_client_message(connection_id, "  charges:     " + cou["charges"] + " / " + cou["max_charges"]);
+    send_client_message(connection_id, cd_line);
 }
 
 fn get_stat_full_name(stat) {

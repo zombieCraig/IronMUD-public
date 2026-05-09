@@ -8,6 +8,7 @@ pub(super) fn complete_oedit(
     completing_word: bool,
     item_vnums: &[String],
     transport_vnums: &[String],
+    spell_names: &[String],
 ) -> CompletionResult {
     let partial = get_partial(words, completing_word);
 
@@ -151,6 +152,49 @@ pub(super) fn complete_oedit(
         // oedit <vnum> firemodes <partial> - complete fire modes
         4.. if completing_word && words[2].to_lowercase() == "firemodes" => {
             filter_static(FIRE_MODES, &partial, CompletionType::OeditSubcommand)
+        }
+        // oedit <vnum> cast_on_use - show spell ids + show/clear actions
+        3 if !completing_word
+            && (words[2].to_lowercase() == "cast_on_use" || words[2].to_lowercase() == "spell") =>
+        {
+            let mut matches: Vec<String> = spell_names.to_vec();
+            matches.push("show".to_string());
+            matches.push("clear".to_string());
+            CompletionResult::new(matches, "", CompletionType::SpellName)
+        }
+        // oedit <vnum> cast_on_use <partial> - complete spell id (or show/clear)
+        4 if completing_word
+            && (words[2].to_lowercase() == "cast_on_use" || words[2].to_lowercase() == "spell") =>
+        {
+            let mut matches: Vec<String> = spell_names
+                .iter()
+                .filter(|s| s.to_lowercase().starts_with(&partial))
+                .cloned()
+                .collect();
+            for verb in ["show", "clear"] {
+                if verb.starts_with(&partial) {
+                    matches.push(verb.to_string());
+                }
+            }
+            CompletionResult::new(matches, &partial, CompletionType::SpellName)
+        }
+        // oedit <vnum> teaches_spell - show spell ids + clear
+        3 if !completing_word && words[2].to_lowercase() == "teaches_spell" => {
+            let mut matches: Vec<String> = spell_names.to_vec();
+            matches.push("clear".to_string());
+            CompletionResult::new(matches, "", CompletionType::SpellName)
+        }
+        // oedit <vnum> teaches_spell <partial> - complete spell id
+        4 if completing_word && words[2].to_lowercase() == "teaches_spell" => {
+            let mut matches: Vec<String> = spell_names
+                .iter()
+                .filter(|s| s.to_lowercase().starts_with(&partial))
+                .cloned()
+                .collect();
+            if "clear".starts_with(&partial) {
+                matches.push("clear".to_string());
+            }
+            CompletionResult::new(matches, &partial, CompletionType::SpellName)
         }
         _ => CompletionResult::empty(),
     }

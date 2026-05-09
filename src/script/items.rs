@@ -273,7 +273,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             "fresh".to_string()
         })
         // CircleMUD POTION/WAND/STAFF on-use spell payload. Returns Rhai Map
-        // `#{spell, min_level, charges, max_charges}` or `()` when unset.
+        // `#{spell, min_level, charges, max_charges, cooldown_secs}` or `()`
+        // when unset. `cooldown_secs` is `()` (UNIT) when no per-item override.
         .register_get("cast_on_use", |i: &mut ItemData| match &i.cast_on_use {
             Some(c) => {
                 let mut m = rhai::Map::new();
@@ -281,6 +282,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 m.insert("min_level".into(), (c.min_level as i64).into());
                 m.insert("charges".into(), (c.charges as i64).into());
                 m.insert("max_charges".into(), (c.max_charges as i64).into());
+                m.insert(
+                    "cooldown_secs".into(),
+                    match c.cooldown_secs {
+                        Some(n) => (n as i64).into(),
+                        None => rhai::Dynamic::UNIT,
+                    },
+                );
                 rhai::Dynamic::from_map(m)
             }
             None => rhai::Dynamic::UNIT,
@@ -2612,27 +2620,34 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     });
 
     // set_item_cast_on_use(item_id, spell, min_level, charges) -> bool
-    // Sets `max_charges = charges`. Empty spell rejects.
+    // Sets `max_charges = charges`, no cooldown override. Empty spell rejects.
     let cloned_db = db.clone();
     engine.register_fn(
         "set_item_cast_on_use",
         move |item_id: String, spell: String, min_level: i64, charges: i64| {
-            if spell.trim().is_empty() {
-                return false;
-            }
-            if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
-                if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
-                    let charges = (charges as i32).max(0);
-                    item.cast_on_use = Some(crate::types::CastOnUse {
-                        spell,
-                        min_level: (min_level as i32).max(0),
-                        charges,
-                        max_charges: charges,
-                    });
-                    return cloned_db.save_item_data(item).is_ok();
-                }
-            }
-            false
+            set_item_cast_on_use_impl(&cloned_db, &item_id, spell, min_level, charges, -1)
+        },
+    );
+
+    // set_item_cast_on_use(item_id, spell, min_level, charges, cooldown_secs) -> bool
+    // 5-arg variant with per-item cooldown override. `cooldown_secs <= 0` clears
+    // the override (use spell's default cooldown).
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_item_cast_on_use",
+        move |item_id: String,
+              spell: String,
+              min_level: i64,
+              charges: i64,
+              cooldown_secs: i64| {
+            set_item_cast_on_use_impl(
+                &cloned_db,
+                &item_id,
+                spell,
+                min_level,
+                charges,
+                cooldown_secs,
+            )
         },
     );
 
@@ -3802,6 +3817,40 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             false
         },
     );
+}
+
+// Shared impl for set_item_cast_on_use (4-arg + 5-arg variants).
+// `cooldown_secs <= 0` clears the per-item override (use spell default).
+fn set_item_cast_on_use_impl(
+    db: &Arc<Db>,
+    item_id: &str,
+    spell: String,
+    min_level: i64,
+    charges: i64,
+    cooldown_secs: i64,
+) -> bool {
+    if spell.trim().is_empty() {
+        return false;
+    }
+    if let Ok(uuid) = uuid::Uuid::parse_str(item_id) {
+        if let Ok(Some(mut item)) = db.get_item_data(&uuid) {
+            let charges = (charges as i32).max(0);
+            let cd = if cooldown_secs > 0 {
+                Some(cooldown_secs as i32)
+            } else {
+                None
+            };
+            item.cast_on_use = Some(crate::types::CastOnUse {
+                spell,
+                min_level: (min_level as i32).max(0),
+                charges,
+                max_charges: charges,
+                cooldown_secs: cd,
+            });
+            return db.save_item_data(item).is_ok();
+        }
+    }
+    false
 }
 
 // Helper function to calculate container contents weight

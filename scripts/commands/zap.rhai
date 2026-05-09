@@ -69,6 +69,12 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    let cd_remaining = get_spell_cooldown_remaining(char.name, spell_id);
+    if cd_remaining > 0 {
+        send_client_message(connection_id, spell["name"] + " is on cooldown for " + cd_remaining + " more seconds.");
+        return;
+    }
+
     // Consume the charge before firing — failed targeting still spends it.
     let remaining = decrement_item_charges(item.id);
     send_client_message(connection_id, "You aim " + item.short_desc + " and unleash " + spell["name"] + "!");
@@ -76,9 +82,28 @@ fn run_command(args, connection_id) {
 
     fire_wand_spell(connection_id, char, spell, target_arg);
 
+    let effective_cd = resolve_item_spell_cooldown(cou, spell);
+    if effective_cd > 0 {
+        set_spell_cooldown(char.name, spell_id, effective_cd);
+    }
+
     if remaining == 0 {
         send_client_message(connection_id, "The wand crumbles inertly — its last spark spent.");
     }
+}
+
+// Per-item cooldown override wins over the spell's own cooldown.
+// `cou["cooldown_secs"]` is `()` when no override; positive int otherwise.
+fn resolve_item_spell_cooldown(cou, spell) {
+    let item_cd = cou["cooldown_secs"];
+    if type_of(item_cd) != "()" && item_cd > 0 {
+        return item_cd;
+    }
+    let spell_cd = spell["cooldown_secs"];
+    if type_of(spell_cd) != "()" && spell_cd > 0 {
+        return spell_cd;
+    }
+    return 0;
 }
 
 fn fire_wand_spell(connection_id, char, spell, target_arg) {

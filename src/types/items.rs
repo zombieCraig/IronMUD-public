@@ -159,6 +159,13 @@ pub struct CastOnUse {
     pub charges: i32,
     #[serde(default)]
     pub max_charges: i32,
+    /// Per-item cooldown override in seconds. When `Some(n)`, item-cast firings
+    /// set the character's spell cooldown to `n` instead of the spell's own
+    /// `cooldown_secs`. Lets builders tune item-specific cadence (a wand of
+    /// cheap heal with longer recharge, or a rare scroll with no cooldown).
+    /// `None` = use the spell's default cooldown.
+    #[serde(default)]
+    pub cooldown_secs: Option<i32>,
 }
 
 /// Returns the tier description for a gold amount

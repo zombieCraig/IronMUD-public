@@ -469,7 +469,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           max_hp_bonus: args?.max_hp_bonus as number | undefined,
           max_mana_bonus: args?.max_mana_bonus as number | undefined,
           light_hours_remaining: args?.light_hours_remaining as number | undefined,
-          cast_on_use: args?.cast_on_use as { spell: string; min_level?: number; charges?: number; max_charges?: number } | undefined,
+          cast_on_use: args?.cast_on_use as { spell: string; min_level?: number; charges?: number; max_charges?: number; cooldown_secs?: number } | undefined,
           flags: args?.flags as Record<string, boolean> | undefined,
           caliber: args?.caliber as string | undefined,
           ranged_type: args?.ranged_type as string | undefined,

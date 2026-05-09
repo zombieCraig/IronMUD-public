@@ -3833,6 +3833,7 @@ fn test_item_cast_on_use_persists() {
             min_level: 2,
             charges: 5,
             max_charges: 5,
+            cooldown_secs: None,
         });
         let item_id = item.id;
         db.save_item_data(item).expect("save");
@@ -7284,4 +7285,188 @@ fn test_corpse_source_vnum_persists() {
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
+}
+
+// ===== Declarative usable items: per-item cooldown override =====
+
+#[test]
+fn test_cast_on_use_cooldown_secs_round_trips() {
+    use ironmud::db::Db;
+    use ironmud::{CastOnUse, ItemData};
+
+    let db_path = format!("test_cast_on_use_cooldown_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut item = ItemData::new(
+            "wand".to_string(),
+            "a slim wand".to_string(),
+            "A slim wand lies here.".to_string(),
+        );
+        item.cast_on_use = Some(CastOnUse {
+            spell: "heal".to_string(),
+            min_level: 1,
+            charges: 5,
+            max_charges: 5,
+            cooldown_secs: Some(60),
+        });
+        let item_id = item.id;
+        db.save_item_data(item).expect("save");
+
+        let loaded = db
+            .get_item_data(&item_id)
+            .expect("get")
+            .expect("present");
+        let cou = loaded.cast_on_use.expect("cast_on_use present");
+        assert_eq!(cou.cooldown_secs, Some(60), "override survives round-trip");
+
+        // None on the override is the default — uses spell's own cooldown.
+        let mut item2 = ItemData::new(
+            "vial".to_string(),
+            "a glass vial".to_string(),
+            "A vial sits here.".to_string(),
+        );
+        item2.cast_on_use = Some(CastOnUse {
+            spell: "heal".to_string(),
+            min_level: 0,
+            charges: 1,
+            max_charges: 1,
+            cooldown_secs: None,
+        });
+        let id2 = item2.id;
+        db.save_item_data(item2).expect("save");
+        let loaded2 = db.get_item_data(&id2).expect("get").expect("present");
+        assert!(
+            loaded2.cast_on_use.unwrap().cooldown_secs.is_none(),
+            "None override persists as None (use spell default)"
+        );
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_quaff_and_zap_scripts_apply_cooldown_override() {
+    // Source-level check: quaff.rhai and zap.rhai must read the per-item
+    // override and call set_spell_cooldown — otherwise the new
+    // CastOnUse.cooldown_secs field would persist but be ignored at runtime.
+    use std::fs;
+
+    for script in ["scripts/commands/quaff.rhai", "scripts/commands/zap.rhai"] {
+        let src = fs::read_to_string(script).expect(script);
+        assert!(
+            src.contains("resolve_item_spell_cooldown"),
+            "{script} missing resolve_item_spell_cooldown helper (cooldown override path)"
+        );
+        assert!(
+            src.contains("set_spell_cooldown"),
+            "{script} must stamp cooldown via set_spell_cooldown"
+        );
+        assert!(
+            src.contains("get_spell_cooldown_remaining"),
+            "{script} must check cooldown before firing (otherwise override is bypassable)"
+        );
+    }
+}
+
+#[test]
+fn test_oedit_cast_on_use_supports_show_clear_and_cooldown() {
+    // Source-level check: oedit.rhai must dispatch show/clear and accept the
+    // optional 4-arg cooldown form.
+    use std::fs;
+
+    let src = fs::read_to_string("scripts/commands/oedit.rhai").expect("read oedit.rhai");
+
+    assert!(
+        src.contains("show_cast_on_use"),
+        "oedit.rhai missing `cast_on_use show` handler"
+    );
+    assert!(
+        src.contains("clear_item_cast_on_use"),
+        "oedit.rhai missing cast_on_use clear handler"
+    );
+    assert!(
+        src.contains("set_item_cast_on_use(item_id, spell_id, min_level, charges, cooldown_secs)"),
+        "oedit.rhai must pass cooldown_secs to set_item_cast_on_use"
+    );
+}
+
+// ===== Builder knowledge-base lookup =====
+
+#[test]
+fn test_lookup_command_registered_as_builder() {
+    use std::fs;
+
+    let raw = fs::read_to_string("scripts/commands.json").expect("read commands.json");
+    let parsed: serde_json::Value = serde_json::from_str(&raw).expect("valid json");
+    let entry = parsed
+        .get("lookup")
+        .expect("lookup command registered")
+        .as_object()
+        .expect("lookup is an object");
+    assert_eq!(
+        entry.get("access").and_then(|v| v.as_str()),
+        Some("builder"),
+        "lookup must be builder-gated (surfaces internal balance numbers)"
+    );
+}
+
+#[test]
+fn test_lookup_command_gates_on_builder_or_admin() {
+    use std::fs;
+
+    let src = fs::read_to_string("scripts/commands/lookup.rhai").expect("read lookup.rhai");
+    assert!(
+        src.contains("!char.is_builder && !char.is_admin"),
+        "lookup.rhai must gate on is_builder || is_admin"
+    );
+    assert!(
+        src.contains("dispatch_spell")
+            && src.contains("dispatch_trait")
+            && src.contains("dispatch_effect")
+            && src.contains("dispatch_skill"),
+        "lookup.rhai must dispatch all four kinds"
+    );
+}
+
+#[test]
+fn test_lookup_known_skills_covers_magic_and_crafting() {
+    // KNOWN_SKILLS in src/script/lookup.rs must include the skills referenced
+    // by spell `skill_required` (magic) AND the player-skill set (crafting,
+    // cooking, ...). Otherwise `lookup skill` misses entire categories.
+    use std::fs;
+
+    let src = fs::read_to_string("src/script/lookup.rs").expect("read lookup.rs");
+    for required in &[
+        "\"magic\"",
+        "\"melee\"",
+        "\"ranged\"",
+        "\"stealth\"",
+        "\"cooking\"",
+        "\"crafting\"",
+    ] {
+        assert!(
+            src.contains(required),
+            "KNOWN_SKILLS missing {required} — `lookup skill` would miss this category"
+        );
+    }
+}
+
+#[test]
+fn test_lookup_effect_cross_ref_uses_buff_effect_match() {
+    // The cross-ref scanner in lookup.rs must compare against a spell's
+    // `buff_effect` field. If this drifts (e.g. someone renames the field on
+    // SpellDefinition), `lookup effect <name>` silently returns empty arrays.
+    use std::fs;
+
+    let src = fs::read_to_string("src/script/lookup.rs").expect("read lookup.rs");
+    assert!(
+        src.contains("s.buff_effect == display"),
+        "effect cross-ref must filter spells by buff_effect == display"
+    );
 }

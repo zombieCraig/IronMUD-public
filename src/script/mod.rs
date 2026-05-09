@@ -33,6 +33,7 @@ mod property;
 mod rooms;
 mod shop_presets;
 mod shops;
+mod lookup;
 mod simulation;
 pub mod social;
 mod quests;
@@ -1822,6 +1823,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     boards::register(engine, db.clone());
     garden::register(engine, db.clone());
     spells::register(engine, db.clone(), connections.clone(), state.clone());
+    lookup::register(engine, db.clone(), state.clone());
     stealth::register(engine, db.clone(), connections.clone());
     bugs::register(engine, db.clone(), connections.clone());
     simulation::register(engine, db.clone());

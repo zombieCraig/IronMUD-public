@@ -317,6 +317,7 @@ pub(super) fn apply_item_type(item: &IrItem, data: &mut ItemData, warnings: &mut
                     min_level: v[0].max(0),
                     charges,
                     max_charges,
+                    cooldown_secs: None,
                 });
             } else {
                 warnings.push(Warning::new(
@@ -370,6 +371,7 @@ pub(super) fn apply_item_type(item: &IrItem, data: &mut ItemData, warnings: &mut
                     min_level: 0,
                     charges: 1,
                     max_charges: 1,
+                    cooldown_secs: None,
                 });
             } else if v[1] != 0 {
                 warnings.push(Warning::new(

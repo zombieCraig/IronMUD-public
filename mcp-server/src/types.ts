@@ -282,6 +282,7 @@ export interface CastOnUse {
   min_level?: number;
   charges?: number;
   max_charges?: number;
+  cooldown_secs?: number;
 }
 
 export type ItemType =

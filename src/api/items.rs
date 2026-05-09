@@ -32,6 +32,10 @@ pub struct CastOnUseRequest {
     pub charges: Option<i32>,
     #[serde(default)]
     pub max_charges: Option<i32>,
+    /// Per-item cooldown override (seconds). `None` or `Some(0)` means use the
+    /// spell's own cooldown; positive value overrides for item-cast firings.
+    #[serde(default)]
+    pub cooldown_secs: Option<i32>,
 }
 
 fn build_cast_on_use_from_req(req: &CastOnUseRequest) -> Option<CastOnUse> {
@@ -40,11 +44,13 @@ fn build_cast_on_use_from_req(req: &CastOnUseRequest) -> Option<CastOnUse> {
     }
     let charges = req.charges.unwrap_or(0).max(0);
     let max_charges = req.max_charges.unwrap_or(charges).max(charges);
+    let cooldown_secs = req.cooldown_secs.and_then(|n| if n > 0 { Some(n) } else { None });
     Some(CastOnUse {
         spell: req.spell.clone(),
         min_level: req.min_level.unwrap_or(0).max(0),
         charges,
         max_charges,
+        cooldown_secs,
     })
 }
 

@@ -42,12 +42,37 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    let cd_remaining = get_spell_cooldown_remaining(char.name, spell_id);
+    if cd_remaining > 0 {
+        send_client_message(connection_id, spell["name"] + " is on cooldown for " + cd_remaining + " more seconds.");
+        return;
+    }
+
     send_client_message(connection_id, "You quaff " + item.short_desc + ".");
     broadcast_to_room_except(char.current_room_id, char.name + " quaffs " + item.short_desc + ".", char.name);
 
     fire_potion_spell(connection_id, char, spell);
 
+    let effective_cd = resolve_item_spell_cooldown(cou, spell);
+    if effective_cd > 0 {
+        set_spell_cooldown(char.name, spell_id, effective_cd);
+    }
+
     delete_item(item.id);
+}
+
+// Per-item cooldown override wins over the spell's own cooldown.
+// `cou["cooldown_secs"]` is `()` when no override; positive int otherwise.
+fn resolve_item_spell_cooldown(cou, spell) {
+    let item_cd = cou["cooldown_secs"];
+    if type_of(item_cd) != "()" && item_cd > 0 {
+        return item_cd;
+    }
+    let spell_cd = spell["cooldown_secs"];
+    if type_of(spell_cd) != "()" && spell_cd > 0 {
+        return spell_cd;
+    }
+    return 0;
 }
 
 // Fire spell at self based on spell_type. Potions support heal/buff/utility/debuff
