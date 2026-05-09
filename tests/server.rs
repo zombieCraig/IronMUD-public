@@ -8781,3 +8781,113 @@ fn test_account_prefs_module_is_registered() {
     assert!(src.contains("pub mod account_prefs;"));
     assert!(src.contains("account_prefs::register("));
 }
+
+#[test]
+fn test_apply_world_preset_switches_settings_and_reloads() {
+    // Drives `apply_world_preset` through a free-standing engine so eval()
+    // doesn't run while we hold the World lock — the binding itself locks
+    // state and would deadlock otherwise (std::sync::Mutex isn't reentrant).
+    let db_path = format!("test_world_preset_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(&db_path).expect("open DB");
+        let connections = Arc::new(Mutex::new(HashMap::new()));
+        let command_metadata = load_command_metadata().expect("load command metadata");
+
+        db.set_setting("class_preset", "fantasy").expect("seed class_preset");
+
+        let state = Arc::new(Mutex::new(World {
+            engine: Engine::new(),
+            db,
+            scripts: HashMap::new(),
+            connections: connections.clone(),
+            command_metadata,
+            class_definitions: HashMap::new(),
+            trait_definitions: HashMap::new(),
+            race_suggestions: Vec::new(),
+            race_definitions: HashMap::new(),
+            language_definitions: HashMap::new(),
+            recipes: HashMap::new(),
+            transports: HashMap::new(),
+            spell_definitions: HashMap::new(),
+            achievement_definitions: HashMap::new(),
+            achievement_index_by_counter: HashMap::new(),
+            chat_sender: None,
+            shutdown_sender: None,
+            shutdown_cancel_sender: None,
+            ip_limiter: Arc::new(ironmud::ratelimit::IpRateLimiter::new()),
+            command_throttle: Arc::new(ironmud::throttle::CommandThrottle::new()),
+        }));
+
+        let mut driver = Engine::new();
+        driver.set_max_expr_depths(128, 128);
+        let db_for_register = state.lock().unwrap().db.clone();
+        script::register_rhai_functions(
+            &mut driver,
+            Arc::new(db_for_register),
+            connections.clone(),
+            state.clone(),
+        );
+        driver.register_fn("chat_broadcast", |_m: String| {});
+        driver.register_fn("matrix_broadcast", |_m: String| {});
+
+        load_game_data(state.clone()).expect("initial load");
+        let fantasy_classes = state.lock().unwrap().class_definitions.len();
+        assert!(
+            fantasy_classes > 1,
+            "fantasy preset should expose >1 class, got {}",
+            fantasy_classes
+        );
+
+        let bad: rhai::Map = driver
+            .eval(r#"apply_world_preset("nonsense")"#)
+            .expect("eval bad preset");
+        let bad_ok = bad
+            .get("ok")
+            .and_then(|d| d.clone().as_bool().ok())
+            .unwrap_or(true);
+        assert!(!bad_ok, "unknown preset should fail, got {:?}", bad);
+
+        let res: rhai::Map = driver
+            .eval(r#"apply_world_preset("modern")"#)
+            .expect("eval modern");
+        let ok = res
+            .get("ok")
+            .and_then(|d| d.clone().as_bool().ok())
+            .unwrap_or(false);
+        assert!(ok, "modern preset switch should succeed: {:?}", res);
+
+        {
+            let world = state.lock().unwrap();
+            for key in ["class_preset", "race_preset", "spell_preset", "language_preset"] {
+                let val = world.db.get_setting(key).unwrap().unwrap_or_default();
+                assert_eq!(val, "modern", "{} not switched", key);
+            }
+        }
+
+        let (classes_n, races_n) = {
+            let world = state.lock().unwrap();
+            (world.class_definitions.len(), world.race_definitions.len())
+        };
+        assert!(classes_n >= 1, "modern preset loaded {} classes", classes_n);
+        assert!(races_n >= 1, "modern preset loaded {} races", races_n);
+
+        let _back: rhai::Map = driver
+            .eval(r#"apply_world_preset("fantasy")"#)
+            .expect("eval fantasy");
+        let val = state
+            .lock()
+            .unwrap()
+            .db
+            .get_setting("class_preset")
+            .unwrap()
+            .unwrap_or_default();
+        assert_eq!(val, "fantasy");
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}

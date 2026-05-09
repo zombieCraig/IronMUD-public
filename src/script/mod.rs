@@ -1073,6 +1073,98 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         },
     );
 
+    // apply_world_preset(preset) -> rhai::Map
+    // Writes class_preset/race_preset/spell_preset/language_preset to the same value
+    // and reloads class/race/spell/language definitions in memory. The classes file
+    // is required (acts as the validity check); other categories are best-effort and
+    // missing files are reported in the `missing` array.
+    let preset_state = state.clone();
+    engine.register_fn("apply_world_preset", move |preset: String| -> rhai::Map {
+        let mut result = rhai::Map::new();
+        let preset_clean = preset.trim().to_string();
+        result.insert("ok".into(), false.into());
+        result.insert("preset".into(), preset_clean.clone().into());
+
+        if preset_clean.is_empty() {
+            result.insert("error".into(), "preset name is empty".to_string().into());
+            return result;
+        }
+
+        let classes_path = format!("scripts/data/classes_{}.json", preset_clean);
+        if !std::path::Path::new(&classes_path).exists() {
+            result.insert(
+                "error".into(),
+                format!("no classes_{}.json under scripts/data/", preset_clean).into(),
+            );
+            return result;
+        }
+
+        let mut missing: Vec<rhai::Dynamic> = Vec::new();
+        for (label, path) in [
+            ("races", format!("scripts/data/races_{}.json", preset_clean)),
+            (
+                "race_suggestions",
+                format!("scripts/data/race_suggestions_{}.json", preset_clean),
+            ),
+            ("spells", format!("scripts/data/spells_{}.json", preset_clean)),
+            (
+                "languages",
+                format!("scripts/data/languages_{}.json", preset_clean),
+            ),
+        ] {
+            if !std::path::Path::new(&path).exists() {
+                missing.push(format!("{} ({})", label, path).into());
+            }
+        }
+
+        {
+            let world = preset_state.lock().unwrap();
+            for key in ["class_preset", "race_preset", "spell_preset", "language_preset"] {
+                if let Err(e) = world.db.set_setting(key, &preset_clean) {
+                    result.insert(
+                        "error".into(),
+                        format!("failed to write {}: {}", key, e).into(),
+                    );
+                    return result;
+                }
+            }
+        }
+
+        if let Err(e) = crate::load_game_data(preset_state.clone()) {
+            result.insert("error".into(), format!("reload failed: {}", e).into());
+            return result;
+        }
+
+        let world = preset_state.lock().unwrap();
+        result.insert(
+            "classes_count".into(),
+            (world.class_definitions.len() as i64).into(),
+        );
+        result.insert(
+            "races_count".into(),
+            (world.race_definitions.len() as i64).into(),
+        );
+        result.insert(
+            "spells_count".into(),
+            (world.spell_definitions.len() as i64).into(),
+        );
+        result.insert(
+            "languages_count".into(),
+            (world.language_definitions.len() as i64).into(),
+        );
+        result.insert("missing".into(), missing.into());
+        result.insert("ok".into(), true.into());
+        result
+    });
+
+    // reload_game_data() -> bool
+    // Re-reads class/race/spell/language/achievement definitions from the
+    // configured presets without touching settings.
+    let reload_state = state.clone();
+    engine.register_fn("reload_game_data", move || -> bool {
+        crate::load_game_data(reload_state.clone()).is_ok()
+    });
+
     // cancel_shutdown() -> String ("cancelled", "no_shutdown_pending")
     let cancel_state = state.clone();
     engine.register_fn("cancel_shutdown", move || {

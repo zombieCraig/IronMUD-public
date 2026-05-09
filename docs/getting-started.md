@@ -123,17 +123,29 @@ IronMUD ships with two theme presets for classes and races:
 
 ### Switching Presets
 
-```bash
-# Switch to modern theme
-ironmud-admin settings set class_preset modern
-ironmud-admin settings set race_preset modern
+The fastest path is in-game from an admin character — `admin preset <name>` writes
+all four preset settings (`class_preset` / `race_preset` / `spell_preset` /
+`language_preset`) to the same value and hot-reloads the matching JSON files
+from `scripts/data/`. No restart needed.
 
-# Switch back to fantasy
-ironmud-admin settings set class_preset fantasy
-ironmud-admin settings set race_preset fantasy
+```
+admin preset modern
+admin preset fantasy
+admin preset                    (shows current preset and usage)
+admin reload                    (re-reads definitions without changing the preset)
 ```
 
-Restart the server after changing presets. Existing characters keep their current class/race.
+If the server is offline, the equivalent CLI is:
+
+```bash
+ironmud-admin settings set class_preset modern
+ironmud-admin settings set race_preset modern
+ironmud-admin settings set spell_preset modern
+ironmud-admin settings set language_preset modern
+```
+
+Existing characters keep their current class/race even if the new preset
+doesn't define it — switch presets carefully on a populated world.
 
 ### Customizing Presets
 
@@ -141,9 +153,16 @@ Class definitions live in `scripts/data/classes_<preset>.json`. Copy an existing
 
 ```bash
 cp scripts/data/classes_fantasy.json scripts/data/classes_scifi.json
-# Edit the new file, then:
+# Edit the new file, then in-game:
+#   admin preset scifi
+# Or via CLI while the server is offline:
 ironmud-admin settings set class_preset scifi
 ```
+
+`admin preset scifi` will refuse if `scripts/data/classes_scifi.json` is missing
+(the classes file is the validity check) and report which of the matching
+race/spell/language files are missing — those categories keep their previous
+in-memory values until you supply files for them.
 
 Race suggestions are in `scripts/data/race_suggestions_<preset>.json` (same pattern).
 

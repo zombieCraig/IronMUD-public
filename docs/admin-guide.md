@@ -32,6 +32,8 @@ Type `admin help` for the live list. Highlights:
 | `admin broadcast <message>` | Server-wide announcement |
 | `admin shutdown <secs> [reason]` | Schedule shutdown with countdown |
 | `admin god` | Toggle invulnerability for the admin character |
+| `admin preset <name>` | Switch world preset (`fantasy`/`modern`/...) and hot-reload class/race/spell/language definitions |
+| `admin reload` | Re-read class/race/spell/language definitions from the current preset (no setting change) |
 
 Bans are honored everywhere: account bans gate `login.rhai`, site bans gate
 the TCP accept loop. Both expire lazily — the next read after `expires_at`

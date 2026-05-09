@@ -101,6 +101,16 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "preset" {
+        handle_preset(connection_id, args, char);
+        return;
+    }
+
+    if subcommand == "reload" {
+        handle_reload_game_data(connection_id);
+        return;
+    }
+
     send_client_message(connection_id, "Unknown subcommand. Type 'admin help' for commands.");
 }
 
@@ -121,6 +131,8 @@ fn show_help(connection_id) {
     help += "  admin siteban <ip> [duration] [reason]    - Refuse connections from an IP\n";
     help += "  admin sitebans                    - List active site bans\n";
     help += "  admin alts <account>              - Show accounts sharing IP / normalized email\n";
+    help += "  admin preset <name>               - Switch world preset (fantasy/modern/...) and hot-reload definitions\n";
+    help += "  admin reload                      - Reload class/race/spell/language definitions from disk\n";
     help += "  admin help                        - Show this help\n";
     send_client_message(connection_id, help);
 }
@@ -1382,4 +1394,50 @@ fn handle_alts(connection_id, args) {
         out += "  " + flag + a.name + "  via " + a.match_type + "=" + a.match_value + "\n";
     }
     send_client_message(connection_id, out);
+}
+
+fn handle_preset(connection_id, args, admin_char) {
+    let parts = args.split(" ");
+    if parts.len() < 2 || parts[1] == "" {
+        let current = get_setting_or_default("class_preset", "fantasy");
+        send_client_message(connection_id,
+            "Current world preset: " + current + "\n" +
+            "Usage: admin preset <name>   (e.g. fantasy, modern)\n" +
+            "Sets class_preset, race_preset, spell_preset, and language_preset to the same value\n" +
+            "and hot-reloads the matching JSON files from scripts/data/.");
+        return;
+    }
+    let preset = parts[1].to_lower();
+    let result = apply_world_preset(preset);
+    if !result.ok {
+        let err = result.get("error");
+        if err == () { err = "unknown error"; }
+        send_client_message(connection_id, "Preset switch failed: " + err);
+        return;
+    }
+    let msg = "World preset switched to '" + result.preset + "'.\n";
+    msg += "  classes:   " + result.classes_count + "\n";
+    msg += "  races:     " + result.races_count + "\n";
+    msg += "  spells:    " + result.spells_count + "\n";
+    msg += "  languages: " + result.languages_count + "\n";
+    let missing = result.missing;
+    if missing.len() > 0 {
+        msg += "Missing files (kept previous values for these):\n";
+        for m in missing {
+            msg += "  - " + m + "\n";
+        }
+    }
+    msg += "Note: existing players keep their current class/race even if it no longer exists in the new preset.";
+    send_client_message(connection_id, msg);
+
+    // Audit log via broadcast to builders so other staff see the swap.
+    broadcast_to_builders("[admin] " + admin_char.name + " switched world preset to '" + result.preset + "'");
+}
+
+fn handle_reload_game_data(connection_id) {
+    if reload_game_data() {
+        send_client_message(connection_id, "Game data reloaded from current presets.");
+    } else {
+        send_client_message(connection_id, "Reload failed; check server logs.");
+    }
 }
