@@ -10,6 +10,14 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Email verification: post-create or post-login interstitial. Same handler
+    // covers both because the only state we need (account_id) lives on the
+    // connection, and the success branch always re-checks chargen state.
+    if mode == "email_verify_prompt" {
+        handle_email_verify_input(args, connection_id);
+        return;
+    }
+
     // Branch on whether the connection has already authenticated to an
     // account. Authenticated path = "add another character to my roster"
     // (one-arg form, no password). Unauthenticated path = "create my first
@@ -122,15 +130,26 @@ fn run_unauthenticated_create(args, connection_id) {
         return;
     }
 
-    // Initial create command: create <name> <password>
+    // Initial create command. Two argument shapes depending on whether the
+    // server requires email verification:
+    //   create <account_name> <password>                 (verification off, default)
+    //   create <account_name> <password> <email>         (verification required)
     let parts = args.split(" ");
-    if parts.len() < 2 {
+    let need_email = is_email_verification_required();
+
+    if need_email && parts.len() < 3 {
+        send_client_message(connection_id,
+            "Email verification is required on this server.\nUsage: create <account_name> <password> <email>");
+        return;
+    }
+    if !need_email && parts.len() < 2 {
         send_client_message(connection_id, "Usage: create <account_name> <password>");
         return;
     }
 
     let name = parts[0];
     let password = parts[1];
+    let email = if parts.len() >= 3 { parts[2] } else { "" };
 
     if name == "" {
         send_client_message(connection_id, "Account name cannot be empty.");
@@ -151,6 +170,20 @@ fn run_unauthenticated_create(args, connection_id) {
     if password.to_lower() == name.to_lower() {
         send_client_message(connection_id, "Password cannot be the same as your account name.");
         return;
+    }
+
+    if need_email {
+        if !is_valid_email_format(email) {
+            send_client_message(connection_id, "That email address doesn't look right. Use: create <account_name> <password> <email>");
+            return;
+        }
+        // One account per inbox when verification is required. Off when
+        // disabled — private servers don't care.
+        let owner_id = find_account_id_by_email(email);
+        if owner_id != "" {
+            send_client_message(connection_id, "An account is already registered to that email.");
+            return;
+        }
     }
 
     // An account or character with this name must not exist.
@@ -202,15 +235,131 @@ fn run_unauthenticated_create(args, connection_id) {
         set_first_character_privileges(name);
     }
 
-    // Store wizard state as JSON-like string
+    // Stash chargen state up front so the post-verify success path can find
+    // it without re-deriving anything.
     let wizard_state = "char_name=" + name + ";is_first=" + is_first_character;
     set_wizard_data(connection_id, wizard_state);
 
-    // Enter wizard menu
-    set_olc_mode(connection_id, "chargen_menu");
+    if need_email {
+        // Mark the account unverified, store the email, fire off a code, and
+        // gate further input through email_verify_prompt mode. Failure to
+        // send (missing SMTP config etc.) rolls the half-state back so we
+        // don't strand a never-verifiable account.
+        set_account_email(account_id, email);
+        if !send_verification_code(account_id, email) {
+            delete_account(name);
+            delete_character(name);
+            clear_authenticated_account(connection_id);
+            clear_wizard_data(connection_id);
+            send_client_message(connection_id,
+                "Email verification is required but the server can't send mail right now. Contact an administrator.");
+            return;
+        }
+        set_olc_mode(connection_id, "email_verify_prompt");
+        send_client_message(connection_id,
+            "\nA 6-digit verification code has been sent to " + email + ".\n"
+            + "Type the code to continue, 'resend' for a new code, or 'cancel' to abort.\n> ");
+        return;
+    }
 
-    // Reload character data and show menu
-    let char_data = get_character_data(name);
+    // Verification disabled — drop straight into chargen.
+    enter_chargen_for_account(connection_id, name);
+}
+
+// === Email verification mode ===
+
+fn handle_email_verify_input(args, connection_id) {
+    let trimmed = args;
+    let lower = trimmed.to_lower();
+
+    let account_id = get_authenticated_account_id(connection_id);
+    if account_id == "" {
+        send_client_message(connection_id, "Your verification session has been lost. Please reconnect and try again.");
+        set_olc_mode(connection_id, "");
+        return;
+    }
+
+    if lower == "cancel" || lower == "quit" {
+        let account_name = get_authenticated_account_name(connection_id);
+        // Roll back the half-created account so the name is freed up.
+        if account_name != "" {
+            delete_character(account_name);
+            delete_account(account_name);
+        }
+        clear_authenticated_account(connection_id);
+        clear_wizard_data(connection_id);
+        set_olc_mode(connection_id, "");
+        send_client_message(connection_id, "\nAccount creation cancelled.\n");
+        return;
+    }
+
+    if lower == "resend" {
+        let gate = can_resend_verification_code(account_id);
+        if gate == 1 {
+            send_client_message(connection_id, "Too soon since the last code. Wait a minute and try again.\n> ");
+            return;
+        }
+        if gate == 2 {
+            send_client_message(connection_id, "You've requested too many codes recently. Wait an hour and try again.\n> ");
+            return;
+        }
+        let account = get_account_by_id(account_id);
+        if account == () || account.email == "" {
+            send_client_message(connection_id, "No email is on file for your account. Type 'cancel' to abort.\n> ");
+            return;
+        }
+        if !send_verification_code(account_id, account.email) {
+            send_client_message(connection_id, "Failed to send a new code. Contact an administrator.\n> ");
+            return;
+        }
+        send_client_message(connection_id, "A new code has been sent. Check " + account.email + ".\n> ");
+        return;
+    }
+
+    // Anything else: treat as a code attempt.
+    let result = verify_account_code(account_id, trimmed);
+    if result == 0 {
+        send_client_message(connection_id, "Email verified.\n");
+        // Decide where to go: brand-new account drops into chargen; an
+        // existing account being re-verified at login goes to roster.
+        let account_name = get_authenticated_account_name(connection_id);
+        let char_data = get_character_data(account_name);
+        if char_data != () && !char_data.creation_complete {
+            enter_chargen_for_account(connection_id, account_name);
+        } else {
+            // Login-time verification: hand back to login.rhai's roster path
+            // by clearing mode and showing the available characters.
+            set_olc_mode(connection_id, "");
+            clear_wizard_data(connection_id);
+            send_client_message(connection_id, "Type `look` or move to begin, or use the `roster` command to switch characters.\n");
+        }
+        return;
+    }
+    if result == 1 {
+        send_client_message(connection_id, "No verification code is outstanding. Type 'resend' to request one.\n> ");
+        return;
+    }
+    if result == 2 {
+        send_client_message(connection_id, "That code has expired. Type 'resend' to request a new one.\n> ");
+        return;
+    }
+    send_client_message(connection_id, "That code doesn't match. Try again, or type 'resend' / 'cancel'.\n> ");
+}
+
+fn enter_chargen_for_account(connection_id, account_name) {
+    // Wizard data was already stamped by run_unauthenticated_create — but the
+    // login-gate path may not have set it. Make sure char_name is present.
+    let existing = get_wizard_data(connection_id);
+    if existing.index_of("char_name=") < 0 {
+        let wizard_state = "char_name=" + account_name + ";is_first=false";
+        set_wizard_data(connection_id, wizard_state);
+    }
+    set_olc_mode(connection_id, "chargen_menu");
+    let char_data = get_character_data(account_name);
+    if char_data == () {
+        send_client_message(connection_id, "Character data lost. Contact an administrator.");
+        return;
+    }
     show_wizard_menu(connection_id, char_data);
 }
 

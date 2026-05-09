@@ -20,6 +20,7 @@ pub mod control;
 pub mod db;
 pub mod dialogue_edit;
 pub mod discord;
+pub mod email;
 pub mod game;
 pub mod gemini;
 pub mod import;
@@ -2454,6 +2455,12 @@ pub async fn handle_connection(
                 // Roster mode (post-auth, pre-character-pick). Inputs go to
                 // login.rhai's handle_select_character.
                 Some("scripts/commands/login.rhai".to_string())
+            } else if mode == "email_verify_prompt" {
+                // Email verification: 6-digit code, 'resend', or 'cancel'.
+                // create.rhai owns the unauthenticated path (which is where
+                // verification originates); login.rhai's gate also routes
+                // through create.rhai for consistent handling.
+                Some("scripts/commands/create.rhai".to_string())
             } else {
                 None
             };

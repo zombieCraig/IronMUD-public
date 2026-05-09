@@ -423,6 +423,27 @@ impl Db {
         Ok(false)
     }
 
+    /// Find an account by its email address (case-insensitive). Used by the
+    /// email-verification slice to refuse duplicate registrations under one
+    /// inbox. Linear scan — accounts are bounded by player count.
+    pub fn find_account_by_email(
+        &self,
+        email: &str,
+    ) -> Result<Option<crate::types::AccountData>> {
+        let needle = email.trim().to_lowercase();
+        if needle.is_empty() {
+            return Ok(None);
+        }
+        for account in self.list_accounts()? {
+            if let Some(existing) = &account.email {
+                if existing.trim().to_lowercase() == needle {
+                    return Ok(Some(account));
+                }
+            }
+        }
+        Ok(None)
+    }
+
     /// Resolve which account owns this character name (linear scan; account
     /// counts are tiny compared to characters, so this is fine for now).
     pub fn find_account_for_character(
@@ -471,6 +492,12 @@ impl Db {
                 password_hash: character.password_hash.clone(),
                 character_names: vec![character.name.clone()],
                 email: None,
+                email_verified: true,
+                email_verification_code: None,
+                email_verification_code_expires_at: 0,
+                email_verification_last_sent_at: 0,
+                email_verification_resend_count: 0,
+                email_verification_resend_window_started_at: 0,
                 is_banned: false,
                 created_at: now,
                 last_login_at: 0,

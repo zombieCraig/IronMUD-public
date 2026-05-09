@@ -1,0 +1,12 @@
+Welcome to IronMUD!
+
+Your verification code is: {{code}}
+
+Enter this code in the game to complete account creation. The code
+expires within 30 minutes; if it does, type 'resend' to request a new
+one.
+
+If you didn't create this account, ignore this email — no further
+action is needed.
+
+— The IronMUD server

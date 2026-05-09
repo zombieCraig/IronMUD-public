@@ -8003,3 +8003,250 @@ fn test_delete_character_clears_account_roster_pointer() {
         std::panic::resume_unwind(e);
     }
 }
+
+// ===== Email verification slice =====
+
+#[test]
+fn test_email_verified_defaults_true_for_legacy_accounts() {
+    // Account JSON written before the verification slice will not have any of
+    // the new fields. Loading it must produce email_verified = true so
+    // existing accounts grandfather in when the schema upgrades.
+    use ironmud::types::AccountData;
+
+    let legacy_json = r#"{
+        "id": "11111111-1111-1111-1111-111111111111",
+        "name": "Legacy",
+        "password_hash": "h",
+        "character_names": ["Legacy"],
+        "is_banned": false,
+        "created_at": 0,
+        "last_login_at": 0
+    }"#;
+
+    let account: AccountData = serde_json::from_str(legacy_json).expect("legacy schema decodes");
+    assert!(
+        account.email_verified,
+        "legacy accounts must default email_verified=true so the verification flag flip doesn't lock them out"
+    );
+    assert!(account.email_verification_code.is_none());
+    assert_eq!(account.email_verification_code_expires_at, 0);
+    assert_eq!(account.email_verification_resend_count, 0);
+}
+
+#[test]
+fn test_email_verification_fields_round_trip() {
+    use ironmud::db::Db;
+    use ironmud::types::AccountData;
+
+    let db_path = fresh_account_db_path("email_verify_round_trip");
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+        let mut account = AccountData::new("Codey".into(), "h".into());
+        account.email = Some("codey@example.com".into());
+        account.email_verified = false;
+        account.email_verification_code = Some("482910".into());
+        account.email_verification_code_expires_at = 1_700_000_000;
+        account.email_verification_last_sent_at = 1_699_999_900;
+        account.email_verification_resend_count = 3;
+        account.email_verification_resend_window_started_at = 1_699_999_500;
+        db.save_account(account).unwrap();
+
+        let loaded = db.get_account("Codey").unwrap().unwrap();
+        assert!(!loaded.email_verified);
+        assert_eq!(loaded.email_verification_code.as_deref(), Some("482910"));
+        assert_eq!(loaded.email_verification_code_expires_at, 1_700_000_000);
+        assert_eq!(loaded.email_verification_last_sent_at, 1_699_999_900);
+        assert_eq!(loaded.email_verification_resend_count, 3);
+        assert_eq!(
+            loaded.email_verification_resend_window_started_at,
+            1_699_999_500
+        );
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_find_account_by_email() {
+    use ironmud::db::Db;
+    use ironmud::types::AccountData;
+
+    let db_path = fresh_account_db_path("find_by_email");
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut a = AccountData::new("Alice".into(), "h".into());
+        a.email = Some("Alice@Example.COM".into());
+        db.save_account(a).unwrap();
+        let mut b = AccountData::new("Bob".into(), "h".into());
+        b.email = Some("bob@example.com".into());
+        db.save_account(b).unwrap();
+
+        // Case-insensitive match.
+        let hit = db
+            .find_account_by_email("alice@example.com")
+            .unwrap()
+            .expect("alice found by lowercase email");
+        assert_eq!(hit.name, "Alice");
+
+        // Whitespace tolerance.
+        let hit2 = db
+            .find_account_by_email("  bob@example.com  ")
+            .unwrap()
+            .expect("bob found with surrounding whitespace");
+        assert_eq!(hit2.name, "Bob");
+
+        // No match.
+        let miss = db.find_account_by_email("nobody@example.com").unwrap();
+        assert!(miss.is_none());
+
+        // Empty string is None (not a wildcard).
+        let empty = db.find_account_by_email("").unwrap();
+        assert!(empty.is_none());
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_create_rhai_branches_on_email_verification_required() {
+    // Source-level: create.rhai must check is_email_verification_required and
+    // require an email argument when on. Without this branch, public servers
+    // can't enforce verification at account creation.
+    use std::fs;
+    let src = fs::read_to_string("scripts/commands/create.rhai").expect("read create.rhai");
+    assert!(
+        src.contains("is_email_verification_required()"),
+        "create.rhai must check is_email_verification_required"
+    );
+    assert!(
+        src.contains("send_verification_code"),
+        "create.rhai must dispatch a verification code when verification is required"
+    );
+    assert!(
+        src.contains("\"email_verify_prompt\""),
+        "create.rhai must enter email_verify_prompt mode after sending the code"
+    );
+    assert!(
+        src.contains("verify_account_code"),
+        "create.rhai must handle the verify response in email_verify_prompt mode"
+    );
+    assert!(
+        src.contains("find_account_id_by_email"),
+        "create.rhai must refuse duplicate email registrations when verification is on"
+    );
+}
+
+#[test]
+fn test_login_rhai_gates_on_email_verification() {
+    // Source-level: login.rhai must, after password verify but before showing
+    // the character roster, gate users into email_verify_prompt when the
+    // server requires verification and the account is unverified.
+    use std::fs;
+    let src = fs::read_to_string("scripts/commands/login.rhai").expect("read login.rhai");
+    assert!(
+        src.contains("is_email_verification_required()"),
+        "login.rhai must check is_email_verification_required before character selection"
+    );
+    assert!(
+        src.contains("is_account_email_verified"),
+        "login.rhai must check the account's verified state"
+    );
+    assert!(
+        src.contains("\"email_verify_prompt\""),
+        "login.rhai must drop unverified users into email_verify_prompt mode"
+    );
+}
+
+#[test]
+fn test_email_verify_prompt_mode_routes_to_create_rhai() {
+    // Source-level: src/lib.rs OLC dispatch must route the email_verify_prompt
+    // mode to create.rhai (which owns both the create-time and login-time
+    // verification UX).
+    use std::fs;
+    let src = fs::read_to_string("src/lib.rs").expect("read lib.rs");
+    assert!(
+        src.contains("mode == \"email_verify_prompt\""),
+        "lib.rs OLC dispatch must include email_verify_prompt"
+    );
+}
+
+#[test]
+fn test_email_template_has_code_placeholder() {
+    // The default verification email body lives at scripts/data/email/
+    // verification.txt. It must contain the {{code}} placeholder, otherwise
+    // the user receives a code-less email.
+    use std::fs;
+    let body = fs::read_to_string("scripts/data/email/verification.txt")
+        .expect("verification template exists");
+    assert!(
+        body.contains("{{code}}"),
+        "email template must contain {{code}} placeholder"
+    );
+}
+
+#[test]
+fn test_admin_account_subcommands_present() {
+    // Source-level: ironmud-admin must expose Verify, Unverify, SetEmail, and
+    // SendCode subcommands so admins can manage stuck accounts without
+    // hand-editing the DB.
+    use std::fs;
+    let src = fs::read_to_string("src/bin/ironmud-admin.rs").expect("read admin");
+    for needle in &["Verify {", "Unverify {", "SetEmail {", "SendCode {"] {
+        assert!(
+            src.contains(needle),
+            "ironmud-admin must expose AccountAction::{}",
+            needle
+        );
+    }
+}
+
+#[test]
+fn test_email_verification_disabled_by_default() {
+    // No setting in the tree means the verification gate is off. This is the
+    // private/tailscale/homelab default.
+    use ironmud::db::Db;
+
+    let db_path = fresh_account_db_path("email_disabled_default");
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+        let v = db.get_setting("email_verification_required").unwrap();
+        assert!(
+            v.is_none(),
+            "fresh DB must not have email_verification_required preset"
+        );
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_generate_code_is_six_digit() {
+    // 1M-space code keeps brute-force at 1-in-a-million per attempt; format
+    // must be zero-padded so "000482" doesn't render as "482".
+    use ironmud::email::generate_code;
+    for _ in 0..32 {
+        let code = generate_code();
+        assert_eq!(code.len(), 6, "code must be 6 chars (got {:?})", code);
+        assert!(
+            code.chars().all(|c| c.is_ascii_digit()),
+            "code must be all digits (got {:?})",
+            code
+        );
+    }
+}

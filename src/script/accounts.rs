@@ -231,6 +231,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         },
     );
 
+    // delete_account(name) — used by the email-verification cancel path to
+    // roll back a half-created account so the name is freed up.
+    let cloned_db = db.clone();
+    engine.register_fn("delete_account", move |name: String| -> bool {
+        cloned_db.delete_account(&name).is_ok()
+    });
+
     // touch_account_login(account_id_str) — stamp last_login_at to now. Called
     // from login.rhai after a successful pick.
     let cloned_db = db.clone();

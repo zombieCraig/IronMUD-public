@@ -105,6 +105,32 @@ fn run_command(args, connection_id) {
     set_authenticated_account(connection_id, account.id, account.name);
     touch_account_login(account.id);
 
+    // Email verification gate. When the server requires verification and this
+    // account hasn't completed it (e.g. they disconnected mid-create, or an
+    // admin flipped the flag mid-session), drop them into the same prompt
+    // that create.rhai uses. The handler routes back to roster on success.
+    if is_email_verification_required() && !is_account_email_verified(account.id) {
+        let acct_email = account.email;
+        if acct_email == "" {
+            send_client_message(connection_id,
+                "Email verification is required on this server but no email is on file for your account. Contact an administrator.");
+            clear_authenticated_account(connection_id);
+            return;
+        }
+        // If no code is currently outstanding, send one. Otherwise let the
+        // existing code stand so we don't burn through resends on every login.
+        let gate = can_resend_verification_code(account.id);
+        if gate == 0 {
+            send_verification_code(account.id, acct_email);
+        }
+        set_olc_mode(connection_id, "email_verify_prompt");
+        send_client_message(connection_id,
+            "\nYour account email isn't verified yet.\n"
+            + "A 6-digit code has been sent to " + acct_email + " (or check the most recent one).\n"
+            + "Type the code, 'resend' for a new code, or 'cancel' to disconnect.\n> ");
+        return;
+    }
+
     // Step 2: character selection.
     let summaries = get_account_character_summaries(account.id);
 

@@ -88,6 +88,28 @@ enum AccountAction {
         /// Account name
         name: String,
     },
+    /// Mark an account's email as verified (admin override)
+    Verify {
+        /// Account name
+        name: String,
+    },
+    /// Mark an account's email as unverified (force re-verification)
+    Unverify {
+        /// Account name
+        name: String,
+    },
+    /// Set or change the account's email address (clears verified state)
+    SetEmail {
+        /// Account name
+        name: String,
+        /// New email address
+        email: String,
+    },
+    /// Send a fresh verification code (bypasses resend rate limits)
+    SendCode {
+        /// Account name
+        name: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -791,6 +813,13 @@ fn handle_account_command(db: &Db, action: AccountAction) -> Result<()> {
             println!("ID:            {}", a.id);
             println!("Banned:        {}", a.is_banned);
             println!("Email:         {}", a.email.as_deref().unwrap_or("(none)"));
+            println!("Email verified: {}", a.email_verified);
+            if a.email_verification_code.is_some() {
+                println!(
+                    "Pending code: yes (expires at unix {})",
+                    a.email_verification_code_expires_at
+                );
+            }
             println!("Created at:    {}", a.created_at);
             println!("Last login at: {}", a.last_login_at);
             println!("Characters ({}):", a.character_names.len());
@@ -848,6 +877,73 @@ fn handle_account_command(db: &Db, action: AccountAction) -> Result<()> {
             }
             db.delete_account(&name)?;
             println!("Account '{}' and all owned characters deleted.", name);
+        }
+        AccountAction::Verify { name } => {
+            let mut a = db
+                .get_account(&name)?
+                .context(format!("Account '{}' not found", name))?;
+            a.email_verified = true;
+            a.email_verification_code = None;
+            a.email_verification_code_expires_at = 0;
+            db.save_account(a)?;
+            println!("Account '{}' marked as email-verified.", name);
+        }
+        AccountAction::Unverify { name } => {
+            let mut a = db
+                .get_account(&name)?
+                .context(format!("Account '{}' not found", name))?;
+            a.email_verified = false;
+            db.save_account(a)?;
+            println!("Account '{}' marked as unverified. Will need to re-verify on next login if email_verification_required is set.", name);
+        }
+        AccountAction::SetEmail { name, email } => {
+            let mut a = db
+                .get_account(&name)?
+                .context(format!("Account '{}' not found", name))?;
+            let trimmed = email.trim().to_string();
+            if trimmed.is_empty() {
+                a.email = None;
+            } else {
+                a.email = Some(trimmed.clone());
+            }
+            // Setting/clearing the email always invalidates the verified
+            // state — admin-set emails go through user-driven verification.
+            a.email_verified = false;
+            a.email_verification_code = None;
+            a.email_verification_code_expires_at = 0;
+            db.save_account(a)?;
+            println!("Account '{}' email updated.", name);
+        }
+        AccountAction::SendCode { name } => {
+            let mut a = db
+                .get_account(&name)?
+                .context(format!("Account '{}' not found", name))?;
+            let to = match a.email.clone() {
+                Some(e) if !e.trim().is_empty() => e,
+                _ => anyhow::bail!("Account '{}' has no email on file. Use `account set-email` first.", name),
+            };
+            let code = ironmud::email::generate_code();
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+            let ttl = db
+                .get_setting("email_verification_code_ttl_secs")
+                .ok()
+                .flatten()
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(1800);
+            a.email_verification_code = Some(code.clone());
+            a.email_verification_code_expires_at = now + ttl;
+            a.email_verification_last_sent_at = now;
+            db.save_account(a)?;
+            match ironmud::email::send_verification_email(db, &to, &code) {
+                Ok(()) => println!("Verification code sent to {} for account '{}'.", to, name),
+                Err(e) => println!(
+                    "Code stored on account but SMTP send failed: {}. Code: {} (admin can communicate it directly).",
+                    e, code
+                ),
+            }
         }
     }
     Ok(())
