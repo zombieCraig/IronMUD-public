@@ -3,6 +3,13 @@
 fn run_command(args, connection_id) {
     let mode = get_olc_mode(connection_id);
 
+    // If in character-roster selection mode (post-auth, multi-char accounts),
+    // handle selection here.
+    if mode == "select_character" {
+        handle_select_character(args, connection_id);
+        return;
+    }
+
     // If in migration prompt mode, handle that first
     if mode == "migration_prompt" {
         handle_migration_prompt(args, connection_id);
@@ -37,7 +44,7 @@ fn run_command(args, connection_id) {
 
     let parts = args.split(" ");
     if parts.len() < 2 {
-        send_client_message(connection_id, "Usage: login <character_name> <password>");
+        send_client_message(connection_id, "Usage: login <account_name> <password>");
         return;
     }
 
@@ -45,7 +52,7 @@ fn run_command(args, connection_id) {
     let password = parts[1];
 
     if name == "" {
-        send_client_message(connection_id, "Character name cannot be empty.");
+        send_client_message(connection_id, "Account name cannot be empty.");
         return;
     }
 
@@ -54,27 +61,28 @@ fn run_command(args, connection_id) {
         return;
     }
 
-    // Retrieve character data
-    let existing_char = get_character_data(name);
+    // Retrieve account data (post-migration, every legacy character has a
+    // matching 1:1 account).
+    let account = get_account_by_name(name);
 
-    if existing_char == () {
-        // Treat unknown-character lookups as auth failures too -- otherwise
+    if account == () {
+        // Treat unknown-account lookups as auth failures too -- otherwise
         // the IP throttle never engages on username enumeration sweeps.
         record_auth_failure(connection_id);
-        send_client_message(connection_id, "Character '" + name + "' not found.");
+        send_client_message(connection_id, "Account '" + name + "' not found.");
         return;
     }
 
-    // Check if account is locked out
+    // Check if account is locked out (per-account-name lockout, unchanged
+    // since pivot — account name == old character name post-migration).
     let lockout_remaining = check_lockout(name);
     if lockout_remaining > 0 {
         send_client_message(connection_id, "Too many failed attempts. Try again in " + format_lockout_time(lockout_remaining) + ".");
         return;
     }
 
-    // Verify password
-    let password_hash = existing_char.password_hash;
-    let is_valid = verify_password(password, password_hash);
+    // Verify password against the account's hash (source of truth post-migration).
+    let is_valid = verify_password(password, account.password_hash);
 
     if !is_valid {
         record_auth_failure(connection_id);
@@ -83,28 +91,133 @@ fn run_command(args, connection_id) {
         return;
     }
 
-    // Successful login - clear any lockout data
+    // Successful auth - clear any lockout data
     clear_lockout_data(name);
+
+    // Refuse banned accounts. Generic message — don't leak the ban state to
+    // an attacker who could map account-existence by message variance.
+    if account.is_banned {
+        send_client_message(connection_id, "This account is suspended. Contact an administrator.");
+        return;
+    }
+
+    // Stamp authentication on the connection.
+    set_authenticated_account(connection_id, account.id, account.name);
+    touch_account_login(account.id);
+
+    // Step 2: character selection.
+    let summaries = get_account_character_summaries(account.id);
+
+    if summaries.len() == 0 {
+        send_client_message(connection_id,
+            "\nYour account has no characters yet. Type `create <character_name>` to make one.\n");
+        return;
+    }
+
+    if summaries.len() == 1 {
+        // Single-char account: auto-select. Preserves the legacy single-char UX.
+        complete_character_selection(connection_id, summaries[0].name);
+        return;
+    }
+
+    // 2+ characters: show roster and wait for selection.
+    set_olc_mode(connection_id, "select_character");
+    show_character_roster(connection_id, summaries);
+}
+
+fn show_character_roster(connection_id, summaries) {
+    let output = "\n=== Your characters ===\n\n";
+    let idx = 1;
+    for s in summaries {
+        let class_str = s.class_name;
+        if class_str == "" { class_str = "unemployed"; }
+        let race_str = s.race;
+        if race_str == "" { race_str = "unknown"; }
+        let where_str = s.room_title;
+        if where_str == "" { where_str = "elsewhere"; }
+        output += "  [" + idx + "] " + s.name + " — level " + s.level + " " + race_str + " " + class_str + ", in " + where_str + "\n";
+        idx += 1;
+    }
+    output += "\nType a number to play that character, `new` to create another, or `quit` to log out.\n> ";
+    send_client_message(connection_id, output);
+}
+
+fn handle_select_character(input, connection_id) {
+    let trimmed = input.to_lower();
+    let account_id = get_authenticated_account_id(connection_id);
+    if account_id == "" {
+        // Defensive: shouldn't happen, but if the auth state is gone, drop
+        // the player back to the login prompt instead of a confusing roster.
+        set_olc_mode(connection_id, "");
+        send_client_message(connection_id, "Session expired. Please log in again.");
+        return;
+    }
+
+    if trimmed == "quit" || trimmed == "q" {
+        set_olc_mode(connection_id, "");
+        clear_authenticated_account(connection_id);
+        send_client_message(connection_id, "Logged out. Goodbye!");
+        return;
+    }
+
+    if trimmed == "new" {
+        // Clear the roster mode so `create` runs as a normal command. The
+        // auth state stays — `create.rhai` reads it and skips the password
+        // prompt for an authenticated connection.
+        set_olc_mode(connection_id, "");
+        send_client_message(connection_id, "Type `create <character_name>` to add a new character to your account.");
+        return;
+    }
+
+    let summaries = get_account_character_summaries(account_id);
+    let idx = try_parse_int(trimmed);
+
+    if idx != () && idx >= 1 && idx <= summaries.len() {
+        let chosen = summaries[idx - 1];
+        complete_character_selection(connection_id, chosen.name);
+        return;
+    }
+
+    // Allow typing the character name directly too — friendlier than forcing a number.
+    for s in summaries {
+        if s.name.to_lower() == trimmed {
+            complete_character_selection(connection_id, s.name);
+            return;
+        }
+    }
+
+    send_client_message(connection_id, "Type a number 1-" + summaries.len() + ", `new`, or `quit`.\n> ");
+}
+
+fn complete_character_selection(connection_id, char_name) {
+    // Re-load the character (summaries are flat; we want the full record).
+    let existing_char = get_character_data(char_name);
+    if existing_char == () {
+        send_client_message(connection_id, "That character could not be loaded. Contact an administrator.");
+        set_olc_mode(connection_id, "");
+        return;
+    }
+
+    set_olc_mode(connection_id, "");
 
     // Authentication successful - check if migration is needed
     // Migration needed if: creation_complete is false AND race is empty
     if !existing_char.creation_complete && existing_char.race == "" {
         // Store character name for migration flow
-        set_wizard_data(connection_id, "char_name=" + name + ";migration=true");
+        set_wizard_data(connection_id, "char_name=" + char_name + ";migration=true");
         set_olc_mode(connection_id, "migration_prompt");
-        show_migration_prompt(connection_id, name);
+        show_migration_prompt(connection_id, char_name);
         return;
     }
 
     // Check if character's race is valid (race system update migration)
     if !is_valid_race(existing_char.race) {
-        set_wizard_data(connection_id, "char_name=" + name + ";migration=race");
+        set_wizard_data(connection_id, "char_name=" + char_name + ";migration=race");
         set_olc_mode(connection_id, "race_migration_prompt");
-        show_race_migration_prompt(connection_id, name, existing_char.race);
+        show_race_migration_prompt(connection_id, char_name, existing_char.race);
         return;
     }
 
-    // No migration needed - complete login
     complete_login(connection_id, existing_char);
 }
 

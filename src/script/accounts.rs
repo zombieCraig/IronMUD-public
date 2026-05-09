@@ -1,0 +1,282 @@
+// src/script/accounts.rs
+// Rhai surface for the Account abstraction. Backs the account-name auth path
+// in `scripts/commands/login.rhai` and the "create new character under
+// existing account" branch in `scripts/commands/create.rhai`.
+
+use crate::SharedConnections;
+use crate::db::Db;
+use rhai::Engine;
+use std::sync::Arc;
+
+/// Maximum characters per account. Prevents one stolen account from spawning
+/// hundreds of characters; not a balance lever, just an anti-abuse cap.
+pub const MAX_CHARACTERS_PER_ACCOUNT: usize = 5;
+
+pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections) {
+    // get_account_by_name(name) -> Map | ()
+    // Empty/whitespace name returns ().
+    let cloned_db = db.clone();
+    engine.register_fn("get_account_by_name", move |name: String| -> rhai::Dynamic {
+        if name.trim().is_empty() {
+            return rhai::Dynamic::UNIT;
+        }
+        match cloned_db.get_account(&name) {
+            Ok(Some(account)) => rhai::Dynamic::from_map(account_to_map(&account)),
+            _ => rhai::Dynamic::UNIT,
+        }
+    });
+
+    // get_account_by_id(account_id_str) -> Map | ()
+    let cloned_db = db.clone();
+    engine.register_fn("get_account_by_id", move |id: String| -> rhai::Dynamic {
+        let uuid = match uuid::Uuid::parse_str(&id) {
+            Ok(u) => u,
+            Err(_) => return rhai::Dynamic::UNIT,
+        };
+        match cloned_db.get_account_by_id(&uuid) {
+            Ok(Some(account)) => rhai::Dynamic::from_map(account_to_map(&account)),
+            _ => rhai::Dynamic::UNIT,
+        }
+    });
+
+    // create_account(name, password_hash) -> account_id_str | ""
+    // Returns "" on failure (name conflict, empty inputs, etc.).
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "create_account",
+        move |name: String, password_hash: String| -> String {
+            let name = name.trim().to_string();
+            if name.is_empty() || password_hash.is_empty() {
+                return String::new();
+            }
+            // Refuse if an account already owns this lowercase name.
+            if cloned_db.get_account(&name).ok().flatten().is_some() {
+                return String::new();
+            }
+            let account = crate::types::AccountData::new(name, password_hash);
+            let id_str = account.id.to_string();
+            if cloned_db.save_account(account).is_err() {
+                return String::new();
+            }
+            id_str
+        },
+    );
+
+    // add_character_to_account(account_id_str, character_name) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "add_character_to_account",
+        move |account_id: String, character_name: String| -> bool {
+            let uuid = match uuid::Uuid::parse_str(&account_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            cloned_db
+                .add_character_to_account(&uuid, &character_name)
+                .unwrap_or(false)
+        },
+    );
+
+    // count_account_characters(account_id_str) -> i64
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "count_account_characters",
+        move |account_id: String| -> i64 {
+            let uuid = match uuid::Uuid::parse_str(&account_id) {
+                Ok(u) => u,
+                Err(_) => return 0,
+            };
+            cloned_db
+                .get_account_by_id(&uuid)
+                .ok()
+                .flatten()
+                .map(|a| a.character_names.len() as i64)
+                .unwrap_or(0)
+        },
+    );
+
+    // get_account_character_summaries(account_id_str) -> Array<Map>
+    // Each entry: #{ name, level, class_name, race, room_title }. Used by the
+    // login roster screen.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_account_character_summaries",
+        move |account_id: String| -> rhai::Array {
+            let uuid = match uuid::Uuid::parse_str(&account_id) {
+                Ok(u) => u,
+                Err(_) => return rhai::Array::new(),
+            };
+            let account = match cloned_db.get_account_by_id(&uuid) {
+                Ok(Some(a)) => a,
+                _ => return rhai::Array::new(),
+            };
+            let mut out = rhai::Array::new();
+            for char_name in &account.character_names {
+                if let Ok(Some(c)) = cloned_db.get_character_data(char_name) {
+                    let mut entry = rhai::Map::new();
+                    entry.insert("name".into(), rhai::Dynamic::from(c.name.clone()));
+                    entry.insert("level".into(), rhai::Dynamic::from(c.level as i64));
+                    entry.insert(
+                        "class_name".into(),
+                        rhai::Dynamic::from(c.class_name.clone()),
+                    );
+                    entry.insert("race".into(), rhai::Dynamic::from(c.race.clone()));
+                    let room_title = cloned_db
+                        .get_room_data(&c.current_room_id)
+                        .ok()
+                        .flatten()
+                        .map(|r| r.title)
+                        .unwrap_or_default();
+                    entry.insert("room_title".into(), rhai::Dynamic::from(room_title));
+                    out.push(rhai::Dynamic::from_map(entry));
+                }
+            }
+            out
+        },
+    );
+
+    // max_characters_per_account() -> i64
+    engine.register_fn("max_characters_per_account", || -> i64 {
+        MAX_CHARACTERS_PER_ACCOUNT as i64
+    });
+
+    // === Connection-state helpers ===
+
+    // set_authenticated_account(connection_id, account_id_str, account_name) -> bool
+    let conn_clone = connections.clone();
+    engine.register_fn(
+        "set_authenticated_account",
+        move |connection_id: String,
+              account_id: String,
+              account_name: String|
+              -> bool {
+            let conn_uuid = match uuid::Uuid::parse_str(&connection_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let acct_uuid = match uuid::Uuid::parse_str(&account_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            if let Ok(mut conns) = conn_clone.lock() {
+                if let Some(session) = conns.get_mut(&conn_uuid) {
+                    session.account_id = Some(acct_uuid);
+                    session.account_name = Some(account_name);
+                    return true;
+                }
+            }
+            false
+        },
+    );
+
+    // get_authenticated_account_id(connection_id) -> String  ("" when unset)
+    let conn_clone = connections.clone();
+    engine.register_fn(
+        "get_authenticated_account_id",
+        move |connection_id: String| -> String {
+            let conn_uuid = match uuid::Uuid::parse_str(&connection_id) {
+                Ok(u) => u,
+                Err(_) => return String::new(),
+            };
+            conn_clone
+                .lock()
+                .ok()
+                .and_then(|conns| {
+                    conns
+                        .get(&conn_uuid)
+                        .and_then(|s| s.account_id.map(|u| u.to_string()))
+                })
+                .unwrap_or_default()
+        },
+    );
+
+    // get_authenticated_account_name(connection_id) -> String  ("" when unset)
+    let conn_clone = connections.clone();
+    engine.register_fn(
+        "get_authenticated_account_name",
+        move |connection_id: String| -> String {
+            let conn_uuid = match uuid::Uuid::parse_str(&connection_id) {
+                Ok(u) => u,
+                Err(_) => return String::new(),
+            };
+            conn_clone
+                .lock()
+                .ok()
+                .and_then(|conns| {
+                    conns
+                        .get(&conn_uuid)
+                        .and_then(|s| s.account_name.clone())
+                })
+                .unwrap_or_default()
+        },
+    );
+
+    // clear_authenticated_account(connection_id) — used on logout/quit.
+    let conn_clone = connections.clone();
+    engine.register_fn(
+        "clear_authenticated_account",
+        move |connection_id: String| -> bool {
+            let conn_uuid = match uuid::Uuid::parse_str(&connection_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            if let Ok(mut conns) = conn_clone.lock() {
+                if let Some(session) = conns.get_mut(&conn_uuid) {
+                    session.account_id = None;
+                    session.account_name = None;
+                    return true;
+                }
+            }
+            false
+        },
+    );
+
+    // touch_account_login(account_id_str) — stamp last_login_at to now. Called
+    // from login.rhai after a successful pick.
+    let cloned_db = db.clone();
+    engine.register_fn("touch_account_login", move |account_id: String| -> bool {
+        let uuid = match uuid::Uuid::parse_str(&account_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let mut account = match cloned_db.get_account_by_id(&uuid) {
+            Ok(Some(a)) => a,
+            _ => return false,
+        };
+        account.last_login_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        cloned_db.save_account(account).is_ok()
+    });
+}
+
+fn account_to_map(account: &crate::types::AccountData) -> rhai::Map {
+    let mut map = rhai::Map::new();
+    map.insert("id".into(), rhai::Dynamic::from(account.id.to_string()));
+    map.insert("name".into(), rhai::Dynamic::from(account.name.clone()));
+    map.insert(
+        "password_hash".into(),
+        rhai::Dynamic::from(account.password_hash.clone()),
+    );
+    let names: rhai::Array = account
+        .character_names
+        .iter()
+        .map(|n| rhai::Dynamic::from(n.clone()))
+        .collect();
+    map.insert("character_names".into(), rhai::Dynamic::from(names));
+    map.insert("is_banned".into(), rhai::Dynamic::from(account.is_banned));
+    map.insert(
+        "email".into(),
+        rhai::Dynamic::from(account.email.clone().unwrap_or_default()),
+    );
+    map.insert(
+        "created_at".into(),
+        rhai::Dynamic::from(account.created_at),
+    );
+    map.insert(
+        "last_login_at".into(),
+        rhai::Dynamic::from(account.last_login_at),
+    );
+    map
+}

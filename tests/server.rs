@@ -382,7 +382,7 @@ async fn test_character_system_lifecycle() -> Result<()> {
         .send(&format!("login {} {}", non_existent_char, password))
         .await?;
     let response3 = client3.read_until_prompt().await?;
-    let expected_not_found_msg = format!("Character '{}' not found.", non_existent_char);
+    let expected_not_found_msg = format!("Account '{}' not found.", non_existent_char);
     assert!(
         response3.contains(&expected_not_found_msg),
         "Login with non-existent character unexpectedly succeeded or gave wrong message: {}",
@@ -7635,4 +7635,371 @@ fn test_tab_completion_appends_room_contextual_verbs() {
         src.contains("available_commands.push(cc.verb.clone())"),
         "lib.rs must push room contextual verbs into available_commands"
     );
+}
+
+// ===== Multi-character accounts (foundation slice) =====
+
+fn fresh_account_db_path(label: &str) -> String {
+    format!("test_account_{}_{}.db", label, std::process::id())
+}
+
+#[test]
+fn test_account_migration_creates_one_to_one_account() {
+    use ironmud::db::Db;
+
+    let db_path = fresh_account_db_path("migration");
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        // Seed two pre-feature characters BEFORE migration runs. We do that by
+        // opening the DB once (which seeds an empty `accounts` tree and stamps
+        // accounts_migrated=true), then writing characters, then resetting the
+        // flag, then re-opening to force the migration path.
+        {
+            let db = Db::open(&db_path).expect("open DB");
+            // Reset migration flag so the next open() actually runs migration.
+            db.set_setting("accounts_migrated", "false").unwrap();
+
+            // Seed two characters with non-empty password_hash.
+            let mut alice = serde_json::from_str::<ironmud::types::CharacterData>(
+                r#"{ "name": "Alice", "password_hash": "hash-alice",
+                     "current_room_id": "00000000-0000-0000-0000-000000000001" }"#,
+            )
+            .unwrap();
+            alice.password_hash = "hash-alice".into();
+            db.save_character_data(alice).unwrap();
+
+            let mut bob = serde_json::from_str::<ironmud::types::CharacterData>(
+                r#"{ "name": "Bob", "password_hash": "hash-bob",
+                     "current_room_id": "00000000-0000-0000-0000-000000000001" }"#,
+            )
+            .unwrap();
+            bob.password_hash = "hash-bob".into();
+            db.save_character_data(bob).unwrap();
+        }
+
+        // Re-open: account migration should fire and create a 1:1 account per character.
+        let db = Db::open(&db_path).expect("re-open DB");
+        let accounts = db.list_accounts().expect("list accounts");
+        assert!(
+            accounts.len() >= 2,
+            "expected at least 2 accounts after migration; got {}",
+            accounts.len()
+        );
+
+        let alice_account = db
+            .get_account("Alice")
+            .unwrap()
+            .expect("Alice account exists");
+        assert_eq!(alice_account.password_hash, "hash-alice");
+        assert_eq!(alice_account.character_names, vec!["Alice".to_string()]);
+
+        let bob_account = db
+            .get_account("Bob")
+            .unwrap()
+            .expect("Bob account exists");
+        assert_eq!(bob_account.password_hash, "hash-bob");
+        assert_eq!(bob_account.character_names, vec!["Bob".to_string()]);
+
+        // Idempotent: re-running migration shouldn't duplicate.
+        db.set_setting("accounts_migrated", "false").unwrap();
+        // (private fn — exercised via open(). Re-open and check counts hold.)
+        drop(db);
+        let db2 = Db::open(&db_path).expect("re-open DB 2");
+        let accounts2 = db2.list_accounts().unwrap();
+        assert_eq!(
+            accounts2.len(),
+            accounts.len(),
+            "migration must be idempotent"
+        );
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_account_password_round_trip() {
+    use ironmud::db::Db;
+    use ironmud::types::AccountData;
+
+    let db_path = fresh_account_db_path("password_round_trip");
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let mut account = AccountData::new("Roundtrip".into(), "hash-rt".into());
+        account.email = Some("a@b".into());
+        account.is_banned = false;
+        account.character_names = vec!["Roundtrip".into(), "Sidekick".into()];
+        let id = account.id;
+        db.save_account(account).expect("save");
+
+        let loaded = db
+            .get_account("Roundtrip")
+            .expect("get")
+            .expect("present");
+        assert_eq!(loaded.id, id);
+        assert_eq!(loaded.password_hash, "hash-rt");
+        assert_eq!(loaded.email.as_deref(), Some("a@b"));
+        assert_eq!(loaded.character_names, vec!["Roundtrip", "Sidekick"]);
+
+        // ID index must resolve back to the same row.
+        let by_id = db
+            .get_account_by_id(&id)
+            .expect("by id")
+            .expect("present");
+        assert_eq!(by_id.name, loaded.name);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_max_characters_per_account_constant_present() {
+    // The cap must exist and be > 1; the create.rhai authenticated path
+    // reads it via max_characters_per_account().
+    use ironmud::script::accounts::MAX_CHARACTERS_PER_ACCOUNT;
+    assert!(
+        MAX_CHARACTERS_PER_ACCOUNT >= 2,
+        "cap must allow at least 2 characters to be useful"
+    );
+}
+
+#[test]
+fn test_add_and_remove_character_from_account_roundtrips() {
+    use ironmud::db::Db;
+    use ironmud::types::AccountData;
+
+    let db_path = fresh_account_db_path("addremove");
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let account = AccountData::new("Addremove".into(), "h".into());
+        let id = account.id;
+        db.save_account(account).unwrap();
+
+        assert!(db.add_character_to_account(&id, "Char1").unwrap());
+        assert!(db.add_character_to_account(&id, "Char2").unwrap());
+        // Adding the same name twice is a no-op (case-insensitive).
+        assert!(db.add_character_to_account(&id, "char1").unwrap());
+
+        let loaded = db.get_account_by_id(&id).unwrap().unwrap();
+        assert_eq!(loaded.character_names.len(), 2);
+
+        assert!(db.remove_character_from_account(&id, "Char1").unwrap());
+        let after = db.get_account_by_id(&id).unwrap().unwrap();
+        assert_eq!(after.character_names, vec!["Char2".to_string()]);
+
+        // find_account_for_character round-trips.
+        let found = db.find_account_for_character("Char2").unwrap();
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().id, id);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_login_uses_account_password_hash_not_character_hash() {
+    // Source-level: login.rhai must verify against account.password_hash, not
+    // existing_char.password_hash. If this drifts, the auth path is reading a
+    // stale hash and post-migration password changes silently fail to land.
+    use std::fs;
+    let src = fs::read_to_string("scripts/commands/login.rhai").expect("read login.rhai");
+    assert!(
+        src.contains("verify_password(password, account.password_hash)"),
+        "login.rhai must verify against account.password_hash"
+    );
+    assert!(
+        src.contains("get_account_by_name"),
+        "login.rhai must look up the account, not the character, for auth"
+    );
+}
+
+#[test]
+fn test_login_auto_selects_when_one_character() {
+    // Source-level: when summaries.len() == 1, login.rhai must skip the roster
+    // and call complete_character_selection directly. Otherwise legacy
+    // single-character users get an unwanted extra prompt.
+    use std::fs;
+    let src = fs::read_to_string("scripts/commands/login.rhai").expect("read login.rhai");
+    assert!(
+        src.contains("if summaries.len() == 1"),
+        "login.rhai must short-circuit the roster for single-character accounts"
+    );
+    assert!(
+        src.contains("complete_character_selection"),
+        "login.rhai must hand off to complete_character_selection on auto-select"
+    );
+}
+
+#[test]
+fn test_login_refuses_banned_account() {
+    // Source-level: the login.rhai auth path must check account.is_banned and
+    // refuse with a generic message before calling set_authenticated_account.
+    use std::fs;
+    let src = fs::read_to_string("scripts/commands/login.rhai").expect("read login.rhai");
+    assert!(
+        src.contains("account.is_banned"),
+        "login.rhai must check is_banned before stamping auth"
+    );
+}
+
+#[test]
+fn test_account_email_field_persists_when_set() {
+    // Roundtrip with email = Some(...) so the future verification slice has a
+    // place to attach. Schema bump prevention.
+    use ironmud::db::Db;
+    use ironmud::types::AccountData;
+
+    let db_path = fresh_account_db_path("email_persist");
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+        let mut account = AccountData::new("Emailer".into(), "h".into());
+        account.email = Some("verified@example.com".into());
+        db.save_account(account).unwrap();
+
+        let loaded = db.get_account("Emailer").unwrap().unwrap();
+        assert_eq!(loaded.email.as_deref(), Some("verified@example.com"));
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_create_rhai_branches_on_authenticated_account() {
+    // Source-level: create.rhai must read get_authenticated_account_id and
+    // dispatch into the authenticated branch (no password) vs unauthenticated
+    // branch (legacy account+character one-shot).
+    use std::fs;
+    let src = fs::read_to_string("scripts/commands/create.rhai").expect("read create.rhai");
+    assert!(
+        src.contains("get_authenticated_account_id"),
+        "create.rhai must check authentication state"
+    );
+    assert!(
+        src.contains("run_authenticated_create"),
+        "create.rhai must have an authenticated branch"
+    );
+    assert!(
+        src.contains("max_characters_per_account"),
+        "create.rhai must enforce per-account character cap"
+    );
+    assert!(
+        src.contains("create_account") && src.contains("add_character_to_account"),
+        "unauthenticated path must create an account and link the first character"
+    );
+}
+
+#[test]
+fn test_select_character_mode_routes_to_login_rhai() {
+    // Source-level: src/lib.rs OLC dispatch table must include
+    // `select_character`, otherwise typing a number at the roster prompt
+    // falls through to "Unknown command".
+    use std::fs;
+    let src = fs::read_to_string("src/lib.rs").expect("read lib.rs");
+    assert!(
+        src.contains("mode == \"select_character\""),
+        "lib.rs OLC dispatch must route select_character to login.rhai"
+    );
+}
+
+#[test]
+fn test_roster_command_registered_and_gated() {
+    // Source-level: roster.rhai exists and is registered as a `user`-tier
+    // command (only logged-in players have an account_id to query).
+    use std::fs;
+    let raw = fs::read_to_string("scripts/commands.json").expect("read commands.json");
+    let parsed: serde_json::Value = serde_json::from_str(&raw).expect("valid json");
+    let entry = parsed
+        .get("roster")
+        .expect("roster command registered")
+        .as_object()
+        .expect("roster is an object");
+    assert_eq!(
+        entry.get("access").and_then(|v| v.as_str()),
+        Some("user"),
+        "roster must be `user`-tier (requires authenticated account)"
+    );
+
+    let src = fs::read_to_string("scripts/commands/roster.rhai").expect("read roster.rhai");
+    assert!(
+        src.contains("get_authenticated_account_id"),
+        "roster.rhai must verify auth before stepping the player out"
+    );
+    assert!(
+        src.contains("clear_player_character") && src.contains("set_olc_mode(connection_id, \"select_character\")"),
+        "roster.rhai must drop the active character and switch to select_character mode"
+    );
+}
+
+#[test]
+fn test_create_refuses_when_playing_a_character() {
+    // Source-level: run_authenticated_create must refuse when the connection
+    // already has a player character loaded; otherwise chargen swaps the
+    // session silently.
+    use std::fs;
+    let src = fs::read_to_string("scripts/commands/create.rhai").expect("read create.rhai");
+    assert!(
+        src.contains("get_player_character(connection_id)") && src.contains("`roster`"),
+        "create.rhai must refuse when active and point users to `roster`"
+    );
+}
+
+#[test]
+fn test_delete_character_clears_account_roster_pointer() {
+    use ironmud::db::Db;
+    use ironmud::types::AccountData;
+
+    let db_path = fresh_account_db_path("delete_clears_roster");
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        // Build an account with one character. Use a real CharacterData so
+        // delete_character_data works end-to-end.
+        let mut account = AccountData::new("Owner".into(), "h".into());
+        account.character_names = vec!["Pawn".into()];
+        let id = account.id;
+        db.save_account(account).unwrap();
+
+        let pawn = serde_json::from_str::<ironmud::types::CharacterData>(
+            r#"{ "name": "Pawn", "password_hash": "h",
+                 "current_room_id": "00000000-0000-0000-0000-000000000001" }"#,
+        )
+        .unwrap();
+        db.save_character_data(pawn).unwrap();
+
+        // Delete the character → owning account's roster should drop the name.
+        db.delete_character_data("Pawn").unwrap();
+        let after = db.get_account_by_id(&id).unwrap().unwrap();
+        assert!(
+            after.character_names.is_empty(),
+            "deleting a character must remove its name from the owning account's roster (got {:?})",
+            after.character_names
+        );
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
 }

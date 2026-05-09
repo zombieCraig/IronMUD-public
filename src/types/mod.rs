@@ -6,6 +6,7 @@
 //! `pub use types::*` in `lib.rs`).
 
 // Domain-specific submodules
+mod account;
 mod achievements;
 mod api_keys;
 mod area;
@@ -32,6 +33,7 @@ mod transport;
 mod trigger;
 
 // Re-export all types from submodules
+pub use account::*;
 pub use achievements::*;
 pub use api_keys::*;
 pub use area::*;

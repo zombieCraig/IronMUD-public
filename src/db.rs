@@ -20,6 +20,12 @@ pub const MAX_PASSWORD_LEN: usize = 128;
 pub struct Db {
     db: Arc<SledDb>,       // Use Arc
     characters: Arc<Tree>, // Use Arc
+    // Account auth + character roster. Key = lowercase name. Migrated from
+    // characters at first run (one account per pre-feature character).
+    accounts: Arc<Tree>,
+    // Account UUID → lowercase name pointer (mirrors character_id_index pattern
+    // used elsewhere — keeps id-based lookups O(1)).
+    account_id_index: Arc<Tree>,
     rooms: Arc<Tree>,
     vnum_index: Arc<Tree>,
     areas: Arc<Tree>,
@@ -83,6 +89,8 @@ impl Db {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let db = sled::open(path)?;
         let characters = db.open_tree("characters")?;
+        let accounts = db.open_tree("accounts")?;
+        let account_id_index = db.open_tree("account_id_index")?;
         let rooms = db.open_tree("rooms")?;
         let vnum_index = db.open_tree("vnum_index")?;
         let areas = db.open_tree("areas")?;
@@ -106,9 +114,11 @@ impl Db {
         let dg_trigger_protos = db.open_tree("dg_trigger_protos")?;
         let achievements = db.open_tree("achievements")?;
         let quests = db.open_tree("quests")?;
-        Ok(Self {
+        let me = Self {
             db: Arc::new(db),                 // Wrap in Arc
             characters: Arc::new(characters), // Wrap in Arc
+            accounts: Arc::new(accounts),
+            account_id_index: Arc::new(account_id_index),
             rooms: Arc::new(rooms),
             vnum_index: Arc::new(vnum_index),
             areas: Arc::new(areas),
@@ -132,7 +142,11 @@ impl Db {
             dg_trigger_protos: Arc::new(dg_trigger_protos),
             achievements: Arc::new(achievements),
             quests: Arc::new(quests),
-        })
+        };
+        // One-shot migration: synthesize a 1:1 Account for every pre-feature
+        // character that doesn't already have one. Idempotent.
+        me.run_account_migration_if_needed()?;
+        Ok(me)
     }
 
     // === DG Scripts global variables ===
@@ -284,7 +298,190 @@ impl Db {
         // the character key — otherwise the messages orphan in the mail tree.
         let _ = self.delete_mail_for_recipient(name)?;
         let _ = self.delete_board_posts_by_author(name)?;
+        // Remove this character's name from any owning account's roster so the
+        // account's roster doesn't dangle past the character's lifetime.
+        let _ = self.remove_character_name_from_any_account(name);
         self.characters.remove(key.as_bytes())?;
+        Ok(())
+    }
+
+    // === Accounts ===
+    //
+    // The auth-bearing aggregate; each account owns 0+ characters. Source of
+    // truth for `password_hash` post-migration. Keyed by lowercase name in the
+    // `accounts` tree, with a parallel UUID→lowercase-name pointer in
+    // `account_id_index` for fast id lookups.
+
+    pub fn get_account(&self, name: &str) -> Result<Option<crate::types::AccountData>> {
+        let key = name.to_lowercase();
+        match self.accounts.get(key.as_bytes())? {
+            Some(ivec) => Ok(Some(serde_json::from_slice(&ivec)?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_account_by_id(&self, id: &Uuid) -> Result<Option<crate::types::AccountData>> {
+        match self.account_id_index.get(id.to_string().as_bytes())? {
+            Some(ivec) => {
+                let lower_name = String::from_utf8(ivec.to_vec()).map_err(|e| {
+                    anyhow::anyhow!("account_id_index value not UTF-8: {}", e)
+                })?;
+                self.get_account(&lower_name)
+            }
+            None => Ok(None),
+        }
+    }
+
+    pub fn save_account(&self, account: crate::types::AccountData) -> Result<()> {
+        let key = account.name.to_lowercase();
+        let value = serde_json::to_vec(&account)?;
+        self.accounts.insert(key.as_bytes(), value)?;
+        self.account_id_index
+            .insert(account.id.to_string().as_bytes(), key.as_bytes())?;
+        Ok(())
+    }
+
+    pub fn delete_account(&self, name: &str) -> Result<()> {
+        let key = name.to_lowercase();
+        if let Some(account) = self.get_account(&key)? {
+            self.account_id_index
+                .remove(account.id.to_string().as_bytes())?;
+        }
+        self.accounts.remove(key.as_bytes())?;
+        Ok(())
+    }
+
+    pub fn list_accounts(&self) -> Result<Vec<crate::types::AccountData>> {
+        let mut out = Vec::new();
+        for kv in self.accounts.iter() {
+            let (_, ivec) = kv?;
+            if let Ok(account) = serde_json::from_slice::<crate::types::AccountData>(&ivec) {
+                out.push(account);
+            }
+        }
+        Ok(out)
+    }
+
+    pub fn count_accounts(&self) -> Result<usize> {
+        Ok(self.accounts.len())
+    }
+
+    pub fn add_character_to_account(
+        &self,
+        account_id: &Uuid,
+        character_name: &str,
+    ) -> Result<bool> {
+        let mut account = match self.get_account_by_id(account_id)? {
+            Some(a) => a,
+            None => return Ok(false),
+        };
+        let already = account
+            .character_names
+            .iter()
+            .any(|n| n.eq_ignore_ascii_case(character_name));
+        if !already {
+            account.character_names.push(character_name.to_string());
+            self.save_account(account)?;
+        }
+        Ok(true)
+    }
+
+    pub fn remove_character_from_account(
+        &self,
+        account_id: &Uuid,
+        character_name: &str,
+    ) -> Result<bool> {
+        let mut account = match self.get_account_by_id(account_id)? {
+            Some(a) => a,
+            None => return Ok(false),
+        };
+        let original_len = account.character_names.len();
+        account
+            .character_names
+            .retain(|n| !n.eq_ignore_ascii_case(character_name));
+        if account.character_names.len() != original_len {
+            self.save_account(account)?;
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
+    /// Remove a character name from whatever account currently owns it. Used by
+    /// `delete_character_data` so deleting a character also cleans up the
+    /// account's roster pointer.
+    pub fn remove_character_name_from_any_account(&self, character_name: &str) -> Result<bool> {
+        for account in self.list_accounts()? {
+            if account
+                .character_names
+                .iter()
+                .any(|n| n.eq_ignore_ascii_case(character_name))
+            {
+                let id = account.id;
+                return self.remove_character_from_account(&id, character_name);
+            }
+        }
+        Ok(false)
+    }
+
+    /// Resolve which account owns this character name (linear scan; account
+    /// counts are tiny compared to characters, so this is fine for now).
+    pub fn find_account_for_character(
+        &self,
+        character_name: &str,
+    ) -> Result<Option<crate::types::AccountData>> {
+        for account in self.list_accounts()? {
+            if account
+                .character_names
+                .iter()
+                .any(|n| n.eq_ignore_ascii_case(character_name))
+            {
+                return Ok(Some(account));
+            }
+        }
+        Ok(None)
+    }
+
+    /// One-shot migration: every pre-feature character with a non-empty
+    /// password_hash gets a 1:1 Account row (`account.name = character.name`).
+    /// Gated on the `accounts_migrated` setting flag — runs once per DB.
+    fn run_account_migration_if_needed(&self) -> Result<()> {
+        if self
+            .get_setting("accounts_migrated")?
+            .map(|v| v == "true")
+            .unwrap_or(false)
+        {
+            return Ok(());
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let mut migrated = 0usize;
+        for character in self.list_all_characters()? {
+            if character.password_hash.is_empty() {
+                continue;
+            }
+            let lower_name = character.name.to_lowercase();
+            if self.get_account(&lower_name)?.is_some() {
+                continue;
+            }
+            let account = crate::types::AccountData {
+                id: Uuid::new_v4(),
+                name: character.name.clone(),
+                password_hash: character.password_hash.clone(),
+                character_names: vec![character.name.clone()],
+                email: None,
+                is_banned: false,
+                created_at: now,
+                last_login_at: 0,
+            };
+            self.save_account(account)?;
+            migrated += 1;
+        }
+        self.set_setting("accounts_migrated", "true")?;
+        if migrated > 0 {
+            tracing::info!("Account migration: created {migrated} account row(s)");
+        }
         Ok(())
     }
 

@@ -10,6 +10,103 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Branch on whether the connection has already authenticated to an
+    // account. Authenticated path = "add another character to my roster"
+    // (one-arg form, no password). Unauthenticated path = "create my first
+    // account + character together" (two-arg form, legacy UX).
+    let auth_account_id = get_authenticated_account_id(connection_id);
+
+    if auth_account_id != "" {
+        run_authenticated_create(args, connection_id, auth_account_id);
+    } else {
+        run_unauthenticated_create(args, connection_id);
+    }
+}
+
+// "create <character_name>" on an authenticated connection — adds another
+// character under the existing account. No password prompt; auth came from
+// the prior login.
+fn run_authenticated_create(args, connection_id, account_id) {
+    // Refuse if the user is currently playing a character. Otherwise the
+    // chargen wizard would silently swap their session out from under them
+    // — bad UX, and a confusing way to find yourself in a starter room.
+    // Tell them the clean path: `roster` to step out, or `quit` and re-login.
+    let active = get_player_character(connection_id);
+    if active != () {
+        send_client_message(connection_id,
+            "You're currently playing " + active.name + ". Type `roster` to step out and create another character.");
+        return;
+    }
+
+    // Per-account character cap. Stops a stolen account from spawning a
+    // bot army.
+    let existing_count = count_account_characters(account_id);
+    if existing_count >= max_characters_per_account() {
+        send_client_message(connection_id, "Your account has reached the maximum of " + max_characters_per_account() + " characters.");
+        return;
+    }
+
+    // Global cap still applies.
+    if count_characters() >= max_characters() {
+        send_client_message(connection_id, "This world has reached its character cap. Contact an administrator.");
+        return;
+    }
+
+    let parts = args.split(" ");
+    if parts.len() < 1 || parts[0] == "" {
+        send_client_message(connection_id, "Usage: create <character_name>");
+        return;
+    }
+
+    let name = parts[0];
+
+    if !is_valid_username(name) {
+        send_client_message(connection_id, "Names must be 3-32 characters: a letter (any script) followed by letters, digits, '-', or '_'.");
+        return;
+    }
+
+    let existing = get_character_data(name);
+    if existing != () {
+        send_client_message(connection_id, "Character '" + name + "' already exists.");
+        return;
+    }
+
+    // Authenticated character creation reuses the account's password_hash —
+    // CharacterData.password_hash is no longer the auth source of truth, but
+    // we store the same hash to keep round-trip semantics consistent for
+    // anything still reading it (admin tools, legacy scripts).
+    let account = get_account_by_id(account_id);
+    if account == () {
+        send_client_message(connection_id, "Account session lost. Please log in again.");
+        clear_authenticated_account(connection_id);
+        return;
+    }
+
+    let new_char = new_character(name, account.password_hash, resolve_starting_room_uuid());
+    new_char.race = get_random_race();
+    new_char.gender = "";
+    new_char.short_description = get_random_short_desc();
+    new_char.class_name = "unemployed";
+    new_char.traits = [];
+    new_char.trait_points = 10;
+    new_char.creation_complete = false;
+    save_character_data(new_char);
+
+    // Link the new character into the account's roster.
+    add_character_to_account(account_id, name);
+
+    // Drop into the chargen wizard.
+    let wizard_state = "char_name=" + name + ";is_first=false";
+    set_wizard_data(connection_id, wizard_state);
+    set_olc_mode(connection_id, "chargen_menu");
+    let char_data = get_character_data(name);
+    show_wizard_menu(connection_id, char_data);
+}
+
+// "create <name> <password>" on an unauthenticated connection — creates a
+// new account AND a first character with the same name. Preserves the
+// legacy one-shot signup UX.
+fn run_unauthenticated_create(args, connection_id) {
     // Per-IP creation throttle. Stops scripted account-flood DoS;
     // legitimate players creating alts at human speed never trip it.
     if is_ip_creation_throttled(connection_id) {
@@ -28,7 +125,7 @@ fn run_command(args, connection_id) {
     // Initial create command: create <name> <password>
     let parts = args.split(" ");
     if parts.len() < 2 {
-        send_client_message(connection_id, "Usage: create <character_name> <password>");
+        send_client_message(connection_id, "Usage: create <account_name> <password>");
         return;
     }
 
@@ -36,7 +133,7 @@ fn run_command(args, connection_id) {
     let password = parts[1];
 
     if name == "" {
-        send_client_message(connection_id, "Character name cannot be empty.");
+        send_client_message(connection_id, "Account name cannot be empty.");
         return;
     }
 
@@ -50,13 +147,18 @@ fn run_command(args, connection_id) {
         return;
     }
 
-    // Password cannot be the same as character name
+    // Password cannot be the same as account name
     if password.to_lower() == name.to_lower() {
-        send_client_message(connection_id, "Password cannot be the same as your character name.");
+        send_client_message(connection_id, "Password cannot be the same as your account name.");
         return;
     }
 
-    // Check if character already exists
+    // An account or character with this name must not exist.
+    let existing_account = get_account_by_name(name);
+    if existing_account != () {
+        send_client_message(connection_id, "Account '" + name + "' already exists.");
+        return;
+    }
     let existing = get_character_data(name);
     if existing != () {
         send_client_message(connection_id, "Character '" + name + "' already exists.");
@@ -64,21 +166,22 @@ fn run_command(args, connection_id) {
     }
 
     // Stamp the creation against the per-IP window now that all
-    // pre-creation gates have passed. Done before save_character_data
-    // so a failed save still counts toward the throttle (otherwise an
-    // attacker could probe with names that fail downstream checks).
+    // pre-creation gates have passed.
     record_ip_creation(connection_id);
 
     // Check if this is the first character (will become admin)
     let is_first_character = count_characters() == 0;
 
-    // Hash the password
+    // Hash the password and create the account row.
     let password_hash = hash_password(password);
+    let account_id = create_account(name, password_hash);
+    if account_id == "" {
+        send_client_message(connection_id, "Failed to create account. Contact an administrator.");
+        return;
+    }
 
-    // Create a new CharacterData with the starting room ID
+    // Create the first character bound to the account.
     let new_char = new_character(name, password_hash, resolve_starting_room_uuid());
-
-    // Apply defaults/random values
     new_char.race = get_random_race();
     new_char.gender = "";
     new_char.short_description = get_random_short_desc();
@@ -86,9 +189,13 @@ fn run_command(args, connection_id) {
     new_char.traits = [];
     new_char.trait_points = 10;
     new_char.creation_complete = false;
-
-    // Save character (preliminary - can be deleted if cancelled)
     save_character_data(new_char);
+    add_character_to_account(account_id, name);
+
+    // Stamp the connection as authenticated to the new account so the user
+    // can immediately use roster commands without a separate login round-trip.
+    set_authenticated_account(connection_id, account_id, name);
+    touch_account_login(account_id);
 
     // First character becomes admin automatically (secured server-side)
     if is_first_character {

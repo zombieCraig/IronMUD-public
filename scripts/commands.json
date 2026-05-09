@@ -19,6 +19,10 @@
     "access": "user",
     "description": "Log out and return to login screen"
   },
+  "roster": {
+    "access": "user",
+    "description": "Show your account's character list and switch characters"
+  },
   "look": {
     "access": "user",
     "description": "Look at your surroundings or a direction"

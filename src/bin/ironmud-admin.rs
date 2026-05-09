@@ -57,6 +57,37 @@ enum Commands {
         /// Message to send
         message: String,
     },
+    /// Account management commands
+    Account {
+        #[command(subcommand)]
+        action: AccountAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum AccountAction {
+    /// List every account with character count and ban state
+    List,
+    /// Show details for one account
+    Show {
+        /// Account name
+        name: String,
+    },
+    /// Suspend an account (refuses login)
+    Ban {
+        /// Account name
+        name: String,
+    },
+    /// Lift an account suspension
+    Unban {
+        /// Account name
+        name: String,
+    },
+    /// Delete an account and all of its characters (cascades)
+    Delete {
+        /// Account name
+        name: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -240,6 +271,7 @@ fn main() -> Result<()> {
         Commands::ApiKey { action } => handle_api_key_command(&db, action),
         Commands::World { action } => handle_world_command(&db, action),
         Commands::Broadcast { .. } => unreachable!("handled above"),
+        Commands::Account { action } => handle_account_command(&db, action),
     }
 }
 
@@ -361,9 +393,16 @@ fn handle_user_command(db: &Db, action: UserAction) -> Result<()> {
 
             // Hash and save
             let hash = db.hash_password(&password)?;
-            char.password_hash = hash;
+            char.password_hash = hash.clone();
             char.must_change_password = false; // Clear flag since admin set the password
             db.save_character_data(char)?;
+
+            // Post-migration, the owning account's hash is the auth source of
+            // truth. Update it so the new password actually unlocks login.
+            if let Some(mut account) = db.find_account_for_character(&name)? {
+                account.password_hash = hash;
+                db.save_account(account)?;
+            }
 
             println!("Password changed for '{}'", name);
         }
@@ -716,6 +755,99 @@ fn handle_world_command(db: &Db, action: WorldAction) -> Result<()> {
 
             db.clear_world_data()?;
             println!("World data cleared. Restart the server to re-seed the demo world.");
+        }
+    }
+    Ok(())
+}
+
+fn handle_account_command(db: &Db, action: AccountAction) -> Result<()> {
+    match action {
+        AccountAction::List => {
+            let accounts = db.list_accounts()?;
+            if accounts.is_empty() {
+                println!("No accounts.");
+                return Ok(());
+            }
+            println!(
+                "{:<24} {:<8} {:<8} {}",
+                "NAME", "CHARS", "BANNED", "CHARACTERS"
+            );
+            for a in accounts {
+                let banned = if a.is_banned { "yes" } else { "no" };
+                println!(
+                    "{:<24} {:<8} {:<8} {}",
+                    a.name,
+                    a.character_names.len(),
+                    banned,
+                    a.character_names.join(", "),
+                );
+            }
+        }
+        AccountAction::Show { name } => {
+            let a = db
+                .get_account(&name)?
+                .context(format!("Account '{}' not found", name))?;
+            println!("Name:          {}", a.name);
+            println!("ID:            {}", a.id);
+            println!("Banned:        {}", a.is_banned);
+            println!("Email:         {}", a.email.as_deref().unwrap_or("(none)"));
+            println!("Created at:    {}", a.created_at);
+            println!("Last login at: {}", a.last_login_at);
+            println!("Characters ({}):", a.character_names.len());
+            for n in &a.character_names {
+                println!("  - {}", n);
+            }
+        }
+        AccountAction::Ban { name } => {
+            let mut a = db
+                .get_account(&name)?
+                .context(format!("Account '{}' not found", name))?;
+            a.is_banned = true;
+            db.save_account(a)?;
+            println!("Account '{}' suspended.", name);
+        }
+        AccountAction::Unban { name } => {
+            let mut a = db
+                .get_account(&name)?
+                .context(format!("Account '{}' not found", name))?;
+            a.is_banned = false;
+            db.save_account(a)?;
+            println!("Account '{}' reinstated.", name);
+        }
+        AccountAction::Delete { name } => {
+            let a = db
+                .get_account(&name)?
+                .context(format!("Account '{}' not found", name))?;
+
+            println!(
+                "WARNING: This will permanently delete account '{}' AND its {} character(s):",
+                a.name,
+                a.character_names.len()
+            );
+            for n in &a.character_names {
+                println!("  - {}", n);
+            }
+            print!("Type the account name to confirm deletion: ");
+            io::stdout().flush()?;
+
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+            let input = input.trim();
+
+            if input.to_lowercase() != name.to_lowercase() {
+                anyhow::bail!("Confirmation failed — account not deleted");
+            }
+
+            // Cascade-delete every owned character first (they each remove
+            // their own account roster pointer in delete_character_data,
+            // which is harmless against the not-yet-deleted account).
+            for char_name in &a.character_names {
+                if let Err(e) = db.delete_character_data(char_name) {
+                    eprintln!("Warning: failed to delete character '{}': {}", char_name, e);
+                }
+            }
+            db.delete_account(&name)?;
+            println!("Account '{}' and all owned characters deleted.", name);
         }
     }
     Ok(())

@@ -151,6 +151,12 @@ pub struct PlayerSession {
     // Dialogue tree: sticky-mode active partner mob (transient, not persisted).
     // `Some(mob_id)` means inputs route through dialogue; `None` is normal command parsing.
     pub dialogue_partner_id: Option<Uuid>,
+    // Account auth: Some after the user supplies a valid account name + password.
+    // Cleared on disconnect. Until a character is selected, `character` stays
+    // None — both fields are populated together once the player picks from the
+    // roster (or auto-selects when only 1 character exists).
+    pub account_id: Option<Uuid>,
+    pub account_name: Option<String>,
 }
 
 /// Input events from the read handler
@@ -1232,6 +1238,8 @@ pub async fn handle_connection(
                 abbrev_enabled: true,
                 map_legend_shown: false,
                 dialogue_partner_id: None,
+                account_id: None,
+                account_name: None,
             },
         );
     }
@@ -2442,6 +2450,10 @@ pub async fn handle_connection(
                 }
             } else if mode == "traits_select" {
                 Some("scripts/commands/traits.rhai".to_string())
+            } else if mode == "select_character" {
+                // Roster mode (post-auth, pre-character-pick). Inputs go to
+                // login.rhai's handle_select_character.
+                Some("scripts/commands/login.rhai".to_string())
             } else {
                 None
             };
