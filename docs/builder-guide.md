@@ -216,6 +216,34 @@ Then assign the template to a leasing agent:
 
 Players can now use `properties`, `tour cottage`, and `rent cottage` with this NPC.
 
+## Knowledge Base Lookup
+
+The `lookup` command (builder/admin tier) browses the in-engine spell, trait,
+effect, and skill registries. Use it when you need internal numbers — damage
+bases, scaling, costs, mana, cooldowns — that aren't surfaced to players.
+
+```
+lookup spell                    list every spell id
+lookup spell firebolt           detail card for one spell
+lookup spell search fire        substring match name + description
+lookup trait [<name>|search <text>]
+lookup effect [<name>|search <text>]
+lookup skill  [<name>]
+```
+
+Detail cards show the full configuration — useful when wiring a `cast_on_use`
+item, balancing a wand cooldown override, picking effects for `on_hit`, or
+double-checking a trait's stat impact before handing it to a class.
+
+```
+> lookup spell firebolt
+
+=== firebolt — Firebolt ===
+Type: damage   Damage: 1d8 + magic/2   Mana: 8
+Cooldown: 3s   Min level: 1   Range: in_room_npc
+A bolt of fire arcs from the caster's fingertips.
+```
+
 ## MXP Support
 
 MXP-capable clients (Mudlet, MUSHclient) get clickable links in OLC output:

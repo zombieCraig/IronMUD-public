@@ -25,6 +25,7 @@ The importer:
 |---|---|---|---|---|---|---|
 | **CircleMUD 3.x** | ✅ | ✅ (prototypes) | ✅ (prototypes) | ✅ (M/O/G/E/P/D; R warn-only) | ✅ (overlaid onto keeper mob) | ✅ (specproc bindings from `spec_assign.c` + `castle.c`) |
 | **tbaMUD** | ✅ | ✅ (prototypes; 10-token action line) | ✅ (prototypes; 13-token type/flags line + 5-token weight line) | ✅ (M/O/G/E/P/D; R warn-only; T / V warn-only) | ✅ (overlaid onto keeper mob) | ⚠ (DG Scripts: header parsed, body warn-only — re-author in Rhai) |
+| **Ranviermud** | ✅ | ✅ (prototypes from YAML) | ✅ (prototypes from YAML) | ✅ (spawns from `npcs:`/`items:` blocks) | n/a | ⚠ (JS scripts warn-only — re-author in Rhai) |
 | Diku / ROM / Smaug | (planned) | (planned) | (planned) | (planned) | (planned) | (planned) |
 
 A **(planned)** entry means the framework can hold the data but no parser
@@ -53,6 +54,11 @@ ironmud-import circle --source /path/to/circle-3.1 \
 # Same shape for tbaMUD: swap `circle` for `tba`.
 ironmud-import tba --source /path/to/tbamud --report /tmp/tba.json
 ironmud-import --database ironmud.db tba --source /path/to/tbamud --apply
+
+# Ranviermud bundles use a positional path (one bundle = one area).
+# See the Ranvier section below for sidecar / re-import behavior.
+ironmud-import ranvier /path/to/bundle-dir
+ironmud-import --database ironmud.db ranvier /path/to/bundle-dir --apply
 ```
 
 `--source` accepts the CircleMUD root, its `lib/` subdirectory, or `lib/world/`
@@ -621,6 +627,98 @@ shop overlays: 330
 block warnings: 0
 warn warnings: ~6,300 (DG Scripts re-authoring + intentional design gaps)
 info warnings: ~7,000 (slot collapses, R-reset deferrals, attachment audit)
+```
+
+## Ranviermud bundle importer
+
+Ranviermud distributes content as YAML "bundles" rather than CircleMUD's
+binary-style `.wld`/`.mob`/`.obj`/`.zon` files. The `ranvier` engine reads a
+bundle directory and produces the same Plan + Apply pipeline as the Circle/tba
+paths, with sidecar tracking that makes re-imports idempotent.
+
+### Quick start
+
+```bash
+# Dry-run against a Ranvier bundle (one area = one bundle dir)
+ironmud-import ranvier <path-to-bundle-dir>
+
+# Apply to a stopped IronMUD database
+ironmud-import --database ironmud.db ranvier <path-to-bundle-dir> --apply
+```
+
+The bundle layout the parser expects:
+
+```
+<bundle-dir>/
+├── manifest.yml           area metadata (title, author)
+├── areas/<id>/areas.yml   one area per file (most bundles ship one)
+├── rooms/<id>.yml         one or many room files
+├── npcs/<id>.yml          one or many npc files
+├── items/<id>.yml         one or many item files
+├── quests/<id>.yml        (warn-only — see below)
+├── loot-pools/*.yml       referenced by npc loot blocks
+└── scripts/*.js           (warn-only — see below)
+```
+
+### What lands cleanly
+
+- **Rooms**: id, title, description, exits, coordinates (`RoomData.coordinates: Option<(i32,i32,i32)>`).
+- **Mobiles**: id, keywords, level, attributes, equipment slots that map to
+  IronMUD's `WearLocation`, loot pool refs (resolved against the `loot-pools/`
+  directory).
+- **Items**: id, type (mapped via `scripts/data/import/ranvier_item_type_mapping.json`),
+  keywords, value, weight, slot, behaviors → IronMUD flags.
+- **Spawns**: each `npcs:` / `items:` entry on a room becomes a `SpawnPointData` row.
+  Ranvier's `respawn` semantics map to a new field, `SpawnPointData.replace_on_respawn` —
+  when true, the spawn tick force-deletes tracked instances before spawning a fresh one.
+- **Quests** (header only): vnum, name, description surface as Info; quest
+  body re-authoring is manual.
+
+### Sidecar idempotency
+
+The first apply writes `imports/<bundle-name>.vnum-map.json` next to the
+database. This file pins each Ranvier source id (`forest_path`,
+`town_guard`, `rusty_sword`) to the IronMUD vnum that was assigned. On the
+next `--apply` against the same bundle, the importer reads the sidecar and
+reuses those vnums — so re-imports update existing prototypes instead of
+duplicating them.
+
+Delete the sidecar to force a fresh import (which will collide with the
+existing vnums and Block).
+
+### Warn-only surfaces
+
+- `<bundle>/scripts/*.js` — Ranvier's JavaScript handlers don't translate to
+  Rhai. Each file produces one Warn naming the trigger so a builder can
+  re-author the behavior.
+- `quests/<id>.yml` — quest header parses but body is dropped. IronMUD's
+  quest system can hold the result; mapping is manual today.
+- Behaviors that don't map to an IronMUD flag (room/npc/item) — surface as
+  Info, dropped silently.
+
+### Mapping JSON
+
+Three mapping tables ship under `scripts/data/import/`:
+
+- `ranvier_room_mapping.json` — Ranvier room behaviors → IronMUD `RoomFlags`.
+- `ranvier_npc_mapping.json` — NPC behaviors → `MobileFlags`.
+- `ranvier_item_mapping.json` — item behaviors / types → `ItemFlags` and
+  `ItemType`.
+
+All three follow the same `{ "behavior_name": { "action": "set_flag", "field": "..." } }`
+shape used by the Circle/tba mapping files. See [Mapping table format](#mapping-table-format) below.
+
+### Numbers (stock starter bundle)
+
+The stock Ranvier "limbo" starter bundle apply produces:
+
+```
+rooms: 21
+mobiles: 9       (prototypes)
+items: 12        (prototypes)
+loot pools: 4
+block warnings: 0
+warn warnings: minimal (JS scripts only)
 ```
 
 ## Mapping table format

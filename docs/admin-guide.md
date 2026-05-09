@@ -57,6 +57,35 @@ ironmud-admin user require-password-change <name>
 ironmud-admin user delete <name>
 ```
 
+### Account Management
+
+An *account* owns one or more characters under a single login. Most commands
+operate on the account, not the character that happens to share its name.
+
+```bash
+# List every account, character count, and ban state
+ironmud-admin account list
+
+# Show one account's details (id, email, verified state, owned characters)
+ironmud-admin account show <name>
+
+# Ban/unban an account (refuses login with a generic message)
+ironmud-admin account ban <name>
+ironmud-admin account unban <name>
+
+# Cascade-delete an account and every character it owns (prompts for confirmation)
+ironmud-admin account delete <name>
+
+# Email verification overrides
+ironmud-admin account verify <name>          # mark email as verified
+ironmud-admin account unverify <name>        # force re-verification on next login
+ironmud-admin account set-email <name> <email>  # update email; clears verified state
+ironmud-admin account send-code <name>       # send a fresh code (bypasses rate limits)
+```
+
+Bans are enforced at login: a banned account sees "This account is suspended."
+and is dropped without leaking whether the name exists.
+
 ### World Management
 
 ```bash
@@ -105,6 +134,50 @@ ironmud-admin settings delete <key>
 | `adoption_chance_per_day` | `0.10` | Per-day chance an orphaned migrant is adopted by eligible candidates |
 
 See `ironmud-admin settings list` on a live install for the complete list, including regen rates, corpse decay, and mail settings.
+
+#### Email Verification (optional anti-griefing gate)
+
+Off by default. Public servers that need a real ban backbone can require new
+accounts to confirm a 6-digit code mailed to a provided address before chargen
+unlocks. Private/tailscale/homelab servers should leave the flag alone — the
+default behavior is unchanged.
+
+```bash
+ironmud-admin settings set email_verification_required true
+
+# SMTP submission credentials. Any provider that speaks STARTTLS works
+# (Mailgun, SendGrid SMTP, Gmail, self-hosted, etc.).
+ironmud-admin settings set smtp_host smtp.mailgun.org
+ironmud-admin settings set smtp_port 587
+ironmud-admin settings set smtp_user postmaster@mg.example.com
+ironmud-admin settings set smtp_pass <password>
+ironmud-admin settings set smtp_from_address noreply@example.com
+ironmud-admin settings set smtp_from_name "Example MUD"
+
+# Optional tunings
+ironmud-admin settings set email_verification_subject "Verify your account"
+ironmud-admin settings set email_verification_code_ttl_secs 1800   # default 30 min
+```
+
+Behavior when enabled:
+
+- Account creation requires three arguments: `create <name> <password> <email>`.
+- A fresh code is mailed; the account exists but stays unverified until the
+  user types the code in-game. `resend` requests a new code (1/min, 5/hr per
+  account); `cancel` rolls back the half-created account.
+- Existing accounts grandfather in — flipping the flag on does not lock anyone
+  out. Only newly-created accounts go through verification.
+- Users who disconnect mid-verification are re-prompted on next login.
+- The email body is editable at `scripts/data/email/verification.txt`
+  (`{{code}}` is the only substitution). A built-in default ships if the file
+  is missing.
+- Email body delivery uses `lettre` over STARTTLS. Misconfigured SMTP fails
+  closed: account creation refuses with "the server can't send mail right now"
+  rather than stranding an unverifiable account.
+
+When a user is stuck (lost their email, mistyped it, etc.), use
+`ironmud-admin account set-email` and `account send-code`, or skip verification
+entirely with `ironmud-admin account verify`.
 
 ### Database Path
 

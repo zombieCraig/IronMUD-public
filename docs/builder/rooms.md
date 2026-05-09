@@ -32,6 +32,7 @@ This guide covers creating and editing rooms using IronMUD's Online Creation (OL
 | `area` | `redit area [id\|prefix\|clear]` | Set or clear room area |
 | `zone` | `redit zone [pve\|safe\|pvp\|inherit]` | Set room combat zone |
 | `capacity` | `redit capacity <n>` | Set living capacity (for `liveable` rooms) |
+| `cmd` | `redit cmd <add\|rm\|clear\|list> ...` | Manage per-room contextual commands (see below) |
 | `trigger` | `redit trigger` | List triggers (see [Triggers](triggers.md)) |
 | `door` | `redit door` | Manage doors (see below) |
 | `seasonal` | `redit seasonal` | Set seasonal descriptions |
@@ -311,6 +312,45 @@ When a player looks at a room:
 3. Dynamic description (if set)
 
 All three combine into a single paragraph.
+
+## Per-Room Contextual Commands
+
+Rooms can advertise verbs that only make sense in that room — `swim` at a
+beach, `pray` at an altar, `ring` at a temple bell. Each entry is a verb plus
+an optional one-line hint, both shown in `look` output and injected into the
+player's tab-completion while they're in the room.
+
+```
+> redit cmd add swim Dive into the surf
+Added contextual command: swim — Dive into the surf
+
+> redit cmd add pray
+Added contextual command: pray
+
+> redit cmd list
+Contextual commands:
+  swim — Dive into the surf
+  pray
+
+> redit cmd rm swim
+Removed contextual command: swim
+
+> redit cmd clear
+Cleared all contextual commands.
+```
+
+When a player looks at the room, contextual commands render after the exits:
+
+```
+Exits: north, east
+
+Here you can:
+  pray
+```
+
+The verbs themselves still need to resolve to a real command, trigger, or
+dialogue choice — `redit cmd add` doesn't create the behavior, just advertises
+it. Pair with [Triggers](triggers.md) (e.g. an `OnCommand` trigger) or a dialogue choice to make the verb do something.
 
 ## Related Documentation
 

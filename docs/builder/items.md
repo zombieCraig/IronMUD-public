@@ -70,6 +70,7 @@ Damage set to: 2d6
 | `twohanded` | `oedit <id> twohanded [on\|off]` | Set two-handed weapon |
 | `stat` | `oedit <id> stat <attr> <value>` | Set stat bonus (str/dex/con/int/wis/cha) |
 | `on_hit` | `oedit <id> on_hit [list\|add\|remove\|clear]` | Manage per-hit effects (bleeding/elemental DOT/status) |
+| `cast_on_use` | `oedit <id> cast_on_use <spell> <min_level> <charges> [cooldown_secs]` | Charged cast-on-use spell (wands, staves) — see [Cast-on-Use Items](#cast-on-use-items-wands-staves-charged-items) |
 
 See also: [Weapon Damage Balance](weapon-balance.md) for recommended damage dice by weapon type and setting.
 
@@ -486,6 +487,55 @@ Any spell can be placed on a scroll, though scroll-only spells like `meteor_stor
 | `meteor_storm` | Meteor Storm | Scroll-only (not learnable by skill) |
 
 Scrolls for lower-level spells can be useful as shortcuts for new mages, or placed as loot in areas where players might not yet have the required magic skill.
+
+## Cast-on-Use Items (Wands, Staves, Charged Items)
+
+Items can carry a charged spell that fires when the player types `use <item>`.
+Useful for wands, staves, healing potions that don't follow the normal scroll
+"learn permanently" pattern, or rare consumables.
+
+```
+> oedit wand_of_flame cast_on_use firebolt 1 8
+Cast-on-use set: firebolt (min level 1, 8 charges).
+```
+
+The four positional arguments are:
+
+| Position | Meaning |
+|----------|---------|
+| `spell_id` | Spell to cast (any defined spell ID) |
+| `min_level` | Minimum character level required to use the item |
+| `charges` | Number of times the item can be used before depleting (`-1` for unlimited) |
+| `cooldown_secs` (optional) | **Per-item cooldown override** — see below |
+
+To clear cast-on-use: `oedit <id> cast_on_use clear`.
+
+### Per-Item Spell Cooldown Override
+
+By default a cast-on-use item inherits the spell's global cooldown — a `firebolt`
+wand triggers the same per-character cooldown as a player-cast firebolt. The
+optional fourth argument lets a builder *replace* that cooldown for this item
+only.
+
+```
+# Wand triggers a 60-second cooldown instead of firebolt's default
+> oedit wand_of_flame cast_on_use firebolt 1 8 60
+Cast-on-use set: firebolt (min level 1, 8 charges, cooldown 60s override).
+
+# Pass 0 to clear the override and fall back to the spell's default
+> oedit wand_of_flame cast_on_use firebolt 1 8 0
+Cast-on-use set: firebolt (min level 1, 8 charges).
+```
+
+The override applies to the cooldown the *user* incurs after firing. Common
+reasons to set one:
+
+- A weak charged wand whose spell is normally on a long cooldown — let the
+  player chain shots from the wand.
+- A boss-drop staff that locks a powerful spell behind a longer cooldown than
+  the player would normally face.
+- Tuning a wand-vs-scroll-vs-skill economy without rebalancing the spell's
+  default cooldown for every other context.
 
 ## Related Documentation
 

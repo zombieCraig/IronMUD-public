@@ -17,7 +17,8 @@ Popular MUD clients with enhanced features:
 
 ## Creating a Character
 
-When you first connect, create your character:
+When you first connect, create your account *and* your first character in one
+step. The login name and your first character share a name.
 
 ```
 Welcome to IronMUD!
@@ -32,6 +33,47 @@ On future connections, log in:
 > login MyName mypassword
 Welcome back, MyName!
 ```
+
+### Multiple Characters Under One Account
+
+A single login can own up to five characters. The account holds the
+password; characters share a roster.
+
+- **Single character**: login drops you straight into your character — same as
+  always.
+- **Multiple characters**: login shows a roster, type the number to pick one.
+- **Add another character**: type `roster` to step out of the one you're
+  playing, then `create <character_name>` from the roster prompt.
+- **Switch characters mid-session**: `roster` saves your current character
+  and returns you to the picker.
+
+```
+> roster
+
+=== Your characters ===
+
+  [1] MyName — level 12 fighter, in The Tavern
+  [2] Sneakthief — level 4 unemployed, in Forest Path
+
+Type a number to play that character, `new` to create another, or `quit` to log out.
+```
+
+### Email Verification
+
+Some servers (those open to the public) require new accounts to verify an
+email address. If yours does, the create command takes an extra argument:
+
+```
+> create MyName mypassword myname@example.com
+A 6-digit verification code has been sent to myname@example.com.
+Type the code to continue, 'resend' for a new code, or 'cancel' to abort.
+> 482910
+Email verified.
+```
+
+If you don't see the email, type `resend` (limited to once a minute, five per
+hour). `cancel` rolls back the half-created account so you can try again with
+a different name or email.
 
 ## Your First 5 Minutes
 
