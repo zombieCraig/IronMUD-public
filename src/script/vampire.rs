@@ -65,13 +65,41 @@ pub fn pc_clan_from_traits(ch: &CharacterData) -> Option<String> {
 /// Look up the first preferred discipline for a clan from
 /// `scripts/data/vampire_clans.json`. Returns None if the file is missing
 /// or the clan id isn't listed. Used to seed the 1-dot starter discipline
-/// when a thinblood is acknowledged.
-fn first_preferred_discipline_for_clan(clan: &str) -> Option<String> {
+/// when a thinblood is acknowledged or a vampire migrant is rolled.
+pub fn first_preferred_discipline_for_clan(clan: &str) -> Option<String> {
     let raw = std::fs::read_to_string("scripts/data/vampire_clans.json").ok()?;
     let parsed: serde_json::Value = serde_json::from_str(&raw).ok()?;
     let entry = parsed.get(clan)?;
     let arr = entry.get("preferred_disciplines")?.as_array()?;
     arr.iter().find_map(|v| v.as_str().map(str::to_string))
+}
+
+/// Enumerate clan ids known to `scripts/data/vampire_clans.json`. Skips
+/// underscore-prefixed metadata keys (e.g. `_doc`) so callers don't treat
+/// them as clans. Returns the canonical core five if the file is missing
+/// or unparseable so vampire migrant rolls always have something to pick.
+pub fn list_clan_ids() -> Vec<String> {
+    if let Ok(raw) = std::fs::read_to_string("scripts/data/vampire_clans.json") {
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) {
+            if let Some(obj) = parsed.as_object() {
+                let ids: Vec<String> = obj
+                    .keys()
+                    .filter(|k| !k.starts_with('_'))
+                    .cloned()
+                    .collect();
+                if !ids.is_empty() {
+                    return ids;
+                }
+            }
+        }
+    }
+    vec![
+        "brujah".to_string(),
+        "toreador".to_string(),
+        "ventrue".to_string(),
+        "nosferatu".to_string(),
+        "gangrel".to_string(),
+    ]
 }
 
 /// Apply the clan-acknowledgment side-effects to an already-embraced

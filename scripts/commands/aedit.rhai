@@ -41,7 +41,7 @@ fn is_area_migrant(vnum, area_prefix) {
 
 // Tally migrants currently living in this area, by role.
 fn count_migrants_in_area(area_prefix) {
-    let counts = #{ total: 0, common: 0, guard: 0, healer: 0, scavenger: 0 };
+    let counts = #{ total: 0, common: 0, guard: 0, healer: 0, scavenger: 0, vampire: 0 };
     let all = list_all_mobiles();
     for m in all {
         if is_area_migrant(m.vnum, area_prefix) {
@@ -51,6 +51,7 @@ fn count_migrants_in_area(area_prefix) {
             else if role == "guard" { counts.guard += 1; }
             else if role == "healer" { counts.healer += 1; }
             else if role == "scavenger" { counts.scavenger += 1; }
+            else if role == "vampire" { counts.vampire += 1; }
         }
     }
     return counts;
@@ -65,6 +66,7 @@ fn format_migrant_counts(counts) {
         if counts.guard > 0     { parts.push("" + counts.guard + " guard"); }
         if counts.healer > 0    { parts.push("" + counts.healer + " healer"); }
         if counts.scavenger > 0 { parts.push("" + counts.scavenger + " scav"); }
+        if counts.vampire > 0   { parts.push("" + counts.vampire + " vampire"); }
         if parts.len() > 0 { s = s + " (" + parts.join(", ") + ")"; }
     }
     return s;
@@ -1009,15 +1011,16 @@ fn handle_immigration_list_subcommand(area, connection_id) {
 // Adding a new role: append it to known_roles below + getter in
 // src/script/mod.rs + match arm in set_area_immigration_variation_chance.
 fn handle_immigration_variations_subcommand(area, args, connection_id) {
-    let known_roles = ["guard", "healer", "scavenger"];
-    let roles_joined = "guard, healer, scavenger";
+    let known_roles = ["guard", "healer", "scavenger", "vampire"];
+    let roles_joined = "guard, healer, scavenger, vampire";
 
     if args.len() < 2 {
         let out = "=== Immigration Variations ===\n";
         let lines = out
             + format_variation_line("guard", area.immigration_guard_chance)
             + format_variation_line("healer", area.immigration_healer_chance)
-            + format_variation_line("scavenger", area.immigration_scavenger_chance);
+            + format_variation_line("scavenger", area.immigration_scavenger_chance)
+            + format_variation_line("vampire", area.immigration_vampire_chance);
         let usage = "\nUsage:\n" +
             "  immigration variations <role> <0.0-1.0>\n" +
             "Roles: " + roles_joined;
@@ -1081,6 +1084,10 @@ fn format_variations_inline(area) {
     if area.immigration_scavenger_chance > 0.0 {
         let pct = (area.immigration_scavenger_chance * 100.0).to_int();
         parts.push("scavenger " + pct + "%");
+    }
+    if area.immigration_vampire_chance > 0.0 {
+        let pct = (area.immigration_vampire_chance * 100.0).to_int();
+        parts.push("vampire " + pct + "%");
     }
     if parts.len() == 0 { return ""; }
     let joined = parts[0];

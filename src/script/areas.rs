@@ -1644,6 +1644,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "guard" => area.immigration_variation_chances.guard = c,
                         "healer" => area.immigration_variation_chances.healer = c,
                         "scavenger" => area.immigration_variation_chances.scavenger = c,
+                        "vampire" => area.immigration_variation_chances.vampire = c,
                         _ => return false,
                     }
                     return cloned_db.save_area_data(area).is_ok();

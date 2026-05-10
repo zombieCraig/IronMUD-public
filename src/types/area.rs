@@ -51,6 +51,8 @@ pub struct ImmigrationVariationChances {
     pub healer: f32,
     #[serde(default)]
     pub scavenger: f32,
+    #[serde(default)]
+    pub vampire: f32,
 }
 
 /// Per-form chances that a migration slot spawns as a pre-linked family group

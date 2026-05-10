@@ -18,6 +18,7 @@ mod api_keys;
 mod areas;
 mod bugs;
 mod characters;
+mod classes;
 mod combat;
 mod crafting;
 pub mod dg;
@@ -541,6 +542,9 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         })
         .register_get("immigration_scavenger_chance", |a: &mut AreaData| {
             a.immigration_variation_chances.scavenger as f64
+        })
+        .register_get("immigration_vampire_chance", |a: &mut AreaData| {
+            a.immigration_variation_chances.vampire as f64
         })
         .register_get("immigration_family_parent_child_chance", |a: &mut AreaData| {
             a.immigration_family_chance.parent_child as f64
@@ -1958,6 +1962,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     healers::register(engine, db.clone(), connections.clone());
     crafting::register(engine, db.clone(), state.clone());
     characters::register(engine, db.clone(), connections.clone(), state.clone());
+    classes::register(engine, db.clone(), state.clone());
     groups::register(engine, db.clone(), connections.clone());
     property::register(engine, db.clone(), connections.clone());
     mail::register(engine, db.clone(), connections.clone());

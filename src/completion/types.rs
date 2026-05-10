@@ -138,6 +138,9 @@ pub enum CompletionType {
     SummonTarget,
     ImmigrationSubcommand,
     CombatSpellsAction,
+    ClassId,
+    CeditSubcommand,
+    CeditItemsAction,
 }
 
 /// Context for command argument completion

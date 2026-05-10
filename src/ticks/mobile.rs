@@ -898,7 +898,24 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
 
         // Build list of valid exits (cant_swim mobiles also avoid shallow water)
         let valid_exits = get_valid_wander_exits_with_flags(db, &current_room, current_mobile.flags.cant_swim)?;
-        let valid_exits = filter_exits_by_stay_zone(db, &current_mobile, valid_exits);
+        let mut valid_exits = filter_exits_by_stay_zone(db, &current_mobile, valid_exits);
+
+        // Vampires shelter indoors during the day. Filter outdoor exits while
+        // the sun is up; if no indoor exits remain the mob simply stays put
+        // (and the existing sun tick handles damage at room scope).
+        if current_mobile.flags.vampire {
+            if let Ok(time) = db.get_game_time() {
+                if time.is_daytime() {
+                    valid_exits.retain(|(_, target_room_id)| {
+                        db.get_room_data(target_room_id)
+                            .ok()
+                            .flatten()
+                            .map(|r| r.flags.indoors)
+                            .unwrap_or(false)
+                    });
+                }
+            }
+        }
 
         if valid_exits.is_empty() {
             continue;

@@ -79,6 +79,10 @@ pub struct Db {
     // monotonic id, value = JSON `EmailAuditEntry`. Trimmed to the most
     // recent EMAIL_AUDIT_RING_SIZE rows on every insert.
     email_audit: Arc<Tree>,
+    // Per-class starting kit overrides (gold + item vnums) authored via
+    // `cedit`. Overlays JSON-loaded ClassDefinition fields at startup; JSON
+    // remains the source of truth for skills/bonuses/languages.
+    class_loadouts: Arc<Tree>,
 }
 
 /// Maximum entries retained in the email-audit ring. One row per send
@@ -148,6 +152,7 @@ impl Db {
         let bans = db.open_tree("bans")?;
         let ip_account_history = db.open_tree("ip_account_history")?;
         let email_audit = db.open_tree("email_audit")?;
+        let class_loadouts = db.open_tree("class_loadouts")?;
         let me = Self {
             db: Arc::new(db),                 // Wrap in Arc
             characters: Arc::new(characters), // Wrap in Arc
@@ -179,6 +184,7 @@ impl Db {
             bans: Arc::new(bans),
             ip_account_history: Arc::new(ip_account_history),
             email_audit: Arc::new(email_audit),
+            class_loadouts: Arc::new(class_loadouts),
         };
         // One-shot migration: synthesize a 1:1 Account for every pre-feature
         // character that doesn't already have one. Idempotent.
@@ -2488,6 +2494,37 @@ impl Db {
             self.save_recipe(recipe)?;
         }
         Ok(())
+    }
+
+    // ========== Class Loadout Functions ==========
+
+    /// Get a class loadout override by class id. Lowercase normalized.
+    pub fn get_class_loadout(&self, class_id: &str) -> Result<Option<crate::types::ClassLoadout>> {
+        let key = class_id.to_lowercase();
+        match self.class_loadouts.get(key.as_bytes())? {
+            Some(ivec) => Ok(Some(serde_json::from_slice(&ivec)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Save (or overwrite) a class loadout override.
+    pub fn save_class_loadout(&self, loadout: crate::types::ClassLoadout) -> Result<()> {
+        let key = loadout.class_id.to_lowercase();
+        let value = serde_json::to_vec(&loadout)?;
+        self.class_loadouts.insert(key.as_bytes(), value)?;
+        Ok(())
+    }
+
+    /// Iterate every class loadout override in the tree.
+    pub fn list_all_class_loadouts(&self) -> Result<Vec<crate::types::ClassLoadout>> {
+        let mut out = Vec::new();
+        for entry in self.class_loadouts.iter() {
+            let (_key, value) = entry?;
+            if let Ok(loadout) = serde_json::from_slice::<crate::types::ClassLoadout>(&value) {
+                out.push(loadout);
+            }
+        }
+        Ok(out)
     }
 
     // ========== Achievement Functions ==========

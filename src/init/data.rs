@@ -91,6 +91,8 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
                     stat_bonuses: HashMap::new(),
                     available: true,
                     starting_languages: HashMap::new(),
+                    starting_items: Vec::new(),
+                    starting_gold: 0,
                 },
             );
         }
@@ -109,6 +111,27 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
             }
             Err(e) => error!("Failed to parse {}: {}", vampire_path, e),
         }
+    }
+
+    // Overlay builder-authored starting kit overrides (cedit) on top of the
+    // JSON-loaded class definitions. Loadouts for class ids that are no
+    // longer present in JSON are skipped (and stay in the tree until the
+    // class returns).
+    match world.db.list_all_class_loadouts() {
+        Ok(loadouts) => {
+            let mut applied = 0usize;
+            for loadout in loadouts {
+                if let Some(def) = world.class_definitions.get_mut(&loadout.class_id) {
+                    def.starting_items = loadout.starting_items;
+                    def.starting_gold = loadout.starting_gold;
+                    applied += 1;
+                }
+            }
+            if applied > 0 {
+                info!("Applied {} class loadout override(s) from database", applied);
+            }
+        }
+        Err(e) => error!("Failed to load class loadouts from database: {}", e),
     }
 
     // Load trait definitions

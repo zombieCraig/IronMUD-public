@@ -10,9 +10,12 @@
 //! function. Schema work is one new field on `ImmigrationVariationChances`
 //! plus one match arm in `set_area_immigration_variation_chance`.
 
-use rand::Rng;
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::types::{ActivityState, AreaData, MobileData, SocialState};
+use rand::Rng;
+use rand::seq::SliceRandom;
+
+use crate::types::{ActivityState, AreaData, CombatZoneType, MobileData, SocialState, VampireState};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MigrantVariation {
@@ -20,6 +23,7 @@ pub enum MigrantVariation {
     Guard,
     Healer,
     Scavenger,
+    Vampire,
 }
 
 impl MigrantVariation {
@@ -31,6 +35,7 @@ impl MigrantVariation {
             MigrantVariation::Guard => Some("guard"),
             MigrantVariation::Healer => Some("healer"),
             MigrantVariation::Scavenger => Some("scavenger"),
+            MigrantVariation::Vampire => Some("vampire"),
         }
     }
 }
@@ -46,6 +51,11 @@ pub fn pick_variation<R: Rng>(area: &AreaData, rng: &mut R) -> MigrantVariation 
     if roll(chances.scavenger, rng) {
         return MigrantVariation::Scavenger;
     }
+    // Vampire migrants are barred from sanctuary zones regardless of the
+    // authored chance — kindred do not settle where they cannot hunt.
+    if !matches!(area.combat_zone, CombatZoneType::Safe) && roll(chances.vampire, rng) {
+        return MigrantVariation::Vampire;
+    }
     MigrantVariation::Common
 }
 
@@ -59,6 +69,7 @@ pub fn apply_variation<R: Rng>(mobile: &mut MobileData, variation: MigrantVariat
         MigrantVariation::Guard => apply_guard(mobile, rng),
         MigrantVariation::Healer => apply_healer(mobile, rng),
         MigrantVariation::Scavenger => apply_scavenger(mobile, rng),
+        MigrantVariation::Vampire => apply_vampire(mobile, rng),
     }
 }
 
@@ -73,6 +84,7 @@ fn preferred_topics(variation: MigrantVariation) -> (&'static [&'static str], &'
         MigrantVariation::Guard => (&["the road", "the mayor", "politics", "rumors"], &[]),
         MigrantVariation::Healer => (&["old stories", "children", "craft"], &["drinking"]),
         MigrantVariation::Scavenger => (&["trade", "rumors", "gossip", "the road"], &[]),
+        MigrantVariation::Vampire => (&["the night", "old stories", "rumors", "death"], &["children"]),
     }
 }
 
@@ -209,6 +221,62 @@ fn apply_scavenger<R: Rng>(mobile: &mut MobileData, _rng: &mut R) {
         " {} eyes the ground and corners with the practiced squint of one who finds value where others don't.",
         pronoun
     ));
+}
+
+/// Newly-immigrated kindred. Built from scratch (no preset): rolls a random
+/// clan from `scripts/data/vampire_clans.json`, stamps a fresh `VampireState`,
+/// flags the mob as vampire / undead / holy-vulnerable, seeds the clan's first
+/// preferred discipline as a `combat_spells` entry, and dusts the visual with
+/// pale / shadowed flavor while keeping the rolled mortal-style name (the
+/// Masquerade is the point).
+fn apply_vampire<R: Rng>(mobile: &mut MobileData, rng: &mut R) {
+    let clans = crate::script::vampire::list_clan_ids();
+    let clan = clans
+        .choose(rng)
+        .cloned()
+        .unwrap_or_else(|| "brujah".to_string());
+
+    mobile.vampire_state = Some(VampireState::newly_embraced(now_secs(), None));
+    mobile.flags.vampire = true;
+    mobile.flags.undead = true;
+    mobile.flags.holy_vulnerable = true;
+    mobile.flags.sentinel = false;
+
+    if let Some(starter) = crate::script::vampire::first_preferred_discipline_for_clan(&clan) {
+        if !mobile.combat_spells.iter().any(|s| s.eq_ignore_ascii_case(&starter)) {
+            mobile.combat_spells.push(starter);
+        }
+    }
+
+    if !mobile.keywords.iter().any(|k| k == "vampire") {
+        mobile.keywords.push("vampire".to_string());
+    }
+    if !mobile.keywords.iter().any(|k| k == clan.as_str()) {
+        mobile.keywords.push(clan.clone());
+    }
+
+    let chars = mobile.characteristics.as_ref();
+    let age_label = chars.map(|c| c.age_label.as_str()).unwrap_or("adult");
+    let gender = chars.map(|c| c.gender.as_str()).unwrap_or("");
+    let gender_noun = super::gender_noun(gender);
+    let pronoun = super::gender_pronoun(gender);
+
+    mobile.short_desc = format!(
+        "{}, a pale {} {} with shadowed eyes, lingers here.",
+        mobile.name, age_label, gender_noun
+    );
+
+    mobile.long_desc.push_str(&format!(
+        " {} carries an unnatural stillness, skin moonlight-pale even in lamp-glow.",
+        pronoun
+    ));
+}
+
+fn now_secs() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -391,6 +459,120 @@ mod tests {
         for like in &social.likes {
             assert!(!social.dislikes.contains(like));
         }
+    }
+
+    #[test]
+    fn apply_vampire_sets_state_flags_and_keywords() {
+        let mut m = fresh_mobile();
+        let mut rng = thread_rng();
+        apply_variation(&mut m, MigrantVariation::Vampire, &mut rng);
+        assert!(m.flags.vampire, "vampire flag set");
+        assert!(m.flags.undead, "undead flag set");
+        assert!(m.flags.holy_vulnerable, "holy_vulnerable flag set");
+        assert!(m.vampire_state.is_some(), "VampireState stamped");
+        assert!(m.keywords.iter().any(|k| k == "vampire"), "vampire keyword present");
+        // Exactly one of the canonical clan keywords landed.
+        let known = ["brujah", "toreador", "ventrue", "nosferatu", "gangrel"];
+        let clan_hits = m
+            .keywords
+            .iter()
+            .filter(|k| known.iter().any(|c| *c == k.as_str()))
+            .count();
+        assert_eq!(clan_hits, 1, "exactly one clan keyword: keywords={:?}", m.keywords);
+        assert!(m.short_desc.contains("pale"), "short_desc references pale: {}", m.short_desc);
+        assert!(
+            m.long_desc.contains("moonlight-pale") || m.long_desc.contains("unnatural stillness"),
+            "long_desc has vampire flavor: {}",
+            m.long_desc
+        );
+    }
+
+    fn mk_area(zone: crate::types::CombatZoneType, vampire_chance: f32) -> AreaData {
+        use crate::types::{
+            AreaFlags, AreaPermission, ClimateProfile, GoldRange, ImmigrationFamilyChance,
+            ImmigrationVariationChances, RoomFlags,
+        };
+        use uuid::Uuid;
+        let mut chances = ImmigrationVariationChances::default();
+        chances.vampire = vampire_chance;
+        AreaData {
+            id: Uuid::new_v4(),
+            name: "Test".to_string(),
+            prefix: "test".to_string(),
+            description: String::new(),
+            level_min: 0,
+            level_max: 0,
+            theme: String::new(),
+            owner: None,
+            permission_level: AreaPermission::AllBuilders,
+            trusted_builders: Vec::new(),
+            city_forage_table: Vec::new(),
+            wilderness_forage_table: Vec::new(),
+            shallow_water_forage_table: Vec::new(),
+            deep_water_forage_table: Vec::new(),
+            underwater_forage_table: Vec::new(),
+            combat_zone: zone,
+            flags: AreaFlags::default(),
+            default_room_flags: RoomFlags::default(),
+            climate: ClimateProfile::default(),
+            immigration_enabled: false,
+            immigration_room_vnum: String::new(),
+            immigration_name_pool: String::new(),
+            immigration_visual_profile: String::new(),
+            migration_interval_days: 0,
+            migration_max_per_check: 0,
+            migrant_sim_defaults: None,
+            last_migration_check_day: None,
+            immigration_variation_chances: chances,
+            immigration_family_chance: ImmigrationFamilyChance::default(),
+            migrant_starting_gold: GoldRange::default(),
+            guard_wage_per_hour: 0,
+            healer_wage_per_hour: 0,
+            donation_room_vnum: None,
+            scavenger_wage_per_hour: 0,
+            max_rooms: None,
+            max_items: None,
+            max_mobiles: None,
+            max_spawn_points: None,
+        }
+    }
+
+    #[test]
+    fn pick_variation_skips_vampire_in_safe_zone() {
+        let area = mk_area(crate::types::CombatZoneType::Safe, 1.0);
+        let mut rng = thread_rng();
+        for _ in 0..64 {
+            let v = pick_variation(&area, &mut rng);
+            assert_ne!(
+                v,
+                MigrantVariation::Vampire,
+                "Safe-zone areas must never roll Vampire even at chance=1.0"
+            );
+        }
+    }
+
+    #[test]
+    fn pick_variation_rolls_vampire_in_pve_zone() {
+        let area = mk_area(crate::types::CombatZoneType::Pve, 1.0);
+        let mut rng = thread_rng();
+        // chance=1.0 + earlier roles 0.0 → deterministic Vampire.
+        let v = pick_variation(&area, &mut rng);
+        assert_eq!(v, MigrantVariation::Vampire);
+    }
+
+    #[test]
+    fn variation_chances_serde_default_for_vampire() {
+        use crate::types::ImmigrationVariationChances;
+        // Old JSON without the vampire field still loads (default 0.0).
+        let json = r#"{ "guard": 0.1, "healer": 0.2, "scavenger": 0.05 }"#;
+        let parsed: ImmigrationVariationChances = serde_json::from_str(json).unwrap();
+        assert_eq!(parsed.vampire, 0.0);
+        // Round-trip with vampire set.
+        let mut chances = parsed;
+        chances.vampire = 0.4;
+        let s = serde_json::to_string(&chances).unwrap();
+        let again: ImmigrationVariationChances = serde_json::from_str(&s).unwrap();
+        assert!((again.vampire - 0.4).abs() < f32::EPSILON);
     }
 
     #[test]

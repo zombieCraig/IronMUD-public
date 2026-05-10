@@ -19,6 +19,23 @@ pub struct ClassDefinition {
     pub available: bool,
     #[serde(default)]
     pub starting_languages: HashMap<String, i32>,
+    #[serde(default)]
+    pub starting_items: Vec<String>,
+    #[serde(default)]
+    pub starting_gold: i32,
+}
+
+/// Builder-authored override for a class's starting kit. Persisted in the
+/// `class_loadouts` sled tree (key = lowercase class id) and overlaid onto
+/// `ClassDefinition` after JSON load. JSON files remain canonical for skills,
+/// stat bonuses, and languages; only the kit fields are editable at runtime.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ClassLoadout {
+    pub class_id: String,
+    #[serde(default)]
+    pub starting_items: Vec<String>,
+    #[serde(default)]
+    pub starting_gold: i32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

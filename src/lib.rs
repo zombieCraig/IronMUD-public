@@ -1329,6 +1329,7 @@ pub async fn handle_connection(
                 language_keys,
                 online_players,
                 mobs_in_room,
+                class_ids,
                 has_builder_access,
             ) = {
                 let world = state.lock().unwrap();
@@ -1499,6 +1500,8 @@ pub async fn handle_connection(
 
                 let has_builder_access = is_builder || is_admin;
 
+                let class_ids: Vec<String> = world.class_definitions.keys().cloned().collect();
+
                 (
                     available_commands,
                     room_vnums,
@@ -1514,6 +1517,7 @@ pub async fn handle_connection(
                     language_keys,
                     online_players,
                     mobs_in_room,
+                    class_ids,
                     has_builder_access,
                 )
             };
@@ -1536,6 +1540,7 @@ pub async fn handle_connection(
                 &language_keys,
                 &online_players,
                 &mobs_in_room,
+                &class_ids,
                 has_builder_access,
             );
 

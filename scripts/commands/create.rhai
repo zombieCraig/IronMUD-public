@@ -1022,6 +1022,23 @@ fn finalize_character(connection_id) {
         }
     }
 
+    // Apply class starting kit (gold + items). Authored via cedit; missing
+    // vnums fall through to a builderdebug warning rather than blocking
+    // character creation.
+    let starting_gold = class_info["starting_gold"];
+    if starting_gold != () && starting_gold > 0 {
+        set_character_gold(char_name, starting_gold);
+    }
+    let starting_items = class_info["starting_items"];
+    if starting_items != () {
+        for vnum in starting_items {
+            let spawned = spawn_item_to_inventory(vnum, char_name);
+            if spawned == () {
+                broadcast_to_builders("[cedit] " + char_data.class_name + " starting_items references missing vnum: " + vnum);
+            }
+        }
+    }
+
     // Auto-enable mana if race has mana-costing abilities
     if char_data.race != "" {
         let race_info = get_race_info(char_data.race);

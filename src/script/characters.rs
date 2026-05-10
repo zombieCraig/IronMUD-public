@@ -163,6 +163,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 .map(|(k, v)| (k.clone().into(), rhai::Dynamic::from(*v as i64)))
                 .collect();
             map.insert("starting_languages".into(), rhai::Dynamic::from(lang_map));
+            let items_arr: rhai::Array = class
+                .starting_items
+                .iter()
+                .map(|v| rhai::Dynamic::from(v.clone()))
+                .collect();
+            map.insert("starting_items".into(), rhai::Dynamic::from(items_arr));
+            map.insert("starting_gold".into(), rhai::Dynamic::from(class.starting_gold as i64));
         }
         map
     });

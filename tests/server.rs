@@ -2389,6 +2389,116 @@ mod migration_tests {
     }
 
     #[test]
+    fn test_aging_skips_vampires_globally() {
+        // Vampires (kindred) do not age and do not roll natural death.
+        // Mortal-control "they should die" coverage already lives in
+        // `test_natural_death_rolls_for_elderly_mobiles`; this test focuses on
+        // the vampire skip in isolation.
+        use ironmud::aging::process_aging_tick_with_rng;
+        use ironmud::types::{Characteristics, MobileData, VampireState};
+        use rand::SeedableRng;
+        use rand::rngs::StdRng;
+
+        let (db, path) = open_temp_db("aging_skip_vampires");
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let mut flagged = MobileData::new("Lucien".to_string());
+            flagged.is_prototype = false;
+            flagged.flags.vampire = true;
+            flagged.flags.undead = true;
+            flagged.vampire_state = Some(VampireState::newly_embraced(0, None));
+            flagged.characteristics = Some(Characteristics {
+                gender: "male".to_string(),
+                age: 105,
+                age_label: "elderly".to_string(),
+                birth_day: 100, // explicitly non-zero — back-fill must NOT run
+                height: "average".to_string(),
+                build: "lean".to_string(),
+                hair_color: "black".to_string(),
+                hair_style: "short".to_string(),
+                eye_color: "grey".to_string(),
+                skin_tone: "pale".to_string(),
+                distinguishing_mark: None,
+            });
+            let flagged_id = flagged.id;
+            db.save_mobile_data(flagged).unwrap();
+
+            let conns = empty_connections();
+            let mut rng = StdRng::seed_from_u64(7);
+            // 1000 game days at 5%/day natural-death — survival probability is
+            // effectively 0 for a non-vampire elderly mobile (covered by the
+            // mortality test). The vampire skip must keep this one alive AND
+            // stop apply_aging from rewriting the derived age.
+            for day in 200..=1200i64 {
+                set_game_day(&db, day);
+                process_aging_tick_with_rng(&db, &conns, &migration_data_for_tests(), &mut rng)
+                    .expect("aging tick");
+            }
+
+            let v = db
+                .get_mobile_data(&flagged_id)
+                .unwrap()
+                .expect("vampire survives 1000 days");
+            let chars = v.characteristics.expect("vampire keeps characteristics");
+            assert_eq!(chars.birth_day, 100, "vampire birth_day untouched");
+            assert_eq!(chars.age, 105, "vampire age untouched");
+        }));
+        cleanup(&path);
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
+    }
+
+    #[test]
+    fn test_aging_skips_vampire_state_without_flag() {
+        // Defensive: a hand-built undead with VampireState but no flags.vampire
+        // is still skipped (mirrors the OR in src/aging.rs).
+        use ironmud::aging::process_aging_tick_with_rng;
+        use ironmud::types::{Characteristics, MobileData, VampireState};
+        use rand::SeedableRng;
+        use rand::rngs::StdRng;
+
+        let (db, path) = open_temp_db("aging_skip_vstate_only");
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            let mut m = MobileData::new("Stateful".to_string());
+            m.is_prototype = false;
+            m.flags.vampire = false; // intentionally unset
+            m.vampire_state = Some(VampireState::newly_embraced(0, None));
+            m.characteristics = Some(Characteristics {
+                gender: "male".to_string(),
+                age: 30,
+                age_label: "adult".to_string(),
+                birth_day: 100,
+                height: "average".to_string(),
+                build: "average".to_string(),
+                hair_color: "brown".to_string(),
+                hair_style: "short".to_string(),
+                eye_color: "brown".to_string(),
+                skin_tone: "fair".to_string(),
+                distinguishing_mark: None,
+            });
+            let mid = m.id;
+            db.save_mobile_data(m).unwrap();
+
+            let conns = empty_connections();
+            let mut rng = StdRng::seed_from_u64(1);
+            // Advance ten years of game days. Any normal mortal would age.
+            for day in 200..=(200 + 360 * 10i64) {
+                set_game_day(&db, day);
+                process_aging_tick_with_rng(&db, &conns, &migration_data_for_tests(), &mut rng)
+                    .expect("aging tick");
+            }
+            let stored = db.get_mobile_data(&mid).unwrap().unwrap();
+            let chars = stored.characteristics.unwrap();
+            assert_eq!(chars.age, 30, "vampire_state-only mob still does not age");
+            assert_eq!(chars.birth_day, 100);
+        }));
+        cleanup(&path);
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
+    }
+
+    #[test]
     fn test_natural_death_rolls_for_elderly_mobiles() {
         use ironmud::aging::{death_probability_per_game_day, process_aging_tick_with_rng};
         use ironmud::types::{Characteristics, MobileData};
@@ -5103,6 +5213,85 @@ fn test_item_unique_flag_caps_spawn_at_one() {
             .spawn_item_from_prototype("test:unique_crown")
             .expect("third spawn ok");
         assert!(third.is_some(), "deletion frees the cap");
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_class_loadout_round_trip_through_db() {
+    use ironmud::db::Db;
+    use ironmud::types::ClassLoadout;
+
+    let db_path = format!("test_class_loadout_rt_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let loadout = ClassLoadout {
+            class_id: "fighter".to_string(),
+            starting_items: vec!["iron:short_sword".to_string(), "armor:leather_jerkin".to_string()],
+            starting_gold: 25,
+        };
+        db.save_class_loadout(loadout.clone()).expect("save loadout");
+
+        let fetched = db
+            .get_class_loadout("fighter")
+            .expect("get ok")
+            .expect("loadout present");
+        assert_eq!(fetched.class_id, "fighter");
+        assert_eq!(fetched.starting_gold, 25);
+        assert_eq!(fetched.starting_items.len(), 2);
+        assert_eq!(fetched.starting_items[0], "iron:short_sword");
+
+        // Overwriting replaces the row rather than appending.
+        let updated = ClassLoadout {
+            class_id: "fighter".to_string(),
+            starting_items: vec!["iron:long_sword".to_string()],
+            starting_gold: 50,
+        };
+        db.save_class_loadout(updated).expect("overwrite ok");
+        let after = db.get_class_loadout("fighter").expect("get ok").expect("present");
+        assert_eq!(after.starting_gold, 50);
+        assert_eq!(after.starting_items, vec!["iron:long_sword".to_string()]);
+
+        // list_all_class_loadouts returns the single (latest) row.
+        let all = db.list_all_class_loadouts().expect("list ok");
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].starting_gold, 50);
+
+        // Missing class id returns None.
+        let missing = db.get_class_loadout("does_not_exist").expect("get ok");
+        assert!(missing.is_none());
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_class_loadout_skips_missing_item_vnum_at_spawn() {
+    // Sanity check the Rhai-side miss path: spawn_item_from_prototype on a
+    // vnum the DB has never seen returns Ok(None) without panicking. The
+    // create.rhai loop relies on this to emit a builderdebug warning and
+    // continue on bad vnums.
+    use ironmud::db::Db;
+
+    let db_path = format!("test_class_kit_missing_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+        let spawn = db
+            .spawn_item_from_prototype("nonexistent:vnum_for_kit")
+            .expect("call must not error");
+        assert!(spawn.is_none(), "missing vnum yields None, not panic");
     }));
 
     let _ = std::fs::remove_dir_all(&db_path);

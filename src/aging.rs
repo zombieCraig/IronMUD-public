@@ -66,6 +66,13 @@ pub fn process_aging_tick_with_rng<R: Rng>(
         if mobile.current_hp <= 0 || mobile.combat.in_combat {
             continue;
         }
+        // Vampires (kindred) do not age. Skip both the age-advance write and
+        // the natural-death roll so a 100-year-old vampire never ticks toward
+        // the 5%/day Elderly mortality. Detected via either the fast-path
+        // flag or an explicit `vampire_state` so hand-built undead are caught.
+        if mobile.flags.vampire || mobile.vampire_state.is_some() {
+            continue;
+        }
 
         let mobile_id = mobile.id;
         let today_i32 = today as i32;
