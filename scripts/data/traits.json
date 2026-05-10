@@ -632,5 +632,56 @@
     "effects": {"stealth_bonus": -10},
     "conflicts_with": ["silent_step"],
     "available": true
+  },
+
+  "clan_brujah": {
+    "id": "clan_brujah",
+    "name": "Brujah",
+    "description": "The Rabble. Passion runs in their blood. (Granted by embrace; see vampire_clans.json.)",
+    "cost": 0,
+    "category": "neutral",
+    "effects": {"frenzy_dc_modifier": -2},
+    "conflicts_with": ["clan_toreador", "clan_ventrue", "clan_nosferatu", "clan_gangrel"],
+    "available": false
+  },
+  "clan_toreador": {
+    "id": "clan_toreador",
+    "name": "Toreador",
+    "description": "The Artisans. Captivated by beauty. (Granted by embrace; see vampire_clans.json.)",
+    "cost": 0,
+    "category": "neutral",
+    "effects": {"distractible_in_art": 1},
+    "conflicts_with": ["clan_brujah", "clan_ventrue", "clan_nosferatu", "clan_gangrel"],
+    "available": false
+  },
+  "clan_ventrue": {
+    "id": "clan_ventrue",
+    "name": "Ventrue",
+    "description": "The Lords. Born to rule. (Granted by embrace; see vampire_clans.json.)",
+    "cost": 0,
+    "category": "neutral",
+    "effects": {"refined_palate": 1},
+    "conflicts_with": ["clan_brujah", "clan_toreador", "clan_nosferatu", "clan_gangrel"],
+    "available": false
+  },
+  "clan_nosferatu": {
+    "id": "clan_nosferatu",
+    "name": "Nosferatu",
+    "description": "The Hidden. Twisted by the embrace. (Granted by embrace; see vampire_clans.json.)",
+    "cost": 0,
+    "category": "neutral",
+    "effects": {"hideous_on_sight": 1},
+    "conflicts_with": ["clan_brujah", "clan_toreador", "clan_ventrue", "clan_gangrel"],
+    "available": false
+  },
+  "clan_gangrel": {
+    "id": "clan_gangrel",
+    "name": "Gangrel",
+    "description": "The Outlanders. Beast and predator both. (Granted by embrace; see vampire_clans.json.)",
+    "cost": 0,
+    "category": "neutral",
+    "effects": {"frenzy_dc_modifier": -1, "beast_marks_on_frenzy": 1},
+    "conflicts_with": ["clan_brujah", "clan_toreador", "clan_ventrue", "clan_nosferatu"],
+    "available": false
   }
 }

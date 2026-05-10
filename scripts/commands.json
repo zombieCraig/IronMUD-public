@@ -39,6 +39,18 @@
     "access": "user",
     "description": "Move in a direction (north, east, south, west, up, down)"
   },
+  "drag": {
+    "access": "user",
+    "description": "Drag an unconscious mobile to an adjacent room (rescues sun-burning vampires; works on any unconscious target)"
+  },
+  "feed": {
+    "access": "user",
+    "description": "Vampire only — feed on a mortal in your room (1d4 bite, restores blood, lethal feeds cost humanity)"
+  },
+  "frenzy": {
+    "access": "user",
+    "description": "Vampire only — voluntarily enter frenzy (combat lock + strength bonus; humanity gates the resist)"
+  },
   "say": {
     "access": "user",
     "description": "Say something to others in the room"

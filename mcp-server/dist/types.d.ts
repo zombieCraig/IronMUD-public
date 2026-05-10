@@ -48,6 +48,14 @@ export interface Room {
     extra_descs: ExtraDesc[];
     living_capacity?: number;
     residents?: string[];
+    /** Builder-declared verbs the room exposes (TAB completion + look hints). */
+    contextual_commands?: ContextualCommand[];
+}
+export interface ContextualCommand {
+    /** Single keyword, lowercased. Pair with a DG OnCommand trigger to wire behavior. */
+    verb: string;
+    /** Short flavor displayed alongside the verb in `look`. */
+    hint?: string;
 }
 export interface RoomExits {
     north?: string;
@@ -129,6 +137,14 @@ export type DialogueCondition = {
     scope: DgScope;
     key: string;
     value: string;
+}
+/** True for embraced vampires who carry no clan trait yet. */
+ | {
+    kind: "is_thinblood";
+}
+/** True for embraced vampires who carry any clan_* trait. */
+ | {
+    kind: "is_clan_acknowledged";
 };
 export type DialogueEffect = {
     kind: "set_flag";
@@ -278,6 +294,7 @@ export interface CastOnUse {
     min_level?: number;
     charges?: number;
     max_charges?: number;
+    cooldown_secs?: number;
 }
 export type ItemType = "misc" | "armor" | "weapon" | "container" | "liquid_container" | "food" | "key" | "gold" | "ammunition" | "potion" | "wand" | "staff" | "note" | "pen";
 export type WearLocation = "head" | "neck" | "shoulders" | "back" | "torso" | "waist" | "ears" | "wielded" | "offhand" | "ready" | "leftarm" | "rightarm" | "leftwrist" | "rightwrist" | "lefthand" | "righthand" | "leftfinger" | "rightfinger" | "leftleg" | "rightleg" | "leftankle" | "rightankle" | "leftfoot" | "rightfoot";
@@ -462,6 +479,7 @@ export interface CreateRoomRequest {
     area_id?: string;
     vnum?: string;
     flags?: RoomFlags;
+    contextual_commands?: ContextualCommand[];
 }
 export interface CreateItemRequest {
     name: string;
@@ -809,6 +827,16 @@ export type QuestReward = {
 } | {
     kind: "learn_recipe";
     recipe_id: string;
+}
+/**
+ * Grants the named clan to a thinblood vampire on quest completion.
+ * Sire defaults to the quest's `giver_mob_vnum` prototype name. No-op
+ * for mortals or already-acknowledged kindred. Use lowercase clan ids:
+ * brujah, toreador, ventrue, nosferatu, gangrel.
+ */
+ | {
+    kind: "embrace_clan";
+    clan: string;
 };
 export interface Quest {
     /** Quest vnum (e.g. "qst:100"); canonical id. */

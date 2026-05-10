@@ -22,6 +22,7 @@
 //   quedit <vnum> reward add skill <skill_key> <amount>
 //   quedit <vnum> reward add achievement <key>
 //   quedit <vnum> reward add recipe <recipe_id>
+//   quedit <vnum> reward add embrace_clan <brujah|toreador|ventrue|nosferatu|gangrel>
 //   quedit <vnum> reward remove <idx>
 //   quedit <vnum> delete
 
@@ -243,7 +244,7 @@ fn handle_reward(vnum, parts, connection_id) {
     let action = parts[2];
     if action == "add" {
         if parts.len() < 4 {
-            send_client_message(connection_id, "Usage: quedit <vnum> reward add gold|item|skill|achievement|recipe ...");
+            send_client_message(connection_id, "Usage: quedit <vnum> reward add gold|item|skill|achievement|recipe|embrace_clan ...");
             return;
         }
         let kind = parts[3];
@@ -293,6 +294,15 @@ fn handle_reward(vnum, parts, connection_id) {
             }
             let err = add_quest_reward_recipe(vnum, parts[4]);
             report(err, "Added recipe reward.", connection_id);
+            return;
+        }
+        if kind == "embrace_clan" || kind == "clan" {
+            if parts.len() < 5 {
+                send_client_message(connection_id, "Usage: quedit <vnum> reward add embrace_clan <brujah|toreador|ventrue|nosferatu|gangrel>");
+                return;
+            }
+            let err = add_quest_reward_embrace_clan(vnum, parts[4]);
+            report(err, "Added embrace-clan reward.", connection_id);
             return;
         }
         send_client_message(connection_id, "Unknown reward kind: " + kind);
@@ -379,7 +389,7 @@ fn send_help(connection_id) {
         "  quedit <vnum> objective add visit <room_vnum>",
         "  quedit <vnum> objective add flag <var> <value>",
         "  quedit <vnum> objective remove <idx>",
-        "  quedit <vnum> reward add gold|item|skill|achievement|recipe ...",
+        "  quedit <vnum> reward add gold|item|skill|achievement|recipe|embrace_clan ...",
         "  quedit <vnum> reward remove <idx>",
         "  quedit <vnum> delete",
     ];

@@ -70,6 +70,18 @@ export const roomToolDefinitions = [
                         notrack: { type: "boolean", description: "Defeats the track skill in this room (Circle ROOM_NOTRACK)" },
                     },
                 },
+                contextual_commands: {
+                    type: "array",
+                    description: "Builder-declared verbs the room exposes (TAB completion + 'Here you can:' line). Pair each with a DG OnCommand trigger.",
+                    items: {
+                        type: "object",
+                        properties: {
+                            verb: { type: "string", description: "Single keyword (lowercased)" },
+                            hint: { type: "string", description: "Short flavor shown in look (optional)" },
+                        },
+                        required: ["verb"],
+                    },
+                },
             },
             required: ["title", "description"],
         },
@@ -87,6 +99,18 @@ export const roomToolDefinitions = [
                 living_capacity: {
                     type: "number",
                     description: "Maximum migrants that can reside in this room (requires liveable flag)",
+                },
+                contextual_commands: {
+                    type: "array",
+                    description: "Replaces the room's contextual commands. Empty array clears them.",
+                    items: {
+                        type: "object",
+                        properties: {
+                            verb: { type: "string" },
+                            hint: { type: "string" },
+                        },
+                        required: ["verb"],
+                    },
                 },
             },
             required: ["id"],

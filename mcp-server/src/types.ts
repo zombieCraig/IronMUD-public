@@ -145,7 +145,11 @@ export type DialogueCondition =
   | { kind: "has_item"; vnum: string; qty?: number }
   | { kind: "skill_at_least"; key: string; level: number }
   | { kind: "counter_at_least"; key: string; value: number }
-  | { kind: "dg_var_equals"; scope: DgScope; key: string; value: string };
+  | { kind: "dg_var_equals"; scope: DgScope; key: string; value: string }
+  /** True for embraced vampires who carry no clan trait yet. */
+  | { kind: "is_thinblood" }
+  /** True for embraced vampires who carry any clan_* trait. */
+  | { kind: "is_clan_acknowledged" };
 
 export type DialogueEffect =
   | { kind: "set_flag"; name: string; scope?: FlagScope }
@@ -904,7 +908,14 @@ export type QuestReward =
   | { kind: "item"; vnum: string; qty: number }
   | { kind: "skill_xp"; skill: string; amount: number }
   | { kind: "achievement"; key: string }
-  | { kind: "learn_recipe"; recipe_id: string };
+  | { kind: "learn_recipe"; recipe_id: string }
+  /**
+   * Grants the named clan to a thinblood vampire on quest completion.
+   * Sire defaults to the quest's `giver_mob_vnum` prototype name. No-op
+   * for mortals or already-acknowledged kindred. Use lowercase clan ids:
+   * brujah, toreador, ventrue, nosferatu, gangrel.
+   */
+  | { kind: "embrace_clan"; clan: string };
 
 export interface Quest {
   /** Quest vnum (e.g. "qst:100"); canonical id. */

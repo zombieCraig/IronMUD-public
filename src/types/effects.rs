@@ -23,6 +23,13 @@ pub enum DamageType {
     Bite,
     Ballistic,
     Arcane,
+    /// Direct sunlight damage. Vampires (and other `holy_vulnerable` undead) take
+    /// this from the sun-exposure tick or fire-equivalent attacks tagged as
+    /// sunlight (e.g. mirror-flash spells). Not blocked by physical armor.
+    Sunlight,
+    /// Damage from divine/blessed sources (holy water, blessed weapons).
+    /// `MobileFlags.holy_vulnerable` doubles incoming Holy damage.
+    Holy,
 }
 
 impl DamageType {
@@ -39,6 +46,8 @@ impl DamageType {
             "bite" => Some(DamageType::Bite),
             "ballistic" | "bullet" | "projectile" => Some(DamageType::Ballistic),
             "arcane" | "magic" => Some(DamageType::Arcane),
+            "sunlight" | "sun" => Some(DamageType::Sunlight),
+            "holy" | "divine" | "blessed" => Some(DamageType::Holy),
             _ => None,
         }
     }
@@ -56,6 +65,8 @@ impl DamageType {
             DamageType::Bite => "bite",
             DamageType::Ballistic => "ballistic",
             DamageType::Arcane => "arcane",
+            DamageType::Sunlight => "sunlight",
+            DamageType::Holy => "holy",
         }
     }
 
@@ -72,6 +83,8 @@ impl DamageType {
             "bite",
             "ballistic",
             "arcane",
+            "sunlight",
+            "holy",
         ]
     }
 }
@@ -115,6 +128,24 @@ pub enum EffectType {
     Bless,
     /// Silence — caster cannot cast spells while active. Hard gate in cast.rhai.
     Silence,
+    /// Damage-over-time from direct sunlight exposure. Stacks/refreshes from
+    /// the sun tick on `flags.vampire` mobs and PCs with vampire_state.
+    SunlightBurn,
+    /// Sun-burn unconscious "rescue window" state. Held when the entity hits
+    /// 0 HP from SunlightBurn DoT — they're prone, alive, and one more blow
+    /// (sun or otherwise) ends them. Cleared by being moved to a sheltered
+    /// room before the next sun tick.
+    SunlightBurning,
+    /// Berserk rage. Combat tick reads this to lock disengage and apply +str.
+    /// Triggered by blood = 0 + failed humanity check, witnessed humanity
+    /// violation, or fire/sunlight damage.
+    Frenzy,
+    /// Hard mind control — bypasses `MobileFlags.no_charm`. Source-controlled
+    /// via the `order` command, mirrors Charmed semantics otherwise.
+    Dominated,
+    /// Discipline-grade invisibility that holds even in lit rooms (unlike the
+    /// regular Invisibility buff which can be defeated by light/perception).
+    Obfuscate,
 }
 
 impl EffectType {
@@ -164,6 +195,13 @@ impl EffectType {
             "curse" | "cursed" => Some(EffectType::Curse),
             "bless" | "blessed" | "blessing" => Some(EffectType::Bless),
             "silence" | "silenced" => Some(EffectType::Silence),
+            "sunlight_burn" | "sunlightburn" | "sunburn" => Some(EffectType::SunlightBurn),
+            "sunlight_burning" | "sunlightburning" | "sun_burning" => {
+                Some(EffectType::SunlightBurning)
+            }
+            "frenzy" | "frenzied" | "berserk" => Some(EffectType::Frenzy),
+            "dominated" | "dominate" => Some(EffectType::Dominated),
+            "obfuscate" | "obfuscated" => Some(EffectType::Obfuscate),
             _ => None,
         }
     }
@@ -202,6 +240,11 @@ impl EffectType {
             EffectType::Curse => "curse",
             EffectType::Bless => "bless",
             EffectType::Silence => "silence",
+            EffectType::SunlightBurn => "sunlight_burn",
+            EffectType::SunlightBurning => "sunlight_burning",
+            EffectType::Frenzy => "frenzy",
+            EffectType::Dominated => "dominated",
+            EffectType::Obfuscate => "obfuscate",
         }
     }
 
@@ -239,6 +282,11 @@ impl EffectType {
             "curse",
             "bless",
             "silence",
+            "sunlight_burn",
+            "sunlight_burning",
+            "frenzy",
+            "dominated",
+            "obfuscate",
         ]
     }
 }

@@ -509,6 +509,9 @@ fn examine_show_mobile(mobile, connection_id) {
     if mobile_has_buff(mobile.id, "damage_reduction") {
         output += "\n\n" + mobile.name + " is surrounded by a faint white aura.";
     }
+    if is_mobile_masquerade_broken(mobile.id) {
+        output += "\n\n\x1b[1;31mSomething inhuman about " + mobile.name + " — a stillness, a hunger barely held.\x1b[0m";
+    }
     if mobile_has_buff(mobile.id, "sleep") {
         output += "\n" + mobile.name + " is fast asleep.";
     } else if mobile.position == "sleeping" {

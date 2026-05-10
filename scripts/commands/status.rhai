@@ -489,6 +489,19 @@ fn show_detailed_status(char, connection_id) {
         output += "Class: (none)\n";
     }
 
+    // Kindred status — shown only when the player is embraced. Either
+    // "Thinblood (no clan)" or the clan id surfaced from the trait list.
+    if is_pc_vampire(connection_id) {
+        let clan = get_pc_clan(connection_id);
+        if clan == "" {
+            output += "Kindred: Thinblood (no clan)\n";
+        } else {
+            // Capitalize first letter of clan id for display (brujah -> Brujah).
+            let display = clan.sub_string(0, 1).to_upper() + clan.sub_string(1);
+            output += "Kindred: " + display + "\n";
+        }
+    }
+
     // Racial effects section
     output += format_racial_effects(char, connection_id);
     output += "\n";

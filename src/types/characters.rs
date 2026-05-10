@@ -171,6 +171,16 @@ pub struct CharacterData {
     // `summon` spell (CircleMUD PRF_SUMMONABLE parity). Default off.
     #[serde(default)]
     pub summonable: bool,
+    /// Consent flag: when true, vampire PCs may `feed` on this mortal
+    /// without taking a humanity hit. Default off — feeding on a
+    /// non-consenting mortal carries the moral cost.
+    #[serde(default)]
+    pub bloodfeed_willing: bool,
+    /// Vampirism state. None = mortal (default for nearly every character).
+    /// Some = kindred. Stamped by the embrace flow (admin / quest / class
+    /// creation). See `crate::types::VampireState`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vampire_state: Option<crate::types::VampireState>,
     // Property rental system
     #[serde(default)]
     pub active_leases: HashMap<Uuid, Uuid>, // area_id -> lease_id (one per area)

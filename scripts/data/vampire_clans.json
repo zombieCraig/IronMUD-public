@@ -1,0 +1,44 @@
+{
+  "_doc": "Vampire clan registry. Each entry is the lore + display data for a clan; the matching mechanical effects (skill caps, frenzy modifiers, etc.) live as `clan_*` entries in traits.json. The two files are intentionally separate so clan flavor can be edited without touching the mechanic encoding.\n\nAt embrace time, the embrace flow grants the matching `clan_*` trait and surfaces the `display_name` / `description` in the creation flow.",
+
+  "brujah": {
+    "id": "brujah",
+    "trait_id": "clan_brujah",
+    "display_name": "Brujah",
+    "description": "The Rabble. Passion runs in their blood — orators, idealists, brawlers. Easy to anger, easy to love, hard to ignore.",
+    "preferred_disciplines": ["potence", "celerity"],
+    "bane": "Frenzy threshold is lower — anger sparks faster than for most kindred."
+  },
+  "toreador": {
+    "id": "toreador",
+    "trait_id": "clan_toreador",
+    "display_name": "Toreador",
+    "description": "The Artisans. Beauty captivates them — paintings, music, mortals. Sirens of the high society and stalkers of inspiration.",
+    "preferred_disciplines": ["auspex", "celerity"],
+    "bane": "Distracted in art-rich rooms; perception suffers when surrounded by beauty."
+  },
+  "ventrue": {
+    "id": "ventrue",
+    "trait_id": "clan_ventrue",
+    "display_name": "Ventrue",
+    "description": "The Lords. Born to rule, accustomed to obedience. The blue-bloods of kindred society.",
+    "preferred_disciplines": ["dominate", "potence"],
+    "bane": "Refined palate — only feeds well from a chosen mortal type, set at the embrace."
+  },
+  "nosferatu": {
+    "id": "nosferatu",
+    "trait_id": "clan_nosferatu",
+    "display_name": "Nosferatu",
+    "description": "The Hidden. Twisted beyond recognition by the embrace — sewers and shadows are home, secrets are coin.",
+    "preferred_disciplines": ["obfuscate", "potence"],
+    "bane": "Hideous on sight. Mortal NPCs who see them unobfuscated risk breaking the masquerade."
+  },
+  "gangrel": {
+    "id": "gangrel",
+    "trait_id": "clan_gangrel",
+    "display_name": "Gangrel",
+    "description": "The Outlanders. Wild, animal, untamed. They walk where wolves walk, and bear the marks of every frenzy.",
+    "preferred_disciplines": ["potence", "celerity"],
+    "bane": "Each frenzy leaves a permanent animal mark — fangs, fur, slitted eyes — accumulating over centuries."
+  }
+}

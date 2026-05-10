@@ -612,6 +612,160 @@ fn dispatch_routine_subcommand(mobile, uuid, subcommand, parts, connection_id) {
     return false;
 }
 
+// Dispatch group 8: Generic mobile presets
+fn dispatch_preset_subcommand(uuid, subcommand, parts, connection_id) {
+    if subcommand == "preset" { handle_preset_apply(uuid, parts, connection_id); return true; }
+    if subcommand == "presets" { handle_preset_list(parts, connection_id); return true; }
+    return false;
+}
+
+// Dispatch group 9: Vampire subcommand (gated — only fires when this is a vampire mob).
+// Off the vampire path, builders never see the surface; the friendly-fallback message
+// hints at the preset/flag commands that turn it on.
+fn dispatch_vampire_subcommand(mobile, uuid, subcommand, parts, connection_id) {
+    if subcommand != "vampire" { return false; }
+    if !mobile.flags.vampire && !is_mobile_vampire(uuid) {
+        send_client_message(connection_id, "This mob isn't a vampire.\nApply 'medit " + uuid + " preset vampire_goon' (or similar) or 'medit " + uuid + " flag vampire on' to enable vampire options.");
+        return true;
+    }
+    handle_vampire_subcommand(uuid, parts, connection_id);
+    return true;
+}
+
+fn handle_vampire_subcommand(mobile_id, parts, connection_id) {
+    if parts.len() < 3 {
+        show_vampire_state(mobile_id, connection_id);
+        return;
+    }
+    let action = parts[2].to_lower();
+    if action == "show" { show_vampire_state(mobile_id, connection_id); return; }
+    if action == "blood" { handle_vampire_blood(mobile_id, parts, connection_id); return; }
+    if action == "humanity" { handle_vampire_humanity(mobile_id, parts, connection_id); return; }
+    if action == "embrace" { handle_vampire_embrace(mobile_id, parts, connection_id); return; }
+    if action == "clear" || action == "revoke" { handle_vampire_revoke(mobile_id, connection_id); return; }
+    send_client_message(connection_id, "Vampire subcommands: show, blood <n>, humanity <0-10>, embrace [<sire>], clear");
+}
+
+fn show_vampire_state(mobile_id, connection_id) {
+    if !is_mobile_vampire(mobile_id) {
+        send_client_message(connection_id, "(no vampire state)");
+        return;
+    }
+    let blood = get_mobile_blood_pool(mobile_id);
+    let humanity = get_mobile_humanity(mobile_id);
+    let output = olc::c_header("=== Vampire State ===", connection_id) + "\n";
+    let blood_line = olc::c_label("Blood pool: ", connection_id) + olc::c_value(blood, connection_id) + "\n";
+    let humanity_line = olc::c_label("Humanity: ", connection_id) + olc::c_value(humanity, connection_id) + " / 10\n";
+    send_client_message(connection_id, output + blood_line + humanity_line);
+}
+
+fn handle_vampire_blood(mobile_id, parts, connection_id) {
+    if parts.len() < 4 {
+        send_client_message(connection_id, "Usage: medit <id> vampire blood <n>");
+        return;
+    }
+    let n = parse_int(parts[3]);
+    if n == () || n < 0 {
+        send_client_message(connection_id, "Blood must be a non-negative integer.");
+        return;
+    }
+    if set_mobile_blood_pool(mobile_id, n) {
+        send_client_message(connection_id, "Blood pool set to " + n + ".");
+    } else {
+        send_client_message(connection_id, "Failed to set blood pool.");
+    }
+}
+
+fn handle_vampire_humanity(mobile_id, parts, connection_id) {
+    if parts.len() < 4 {
+        send_client_message(connection_id, "Usage: medit <id> vampire humanity <0-10>");
+        return;
+    }
+    let n = parse_int(parts[3]);
+    if n == () || n < 0 || n > 10 {
+        send_client_message(connection_id, "Humanity must be between 0 and 10.");
+        return;
+    }
+    if set_mobile_humanity(mobile_id, n) {
+        send_client_message(connection_id, "Humanity set to " + n + ".");
+    } else {
+        send_client_message(connection_id, "Failed to set humanity.");
+    }
+}
+
+fn handle_vampire_embrace(mobile_id, parts, connection_id) {
+    let sire = "";
+    if parts.len() >= 4 { sire = build_string_from_parts(parts, 3); }
+    if embrace_mobile(mobile_id, sire, "") {
+        let msg = if sire == "" { "" } else { " (sire: " + sire + ")" };
+        send_client_message(connection_id, "Mobile embraced as a vampire" + msg + ".");
+    } else {
+        send_client_message(connection_id, "Failed to embrace mobile.");
+    }
+}
+
+fn handle_vampire_revoke(mobile_id, connection_id) {
+    if revoke_mobile_vampirism(mobile_id) {
+        send_client_message(connection_id, "Vampire state cleared.");
+    } else {
+        send_client_message(connection_id, "Mobile is not a vampire.");
+    }
+}
+
+fn handle_preset_list(parts, connection_id) {
+    let tag_filter = "";
+    if parts.len() >= 3 { tag_filter = parts[2]; }
+
+    let presets = list_mobile_presets(tag_filter);
+    if presets.len() == 0 {
+        if tag_filter == "" {
+            send_client_message(connection_id, "No mobile presets defined.");
+        } else {
+            send_client_message(connection_id, "No mobile presets matching tag '" + tag_filter + "'.");
+        }
+        return;
+    }
+
+    let header = "=== Mobile Presets";
+    if tag_filter != "" { header += " (" + tag_filter + ")"; }
+    header += " ===";
+    let output = olc::c_header(header, connection_id) + "\n";
+    for preset in presets {
+        output += olc::c_label(preset["id"], connection_id);
+        if preset["name"] != "" { output += " (" + preset["name"] + ")"; }
+        output += "\n";
+        if preset["description"] != "" {
+            output += "  " + preset["description"] + "\n";
+        }
+        let tags = preset["tags"];
+        if tags.len() > 0 {
+            let tag_str = "";
+            for t in tags {
+                if tag_str != "" { tag_str += ", "; }
+                tag_str += t;
+            }
+            output += "  tags: " + olc::c_value(tag_str, connection_id) + "\n";
+        }
+    }
+    output += "\nUsage: medit <id> preset <preset_id>";
+    send_client_message(connection_id, output);
+}
+
+fn handle_preset_apply(mobile_id, parts, connection_id) {
+    if parts.len() < 3 {
+        send_client_message(connection_id, "Usage: medit <id> preset <preset_id>");
+        send_client_message(connection_id, "Run 'medit <id> presets' to see what's available.");
+        return;
+    }
+
+    let preset_id = parts[2];
+    if apply_mobile_preset(mobile_id, preset_id) {
+        send_client_message(connection_id, "Applied preset '" + preset_id + "'.");
+    } else {
+        send_client_message(connection_id, "Failed to apply preset '" + preset_id + "'. Check that the preset id exists (medit <id> presets).");
+    }
+}
+
 fn handle_subcommand(mobile, mobile_id, subcommand, parts, char, connection_id) {
     let uuid = mobile.id;
 
@@ -623,6 +777,8 @@ fn handle_subcommand(mobile, mobile_id, subcommand, parts, char, connection_id) 
     if dispatch_role_subcommand(mobile, uuid, subcommand, parts, char, connection_id) { return; }
     if dispatch_advanced_subcommand(mobile, uuid, subcommand, parts, connection_id) { return; }
     if dispatch_routine_subcommand(mobile, uuid, subcommand, parts, connection_id) { return; }
+    if dispatch_preset_subcommand(uuid, subcommand, parts, connection_id) { return; }
+    if dispatch_vampire_subcommand(mobile, uuid, subcommand, parts, connection_id) { return; }
 
     send_client_message(connection_id, "Unknown subcommand: " + subcommand);
 }
@@ -960,7 +1116,7 @@ fn handle_flag_subcommand(mobile_id, parts, connection_id) {
     // Validate all names before changing anything.
     for name in flag_names {
         if get_mobile_flag_value(mobile, name) == () {
-            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, helper, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim, poisonous, fiery, chilling, corrosive, shocking, unique, stay_zone, aware, memory, no_sleep, no_blind, no_bash, no_summon, no_charm, hostile_on_steal, tameable");
+            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, helper, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim, poisonous, fiery, chilling, corrosive, shocking, unique, stay_zone, aware, memory, no_sleep, no_blind, no_bash, no_summon, no_charm, hostile_on_steal, tameable, undead, vampire, holy_vulnerable");
             return;
         }
     }
@@ -1011,6 +1167,9 @@ fn get_mobile_flag_value(mobile, flag_name) {
     if flag_name == "no_charm" || flag_name == "nocharm" { return flags.no_charm; }
     if flag_name == "hostile_on_steal" || flag_name == "hostileonsteal" { return flags.hostile_on_steal; }
     if flag_name == "tameable" { return flags.tameable; }
+    if flag_name == "undead" { return flags.undead; }
+    if flag_name == "vampire" { return flags.vampire; }
+    if flag_name == "holy_vulnerable" || flag_name == "holyvulnerable" { return flags.holy_vulnerable; }
     return ();
 }
 
@@ -1224,6 +1383,9 @@ fn build_flags_display(mobile) {
     if flags.no_charm { flag_str += "no_charm "; }
     if flags.hostile_on_steal { flag_str += "hostile_on_steal "; }
     if flags.tameable { flag_str += "tameable "; }
+    if flags.undead { flag_str += "undead "; }
+    if flags.vampire { flag_str += "vampire "; }
+    if flags.holy_vulnerable { flag_str += "holy_vulnerable "; }
     if flag_str == "" { flag_str = "(none)"; }
     output += flag_str + "\n";
     return output;
@@ -1376,6 +1538,9 @@ fn show_mobile_flags(mobile, mobile_id, connection_id) {
     output += build_flag_line("no_charm", flags.no_charm, "Immune to the charm spell (CircleMUD MOB_NOCHARM)", display_id, connection_id);
     output += build_flag_line("hostile_on_steal", flags.hostile_on_steal, "Attacks the thief when a steal attempt is caught (CircleMUD shop WILL_START_FIGHT)", display_id, connection_id);
     output += build_flag_line("tameable", flags.tameable, "Charm spell installs a permanent pet bond instead of temporary control", display_id, connection_id);
+    output += build_flag_line("undead", flags.undead, "Generic undead marker (zombies, skeletons, vampires, ghouls)", display_id, connection_id);
+    output += build_flag_line("vampire", flags.vampire, "Sun-burn tick eligibility, on-hit blood drain, gates vampire subcommand", display_id, connection_id);
+    output += build_flag_line("holy_vulnerable", flags.holy_vulnerable, "Doubled incoming Holy damage", display_id, connection_id);
 
     send_mxp_message(connection_id, output);
 }

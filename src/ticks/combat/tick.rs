@@ -1097,6 +1097,17 @@ fn process_character_attacks_mobile(
             damage += (bless.magnitude + 1) / 2;
         }
 
+        // Frenzy adds magnitude to damage. Default magnitude=4 → +4.
+        // Berserk strength is the central reason a kindred would *want*
+        // to frenzy; flee.rhai also blocks fleeing while frenzying.
+        if let Some(frenzy) = char
+            .active_buffs
+            .iter()
+            .find(|b| b.effect_type == EffectType::Frenzy)
+        {
+            damage += frenzy.magnitude;
+        }
+
         // Apply underwater damage type modifier
         let (modified_damage, water_msg) =
             apply_underwater_modifier(db, &char.current_room_id, damage, weapon_damage_type);
@@ -1185,8 +1196,26 @@ fn process_character_attacks_mobile(
             }
         }
 
+        // Holy weapons double damage to holy_vulnerable mobs (vampires,
+        // demons, blessed-vulnerable undead). Doubling happens before DR so
+        // sanctuary/stone-skin still scale proportionally on the holy hit.
+        if mobile.flags.holy_vulnerable && weapon_damage_type == DamageType::Holy {
+            damage *= 2;
+        }
+
+        // Sun-burning vampires die outright on any landed blow. The rescue
+        // window from the sun tick is single-event: a fresh hit (combat or
+        // another sun tick) ends them.
+        let is_sun_burning = mobile
+            .active_buffs
+            .iter()
+            .any(|b| b.effect_type == ironmud::EffectType::SunlightBurning);
+
         // Apply damage
         damage = ironmud::script::apply_damage_reduction(damage, &mobile.active_buffs);
+        if is_sun_burning && damage > 0 {
+            damage = mobile.current_hp; // ensure death
+        }
         mobile.current_hp -= damage;
         // Slice 3c: party kill credit. Track every player that contributed
         // damage so handle_mob_kill can credit each one's quest progress.
@@ -2859,6 +2888,8 @@ fn get_miss_verb(damage_type: DamageType) -> &'static str {
         DamageType::Bite => "snaps at",
         DamageType::Ballistic => "fires at",
         DamageType::Arcane => "hurls magic at",
+        DamageType::Sunlight => "sears with sunlight at",
+        DamageType::Holy => "smites at",
     }
 }
 
@@ -2903,6 +2934,8 @@ fn get_hit_verb(damage_type: DamageType) -> &'static str {
         DamageType::Bite => "bites",
         DamageType::Ballistic => "shoots",
         DamageType::Arcane => "blasts",
+        DamageType::Sunlight => "sears",
+        DamageType::Holy => "smites",
     }
 }
 

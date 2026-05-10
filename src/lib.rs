@@ -38,6 +38,7 @@ pub mod social;
 pub mod spawn;
 pub mod telnet;
 pub mod types;
+pub mod vampire;
 
 pub use types::*;
 

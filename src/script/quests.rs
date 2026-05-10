@@ -397,6 +397,19 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     {
         let cloned_db = db.clone();
         engine.register_fn(
+            "add_quest_reward_embrace_clan",
+            move |vnum: String, clan: String| -> String {
+                let trimmed = clan.trim().to_lowercase();
+                if trimmed.is_empty() {
+                    return "clan id cannot be empty".to_string();
+                }
+                push_reward(&cloned_db, &vnum, QuestReward::EmbraceClan { clan: trimmed })
+            },
+        );
+    }
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
             "remove_quest_reward",
             move |vnum: String, idx: i64| -> String {
                 let mut q = match cloned_db.get_quest_data(&vnum) {
@@ -789,6 +802,7 @@ fn format_reward(reward: &QuestReward) -> String {
         QuestReward::SkillXp { skill, amount } => format!("{} {} xp", amount, skill),
         QuestReward::Achievement { key } => format!("achievement {}", key),
         QuestReward::LearnRecipe { recipe_id } => format!("recipe {}", recipe_id),
+        QuestReward::EmbraceClan { clan } => format!("embrace clan {}", clan),
     }
 }
 

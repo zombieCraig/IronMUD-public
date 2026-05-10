@@ -67,6 +67,7 @@ pub const MOBILE_FLAGS: &[&str] = &[
     "guard",
     "healer",
     "helper",
+    "holy_vulnerable",
     "hostile_on_steal",
     "leasing_agent",
     "memory",
@@ -84,7 +85,9 @@ pub const MOBILE_FLAGS: &[&str] = &[
     "stay_zone",
     "tameable",
     "thief",
+    "undead",
     "unique",
+    "vampire",
 ];
 
 /// Routine subcommands
@@ -133,6 +136,7 @@ pub const ITEM_FLAGS: &[&str] = &[
     "no_remove",
     "invisible",
     "glow",
+    "holy",
     "hum",
     "no_sell",
     "unique",

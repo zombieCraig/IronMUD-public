@@ -51,6 +51,8 @@ pub fn routes() -> Router<Arc<ApiState>> {
             put(update_dialogue_choice).delete(remove_dialogue_choice),
         )
         .route("/:vnum/spawn", post(spawn_mobile))
+        .route("/presets", get(list_mobile_presets))
+        .route("/:id/preset", post(apply_mobile_preset))
 }
 
 #[derive(Deserialize)]
@@ -300,6 +302,12 @@ pub struct MobileFlagsRequest {
     pub hostile_on_steal: Option<bool>,
     #[serde(default)]
     pub tameable: Option<bool>,
+    #[serde(default)]
+    pub undead: Option<bool>,
+    #[serde(default)]
+    pub vampire: Option<bool>,
+    #[serde(default)]
+    pub holy_vulnerable: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -879,6 +887,9 @@ async fn create_mobile(
             no_charm: req.flags.no_charm.unwrap_or(false),
             hostile_on_steal: req.flags.hostile_on_steal.unwrap_or(false),
             tameable: req.flags.tameable.unwrap_or(false),
+            undead: req.flags.undead.unwrap_or(false),
+            vampire: req.flags.vampire.unwrap_or(false),
+            holy_vulnerable: req.flags.holy_vulnerable.unwrap_or(false),
         },
         dialogue: HashMap::new(),
         dialogue_tree: None,
@@ -933,6 +944,7 @@ async fn create_mobile(
         adoption_pending: false,
         home_area_id: None,
         remembered_enemies: Vec::new(),
+        vampire_state: None,
         charm_stay: false,
         charm_follow_player: None,
         dg_vars: std::collections::HashMap::new(),
@@ -1824,6 +1836,126 @@ async fn spawn_mobile(
     Ok(Json(MobileResponse {
         success: true,
         data: instance,
+        refreshed_instances: None,
+    }))
+}
+
+// =============================================================================
+// Mobile presets — generic data-driven flag/stat bundles for builders.
+//
+// The preset registry lives at `scripts/data/mobile_presets.json` and is
+// hot-reloaded on every call (no caching). See `src/script/mobile_presets.rs`
+// for the apply logic; these handlers are thin HTTP wrappers so MCP and
+// curl users can drive the same machinery as in-game `medit preset`.
+// =============================================================================
+
+#[derive(Deserialize)]
+pub struct ListPresetsQuery {
+    pub tag: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct PresetSummary {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub tags: Vec<String>,
+}
+
+#[derive(Serialize)]
+pub struct PresetsListResponse {
+    pub success: bool,
+    pub data: Vec<PresetSummary>,
+    pub total: usize,
+}
+
+#[derive(Deserialize)]
+pub struct ApplyPresetRequest {
+    pub preset_id: String,
+}
+
+async fn list_mobile_presets(
+    State(_state): State<Arc<ApiState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Query(query): Query<ListPresetsQuery>,
+) -> Result<Json<PresetsListResponse>, ApiError> {
+    if !can_read(&user) {
+        return Err(ApiError::Forbidden("Read permission required".into()));
+    }
+    let tag = query.tag.unwrap_or_default();
+    let raw = crate::script::mobile_presets::list_presets(&tag);
+    let summaries: Vec<PresetSummary> = raw
+        .iter()
+        .map(|p| PresetSummary {
+            id: p.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            name: p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            description: p
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            tags: p
+                .get("tags")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|t| t.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default(),
+        })
+        .collect();
+    let total = summaries.len();
+    Ok(Json(PresetsListResponse {
+        success: true,
+        data: summaries,
+        total,
+    }))
+}
+
+async fn apply_mobile_preset(
+    State(state): State<Arc<ApiState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(id): Path<String>,
+    Json(req): Json<ApplyPresetRequest>,
+) -> Result<Json<MobileResponse>, ApiError> {
+    if !can_write(&user) {
+        return Err(ApiError::Forbidden("Write permission required".into()));
+    }
+    let uuid =
+        Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+
+    let mut mobile = state
+        .db
+        .get_mobile_data(&uuid)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))?;
+
+    // Sandbox: caller must hold edit rights on the mob's owning area.
+    authorize_existing_area(&state.db, &user, mobile.area_id)?;
+
+    let preset = crate::script::mobile_presets::find_preset_by_id(&req.preset_id).ok_or_else(
+        || ApiError::NotFound(format!("Preset '{}' not found", req.preset_id)),
+    )?;
+
+    crate::script::mobile_presets::apply_preset_to_mobile(&mut mobile, &preset);
+
+    state
+        .db
+        .save_mobile_data(mobile.clone())
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
+
+    notify_builders(
+        &state.connections,
+        &format!(
+            "[API] Mobile '{}' got preset '{}' applied by {}",
+            mobile.name, req.preset_id, user.api_key.name
+        ),
+    );
+
+    Ok(Json(MobileResponse {
+        success: true,
+        data: mobile,
         refreshed_instances: None,
     }))
 }

@@ -105,6 +105,14 @@ pub enum QuestReward {
     /// Triggers `award_achievement` against the named achievement key.
     Achievement { key: String },
     LearnRecipe { recipe_id: String },
+    /// Grants the named clan to a thinblood vampire. Adds the matching
+    /// `clan_<name>` trait, seeds 1 dot of the clan's first registered
+    /// preferred discipline, and lifts the thinblood gates (max blood pool
+    /// 6 -> 10, blood refilled, sun damage normal, humanity loss normal,
+    /// tier-3 disciplines unlocked). Sire is taken from the quest's
+    /// `giver_mob_vnum` prototype name when present. No-op for mortals
+    /// or already-acknowledged kindred.
+    EmbraceClan { clan: String },
 }
 
 /// Per-player quest progress carried on `CharacterData.active_quests`.

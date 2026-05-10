@@ -213,7 +213,7 @@ export const mobileToolDefinitions = [
         world_max_count: { type: "number", description: "Cap on live (non-prototype) instances of this vnum world-wide. 0 or negative clears the cap (unlimited)." },
         dialogue_tree: {
           type: "object",
-          description: "Branching dialogue tree. Shape: { root_node: 'root', nodes: { <id>: { text, choices: [{ keyword, label, target: { kind: 'goto'|'exit'|'repeat', node? }, conditions: [...], effects: [...] }], on_enter: [...] } } }. Conditions use kind: flag_set/flag_unset/has_item/skill_at_least/counter_at_least/dg_var_equals. Effects use kind: set_flag/clear_flag/give_item/take_item/award_skill_xp/set_counter/increment_counter/set_dg_var/fire_dg_trigger. Flag scope is 'local' (per-mob-vnum) or 'global'. DG scope is 'player' or 'mob'.",
+          description: "Branching dialogue tree. Shape: { root_node: 'root', nodes: { <id>: { text, choices: [{ keyword, label, target: { kind: 'goto'|'exit'|'repeat', node? }, conditions: [...], effects: [...] }], on_enter: [...] } } }. Conditions use kind: flag_set/flag_unset/has_item/skill_at_least/counter_at_least/dg_var_equals/is_thinblood/is_clan_acknowledged. Effects use kind: set_flag/clear_flag/give_item/take_item/award_skill_xp/set_counter/increment_counter/set_dg_var/fire_dg_trigger. Flag scope is 'local' (per-mob-vnum) or 'global'. DG scope is 'player' or 'mob'.",
           additionalProperties: true,
         },
         clear_dialogue_tree: { type: "boolean", description: "Pass true to remove the dialogue tree. Takes precedence over `dialogue_tree`." },
@@ -496,6 +496,37 @@ export const mobileToolDefinitions = [
         index: { type: "number", description: "Trigger index to remove" },
       },
       required: ["mobile_id", "index"],
+    },
+  },
+  {
+    name: "list_mobile_presets",
+    description:
+      "List available mobile presets (data-driven flag/stat bundles in scripts/data/mobile_presets.json). Optional tag filter. Each preset returns { id, name, description, tags } so builders can pick one before applying.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tag: {
+          type: "string",
+          description: "Optional tag filter (e.g. 'vampire', 'guard', 'beast'). Empty = all presets.",
+        },
+      },
+    },
+  },
+  {
+    name: "apply_mobile_preset",
+    description:
+      "Apply a preset's flags + stats + on-hit effects to an existing mobile prototype or instance. Flags are additive (only the flags listed in the preset change); stat overrides only fire when the preset includes that field. Use list_mobile_presets first to see what's available.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        mobile_id: { type: "string", description: "Mobile UUID (instance or prototype)" },
+        preset_id: {
+          type: "string",
+          description:
+            "Preset id from list_mobile_presets (e.g. 'vampire_goon', 'town_guard_captain', 'dire_wolf')",
+        },
+      },
+      required: ["mobile_id", "preset_id"],
     },
   },
 ];

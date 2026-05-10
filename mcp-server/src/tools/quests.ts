@@ -98,6 +98,19 @@ const rewardSchema = {
       },
       required: ["kind", "recipe_id"],
     },
+    {
+      type: "object",
+      properties: {
+        kind: { const: "embrace_clan" },
+        clan: {
+          type: "string",
+          enum: ["brujah", "toreador", "ventrue", "nosferatu", "gangrel"],
+          description:
+            "Acknowledges a thinblood vampire into the named clan on completion. Sire defaults to the quest's giver_mob_vnum prototype name. No-op for mortals or already-acknowledged kindred.",
+        },
+      },
+      required: ["kind", "clan"],
+    },
   ],
 };
 

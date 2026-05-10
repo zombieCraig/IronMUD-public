@@ -296,9 +296,18 @@ pub fn try_complete(
     // which load character independently).
     let _ = db.save_character_data(ch.clone());
 
+    // Resolve the giver mob's display name once for reward variants that
+    // need it (e.g. EmbraceClan stamps the sire). Falls back to None if the
+    // quest has no canonical giver or the prototype isn't loaded.
+    let giver_name = quest
+        .giver_mob_vnum
+        .as_ref()
+        .and_then(|vn| db.get_mobile_by_vnum(vn).ok().flatten())
+        .map(|m| m.name);
+
     // Apply rewards.
     for reward in &quest.rewards {
-        apply_reward(db, connections, state, &ch.name, reward);
+        apply_reward(db, connections, state, &ch.name, reward, giver_name.as_deref());
     }
 
     let line = format!("\x1b[1;33m[ Quest complete: {} ]\x1b[0m", quest.name);
@@ -336,6 +345,7 @@ fn apply_reward(
     state: &SharedState,
     char_name: &str,
     reward: &QuestReward,
+    giver_name: Option<&str>,
 ) {
     match reward {
         QuestReward::Gold { amount } => {
@@ -414,6 +424,58 @@ fn apply_reward(
                     );
                 }
             }
+        }
+        QuestReward::EmbraceClan { clan } => {
+            // Persisted-state variant — operates on the DB-loaded
+            // character, then we explicitly sync the live session so a
+            // logged-in player sees the uplift in their next score view.
+            let mut ch = match db.get_character_data(&char_name.to_lowercase()) {
+                Ok(Some(c)) => c,
+                _ => return,
+            };
+            if ch.vampire_state.is_none() {
+                tracing::warn!(
+                    char = %char_name,
+                    clan = %clan,
+                    "EmbraceClan reward fired on a mortal — no vampire state to upgrade",
+                );
+                return;
+            }
+            if crate::script::vampire::pc_clan_from_traits(&ch).is_some() {
+                tracing::warn!(
+                    char = %char_name,
+                    clan = %clan,
+                    "EmbraceClan reward fired on already-acknowledged kindred — skipping",
+                );
+                return;
+            }
+            let sire = giver_name.map(str::to_string);
+            if !crate::script::vampire::apply_clan_acknowledgment(&mut ch, clan, sire) {
+                return;
+            }
+            let _ = db.save_character_data(ch.clone());
+            // Sync live session so the player sees the new state without
+            // re-login (mirrors how SkillXp reward leaves the in-memory
+            // session stale, but for VampireState the visible jump is
+            // bigger and we have ch already in hand).
+            if let Ok(mut conns) = connections.lock() {
+                for (_id, sess) in conns.iter_mut() {
+                    if let Some(sc) = sess.character.as_mut() {
+                        if sc.name.eq_ignore_ascii_case(char_name) {
+                            *sc = ch.clone();
+                            break;
+                        }
+                    }
+                }
+            }
+            notify(
+                connections,
+                char_name,
+                &format!(
+                    "\x1b[1;31m[ Your blood thickens. You are kindred of clan {}. ]\x1b[0m",
+                    clan
+                ),
+            );
         }
     }
 }

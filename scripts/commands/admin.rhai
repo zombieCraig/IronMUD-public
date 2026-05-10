@@ -121,7 +121,155 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "embrace" {
+        handle_embrace(connection_id, args, char);
+        return;
+    }
+
+    if subcommand == "embrace_revoke" || subcommand == "revoke_embrace" {
+        handle_embrace_revoke(connection_id, args, char);
+        return;
+    }
+
+    if subcommand == "masquerade_reset" {
+        handle_masquerade_reset(connection_id, args, char);
+        return;
+    }
+
+    if subcommand == "config" {
+        handle_config(connection_id, args, char);
+        return;
+    }
+
     send_client_message(connection_id, "Unknown subcommand. Type 'admin help' for commands.");
+}
+
+fn handle_embrace(connection_id, args, admin_char) {
+    let parts = args.split(" ");
+    if parts.len() < 2 || parts[1] == "" {
+        send_client_message(connection_id, "Usage: admin embrace <player> [<clan>]");
+        send_client_message(connection_id, "Clans: brujah, toreador, ventrue, nosferatu, gangrel (omit for thinblood/no clan).");
+        return;
+    }
+    let target_name = parts[1];
+    let clan = if parts.len() >= 3 { parts[2].to_lower() } else { "" };
+
+    let target_conn = find_player_connection_by_name(target_name);
+    if target_conn == "" {
+        send_client_message(connection_id, "Player '" + target_name + "' is not online.");
+        return;
+    }
+
+    if is_pc_vampire(target_conn) {
+        send_client_message(connection_id, target_name + " is already kindred.");
+        return;
+    }
+
+    let sire = admin_char.name;
+    if !embrace_pc(target_conn, sire, clan) {
+        send_client_message(connection_id, "Failed to embrace " + target_name + ".");
+        return;
+    }
+
+    let clan_label = if clan == "" { "(thinblood)" } else { "as a " + clan };
+    send_client_message(connection_id, "You embrace " + target_name + " " + clan_label + ".");
+    send_client_message(target_conn, "\x1b[1;31m" + sire + " sinks fangs into your throat. Cold floods your veins. You wake changed.\x1b[0m");
+    if clan != "" {
+        send_client_message(target_conn, "You feel the call of clan " + clan + ".");
+    }
+}
+
+fn handle_embrace_revoke(connection_id, args, admin_char) {
+    let parts = args.split(" ");
+    if parts.len() < 2 || parts[1] == "" {
+        send_client_message(connection_id, "Usage: admin embrace_revoke <player>");
+        return;
+    }
+    let target_name = parts[1];
+
+    let target_conn = find_player_connection_by_name(target_name);
+    if target_conn == "" {
+        send_client_message(connection_id, "Player '" + target_name + "' is not online.");
+        return;
+    }
+
+    if !is_pc_vampire(target_conn) {
+        send_client_message(connection_id, target_name + " is not kindred.");
+        return;
+    }
+
+    if !revoke_pc_vampirism(target_conn) {
+        send_client_message(connection_id, "Failed to revoke vampirism on " + target_name + ".");
+        return;
+    }
+
+    send_client_message(connection_id, "Restored mortality to " + target_name + ".");
+    send_client_message(target_conn, "Mortality returns. The hunger fades.");
+}
+
+fn handle_masquerade_reset(connection_id, args, admin_char) {
+    let parts = args.split(" ");
+    if parts.len() < 2 || parts[1] == "" {
+        send_client_message(connection_id, "Usage: admin masquerade_reset <player>");
+        return;
+    }
+    let target_name = parts[1];
+
+    let target_conn = find_player_connection_by_name(target_name);
+    if target_conn == "" {
+        send_client_message(connection_id, "Player '" + target_name + "' is not online.");
+        return;
+    }
+
+    if masquerade_reset_pc(target_conn) {
+        send_client_message(connection_id, "Cleared masquerade_broken on " + target_name + ".");
+        send_client_message(target_conn, "The whispers fade. The masquerade holds again.");
+    } else {
+        send_client_message(connection_id, target_name + " is not a vampire or their masquerade was already intact.");
+    }
+}
+
+// `admin config <key> [<value>]` — runtime-tunable server settings.
+// Currently exposes a curated allowlist (vampire creation flag, possibly more
+// later). Reading without a value shows the current setting; writing accepts
+// on/off / true/false / a literal string.
+fn handle_config(connection_id, args, admin_char) {
+    let parts = args.split(" ");
+    if parts.len() < 2 || parts[1] == "" {
+        send_client_message(connection_id, "Usage: admin config <key> [<value>]");
+        send_client_message(connection_id, "Allowed keys:");
+        send_client_message(connection_id, "  enable_vampire_creation on|off  — Show 'vampire' in the new-character class list");
+        return;
+    }
+    let key = parts[1].to_lower();
+
+    let allowed_keys = ["enable_vampire_creation"];
+    let allowed = false;
+    for k in allowed_keys { if k == key { allowed = true; } }
+    if !allowed {
+        send_client_message(connection_id, "Config key '" + key + "' is not admin-tunable. (Allowed: enable_vampire_creation)");
+        return;
+    }
+
+    if parts.len() < 3 || parts[2] == "" {
+        let current = get_setting_or_default(key, "off");
+        send_client_message(connection_id, key + " is currently: " + current);
+        return;
+    }
+    let value_in = parts[2].to_lower();
+    let value = if value_in == "on" || value_in == "true" || value_in == "1" || value_in == "enable" {
+        "on"
+    } else if value_in == "off" || value_in == "false" || value_in == "0" || value_in == "disable" {
+        "off"
+    } else {
+        value_in
+    };
+    if set_setting(key, value) {
+        send_client_message(connection_id, "Set " + key + " = " + value + ".");
+        broadcast_to_builders("[admin] " + admin_char.name + " set " + key + " = " + value);
+    } else {
+        send_client_message(connection_id, "Failed to write setting.");
+    }
 }
 
 fn show_help(connection_id) {
@@ -145,6 +293,10 @@ fn show_help(connection_id) {
     help += "  admin reload                      - Reload class/race/spell/language definitions from disk\n";
     help += "  admin email-stats                 - Show email send counters vs daily/monthly caps\n";
     help += "  admin email-audit [N]             - Show last N email send attempts (default 20)\n";
+    help += "  admin embrace <player> [<clan>]   - Embrace a PC as kindred (clans: brujah/toreador/ventrue/nosferatu/gangrel)\n";
+    help += "  admin embrace_revoke <player>     - Restore mortality to a vampire PC\n";
+    help += "  admin masquerade_reset <player>   - Clear masquerade_broken on a vampire PC\n";
+    help += "  admin config <key> [<value>]      - Read or write a runtime setting (e.g. enable_vampire_creation on|off)\n";
     help += "  admin help                        - Show this help\n";
     send_client_message(connection_id, help);
 }

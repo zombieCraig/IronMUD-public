@@ -1,0 +1,113 @@
+[
+  {
+    "id": "town_guard_captain",
+    "name": "Town Guard Captain",
+    "description": "Mid-tier guard with helper behavior, trained for combat. Defends faction allies.",
+    "tags": ["guard", "town", "humanoid"],
+    "flags": {
+      "guard": true,
+      "helper": true,
+      "can_open_doors": true,
+      "memory": true
+    },
+    "level": 8,
+    "max_hp": 80,
+    "max_stamina": 50,
+    "armor_class": 5,
+    "damage_dice": "2d6",
+    "perception": 5,
+    "faction": "town_watch"
+  },
+  {
+    "id": "dire_wolf",
+    "name": "Dire Wolf",
+    "description": "An aggressive wolf, larger than its kin. Stays inside its home zone, draws blood on bite.",
+    "tags": ["beast", "wilderness", "predator"],
+    "flags": {
+      "aggressive": true,
+      "stay_zone": true,
+      "aware": true
+    },
+    "level": 6,
+    "max_hp": 60,
+    "max_stamina": 40,
+    "armor_class": 6,
+    "damage_dice": "2d4",
+    "perception": 4,
+    "on_hit_effects": [
+      { "effect": "bleeding", "chance": 30, "magnitude": 2, "duration": 3 }
+    ]
+  },
+  {
+    "id": "vampire_goon",
+    "name": "Vampire Goon",
+    "description": "Classic Dracula-style mook with sun weakness, holy weakness, and a blood-draining bite. Drop into any night-time encounter; sun tick handles outdoor cleanup.",
+    "tags": ["undead", "vampire", "horror"],
+    "flags": {
+      "undead": true,
+      "vampire": true,
+      "holy_vulnerable": true,
+      "no_charm": true,
+      "no_sleep": true,
+      "aggressive": true,
+      "memory": true
+    },
+    "level": 6,
+    "max_hp": 60,
+    "max_stamina": 50,
+    "armor_class": 6,
+    "damage_dice": "1d6",
+    "perception": 5,
+    "on_hit_effects": [
+      { "effect": "bleeding", "chance": 50, "magnitude": 3, "duration": 3 }
+    ]
+  },
+  {
+    "id": "vampire_elder",
+    "name": "Vampire Elder",
+    "description": "Centuries-old kindred — high humanity façade, real menace underneath. Resistant to mind effects, lethal in combat, fears holy weapons most of all.",
+    "tags": ["undead", "vampire", "horror", "elder"],
+    "flags": {
+      "undead": true,
+      "vampire": true,
+      "holy_vulnerable": true,
+      "no_charm": true,
+      "no_sleep": true,
+      "no_blind": true,
+      "no_summon": true,
+      "aware": true,
+      "memory": true,
+      "aggressive": false
+    },
+    "level": 18,
+    "max_hp": 220,
+    "max_stamina": 120,
+    "armor_class": 2,
+    "damage_dice": "3d6+4",
+    "perception": 8,
+    "faction": "camarilla",
+    "on_hit_effects": [
+      { "effect": "bleeding", "chance": 70, "magnitude": 4, "duration": 4 }
+    ]
+  },
+  {
+    "id": "vampire_hunter",
+    "name": "Vampire Hunter",
+    "description": "Mortal hunter trained against the kindred. Helper-flagged guard with high perception; carries holy items in published versions.",
+    "tags": ["humanoid", "guard", "anti-vampire"],
+    "flags": {
+      "guard": true,
+      "helper": true,
+      "aware": true,
+      "memory": true,
+      "no_charm": true
+    },
+    "level": 10,
+    "max_hp": 110,
+    "max_stamina": 80,
+    "armor_class": 4,
+    "damage_dice": "2d6+2",
+    "perception": 7,
+    "faction": "vampire_hunters"
+  }
+]

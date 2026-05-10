@@ -182,6 +182,7 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            clan?: undefined;
                         };
                         required: string[];
                     } | {
@@ -202,6 +203,7 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            clan?: undefined;
                         };
                         required: string[];
                     } | {
@@ -222,6 +224,7 @@ export declare const questToolDefinitions: ({
                             qty?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            clan?: undefined;
                         };
                         required: string[];
                     } | {
@@ -239,6 +242,7 @@ export declare const questToolDefinitions: ({
                             qty?: undefined;
                             skill?: undefined;
                             recipe_id?: undefined;
+                            clan?: undefined;
                         };
                         required: string[];
                     } | {
@@ -256,6 +260,26 @@ export declare const questToolDefinitions: ({
                             qty?: undefined;
                             skill?: undefined;
                             key?: undefined;
+                            clan?: undefined;
+                        };
+                        required: string[];
+                    } | {
+                        type: string;
+                        properties: {
+                            kind: {
+                                const: string;
+                            };
+                            clan: {
+                                type: string;
+                                enum: string[];
+                                description: string;
+                            };
+                            amount?: undefined;
+                            vnum?: undefined;
+                            qty?: undefined;
+                            skill?: undefined;
+                            key?: undefined;
+                            recipe_id?: undefined;
                         };
                         required: string[];
                     })[];
@@ -421,6 +445,7 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            clan?: undefined;
                         };
                         required: string[];
                     } | {
@@ -441,6 +466,7 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            clan?: undefined;
                         };
                         required: string[];
                     } | {
@@ -461,6 +487,7 @@ export declare const questToolDefinitions: ({
                             qty?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            clan?: undefined;
                         };
                         required: string[];
                     } | {
@@ -478,6 +505,7 @@ export declare const questToolDefinitions: ({
                             qty?: undefined;
                             skill?: undefined;
                             recipe_id?: undefined;
+                            clan?: undefined;
                         };
                         required: string[];
                     } | {
@@ -495,6 +523,26 @@ export declare const questToolDefinitions: ({
                             qty?: undefined;
                             skill?: undefined;
                             key?: undefined;
+                            clan?: undefined;
+                        };
+                        required: string[];
+                    } | {
+                        type: string;
+                        properties: {
+                            kind: {
+                                const: string;
+                            };
+                            clan: {
+                                type: string;
+                                enum: string[];
+                                description: string;
+                            };
+                            amount?: undefined;
+                            vnum?: undefined;
+                            qty?: undefined;
+                            skill?: undefined;
+                            key?: undefined;
+                            recipe_id?: undefined;
                         };
                         required: string[];
                     })[];

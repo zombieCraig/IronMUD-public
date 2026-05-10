@@ -492,6 +492,57 @@ fn cast_charm(connection_id, char, spell, target_arg) {
     return true;
 }
 
+// Vampire Dominate discipline. Mirrors cast_charm but:
+//   - Bypasses MobileFlags.no_charm (kindred mind-control is stronger than mortal magic).
+//   - Reads `buff_effect` from spell JSON ("charmed" for command/mesmerize, "dominated" for the dot-5 power).
+//   - Skips the tameable-pet bond — domination is a temporary tool, not a permanent companion.
+fn cast_dominate(connection_id, char, spell, target_arg) {
+    let room_id = char.current_room_id;
+    let mob_id = find_mob_target(char, target_arg, room_id);
+    if mob_id == "" {
+        send_client_message(connection_id, "Dominate whom?");
+        return false;
+    }
+
+    let target = get_mobile_data(mob_id);
+    if type_of(target) == "()" {
+        send_client_message(connection_id, "Dominate whom?");
+        return false;
+    }
+
+    if target.flags.no_attack {
+        send_client_message(connection_id, target.short_desc + " cannot be dominated.");
+        return false;
+    }
+
+    let zone = get_combat_zone(room_id);
+    let in_build = is_in_build_mode(char.name, room_id);
+    if zone == "safe" && !char.god_mode && !in_build {
+        send_client_message(connection_id, "A peaceful aura suppresses your blood here.");
+        return false;
+    }
+
+    let existing_master = mobile_charm_master(mob_id);
+    if existing_master != "" && existing_master.to_lower() != char.name.to_lower() {
+        send_client_message(connection_id, target.short_desc + " is already under another's sway.");
+        return false;
+    }
+
+    let buff_effect = spell["buff_effect"];
+    if buff_effect == "" { buff_effect = "dominated"; }
+    let duration = spell["buff_duration_secs"];
+
+    apply_buff_to_mobile(mob_id, buff_effect, 0, duration, char.name);
+    forget_player(mob_id, char.name);
+    if is_mobile_in_combat(mob_id) {
+        exit_mobile_combat(mob_id);
+    }
+
+    send_client_message(connection_id, target.short_desc + "'s gaze locks onto yours, will collapsing into yours.");
+    broadcast_to_room_except(room_id, connection_id, target.short_desc + "'s eyes go glassy as " + char.name + " takes hold of their mind.");
+    return true;
+}
+
 fn cast_dispel(connection_id, char, spell, target_arg) {
     let room_id = char.current_room_id;
     let mob_id = find_mob_target(char, target_arg, room_id);
@@ -693,6 +744,16 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Thinblood tier-3 lock: tier-3 disciplines (skill_required >= 5)
+    // can't be channeled until the kindred is acknowledged by a clan.
+    // Tier-1 and tier-2 powers remain available; this only gates the
+    // top-of-tree powers (Dominate proper, Time Stop, Mask of a Thousand
+    // Faces, etc.).
+    if is_thinblood(connection_id) && spell["skill_required"] >= 5 {
+        send_client_message(connection_id, "Your blood is too thin to channel this. Find your clan to claim its full power.");
+        return;
+    }
+
     // Calculate effective mana cost with trait modifiers
     let cost_reduction = get_trait_effect_sum(char.name, "spell_cost_reduction");
     let cost_increase = get_trait_effect_sum(char.name, "spell_cost_increase");
@@ -751,6 +812,9 @@ fn run_command(args, connection_id) {
     }
     if stype == "charm" {
         success = cast_charm(connection_id, char, spell, target_arg);
+    }
+    if stype == "dominate" {
+        success = cast_dominate(connection_id, char, spell, target_arg);
     }
     if stype == "animate_dead" {
         success = cast_animate_dead(connection_id, char, spell, target_arg);

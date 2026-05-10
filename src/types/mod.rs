@@ -31,6 +31,7 @@ mod spawn;
 mod time;
 mod transport;
 mod trigger;
+mod vampire;
 
 // Re-export all types from submodules
 pub use account::*;
@@ -57,3 +58,4 @@ pub use spawn::*;
 pub use time::*;
 pub use transport::*;
 pub use trigger::*;
+pub use vampire::*;

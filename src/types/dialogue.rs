@@ -96,6 +96,20 @@ pub enum DialogueCondition {
     /// True when the named quest is active AND every objective is satisfied
     /// (used to gate the "ready to turn in" dialogue branch).
     QuestCompletable { vnum: String },
+    /// True when the speaker is a vampire AND humanity >= threshold.
+    /// Mortals fail unconditionally — there's no humanity to compare. Use
+    /// for NPC reactions that should only fire for kindred above (or below,
+    /// via FlagUnset gating) a certain moral standing.
+    HumanityAtLeast { threshold: i32 },
+    /// True when the speaker is an embraced vampire who has not yet been
+    /// acknowledged by a clan (no `clan_*` trait). The classic newly-sired
+    /// state — sire NPCs gate offered embrace quests on this. False for
+    /// mortals and clan-acknowledged kindred alike.
+    IsThinblood,
+    /// Inverse: true only for embraced vampires who carry a `clan_*` trait.
+    /// Useful for sire-NPC branches that should only fire after the player
+    /// has completed the embrace progression.
+    IsClanAcknowledged,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

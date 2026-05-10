@@ -940,6 +940,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [{ type: "text", text: JSON.stringify(rmTriggerResult.data, null, 2) + formatRefreshSuffix(rmTriggerResult.refreshed_instances) }],
         };
       }
+      case "list_mobile_presets": {
+        const tag = args?.tag as string | undefined;
+        const presets = await api.listMobilePresets(tag);
+        return {
+          content: [{ type: "text", text: JSON.stringify(presets, null, 2) }],
+        };
+      }
+      case "apply_mobile_preset": {
+        const mobileId = args?.mobile_id as string;
+        const presetId = args?.preset_id as string;
+        if (!mobileId || !presetId) {
+          throw new Error("mobile_id and preset_id are required");
+        }
+        const resolvedMobileId = await resolveMobileId(api, mobileId);
+        const presetResult = await api.applyMobilePreset(resolvedMobileId, presetId);
+        return {
+          content: [{ type: "text", text: JSON.stringify(presetResult.data, null, 2) + formatRefreshSuffix(presetResult.refreshed_instances) }],
+        };
+      }
 
       // Spawn point tools
       case "list_spawn_points": {

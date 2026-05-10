@@ -102,6 +102,12 @@ pub struct MobileFlags {
     pub hostile_on_steal: bool, // Attacks the thief when a steal attempt is caught (CircleMUD shop WILL_START_FIGHT)
     #[serde(default)]
     pub tameable: bool, // Casting `charm` on this mob installs a permanent pet bond instead of a temporary buff
+    #[serde(default)]
+    pub undead: bool, // Generic undead marker (zombies, skeletons, vampires, ghouls). Independent of `vampire`.
+    #[serde(default)]
+    pub vampire: bool, // Sun-burn tick eligibility, on-hit blood drain, gates `medit vampire` subcommand
+    #[serde(default)]
+    pub holy_vulnerable: bool, // Doubled incoming Holy damage; covers vampires, demons, holy_vulnerable undead
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -352,6 +358,13 @@ pub struct MobileData {
     /// MEMORY_DURATION_SECS.
     #[serde(default)]
     pub remembered_enemies: Vec<RememberedEnemy>,
+    /// Vampirism state. None = mortal/non-kindred (default for nearly every
+    /// mobile). Some = kindred, with blood pool, humanity, masquerade,
+    /// frenzy timer. See `crate::types::VampireState`. Independent of
+    /// `flags.vampire`/`flags.undead` — those are fast short-circuits used
+    /// in hot paths; this carries the rich state.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vampire_state: Option<crate::types::VampireState>,
     /// Charmed-mob "stay" override. When true the mob ignores the master
     /// follow propagation and stays put. Set by `order <mob> stay`,
     /// cleared by `order <mob> follow [...]`. Reset on charm break.
@@ -503,6 +516,7 @@ impl MobileData {
             adoption_pending: false,
             home_area_id: None,
             remembered_enemies: Vec::new(),
+            vampire_state: None,
             charm_stay: false,
             charm_follow_player: None,
             dg_vars: HashMap::new(),
@@ -519,10 +533,24 @@ impl MobileData {
         self.nickname.as_deref().filter(|s| !s.is_empty()).unwrap_or(&self.name)
     }
 
+    /// Player who currently controls this mob, if any. Considers both
+    /// `EffectType::Charmed` (regular charm spell, blocked by `no_charm`) and
+    /// `EffectType::Dominated` (vampire Dominate discipline, bypasses
+    /// `no_charm`). The `order` command and follow-master propagation treat
+    /// the two identically — both grant a player full control — so this
+    /// helper covers both. Charmed wins ties when both buffs exist (rare
+    /// edge case).
     pub fn charm_master(&self) -> Option<&str> {
-        self.active_buffs
+        if let Some(b) = self
+            .active_buffs
             .iter()
             .find(|b| b.effect_type == EffectType::Charmed)
+        {
+            return Some(b.source.as_str());
+        }
+        self.active_buffs
+            .iter()
+            .find(|b| b.effect_type == EffectType::Dominated)
             .map(|b| b.source.as_str())
     }
 

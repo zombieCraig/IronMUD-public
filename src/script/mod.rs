@@ -32,6 +32,7 @@ mod mail;
 pub mod lang;
 pub mod map;
 mod medical;
+pub mod mobile_presets;
 mod mobiles;
 mod property;
 mod rooms;
@@ -47,6 +48,7 @@ mod stealth;
 mod transport;
 mod triggers;
 mod utilities;
+pub mod vampire;
 
 pub use ai::{set_chat_sender, set_claude_sender, set_gemini_sender};
 pub use areas::check_build_mode;
@@ -283,6 +285,10 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 helpline_enabled: false,
                 // Summonable consent flag (PRF_SUMMONABLE parity)
                 summonable: false,
+                // Bloodfeed consent flag (vampire feed without humanity hit)
+                bloodfeed_willing: false,
+                // Vampirism state (None = mortal). Stamped by the embrace flow.
+                vampire_state: None,
                 // Property rental system
                 active_leases: std::collections::HashMap::new(),
                 escrow_ids: Vec::new(),
@@ -1940,6 +1946,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     combat::register(engine, db.clone());
     items::register(engine, db.clone());
     mobiles::register(engine, db.clone());
+    mobile_presets::register(engine, db.clone());
     rooms::register(engine, db.clone(), connections.clone());
     shops::register(engine, db.clone());
     shop_presets::register(engine, db.clone());
@@ -1971,4 +1978,5 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     email::register(engine, db.clone());
     bans::register(engine, db.clone(), connections.clone());
     account_prefs::register(engine, db.clone(), connections.clone());
+    vampire::register(engine, db.clone(), connections.clone());
 }

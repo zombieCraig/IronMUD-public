@@ -78,6 +78,11 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if setting_name == "bloodfeed" {
+        handle_bloodfeed(connection_id, value_arg);
+        return;
+    }
+
     if setting_name == "gender" {
         handle_gender(connection_id, args);
         return;
@@ -557,6 +562,40 @@ fn handle_summonable(connection_id, value_arg) {
     }
 
     send_client_message(connection_id, "Usage: set summonable on|off");
+}
+
+fn handle_bloodfeed(connection_id, value_arg) {
+    let current = is_bloodfeed_willing(connection_id);
+
+    if value_arg == "" {
+        let status = if current { "willing" } else { "off" };
+        send_client_message(connection_id, "Bloodfeed is currently " + status + ".");
+        send_client_message(connection_id, "Usage: set bloodfeed willing|off");
+        send_client_message(connection_id, "");
+        send_client_message(connection_id, "When 'willing', vampire players may feed on you without taking a humanity hit.");
+        send_client_message(connection_id, "When 'off' (default), feeding lethally on you costs the vampire one humanity.");
+        return;
+    }
+
+    if value_arg == "willing" || value_arg == "on" || value_arg == "yes" || value_arg == "1" {
+        if set_bloodfeed_willing(connection_id, true) {
+            send_client_message(connection_id, "You bare your throat — kindred may feed on you without moral weight.");
+        } else {
+            send_client_message(connection_id, "Error enabling bloodfeed consent.");
+        }
+        return;
+    }
+
+    if value_arg == "off" || value_arg == "no" || value_arg == "0" {
+        if set_bloodfeed_willing(connection_id, false) {
+            send_client_message(connection_id, "You no longer consent to being fed on.");
+        } else {
+            send_client_message(connection_id, "Error disabling bloodfeed consent.");
+        }
+        return;
+    }
+
+    send_client_message(connection_id, "Usage: set bloodfeed willing|off");
 }
 
 fn handle_automap(connection_id, value_arg) {

@@ -47,8 +47,13 @@ pub fn break_all_charms_by_player(db: &Db, player_name: &str) {
         if !is_pet_of_player {
             let mut changed = false;
             let before = mobile.active_buffs.len();
+            // Drop Charmed AND Dominated — both grant the player full control
+            // and should release on death/quit. Dominated is the
+            // vampire Dominate discipline; semantics mirror Charmed for
+            // lifecycle purposes.
             mobile.active_buffs.retain(|b| {
-                !(b.effect_type == EffectType::Charmed
+                !((b.effect_type == EffectType::Charmed
+                    || b.effect_type == EffectType::Dominated)
                     && b.source.eq_ignore_ascii_case(player_name))
             });
             if mobile.active_buffs.len() != before {

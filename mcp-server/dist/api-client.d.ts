@@ -135,6 +135,16 @@ export declare class IronMUDApiClient {
         refreshed_instances?: number;
     }>;
     spawnMobile(vnum: string, data: SpawnEntityRequest): Promise<Mobile>;
+    listMobilePresets(tag?: string): Promise<{
+        id: string;
+        name: string;
+        description: string;
+        tags: string[];
+    }[]>;
+    applyMobilePreset(mobileId: string, presetId: string): Promise<{
+        data: Mobile;
+        refreshed_instances?: number;
+    }>;
     listSpawnPoints(areaId?: string): Promise<SpawnPoint[]>;
     getSpawnPoint(id: string): Promise<SpawnPoint>;
     createSpawnPoint(data: CreateSpawnPointRequest): Promise<SpawnPoint>;

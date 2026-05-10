@@ -473,6 +473,10 @@ export declare const itemToolDefinitions: ({
                         type: string;
                         description: string;
                     };
+                    cooldown_secs: {
+                        type: string;
+                        description: string;
+                    };
                 };
                 required: string[];
             };
@@ -1065,6 +1069,10 @@ export declare const itemToolDefinitions: ({
                         description: string;
                     };
                     max_charges: {
+                        type: string;
+                        description: string;
+                    };
+                    cooldown_secs: {
                         type: string;
                         description: string;
                     };

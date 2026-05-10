@@ -26,6 +26,10 @@ pub struct ClassDefinition {
 pub enum TraitCategory {
     Positive,
     Negative,
+    /// Neither positive nor negative — used for granted-only traits (clan,
+    /// race-derived, etc.) that aren't selectable at character creation.
+    /// Always paired with `available: false` and cost 0 in practice.
+    Neutral,
 }
 
 impl Default for TraitCategory {
@@ -174,4 +178,18 @@ pub struct SpellDefinition {
     pub reagent_vnum: Option<String>,
     #[serde(default = "default_spell_xp")]
     pub xp_award: i32,
+    /// Skill key this spell gates on. None / missing = "magic" (the default
+    /// for fantasy spells). Vampire disciplines set this to "dominate",
+    /// "auspex", "celerity", "potence", "obfuscate", … so each discipline
+    /// scales independently of the magic skill.
+    #[serde(default)]
+    pub requires_skill: Option<String>,
+    /// When true, only characters with a `vampire_state` may cast this
+    /// spell. Used by every entry in `spells_vampire.json`.
+    #[serde(default)]
+    pub requires_vampire: bool,
+    /// When non-empty, the caster must have one of these `clan_*` traits.
+    /// Empty = any clan / any kindred can cast.
+    #[serde(default)]
+    pub requires_clan: Vec<String>,
 }

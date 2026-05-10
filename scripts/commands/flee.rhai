@@ -20,6 +20,12 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Frenzy locks the kindred into combat — the beast won't let them go.
+    if has_buff(char.name, "frenzy") {
+        send_client_message(connection_id, "The beast within refuses to retreat. You cannot flee while frenzying!");
+        return;
+    }
+
     // Check position
     if char.position == "sleeping" {
         send_client_message(connection_id, "You can't flee while sleeping!");

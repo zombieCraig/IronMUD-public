@@ -290,6 +290,19 @@ export class IronMUDApiClient {
     async spawnMobile(vnum, data) {
         return this.request("post", `/mobiles/${encodeURIComponent(vnum)}/spawn`, data);
     }
+    // Mobile presets — generic data-driven flag/stat bundles. Server-side
+    // implementation in src/script/mobile_presets.rs; data lives in
+    // scripts/data/mobile_presets.json.
+    async listMobilePresets(tag) {
+        const params = new URLSearchParams();
+        if (tag)
+            params.set("tag", tag);
+        const query = params.toString();
+        return this.listRequest(`/mobiles/presets${query ? `?${query}` : ""}`);
+    }
+    async applyMobilePreset(mobileId, presetId) {
+        return this.requestWithMeta("post", `/mobiles/${mobileId}/preset`, { preset_id: presetId });
+    }
     // Spawn Points
     async listSpawnPoints(areaId) {
         const params = new URLSearchParams();

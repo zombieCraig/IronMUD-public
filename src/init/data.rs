@@ -96,6 +96,21 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
         }
     }
 
+    // Theme-agnostic vampire overlay: any theme picks it up when
+    // `enable_vampire_creation` is toggled on at runtime. The runtime gate in
+    // get_class_list still hides the entry until the setting flips.
+    let vampire_path = "scripts/data/classes_vampire.json";
+    if let Ok(content) = std::fs::read_to_string(vampire_path) {
+        match serde_json::from_str::<HashMap<String, ClassDefinition>>(&content) {
+            Ok(extras) => {
+                let count = extras.len();
+                world.class_definitions.extend(extras);
+                info!("Loaded {} vampire class definition(s) from {}", count, vampire_path);
+            }
+            Err(e) => error!("Failed to parse {}: {}", vampire_path, e),
+        }
+    }
+
     // Load trait definitions
     match std::fs::read_to_string("scripts/data/traits.json") {
         Ok(content) => match serde_json::from_str(&content) {
@@ -195,6 +210,31 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
         },
         Err(_) => {
             info!("No spell definitions file found at {}", spells_path);
+        }
+    }
+
+    // Vampire disciplines layer on top of whichever preset is active —
+    // optional file. Disciplines gate independently via `requires_vampire`
+    // / `requires_clan` so they can't be cast by non-vampires.
+    let vampire_spells_path = "scripts/data/spells_vampire.json";
+    match std::fs::read_to_string(vampire_spells_path) {
+        Ok(content) => match serde_json::from_str::<HashMap<String, SpellDefinition>>(&content) {
+            Ok(spells) => {
+                info!(
+                    "Loaded {} vampire discipline spells from {}",
+                    spells.len(),
+                    vampire_spells_path
+                );
+                for (id, spell) in spells {
+                    world.spell_definitions.insert(id, spell);
+                }
+            }
+            Err(e) => {
+                error!("Failed to parse {}: {}", vampire_spells_path, e);
+            }
+        },
+        Err(_) => {
+            // Optional — quiet when missing.
         }
     }
 

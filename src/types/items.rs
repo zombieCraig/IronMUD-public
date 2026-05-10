@@ -521,6 +521,8 @@ pub struct ItemFlags {
     #[serde(default)]
     pub magical: bool, // Reveals "(magical aura)" cue when viewer has DetectMagic buff
     #[serde(default)]
+    pub holy: bool, // Blessed/divine/silver — doubles damage to MobileFlags.holy_vulnerable targets
+    #[serde(default)]
     pub no_sell: bool,
     #[serde(default)]
     pub no_donate: bool,

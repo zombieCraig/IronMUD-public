@@ -108,13 +108,27 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     });
 
     // get_class_list() -> Array of available class IDs
+    //
+    // Class is filtered by the data-driven `available` flag plus a runtime
+    // gate for the vampire class: it only appears when the
+    // `enable_vampire_creation` setting is "on". Admins can toggle this at
+    // runtime via `admin config enable_vampire_creation on|off` without a
+    // server restart. Mortals stay the default new-character experience.
     let state_clone = state.clone();
     engine.register_fn("get_class_list", move || -> rhai::Array {
         let world = state_clone.lock().unwrap();
+        let vampire_enabled = world
+            .db
+            .get_setting("enable_vampire_creation")
+            .ok()
+            .flatten()
+            .map(|s| s.to_lowercase() == "on" || s == "true")
+            .unwrap_or(false);
         world
             .class_definitions
             .iter()
             .filter(|(_, c)| c.available)
+            .filter(|(id, _)| id.as_str() != "vampire" || vampire_enabled)
             .map(|(id, _)| rhai::Dynamic::from(id.clone()))
             .collect()
     });
@@ -200,6 +214,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 rhai::Dynamic::from(match tr.category {
                     crate::TraitCategory::Positive => "positive".to_string(),
                     crate::TraitCategory::Negative => "negative".to_string(),
+                    crate::TraitCategory::Neutral => "neutral".to_string(),
                 }),
             );
             map.insert("available".into(), rhai::Dynamic::from(tr.available));

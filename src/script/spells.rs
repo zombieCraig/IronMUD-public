@@ -72,11 +72,33 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
                 rhai::Dynamic::from(spell.reagent_vnum.clone().unwrap_or_default()),
             );
             map.insert("xp_award".into(), rhai::Dynamic::from(spell.xp_award as i64));
+            map.insert(
+                "requires_skill".into(),
+                rhai::Dynamic::from(
+                    spell.requires_skill.clone().unwrap_or_else(|| "magic".to_string()),
+                ),
+            );
+            map.insert(
+                "requires_vampire".into(),
+                rhai::Dynamic::from(spell.requires_vampire),
+            );
+            let clans: Vec<rhai::Dynamic> = spell
+                .requires_clan
+                .iter()
+                .map(|c| rhai::Dynamic::from(c.clone()))
+                .collect();
+            map.insert("requires_clan".into(), rhai::Dynamic::from(clans));
         }
         map
     });
 
     // get_available_spells(char_name) -> Array of spell ID strings the character can cast
+    //
+    // Gating order:
+    //   1. requires_vampire — non-vampires never see vampire-only spells.
+    //   2. requires_clan    — caster must have at least one of the named clan_* traits.
+    //   3. skill_required   — checks the spell's `requires_skill` (or "magic" by default).
+    //   4. scroll_only      — must be in `learned_spells`.
     let cloned_db = db.clone();
     let state_clone = state.clone();
     engine.register_fn("get_available_spells", move |char_name: String| -> rhai::Array {
@@ -84,20 +106,32 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
             Ok(Some(c)) => c,
             _ => return rhai::Array::new(),
         };
-        let magic_level = char.skills.get("magic").map(|s| s.level).unwrap_or(0);
         let world = state_clone.lock().unwrap();
         let mut available = rhai::Array::new();
         for (id, spell) in &world.spell_definitions {
-            if magic_level >= spell.skill_required {
-                if spell.scroll_only {
-                    // Must have learned it
-                    if char.learned_spells.contains(id) {
-                        available.push(rhai::Dynamic::from(id.clone()));
-                    }
-                } else {
-                    available.push(rhai::Dynamic::from(id.clone()));
+            if spell.requires_vampire && char.vampire_state.is_none() {
+                continue;
+            }
+            if !spell.requires_clan.is_empty() {
+                let has_clan = spell
+                    .requires_clan
+                    .iter()
+                    .any(|c| char.traits.iter().any(|t| t == c));
+                if !has_clan {
+                    continue;
                 }
             }
+            let gate_skill = spell.requires_skill.as_deref().unwrap_or("magic");
+            let level = char.skills.get(gate_skill).map(|s| s.level).unwrap_or(0);
+            if level < spell.skill_required {
+                continue;
+            }
+            if spell.scroll_only {
+                if !char.learned_spells.contains(id) {
+                    continue;
+                }
+            }
+            available.push(rhai::Dynamic::from(id.clone()));
         }
         available
     });

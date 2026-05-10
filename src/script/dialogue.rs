@@ -1740,6 +1740,16 @@ fn evaluate_condition(cond: &DialogueCondition, ch: &CharacterData, mob: &Mobile
                 _ => false,
             }
         }
+        DialogueCondition::HumanityAtLeast { threshold } => ch
+            .vampire_state
+            .as_ref()
+            .map(|v| v.humanity >= *threshold)
+            .unwrap_or(false),
+        DialogueCondition::IsThinblood => crate::script::vampire::is_pc_thinblood(ch),
+        DialogueCondition::IsClanAcknowledged => {
+            ch.vampire_state.is_some()
+                && crate::script::vampire::pc_clan_from_traits(ch).is_some()
+        }
     }
 }
 

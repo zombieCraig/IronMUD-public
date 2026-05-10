@@ -177,7 +177,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         no_summon,
         no_charm,
         hostile_on_steal,
-        tameable
+        tameable,
+        undead,
+        vampire,
+        holy_vulnerable
     );
 
     // Register MobileData type
@@ -459,8 +462,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             }
             let mut changed = false;
             let before = mobile.active_buffs.len();
+            // Drop both Charmed and Dominated — Dominate is the vampire
+            // discipline counterpart with identical control semantics.
             mobile.active_buffs.retain(|b| {
-                !(b.effect_type == crate::types::EffectType::Charmed
+                !((b.effect_type == crate::types::EffectType::Charmed
+                    || b.effect_type == crate::types::EffectType::Dominated)
                     && b.source.eq_ignore_ascii_case(&player_name))
             });
             if mobile.active_buffs.len() != before {
@@ -934,6 +940,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "stay_zone" | "stayzone" => mobile.flags.stay_zone = value,
                         "aware" => mobile.flags.aware = value,
                         "memory" => mobile.flags.memory = value,
+                        "undead" => mobile.flags.undead = value,
+                        "vampire" => mobile.flags.vampire = value,
+                        "holy_vulnerable" | "holyvulnerable" => mobile.flags.holy_vulnerable = value,
                         _ => return false,
                     }
                     return cloned_db.save_mobile_data(mobile).is_ok();

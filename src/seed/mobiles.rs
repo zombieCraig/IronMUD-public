@@ -98,6 +98,7 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
         adoption_pending: false,
         home_area_id: None,
         remembered_enemies: Vec::new(),
+        vampire_state: None,
         charm_stay: false,
         charm_follow_player: None,
         dg_vars: std::collections::HashMap::new(),
