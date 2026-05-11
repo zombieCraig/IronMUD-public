@@ -32,9 +32,14 @@ export interface Area {
   // Per-area climate preset that filters globally-rolled weather and shifts
   // effective temperature. Defaults to "temperate" (no filtering).
   climate?: ClimateProfile;
+  // Combat zone type — PvE/Safe/PvP. Defaults to "pve". Rooms inherit unless
+  // overridden at the room level.
+  combat_zone?: CombatZoneType;
 }
 
 export type ClimateProfile = "temperate" | "tropical" | "arid" | "tundra" | "subarctic";
+
+export type CombatZoneType = "pve" | "safe" | "pvp";
 
 export interface GoldRange {
   min: number;
@@ -43,7 +48,6 @@ export interface GoldRange {
 
 export interface AreaFlags {
   always_climate?: boolean;
-  combat_zone?: string;
 }
 
 export interface Room {
@@ -490,6 +494,7 @@ export interface CreateAreaRequest {
   level_max?: number;
   theme?: string;
   climate?: ClimateProfile;
+  combat_zone?: CombatZoneType;
 }
 
 export interface UpdateAreaRequest {
@@ -520,6 +525,7 @@ export interface UpdateAreaRequest {
   max_spawn_points?: number;
   default_room_flags?: RoomFlags;
   climate?: ClimateProfile;
+  combat_zone?: CombatZoneType;
 }
 
 export interface CreateRoomRequest {

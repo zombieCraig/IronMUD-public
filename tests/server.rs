@@ -4958,6 +4958,106 @@ fn test_area_climate_persists() {
 }
 
 #[test]
+fn test_area_combat_zone_persists_and_parses() {
+    use ironmud::db::Db;
+    use ironmud::types::{
+        AreaData, AreaFlags, AreaPermission, ClimateProfile, CombatZoneType, ImmigrationFamilyChance,
+        ImmigrationVariationChances, RoomFlags,
+    };
+
+    // Parser round-trip: every value the MCP enum exposes must map back to its
+    // canonical name, and unknown values must fall through to None (so the
+    // API's "silently ignore" branch fires instead of silently mutating state).
+    assert_eq!(CombatZoneType::from_str("pve"), Some(CombatZoneType::Pve));
+    assert_eq!(CombatZoneType::from_str("safe"), Some(CombatZoneType::Safe));
+    assert_eq!(CombatZoneType::from_str("pvp"), Some(CombatZoneType::Pvp));
+    assert_eq!(CombatZoneType::from_str("gibberish"), None);
+
+    let db_path = format!("test_area_combat_zone_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(&db_path).expect("open DB");
+
+        let area = AreaData {
+            id: uuid::Uuid::new_v4(),
+            name: "Arena".into(),
+            prefix: "arena".into(),
+            description: String::new(),
+            level_min: 0,
+            level_max: 0,
+            theme: String::new(),
+            owner: None,
+            permission_level: AreaPermission::AllBuilders,
+            trusted_builders: Vec::new(),
+            city_forage_table: Vec::new(),
+            wilderness_forage_table: Vec::new(),
+            shallow_water_forage_table: Vec::new(),
+            deep_water_forage_table: Vec::new(),
+            underwater_forage_table: Vec::new(),
+            combat_zone: CombatZoneType::Pvp,
+            flags: AreaFlags::default(),
+            default_room_flags: RoomFlags::default(),
+            climate: ClimateProfile::default(),
+            immigration_enabled: false,
+            immigration_room_vnum: String::new(),
+            immigration_name_pool: String::new(),
+            immigration_visual_profile: String::new(),
+            migration_interval_days: 0,
+            migration_max_per_check: 0,
+            migrant_sim_defaults: None,
+            last_migration_check_day: None,
+            immigration_variation_chances: ImmigrationVariationChances::default(),
+            immigration_family_chance: ImmigrationFamilyChance::default(),
+            migrant_starting_gold: ironmud::types::GoldRange::default(),
+            guard_wage_per_hour: 0,
+            healer_wage_per_hour: 0,
+            scavenger_wage_per_hour: 0,
+            donation_room_vnum: None,
+            max_rooms: None,
+            max_items: None,
+            max_mobiles: None,
+            max_spawn_points: None,
+        };
+        let area_id = area.id;
+        db.save_area_data(area).expect("save area");
+
+        let reloaded = db.get_area_data(&area_id).expect("get").expect("present");
+        assert_eq!(reloaded.combat_zone, CombatZoneType::Pvp);
+
+        // Legacy areas serialized before this field roundtrip with the Pve default.
+        let mut value = serde_json::to_value(&reloaded).expect("to_value");
+        value
+            .as_object_mut()
+            .expect("object")
+            .remove("combat_zone");
+        let downgraded: AreaData = serde_json::from_value(value).expect("legacy load");
+        assert_eq!(
+            downgraded.combat_zone,
+            CombatZoneType::Pve,
+            "absent combat_zone field must default to Pve"
+        );
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_area_update_request_deserializes_combat_zone() {
+    use ironmud::api::areas::UpdateAreaRequest;
+
+    let req: UpdateAreaRequest =
+        serde_json::from_str(r#"{"combat_zone": "safe"}"#).expect("parse update request");
+    assert_eq!(req.combat_zone.as_deref(), Some("safe"));
+
+    let empty: UpdateAreaRequest = serde_json::from_str("{}").expect("parse empty update");
+    assert!(empty.combat_zone.is_none(), "absent field stays None");
+}
+
+#[test]
 fn test_mobile_dot_flags_apply_on_hit() {
     use ironmud::script::apply_mobile_on_hit_dots;
     use ironmud::{MobileData, OngoingEffect};

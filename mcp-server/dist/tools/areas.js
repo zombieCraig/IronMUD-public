@@ -56,6 +56,11 @@ export const areaToolDefinitions = [
                     enum: ["temperate", "tropical", "arid", "tundra", "subarctic"],
                     description: "Climate preset that filters globally-rolled weather into a locally-permitted condition (e.g. tropical converts snow to rain) and shifts effective temperature. Defaults to temperate.",
                 },
+                combat_zone: {
+                    type: "string",
+                    enum: ["pve", "safe", "pvp"],
+                    description: "Combat zone type. pve = players attack mobs only (default), safe = no combat, pvp = players can attack other players. Rooms inherit this unless overridden at room level.",
+                },
             },
             required: ["name", "prefix"],
         },
@@ -80,6 +85,11 @@ export const areaToolDefinitions = [
                     type: "string",
                     enum: ["temperate", "tropical", "arid", "tundra", "subarctic"],
                     description: "Climate preset filtering area weather and temperature. Unknown values are ignored.",
+                },
+                combat_zone: {
+                    type: "string",
+                    enum: ["pve", "safe", "pvp"],
+                    description: "Combat zone type. pve = players attack mobs only (default), safe = no combat, pvp = players can attack other players. Rooms inherit this unless overridden at room level. Unknown values are ignored.",
                 },
                 immigration_enabled: { type: "boolean", description: "Enable/disable migrant spawning for this area" },
                 immigration_room_vnum: { type: "string", description: "Room vnum where migrants arrive" },

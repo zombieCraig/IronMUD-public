@@ -129,6 +129,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     level_max: args?.level_max,
                     theme: args?.theme,
                     climate: args?.climate,
+                    combat_zone: args?.combat_zone,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(area, null, 2) }],
@@ -161,6 +162,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     max_spawn_points: args?.max_spawn_points,
                     default_room_flags: args?.default_room_flags,
                     climate: args?.climate,
+                    combat_zone: args?.combat_zone,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(area, null, 2) }],

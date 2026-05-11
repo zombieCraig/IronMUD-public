@@ -52,6 +52,9 @@ pub struct CreateAreaRequest {
     /// Climate preset name (temperate/tropical/arid/tundra/subarctic). Unknown
     /// or absent values fall through to the default (Temperate).
     pub climate: Option<String>,
+    /// Combat zone type (pve/safe/pvp). Unknown or absent values fall through
+    /// to the default (Pve).
+    pub combat_zone: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -98,6 +101,10 @@ pub struct UpdateAreaRequest {
     /// values are silently ignored to keep PUT idempotent for clients that
     /// accidentally round-trip an unrecognized preset.
     pub climate: Option<String>,
+    /// Combat zone type (pve/safe/pvp). Unknown values are silently ignored to
+    /// keep PUT idempotent for clients that accidentally round-trip an
+    /// unrecognized value.
+    pub combat_zone: Option<String>,
 }
 
 /// Apply a (flag_name -> bool) override map onto an area's default_room_flags.
@@ -301,7 +308,11 @@ async fn create_area(
         shallow_water_forage_table: Vec::new(),
         deep_water_forage_table: Vec::new(),
         underwater_forage_table: Vec::new(),
-        combat_zone: CombatZoneType::default(),
+        combat_zone: req
+            .combat_zone
+            .as_deref()
+            .and_then(CombatZoneType::from_str)
+            .unwrap_or_default(),
         flags: AreaFlags::default(),
         default_room_flags: RoomFlags::default(),
         climate: req
@@ -451,6 +462,11 @@ async fn update_area(
     if let Some(climate_name) = req.climate {
         if let Some(climate) = crate::types::ClimateProfile::from_name(&climate_name) {
             area.climate = climate;
+        }
+    }
+    if let Some(zone_name) = req.combat_zone {
+        if let Some(zone) = CombatZoneType::from_str(&zone_name) {
+            area.combat_zone = zone;
         }
     }
 

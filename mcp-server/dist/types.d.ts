@@ -26,15 +26,16 @@ export interface Area {
     scavenger_wage_per_hour?: number;
     default_room_flags?: RoomFlags;
     climate?: ClimateProfile;
+    combat_zone?: CombatZoneType;
 }
 export type ClimateProfile = "temperate" | "tropical" | "arid" | "tundra" | "subarctic";
+export type CombatZoneType = "pve" | "safe" | "pvp";
 export interface GoldRange {
     min: number;
     max: number;
 }
 export interface AreaFlags {
     always_climate?: boolean;
-    combat_zone?: string;
 }
 export interface Room {
     id: string;
@@ -445,6 +446,7 @@ export interface CreateAreaRequest {
     level_max?: number;
     theme?: string;
     climate?: ClimateProfile;
+    combat_zone?: CombatZoneType;
 }
 export interface UpdateAreaRequest {
     name?: string;
@@ -474,6 +476,7 @@ export interface UpdateAreaRequest {
     max_spawn_points?: number;
     default_room_flags?: RoomFlags;
     climate?: ClimateProfile;
+    combat_zone?: CombatZoneType;
 }
 export interface CreateRoomRequest {
     title: string;

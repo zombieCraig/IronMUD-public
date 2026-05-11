@@ -12,6 +12,7 @@ export declare const areaToolDefinitions: ({
             level_max?: undefined;
             theme?: undefined;
             climate?: undefined;
+            combat_zone?: undefined;
             id?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;
@@ -56,6 +57,7 @@ export declare const areaToolDefinitions: ({
             level_max?: undefined;
             theme?: undefined;
             climate?: undefined;
+            combat_zone?: undefined;
             id?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;
@@ -114,6 +116,11 @@ export declare const areaToolDefinitions: ({
                 description: string;
             };
             climate: {
+                type: string;
+                enum: string[];
+                description: string;
+            };
+            combat_zone: {
                 type: string;
                 enum: string[];
                 description: string;
@@ -181,6 +188,11 @@ export declare const areaToolDefinitions: ({
                 description?: undefined;
             };
             climate: {
+                type: string;
+                enum: string[];
+                description: string;
+            };
+            combat_zone: {
                 type: string;
                 enum: string[];
                 description: string;
@@ -355,6 +367,7 @@ export declare const areaToolDefinitions: ({
             level_max?: undefined;
             theme?: undefined;
             climate?: undefined;
+            combat_zone?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;
             donation_room_vnum?: undefined;
@@ -399,6 +412,7 @@ export declare const areaToolDefinitions: ({
             level_max?: undefined;
             theme?: undefined;
             climate?: undefined;
+            combat_zone?: undefined;
             id?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;
@@ -461,6 +475,7 @@ export declare const areaToolDefinitions: ({
             level_max?: undefined;
             theme?: undefined;
             climate?: undefined;
+            combat_zone?: undefined;
             id?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;
@@ -510,6 +525,7 @@ export declare const areaToolDefinitions: ({
             level_max?: undefined;
             theme?: undefined;
             climate?: undefined;
+            combat_zone?: undefined;
             id?: undefined;
             immigration_enabled?: undefined;
             immigration_room_vnum?: undefined;

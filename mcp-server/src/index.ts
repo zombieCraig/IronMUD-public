@@ -26,7 +26,7 @@ import {
   buildMobileContext,
   getDescriptionExamples,
 } from "./description-context.js";
-import type { ClimateProfile, GoldRange, ItemType, RoomFlags, TriggerType } from "./types.js";
+import type { ClimateProfile, CombatZoneType, GoldRange, ItemType, RoomFlags, TriggerType } from "./types.js";
 
 // Helper to format auto-refresh info for MCP output
 function formatRefreshSuffix(refreshed?: number): string {
@@ -147,6 +147,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           level_max: args?.level_max as number | undefined,
           theme: args?.theme as string | undefined,
           climate: args?.climate as ClimateProfile | undefined,
+          combat_zone: args?.combat_zone as CombatZoneType | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(area, null, 2) }],
@@ -178,6 +179,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           max_spawn_points: args?.max_spawn_points as number | undefined,
           default_room_flags: args?.default_room_flags as RoomFlags | undefined,
           climate: args?.climate as ClimateProfile | undefined,
+          combat_zone: args?.combat_zone as CombatZoneType | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(area, null, 2) }],
