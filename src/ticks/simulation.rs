@@ -1799,6 +1799,7 @@ mod tests {
             dg_vars: std::collections::HashMap::new(),
             coordinates: None,
             contextual_commands: Vec::new(),
+            exit_delays: std::collections::HashMap::new(),
         };
         db.save_room_data(r.clone()).expect("save room");
         db.set_room_vnum(&r.id, vnum).expect("vnum");

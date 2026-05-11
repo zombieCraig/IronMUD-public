@@ -30,7 +30,7 @@ use ticks::{
     run_aging_tick, run_bleeding_tick, run_combat_tick, run_corpse_decay_tick, run_donation_decay_tick, run_drowning_tick, run_exposure_tick,
     run_garden_tick, run_hunger_tick, run_hunting_tick, run_migration_tick, run_mobile_effects_tick,
     run_periodic_trigger_tick, run_pursuit_tick, run_quest_tick, run_regen_tick, run_rent_tick, run_routine_tick, run_simulation_tick,
-    run_spawn_tick, run_spoilage_tick, run_thirst_tick, run_time_tick, run_transport_tick, run_wander_tick,
+    run_slow_move_tick, run_spawn_tick, run_spoilage_tick, run_thirst_tick, run_time_tick, run_transport_tick, run_wander_tick,
     run_blood_tick, run_sun_tick,
 };
 
@@ -130,6 +130,7 @@ async fn main() -> Result<()> {
     let tick_db25 = db.clone(); // Clone db for quest expiry tick
     let tick_db26 = db.clone(); // Clone db for vampire sun tick
     let tick_db27 = db.clone(); // Clone db for vampire blood tick
+    let tick_db28 = db.clone(); // Clone db for slow-move tick
     let api_db = db.clone(); // Clone db for REST API
 
     let connections = Arc::new(Mutex::new(HashMap::new()));
@@ -295,6 +296,12 @@ async fn main() -> Result<()> {
     let drowning_connections = connections.clone();
     tokio::spawn(async move {
         run_drowning_tick(tick_db19, drowning_connections).await;
+    });
+
+    // Start background slow-move tick (releases players from delayed exits)
+    let slow_move_connections = connections.clone();
+    tokio::spawn(async move {
+        run_slow_move_tick(tick_db28, slow_move_connections).await;
     });
 
     // Start background bleeding tick (wound bleeding damage)

@@ -849,6 +849,15 @@ fn run_command(args, connection_id) {
             output += "  (none)\n";
         }
 
+        // Display per-direction slow-exit delays
+        let delays = list_exit_delays(room.id);
+        if !delays.is_empty() {
+            output += olc::c_label("Slow exits:", connection_id) + "\n";
+            for dir in delays.keys() {
+                output += "  " + dir + ": " + delays[dir] + "s\n";
+            }
+        }
+
         // Display combat zone
         let zone_raw = get_room_combat_zone_raw(room.id);
         let zone_effective = get_room_combat_zone(room.id);
@@ -984,7 +993,9 @@ fn run_command(args, connection_id) {
         let cmd_catch = mxp_or(mxp_send("redit catch", "redit catch"), "redit catch", connection_id);
         output += "  " + cmd_catch + "    - Configure catch table for fishing\n";
         let cmd_capacity = mxp_or(mxp_send("redit capacity", "redit capacity"), "redit capacity", connection_id);
-        output += "  " + cmd_capacity + " <n> - Set living capacity (migrant slots; requires liveable flag)";
+        output += "  " + cmd_capacity + " <n> - Set living capacity (migrant slots; requires liveable flag)\n";
+        let cmd_delay = mxp_or(mxp_send("redit delay", "redit delay"), "redit delay", connection_id);
+        output += "  " + cmd_delay + " <dir> <s> - Slow-exit travel delay in seconds (0 clears)";
 
         send_mxp_message(connection_id, output);
         return;
@@ -1481,8 +1492,66 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "delay" {
+        handle_delay_subcommand(connection_id, room, parts);
+        return;
+    }
+
     // Unknown subcommand
     send_client_message(connection_id, "Unknown subcommand: " + subcommand + "\nUse 'redit' to see available commands.");
+}
+
+fn handle_delay_subcommand(connection_id, room, parts) {
+    // redit delay              - show all per-direction delays
+    // redit delay <dir>        - show one direction's delay
+    // redit delay <dir> <secs> - set / clear (0 = clear)
+    if parts.len() < 2 {
+        let delays = list_exit_delays(room.id);
+        if delays.is_empty() {
+            send_client_message(connection_id,
+                "No slow exits configured.\n" +
+                "Usage: redit delay <direction> <seconds>   (0 to clear)\n" +
+                "       redit delay                          (show all)");
+            return;
+        }
+        let lines = "Slow exits in this room:\n";
+        for dir in delays.keys() {
+            lines += "  " + dir + ": " + delays[dir] + "s\n";
+        }
+        send_client_message(connection_id,
+            lines + "\nUsage: redit delay <direction> <seconds>   (0 to clear)");
+        return;
+    }
+
+    let dir = normalize_direction(parts[1]);
+    if parts.len() < 3 {
+        let secs = get_exit_delay(room.id, dir);
+        if secs <= 0 {
+            send_client_message(connection_id, "No delay set for " + dir + ".");
+        } else {
+            send_client_message(connection_id, "Delay for " + dir + ": " + secs + "s");
+        }
+        return;
+    }
+
+    let secs = parse_int(parts[2]);
+    if secs == () || secs < 0 {
+        send_client_message(connection_id, "Invalid seconds: " + parts[2]);
+        return;
+    }
+    if secs > 600 {
+        send_client_message(connection_id, "Delay cannot exceed 600 seconds (10 minutes).");
+        return;
+    }
+    if !set_exit_delay(room.id, dir, secs) {
+        send_client_message(connection_id, "Failed to update delay.");
+        return;
+    }
+    if secs == 0 {
+        send_client_message(connection_id, "Cleared delay for " + dir + ".");
+    } else {
+        send_client_message(connection_id, "Set delay for " + dir + " to " + secs + "s.");
+    }
 }
 
 // Helper function to get opposite direction

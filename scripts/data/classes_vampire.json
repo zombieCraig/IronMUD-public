@@ -5,6 +5,7 @@
     "description": "Embraced into undeath. You hunger for blood, burn in sunlight, and walk between mortal politics and ancient kindred power. (This class only appears when 'enable_vampire_creation' is on; see admin config.)",
     "starting_skills": {"dominate": 1},
     "stat_bonuses": {"str": 1, "dex": 1, "cha": 1},
-    "available": true
+    "available": true,
+    "incompatible_races": ["synth", "bioroid", "clone"]
   }
 }

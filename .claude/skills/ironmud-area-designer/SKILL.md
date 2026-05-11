@@ -75,6 +75,8 @@ Every phase, when written into the plan file, follows:
 - When a vnum is touched twice (e.g. "create mob shell" then "wire dialogue tree"), each touch is its own slice if the second touch is non-trivial.
 - Slice effort target: 30 min - 4 hours. If larger, split. If smaller, merge with an adjacent slice.
 - Each slice's "Done when" must be objectively checkable via MCP get-calls or in-game observation, not "feels right."
+- **Room-build slice exit tables must use cardinal directions only** (`north`/`south`/`east`/`west`/`up`/`down`). Never specify `ne`/`nw`/`sw`/`se`, `in`, or `out` — `set_room_exit` rejects them. If two rooms are diagonally adjacent in the ASCII sketch, pick a single cardinal at slice-authoring time and update the narrative description to match.
+- **All Phase 6 item prototypes ship in one dedicated slice before any slice that references them.** Spawn-point slices, dialogue `GiveItem` effects, and `QuestReward::Item` configurations all reference items by vnum — the prototypes must exist first. Quest and dialogue slices must NOT contain inline `create_item` calls; they reference Slice 6.0 (or its named equivalent) prototypes. See Phase 6 build plan for the full rule.
 
 ## Workflow
 
@@ -166,6 +168,8 @@ Show full Phase 3 draft in chat. AskUserQuestion: approve / change antagonist / 
 
 End with a **cross-quest build requirements summary** — aggregated lists of items, unique mobs, rooms, and dialogue trees the quests demand. This list is the explicit input to Phase 6's slice list.
 
+**Author a per-vnum item catalog** as part of this summary (one table row per item: vnum, display name, `Used by` quest, brief notes). This catalog is the canonical input to Phase 6's dedicated item-prototypes slice — Phase 6 should not have to re-derive what items exist. Mark any item whose driving quest is deferred to post-v1 as deferred in the catalog so Phase 6 knows to skip it.
+
 Show full Phase 4 draft in chat. AskUserQuestion: approve / add a faction's quest line / cut to smaller v1 / adjust a specific quest.
 
 **Build plan / Slices.** "No build this phase; the cross-quest build requirements summary feeds Phase 6 slices."
@@ -181,6 +185,13 @@ Show full Phase 4 draft in chat. AskUserQuestion: approve / add a faction's ques
 - **Special room flags** if the class needs them (`indoors + dark + no_magic` for vampire sun rescue, `no_mob` for safe-house thresholds, etc.)
 - **Day/night via routines** — prefer time-gated `daily_routine` on mobiles over DG flag-flipping. Note explicitly when DG is needed.
 - **Connectivity highlights** — central hub linkages, alleys as PvP shortcuts, special access (hidden doors, sealed locations gated by quests)
+- **Exit topology — cardinal directions ONLY.** `set_room_exit` accepts only `north`, `south`, `east`, `west`, `up`, `down`. Diagonals (`ne`/`nw`/`se`/`sw`), `in`, and `out` are **not supported** and must never appear in the plan — not in the ASCII sketch, not in the per-slice exit table, not in any "X ↔ Y (in/out)" shorthand. Author every edge as one of the six cardinals from the start, choosing the cardinal that reads naturally for the narrative (e.g., a basement nook is `down`/`up` from the street; a building entrance facing the street is `north`/`south` if the building sits north of it). Common cardinal substitutes for the in/out reflex:
+  - Sunken side-alleys, basement shops, cellars: **up/down** off the street
+  - Building entrances: **n/s/e/w** based on which wall faces the street
+  - Upstairs rooms (owner's box, reading room, hidden chamber above): **up/down**
+  - "Service entry" hidden doors: pick a free cardinal on both ends — never `in/out`
+
+  Plaza/hub rooms have only 6 exit slots total. After Phase 1 attaches 4 arterials on the cardinals, only `up` and `down` remain free for Phase 5 extras — budget accordingly. When all 6 slots are used on a room, attach further district extras one segment out on an arterial-1 segment (not the hub itself), and say so in the plan.
 
 Show full Phase 5 design draft in chat. AskUserQuestion: approve / adjust room budget / adjust connectivity.
 
@@ -200,11 +211,19 @@ Show the slice list in chat (slice headlines + room counts; full slice blocks la
 
 Show full Phase 6 design draft in chat. AskUserQuestion: approve / adjust quest scope / adjust verification script.
 
-**Build plan.** Slice ordering: cast bodies (mob prototypes + factions + routines) → dialogue trees → quest configs → spawn points. Smoke-test playthrough is the final slice (it's a verification deliverable, not a write, but it gates "phase done").
+**Build plan.** Slice ordering: **item prototypes (first)** → cast bodies (mob prototypes + factions + routines) → dialogue trees → quest configs → spawn points (mobs AND items). Smoke-test playthrough is the final slice (it's a verification deliverable, not a write, but it gates "phase done").
+
+**Items get their own dedicated slice up-front.** Before any spawn-point slice runs, every quest item, reward item, set-dressing item, and combat-drop item from Phase 4's catalog must be scoped, reviewed with the user, and built in a single Phase 6 slice (the canonical "Slice 6.0 — Item prototypes"). The rationale:
+
+- Spawn-point slices (`create_spawn_point` for items, `add_spawn_dependency` for combat drops, `DialogueEffect::GiveItem`, `QuestReward::Item`) all reference items by vnum and silently misbehave or fail if the prototype doesn't exist yet.
+- Inline `create_item` calls scattered across quest slices make it easy to forget an item, double-create it, or drift from the Phase 4 catalog. Centralizing avoids both.
+- Phase 4's deep dive should produce a per-vnum item catalog with `Used by` and a notes column. Phase 6's item slice mirrors that catalog one-to-one, adds a `Kind` column (`reward-delivered` / `objective (room-find)` / `objective (combat drop)` / `objective (quest hand-over)` / `set-dressing`), and pins each item's source mechanism (which spawn point, dialogue effect, or reward delivery). Any vnum the user wants to defer (e.g., quests cut from v1) is marked deferred in the catalog and skipped in the build slice.
+- Downstream Phase 6 slices then **reference** the existing prototypes — they don't re-create them. Their MCP-call sketches drop `create_item` and gain explicit `create_spawn_point(...)` / `add_spawn_dependency(...)` / `DialogueEffect::GiveItem` rows per item.
+- If a downstream slice discovers a 19th item is needed, add it to the item slice first (or a follow-up patch slice) before the dependent slice runs. Do not let inline `create_item` calls creep back into quest/dialogue slices.
 
 Show the slice list in chat. AskUserQuestion: approve & start executing / adjust slice grouping / hold for later session.
 
-**Slices.** Typical Phase 6 has 15-25 slices for a large area: 4-6 cast slices (court, sires, support, mortals/guards, threats), 5-10 dialogue+quest slices (one per major dialogue tree or quest), 1-2 endgame set-piece slices, 1 smoke-test slice.
+**Slices.** Typical Phase 6 has 16-26 slices for a large area: **1 item-prototypes slice (always first)**, 4-6 cast slices (court, sires, support, mortals/guards, threats), 5-10 dialogue+quest slices (one per major dialogue tree or quest), 1-2 endgame set-piece slices, 1 smoke-test slice.
 
 **Execute.** Per-slice as in Phase 5.
 

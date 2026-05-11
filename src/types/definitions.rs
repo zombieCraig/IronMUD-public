@@ -23,6 +23,36 @@ pub struct ClassDefinition {
     pub starting_items: Vec<String>,
     #[serde(default)]
     pub starting_gold: i32,
+    /// If non-empty, only these race ids may pick this class. Use to whitelist
+    /// thematically narrow classes (e.g. lock a class to a single race).
+    #[serde(default)]
+    pub allowed_races: Vec<String>,
+    /// Race ids that may NOT pick this class. Checked after `allowed_races`.
+    /// Used by `vampire` in the modern theme to block synthetic races
+    /// (synth, bioroid, clone) that can't be embraced.
+    #[serde(default)]
+    pub incompatible_races: Vec<String>,
+}
+
+impl ClassDefinition {
+    /// True if this class is selectable by the given race id. Empty race id
+    /// (character creation pre-race-pick) is treated as compatible so the
+    /// list still renders. Comparison is case-insensitive.
+    pub fn allowed_for_race(&self, race_id: &str) -> bool {
+        if race_id.is_empty() {
+            return true;
+        }
+        let race = race_id.to_lowercase();
+        if !self.allowed_races.is_empty()
+            && !self.allowed_races.iter().any(|r| r.to_lowercase() == race)
+        {
+            return false;
+        }
+        if self.incompatible_races.iter().any(|r| r.to_lowercase() == race) {
+            return false;
+        }
+        true
+    }
 }
 
 /// Builder-authored override for a class's starting kit. Persisted in the

@@ -46,6 +46,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             dg_vars: std::collections::HashMap::new(),
             coordinates: None,
             contextual_commands: Vec::new(),
+            exit_delays: std::collections::HashMap::new(),
         };
         if let Err(e) = cloned_db.save_room_data(room.clone()) {
             tracing::error!("Failed to save new room: {}", e);
@@ -1933,5 +1934,50 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             }
         }
         names
+    });
+
+    // get_exit_delay(room_id, direction) -> i64 (seconds; 0 = no delay)
+    let cloned_db = db.clone();
+    engine.register_fn("get_exit_delay", move |room_id: String, direction: String| -> i64 {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&room_id) {
+            if let Ok(Some(room)) = cloned_db.get_room_data(&uuid) {
+                return room.exit_delays.get(&direction.to_lowercase()).copied().unwrap_or(0);
+            }
+        }
+        0
+    });
+
+    // set_exit_delay(room_id, direction, seconds) -> bool (0 clears the entry)
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_exit_delay",
+        move |room_id: String, direction: String, seconds: i64| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&room_id) {
+                if let Ok(Some(mut room)) = cloned_db.get_room_data(&uuid) {
+                    let key = direction.to_lowercase();
+                    if seconds <= 0 {
+                        room.exit_delays.remove(&key);
+                    } else {
+                        room.exit_delays.insert(key, seconds);
+                    }
+                    return cloned_db.save_room_data(room).is_ok();
+                }
+            }
+            false
+        },
+    );
+
+    // list_exit_delays(room_id) -> Map<direction, seconds>
+    let cloned_db = db.clone();
+    engine.register_fn("list_exit_delays", move |room_id: String| -> rhai::Map {
+        let mut out = rhai::Map::new();
+        if let Ok(uuid) = uuid::Uuid::parse_str(&room_id) {
+            if let Ok(Some(room)) = cloned_db.get_room_data(&uuid) {
+                for (dir, secs) in &room.exit_delays {
+                    out.insert(dir.clone().into(), rhai::Dynamic::from(*secs));
+                }
+            }
+        }
+        out
     });
 }

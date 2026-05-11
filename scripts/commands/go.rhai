@@ -220,6 +220,47 @@ fn run_command(args, connection_id) {
         }
     }
 
+    // Slow-exit handling. Read-and-clear the one-shot completion flag first
+    // so an injected completion move bypasses the delay check. Otherwise:
+    //   - if a slow-move is already in flight, refuse subsequent moves;
+    //   - if the chosen exit carries a delay, start a slow-move and wait.
+    let is_slow_completing = take_slow_move_completing(connection_id);
+    if !is_slow_completing {
+        let pending = get_pending_slow_move(connection_id);
+        if pending != () {
+            // Stale state (death, teleport, build-mode warp): drop it.
+            if pending.source_room_id != char.current_room_id {
+                clear_slow_move(connection_id);
+            } else {
+                let now_secs = get_current_time();
+                if now_secs < pending.complete_at {
+                    send_client_message(connection_id, "You are still moving " + pending.direction + " — wait a moment.");
+                    return;
+                }
+                // Timer elapsed but tick hasn't fired yet: clear and fall through.
+                clear_slow_move(connection_id);
+            }
+        }
+        if !char.god_mode && !is_in_build_mode(char.name, char.current_room_id) {
+            let delay_secs = get_exit_delay(char.current_room_id, direction);
+            if delay_secs > 0 {
+                let now_secs = get_current_time();
+                start_slow_move(connection_id, direction, char.current_room_id, now_secs + delay_secs);
+                send_client_message(connection_id, "You begin moving " + direction + " slowly...");
+                let watchers = get_characters_in_room(char.current_room_id);
+                for w in watchers {
+                    if w.name != char.name {
+                        let w_conn = find_player_connection_by_name(w.name);
+                        if w_conn != "" {
+                            send_client_message(w_conn, char.name + " begins moving " + direction + " slowly.");
+                        }
+                    }
+                }
+                return;
+            }
+        }
+    }
+
     let old_room_id = char.current_room_id;
 
     // Fire on_exit trigger - can cancel movement

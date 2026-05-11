@@ -133,6 +133,49 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             .collect()
     });
 
+    // get_class_list_for_race(race_id) -> Array of available class IDs filtered
+    // by race compatibility. Empty race_id behaves like get_class_list (no
+    // race filter applied). Used by create.rhai/login.rhai so e.g. modern
+    // synthetic races (synth, bioroid, clone) can't pick "vampire".
+    let state_clone = state.clone();
+    engine.register_fn(
+        "get_class_list_for_race",
+        move |race_id: String| -> rhai::Array {
+            let world = state_clone.lock().unwrap();
+            let vampire_enabled = world
+                .db
+                .get_setting("enable_vampire_creation")
+                .ok()
+                .flatten()
+                .map(|s| s.to_lowercase() == "on" || s == "true")
+                .unwrap_or(false);
+            world
+                .class_definitions
+                .iter()
+                .filter(|(_, c)| c.available)
+                .filter(|(id, _)| id.as_str() != "vampire" || vampire_enabled)
+                .filter(|(_, c)| c.allowed_for_race(&race_id))
+                .map(|(id, _)| rhai::Dynamic::from(id.clone()))
+                .collect()
+        },
+    );
+
+    // is_class_allowed_for_race(race_id, class_id) -> bool. Mirrors the
+    // race-filter applied by get_class_list_for_race. Does NOT consult the
+    // vampire runtime gate — callers already filter the list. Unknown
+    // class id returns false (treat as not allowed).
+    let state_clone = state.clone();
+    engine.register_fn(
+        "is_class_allowed_for_race",
+        move |race_id: String, class_id: String| -> bool {
+            let world = state_clone.lock().unwrap();
+            match world.class_definitions.get(&class_id) {
+                Some(def) => def.allowed_for_race(&race_id),
+                None => false,
+            }
+        },
+    );
+
     // get_class_info(class_id) -> Map with name, description, starting_skills, stat_bonuses
     let state_clone = state.clone();
     engine.register_fn("get_class_info", move |class_id: String| -> rhai::Map {
@@ -170,6 +213,18 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 .collect();
             map.insert("starting_items".into(), rhai::Dynamic::from(items_arr));
             map.insert("starting_gold".into(), rhai::Dynamic::from(class.starting_gold as i64));
+            let allowed: rhai::Array = class
+                .allowed_races
+                .iter()
+                .map(|s| rhai::Dynamic::from(s.clone()))
+                .collect();
+            map.insert("allowed_races".into(), rhai::Dynamic::from(allowed));
+            let incompat: rhai::Array = class
+                .incompatible_races
+                .iter()
+                .map(|s| rhai::Dynamic::from(s.clone()))
+                .collect();
+            map.insert("incompatible_races".into(), rhai::Dynamic::from(incompat));
         }
         map
     });
@@ -193,6 +248,37 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             .map(|id| (*id).clone())
             .unwrap_or_else(|| "unemployed".to_string())
     });
+
+    // get_random_class_for_race(race_id) -> String. Race-filtered counterpart
+    // of get_random_class. Vampire is never rolled here (runtime gate + still
+    // not an appropriate random pick). Falls back to "unemployed" when no
+    // class survives the race filter.
+    let state_clone = state.clone();
+    engine.register_fn(
+        "get_random_class_for_race",
+        move |race_id: String| -> String {
+            let world = state_clone.lock().unwrap();
+            let available: Vec<&String> = world
+                .class_definitions
+                .iter()
+                .filter(|(id, c)| {
+                    c.available
+                        && id.as_str() != "unemployed"
+                        && id.as_str() != "vampire"
+                        && c.allowed_for_race(&race_id)
+                })
+                .map(|(id, _)| id)
+                .collect();
+            if available.is_empty() {
+                return "unemployed".to_string();
+            }
+            use rand::seq::SliceRandom;
+            available
+                .choose(&mut rand::thread_rng())
+                .map(|id| (*id).clone())
+                .unwrap_or_else(|| "unemployed".to_string())
+        },
+    );
 
     // get_trait_list() -> Array of available trait IDs
     let state_clone = state.clone();
@@ -3180,5 +3266,84 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         } else {
             0
         }
+    });
+
+    // get_pending_slow_move(connection_id) -> Map { direction, source_room_id, complete_at } or ()
+    let conns = connections.clone();
+    engine.register_fn("get_pending_slow_move", move |connection_id: String| -> rhai::Dynamic {
+        if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+            let conns_lock = conns.lock().unwrap();
+            if let Some(session) = conns_lock.get(&conn_id) {
+                if let Some(ref char) = session.character {
+                    if let Some(ref psm) = char.pending_slow_move {
+                        let mut map = rhai::Map::new();
+                        map.insert("direction".into(), psm.direction.clone().into());
+                        map.insert("source_room_id".into(), psm.source_room_id.to_string().into());
+                        map.insert("complete_at".into(), rhai::Dynamic::from(psm.complete_at));
+                        return rhai::Dynamic::from(map);
+                    }
+                }
+            }
+        }
+        rhai::Dynamic::UNIT
+    });
+
+    // start_slow_move(connection_id, direction, source_room_id, complete_at_secs) -> bool
+    let conns = connections.clone();
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "start_slow_move",
+        move |connection_id: String, direction: String, source_room_id: String, complete_at: i64| -> bool {
+            let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) else { return false; };
+            let Ok(src_uuid) = uuid::Uuid::parse_str(&source_room_id) else { return false; };
+            let mut conns_lock = conns.lock().unwrap();
+            if let Some(session) = conns_lock.get_mut(&conn_id) {
+                if let Some(ref mut char) = session.character {
+                    char.pending_slow_move = Some(crate::types::PendingSlowMove {
+                        direction: direction.to_lowercase(),
+                        source_room_id: src_uuid,
+                        complete_at,
+                    });
+                    let _ = cloned_db.save_character_data(char.clone());
+                    return true;
+                }
+            }
+            false
+        },
+    );
+
+    // clear_slow_move(connection_id) -> bool
+    let conns = connections.clone();
+    let cloned_db = db.clone();
+    engine.register_fn("clear_slow_move", move |connection_id: String| -> bool {
+        let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) else { return false; };
+        let mut conns_lock = conns.lock().unwrap();
+        if let Some(session) = conns_lock.get_mut(&conn_id) {
+            if let Some(ref mut char) = session.character {
+                if char.pending_slow_move.is_some() {
+                    char.pending_slow_move = None;
+                    let _ = cloned_db.save_character_data(char.clone());
+                    return true;
+                }
+            }
+        }
+        false
+    });
+
+    // take_slow_move_completing(connection_id) -> bool
+    // Reads-and-clears the one-shot `slow_move_completing` flag on the session.
+    // Returns true if the flag was set (meaning the upcoming move was queued
+    // by the slow-move tick and should bypass the exit-delay check).
+    let conns = connections.clone();
+    engine.register_fn("take_slow_move_completing", move |connection_id: String| -> bool {
+        let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) else { return false; };
+        let mut conns_lock = conns.lock().unwrap();
+        if let Some(session) = conns_lock.get_mut(&conn_id) {
+            if session.slow_move_completing {
+                session.slow_move_completing = false;
+                return true;
+            }
+        }
+        false
     });
 }

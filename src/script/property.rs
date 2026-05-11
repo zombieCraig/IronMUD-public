@@ -554,6 +554,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     dg_vars: std::collections::HashMap::new(),
                     coordinates: None,
                     contextual_commands: Vec::new(),
+                    exit_delays: std::collections::HashMap::new(),
                 };
 
                 if let Err(e) = cloned_db.save_room_data(instance_room) {
@@ -966,6 +967,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 dg_vars: std::collections::HashMap::new(),
                 coordinates: None,
                 contextual_commands: Vec::new(),
+                exit_delays: std::collections::HashMap::new(),
             };
 
             if let Err(e) = cloned_db.save_room_data(room.clone()) {

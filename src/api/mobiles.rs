@@ -723,7 +723,7 @@ async fn list_prototypes_summary(
         .iter()
         .filter(|m| {
             if let Some(ref prefix) = query.vnum_prefix {
-                m.vnum.starts_with(&format!("{}:", prefix))
+                m.vnum.starts_with(&format!("{}:", prefix.trim_end_matches(':')))
             } else {
                 true
             }

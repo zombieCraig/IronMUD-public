@@ -640,6 +640,7 @@ fn handle_race_input(input, connection_id) {
         update_char_field(connection_id, "race", race);
         let name = get_race_name(race);
         send_client_message(connection_id, "Race set to: " + name);
+        reset_class_if_incompatible(connection_id, race);
         return_to_menu(connection_id);
         return;
     }
@@ -656,7 +657,29 @@ fn handle_race_input(input, connection_id) {
     update_char_field(connection_id, "race", race_id);
     let info = get_race_info(race_id);
     send_client_message(connection_id, "Race set to: " + info["name"]);
+    reset_class_if_incompatible(connection_id, race_id);
     return_to_menu(connection_id);
+}
+
+// If the player's current class is no longer compatible with their race,
+// drop it back to "unemployed" and notify them. Skip when class is empty or
+// already "unemployed".
+fn reset_class_if_incompatible(connection_id, race_id) {
+    let char_name = get_char_name_from_wizard(connection_id);
+    let char_data = get_character_data(char_name);
+    let current = char_data.class_name;
+    if current == "" || current == "unemployed" {
+        return;
+    }
+    if !is_class_allowed_for_race(race_id, current) {
+        update_char_field(connection_id, "class_name", "unemployed");
+        let info = get_class_info(current);
+        let display = if info.len() > 0 { info["name"] } else { current };
+        send_client_message(
+            connection_id,
+            "(" + display + " is not compatible with " + get_race_name(race_id) + " — class reset to Peasant.)"
+        );
+    }
 }
 
 // === Gender Selection ===
@@ -729,7 +752,9 @@ fn handle_desc_input(input, connection_id) {
 }
 
 fn show_class_selection(connection_id) {
-    let classes = get_class_list();
+    let char_name = get_char_name_from_wizard(connection_id);
+    let char_data = get_character_data(char_name);
+    let classes = get_class_list_for_race(char_data.race);
     let output = "\n=== Select a Class ===\n\n";
 
     let idx = 1;
@@ -753,7 +778,9 @@ fn handle_class_input(input, connection_id) {
         return;
     }
 
-    let classes = get_class_list();
+    let char_name = get_char_name_from_wizard(connection_id);
+    let char_data = get_character_data(char_name);
+    let classes = get_class_list_for_race(char_data.race);
     let idx = try_parse_int(input);
 
     if idx == () || idx < 1 || idx > classes.len() {
@@ -1341,7 +1368,7 @@ fn randomize_all(connection_id) {
     else if g_roll == 2 { char_data.gender = "female"; }
     else { char_data.gender = "nonbinary"; }
     char_data.short_description = get_random_short_desc();
-    char_data.class_name = get_random_class();
+    char_data.class_name = get_random_class_for_race(char_data.race);
     save_character_data(char_data);
 
     // Also randomize traits

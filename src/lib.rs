@@ -159,6 +159,11 @@ pub struct PlayerSession {
     // roster (or auto-selects when only 1 character exists).
     pub account_id: Option<Uuid>,
     pub account_name: Option<String>,
+    /// One-shot flag: when set, the next `go <dir>` command bypasses the
+    /// exit-delay check. The slow-move tick sets this before injecting a
+    /// completion command; `go.rhai` reads-and-clears it on entry. Not
+    /// persisted — purely in-flight movement state.
+    pub slow_move_completing: bool,
 }
 
 /// Input events from the read handler
@@ -1242,6 +1247,7 @@ pub async fn handle_connection(
                 dialogue_partner_id: None,
                 account_id: None,
                 account_name: None,
+                slow_move_completing: false,
             },
         );
     }

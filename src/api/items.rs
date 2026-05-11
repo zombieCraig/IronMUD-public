@@ -644,7 +644,7 @@ async fn list_prototypes_summary(
             if let Some(ref prefix) = query.vnum_prefix {
                 i.vnum
                     .as_ref()
-                    .map_or(false, |v| v.starts_with(&format!("{}:", prefix)))
+                    .map_or(false, |v| v.starts_with(&format!("{}:", prefix.trim_end_matches(':'))))
             } else {
                 true
             }

@@ -347,7 +347,7 @@ async fn list_rooms_summary(
         rooms.retain(|r| {
             r.vnum
                 .as_ref()
-                .map_or(false, |v| v.starts_with(&format!("{}:", prefix)))
+                .map_or(false, |v| v.starts_with(&format!("{}:", prefix.trim_end_matches(':'))))
         });
     }
 
@@ -543,6 +543,7 @@ async fn create_room(
                     .collect()
             })
             .unwrap_or_default(),
+        exit_delays: std::collections::HashMap::new(),
     };
 
     if room.flags.liveable && room.living_capacity <= 0 {

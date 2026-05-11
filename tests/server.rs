@@ -1609,6 +1609,7 @@ mod migration_tests {
             dg_vars: std::collections::HashMap::new(),
             coordinates: None,
             contextual_commands: Vec::new(),
+            exit_delays: std::collections::HashMap::new(),
         }
     }
 
@@ -4758,6 +4759,7 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
             dg_vars: std::collections::HashMap::new(),
             coordinates: None,
             contextual_commands: Vec::new(),
+            exit_delays: std::collections::HashMap::new(),
         };
         let room_id = room.id;
         db.save_room_data(room).expect("save room");
@@ -4765,6 +4767,90 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
         assert!(loaded.flags.indoors);
         assert!(loaded.flags.no_windows);
         assert!(loaded.flags.dark);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_exit_delays_round_trip_through_db() {
+    use ironmud::types::RoomData;
+
+    let db_path = format!("test_exit_delays_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+    let db = ironmud::db::Db::open(&db_path).expect("open db");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut room: RoomData = serde_json::from_value(serde_json::json!({
+            "id": uuid::Uuid::new_v4(),
+            "title": "Narrow Tunnel",
+            "description": "A tight squeeze.",
+            "exits": {},
+        }))
+        .expect("build room");
+        room.exit_delays.insert("north".to_string(), 5);
+        room.exit_delays.insert("up".to_string(), 12);
+        let room_id = room.id;
+        db.save_room_data(room).expect("save");
+
+        let loaded = db.get_room_data(&room_id).expect("get").expect("present");
+        assert_eq!(loaded.exit_delays.get("north"), Some(&5));
+        assert_eq!(loaded.exit_delays.get("up"), Some(&12));
+        assert_eq!(loaded.exit_delays.get("south"), None);
+    }));
+
+    let _ = std::fs::remove_dir_all(&db_path);
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_pending_slow_move_round_trip_through_db() {
+    use ironmud::types::{CharacterData, PendingSlowMove};
+
+    let db_path = format!("test_pending_slow_move_{}.db", std::process::id());
+    let _ = std::fs::remove_dir_all(&db_path);
+    let db = ironmud::db::Db::open(&db_path).expect("open db");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let room_id = uuid::Uuid::new_v4();
+        let mut char: CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "tunnelwalker",
+            "password_hash": "",
+            "current_room_id": room_id,
+        }))
+        .expect("build character");
+        assert!(char.pending_slow_move.is_none(), "fresh char has no pending move");
+
+        char.pending_slow_move = Some(PendingSlowMove {
+            direction: "north".to_string(),
+            source_room_id: room_id,
+            complete_at: 1_700_000_000,
+        });
+        db.save_character_data(char.clone()).expect("save");
+
+        let loaded = db
+            .get_character_data("tunnelwalker")
+            .expect("get")
+            .expect("present");
+        let psm = loaded.pending_slow_move.clone().expect("pending preserved");
+        assert_eq!(psm.direction, "north");
+        assert_eq!(psm.source_room_id, room_id);
+        assert_eq!(psm.complete_at, 1_700_000_000);
+
+        // Clearing also persists.
+        let mut updated = loaded;
+        updated.pending_slow_move = None;
+        db.save_character_data(updated).expect("save cleared");
+        let reloaded = db
+            .get_character_data("tunnelwalker")
+            .expect("get")
+            .expect("present");
+        assert!(reloaded.pending_slow_move.is_none());
     }));
 
     let _ = std::fs::remove_dir_all(&db_path);
@@ -5778,6 +5864,7 @@ fn stay_zone_test_room(area_id: Option<uuid::Uuid>) -> ironmud::types::RoomData 
         dg_vars: std::collections::HashMap::new(),
         coordinates: None,
         contextual_commands: Vec::new(),
+        exit_delays: std::collections::HashMap::new(),
     }
 }
 
@@ -7817,6 +7904,7 @@ fn test_contextual_commands_round_trip() {
                     hint: None,
                 },
             ],
+            exit_delays: std::collections::HashMap::new(),
         };
         let room_id = room.id;
         db.save_room_data(room).expect("save");
@@ -9354,6 +9442,7 @@ fn vampire_test_room(title: &str, indoors: bool) -> ironmud::types::RoomData {
         dg_vars: HashMap::new(),
         coordinates: None,
         contextual_commands: Vec::new(),
+        exit_delays: HashMap::new(),
     }
 }
 
@@ -9533,6 +9622,52 @@ fn test_vampire_class_present_with_dominate_starter_skill() {
         starting_skills.contains_key("dominate"),
         "vampire class seeds the dominate discipline"
     );
+    let incompat: Vec<String> = vampire
+        .get("incompatible_races")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+        .unwrap_or_default();
+    for race in &["synth", "bioroid", "clone"] {
+        assert!(
+            incompat.iter().any(|r| r == race),
+            "modern synthetic race '{}' should be blocked from the vampire class",
+            race
+        );
+    }
+}
+
+#[test]
+fn test_class_allowed_for_race_filters() {
+    use ironmud::types::ClassDefinition;
+    use std::collections::HashMap;
+
+    let mut vampire = ClassDefinition {
+        id: "vampire".into(),
+        name: "Vampire".into(),
+        description: String::new(),
+        starting_skills: HashMap::new(),
+        stat_bonuses: HashMap::new(),
+        available: true,
+        starting_languages: HashMap::new(),
+        starting_items: Vec::new(),
+        starting_gold: 0,
+        allowed_races: Vec::new(),
+        incompatible_races: vec!["synth".into(), "bioroid".into(), "clone".into()],
+    };
+    assert!(vampire.allowed_for_race("human"));
+    assert!(vampire.allowed_for_race("orc"));
+    assert!(!vampire.allowed_for_race("synth"));
+    assert!(!vampire.allowed_for_race("SYNTH"), "case-insensitive");
+    assert!(!vampire.allowed_for_race("clone"));
+    // Empty race id (pre-pick) leaves the class visible.
+    assert!(vampire.allowed_for_race(""));
+
+    // Allowlist semantics: only listed races may pick.
+    vampire.allowed_races = vec!["human".into(), "elf".into()];
+    vampire.incompatible_races.clear();
+    assert!(vampire.allowed_for_race("human"));
+    assert!(vampire.allowed_for_race("elf"));
+    assert!(!vampire.allowed_for_race("dwarf"));
 }
 
 #[test]

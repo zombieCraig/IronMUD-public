@@ -730,7 +730,9 @@ fn handle_desc_input(input, connection_id) {
 }
 
 fn show_class_selection(connection_id) {
-    let classes = get_class_list();
+    let char_name = get_char_name_from_wizard(connection_id);
+    let char_data = get_character_data(char_name);
+    let classes = get_class_list_for_race(char_data.race);
     let output = "\n=== Select a Class ===\n\n";
 
     let idx = 1;
@@ -754,7 +756,9 @@ fn handle_class_input(input, connection_id) {
         return;
     }
 
-    let classes = get_class_list();
+    let char_name = get_char_name_from_wizard(connection_id);
+    let char_data = get_character_data(char_name);
+    let classes = get_class_list_for_race(char_data.race);
     let idx = try_parse_int(input);
 
     if idx == () || idx < 1 || idx > classes.len() {

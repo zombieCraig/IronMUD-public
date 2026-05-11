@@ -6,7 +6,7 @@ use anyhow::Result;
 use tokio::time::{Duration, interval};
 use tracing::error;
 
-use ironmud::{BodyPart, CharacterData, CharacterPosition, EffectType, SharedConnections, TemperatureCategory, db};
+use ironmud::{BodyPart, CharacterData, CharacterPosition, EffectType, InputEvent, SharedConnections, TemperatureCategory, db};
 
 /// Thirst tick interval in seconds (check thirst every minute)
 pub const THIRST_TICK_INTERVAL_SECS: u64 = 60;
@@ -16,6 +16,10 @@ pub const HUNGER_TICK_INTERVAL_SECS: u64 = 120;
 
 /// Stamina/HP regeneration tick interval in seconds
 pub const REGEN_TICK_INTERVAL_SECS: u64 = 10;
+
+/// Slow-move tick interval in seconds. Players locked in a slow-exit room
+/// are released within ~1s of their `pending_slow_move.complete_at` deadline.
+pub const SLOW_MOVE_TICK_INTERVAL_SECS: u64 = 1;
 
 /// Background task that processes player thirst periodically
 pub async fn run_thirst_tick(db: db::Db, connections: SharedConnections) {
@@ -1084,4 +1088,45 @@ fn get_buff_expiry_message(effect_type: EffectType) -> String {
         EffectType::DamageReduction => "The protective aura around you fades.".to_string(),
         _ => String::new(),
     }
+}
+
+/// Background task: releases players whose slow-exit timer has elapsed by
+/// setting a one-shot `slow_move_completing` flag and injecting a synthetic
+/// `<direction>` input event. `go.rhai` consumes the flag and bypasses the
+/// exit-delay check exactly once. The `pending_slow_move` field on the
+/// character is cleared as we send the event.
+pub async fn run_slow_move_tick(db: db::Db, connections: SharedConnections) {
+    let mut ticker = interval(Duration::from_secs(SLOW_MOVE_TICK_INTERVAL_SECS));
+    loop {
+        ticker.tick().await;
+        if let Err(e) = process_slow_move_tick(&db, &connections) {
+            error!("Slow-move tick error: {}", e);
+        }
+    }
+}
+
+fn process_slow_move_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    let mut conns = connections.lock().unwrap();
+    for (_conn_id, session) in conns.iter_mut() {
+        let Some(ref mut char) = session.character else { continue; };
+        let Some(psm) = char.pending_slow_move.as_ref() else { continue; };
+        if now < psm.complete_at { continue; }
+
+        let direction = psm.direction.clone();
+        char.pending_slow_move = None;
+        let _ = db.save_character_data(char.clone());
+
+        session.slow_move_completing = true;
+        // Send the move command back through the input pipeline so go.rhai
+        // handles the actual room transition (broadcasts, triggers, follow
+        // chains, etc.). If the channel is full, the player keeps the cleared
+        // state — they can just type the direction themselves.
+        let _ = session.input_sender.try_send(InputEvent::Line(direction));
+    }
+    Ok(())
 }

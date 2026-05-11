@@ -83,6 +83,14 @@ pub struct RoomData {
     /// line. Runtime dispatch is still handled by DG OnCommand triggers.
     #[serde(default)]
     pub contextual_commands: Vec<ContextualCommand>,
+    /// Per-direction travel delay in seconds. When a player issues a move
+    /// command for a direction present in this map, the move is deferred —
+    /// the player is locked in this room for N seconds before arriving at
+    /// the destination. Used for one-person tunnels, climbing, swimming
+    /// across rivers, etc. Direction key matches `RoomExits` field names
+    /// ("north", "east", ..., "out") or a custom-exit name.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub exit_delays: HashMap<String, i64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]

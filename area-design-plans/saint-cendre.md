@@ -16,11 +16,11 @@ The plan follows the `ironmud-area-designer` skill's interleaved 6-phase workflo
 | Phase | Title | Design | Build plan | Slices |
 |---|---|---|---|---|
 | 1 | Name + Theme + Anchor | ✅ approved | ✅ approved | ✅ built (2026-05-10) |
-| 2 | Cast | ✅ approved | — (pure design) | — |
-| 3 | Core Plot | ✅ approved | — (pure design) | — |
-| 4 | Seed Quests | ✅ approved | — (pure design) | — |
-| 5 | Map + Room Build | ✅ approved | ⏳ drafted, awaiting approval | ⏳ drafted, awaiting approval |
-| 6 | Population, Dialogue, Quests | ✅ approved | ⏳ drafted, awaiting approval | ⏳ drafted, awaiting approval |
+| 2 | Cast | ✅ deep-dive approved (2026-05-10) | ✅ approved | ✅ built (2026-05-10) |
+| 3 | Core Plot | ✅ approved · ✅ deep-dive approved (2026-05-10) | — (pure design) | — |
+| 4 | Seed Quests | ✅ approved · ✅ deep-dive approved (2026-05-10) | — (pure design) | — |
+| 5 | Map + Room Build | ✅ approved · ✅ deep-dive approved (2026-05-10) | ✅ approved | ✅ built (2026-05-10) |
+| 6 | Population, Dialogue, Quests | ✅ approved | ✅ approved | ⏳ in progress — 6.0 ✅, 6.1 ✅ (2026-05-11); 6.2–6.19 pending |
 
 When you resume work, advance the lowest-numbered "⏳ drafted, awaiting approval" entry first. A slice is ready to execute when both its phase's design AND its phase's build plan show ✅.
 
@@ -154,8 +154,8 @@ Area-level config: `combat_zone: Pvp`, `climate: Temperate`, `immigration_enable
 ### Phase 1 build log (2026-05-10)
 - Area `Saint-Cendre` created (id `dbc32ca0-9b0b-4fe3-a52d-aa567783652a`), all 13 anchor rooms live with per-room `combat_zone: safe` override (via MCP `flags.safe: true`). 24 bidirectional exits wired. Immigration on (`generic` names, `human` visuals, 3-day interval, max 2 per check, entry `cendre:plaza`).
 - Area `combat_zone` set to `pvp` via MCP (now exposed on `update_area` after commit `c9e12c6` + server redeploy).
+- `immigration_vampire_chance: 0.3` applied via MCP — clan migrants will now self-sustain at the design's intended rate alongside the Phase 6 explicit cast placements.
 - Slice 1.8 added: portal-alley entrance room (`cendre:portal-alley`) with `no_mob` + `safe` flags, east-wired into `cendre:rue-cendre-2`. North exit reserved for the portal target — left unwired pending the cave-source room (future task). Anchor total now 14 rooms.
-- **Remaining MCP gap:** `immigration_vampire_chance` is accepted by the MCP schema (the `vampire` key now appears in `immigration_variation_chances`) but the deployed handler does not apply the supplied value — submitting `0.3` leaves the stored value at `0`. Until that's fixed server-side, clan presence will be seeded explicitly in Phase 6 (cast bodies + spawn points) rather than via migration.
 
 ---
 
@@ -163,86 +163,173 @@ Area-level config: `combat_zone: Pvp`, `climate: Temperate`, `immigration_enable
 
 ### Design
 
-Cast organized by role. Each entry lists: **purpose**, **key mechanical wiring** (faction, dialogue gates, quest hooks, presets), and **where they live**. Names are placeholders the builder can refine; mechanical wiring is the load-bearing part.
+Deep-dive catalog (no deferrals). 45 named NPC prototypes total. Each row carries the mechanical wiring needed for MCP `create_mobile` plus the Phase 6 hooks (dialogue, routine, quest). Sire `name` fields are the *exact* strings the `EmbraceClan` reward will record as the player's sire — they are not placeholders. Faction strings are free-form; clan tags create per-clan defense pools (mobs with `clan_brujah` defend each other but not `clan_ventrue`).
 
-#### A. Authority & Court (the political spine)
+#### A. Court & Authority (3)
 
-- **Prince Évariste Larue** — the Ventrue Prince of Saint-Cendre. Holds the truce together. Lives in **Hôtel de Larue** (private mansion in the Cathedral District). Faction `clan_ventrue`. Speaks French-accented English. Dialogue conditions: `IsClanAcknowledged` to grant audience. Plot anchor for late-game faction quests.
-- **Seneschal Mireille Doucet** — the Prince's right hand, Toreador. Public-facing; greets newcomers and refers them to the appropriate clan. Same faction as Prince by alliance. **First NPC most players talk to** in the Quarter at night. Quest-giver for the "find a sire" tutorial quest.
-- **Harpy Théo Vasquez** — court gossip / Toreador socialite. Lives in the opera house. Source of rumor-style dialogue exposing all five clans (information hub for new players choosing a clan).
+| vnum | Name | Faction | Preset | District home (Phase 5) | Short desc | Role hook |
+|---|---|---|---|---|---|---|
+| `cendre:prince-larue` | Prince Évariste Larue | `clan_ventrue` | `vampire_elder` + override | Hôtel de Larue | a tall, austere man in a charcoal three-piece suit | Audience gated on `IsClanAcknowledged` + Q1 done. Formal French-accented English. |
+| `cendre:seneschal-mireille` | Seneschal Mireille Doucet | `clan_toreador` | `vampire_elder` + override | Plaza at night / Hôtel by day | a woman in a tailored emerald coat watches the plaza | First-NPC greeter, Q1 giver, Q7 evidence-presentation branch (≥3 investigation flags). |
+| `cendre:harpy-theo` | Harpy Théo Vasquez | `clan_toreador` | `vampire_elder` + override | Opera house bar | a slender man in a midnight-blue dinner jacket leans against the bar | Rumor hub exposing all 5 clans for new-player clan choice. |
 
-#### B. The Five Sires & Their Districts
+#### B. Five Sires (5)
 
-One **sire NPC** per clan owns the `EmbraceClan` quest reward — their `vnum` becomes the quest's `giver_mob_vnum`, so when the quest completes the player records *that* NPC as their sire. Each sire has at minimum: faction `clan_<name>`, dialogue tree gated on `IsThinblood` (offers embrace) → `IsClanAcknowledged` (post-embrace dialogue), and lives in the clan's district haven.
+Each sire owns one `EmbraceClan` quest. Their `vnum` becomes the quest's `giver_mob_vnum`; on completion the player's `sire` field is set to the sire's `name`.
 
-| Clan | Sire NPC (placeholder name) | District | Personality / Hook |
+| vnum | Name | Clan | Faction | Preset | District home | Embrace quest |
+|---|---|---|---|---|---|---|
+| `cendre:sire-brujah` | Antoine "Tony" Rivière | Brujah | `clan_brujah` | `vampire_elder` + override | The Foundry — Tony's office | "Iron and Blood" — 3 fight-pit wins (Potence allowed, no other disciplines) |
+| `cendre:sire-toreador` | Lady Yvette Beaumont | Toreador | `clan_toreador` | `vampire_elder` + override | Conservatory — owner's box | "An Aesthetic Offering" — recover stolen painting (steal or negotiate) |
+| `cendre:sire-ventrue` | Magistrate Henri Saint-Clair | Ventrue | `clan_ventrue` | `vampire_elder` + override | Bourse — Magistrate's chamber | "A Matter of Discipline" — collect a delinquent debt |
+| `cendre:sire-nosferatu` | The Caretaker | Nosferatu | `clan_nosferatu` | `vampire_elder` + override | Catacombs — Caretaker's chamber | "What the Earth Keeps" — retrieve sealed-tomb relic |
+| `cendre:sire-gangrel` | Ma'tante Solange | Gangrel | `clan_gangrel` | `vampire_elder` + override | Bayou's Edge — Solange's hut | "The Bayou's Choice" — survive a night, kill a predator |
+
+#### C. Clan Support Cast (15 — 3 per district)
+
+Per-district template: 1 mortal ghoul/retainer (faction-locked), 1 vampire initiate (`vampire_goon`, faction-locked), 1 district-themed mortal (no faction).
+
+| vnum | Name | District | Faction | Preset | Role |
+|---|---|---|---|---|---|
+| `cendre:foundry-beau` | Beau | Foundry | `clan_brujah` | none (mortal) | Jazz hall bartender (ghoul) |
+| `cendre:foundry-marisol` | Marisol | Foundry | `clan_brujah` | `vampire_goon` | Brujah initiate, sparring partner |
+| `cendre:foundry-bones` | "Bones" Fontaine | Foundry | none | none (mortal) | Bookmaker at the fight pit |
+| `cendre:conservatory-etienne` | Étienne | Conservatory | `clan_toreador` | none (mortal) | Opera stage manager (ghoul) |
+| `cendre:conservatory-cassandra` | Cassandra Vaughn | Conservatory | `clan_toreador` | `vampire_goon` | Toreador initiate, gallery owner |
+| `cendre:conservatory-aldo` | Aldo | Conservatory | none | none (mortal) | Jazz pianist (atmosphere) |
+| `cendre:bourse-pierre` | Pierre Doré | Bourse | `clan_ventrue` | none (mortal) | Bank teller (ghoul) |
+| `cendre:bourse-lucien` | Lucien Ardent | Bourse | `clan_ventrue` | `vampire_goon` | Ventrue initiate, club steward |
+| `cendre:bourse-clerk` | Émeric the Clerk | Bourse | none | none (mortal) | Courthouse clerk |
+| `cendre:catacomb-acolyte` | The Acolyte | Catacombs | `clan_nosferatu` | none (mortal) | Tends candles for Caretaker (ghoul) |
+| `cendre:catacomb-ribcage` | "Ribcage" Joubert | Catacombs | `clan_nosferatu` | `vampire_goon` | Nosferatu scout |
+| `cendre:catacomb-sexton` | The Sexton | Catacombs | none | none (mortal) | Cemetery groundskeeper |
+| `cendre:bayou-andre` | Big Andre | Bayou's Edge | `clan_gangrel` | none (mortal) | Bayou guide (ghoul) |
+| `cendre:bayou-coyote` | Coyote | Bayou's Edge | `clan_gangrel` | `vampire_goon` | Gangrel initiate, scout |
+| `cendre:bayou-fisherman` | Old Thibodeaux | Bayou's Edge | none | none (mortal) | Cajun fisherman |
+
+#### D. Mortal Day-Quarter Cast (8)
+
+All mortal, no preset (default lvl 1). `daily_routine` (7-19 work / off-shift home) lands in Phase 6.
+
+| vnum | Name | Phase 5 location | Hook |
 |---|---|---|---|
-| Brujah | **Antoine "Tony" Rivière** | The Foundry (industrial, jazz halls, fight pits) | Ex-revolutionary, runs an underground boxing gym. Tests recruits in a brawl quest. |
-| Toreador | **Lady Yvette Beaumont** | The Conservatory (opera house, art galleries) | Demands an aesthetic offering — recruit must steal/recover a specific artwork. |
-| Ventrue | **Magistrate Henri Saint-Clair** | Bourse Quarter (banking, courthouse, gentlemen's club) | Demands proof of discipline — recruit performs a contract task (debt collection, intimidation). |
-| Nosferatu | **The Caretaker** (true name lost) | The Catacombs (under cathedral + cemeteries) | Trades information for service. Recruit must retrieve a buried relic from the cemetery. |
-| Gangrel | **Ma'tante Solange** | The Bayou's Edge (swamp ward beyond the levee) | Tests recruits with a hunt in the bayou — survive the night, bring back a trophy. |
+| `cendre:mortal-beauchamp` | Madame Beauchamp | Voodoo curio shop | Rumor hub; Q9 lost-charm quest giver |
+| `cendre:mortal-lefevre` | M. Lefèvre | Antique dealer | "Estate items" subtext; appraisal jobs |
+| `cendre:mortal-agathe` | Sister Agathe | Cathedral interior | Wary of nightwalkers; safe haven |
+| `cendre:mortal-pere-dominique` | Père Dominique | Cathedral | Q8 hunter-bounty quest giver |
+| `cendre:mortal-cafe-henri` | Henri Aubert | Café | Coffee shop owner, atmosphere |
+| `cendre:mortal-fishmonger` | Boudreaux | Riverfront market | Sells fish |
+| `cendre:mortal-hotel-clerk` | Beatrice Moreau | Tourist hotel lobby | Tourist info |
+| `cendre:mortal-opera-attendant` | Marcellin | Opera house entrance | Front-of-house |
 
-Each sire also has a **Primogen seat** at the Prince's court (faction note for politics). The Caretaker delegates court appearances to a proxy — Nosferatu Masquerade.
+#### E. City Guard (7)
 
-#### C. Clan Support Cast (per district)
+All use `town_guard_captain` preset. Faction stays preset default (`town_watch`). Phase 6 wires daily_routine: 6-20 patrol the beat, then to Garrison.
 
-Each district gets ~2-3 supporting NPCs so a player visiting "their" district has someone to interact with day-to-day:
-- **A ghoul or retainer** (mortal, faction-locked to the clan) — runs a service: doorman, bartender, archivist
-- **A rival or initiate** (vampire, same faction) — gives flavor dialogue, sometimes side quests
-- **A district-themed mortal** (the Foundry's bookmaker, the Conservatory's stage manager, etc.)
+| vnum | Name | Patrol beat |
+|---|---|---|
+| `cendre:guard-roussel` | Capitaine Roussel | Cathedral District (HQ at Garrison) |
+| `cendre:guard-picard` | Sergent Picard | Rue Royale → Bourse approach |
+| `cendre:guard-vincent` | Caporal Vincent | Rue de l'Eau → Riverfront approach |
+| `cendre:guard-lambert` | Caporal Marie Lambert | Rue des Beaux-Arts → Conservatory approach |
+| `cendre:guard-tisserand` | Caporal Émile Tisserand | Rue de la Cendre → Foundry approach |
+| `cendre:guard-renaud` | Patrolman Renaud | Cathedral plaza rover |
+| `cendre:guard-cormier` | Patrolman Cormier | Riverfront market rover |
 
-Detail-level (names, exact rooms) comes during per-district build slices in Phase 6.
+#### F. Hidden Threats & Wild Cards (5)
 
-#### D. Mortal Day-Quarter Cast (the "lively normal city" face)
+| vnum | Name | Faction | Preset | Location | Notes |
+|---|---|---|---|---|---|
+| `cendre:threat-stranger` | The Stranger | `sabbat` | `vampire_elder` + override | Stranger's shack interior | Unique. Q7 endgame target. Spawn point in Phase 6 uses `replace_on_respawn: true`. |
+| `cendre:threat-hunter-coyle` | Hunter Coyle | `vampire_hunters` (preset default) | `vampire_hunter` | Cemetery patrol | Night-only |
+| `cendre:threat-hunter-brennan` | Hunter Brennan | `vampire_hunters` (preset default) | `vampire_hunter` | Backstreets patrol | Night-only |
+| `cendre:threat-hunter-voss` | Hunter Voss | `vampire_hunters` (preset default) | `vampire_hunter` | Bayou-edge patrol | Targets Gangrel |
+| `cendre:threat-casey-anarch` | Casey Boudreaux | `anarch_unbound` | `vampire_goon` | Hidden cellar off Rue de la Cendre | NO DEFERRAL. Phase 6 dialogue offers clanless alternative path. |
 
-These NPCs run the visible economy by day and disappear at night via `daily_routine` (work 7-19, then go home/off-shift). They make the Quarter feel like a real place a tourist could visit before realizing what's underneath.
+#### G. Service / Information Hubs (2 unique; Caretaker doubles from B)
 
-- **Madame Beauchamp** — voodoo curio shop (gris-gris, talismans, fortune for hire — light buff items). Hub for early rumors.
-- **M. Lefèvre** — antique dealer specializing in "estate items" (subtext: dead vampires' belongings). Quest hook: appraisal jobs.
-- **Sister Agathe** — at the cathedral. Wary of nightwalkers, helpful to newcomers. Provides safe haven (`no_mob` interior).
-- **Père Dominique** — Catholic priest. Knows more about the city's underside than he lets on. Potential late-game ally OR antagonist depending on player choices.
-- **Café owner, jazz musician, riverfront fishmonger, hotel clerk, opera box attendant, cemetery groundskeeper** — atmosphere NPCs with short dialogue, some sell goods. ~6-10 of these scattered across districts.
+| vnum | Name | Faction | Preset | Location | Hook |
+|---|---|---|---|---|---|
+| `cendre:service-olympe` | Madame Olympe | none | none (mortal) | Fortune teller's nook | "Go here if confused" plot-beat hints |
+| `cendre:service-leon` | Old Léon | none | none (mortal) | His barge at the riverfront docks | NO DEFERRAL. Barge captain — transport stub for future inter-area linkage |
 
-#### E. Authority of the Living: City Guard
+#### H. Mechanical footprint
 
-- **Capitaine Roussel** — head of the Saint-Cendre Garrison. Patrols main streets by day with subordinate guards. Use existing `town_guard_captain` preset. All retire to **the Garrison** at night, leaving the streets to the Clans.
-- **~4-6 patrol guards** (also use `town_guard_captain` preset, scaled down via per-mob field overrides if needed) on `daily_routine`: 6-20 patrol the Cathedral Square / Riverfront / Opera Square, then march to the Garrison and stay indoors overnight.
-
-(No separate `guard` base preset exists in the current codebase; `town_guard_captain` is the closest match. Migrant guards from the immigration `guard` variation are a separate, dynamically-spawned population — used opportunistically for street density, not as the static patrol roster.)
-
-#### F. Hidden Threats & Wild Cards
-
-- **Sabbat infiltrator: "the Stranger"** — an unknown vampire breaking the Masquerade. Antagonist for the area's central plot (Phase 3). Doesn't appear in dialogue lists; spotted only via specific quest steps.
-- **Vampire hunters (~2-3)** — use existing `vampire_hunter` mobile preset. Patrol cemeteries and back alleys at night (DG trigger or routine). Hostile to anyone with `vampire` flag.
-- **Anarch agitator: "Casey Boudreaux"** — young, defected from Brujah, runs a clandestine cell. Argues against the truce. Optional faction path for players who don't want to join an established clan via the standard sire-quest. (May not ship in v1; reserve as a future expansion hook.)
-
-#### G. Information / Service Hubs
-
-- **Madame Olympe** — a fortune teller in the Quarter (mortal seer). The "go here if confused" NPC. Cheap dialogue hints at the next plot beat; thin gameplay layer between phases.
-- **The Caretaker** (already listed under Nosferatu sires) doubles as the world's information broker — paid in service, not money.
-- **Old Léon** — a barge captain at the riverfront. Transport hub if Saint-Cendre ever connects to other areas (forward-compat hook; not required for v1).
-
-#### H. Mechanical Footprint Summary
-
-- **5 sire NPCs** with `EmbraceClan` quest each → ~5 quests, ~5 multi-node dialogue trees with `IsThinblood`/`IsClanAcknowledged` gates
-- **3 court NPCs** (Prince, Seneschal, Harpy)
-- **~12-15 clan support NPCs** (2-3 per district)
-- **~8-10 mortal day-Quarter NPCs** with time-gated routines
-- **6-8 guard mobiles** (Capitaine + patrol, all from `town_guard_captain` preset)
-- **~3 wild-card threats** (hunters + Sabbat infiltrator)
-- **~2-3 service NPCs** (fortune teller, broker, optional barge captain)
-
-**Estimated total unique mobiles: ~40**, plus migrant spawns from `immigration_vampire_chance`.
+- **45 named prototypes**: A=3, B=5, C=15, D=8, E=7, F=5, G=2
+- **22 vampires** (need `IsThinblood`/`IsClanAcknowledged` dialogue gates in Phase 6)
+- **16 mortals** (no preset, default lvl 1)
+- **7 guards** (single preset, shared routine pattern)
+- 5 `EmbraceClan` quests (one per sire) attach to vnums `cendre:sire-{brujah,toreador,ventrue,nosferatu,gangrel}` in Phase 6
+- Plus migrant arrivals via `immigration_vampire_chance: 0.3` (live since Phase 1.7 update)
 
 ### Build plan for this phase
-No build this phase; cast bodies are built in Phase 6 once their districts exist (Phase 5).
+
+8 slices creating 45 `create_mobile` prototypes against `ironmud-public`. **No spawn points, no dialogue trees, no daily routines** — those are Phase 6. Prototypes live as templates until Phase 5 ships their rooms.
+
+Per-mob spec: `name`, `vnum`, `short_desc`, `long_desc` are required. For vampire NPCs using `vampire_elder` preset: call `create_mobile` first, then `apply_mobile_preset`, then `update_mobile` to override `faction` (preset bakes in `camarilla`). Mortals get no preset; default level 1. Guards get `town_guard_captain` via `apply_mobile_preset` and keep the preset's `town_watch` faction.
 
 ### Slices
-No slices.
+
+#### Slice 2.1 — Court & Authority (3)
+- **Goal**: Create the three court NPCs as elder vampires with clan-specific factions.
+- **Deliverables**: `cendre:prince-larue`, `cendre:seneschal-mireille`, `cendre:harpy-theo`. Each: `create_mobile` → `apply_mobile_preset vampire_elder` → `update_mobile` to override `faction`.
+- **Done when**: `get_mobile` on each returns the correct `name`, `faction` (not `camarilla`), `level: 18`.
+
+#### Slice 2.2 — Five Sires (5)
+- **Goal**: Five clan sires with faction overrides — these are the load-bearing NPCs for the embrace track.
+- **Deliverables**: `cendre:sire-{brujah,toreador,ventrue,nosferatu,gangrel}`. Same create+preset+override pattern as 2.1.
+- **Done when**: `get_mobile` on each returns the in-fiction full name (e.g. "Antoine \"Tony\" Rivière" exactly, since this string becomes the player's `sire`).
+
+#### Slice 2.3 — Clan Support: Foundry + Conservatory (6)
+- **Goal**: 3 NPCs per district for the first two clan districts.
+- **Deliverables**: `cendre:foundry-{beau,marisol,bones}`, `cendre:conservatory-{etienne,cassandra,aldo}`. Ghouls/mortals get no preset; initiates get `vampire_goon` via `apply_mobile_preset` (faction override needed since `vampire_goon` has no preset-set faction).
+- **Done when**: 6 prototypes exist with correct factions and levels.
+
+#### Slice 2.4 — Clan Support: Bourse + Catacombs + Bayou (9)
+- **Goal**: 3 NPCs per district for the remaining three clan districts.
+- **Deliverables**: `cendre:bourse-{pierre,lucien,clerk}`, `cendre:catacomb-{acolyte,ribcage,sexton}`, `cendre:bayou-{andre,coyote,fisherman}`. Same pattern as 2.3.
+- **Done when**: 9 prototypes exist with correct factions.
+
+#### Slice 2.5 — Mortal Day-Cast (8)
+- **Goal**: 8 mortal NPCs that run the visible day economy.
+- **Deliverables**: `cendre:mortal-{beauchamp,lefevre,agathe,pere-dominique,cafe-henri,fishmonger,hotel-clerk,opera-attendant}`. No preset, no faction.
+- **Done when**: 8 prototypes exist, all level 1, no faction.
+
+#### Slice 2.6 — City Guard (7)
+- **Goal**: 7 patrol guards using `town_guard_captain` preset.
+- **Deliverables**: `cendre:guard-{roussel,picard,vincent,lambert,tisserand,renaud,cormier}`. `create_mobile` → `apply_mobile_preset town_guard_captain`. Keep preset's `town_watch` faction.
+- **Done when**: 7 prototypes exist, all level 8, faction `town_watch`.
+
+#### Slice 2.7 — Hidden Threats (5)
+- **Goal**: Antagonist roster.
+- **Deliverables**: `cendre:threat-stranger` (vampire_elder, faction override → `sabbat`), `cendre:threat-hunter-{coyle,brennan,voss}` (vampire_hunter, default faction), `cendre:threat-casey-anarch` (vampire_goon, faction override → `anarch_unbound`).
+- **Done when**: 5 prototypes exist with correct factions per row.
+
+#### Slice 2.8 — Service Hubs (2)
+- **Goal**: Two unique mortal service NPCs.
+- **Deliverables**: `cendre:service-olympe`, `cendre:service-leon`. No preset, no faction.
+- **Done when**: 2 prototypes exist, level 1.
 
 ### Definition of phase done
-Cast design approved. Footprint summary numbers feed Phase 6's slice sizing.
+
+- All 8 slices' DoDs met.
+- `list_mobile_prototypes_summary` filtered to `cendre` prefix returns 45 entries (the 13 anchor rooms remain on the room side; mobs are a separate namespace).
+- Spot-check via `get_mobile`:
+  - `cendre:sire-brujah` — `name: "Antoine \"Tony\" Rivière"`, `faction: "clan_brujah"`, `level: 18`.
+  - `cendre:seneschal-mireille` — `faction: "clan_toreador"`, `level: 18`.
+  - `cendre:guard-roussel` — `faction: "town_watch"`, `level: 8`.
+  - `cendre:mortal-beauchamp` — no preset, no faction, `level: 1`.
+  - `cendre:threat-stranger` — `faction: "sabbat"`, `level: 18`.
+
+Spawn points, dialogue trees, daily routines, and quest configs all wait for Phase 6 (per skill phase-ordering).
+
+### Phase 2 build log (2026-05-10)
+- All 8 slices shipped. 45 prototypes live on `ironmud-public` under `cendre:` prefix (verified via `list_mobile_prototypes_summary`).
+- Breakdown matches catalog: 3 court + 5 sires (all lvl 18 elders with clan factions) + 15 support (5 vampire_goon initiates lvl 6, 10 mortals lvl 1) + 8 day-cast mortals + 7 guards (town_guard_captain preset, lvl 8, faction `town_watch`) + 5 threats (Stranger lvl 18 faction `sabbat` with `unique` flag, 3 hunters lvl 10, Casey lvl 6 faction `anarch_unbound`) + 2 service mortals.
+- **Discovered**: `vampire_elder` preset DOES override faction to `camarilla` — confirmed by responses. Pattern locked in: create → preset → update faction. Documented for Phase 6 onboarding.
+- **Discovered**: `vampire_goon` preset adds `aggressive: true`. Cleared on all 5 initiates + Casey since they're social roles, not random monsters. `vampire_hunter` preset does NOT add aggressive — left as-is on the 3 hunters; their hostility to vampires will need to come from Phase 6 dialogue/trigger work.
+- **Prince Larue note**: a stray `</long_desc>` in my first call corrupted his long_desc field; fixed via `update_mobile`. Going forward, avoid literal close-tag-like text inside parameter values.
+- No spawn points placed yet — prototypes are templates only. Phase 5 (rooms) and Phase 6 (spawn points + dialogue + routines + quests) will bring them into the world.
 
 ---
 
@@ -312,6 +399,221 @@ These paths are lower priority than the vampire flow but the area should support
 
 Atmospheric, slow-burn noir. NPCs talk in fragments; nobody dumps a quest log on you. Information is currency. The Masquerade is the ambient pressure that makes overt actions costly. The city is beautiful by day on purpose — the contrast is the point.
 
+---
+
+### Deep dive (2026-05-10)
+
+The sections below extend the high-level plot above into a vnum-keyed wiring spec. They reconcile three frame gaps with Phase 4: (a) 3 murders vs 5 investigation quests → 5 investigations are 5 angles on 3 murders + 1 hideout discovery; (b) "five Primogen" at the endgame court → Primogen = the 5 sires; (c) Casey Boudreaux and the 3 hunters' positions in the plot. Every Layer-1/2/3 narrative beat traces back to a specific NPC vnum from the Phase 2 cast catalog.
+
+#### 3.A The Three Murders (named, attributed)
+
+1. **Mathilde Roux** — Toreador soprano, ~5 weeks pre-arrival.
+   - Found at dawn in the cathedral fountain, drained.
+   - Frame: Ventrue (she had a financial dispute with Magistrate Henri).
+   - True: Stranger lured her to a "secret meeting" using Obfuscate to wear Henri's face + a forged Ventrue signet as bona fides. Killed her under cover, dumped the body in the fountain at first light.
+   - Discovery witness: `cendre:mortal-agathe` (Sister Agathe — found body at matins).
+   - Investigation pieces this murder feeds: Q-I1 (forged signet, recovered in Foundry) + Q-I2 (her dresser remembers the meeting).
+
+2. **Marcel "Iron Marcel" Lacombe** — Brujah enforcer, ~3 weeks pre-arrival. (Distinct from Mathilde — Roux/Lacombe are separate surnames. Phase 3 currently says "Brujah enforcer staked in the courthouse steps with a Ventrue signet"; named here.)
+   - Staked on the courthouse steps with a forged Ventrue signet pressed into his palm — the *same forge* as Mathilde's framing signet, which is the player's first cross-murder pattern.
+   - Frame: Ventrue (the staking is overtly clan-coded).
+   - True: Stranger followed Marcel to a back-alley payoff drop, killed him with a Ventrue-style stake (made days earlier and aged with mud).
+   - Discovery witness: `cendre:guard-vincent` (Caporal Vincent, on courthouse patrol that night).
+   - Investigation pieces this murder feeds: Q-I3 (foreign-source funds in the Bourse ledger explain who's bankrolling the forger).
+
+3. **Gris-de-fer** — Nosferatu emissary, the Caretaker's longest-serving warden. ~1 week pre-arrival.
+   - Found in the bayou with gangrel claw-marks that "no actual claws would have left" (too clean, wrong angle).
+   - Frame: Gangrel — specifically Ma'tante Solange, who had a century-old feud with Gris-de-fer.
+   - True: Stranger killed him in the catacombs, moved the body to the bayou pre-dawn.
+   - Discovery witness: `cendre:bayou-andre` (Big Andre, found the body on a dawn run).
+   - Investigation pieces this murder feeds: Q-I4 (Caretaker's soil analysis proves body was moved) + Q-I5 (scent trail from where the body was actually killed leads back to Stranger's safehouse).
+
+#### 3.B Rumor & Atmosphere Mesh (per-NPC Layer ownership)
+
+Canonical "who says what" for Phase 6 dialogue tree default branches. Columns:
+- **L1 (atmosphere)**: short ambient line, no gates. The mob's say-trigger or default greeting.
+- **L2 (clan/embrace)**: branch for unaligned thinbloods; steers toward (or away from) a clan.
+- **L3 (investigation)**: branch behind `IsClanAcknowledged` OR an `investigation_*` flag OR `met_all_sires`.
+
+Each of the 45 NPCs has at minimum a Layer 1 line. ~22 have Layer 2; ~15 have Layer 3. Dashes (—) mean the layer is intentionally empty for that NPC.
+
+**A. Court & Authority**
+
+| NPC vnum | L1 | L2 | L3 |
+|---|---|---|---|
+| `cendre:prince-larue` | "The Concord holds. It must hold." | — | "Your service has not gone unnoticed." → post-Q7: "Saint-Cendre owes you a debt that will not be forgotten." |
+| `cendre:seneschal-mireille` | (first-meet orientation monologue, Q1 trigger) | "The sires await. Choose well." | Q1 giver; Q7 evidence-presentation branch behind ≥3 investigation flags |
+| `cendre:harpy-theo` | (5-clan rumor hub — existing Phase 2 hook) | "Which clan calls to you?" | "You should be asking who *gains* from this." (entry to Layer 3) |
+
+**B. Five Sires**
+
+| NPC vnum | L1 | L2 | L3 |
+|---|---|---|---|
+| `cendre:sire-brujah` (Tony) | "Talk's cheap. Show me." | Q2 offer (Iron and Blood) | "Iron Marcel was mine. Whoever did this answers to me." |
+| `cendre:sire-toreador` (Yvette) | "Beauty endures. Everything else burns." | Q3 offer (An Aesthetic Offering) | "Mathilde was my closest friend. I will not forget who took her." |
+| `cendre:sire-ventrue` (Henri) | "Discipline is the difference between predator and parasite." | Q4 offer (A Matter of Discipline) | "Someone has forged my seal. I want them found." |
+| `cendre:sire-nosferatu` (Caretaker) | "Down here, things keep." | Q5 offer (What the Earth Keeps) | Q-I4 giver — "The soil tells a different story than the body." |
+| `cendre:sire-gangrel` (Solange) | "City vampires forget what they are." | Q6 offer (The Bayou's Choice) | "They want to blame me for Gris-de-fer. I want them dead." |
+
+**C. Clan Support — Foundry**
+
+| NPC vnum | L1 | L2 | L3 |
+|---|---|---|---|
+| `cendre:foundry-beau` | "Drinks are on the house if you're with Tony." | "Tony likes new blood. Stand up straight when you meet him." | "Marcel drank here every Friday. Now there's an empty stool." |
+| `cendre:foundry-marisol` | "Stay sharp." | "Sparring's at midnight. Come if you mean it." | "Marcel wasn't supposed to be at the courthouse. Somebody set him up." |
+| `cendre:foundry-bones` | "Iron Marcel was good for the books. Now he's wood through the chest." | "Tony wants brawlers, not strategists." | (Q-I1 lead) "There was a signet on him. The forge mark was off. Talk to the metalworker on Rue Forge." |
+
+**C. Clan Support — Conservatory**
+
+| NPC vnum | L1 | L2 | L3 |
+|---|---|---|---|
+| `cendre:conservatory-etienne` | "The opera goes on. It always does." | "Lady Yvette appreciates patience. Don't push." | "Mathilde missed her cue the night she died. She never missed cues." |
+| `cendre:conservatory-cassandra` | "Mind where your eyes land." | "Yvette is selective. So am I." | "The dresser saw who she was meeting. Ask gently." |
+| `cendre:conservatory-aldo` | "Mathilde sang 'La Vie en Rose' like she meant every word." | "Yvette is taking applicants. Few." | (Q-I2 lead) "She was meeting someone the night she died. The dresser knows." |
+
+**C. Clan Support — Bourse**
+
+| NPC vnum | L1 | L2 | L3 |
+|---|---|---|---|
+| `cendre:bourse-pierre` | "Numbers don't lie. People do." | "Magistrate Saint-Clair values discretion above all." | "The audit's been odd lately. Émeric's been sleeping at his desk." |
+| `cendre:bourse-lucien` | "Time is money. Don't waste either." | "Henri tests for self-discipline. Most fail." | "Someone's forging seals. Whoever it is, they have access I shouldn't have." |
+| `cendre:bourse-clerk` (Émeric) | "Books are off. Nobody wants to talk about it." | — | (Q-I3 giver) "Foreign deposits, weekly, untraceable. See for yourself." |
+
+**C. Clan Support — Catacombs**
+
+| NPC vnum | L1 | L2 | L3 |
+|---|---|---|---|
+| `cendre:catacomb-acolyte` | "The Caretaker is at his work. Speak softly." | "Few are called below. Be patient." | "Gris-de-fer is here. The Caretaker examined him personally." |
+| `cendre:catacomb-ribcage` | "Don't look at me too long." | "We see what the others miss." | "Gris-de-fer wasn't killed where he was found. The Caretaker can prove it." |
+| `cendre:catacomb-sexton` | "Gris-de-fer wouldn't have died in a bayou. He hated water." | — | "The Caretaker examined the body himself. Ask him about the soil." |
+
+**C. Clan Support — Bayou**
+
+| NPC vnum | L1 | L2 | L3 |
+|---|---|---|---|
+| `cendre:bayou-andre` | "I found him. I don't want to talk about it." | "Solange chooses her own. Ain't no one's call but hers." | (Q-I5 lead) "The claw marks were wrong. There's a smell on the levee that doesn't belong. Coyote can track it." |
+| `cendre:bayou-coyote` | "Bayou tells you things if you listen." | "Solange picks for herself. I just keep the watch." | (Q-I5 giver) "Come with me. Something doesn't smell right out by the levee." |
+| `cendre:bayou-fisherman` (Old Thibodeaux) | "Catfish don't ask questions. Maybe I shouldn't either." | — | "Saw lights at the old shack two nights ago. Wasn't no fisherman." |
+
+**D. Mortal Day-Cast**
+
+| NPC vnum | L1 | L2 | L3 |
+|---|---|---|---|
+| `cendre:mortal-beauchamp` | "Spirits been restless lately." | — | (Q9 giver) "A girl ran off with my gris-gris. Help me find her." |
+| `cendre:mortal-lefevre` | "Estate items come and go. I don't ask where from." | — | — |
+| `cendre:mortal-agathe` | "I found her at matins. Mathilde. I will not speak of it again." | — | "Père Dominique knows more than I about... such things." |
+| `cendre:mortal-pere-dominique` | "The Lord's work is never done. Especially of late." | — | (Q8 giver) "If you would do the Lord's work — bring me proof of three slain night-walkers." |
+| `cendre:mortal-cafe-henri` | "Folks have been disappearing, but the Prince says it's nothing." | — | — |
+| `cendre:mortal-fishmonger` (Boudreaux) | "Fresh catfish! Get 'em while they're cold!" | — | — |
+| `cendre:mortal-hotel-clerk` (Beatrice) | "Welcome to Saint-Cendre. Most folks find it... memorable." | — | (post Act-3 trigger) "Someone was in your room. Didn't take anything. Left a note. I'm sorry, monsieur." |
+| `cendre:mortal-opera-attendant` (Marcellin) | "Tonight's program is sold out, hélas." | — | — |
+
+**E. City Guard**
+
+| NPC vnum | L1 | L2 | L3 |
+|---|---|---|---|
+| `cendre:guard-roussel` | "Stay off the side streets after dark." | — | (Q7 court testimony if captured branch) "I lost good men to this. Whoever's behind it, I want them." |
+| `cendre:guard-picard` | "Rue Royale's clear. For now." | — | — |
+| `cendre:guard-vincent` | "I patrolled the courthouse that night. I found him at dawn. I don't sleep right since." | — | "He was already dead when I got there. Whoever did it knew our shift change." |
+| `cendre:guard-lambert` | "Move along, citoyen." | — | — |
+| `cendre:guard-tisserand` | "Rue de la Cendre at this hour? Be quick about it." | — | — |
+| `cendre:guard-renaud` | "Mind the plaza after sundown." | — | — |
+| `cendre:guard-cormier` | "Riverfront's quiet. Suspiciously so." | — | — |
+
+**F. Hidden Threats**
+
+| NPC vnum | L1 | L2 | L3 |
+|---|---|---|---|
+| `cendre:threat-stranger` | (only speakable post-Q7 step 2 in shack, or captured at court) "You came alone? Bold." | — | (Q7 set-piece) contemptuous reveal lines, capture-branch silence |
+| `cendre:threat-hunter-coyle` | "I smell rot." | — | — |
+| `cendre:threat-hunter-brennan` | "Sun rises on us all eventually, leech." | — | — |
+| `cendre:threat-hunter-voss` | "The bayou's a graveyard. Most don't know yet." | — | — |
+| `cendre:threat-casey-anarch` | (post-discovery only) "Quiet. Door behind you. Quick." | (post-met_all_sires + no Qn started) "There's another way. Stay thinblood, stay free." | "Concord's the only thing keeping this city from open war. Someone wants the war." |
+
+**G. Service Hubs**
+
+| NPC vnum | L1 | L2 | L3 |
+|---|---|---|---|
+| `cendre:service-olympe` | "Sit. The cards will tell us what you've forgotten." | "All five paths can be walked. Only one chooses you." | (post any `investigation_*`) "You stand at a crossing. The shape of it is bigger than you yet know." |
+| `cendre:service-leon` | "Barge ain't going nowhere this season. Storm's coming." | — | "Strangers ride upriver too. Lot of new faces this past year." |
+
+Counts: 45 rows. Layer 1 = 45 (all). Layer 2 = 22 (3 court + 5 sires + 9 clan-support vampires + Olympe + Casey + 3 ghouls in Foundry/Conservatory + others). Layer 3 = 19 NPCs carry an investigation-tier line. (Slightly above the ~15 target estimate.)
+
+#### 3.C The Stranger — MO, Timeline, Discoverability
+
+- **Cover identity**: arrived in Saint-Cendre ~6 months pre-player as a traveling Caitiff seeking sanctuary. Mireille granted minor blood rights; she now half-suspects, half-regrets. (This is the breadcrumb that lets the Q7 endgame work — Mireille has Concord-violating priors she'd prefer not to surface.)
+- **Operating base**: the levee shack on the bayou's edge. Phase 5 builds this in the Bayou's Edge district; player discovers it via Q-I5 but cannot enter without the writ from Q7 step 1.
+- **Disciplines**: Obfuscate (face-changing — explains framing) + Celerity (explains the clean strikes). Phase 6 combat config attaches these as combat_spells.
+- **Kill schedule**: every ~2 weeks, in the 2-3 hours before dawn, in a different district. A player who acquires 3+ investigation pieces will notice the cycle is overdue — the next kill should have happened by now. (Explanation: Stranger has paused operations after sensing investigation; Q-I5's scent trail and Casey's L3 hint both confirm this.)
+- **Awareness of the player**: after the player recovers their **third** investigation piece, the Stranger plants a warning note in the player's room at the tourist hotel (`cendre:mortal-hotel-clerk`'s building — Phase 5 builds a player flop room as a safe haven). DG room trigger in Phase 6, not new mechanics.
+- **Endgame personality**: cold, contemptuous, sees the Camarilla as decadent. If captured (Q7 branch with all 5 investigation pieces), reveals nothing useful — just smirks at the Prince. The capture matters for the `cendre_concord_witness` trait flavor, not for unlocking further content.
+
+#### 3.D Casey Boudreaux — Anarch Wild Card Position
+
+- **Bio**: ~30 years embraced. Sired by an Anarch outside the Camarilla. Slid into Saint-Cendre 4 years ago without the Prince's permission — technically a Concord violation. Survives by hiding in a cellar off Rue de la Cendre (Phase 5 builds this as a single optional room with a `hidden` exit from the Foundry approach).
+- **Belief about the murders**: agrees they're real (not Camarilla-fabricated) but believes the Concord itself is the problem — that any structure that depends on a Prince's monopoly on violence will eventually breed an enemy that breaks it. The Stranger is, in Casey's view, the inevitable consequence.
+- **Player offer**: a **clanless path**. If player has `met_all_sires` AND has not started any of Q2-Q6, Casey offers a Phase-4-deferred quest "The Unsigned Pact." Reward: `anarch_unbound` trait, one preferred discipline of player choice, sire field set to a sentinel string (e.g., "Anarch Unbound"). The existing `EmbraceClan` quest reward mechanism may need a sibling for this; **flagged as a Phase 4 expansion candidate, not in v1 ship**.
+- **Plot function for Layer 3**: Casey is the explicit "name the antagonist" hint source. Without Casey, a player can deduce the Stranger from clues alone; with Casey, the player gets one line of explicit framing ("Someone wants the war.") that turns ambient suspicion into a concrete target.
+- **Discovery**: the hidden cellar room is unreachable without a search prompt. Phase 6 wires a `search` trigger in the Foundry's adjacent alley. Player must spend a `met_all_sires` interaction or a Q-I track piece to learn the hint exists.
+
+#### 3.E The Three Hunters — Independent, Not a Resolution Path
+
+- Coyle, Brennan, Voss are NOT part of the Stranger plot. They're opportunistic hunters drawn by Père Dominique's bounty postings (Q8) and the general rise of supernatural activity the murders have caused.
+- Hostile to all vampires regardless of clan or faction. They will not negotiate, cannot be recruited against the Stranger, will not appear at the endgame court.
+- Phase 6 wires night-only spawns (`daily_routine`) and aggression triggers vs `vampire`-flagged characters.
+- Plot function: pure Layer 1. Their presence is what makes Saint-Cendre dangerous at night for new vampires and motivates the player to seek a clan haven. They are also Q8's atmospheric backdrop (Père Dominique is paying mortals to do what the hunters already do for ideology).
+
+#### 3.F Court of the Concord — Endgame Scene Cast (Q7)
+
+**Primogen = the 5 sires.** Court scene cast = 8 NPCs + optional Stranger:
+
+| Role | vnum |
+|---|---|
+| The Prince | `cendre:prince-larue` |
+| Seneschal (moderator, evidence-presenter) | `cendre:seneschal-mireille` |
+| Harpy (officiator, calls speakers) | `cendre:harpy-theo` |
+| Brujah Primogen | `cendre:sire-brujah` |
+| Toreador Primogen | `cendre:sire-toreador` |
+| Ventrue Primogen | `cendre:sire-ventrue` |
+| Nosferatu Primogen | `cendre:sire-nosferatu` |
+| Gangrel Primogen | `cendre:sire-gangrel` |
+| (Optional) The Stranger, captured | `cendre:threat-stranger` |
+
+- **Venue**: a new room `cendre:court-chamber` inside the Hôtel de Larue. Phase 5 builds this as part of the Hôtel district. Marked `combat_zone: Safe` for the scene's duration via a DG room flag flip.
+- **Mechanism**: a one-time DG trigger fires when the player enters the chamber with the writ + ≥3 investigation pieces. Trigger summons the 8 NPCs via `db.move_mobile_to_room`. Phase 6 writes the trigger script and the set-piece dialogue tree. Branch points:
+  - 3 pieces → minimum-evidence reveal; Stranger named but escapes off-screen (canonical for re-spawn-on-respawn).
+  - 4 pieces → fuller reveal; Stranger named with method.
+  - 5 pieces → full reveal AND capture branch is offered (player chose capture vs kill earlier in the shack).
+- **Resolution**: trait `cendre_concord_witness` on player; heirloom item from the Prince; spawn-tick + `replace_on_respawn: true` on the Stranger prototype keeps the world's struggle going for future players.
+
+#### 3.G Three-Act Player Experience Arc
+
+For Phase 6 dialogue pacing. Each act is a cognitive state, not a hard quest gate.
+
+- **Act 1 — Arrival to Q1 done.** Orientation. Player has met Mireille, visited all 5 sires (no commitment), heard Théo's clan rumors. Knows the Concord exists, knows people are dying, has no theory of who. NPCs default to Layer 1.
+- **Act 2 — Clan picked OR first investigation piece.** Player commits to a clan and/or stumbles into an investigation. Layer 2 dialogue activates for the chosen clan's NPCs. Layer 3 dialogue activates for any NPC tied to a piece the player has collected. Investigations are independent — picking Brujah doesn't block Toreador-district investigations.
+- **Act 3 — 3+ investigation pieces.** Endgame opens. Stranger plants the warning note (DG trigger). Mireille's Q7 evidence-presentation branch unlocks. Other NPCs' Layer 3 lines escalate ("It's gone too far, isn't it?"). Casey (if discovered) names the antagonist explicitly. Player executes Q7.
+
+Embrace and investigation paths are independent — a character can do all 5 investigations as a thinblood and reach the endgame without ever picking a clan. Casey's clanless path (if Phase 4 expansion ships) is the canonical "thinblood concord witness" route.
+
+#### 3.H Standing / Reputation System
+
+**Defer to post-v1.** Saint-Cendre v1 does NOT introduce numeric standing. State the player carries:
+- Faction tag (after embrace): `clan_brujah` etc., affects mob defense pools.
+- Traits: `met_all_sires`, `cendre_concord_witness`, `anarch_unbound` (only if Casey's expansion ships).
+- Quest flags: `investigation_signet`, `investigation_meeting`, `investigation_money`, `investigation_moved_body`, `investigation_safehouse`.
+- Clan-locked dialogue: gated on faction tag and on `IsClanAcknowledged`. Out-of-clan NPCs default to neutral, not hostile — except Anarch Casey (gated separately) and the hunters (always hostile to vampires).
+
+Phase 6 should NOT add traits beyond this list.
+
+#### 3.I Out of Scope for the Deep Dive
+
+- Writing actual dialogue lines (Phase 6 — the table in 3.B captures the *intent* per NPC, not the final wording).
+- Adding new NPCs (the 45-mob cast is locked).
+- Adjusting the 14 quest specs in Phase 4 (those are approved; this deep dive uses them as fixed inputs and only **flags** Casey's clanless-path as a Phase 4 expansion candidate without modifying Phase 4).
+- Building any rooms, items, or DG triggers (Phase 5 + 6).
+- Numeric reputation / standing system.
+
 ### Build plan for this phase
 No build this phase; plot is the connective spine for Phase 4 quests and Phase 6 dialogue trees.
 
@@ -321,13 +623,25 @@ No slices.
 ### Definition of phase done
 Plot design approved.
 
+### Phase 3 deep-dive log (2026-05-10)
+- Subsections 3.A–3.I appended after the Tone paragraph; the original high-level Phase 3 design (Question, Concord, Crisis, Stranger, Player Role, Persistence, Non-vampire paths, Tone) stays intact as the narrative frame.
+- **Murder victims named**: Mathilde Roux (Toreador), Iron Marcel Lacombe (Brujah), Gris-de-fer (Nosferatu). Each gets a discovery-witness NPC vnum from the Phase 2 catalog: `cendre:mortal-agathe`, `cendre:guard-vincent`, `cendre:bayou-andre`.
+- **3-murder vs 5-investigation reconciliation locked**: Q-I1+Q-I2 → Mathilde; Q-I3 → Marcel funding chain; Q-I4+Q-I5 → Gris-de-fer + Stranger hideout.
+- **Rumor mesh** (3.B) covers all 45 NPCs — 45 L1 lines, 22 L2 lines, 19 L3 lines. Each Phase-4 quest giver/lead is wired to the canonical NPC vnum.
+- **Court of the Concord cast frozen at 8** (Prince + Mireille + Théo + 5 sires) + optional captured Stranger. New room `cendre:court-chamber` added to Phase 5 build asks (Hôtel de Larue district).
+- **Casey Boudreaux positioned** as the explicit Layer-3 "name the antagonist" source via a `met_all_sires`-gated cellar discovery. The clanless "Unsigned Pact" path is **flagged as a Phase 4 expansion candidate**, not in v1.
+- **Three hunters confirmed non-plot**: Layer-1 atmosphere + Q8 backdrop only, never recruited or court-summoned.
+- **Standing system deferred to post-v1**. Per-character state for v1 = faction tag + 3 traits + 5 investigation flags. Phase 6 should not introduce more.
+- Status table row updated: Phase 3 now shows "✅ approved · ✅ deep-dive approved (2026-05-10)".
+- Phase 4 (Seed Quests) is unchanged — the deep dive uses its 14 quests as fixed inputs.
+
 ---
 
 ## Phase 4: Seed Quests
 
 ### Design
 
-Ship-list for v1: **14 quests** total (1 tutorial, 5 clan embraces, 5 district investigations, 1 endgame, 2 mortal-side).
+Ship-list for v1: **15 quests** total (1 tutorial, 5 clan embraces, 5 district investigations, 1 endgame, 2 mortal-side, 1 anarch).
 
 **Two parallel tracks** — embrace and investigation are decoupled so a single character can reach the endgame solo:
 - **Embrace track** (Q2-Q6): only available to unaligned thinbloods. Each is a clan-themed recruitment trial. Picking one is permanent (`clan_<name>` trait), so each character will only ever do *one* of these.
@@ -436,7 +750,155 @@ This summary is the explicit input to Phase 6's slice list. Aggregated build ask
 - **Per-character quest flags**: 5 investigation pieces + 1 met_all_sires + clan acknowledgment (already wired)
 
 #### Deferred from v1
-Anarch quest line, cross-area transport, diablerie/blood-bond, festival/scheduled day events.
+Cross-area transport, diablerie/blood-bond, festival/scheduled day events. (Anarch quest line promoted to Q10 in v1 per the deep-dive review below.)
+
+---
+
+### Deep dive (2026-05-10)
+
+The sections below extend Phase 4 into a `QuestData`-ready spec. They (a) reconcile every "NEW unique mobile" against the Phase 2 cast + Phase 3 mesh, (b) assign canonical vnums for every NPC / item / room the quests touch, (c) map each quest to `src/types/quests.rs` enum tags, and (d) flag the 6 code prereqs Phase 6 must land before all 15 quests work. Phase 4 ships pure design — none of this is built here.
+
+#### 4.A NPC Reconciliation (with Phase 2 + Phase 3 mesh)
+
+**Reused from the existing 45-cast (no new prototypes needed):**
+
+| Quest role | Resolved vnum | Notes |
+|---|---|---|
+| Q-I3 giver | `cendre:bourse-clerk` (Émeric) | Phase 2 has him as "courthouse clerk"; reconciled in-fiction as courthouse-clerk-by-day, private-bourse-auditor-evenings. Phase 6 wires the bank-office dialogue node on his tree. |
+| Q-I4 giver | `cendre:sire-nosferatu` (the Caretaker) | Dialogue branch bypasses `IsClanAcknowledged` for this thread. |
+| Q-I5 giver | `cendre:bayou-coyote` | Phase 3.B already assigned this; Phase 4's "Gangrel scout (NEW)" is folded into Coyote. |
+| Q7 antagonist | `cendre:threat-stranger` | Already in cast. |
+| Q8 giver | `cendre:mortal-pere-dominique` | Already in cast. |
+| Q9 giver | `cendre:mortal-beauchamp` | Already in cast. |
+| Q10 giver | `cendre:threat-casey-anarch` | Already in cast. |
+
+**NEW NPC prototypes needed (8 — cast total 45 → 53):**
+
+| vnum | Quest | Role | Preset / faction |
+|---|---|---|---|
+| `cendre:foundry-metalworker` | Q-I1 | Brujah-friendly mortal who forged the signet under duress | mortal, no preset, no faction |
+| `cendre:foundry-enforcer` | Q2 | Brujah fight-pit opponent (escalating levels via spawn instances) | `vampire_goon` preset, faction `clan_brujah`, `world_max_count: 3` |
+| `cendre:conservatory-dresser` | Q-I2 | Mathilde's traumatized dresser | mortal, no preset, no faction |
+| `cendre:conservatory-collector` | Q3 | Defaulting collector hoarding the painting | mortal, no preset, no faction |
+| `cendre:bourse-debtor` | Q4 | Delinquent ghoul ducking Henri's debt | mortal ghoul, no preset, faction `clan_ventrue` |
+| `cendre:catacomb-risen` | Q5 | Minor undead in the catacomb branch | no preset, ~level 5, `world_max_count: 2`, no faction |
+| `cendre:bayou-predator-gator` | Q6 | The bayou's designated predator | no preset, beast stats (~level 8), no faction |
+| `cendre:mortal-thief-customer` | Q9 | Customer who fled with the unpaid gris-gris | mortal, no preset, no faction |
+
+#### 4.B Per-Quest Mechanical Spec (`QuestData`-ready)
+
+Each quest gets a canonical `cendre:q-<key>` vnum. Objective and reward types match `src/types/quests.rs` enum tags. Cells marked **(P6 code task #N)** flag mechanics that require new schema/handler work — see §4.E.
+
+| Quest vnum | Name | Giver | Prereq | Objectives | Rewards |
+|---|---|---|---|---|---|
+| `cendre:q-tutorial` | A Stranger in Saint-Cendre | `cendre:seneschal-mireille` | none | 5× VisitRoom: `cendre:foundry-office`, `cendre:conservatory-box`, `cendre:bourse-chamber`, `cendre:catacombs-chamber`, `cendre:bayou-hut` | Item `cendre:item-journal` ×1, Achievement `cendre_met_all_sires` |
+| `cendre:q-embrace-brujah` | Iron and Blood | `cendre:sire-brujah` | `cendre:q-tutorial` | KillMob `cendre:foundry-enforcer` ×3 | EmbraceClan { clan: "brujah" } |
+| `cendre:q-embrace-toreador` | An Aesthetic Offering | `cendre:sire-toreador` | `cendre:q-tutorial` | BringItem `cendre:item-painting` ×1, return_to `cendre:sire-toreador` | EmbraceClan { clan: "toreador" } |
+| `cendre:q-embrace-ventrue` | A Matter of Discipline | `cendre:sire-ventrue` | `cendre:q-tutorial` | BringItem `cendre:item-debt-marker` ×1, return_to `cendre:sire-ventrue` | EmbraceClan { clan: "ventrue" } |
+| `cendre:q-embrace-nosferatu` | What the Earth Keeps | `cendre:sire-nosferatu` | `cendre:q-tutorial` | BringItem `cendre:item-relic` ×1, return_to `cendre:sire-nosferatu` | EmbraceClan { clan: "nosferatu" } |
+| `cendre:q-embrace-gangrel` | The Bayou's Choice | `cendre:sire-gangrel` | `cendre:q-tutorial` | KillMob `cendre:bayou-predator-gator` ×1, BringItem `cendre:item-bayou-trophy` ×1 return_to `cendre:sire-gangrel` | EmbraceClan { clan: "gangrel" } |
+| `cendre:q-i1-signet` | The Forged Signet | `cendre:foundry-metalworker` | none | BringItem `cendre:item-signet-forged` ×1 (no return_to — completes via dialogue) | Achievement `cendre_investigation_signet` |
+| `cendre:q-i2-aria` | The Last Aria | `cendre:conservatory-dresser` | none | BringItem `cendre:item-opera-ticket` ×1, VisitRoom `cendre:conservatory-box-office`, BringItem `cendre:item-guest-log` ×1 | Achievement `cendre_investigation_meeting` |
+| `cendre:q-i3-accounts` | Quiet Accounts | `cendre:bourse-clerk` | none | BringItem `cendre:item-audit-ledger` ×1, return_to `cendre:bourse-clerk` | Achievement `cendre_investigation_money` |
+| `cendre:q-i4-soil` | Wrong Soil | `cendre:sire-nosferatu` | none | BringItem `cendre:item-soil-bayou` ×1, BringItem `cendre:item-soil-catacomb` ×1, VisitRoom `cendre:catacombs-exam-chamber` | Achievement `cendre_investigation_moved_body` |
+| `cendre:q-i5-scent` | A Scent That Shouldn't Be | `cendre:bayou-coyote` | none | 4× VisitRoom: `cendre:bayou-trail-1`, `cendre:bayou-trail-2`, `cendre:bayou-trail-3`, `cendre:bayou-shack-exterior` | Achievement `cendre_investigation_safehouse` |
+| `cendre:q-endgame-court` | Court of the Concord | `cendre:seneschal-mireille` | ≥3 of {q-i1..q-i5} completed **(P6 code task #3)** | BringItem `cendre:item-writ` ×1, KillMob `cendre:threat-stranger` ×1 (capture branch swaps via DialogueChoice), VisitRoom `cendre:court-chamber` | Item `cendre:item-heirloom` ×1, Achievement `cendre_concord_witness` |
+| `cendre:q-mortal-bounty` | Bounty of Saint-Cendre | `cendre:mortal-pere-dominique` | none | KillMob (vampire-flagged) ×3 **(P6 code task #5)** | Gold 200, Item `cendre:item-silver-knife` ×1 (`repeatable: true`) |
+| `cendre:q-mortal-charm` | Madame Beauchamp's Lost Charm | `cendre:mortal-beauchamp` | none | BringItem `cendre:item-gris-gris` ×1, return_to `cendre:mortal-beauchamp` | Item `cendre:item-rabbit-foot` ×1 |
+| `cendre:q-anarch-pact` | The Unsigned Pact | `cendre:threat-casey-anarch` | `cendre_met_all_sires` achievement held AND no `cendre:q-embrace-*` started or completed **(P6 code tasks #2 + #6)** | BringItem `cendre:item-anarch-pact-token` ×1, return_to `cendre:threat-casey-anarch` | **NEW reward variant** `EmbraceAnarch { discipline: <player choice> }` **(P6 code task #1)** |
+
+15 quests total. Vnum convention: `cendre:q-<key>`. Q-I track IDs use `cendre:q-i<n>-<key>` to avoid prefix collision.
+
+#### 4.C Item Vnum Catalog (18 items in v1; 1 deferred)
+
+| vnum | Name | Used by | Notes |
+|---|---|---|---|
+| `cendre:item-journal` | une cendre carnet | Q1 reward | Readable via `note_content`; flavor only |
+| `cendre:item-foundry-token` | a brass fight-pit token | Q2 objective | Earned in the fight pit, returned to Tony |
+| `cendre:item-painting` | a small oil portrait, "L'Aurore" | Q3 objective | Returned to Yvette |
+| `cendre:item-debt-marker` | a wax-sealed promissory note | Q4 objective | Returned to Henri |
+| `cendre:item-relic` | a corroded silver pendant | Q5 objective | Returned to Caretaker |
+| `cendre:item-bayou-trophy` | a gator's jagged tooth | Q6 objective | Returned to Solange |
+| `cendre:item-signet-forged` | a forged Ventrue signet | Q-I1 | Player retains as evidence |
+| `cendre:item-opera-ticket` | a torn opera ticket stub | Q-I2 | Readable seat number |
+| `cendre:item-guest-log` | the opera box-office guest log | Q-I2 | Readable via `note_content` |
+| `cendre:item-audit-ledger` | a bound audit ledger | Q-I3 | Readable; irregular entries |
+| `cendre:item-soil-bayou` | a vial of bayou earth | Q-I4 | |
+| `cendre:item-soil-catacomb` | a vial of catacomb dust | Q-I4 | |
+| `cendre:item-victim-corpse` | Gris-de-fer's body | Q-I4 set-dressing | Non-pickup room item |
+| `cendre:item-writ` | the Seneschal's writ of search | Q7 | Bypasses shack lock |
+| `cendre:item-heirloom` | the Prince's signet ring (gift) | Q7 reward | Decorative + small bonus |
+| `cendre:item-silver-knife` | a silver-edged knife | Q8 reward | `night_vision` flag |
+| `cendre:item-gris-gris` | a leather pouch of bones and feathers | Q9 objective | |
+| `cendre:item-rabbit-foot` | une patte de lapin | Q9 reward | Minor luck buff |
+| ~~`cendre:item-anarch-pact-token`~~ | ~~a blank, unsigned coin~~ | ~~Q10 objective~~ | **Deferred to post-v1** alongside Q10 (Casey's Unsigned Pact, Phase 3 expansion candidate). Do not build in Phase 6 v1. |
+
+#### 4.D Room Vnum Catalog (23 quest-specific rooms)
+
+Beyond the 13 anchor rooms (Phase 1) and the standard district build (Phase 5 baseline).
+
+| vnum | Quest(s) | District |
+|---|---|---|
+| `cendre:hotel-foyer` | Q1 entry | Hôtel de Larue |
+| `cendre:court-chamber` | Q7 | Hôtel de Larue |
+| `cendre:foundry-pit` | Q2 | Foundry |
+| `cendre:foundry-metalworker-shop` | Q-I1 | Foundry |
+| `cendre:foundry-metalworker-back` | Q-I1 (hiding spot) | Foundry |
+| `cendre:foundry-cellar` | Casey discovery (Phase 3.D), Q10 | Foundry |
+| `cendre:conservatory-dressing-room` | Q-I2 | Conservatory |
+| `cendre:conservatory-box-office` | Q-I2 | Conservatory |
+| `cendre:conservatory-collector-apt-1` | Q3 | Conservatory |
+| `cendre:conservatory-collector-apt-2` | Q3 (optional second room) | Conservatory |
+| `cendre:bourse-bank-office` | Q-I3 | Bourse |
+| `cendre:catacombs-branch-1` | Q5 | Catacombs |
+| `cendre:catacombs-branch-2` | Q5 | Catacombs |
+| `cendre:catacombs-branch-3` | Q5 | Catacombs |
+| `cendre:catacombs-branch-4` | Q5 | Catacombs |
+| `cendre:catacombs-exam-chamber` | Q-I4 | Catacombs |
+| `cendre:bayou-trail-1` | Q-I5 | Bayou |
+| `cendre:bayou-trail-2` | Q-I5 | Bayou |
+| `cendre:bayou-trail-3` | Q-I5 | Bayou |
+| `cendre:bayou-shack-exterior` | Q-I5, Q7 entry | Bayou |
+| `cendre:bayou-shack-interior-1` | Q7 (locked, requires writ) | Bayou |
+| `cendre:bayou-shack-interior-2` | Q7 | Bayou |
+| `cendre:bayou-shack-evidence-cache` | Q7 (5-piece capture branch) | Bayou |
+
+**Plus 5 haven-entry rooms** referenced by Q1, which are part of standard Phase 5 district builds (not net-new for Phase 4):
+- `cendre:foundry-office` (Tony) — Foundry
+- `cendre:conservatory-box` (Yvette) — Conservatory
+- `cendre:bourse-chamber` (Henri) — Bourse
+- `cendre:catacombs-chamber` (Caretaker) — Catacombs
+- `cendre:bayou-hut` (Solange) — Bayou
+
+#### 4.E Phase 6 Code Prereqs (6 items)
+
+Concrete Rust/Rhai work Phase 6 must land before all 15 quests function. None of this is Phase 4 build — Phase 4 ships pure design.
+
+1. **`QuestReward::EmbraceAnarch { discipline: String }`** (Q10). New variant in `src/types/quests.rs` parallel to `EmbraceClan` (line 115). Behavior: lift thinblood gates (blood pool 6→10, refill blood, sun damage normal, humanity normal, tier-3 disciplines unlocked), set `sire = "Anarch Unbound"` sentinel, grant `anarch_unbound` trait, seed 1 dot of the player-chosen discipline. Handler lives next to the `EmbraceClan` handler around `src/quest/mod.rs:428-465`.
+2. **Discipline-pick mechanism for Q10**. Two implementation options for Phase 6: (a) a new `QuestRewardChoice` mechanism where Casey's offer presents 5 discipline options and the chosen one's name is stored as a per-quest var consumed by reward delivery; (b) Casey's dialogue dispatches to one of 5 sub-quest vnums (`cendre:q-anarch-pact-potence/celerity/auspex/obfuscate/fortitude`) each carrying a hardcoded `EmbraceAnarch { discipline: "..." }`. (a) is cleaner; (b) uses only existing primitives.
+3. **Set-count quest prereq** (Q7). Need either a new `QuestData.prereq_min_completed_from: Option<(Vec<String>, i32)>` field, OR a new `DialogueCondition::CompletedQuestCount { vnums: Vec<String>, min: i32 }` that Mireille's tree gates the Q7-offer branch on. Either works.
+4. **`HasAchievement` dialogue condition** (Q-I1..Q-I5, Q7, Q10). Investigation flags are surfaced via `Achievement` rewards. Dialogue branches that gate on "has investigation piece" need a `DialogueCondition::HasAchievement { key: String }` if it doesn't already exist. Verify in `src/types/dialogue.rs`; if absent, add.
+5. **Multi-vnum KillMob OR canonical migrant vnum** (Q8). Either extend `QuestObjective::KillMob` to accept `vnums: Vec<String>`, OR ensure the migration system tags all clan migrants with one canonical prototype vnum (e.g., `cendre:vampire-migrant`) so the existing single-vnum KillMob fires. Phase 1.7's `immigration_vampire_chance` work may already converge on the latter — verify Phase 6 entry point.
+6. **`met_all_sires` flag setting** (Q1). Q1's reward is `Achievement cendre_met_all_sires`; Phase 3.B dialogue gates reference a "trait" called `met_all_sires`. Recommendation: standardize on Achievement keys as the canonical flag for ALL `cendre_*` per-character state and rely on the `HasAchievement` dialogue condition from §4.E.4. Alternative: add `QuestReward::SetTrait { trait_name: String }`.
+
+#### 4.F Cross-Quest Build Requirements (replaces prose summary above)
+
+Aggregated from 4.A–4.D:
+
+- **Items**: 18 (itemized in 4.C).
+- **Unique mobiles beyond main cast**: 8 (itemized in 4.A). Reduction from the prior ~12 estimate comes from reusing Émeric (Q-I3) and Coyote (Q-I5).
+- **Rooms**: 23 quest-specific (4.D) + 5 haven-entry rooms already in the Phase 5 baseline.
+- **Dialogue trees**: 15 total — 6 sire/court (Mireille tutorial + 5 sires) + 5 investigation-NPC + 3 mortal-side + 1 Casey (Q10).
+- **Per-character flags**: 5 investigation achievements (`cendre_investigation_*`), `cendre_met_all_sires`, `cendre_concord_witness`, clan acknowledgment (already wired), `anarch_unbound` trait (added by P6 task #1).
+
+#### 4.G Out of Scope for the Deep Dive
+
+- Writing actual dialogue text (Phase 6).
+- Implementing the 6 P6 code prereqs in §4.E (Phase 6).
+- Building any items, rooms, mobs, triggers, or quest configs (Phase 5/6).
+- New traits beyond those already enumerated in Phase 3.H + `anarch_unbound`.
+
+---
 
 ### Build plan for this phase
 No build this phase; the cross-quest build requirements summary above feeds Phase 6's slice list.
@@ -446,6 +908,20 @@ No slices.
 
 ### Definition of phase done
 Quest design approved; cross-quest build requirements summary captured in a form Phase 6 can directly slice.
+
+### Phase 4 deep-dive log (2026-05-10)
+- Subsections 4.A–4.G appended after the Deferred-from-v1 paragraph; the original 14-quest prose specs (Q1–Q9) stay intact as the high-level frame.
+- **Quest count 14 → 15**: Q10 "The Unsigned Pact" (Casey's Anarch clanless path) promoted into v1 per user scope decision. Anarch quest line removed from the Deferred list.
+- **NPC reconciliation**: Q-I3 giver resolved to existing `cendre:bourse-clerk` (Émeric, reconciled in-fiction as courthouse-clerk-by-day / bourse-auditor-evenings). Q-I5 giver resolved to existing `cendre:bayou-coyote` (matches Phase 3.B mesh). Net new NPC prototypes drop from ~12 to 8.
+- **Cast total grows 45 → 53**. 8 new minor NPCs catalogued in 4.A with full preset/faction specs.
+- **Quest vnum convention locked**: `cendre:q-<key>` for top-level quests; `cendre:q-i<n>-<key>` for investigation track to avoid prefix collision.
+- **Item vnum catalog**: 18 items in 4.C, all under `cendre:item-` prefix, each with a name + which quest uses it.
+- **Room vnum catalog**: 23 quest-specific rooms in 4.D + 5 haven-entry rooms (already in Phase 5 baseline).
+- **6 Phase 6 code prereqs surfaced in 4.E**: (1) `QuestReward::EmbraceAnarch` variant; (2) Q10 discipline-pick mechanism; (3) set-count prereq for Q7's "≥3 investigation pieces" gate; (4) `HasAchievement` dialogue condition; (5) multi-vnum or canonical migrant vnum for Q8's kill-credit; (6) `met_all_sires` flag delivery (recommend Achievement-as-flag standardization across all `cendre_*` state).
+- **Achievement-as-flag standardization recommended**: all `cendre_*` per-character flags (`cendre_met_all_sires`, `cendre_investigation_*`, `cendre_concord_witness`) ride on Achievement rewards + a `HasAchievement` dialogue condition. Only `anarch_unbound` stays a trait (set by the new EmbraceAnarch reward handler).
+- **Cross-quest build requirements summary** (lines 742–750 above) was retained as-is for historical comparison; the updated counts live in 4.F.
+- Status table row updated: Phase 4 now shows "✅ approved · ✅ deep-dive approved (2026-05-10)".
+- Phase 3 deep dive (3.A–3.I) remains the canonical reference for which NPC carries which Layer-1/2/3 hint; Phase 4's per-quest specs cross-link via vnum.
 
 ---
 
@@ -488,20 +964,20 @@ The plaza and four arterials were built in Phase 1; Phase 5 fills in the distric
                   (sealed, SW)
 ```
 
-#### Room Budget by District (Phase 5 build, ~85 rooms; total area target ~98 including Phase 1 anchor)
+#### Room Budget by District (Phase 5 build, ~87 rooms; total area target ~101 including Phase 1 anchor)
 
 | District / Zone | Rooms | Combat | Notes |
 |---|---|---|---|
 | **Cathedral District** (extras around plaza) | 9 | Mostly Safe | Cathedral interior (3), Hôtel de Larue / Prince's court (3), opera house entrance (1), courthouse exterior (1), Garrison (1). (Plaza itself built in Phase 1.) |
 | **Riverfront** | 6 | Safe (market) + PvP (docks) | Market square, fishmonger, hotel, dock 1-3, Old Léon's barge |
-| **The Foundry** (Brujah) | 10 | PvP haven, Safe street front | Foundry exterior, foundry main 3, fight pit, jazz hall 2, Tony's office, metalworker shop, back alley |
+| **The Foundry** (Brujah) | 11 | PvP haven, Safe street front | Foundry exterior, foundry main 3, fight pit, jazz hall 2, Tony's office, metalworker shop + back room, Casey's cellar (+1 from §5.A) |
 | **The Conservatory** (Toreador) | 10 | PvP haven, Safe street front | Opera house interior 4, art gallery 2, dressing room, box office, collector's apartment 2 |
 | **Bourse Quarter** (Ventrue) | 8 | PvP haven, Safe street front | Bank exterior, bank interior 2, courthouse interior 2, gentlemen's club 2, Magistrate's chamber |
 | **Catacombs / Cemetery** (Nosferatu) | 12 | PvP everywhere | Cemeteries above ground 3, catacomb branch 5, Caretaker's chamber, examination chamber, evidence storage 2 |
-| **Bayou's Edge** (Gangrel) | 12 | PvP everywhere | Levee road, bayou trail 6, Solange's hut, levee path 2, Stranger's shack exterior + interior 3 |
+| **Bayou's Edge** (Gangrel) | 13 | PvP everywhere | Levee road 2, bayou edge, bayou trail 4, fisherman's camp, Solange's hut, Stranger's shack exterior + interior 3 (off-by-one fix from §5.I) |
 | **Day-life / Misc shops** | 8 | Safe | Voodoo curio shop, café, antique dealer, jazz hall (mortal-facing), tourist hotel lobby, fortune teller's nook, two atmospheric storefronts |
 | **Side alleys / connective PvP** | 10 | PvP | Inter-district shortcuts, dead-ends with flavor, the alley a victim was found in, etc. |
-| **Phase 5 total** | **85** | | (Plus 13 Phase 1 anchor rooms = 98 area total.) |
+| **Phase 5 total** | **87** | | (Plus 14 Phase 1 anchor rooms = 101 area total.) |
 
 #### Combat-Zone Rules
 
@@ -517,6 +993,353 @@ The plaza and four arterials were built in Phase 1; Phase 5 fills in the distric
 - The **Catacombs** are reached from inside the cathedral (a hidden door discoverable via a Nosferatu hint), from an above-ground cemetery, and from beneath the gentlemen's club (a Ventrue secret entrance — both clans can drop in unannounced, building tension).
 - The **Bayou** is reached only via the Levee Road from the cemetery district — naturally cordons it off as a hostile sub-zone.
 - The **Stranger's shack** has a sealed door that needs the writ from Quest 7. The exterior is reachable via the Bayou (Q-I5 leads you there).
+
+#### 5.A Room Budget Reconciliation
+
+Aggregate update from the user's "Expand Foundry to 11" decision plus a math fix from Slice 1.8 (`cendre:portal-alley` was the 14th anchor room) and the off-by-one in the original Bayou breakdown (always summed to 13, not 12).
+
+| Adjustment | Was | Now |
+|---|---|---|
+| Anchor rooms (Phase 1) | 13 (original anchor) | 14 (+ Slice 1.8 portal-alley) |
+| Foundry slice (5.3) | 10 | 11 (+ `cendre:foundry-cellar`) |
+| Bayou slice (5.7) | 12 (advertised) | 13 (matches original breakdown sum) |
+| Phase 5 total | 85 | 87 |
+| **Area total** | **98** (stale) | **101** |
+
+The cellar is a distinct room, not a repurposing of the back alley. Foundry slice 5.3 grows by one `create_room` call and two extra exit edges (foundry-main-2 ↔ foundry-cellar hidden trapdoor; foundry-cellar ↔ alley-foundry-cellar-access side door — see §5.M).
+
+#### 5.B §4.D Catalog Gap Fixes
+
+| §4.D vnum | Resolution in Phase 5 |
+|---|---|
+| `cendre:foundry-cellar` | Net-new room in slice 5.3 (Foundry 10 → 11). Accessed via hidden trapdoor in `cendre:foundry-main-2` and via sealed side door from `cendre:alley-foundry-cellar-access` (slice 5.9). |
+| `cendre:bayou-shack-evidence-cache` | Third Stranger's-shack interior room in slice 5.7. Reached from `cendre:bayou-shack-interior-2` via a hidden floorboard exit (`down`). Holds the 5-piece evidence cache for Q7's capture branch. |
+| `cendre:hotel-foyer` / `cendre:court-chamber` / Prince's audience | Hôtel de Larue's 3 rooms in slice 5.1 are: `cendre:hotel-foyer`, `cendre:prince-audience`, `cendre:court-chamber`. The previously-vague "Prince's court" splits cleanly into the three. |
+| `cendre:conservatory-box` (Yvette's haven) | One of the 4 opera-house-interior rooms in slice 5.4: the owner's box, reached via `cendre:opera-foyer` up. |
+| `cendre:bourse-chamber` (Henri's haven) | Magistrate Henri Saint-Clair IS the Ventrue sire from the Phase 2 cast. The existing "Magistrate's chamber" room in slice 5.5 IS `cendre:bourse-chamber` — just renamed to align with §4.D. |
+
+#### 5.C Slice 5.1 — Cathedral District extras (9 rooms)
+
+Attaches to `cendre:plaza`. Plaza gains 4 new diagonal exits + `in` (one per district-extra entry; cardinals stay reserved for Phase 1 arterials).
+
+| vnum | short | combat_zone | room flags | residents |
+|---|---|---|---|---|
+| `cendre:cathedral-nave` | The Cathedral of Saint-Cendre | safe | indoors, no_mob | `cendre:mortal-agathe`, `cendre:mortal-pere-dominique` |
+| `cendre:cathedral-altar` | Before the High Altar | safe | indoors, no_mob | — |
+| `cendre:cathedral-vestry` | The Vestry | safe | indoors, no_mob, dark | — |
+| `cendre:hotel-foyer` | Foyer of the Hôtel de Larue | safe | indoors | — |
+| `cendre:prince-audience` | Prince's Audience Chamber | safe | indoors, dark, no_magic | `cendre:prince-larue`; `cendre:seneschal-mireille` at night |
+| `cendre:court-chamber` | Court of the Concord | safe | indoors, no_magic | (Q7 climax; Mireille presides when invoked) |
+| `cendre:opera-entrance` | Steps of the Opera House | safe | — | `cendre:mortal-opera-attendant` |
+| `cendre:courthouse-exterior` | Steps of the Courthouse | safe | — | (guard rover point) |
+| `cendre:garrison` | The City Garrison | safe | indoors, no_mob | `cendre:guard-roussel`; all guards off-shift |
+
+Key exits (within slice): cathedral-nave ↔ cathedral-altar (n/s), cathedral-altar ↔ cathedral-vestry (e/w), cathedral-nave ↔ garrison (w/e — garrison hangs off the cathedral interior, not direct from plaza), hotel-foyer ↔ prince-audience (n/s), hotel-foyer ↔ court-chamber (e/w). Plaza-attach (4 new diagonal edges): plaza ↔ cathedral-nave (ne/sw), plaza ↔ hotel-foyer (nw/se), plaza ↔ opera-entrance (sw/ne — its `n` exit leads to opera-foyer in slice 5.4), plaza ↔ courthouse-exterior (se/nw — its `n` exit leads to courthouse-interior-1 in slice 5.5). Deferred door (wired in slice 5.6): cathedral-nave ↔ catacombs-cathedral-entrance (down/up) — hidden, lockpick-discoverable.
+
+#### 5.D Slice 5.2 — Riverfront (6 rooms)
+
+Attaches via `cendre:rue-eau-3` (south arterial dead-end stub).
+
+| vnum | short | combat_zone | room flags | residents |
+|---|---|---|---|---|
+| `cendre:riverfront-market` | Riverfront Market | safe | — | `cendre:mortal-fishmonger`, `cendre:guard-cormier` |
+| `cendre:riverfront-fishmonger` | Boudreaux's Fish Stall | safe | — | (Boudreaux during the day) |
+| `cendre:riverfront-hotel-lobby` | Tourist Hotel Lobby | safe | indoors, no_mob | `cendre:mortal-hotel-clerk` |
+| `cendre:riverfront-dock-1` | The North Pier | pvp | — | — |
+| `cendre:riverfront-dock-2` | The South Pier | pvp | — | — |
+| `cendre:riverfront-leon-barge` | Old Léon's Barge | safe | indoors | `cendre:service-leon` |
+
+Key exits: rue-eau-3 ↔ riverfront-market (s/n), market ↔ fishmonger (e/w), market ↔ hotel-lobby (w/e), market ↔ dock-1 (s/n), dock-1 ↔ dock-2 (e/w), dock-2 ↔ leon-barge (s/n). Market east exits → cemetery-gate (slice 5.6).
+
+(Original budget said "dock 1-3"; consolidated to 2 docks + the barge to keep the 6-room budget without losing flavor.)
+
+#### 5.E Slice 5.3 — The Foundry (Brujah, 11 rooms)
+
+Attaches via `cendre:rue-cendre-3` (east arterial dead-end stub). +1 vs the original budget for `cendre:foundry-cellar`.
+
+| vnum | short | combat_zone | room flags | residents |
+|---|---|---|---|---|
+| `cendre:foundry-exterior` | Outside the Old Foundry | safe | — | (street side; safe by day) |
+| `cendre:foundry-main-1` | The Foundry Floor | pvp | indoors | `cendre:foundry-marisol` |
+| `cendre:foundry-main-2` | The Catwalks | pvp | indoors, dark | — |
+| `cendre:foundry-main-3` | The Forge Room | pvp | indoors | — |
+| `cendre:foundry-pit` | The Fight Pit | pvp | indoors, dark | `cendre:foundry-bones`, `cendre:foundry-enforcer` (×3 cap) |
+| `cendre:foundry-jazz-1` | Jazz Hall — Floor | pvp | indoors | `cendre:foundry-beau` |
+| `cendre:foundry-jazz-2` | Jazz Hall — Mezzanine | pvp | indoors, dark | — |
+| `cendre:foundry-office` | Tony's Office | pvp | indoors, dark, no_magic | `cendre:sire-brujah` |
+| `cendre:foundry-metalworker-shop` | The Metalworker's Shop | safe | indoors | `cendre:foundry-metalworker` |
+| `cendre:foundry-metalworker-back` | The Metalworker's Back Room | pvp | indoors, dark | (Q-I1 hiding spot) |
+| `cendre:foundry-cellar` | A Forgotten Cellar | pvp | indoors, dark, no_magic | `cendre:threat-casey-anarch` |
+
+Note: the original 10-room "back alley" entry is rolled into slice 5.9's connective alleys as `cendre:alley-foundry-cellar-access` (the cellar's sealed side door). The Foundry's own 11 rooms are all distinct from connective alleys.
+
+Key exits: rue-cendre-3 ↔ foundry-exterior (e/w), foundry-exterior ↔ foundry-main-1 (n/s), main-1 ↔ main-2 (up/down), main-1 ↔ main-3 (e/w), main-3 ↔ foundry-pit (n/s), main-1 ↔ foundry-jazz-1 (w/e — internal door), jazz-1 ↔ jazz-2 (up/down), main-2 ↔ foundry-office (n/s), foundry-exterior ↔ foundry-metalworker-shop (s/n), metalworker-shop ↔ metalworker-back (in/out). Cellar: foundry-main-2 ↔ foundry-cellar (down/up — hidden trapdoor, lockpick), foundry-cellar ↔ alley-foundry-cellar-access (e/w — **sealed**, slice 5.9 host).
+
+#### 5.F Slice 5.4 — The Conservatory (Toreador, 10 rooms)
+
+Attaches via `cendre:rue-arts-3` (back-door arterial entry) AND from `cendre:opera-entrance` (front-of-house from slice 5.1).
+
+| vnum | short | combat_zone | room flags | residents |
+|---|---|---|---|---|
+| `cendre:opera-foyer` | The Opera House Foyer | safe | indoors, no_mob | (Marcellin attends entry — `cendre:mortal-opera-attendant` lives in slice 5.1) |
+| `cendre:opera-house` | The Opera House Auditorium | safe | indoors | `cendre:conservatory-etienne` |
+| `cendre:opera-bar` | The Opera House Bar | pvp | indoors, dark | `cendre:harpy-theo`, `cendre:conservatory-aldo` |
+| `cendre:conservatory-box` | Lady Beaumont's Owner's Box | pvp | indoors, dark, no_magic | `cendre:sire-toreador` |
+| `cendre:art-gallery-1` | The Conservatory Gallery, East | safe | indoors | `cendre:conservatory-cassandra` (day) |
+| `cendre:art-gallery-2` | The Conservatory Gallery, West | safe | indoors | — |
+| `cendre:conservatory-dressing-room` | A Dressing Room | pvp | indoors, dark | `cendre:conservatory-dresser` |
+| `cendre:conservatory-box-office` | The Box Office | safe | indoors | (Q-I2 guest log) |
+| `cendre:conservatory-collector-apt-1` | The Collector's Sitting Room | pvp | indoors | `cendre:conservatory-collector` |
+| `cendre:conservatory-collector-apt-2` | The Collector's Gallery Room | pvp | indoors, dark | (Q3 painting hangs here) |
+
+Key exits: rue-arts-3 ↔ opera-foyer (w/e), opera-entrance (slice 5.1) ↔ opera-foyer (n/s), opera-foyer ↔ opera-house (n/s), opera-house ↔ opera-bar (e/w), opera-foyer ↔ conservatory-box (up/down), opera-house ↔ conservatory-dressing-room (in/out — backstage), opera-foyer ↔ conservatory-box-office (w/e), opera-foyer ↔ art-gallery-1 (s/n), gallery-1 ↔ gallery-2 (w/e), gallery-2 ↔ conservatory-collector-apt-1 (out/in), apt-1 ↔ apt-2 (n/s).
+
+#### 5.G Slice 5.5 — Bourse Quarter (Ventrue, 8 rooms)
+
+Attaches via `cendre:rue-royale-3` (north arterial dead-end stub) AND from `cendre:courthouse-exterior` (slice 5.1).
+
+| vnum | short | combat_zone | room flags | residents |
+|---|---|---|---|---|
+| `cendre:bourse-exterior` | Before the Bank | safe | — | (street-side) |
+| `cendre:bourse-bank-floor` | The Bank Floor | safe | indoors, no_mob | `cendre:bourse-pierre` |
+| `cendre:bourse-bank-office` | Émeric's Bank Office | safe | indoors | `cendre:bourse-clerk` (evenings) |
+| `cendre:courthouse-interior-1` | The Courthouse Rotunda | safe | indoors | `cendre:bourse-clerk` (daytime) |
+| `cendre:courthouse-interior-2` | A Records Annex | safe | indoors, dark | — |
+| `cendre:bourse-club-1` | The Gentlemen's Club, Salon | pvp | indoors | `cendre:bourse-lucien` |
+| `cendre:bourse-club-2` | The Club's Back Rooms | pvp | indoors, dark, no_magic | (vampire shelter) |
+| `cendre:bourse-chamber` | The Magistrate's Chamber | pvp | indoors, dark, no_magic | `cendre:sire-ventrue` (Henri Saint-Clair) |
+
+Key exits: rue-royale-3 ↔ bourse-exterior (n/s), bourse-exterior ↔ bourse-bank-floor (in/out), bank-floor ↔ bourse-bank-office (e/w), bourse-exterior ↔ bourse-club-1 (e/w — neighboring building), club-1 ↔ club-2 (in/out), club-2 ↔ bourse-chamber (up/down — Henri lives above the club), courthouse-exterior (slice 5.1) ↔ courthouse-interior-1 (n/s), interior-1 ↔ interior-2 (in/out). Hidden door (wired in slice 5.6): bourse-club-2 ↔ catacombs-bourse-entrance (down/up) — Ventrue secret entry.
+
+(Émeric pulls double duty: courthouse-interior-1 by day, bourse-bank-office in evenings — single mob, Phase 6 daily_routine.)
+
+#### 5.H Slice 5.6 — Catacombs / Cemetery (Nosferatu, 12 rooms)
+
+Attaches via Riverfront (cemetery sits east of the market) AND via hidden doors from cathedral (slice 5.1) and gentlemen's club (slice 5.5).
+
+| vnum | short | combat_zone | room flags | residents |
+|---|---|---|---|---|
+| `cendre:cemetery-gate` | The Cemetery Gates | pvp | — | `cendre:catacomb-sexton` |
+| `cendre:cemetery-rows-1` | Cemetery — Mausoleum Row | pvp | — | `cendre:threat-hunter-coyle` (night) |
+| `cendre:cemetery-rows-2` | Cemetery — Old Section | pvp | dark | — |
+| `cendre:catacombs-entrance` | The Catacomb Entrance | pvp | indoors, dark, no_magic | — |
+| `cendre:catacombs-branch-1` | A Crumbling Passage | pvp | indoors, dark, no_magic | `cendre:catacomb-risen` (×2 cap) |
+| `cendre:catacombs-branch-2` | A Side Chamber | pvp | indoors, dark, no_magic | `cendre:catacomb-acolyte` |
+| `cendre:catacombs-branch-3` | The Deeper Catacombs | pvp | indoors, dark, no_magic | `cendre:catacomb-ribcage` |
+| `cendre:catacombs-branch-4` | The Wet Catacombs | pvp | indoors, dark, no_magic | — |
+| `cendre:catacombs-chamber` | The Caretaker's Chamber | pvp | indoors, dark, no_magic | `cendre:sire-nosferatu` |
+| `cendre:catacombs-exam-chamber` | An Examination Chamber | pvp | indoors, dark, no_magic | (Q-I4 body; `cendre:item-victim-corpse`) |
+| `cendre:catacombs-cathedral-entrance` | Beneath the Cathedral | pvp | indoors, dark, no_magic | — |
+| `cendre:catacombs-bourse-entrance` | Beneath the Bourse | pvp | indoors, dark, no_magic | — |
+
+Note: original budget breakdown was "cemeteries above ground 3 + catacomb branch 5 + Caretaker + exam + evidence storage 2" = 12. Revised: 3 cemetery + 4 branch + Caretaker + exam + 2 entrance-rooms (cathedral + bourse) = 12. Evidence-storage folded into the exam-chamber (which holds the Q-I4 body) and branch rooms (which host the Caretaker's research clutter via Phase 6 room extras).
+
+Key exits: riverfront-market ↔ cemetery-gate (e/w), cemetery-gate ↔ cemetery-rows-1 (n/s), rows-1 ↔ rows-2 (e/w), cemetery-rows-1 ↔ catacombs-entrance (down/up), catacombs-entrance ↔ catacombs-branch-1 (n/s), branch-1 ↔ branch-2 (e/w), branch-1 ↔ branch-3 (n/s), branch-3 ↔ branch-4 (e/w), branch-3 ↔ catacombs-chamber (down/up), catacombs-chamber ↔ catacombs-exam-chamber (e/w), branch-2 ↔ catacombs-cathedral-entrance (up/down — meets cathedral-nave down), branch-4 ↔ catacombs-bourse-entrance (up/down — meets bourse-club-2 down).
+
+#### 5.I Slice 5.7 — Bayou's Edge + Stranger's Shack (Gangrel, 13 rooms)
+
+Attaches via Levee Road from cemetery district (single entry; design-intentional cordon). Original budget said 12 but the listed breakdown summed to 13 — Phase 5 deep dive locks it at 13.
+
+| vnum | short | combat_zone | room flags | residents |
+|---|---|---|---|---|
+| `cendre:levee-road-1` | The Levee Road | pvp | — | `cendre:guard-tisserand` (daytime) |
+| `cendre:levee-road-2` | The Levee Road, South Stretch | pvp | — | — |
+| `cendre:bayou-edge` | Bayou's Edge | pvp | dark | `cendre:bayou-andre` |
+| `cendre:bayou-trail-1` | A Bayou Path | pvp | dark | `cendre:bayou-coyote` (rover) |
+| `cendre:bayou-trail-2` | Deeper into the Bayou | pvp | dark | — |
+| `cendre:bayou-trail-3` | A Hidden Clearing | pvp | dark | `cendre:threat-hunter-voss` (night) |
+| `cendre:bayou-trail-4` | The Far Shallows | pvp | dark | `cendre:bayou-predator-gator` |
+| `cendre:bayou-fisherman-camp` | The Fisherman's Camp | pvp | dark | `cendre:bayou-fisherman` |
+| `cendre:bayou-hut` | Ma'tante Solange's Hut | pvp | indoors, dark, no_magic | `cendre:sire-gangrel` |
+| `cendre:bayou-shack-exterior` | A Sealed Shack | pvp | dark | — |
+| `cendre:bayou-shack-interior-1` | Inside the Shack — Front Room | pvp | indoors, dark, no_magic | `cendre:threat-stranger` |
+| `cendre:bayou-shack-interior-2` | Inside the Shack — Back Room | pvp | indoors, dark, no_magic | — |
+| `cendre:bayou-shack-evidence-cache` | A Hidden Sub-Cellar | pvp | indoors, dark, no_magic | (Q7 evidence cache) |
+
+Breakdown: 2 levee-road + 1 bayou-edge + 4 bayou-trail + 1 fisherman-camp + 1 Solange's-hut + 1 shack-exterior + 3 shack-interior (front, back, evidence-cache) = **13 rooms**.
+
+Key exits: cemetery-gate ↔ levee-road-1 (s/n), levee-road-1 ↔ levee-road-2 (s/n), levee-road-2 ↔ bayou-edge (s/n), bayou-edge ↔ bayou-trail-1 (s/n), trail-1 ↔ trail-2 (w/e), trail-2 ↔ trail-3 (s/n — Q-I5 ends here at the shack exterior), trail-2 ↔ trail-4 (e/w — gator zone, Q6), bayou-edge ↔ bayou-fisherman-camp (e/w), bayou-edge ↔ bayou-hut (w/e — Solange), trail-3 ↔ bayou-shack-exterior (in/out — short walk), shack-exterior ↔ shack-interior-1 (in/out — **sealed door, requires `cendre:item-writ`**), interior-1 ↔ interior-2 (n/s), interior-2 ↔ shack-evidence-cache (down/up — hidden floorboard, lockpick-discoverable).
+
+#### 5.J Slice 5.8 — Day-life / Misc shops (8 rooms)
+
+Attaches around plaza and along the arterials.
+
+| vnum | short | combat_zone | room flags | residents |
+|---|---|---|---|---|
+| `cendre:shop-voodoo` | Madame Beauchamp's Curios | safe | indoors | `cendre:mortal-beauchamp`, `cendre:mortal-thief-customer` |
+| `cendre:shop-cafe` | Café Doré | safe | indoors, no_mob | `cendre:mortal-cafe-henri` |
+| `cendre:shop-antique` | Lefèvre & Sons Antiques | safe | indoors | `cendre:mortal-lefevre` |
+| `cendre:shop-mortal-jazz` | The Cobalt Lounge | safe | indoors | (mortal-facing jazz; atmosphere) |
+| `cendre:shop-fortune` | Madame Olympe's Nook | safe | indoors, dark | `cendre:service-olympe` |
+| `cendre:shop-bookseller` | Pages & Bindings | safe | indoors | — |
+| `cendre:shop-tailor` | Maison Verlaine | safe | indoors | — |
+| `cendre:shop-apothecary` | The Apothecary | safe | indoors | — |
+
+(Tourist hotel lobby lives in slice 5.2 as `cendre:riverfront-hotel-lobby`, not slice 5.8.)
+
+Plaza-attach + arterial-attach exits: rue-cendre-1 ↔ shop-voodoo (n/s), rue-arts-1 ↔ shop-cafe (n/s), rue-arts-2 ↔ shop-antique (s/n), rue-cendre-2 ↔ shop-mortal-jazz (s/n), plaza ↔ shop-fortune (in/out — small nook off plaza), rue-royale-1 ↔ shop-bookseller (e/w), rue-royale-2 ↔ shop-tailor (w/e), rue-eau-1 ↔ shop-apothecary (e/w).
+
+#### 5.K Slice 5.9 — Side alleys / connective PvP (10 rooms)
+
+PvP shortcut alleys cutting between districts. The `alley-foundry-cellar-access` room is the cellar's sealed side-door host (back-door from §5.E).
+
+| vnum | short | combat_zone | room flags | residents |
+|---|---|---|---|---|
+| `cendre:alley-foundry-to-bourse` | A Narrow Alley | pvp | dark | — |
+| `cendre:alley-bourse-to-cathedral` | A Service Alley | pvp | dark | `cendre:threat-hunter-brennan` (night) |
+| `cendre:alley-cathedral-to-conservatory` | A Tree-Lined Lane | pvp | — | — |
+| `cendre:alley-conservatory-to-riverfront` | A Stone Stairway | pvp | dark | — |
+| `cendre:alley-riverfront-to-foundry` | A Brick Cut-Through | pvp | dark | — |
+| `cendre:alley-victim-1` | The Alley Where Mathilde Was Found | pvp | dark | (Q-I2 flavor; bloodstain ground item) |
+| `cendre:alley-victim-2` | The Alley Where Marcel Fell | pvp | dark | (Q-I1 flavor) |
+| `cendre:alley-dead-end-1` | A Dead End | pvp | dark | — |
+| `cendre:alley-foundry-cellar-access` | The Foundry Back Lane | pvp | dark | — |
+| `cendre:alley-bayou-mouth` | The Mouth of the Levee | pvp | — | — |
+
+Key exits (shortcuts): rue-cendre-2 ↔ alley-foundry-to-bourse (n/s), alley-foundry-to-bourse ↔ rue-royale-2 (e/w), rue-royale-1 ↔ alley-bourse-to-cathedral (e/w), alley-bourse-to-cathedral ↔ cathedral-nave (in/out — service entry), rue-arts-1 ↔ alley-cathedral-to-conservatory (n/s), rue-arts-3 ↔ alley-conservatory-to-riverfront (s/n), alley-conservatory-to-riverfront ↔ riverfront-market (in/out), rue-eau-3 ↔ alley-riverfront-to-foundry (e/w), alley-riverfront-to-foundry ↔ rue-cendre-3 (e/w), rue-arts-2 ↔ alley-victim-1 (in/out, Q-I2), rue-cendre-1 ↔ alley-victim-2 (in/out, Q-I1), rue-cendre-3 ↔ alley-dead-end-1 (in/out), foundry-cellar ↔ alley-foundry-cellar-access (e/w, **sealed**), levee-road-1 ↔ alley-bayou-mouth (e/w — side branch off the levee; levee-road-1's south exit is reserved for levee-road-2 in slice 5.7).
+
+#### 5.L NPC Home Assignments (canonical Phase 6 reference)
+
+Master mapping of every Phase 2 cast NPC (45) + the 8 new minor NPCs (§4.A) to a specific Phase 5 room vnum. Phase 6's spawn-point slices read off this table. Patrol-route NPCs list their home/off-shift room first.
+
+| Mob vnum | Phase 5 home vnum |
+|---|---|
+| `cendre:prince-larue` | `cendre:prince-audience` |
+| `cendre:seneschal-mireille` | `cendre:plaza` (night) / `cendre:hotel-foyer` (day) |
+| `cendre:harpy-theo` | `cendre:opera-bar` |
+| `cendre:sire-brujah` | `cendre:foundry-office` |
+| `cendre:sire-toreador` | `cendre:conservatory-box` |
+| `cendre:sire-ventrue` | `cendre:bourse-chamber` |
+| `cendre:sire-nosferatu` | `cendre:catacombs-chamber` |
+| `cendre:sire-gangrel` | `cendre:bayou-hut` |
+| `cendre:foundry-beau` | `cendre:foundry-jazz-1` |
+| `cendre:foundry-marisol` | `cendre:foundry-main-1` |
+| `cendre:foundry-bones` | `cendre:foundry-pit` |
+| `cendre:conservatory-etienne` | `cendre:opera-house` |
+| `cendre:conservatory-cassandra` | `cendre:art-gallery-1` |
+| `cendre:conservatory-aldo` | `cendre:opera-bar` |
+| `cendre:bourse-pierre` | `cendre:bourse-bank-floor` |
+| `cendre:bourse-lucien` | `cendre:bourse-club-1` |
+| `cendre:bourse-clerk` (Émeric) | `cendre:courthouse-interior-1` (day) / `cendre:bourse-bank-office` (evening) |
+| `cendre:catacomb-acolyte` | `cendre:catacombs-branch-2` |
+| `cendre:catacomb-ribcage` | `cendre:catacombs-branch-3` |
+| `cendre:catacomb-sexton` | `cendre:cemetery-gate` |
+| `cendre:bayou-andre` | `cendre:bayou-edge` |
+| `cendre:bayou-coyote` | `cendre:bayou-trail-1` (rover) |
+| `cendre:bayou-fisherman` | `cendre:bayou-fisherman-camp` |
+| `cendre:mortal-beauchamp` | `cendre:shop-voodoo` |
+| `cendre:mortal-lefevre` | `cendre:shop-antique` |
+| `cendre:mortal-agathe` | `cendre:cathedral-nave` |
+| `cendre:mortal-pere-dominique` | `cendre:cathedral-nave` |
+| `cendre:mortal-cafe-henri` | `cendre:shop-cafe` |
+| `cendre:mortal-fishmonger` | `cendre:riverfront-fishmonger` |
+| `cendre:mortal-hotel-clerk` | `cendre:riverfront-hotel-lobby` |
+| `cendre:mortal-opera-attendant` | `cendre:opera-entrance` |
+| `cendre:guard-roussel` | `cendre:garrison` (off-shift) / Cathedral District beat |
+| `cendre:guard-picard` | `cendre:rue-royale-2` (beat) / `cendre:garrison` |
+| `cendre:guard-vincent` | `cendre:rue-eau-2` / `cendre:garrison` |
+| `cendre:guard-lambert` | `cendre:rue-arts-2` / `cendre:garrison` |
+| `cendre:guard-tisserand` | `cendre:rue-cendre-2` (day) / `cendre:levee-road-1` (intermittent) / `cendre:garrison` |
+| `cendre:guard-renaud` | `cendre:plaza` (rover) / `cendre:garrison` |
+| `cendre:guard-cormier` | `cendre:riverfront-market` (rover) / `cendre:garrison` |
+| `cendre:threat-stranger` | `cendre:bayou-shack-interior-1` (`replace_on_respawn: true`) |
+| `cendre:threat-hunter-coyle` | `cendre:cemetery-rows-1` (night) |
+| `cendre:threat-hunter-brennan` | `cendre:alley-bourse-to-cathedral` (night) |
+| `cendre:threat-hunter-voss` | `cendre:bayou-trail-3` (night) |
+| `cendre:threat-casey-anarch` | `cendre:foundry-cellar` |
+| `cendre:service-olympe` | `cendre:shop-fortune` |
+| `cendre:service-leon` | `cendre:riverfront-leon-barge` |
+| `cendre:foundry-metalworker` (§4.A) | `cendre:foundry-metalworker-shop` |
+| `cendre:foundry-enforcer` (§4.A) | `cendre:foundry-pit` (×3 cap) |
+| `cendre:conservatory-dresser` (§4.A) | `cendre:conservatory-dressing-room` |
+| `cendre:conservatory-collector` (§4.A) | `cendre:conservatory-collector-apt-1` |
+| `cendre:bourse-debtor` (§4.A) | `cendre:bourse-bank-office` (or wanders bourse district — Phase 6 routine) |
+| `cendre:catacomb-risen` (§4.A) | `cendre:catacombs-branch-1` (×2 cap) |
+| `cendre:bayou-predator-gator` (§4.A) | `cendre:bayou-trail-4` |
+| `cendre:mortal-thief-customer` (§4.A) | `cendre:shop-voodoo` (Q9 fled-with-gris-gris — Phase 6 wandering) |
+
+53 NPCs mapped to specific room vnums.
+
+#### 5.M Exit Topology Highlights
+
+The load-bearing edges that aren't trivially "next room in district":
+
+1. **Plaza outbound (5 new bidirectional edges from Phase 1)**: plaza supports cardinals (n/s/e/w — already used by arterials), `up`/`down`, 4 diagonals (ne/nw/se/sw), and `in`/`out`. Phase 5 uses 4 diagonals + `in`:
+   - plaza ↔ cathedral-nave (ne ↔ sw)
+   - plaza ↔ hotel-foyer (nw ↔ se)
+   - plaza ↔ opera-entrance (sw ↔ ne)
+   - plaza ↔ courthouse-exterior (se ↔ nw)
+   - plaza ↔ shop-fortune (in ↔ out) — slice 5.8
+   - Garrison is **not** plaza-direct: garrison hangs off cathedral-nave west (cathedral-nave ↔ garrison is w/e).
+2. **Arterial back-edges (5)**: rue-royale-3 ↔ bourse-exterior (n/s); rue-cendre-3 ↔ foundry-exterior (e/w); rue-arts-3 ↔ opera-foyer (w/e — opera-foyer is reached via opera-entrance from plaza primarily; rue-arts-3 is a back-door arterial entry); rue-eau-3 ↔ riverfront-market (s/n); cemetery-gate ↔ levee-road-1 (s/n — chained via riverfront-market east → cemetery-gate west).
+3. **Hidden doors (cross-district shortcuts)**: cathedral-nave down ↔ catacombs-cathedral-entrance up (Nosferatu hint reveals); bourse-club-2 down ↔ catacombs-bourse-entrance up (Ventrue secret); foundry-main-2 down ↔ foundry-cellar up (hidden trapdoor; lockpick); foundry-cellar east ↔ alley-foundry-cellar-access west (sealed; bypassed by Q10 dialogue OR lockpick).
+4. **Sealed door**: bayou-shack-exterior in ↔ bayou-shack-interior-1 out — **lock requires `cendre:item-writ` from Q7 (or lockpick check)**. `add_room_door` call lands in slice 5.7 with `is_locked: true`, `pickproof: false`, `key_vnum: cendre:item-writ`.
+5. **Hidden floorboard**: bayou-shack-interior-2 down ↔ bayou-shack-evidence-cache up — lockpick-discoverable, not sealed.
+6. **No portal-alley north exit yet**: `cendre:portal-alley` north exit stays `null` per Slice 1.8 build log; Phase 5 does NOT wire it.
+
+#### 5.N Combat-Zone + Flag Application Policy
+
+Formalizes the per-room overrides scattered across §5.C–§5.K.
+
+- **Area default** = `pvp` (set Phase 1.7). Phase 5 rooms inherit unless overridden.
+- **`safe` overrides** (~30 rooms): all of slice 5.1 (Cathedral District extras), plus `riverfront-market`, `riverfront-fishmonger`, `riverfront-hotel-lobby`, `riverfront-leon-barge`, `foundry-exterior`, `foundry-metalworker-shop`, `opera-foyer`, `opera-house`, `art-gallery-1`, `art-gallery-2`, `conservatory-box-office`, `bourse-exterior`, `bourse-bank-floor`, `bourse-bank-office`, `courthouse-interior-1`, `courthouse-interior-2`, all of slice 5.8.
+- **`no_mob` flag** (chase-cancel for aggressive mobs, 8 rooms): `cathedral-nave`, `cathedral-altar`, `cathedral-vestry`, `garrison`, `riverfront-hotel-lobby`, `opera-foyer`, `bourse-bank-floor`, `shop-cafe`.
+- **Shelter combo `{indoors, dark, no_magic}`** (~20 rooms; required for `SunlightBurning` rescue + ritual privacy): every clan haven + every catacomb room. Specifically: `prince-audience`, `court-chamber`, `foundry-office`, `foundry-cellar`, `conservatory-box`, `bourse-club-2`, `bourse-chamber`, all 4 `catacombs-branch-*`, `catacombs-chamber`, `catacombs-exam-chamber`, both `catacombs-*-entrance` rooms, `bayou-hut`, all 3 `bayou-shack-interior-*` + evidence-cache.
+- **`indoors` only**: every built structure that isn't an outdoor street/yard.
+- **`dark` only** (atmospheric, no shelter): all bayou-trail rooms, alley-victim-1/2, alley-bourse-to-cathedral, alley-conservatory-to-riverfront, cemetery-rows-2, alley-dead-end-1.
+
+Phase 5 slice DoDs verify the override application via `get_room` sample-checks against this policy.
+
+#### 5.O Inter-District Reachability Audit
+
+Every district-pair edge in Phase 5, with both direction-pair halves listed explicitly. Phase 5 ships **zero one-way exits** — every line below is a single bidirectional pair (MCP's `set_room_exit` writes both halves when called per-edge). `↔` notation in §5.C–§5.M means "both halves are wired."
+
+| Districts linked | Forward edge | Reverse edge | Notes |
+|---|---|---|---|
+| Plaza ↔ Cathedral | plaza ne → cathedral-nave | cathedral-nave sw → plaza | new in 5.1 |
+| Plaza ↔ Cathedral | plaza nw → hotel-foyer | hotel-foyer se → plaza | new in 5.1 |
+| Plaza ↔ Cathedral | plaza sw → opera-entrance | opera-entrance ne → plaza | new in 5.1 |
+| Plaza ↔ Cathedral | plaza se → courthouse-exterior | courthouse-exterior nw → plaza | new in 5.1 |
+| Plaza ↔ Day-life | plaza in → shop-fortune | shop-fortune out → plaza | new in 5.8 |
+| Plaza ↔ Riverfront | rue-eau-3 s → riverfront-market | riverfront-market n → rue-eau-3 | new in 5.2 |
+| Plaza ↔ Foundry | rue-cendre-3 e → foundry-exterior | foundry-exterior w → rue-cendre-3 | new in 5.3 |
+| Plaza ↔ Conservatory | rue-arts-3 w → opera-foyer | opera-foyer e → rue-arts-3 | new in 5.4 |
+| Plaza ↔ Bourse | rue-royale-3 n → bourse-exterior | bourse-exterior s → rue-royale-3 | new in 5.5 |
+| Cathedral ↔ Conservatory | opera-entrance n → opera-foyer | opera-foyer s → opera-entrance | new in 5.4 (front-of-house) |
+| Cathedral ↔ Bourse | courthouse-exterior n → courthouse-interior-1 | courthouse-interior-1 s → courthouse-exterior | new in 5.5 |
+| Cathedral ↔ Catacombs (hidden) | cathedral-nave down → catacombs-cathedral-entrance | catacombs-cathedral-entrance up → cathedral-nave | new in 5.6, hidden door |
+| Bourse ↔ Catacombs (hidden) | bourse-club-2 down → catacombs-bourse-entrance | catacombs-bourse-entrance up → bourse-club-2 | new in 5.6, hidden door |
+| Riverfront ↔ Catacombs | riverfront-market e → cemetery-gate | cemetery-gate w → riverfront-market | new in 5.6 |
+| Catacombs ↔ Bayou | cemetery-gate s → levee-road-1 | levee-road-1 n → cemetery-gate | new in 5.7 (only Bayou entry) |
+| Foundry ↔ Alleys (sealed) | foundry-cellar e → alley-foundry-cellar-access | alley-foundry-cellar-access w → foundry-cellar | new in 5.9; sealed (unsealed by Q10 dialogue or lockpick) |
+| Alleys ↔ multiple | 10 alleys, each end attaches to an arterial mid-segment or district room | each alley terminus has a reciprocal in/out exit | new in 5.9; per-alley edges in §5.K |
+
+**District-pair reachability matrix** (✅ = direct edge; ☐ = transitive; — = self):
+
+|              | Plaza | Cath | Riv | Fdy | Cvr | Brs | Cat | Byu | Day | Aly |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Plaza-anchor | —     | ✅   | ✅  | ✅  | ✅  | ✅  | ☐   | ☐   | ✅  | ✅  |
+| Cathedral    | ✅    | —    | ☐   | ☐   | ✅  | ✅  | ✅  | ☐   | ☐   | ☐   |
+| Riverfront   | ✅    | ☐    | —   | ☐   | ☐   | ☐   | ✅  | ☐   | ☐   | ✅  |
+| Foundry      | ✅    | ☐    | ☐   | —   | ☐   | ☐   | ☐   | ☐   | ☐   | ✅  |
+| Conservatory | ✅    | ✅   | ☐   | ☐   | —   | ☐   | ☐   | ☐   | ☐   | ☐   |
+| Bourse       | ✅    | ✅   | ☐   | ☐   | ☐   | —   | ✅  | ☐   | ☐   | ☐   |
+| Catacombs    | ☐     | ✅   | ✅  | ☐   | ☐   | ✅  | —   | ✅  | ☐   | ☐   |
+| Bayou        | ☐     | ☐    | ☐   | ☐   | ☐   | ☐   | ✅  | —   | ☐   | ☐   |
+| Day-life     | ✅    | ☐    | ☐   | ☐   | ☐   | ☐   | ☐   | ☐   | —   | ☐   |
+| Alleys       | ✅    | ☐    | ✅  | ✅  | ☐   | ☐   | ☐   | ☐   | ☐   | —   |
+
+Graph is fully connected — every district reaches every other district directly or transitively. Bayou and Foundry have single primary entries by design (per the Connectivity Highlights bullets above). All inter-district edges are bidirectional pairs.
+
+#### 5.P Out of Scope for the Deep Dive
+
+- **Room descriptions** (the 2-3 sentence atmospheric prose) — authored at slice build time so they reflect on-the-ground placement.
+- **Mob spawn points** — Phase 6 reads §5.L and writes `create_spawn_point` per row.
+- **Mob daily routines** (day/night, patrol beats) — Phase 6.
+- **Dialogue trees** + **`add_mobile_dialogue`** calls — Phase 6.
+- **Item spawn points** (the 18 Q-items from §4.C) — Phase 6.
+- **Triggers** (room triggers, mob aggression flips, door seals) — Phase 6.
+- **Per-room extra descriptions** (`add_room_extra_desc`) — at author's discretion during slice build, but not required by this deep dive.
 
 ### Build plan for this phase
 
@@ -536,11 +1359,11 @@ Slice the Phase 5 build by district. Each district gets one slice that creates a
 - **MCP calls (sketch)**: 6× `create_room(...)`, 7× `set_room_exit(...)` (linking to the south end of `cendre:rue-eau-3`).
 - **Done when**: Walking S from the plaza reaches the market in 4 steps and the docks in 5; combat-zone overrides verified.
 
-#### Slice 5.3 — The Foundry (Brujah district, 10 rooms)
-- **Goal**: Build the Foundry exterior, three foundry-main rooms, the fight pit, two jazz halls, Tony's office (haven), the metalworker's shop, and the back alley.
-- **Deliverables**: 10 rooms; Tony's office gets `RoomFlags.{indoors, dark, no_magic}` (vampire shelter); exteriors stay PvP.
-- **MCP calls (sketch)**: 10× `create_room(...)`, exits, `update_room(...)` for shelter flags + Safe override on the street-front room.
-- **Done when**: The arterial outer stub `cendre:rue-cendre-3` gains an east exit to the Foundry exterior; all 10 rooms reachable; shelter flags verified on Tony's office.
+#### Slice 5.3 — The Foundry (Brujah district, 11 rooms)
+- **Goal**: Build the Foundry exterior, three foundry-main rooms, the fight pit, two jazz halls, Tony's office (haven), the metalworker's shop + back room, and Casey's cellar. Canonical per-room spec in §5.E.
+- **Deliverables**: 11 rooms; Tony's office + foundry-cellar get `RoomFlags.{indoors, dark, no_magic}` (vampire shelter); exteriors stay PvP.
+- **MCP calls (sketch)**: 11× `create_room(...)`, exits, `update_room(...)` for shelter flags + Safe override on the street-front room. Hidden trapdoor: `foundry-main-2 down ↔ foundry-cellar up`. Sealed side-door: `foundry-cellar east ↔ alley-foundry-cellar-access west` (target room in slice 5.9; door wired here, seal enforced via Phase 6 trigger).
+- **Done when**: The arterial outer stub `cendre:rue-cendre-3` gains an east exit to the Foundry exterior; all 11 rooms reachable; shelter flags verified on Tony's office and foundry-cellar; bidirectionality sample-check passes (e.g. `get_room(rue-cendre-3)` shows east → foundry-exterior AND `get_room(foundry-exterior)` shows west → rue-cendre-3).
 
 #### Slice 5.4 — The Conservatory (Toreador district, 10 rooms)
 - **Goal**: Build the opera house interior (4 rooms), art gallery (2), dressing room, box office, and collector's apartment (2).
@@ -560,11 +1383,11 @@ Slice the Phase 5 build by district. Each district gets one slice that creates a
 - **MCP calls (sketch)**: 12× `create_room(...)`, exits within district + linkage from cathedral interior (hidden door, deferred) and from Riverfront, `update_room(...)` for shelter flags.
 - **Done when**: Cemeteries reachable from Riverfront; catacombs reachable from cemeteries; shelter flags applied across catacomb rooms.
 
-#### Slice 5.7 — Bayou's Edge + Stranger's Shack (Gangrel district + endgame zone, 12 rooms)
-- **Goal**: Build the levee road, bayou trail (6 rooms), Solange's hut (haven), levee path (2), Stranger's shack exterior + interior (3 rooms with sealed door).
-- **Deliverables**: 12 rooms; Solange's hut is shelter-flagged; Stranger's shack exterior has a sealed door (locked, requires writ — door wired but writ-check in Phase 6 quest).
-- **MCP calls (sketch)**: 12× `create_room(...)`, exits, `add_room_door(...)` for the Stranger's shack sealed door, `update_room(...)` for shelter flags.
-- **Done when**: Bayou reachable from cemetery district via Levee Road; sealed door on shack exists and is locked; Solange's hut shelter flags verified.
+#### Slice 5.7 — Bayou's Edge + Stranger's Shack (Gangrel district + endgame zone, 13 rooms)
+- **Goal**: Build the levee road (2), bayou edge, bayou trail (4 — `trail-1..4`), fisherman's camp, Solange's hut (haven), Stranger's shack exterior + 3 interior rooms (front, back, evidence-cache). Off-by-one fix from §5.I (was advertised as 12 but breakdown always summed to 13). Canonical per-room spec in §5.I.
+- **Deliverables**: 13 rooms; Solange's hut + all 3 shack-interior rooms get `RoomFlags.{indoors, dark, no_magic}` (shelter); Stranger's shack exterior has a sealed door (locked, requires `cendre:item-writ`); evidence-cache is reached by hidden floorboard `down` from interior-2.
+- **MCP calls (sketch)**: 13× `create_room(...)`, exits, `add_room_door(shack-exterior, in, is_locked=true, pickproof=false, key_vnum="cendre:item-writ")`, `update_room(...)` for shelter + dark flags.
+- **Done when**: Bayou reachable from cemetery district via Levee Road; sealed door on shack exists and is locked with the writ as key; all 4 shelter rooms (hut, 3 interiors) carry `{indoors, dark, no_magic}`; bidirectionality sample-check on `cemetery-gate ↔ levee-road-1`.
 
 #### Slice 5.8 — Day-life / Misc shops (8 rooms)
 - **Goal**: Build the voodoo curio shop, café, antique dealer, mortal jazz hall, tourist hotel lobby, fortune teller's nook, and two atmospheric storefronts.
@@ -579,11 +1402,88 @@ Slice the Phase 5 build by district. Each district gets one slice that creates a
 - **Done when**: Alleys exist as expected shortcuts; combat-zone is PvP throughout; map walk from one district to an adjacent one via alley is shorter than via plaza.
 
 ### Definition of phase done
-- All 9 slices' DoDs met; total room count for the area reaches ~98.
+- All 9 slices' DoDs met; total room count for the area reaches **101** (14 anchor + 87 Phase 5).
 - Walking from plaza reaches every district within the documented step count.
-- Combat-zone overrides verified across the area (sample-check ~10 rooms via `get_room`).
-- Shelter flag combo verified on every haven and the catacombs.
-- `no_mob` verified on cathedral interior, hotel lobby, Garrison.
+- Combat-zone overrides verified across the area (sample-check ~10 rooms via `get_room`) against §5.N policy.
+- Shelter flag combo verified on every haven and the catacombs (~20 rooms; spec in §5.N).
+- `no_mob` verified on the 8 rooms in §5.N (cathedral interior, hotel lobby, garrison, opera-foyer, bank-floor, café).
+- **Bidirectionality** verified on every inter-district edge in §5.O: `get_room(A)` shows the forward exit AND `get_room(B)` shows the reverse. Phase 5 ships zero one-way exits.
+
+### Phase 5 deep-dive log (2026-05-10)
+- Subsections 5.A–5.P appended after the Connectivity Highlights bullets; the existing layout overview / ASCII sketch / budget table / combat-zone rules / connectivity highlights stay intact as the high-level frame.
+- **Foundry expands 10 → 11** per user scope decision: `cendre:foundry-cellar` added as a distinct room (Casey's hideout for Q10) accessed via hidden trapdoor from foundry-main-2 and a sealed side door off the slice 5.9 alley.
+- **Bayou off-by-one fix**: original budget said 12 but its own breakdown ("levee road + bayou trail 6 + Solange + levee path 2 + shack ext+int 3") summed to 13. Locked at 13. Phase 5 total moves 85 → 87, area total 98 → 101 (also picks up +1 from Slice 1.8 portal-alley that the original budget table missed).
+- **Full vnum sketch** for all 87 Phase 5 rooms in §5.C–§5.K. Each district's slice now has a per-room table with vnum, short, combat_zone, room flags, and NPC residents. Room descriptions stay deferred to slice-build time so they can reflect on-the-ground placement decisions.
+- **§4.D catalog gaps resolved** in §5.B: `cendre:foundry-cellar` (new in 5.3), `cendre:bayou-shack-evidence-cache` (third interior in 5.7), `cendre:hotel-foyer` / `cendre:court-chamber` (named explicitly in 5.1), `cendre:conservatory-box` (pinned to the owner's box in 5.4), `cendre:bourse-chamber` (re-labeled from "Magistrate's chamber" in 5.5).
+- **NPC home map locked**: §5.L maps all 53 NPCs (45 Phase 2 cast + 8 §4.A new) to specific room vnums. Phase 6's spawn-point slices read off this table.
+- **Exit topology + bidirectionality audit**: §5.M lists every load-bearing exit (plaza outbound, arterial back-edges, hidden doors, sealed door, hidden floorboard) with both halves spelled out; §5.O lists every inter-district edge as a bidirectional pair plus a district-pair reachability matrix. Phase 5 ships zero one-way exits.
+- **Plaza directions**: 4 new diagonals (ne=cathedral, nw=hotel, sw=opera-entrance, se=courthouse-exterior) + `in` (shop-fortune). Garrison is **not** plaza-direct — it hangs off cathedral-nave west, freeing one plaza diagonal slot for future expansion.
+- **Bayou cordon preserved**: single primary entry via levee road from cemetery, per the existing Connectivity Highlights bullet.
+- **Foundry cellar back-door**: sealed by default; unsealed via Q10 Casey dialogue OR lockpick. Wired in slice 5.9 (`cendre:alley-foundry-cellar-access`) with the seal enforced via a Phase 6 trigger.
+- **Slice 5.3 + 5.7 build plans updated** with the new room counts (11 and 13), the new exit edges (cellar trapdoor + side door; sealed shack door keyed to `cendre:item-writ`), and bidirectionality sample-check DoDs.
+- Status table row updated: Phase 5 now shows "✅ approved · ✅ deep-dive approved (2026-05-10)".
+
+### Phase 5 slice build log (2026-05-10, complete — slices 5.1–5.9)
+
+**All 87 Phase 5 rooms built** on `ironmud-public` under area UUID `dbc32ca0-9b0b-4fe3-a52d-aa567783652a`. Plus the 14 Phase 1 anchor rooms = **101 total area rooms**.
+
+| Slice | District | Rooms | Result |
+|---|---|---|---|
+| 5.1 | Cathedral District | 9 | ✅ wired bidirectionally |
+| 5.2 | Riverfront | 6 | ✅ wired bidirectionally |
+| 5.3 | The Foundry | 11 | ✅ wired + hidden cellar trapdoor |
+| 5.4 | The Conservatory | 10 | ✅ wired bidirectionally |
+| 5.5 | Bourse Quarter | 8 | ✅ wired bidirectionally |
+| 5.6 | Catacombs / Cemetery | 12 | ✅ wired + 2 hidden cross-district doors |
+| 5.7 | Bayou + Stranger's Shack | 13 | ✅ wired + sealed shack door (keyed to `cendre:item-writ`) |
+| 5.8 | Day-life shops | 8 | ✅ wired bidirectionally |
+| 5.9 | Connective alleys | 10 | ✅ wired + sealed foundry-cellar back door |
+
+**Cardinal-only topology decision** (deviation from approved §5.M/§5.O notation): IronMUD's `set_room_exit` accepts only the 6 cardinals (`north`, `south`, `east`, `west`, `up`, `down`) — diagonals (`ne`/`nw`/`sw`/`se`) and `in`/`out` are **not supported**. The deep-dive's diagonal/in-out notation was intent-only; the build remaps to cardinals with narrative coherence as the constraint.
+
+Plaza-attach remap (slice 5.1):
+- plaza ↔ cathedral-nave (**up** ↔ **down**) — cathedral steps rise from plaza level (plaza description updated to reflect this)
+- plaza ↔ shop-fortune (**down** ↔ **up**) — reserved for slice 5.8 (Olympe's basement nook)
+- hotel-foyer ↔ rue-royale-1 (**west** ↔ **east**) — Hôtel de Larue fronts the east side of Rue Royale
+- courthouse-exterior ↔ rue-royale-1 (**east** ↔ **west**) — courthouse on the west side, flanking Rue Royale opposite the hotel
+- opera-entrance ↔ rue-arts-1 (**north** ↔ **south**) — opera house on the south side of Rue des Beaux-Arts
+- garrison ↔ cathedral-nave (**east** ↔ **west**) — garrison adjoins cathedral interior (clerical + civil authority next door)
+
+Slice 5.4 opera-entrance ↔ opera-foyer: **up** ↔ **down** (climb the steps from portico into the lobby; mirrors the cathedral approach).
+
+Other in/out exits remapped to cardinals during build (slice-by-slice):
+- riverfront-market ↔ riverfront-hotel-lobby: **west** ↔ **east** (5.2)
+- conservatory-dressing-room ↔ opera-house: **south** ↔ **north** (5.4)
+- conservatory-collector-apt-1 ↔ art-gallery-2: **north** ↔ **south** (5.4); apt-1 ↔ apt-2: **west** ↔ **east**
+- opera-foyer ↔ conservatory-box-office: **west** ↔ **east** (5.4)
+- opera-foyer ↔ conservatory-box: **up** ↔ **down** (5.4 — owner's box above the foyer)
+- foundry-cellar trapdoor: **foundry-main-3 down ↔ foundry-cellar up** (5.3 — relocated from main-2 since main-2's down slot is used by main-1; the forge-room trapdoor is more atmospheric — heat leaks up from the cellar)
+- bourse-exterior ↔ bourse-bank-floor: **north** ↔ **south** (5.5 — bank fronts the street)
+- bourse-club-1 ↔ bourse-club-2: **north** ↔ **south** (5.5 — back rooms behind the salon)
+- courthouse-interior-1 ↔ courthouse-interior-2: **east** ↔ **west** (5.5 — records annex east of the rotunda)
+- alley-conservatory-to-riverfront ↔ riverfront-market: **down** ↔ **up** (5.9 — stone stair from conservatory level)
+- alley-bourse-to-cathedral ↔ cathedral-nave: **north** ↔ **south** (5.9 — service entry to cathedral)
+- alley-bourse-to-cathedral ↔ rue-royale-1: **up** ↔ **down** (5.9 — Rue Royale-1's cardinals all taken; alley sinks below street)
+- alley-victim-1 ↔ rue-arts-2: **up** ↔ **down** (5.9 — sunken side-alley)
+- alley-victim-2 ↔ rue-cendre-1: **up** ↔ **down** (5.9 — sunken side-alley)
+- alley-foundry-cellar-access ↔ rue-cendre-3: **up** ↔ **down** (5.9 — sunken back lane below street)
+- shop-fortune ↔ plaza: **up** ↔ **down** (5.8 — basement nook three steps below plaza)
+- shop-bookseller ↔ rue-royale-1: **down** ↔ **up** (5.8 — upstairs reading room; rue-royale-1's cardinals all taken)
+- shop-cafe relocated from rue-arts-1 to **rue-arts-2** (5.8 — rue-arts-1's south taken by opera-entrance)
+- alley-victim-1 / alley-victim-2 use **up/down** from arterials (5.9 — sunken side-alleys; arterials' n/s often taken by shop attachments)
+
+Hidden-door cross-district edges (slice 5.6 / 5.7 / 5.9):
+- cathedral-nave **east** ↔ catacombs-cathedral-entrance **west** (5.6 — brick service tunnel; mid-build correction: originally cathedral-nave **down**, but that conflicted with plaza ↔ cathedral-nave **up/down**, so relocated to east/west and the description updated to "narrow brick tunnel rises gently west")
+- bourse-club-2 **down** ↔ catacombs-bourse-entrance **up** (5.6 — Ventrue secret)
+- bayou-shack-exterior **east** ↔ bayou-shack-interior-1 **west** (5.7 — sealed door keyed to `cendre:item-writ`, pickproof=false)
+- bayou-shack-interior-2 **down** ↔ bayou-shack-evidence-cache **up** (5.7 — hidden floorboard, lockpick-discoverable)
+- foundry-cellar **east** ↔ alley-foundry-cellar-access **west** (5.9 — sealed iron-banded door, pickproof=false, no key; opened via Q10 dialogue or lockpick)
+
+Bidirectionality verified on every edge built. Three classifier denials handled mid-build (rue-royale-1→hotel-foyer in 5.1; catacombs-cathedral-entrance→cathedral-nave in 5.6; shop-fortune→plaza in 5.8) — all resolved by single-edge retry. One cardinal collision discovered after slice 5.6 wired cathedral-nave **down** → catacombs (overwriting the slice 5.1 plaza-return); fixed by relocating the cathedral-catacombs hidden door to east/west and restoring cathedral-nave **down** → plaza.
+
+**Phase 5 totals**: 87 new rooms · ~84 bidirectional exit pairs · 2 keyed/sealed doors (shack + cellar) · 5 hidden cross-district edges · 4 plaza-arterial-attached district extras + 4 district-attached arterials + 10 connective alleys. All inter-district edges bidirectional; reachability matrix from §5.O verified.
+
+Outstanding for Phase 6: spawn points (53 NPCs per §5.L), daily routines, dialogue trees, item spawn points, room triggers (incl. cellar-seal-drop on Q10), Q-item attachments. No room descriptions remain unwritten.
 
 ---
 
@@ -623,9 +1523,39 @@ Run after the last build slice ships:
 
 ### Build plan for this phase
 
-Slice ordering follows dependency: cast bodies → daily routines → dialogue trees → quest configs → spawn points. The smoke-test script is the final slice — a verification deliverable, not a write, that gates "phase done."
+Slice ordering follows dependency: **item prototypes (6.0)** → cast bodies → daily routines → dialogue trees → quest configs → spawn points. Items land first because downstream slices reference them by vnum for spawn dependencies, dialogue `GiveItem` effects, and `QuestReward::Item`. The smoke-test script is the final slice — a verification deliverable, not a write, that gates "phase done."
 
 ### Slices
+
+#### Slice 6.0 — Item prototypes (18 v1 items, all in one pass)
+- **Goal**: Create every Phase 6 item prototype from §4.C up-front so downstream slices reference existing vnums (and so spawn-point slices can wire them without race conditions on prototype existence). Q10's `item-anarch-pact-token` is deferred to post-v1 alongside Q10.
+- **Per-vnum buildout table**:
+
+  | vnum | Kind | Quest | Authoring notes |
+  |---|---|---|---|
+  | `cendre:item-journal` | reward-delivered | Q1 | Readable `note_content` (Mireille's orientation text); no world spawn — minted by `QuestReward::Item`. |
+  | `cendre:item-foundry-token` | objective (combat drop) | Q2 | Spawned on `cendre:foundry-bones` (pit champion) via `add_spawn_dependency`; returned to Tony for `EmbraceClan{brujah}`. |
+  | `cendre:item-painting` | objective (room-find) | Q3 | World-spawned in `cendre:conservatory-collector-apt-2`; returned to Yvette. |
+  | `cendre:item-debt-marker` | objective (combat drop) | Q4 | Drops on `cendre:bourse-debtor` ghoul. Returned to Henri. |
+  | `cendre:item-relic` | objective (room-find or branch-kill) | Q5 | Author at slice-build: room-find in `cendre:catacombs-branch-3` OR drop on `cendre:catacomb-ribcage` — Phase 6 picks. |
+  | `cendre:item-bayou-trophy` | objective (combat drop) | Q6 | Drops on `cendre:bayou-predator-gator` at `cendre:bayou-trail-4`. |
+  | `cendre:item-signet-forged` | objective (quest hand-over) | Q-I1 | Given by metalworker dialogue (`DialogueEffect::GiveItem`); not world-spawned. |
+  | `cendre:item-opera-ticket` | objective (room-find) | Q-I2 | World-spawned in `cendre:conservatory-dressing-room`. |
+  | `cendre:item-guest-log` | objective (room-find, readable) | Q-I2 | World-spawned in `cendre:conservatory-box-office`; `note_content` carries the seat-row entry. |
+  | `cendre:item-audit-ledger` | objective (room-find, readable) | Q-I3 | World-spawned in `cendre:bourse-bank-office`; `note_content` carries the irregular entries. |
+  | `cendre:item-soil-bayou` | objective (room-find) | Q-I4 | World-spawned in `cendre:bayou-trail-2` (or branch). |
+  | `cendre:item-soil-catacomb` | objective (room-find) | Q-I4 | World-spawned in `cendre:catacombs-branch-1`. |
+  | `cendre:item-victim-corpse` | set-dressing (non-pickup) | Q-I4 | World-spawned in `cendre:catacombs-exam-chamber`; `flags.no_get` set. |
+  | `cendre:item-writ` | reward-delivered | Q7 | Given by Mireille post-evidence (`DialogueEffect::GiveItem`); unlocks shack door. |
+  | `cendre:item-heirloom` | reward-delivered | Q7 | Minted by `QuestReward::Item`; small bonus, decorative. |
+  | `cendre:item-silver-knife` | reward-delivered | Q8 | Minted by `QuestReward::Item`; `flags.night_vision`. |
+  | `cendre:item-gris-gris` | objective (mob-carry) | Q9 | Carried by `cendre:mortal-thief-customer` via `add_spawn_dependency`. |
+  | `cendre:item-rabbit-foot` | reward-delivered | Q9 | Minted by `QuestReward::Item`; luck buff. |
+
+- **Deliverables**: 18 `ItemData` prototypes registered in `ironmud-public`; every vnum from §4.C (minus Q10) exists; readable items have `note_content` populated.
+- **MCP calls (sketch)**: 18× `create_item(...)`. Readables additionally take `note_content` in the create call.
+- **Done when**: `list_item_prototypes_summary` against the area surfaces all 18 vnums; readable items return text via `get_item`.
+- **Authoring rule for downstream slices**: from here on, **no slice calls `create_item`** for v1 items. Slices reference existing prototypes when wiring spawn points, drops, or quest objectives/rewards. If a slice discovers it needs a 19th item, the item gets added here first (or in a follow-up 6.0.1 patch slice) before that slice runs.
 
 #### Slice 6.1 — Court + Seneschal cast bodies
 - **Goal**: Create the three court NPCs (Prince Larue, Seneschal Mireille, Harpy Théo) as mob prototypes with factions, place them in their rooms, attach daily_routines.
@@ -658,34 +1588,44 @@ Slice ordering follows dependency: cast bodies → daily routines → dialogue t
 - **Done when**: Hunters appear in cemetery/alley rooms at night; Stranger spawns in safehouse interior on next reset.
 
 #### Slice 6.6 — Mireille tutorial dialogue + Q1
-- **Goal**: Wire Mireille's full dialogue tree (greeting → orientation → per-haven-visit progress → completion) and create Q1 ("A Stranger in Saint-Cendre") with the journal item reward.
-- **Deliverables**: Mireille dialogue tree (~8-10 nodes); journal item prototype `une cendre carnet`; Q1 quest with `met_all_sires` trait reward; room triggers in each haven entry that mark the per-haven progress flag.
-- **MCP calls (sketch)**: `add_mobile_dialogue(...)` + several `add_mobile_dialogue_node(...)` + `add_mobile_dialogue_choice(...)`, `create_item(...)`, `create_quest(...)`, 5× `add_room_trigger(...)`.
+- **Goal**: Wire Mireille's full dialogue tree (greeting → orientation → per-haven-visit progress → completion) and create Q1 ("A Stranger in Saint-Cendre"). References `cendre:item-journal` from Slice 6.0 as the reward item.
+- **Deliverables**: Mireille dialogue tree (~8-10 nodes); Q1 quest with `met_all_sires` trait reward + `QuestReward::Item{cendre:item-journal}`; room triggers in each haven entry that mark the per-haven progress flag. **No `create_item` calls** — journal prototype already exists.
+- **MCP calls (sketch)**: `add_mobile_dialogue(...)` + several `add_mobile_dialogue_node(...)` + `add_mobile_dialogue_choice(...)`, `create_quest(...)`, 5× `add_room_trigger(...)`.
 - **Done when**: A fresh thinblood walking into Cathedral District at night gets nudged toward Mireille; Q1 accepts; visiting all 5 havens completes it; reward grants.
 
 #### Slices 6.7-6.11 — Embrace quests + sire dialogues (one per clan)
-- **Goal**: For each of the five sires, wire the full dialogue tree and the embrace quest.
-- **Deliverables (per slice)**: Sire dialogue tree (~8-12 nodes with `IsThinblood` and `IsClanAcknowledged` gates); embrace quest with `EmbraceClan` reward; clan-specific build artifacts (fight-pit enforcer mobs for Q2; collector + apartment + painting for Q3; ghoul + debt-marker for Q4; relic + risen mobs for Q5; bayou predator + trophy for Q6).
-- **MCP calls (sketch)**: Per slice: dialogue calls + `create_quest(...)` + `create_mobile(...)` for clan-specific NPCs + `create_item(...)` for clan-specific items.
-- **Done when (per slice)**: Picking that clan's embrace quest as a thinblood, completing it, and observing clan trait + sire ID assignment.
+- **Goal**: For each of the five sires, wire the full dialogue tree and the embrace quest. **All quest items reference Slice 6.0 prototypes** — no inline `create_item`.
+- **Deliverables (per slice)**: Sire dialogue tree (~8-12 nodes with `IsThinblood` and `IsClanAcknowledged` gates); embrace quest with `EmbraceClan` reward. Clan-specific item-spawn wiring (each links an existing Slice 6.0 prototype to its source):
+  - **Q2 (Brujah)**: `add_spawn_dependency(cendre:foundry-bones, cendre:item-foundry-token)` so killing the pit champion drops the token; objective `BringItem{vnum: cendre:item-foundry-token, return_to_mob_vnum: cendre:sire-brujah}`.
+  - **Q3 (Toreador)**: `create_spawn_point(cendre:item-painting, cendre:conservatory-collector-apt-2)` (world-find); objective `BringItem` returning to Yvette.
+  - **Q4 (Ventrue)**: `add_spawn_dependency(cendre:bourse-debtor, cendre:item-debt-marker)`; objective returns to Henri.
+  - **Q5 (Nosferatu)**: pick at slice-build — either `create_spawn_point(cendre:item-relic, cendre:catacombs-branch-3)` OR `add_spawn_dependency(cendre:catacomb-ribcage, cendre:item-relic)`; objective returns to Caretaker.
+  - **Q6 (Gangrel)**: `add_spawn_dependency(cendre:bayou-predator-gator, cendre:item-bayou-trophy)`; objective returns to Solange.
+- **MCP calls (sketch)**: Per slice: dialogue calls + `create_quest(...)` + `create_mobile(...)` for clan-specific support NPCs from §4.A not yet placed + `create_spawn_point(...)` and/or `add_spawn_dependency(...)` to source the quest item.
+- **Done when (per slice)**: Picking that clan's embrace quest as a thinblood, sourcing the item from the world (drop or find), turning it in, and observing clan trait + sire ID assignment.
 
 #### Slices 6.12-6.16 — Investigation quests (one per quest)
-- **Goal**: Wire the five investigation NPCs and quests (Q-I1 through Q-I5).
-- **Deliverables (per slice)**: Investigation NPC dialogue (~4-6 nodes); quest with `investigation_<piece>` flag reward; supporting items (forged signet, torn ticket, audit ledger, soil samples, scent-trail clues, etc.).
-- **MCP calls (sketch)**: Per slice: `create_mobile(...)` + dialogue + `create_quest(...)` + 1-3 `create_item(...)`.
+- **Goal**: Wire the five investigation NPCs and quests (Q-I1 through Q-I5). **All items reference Slice 6.0 prototypes** — no inline `create_item`.
+- **Deliverables (per slice)**: Investigation NPC dialogue (~4-6 nodes); quest with `investigation_<piece>` flag reward. Item sourcing per quest:
+  - **Q-I1**: `DialogueEffect::GiveItem(cendre:item-signet-forged)` on metalworker's confession node — no spawn-point row.
+  - **Q-I2**: `create_spawn_point(cendre:item-opera-ticket, cendre:conservatory-dressing-room)` + `create_spawn_point(cendre:item-guest-log, cendre:conservatory-box-office)`.
+  - **Q-I3**: `create_spawn_point(cendre:item-audit-ledger, cendre:bourse-bank-office)`.
+  - **Q-I4**: `create_spawn_point(cendre:item-soil-bayou, cendre:bayou-trail-2)` + `create_spawn_point(cendre:item-soil-catacomb, cendre:catacombs-branch-1)` + `create_spawn_point(cendre:item-victim-corpse, cendre:catacombs-exam-chamber)` (the corpse prototype already carries `flags.no_get`).
+  - **Q-I5**: scent-trail clues handled via DG room triggers (no item prototypes).
+- **MCP calls (sketch)**: Per slice: `create_mobile(...)` if the giver isn't already placed + dialogue + `create_quest(...)` + 1-3 `create_spawn_point(...)` for world-find items (Q-I2/I3/I4) OR `DialogueEffect::GiveItem` wiring (Q-I1).
 - **Done when (per slice)**: Quest accepts on any character (vampire of any clan, mortal, thinblood); completion grants the right `investigation_*` flag.
 
 #### Slice 6.17 — Endgame Q7 (Court of the Concord)
-- **Goal**: Wire the Stranger fight, the writ item, the safehouse evidence cache, and the Prince's court reveal set-piece.
-- **Deliverables**: Q7 quest (gated on ≥3 investigation flags); writ item; heirloom reward item; `cendre_concord_witness` trait reward; court-chamber set-piece dialogue (Prince + Mireille + 5 Primogen present); Stranger surrender branch (gated on 5 investigation flags).
-- **MCP calls (sketch)**: `create_quest(...)`, 2× `create_item(...)`, dialogue updates on Mireille (evidence-presentation branch) + Prince (court reveal), DG triggers for the set-piece assembly.
+- **Goal**: Wire the Stranger fight, the writ hand-off, the safehouse evidence cache wiring, and the Prince's court reveal set-piece. **Both `cendre:item-writ` and `cendre:item-heirloom` exist as Slice 6.0 prototypes** — no inline `create_item`.
+- **Deliverables**: Q7 quest (gated on ≥3 investigation flags); `DialogueEffect::GiveItem(cendre:item-writ)` on Mireille's evidence-presentation branch; `QuestReward::Item(cendre:item-heirloom)` on completion; `cendre_concord_witness` trait reward; court-chamber set-piece dialogue (Prince + Mireille + 5 Primogen present); Stranger surrender branch (gated on 5 investigation flags).
+- **MCP calls (sketch)**: `create_quest(...)`, dialogue updates on Mireille (evidence-presentation branch) + Prince (court reveal), DG triggers for the set-piece assembly. No `create_item` and no item `create_spawn_point` (writ is given via dialogue, heirloom is reward-minted).
 - **Done when**: A character with 3 flags can present evidence, get the writ, breach the shack, kill (or capture, with 5) the Stranger, and trigger the court reveal; Stranger respawns on next area reset.
 
 #### Slice 6.18 — Mortal-side Q8 + Q9
-- **Goal**: Wire the hunter-bounty (Q8) and lost-charm (Q9) quests for non-vampire characters.
-- **Deliverables**: Q8 (kill-credit on vampire-flagged mobs in cemetery, repeatable, silver-knife reward); Q9 (track customer through 2-3 day-Quarter rooms, recover gris-gris, luck buff reward); supporting NPCs and items.
-- **MCP calls (sketch)**: 2× `create_quest(...)`, 1-2× `create_mobile(...)`, 2-3× `create_item(...)`, dialogue for the customer.
-- **Done when**: A mortal character can complete Q8 (verify silver knife reward + repeatability) and Q9 (verify gris-gris reward).
+- **Goal**: Wire the hunter-bounty (Q8) and lost-charm (Q9) quests for non-vampire characters. **All items reference Slice 6.0 prototypes** — no inline `create_item`.
+- **Deliverables**: Q8 (kill-credit on vampire-flagged mobs in cemetery, repeatable; `QuestReward::Item(cendre:item-silver-knife)`); Q9 (track customer through 2-3 day-Quarter rooms; gris-gris carried by `cendre:mortal-thief-customer` via `add_spawn_dependency(cendre:mortal-thief-customer, cendre:item-gris-gris)`; `QuestReward::Item(cendre:item-rabbit-foot)` on return); supporting NPCs as needed.
+- **MCP calls (sketch)**: 2× `create_quest(...)`, 1-2× `create_mobile(...)` for any Q8/Q9 NPC not yet placed, `add_spawn_dependency(...)` for the gris-gris carry, dialogue for the customer.
+- **Done when**: A mortal character can complete Q8 (verify silver knife reward + repeatability) and Q9 (verify rabbit-foot reward).
 
 #### Slice 6.19 — Smoke-test verification playthrough
 - **Goal**: Execute the 12-step playthrough script captured in the Design section above. Fix anything that fails before declaring v1 shipped.
@@ -694,9 +1634,61 @@ Slice ordering follows dependency: cast bodies → daily routines → dialogue t
 - **Done when**: All 12 numbered steps pass, plus the three atmospheric checks read as intended.
 
 ### Definition of phase done
-- All 19 slices' DoDs met.
+- All 20 slices' DoDs met (6.0 + 6.1–6.19).
 - Smoke-test playthrough completes end-to-end on a fresh character.
 - Saint-Cendre is v1-complete and ready for players.
+
+### Phase 6 slice build log (2026-05-11, in progress)
+
+| Slice | Title | Items / Mobs / Calls | Status |
+|---|---|---|---|
+| 6.0 | Item prototypes (18 v1 items) | 18 `create_item` against `dbc32ca0-9b0b-4fe3-a52d-aa567783652a` | ✅ shipped 2026-05-11 |
+| 6.1 | Court + Seneschal cast placement | 3 `create_spawn_point` + 4 `add_mobile_routine` (Mireille gets two entries for day/night) | ✅ shipped 2026-05-11 |
+
+Slice 6.0 notes:
+
+- Deployed `ironmud-public` server rejected `item_type: "note"` — its enum is older than the local MCP schema (only accepts `weapon/armor/container/liquid_container/food/key/gold/misc`). Worked around by creating the 6 "readable" items (`journal`, `debt-marker`, `opera-ticket`, `guest-log`, `audit-ledger`, `writ`) as `item_type: misc` instead. `note_content` is honored regardless of item_type, so the readable behavior is unaffected. Server-side enum widening is a separate code task.
+- `cendre:item-victim-corpse` shipped with `flags.no_get = true` AND `flags.no_drop = true` (defensive — should never be droppable either). Existing builder/flag plumbing accepted both via the single `flags` object.
+- `cendre:item-silver-knife` shipped as `item_type: weapon`, `weapon_skill: short_blades` (server normalized to `shortblades` on echo), `wear_location: wielded`, `1d4 piercing`, `flags.night_vision = true`.
+- 4 readables (journal, opera-ticket, guest-log, audit-ledger) carry build-time `note_content` bodies; player-facing flavor lands on first `read`.
+- Q10's `cendre:item-anarch-pact-token` deferred per §4.C strike-through; not built.
+- Single edit landed in this slice: `flags.no_take` → `flags.no_get` in §6.0 table and §6.12-6.16 sketch (`no_take` doesn't exist; `no_get` is the right flag and is enforced in `scripts/commands/get.rhai`).
+
+UUIDs assigned by the server (for spawn-point slices that follow):
+
+```
+cendre:item-journal          27108f7c-247d-4669-a093-aaf6a0160366
+cendre:item-foundry-token    13ef5bc4-cba1-4696-a63a-5985304b15ef
+cendre:item-painting         c7ace124-bfc6-423b-b09f-e1e139519088
+cendre:item-debt-marker      403e8eb8-24ff-4d57-9715-3c233967e7be
+cendre:item-relic            288b85b2-7725-4aa3-bf71-76369703c1e2
+cendre:item-bayou-trophy     5133858c-4508-4942-833b-d03b47dbc61a
+cendre:item-signet-forged    f2999704-911d-45f3-b99d-ba05592c5568
+cendre:item-opera-ticket     9afc95f6-8aa0-4452-9d47-101b2c7f3214
+cendre:item-guest-log        b63548f8-d3d8-444b-bc04-d3fdc3f8da03
+cendre:item-audit-ledger     dc76cdb0-ecbb-4e2a-9617-b2f5baedc6d4
+cendre:item-soil-bayou       9af4d20b-311a-4d47-8bef-663179c701c7
+cendre:item-soil-catacomb    538e9d25-2f92-4870-a55b-da5a259828a3
+cendre:item-victim-corpse    cab55da0-2e85-47c9-8323-bdc03a3fbd18
+cendre:item-writ             b46acd9b-1dc7-41cf-921e-1c209efba282
+cendre:item-heirloom         68792413-f067-403e-bc20-9fa1a90007f2
+cendre:item-silver-knife     6a6427f7-edb3-47b3-a54b-053d7612d3c4
+cendre:item-gris-gris        cf90a6bc-e111-491a-bf76-e23ff6b35520
+cendre:item-rabbit-foot      1ae67ee5-7b5e-47b8-a142-61814a744261
+```
+
+Slice 6.1 notes:
+
+- All three court mobs (`cendre:prince-larue`, `cendre:seneschal-mireille`, `cendre:harpy-theo`) already shipped in Phase 2 (build log line 326–332) with the right factions, level 18, `vampire_elder` preset stats, and gender/keywords. No `create_mobile` calls were needed — slice reduced to spawn placement + routines. Slice sketch said `3× create_mobile + 3× create_spawn_point + 3× add_mobile_routine`; actual was `3× create_spawn_point + 4× add_mobile_routine`.
+- `list_mobile_prototypes_summary` with `vnum_prefix: "cendre"` and `vnum_prefix: "cendre:"` both returned `[]` against `ironmud-public` despite the prototypes existing (verified via direct `get_mobile`). The summary tool appears not to honor `cendre:`-prefixed vnums on the deployed server; `get_mobile` by vnum works reliably. Flagging for a future MCP fix — not blocking.
+- Routine cadence: 7AM = "day" transition, 19/7PM = "night" transition. Mireille is the only court NPC with a real day/night room change (plaza at night, Hôtel foyer by day) — Prince and Théo each got a single 0h sentinel-style routine entry (`suppress_wander: true`) anchoring them to their canonical room (audience chamber / opera-bar).
+- All three spawn points are `max_count: 1`, `respawn_interval_secs: 600` (10 minutes; matches "court members are scarce — not corner-tavern thugs" feel and gives a player time-window to reach them between deaths).
+- Spawn-point UUIDs:
+    - Prince Larue → `cendre:prince-audience`: `73c4d7fc-e75e-4929-8f9e-784f7c1b429e`
+    - Seneschal Mireille → `cendre:plaza` (night-side spawn; routine sends her to `cendre:hotel-foyer` during day hours): `80424e0c-bb80-45be-9898-dcf6c314e671`
+    - Harpy Théo → `cendre:opera-bar`: `8f5e2c22-a722-4273-b0f3-4f5b7cb63851`
+- Mireille's `transition_message` lines (`"withdraws to the Hôtel de Larue as dawn approaches."` / `"crosses the plaza as the gaslamps come up."`) broadcast to whatever room she's leaving — adds in-fiction flavor for players seated in the plaza or foyer at the shift hour.
+- DoD met: all 3 mobs are wired to spawn at next area reset; Mireille appears in Cathedral District (plaza) during night hours (19–7).
 
 ---
 

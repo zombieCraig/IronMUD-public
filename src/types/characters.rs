@@ -266,6 +266,20 @@ pub struct CharacterData {
     pub active_quests: HashMap<String, ActiveQuest>,
     #[serde(default, skip_serializing_if = "std::collections::HashSet::is_empty")]
     pub completed_quests: std::collections::HashSet<String>,
+    /// In-flight slow-move (set when stepping into a delayed exit). The
+    /// player is locked in `source_room_id` until `complete_at` (unix
+    /// seconds). The slow-move tick reads this, injects a `go <direction>`
+    /// input event when the timer fires, and the go handler honors the
+    /// pending move by skipping the delay check exactly once.
+    #[serde(default)]
+    pub pending_slow_move: Option<PendingSlowMove>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PendingSlowMove {
+    pub direction: String,
+    pub source_room_id: Uuid,
+    pub complete_at: i64,
 }
 
 fn default_automap_radius() -> i32 {

@@ -1546,6 +1546,7 @@ mod pair_housing_tests {
             dg_vars: std::collections::HashMap::new(),
             coordinates: None,
             contextual_commands: Vec::new(),
+            exit_delays: std::collections::HashMap::new(),
         };
         db.save_room_data(room.clone()).expect("save room");
         db.set_room_vnum(&room.id, vnum).expect("vnum index");

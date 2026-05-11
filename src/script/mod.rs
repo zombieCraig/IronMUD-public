@@ -331,6 +331,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 // Quest system fields
                 active_quests: std::collections::HashMap::new(),
                 completed_quests: std::collections::HashSet::new(),
+                pending_slow_move: None,
             }
         },
     );
@@ -656,6 +657,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         dg_vars: std::collections::HashMap::new(),
         coordinates: None,
         contextual_commands: Vec::new(),
+        exit_delays: std::collections::HashMap::new(),
     });
 
     // Register get_available_exits helper

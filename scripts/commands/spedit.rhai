@@ -195,7 +195,38 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "replace" {
+        let ctx = parse_filter_context(parts, 1, char.current_room_id);
+        let filter_type = ctx[0];
+        let offset = ctx[1];
+        let room_id = ctx[2];
+        let spawns = get_filtered_spawns(area, filter_type, room_id);
+        handle_replace(spawns, parts, 1 + offset, connection_id);
+        return;
+    }
+
     show_usage(connection_id);
+}
+
+fn handle_replace(spawns, parts, idx_pos, connection_id) {
+    if parts.len() < idx_pos + 2 {
+        send_client_message(connection_id, "Usage: spedit replace [filter] <index> <on|off>");
+        return;
+    }
+    let sp = resolve_spawn_point(spawns, parts[idx_pos]);
+    if sp == () {
+        send_client_message(connection_id, "Spawn point not found: " + parts[idx_pos]);
+        return;
+    }
+    let val = parts[idx_pos + 1].to_lower();
+    let replace = val == "on" || val == "true" || val == "1" || val == "yes";
+    if set_spawn_point_replace_on_respawn(sp.id, replace) {
+        let status = "off";
+        if replace { status = "on"; }
+        send_client_message(connection_id, "Spawn " + sp.vnum + " replace_on_respawn: " + status);
+    } else {
+        send_client_message(connection_id, "Failed to update spawn point.");
+    }
 }
 
 fn handle_buried(spawns, parts, idx_pos, connection_id) {
@@ -239,7 +270,8 @@ fn show_usage(connection_id) {
     msg += "  spedit max [filter] <index> <count> - Set max count\n";
     msg += "  spedit interval [filter] <index> <secs> - Set interval\n";
     msg += "  spedit dep [filter] <action> <index> ...\n";
-    msg += "  spedit buried [filter] <index> <on|off> - Items spawn buried\n\n";
+    msg += "  spedit buried [filter] <index> <on|off> - Items spawn buried\n";
+    msg += "  spedit replace [filter] <index> <on|off> - Force-replace tracked instances each respawn\n\n";
     msg += "Filters (default: current room):\n";
     msg += "  (none)      - Current room only\n";
     msg += "  all         - All spawns in area\n";
@@ -332,6 +364,9 @@ fn format_spawn_entry(sp, idx, conn_id) {
     output += "  " + olc::c_label("Active: ", conn_id) + olc::c_value(sp.spawned_count + "/" + sp.max_count, conn_id);
     if sp.entity_type == "Item" && sp.bury_on_spawn {
         output += "  " + olc::c_label("Buried: ", conn_id) + olc::c_value("yes", conn_id);
+    }
+    if sp.replace_on_respawn {
+        output += "  " + olc::c_label("Replace: ", conn_id) + olc::c_value("yes", conn_id);
     }
     output += "\n";
 

@@ -30,6 +30,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             sp.spawned_entities.len() as i64
         })
         .register_get("bury_on_spawn", |sp: &mut SpawnPointData| sp.bury_on_spawn)
+        .register_get("replace_on_respawn", |sp: &mut SpawnPointData| sp.replace_on_respawn)
         .register_get("dependency_count", |sp: &mut SpawnPointData| {
             sp.dependencies.len() as i64
         });
@@ -184,6 +185,21 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if let Ok(uuid) = uuid::Uuid::parse_str(&spawn_point_id) {
                 if let Ok(Some(mut sp)) = cloned_db.get_spawn_point(&uuid) {
                     sp.bury_on_spawn = buried;
+                    return cloned_db.save_spawn_point(sp).is_ok();
+                }
+            }
+            false
+        },
+    );
+
+    // set_spawn_point_replace_on_respawn(spawn_point_id, replace) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_spawn_point_replace_on_respawn",
+        move |spawn_point_id: String, replace: bool| {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&spawn_point_id) {
+                if let Ok(Some(mut sp)) = cloned_db.get_spawn_point(&uuid) {
+                    sp.replace_on_respawn = replace;
                     return cloned_db.save_spawn_point(sp).is_ok();
                 }
             }
