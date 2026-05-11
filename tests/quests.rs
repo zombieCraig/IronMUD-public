@@ -519,6 +519,129 @@ fn quest_offer_blocked_by_skill_total() {
     result.unwrap();
 }
 
+/// §4.E.3: achievement_set_prereq gates `offer` until min_count keys in the
+/// set are unlocked. Tracks the same map QuestReward::Achievement writes to,
+/// so upstream investigation quests can stamp the keys and the endgame
+/// quest's offer flips on automatically.
+#[test]
+fn quest_offer_blocked_by_achievement_set_prereq() {
+    let (db, path) = fresh_db("offer_achievement_set");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut q = make_quest("qst:endgame", "Court of the Concord");
+        q.achievement_set_prereq = Some(ironmud::types::AchievementSetPrereq {
+            keys: vec![
+                "investigation_q1".into(),
+                "investigation_q2".into(),
+                "investigation_q3".into(),
+                "investigation_q4".into(),
+                "investigation_q5".into(),
+            ],
+            min_count: 3,
+        });
+        q.objectives.push(QuestObjective::KillMob {
+            vnum: "stranger".into(),
+            count: 1,
+        });
+        db.save_quest_data(&q).expect("save");
+        save_character(&db, "investigator");
+
+        // Zero unlocked: refused.
+        let err = ironmud::quest::offer(&db, "investigator", "qst:endgame");
+        assert!(err.contains("haven't proven enough"), "got: {}", err);
+
+        // Two unlocked: still refused (below threshold of 3).
+        let mut ch = db.get_character_data("investigator").unwrap().unwrap();
+        ch.achievements_unlocked.insert(
+            "investigation_q1".into(),
+            ironmud::types::AchievementUnlock { unlocked_at: 1 },
+        );
+        ch.achievements_unlocked.insert(
+            "investigation_q2".into(),
+            ironmud::types::AchievementUnlock { unlocked_at: 1 },
+        );
+        db.save_character_data(ch).unwrap();
+        let err = ironmud::quest::offer(&db, "investigator", "qst:endgame");
+        assert!(err.contains("haven't proven enough"), "got: {}", err);
+
+        // Third unlocked: gate opens.
+        let mut ch = db.get_character_data("investigator").unwrap().unwrap();
+        ch.achievements_unlocked.insert(
+            "investigation_q4".into(),
+            ironmud::types::AchievementUnlock { unlocked_at: 1 },
+        );
+        db.save_character_data(ch).unwrap();
+        let err = ironmud::quest::offer(&db, "investigator", "qst:endgame");
+        assert_eq!(err, "");
+        let ch = db.get_character_data("investigator").unwrap().unwrap();
+        assert!(ch.active_quests.contains_key("qst:endgame"));
+    }));
+    let _ = std::fs::remove_dir_all(&path);
+    result.unwrap();
+}
+
+/// §4.E.5: KillAnyMob accumulates a shared counter across the listed vnums
+/// and auto-completes a kill-only quest when the threshold is met.
+#[test]
+fn quest_kill_any_mob_objective_accumulates_and_completes() {
+    let (db, path) = fresh_db("kill_any");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut q = make_quest("qst:bounty", "Hunter Bounty");
+        q.objectives.push(QuestObjective::KillAnyMob {
+            vnums: vec!["hunter_a".into(), "hunter_b".into(), "hunter_c".into()],
+            count: 3,
+        });
+        db.save_quest_data(&q).expect("save");
+        save_character(&db, "deputy");
+        ironmud::quest::offer(&db, "deputy", "qst:bounty");
+
+        let conns = empty_connections();
+        let state = make_state(&db, &conns);
+        // Two kills across different vnums in the set both credit the shared
+        // counter.
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, "deputy", "hunter_a", &HashMap::new());
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, "deputy", "hunter_c", &HashMap::new());
+
+        let ch = db.get_character_data("deputy").unwrap().unwrap();
+        let progress = ch.active_quests.get("qst:bounty").expect("active");
+        let key = ironmud::types::kill_any_key(&[
+            "hunter_a".into(),
+            "hunter_b".into(),
+            "hunter_c".into(),
+        ]);
+        assert_eq!(progress.kill_any_progress.get(&key).copied(), Some(2));
+        assert!(
+            progress.kill_progress.is_empty(),
+            "KillAnyMob must not touch the per-vnum kill_progress bucket"
+        );
+
+        // A kill of a vnum NOT in the set is ignored.
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, "deputy", "innocent", &HashMap::new());
+        let ch = db.get_character_data("deputy").unwrap().unwrap();
+        let progress = ch.active_quests.get("qst:bounty").unwrap();
+        assert_eq!(progress.kill_any_progress.get(&key).copied(), Some(2));
+
+        // Third in-set kill hits the threshold and auto-completes.
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, "deputy", "hunter_b", &HashMap::new());
+        let ch = db.get_character_data("deputy").unwrap().unwrap();
+        assert!(!ch.active_quests.contains_key("qst:bounty"));
+        assert!(ch.completed_quests.contains("qst:bounty"));
+    }));
+    let _ = std::fs::remove_dir_all(&path);
+    result.unwrap();
+}
+
+/// kill_any_key is order-independent and dedupes so the same logical set
+/// hashes to the same storage key.
+#[test]
+fn kill_any_key_is_stable_across_input_order() {
+    let k1 = ironmud::types::kill_any_key(&["c".into(), "a".into(), "b".into()]);
+    let k2 = ironmud::types::kill_any_key(&["b".into(), "c".into(), "a".into()]);
+    let k3 = ironmud::types::kill_any_key(&["a".into(), "a".into(), "b".into(), "c".into()]);
+    assert_eq!(k1, k2);
+    assert_eq!(k1, k3);
+    assert_eq!(k1, "a,b,c");
+}
+
 /// Slice 2a: VisitRoom listener advances rooms_visited and auto-completes a
 /// visit-only quest.
 #[test]

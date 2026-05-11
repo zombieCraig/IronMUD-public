@@ -12,7 +12,7 @@ use crate::SharedState;
 use crate::db::Db;
 use crate::types::{
     ActiveQuest, CharacterData, ItemData, ItemLocation, MobileData, QuestData, QuestObjective, QuestReward,
-    SkillProgress,
+    SkillProgress, kill_any_key,
 };
 use crate::SharedConnections;
 
@@ -162,6 +162,15 @@ pub fn offer(db: &Db, char_name: &str, vnum: &str) -> String {
             );
         }
     }
+    if let Some(set) = &quest.achievement_set_prereq {
+        if !set.is_satisfied(&ch.achievements_unlocked) {
+            return format!(
+                "You haven't proven enough yet ({} / {} pieces in place).",
+                set.unlocked_count(&ch.achievements_unlocked),
+                set.min_count,
+            );
+        }
+    }
     let aq = ActiveQuest {
         started_at: now_secs(),
         ..Default::default()
@@ -206,6 +215,10 @@ fn objective_done(db: &Db, ch: &CharacterData, progress: &ActiveQuest, obj: &Que
     match obj {
         QuestObjective::KillMob { vnum, count } => {
             progress.kill_progress.get(vnum).copied().unwrap_or(0) >= *count
+        }
+        QuestObjective::KillAnyMob { vnums, count } => {
+            let key = kill_any_key(vnums);
+            progress.kill_any_progress.get(&key).copied().unwrap_or(0) >= *count
         }
         QuestObjective::BringItem {
             vnum,
@@ -537,16 +550,31 @@ fn credit_one_kill(
             None => continue,
         };
         for obj in &quest.objectives {
-            if let QuestObjective::KillMob { vnum, count } = obj {
-                if vnum == mob_proto_vnum {
-                    let entry = progress.kill_progress.entry(vnum.clone()).or_insert(0);
-                    if *entry < *count {
-                        *entry += 1;
-                        dirty = true;
-                        let line = format!("[ {}: {}/{} ]", quest.name, *entry, count);
-                        notify(connections, char_name, &line);
+            match obj {
+                QuestObjective::KillMob { vnum, count } => {
+                    if vnum == mob_proto_vnum {
+                        let entry = progress.kill_progress.entry(vnum.clone()).or_insert(0);
+                        if *entry < *count {
+                            *entry += 1;
+                            dirty = true;
+                            let line = format!("[ {}: {}/{} ]", quest.name, *entry, count);
+                            notify(connections, char_name, &line);
+                        }
                     }
                 }
+                QuestObjective::KillAnyMob { vnums, count } => {
+                    if vnums.iter().any(|v| v == mob_proto_vnum) {
+                        let key = kill_any_key(vnums);
+                        let entry = progress.kill_any_progress.entry(key).or_insert(0);
+                        if *entry < *count {
+                            *entry += 1;
+                            dirty = true;
+                            let line = format!("[ {}: {}/{} ]", quest.name, *entry, count);
+                            notify(connections, char_name, &line);
+                        }
+                    }
+                }
+                _ => {}
             }
         }
         if has_only_kill_objectives(&quest) && is_completable_owned(db, &ch, &quest) {
@@ -563,10 +591,12 @@ fn credit_one_kill(
 
 fn has_only_kill_objectives(quest: &QuestData) -> bool {
     !quest.objectives.is_empty()
-        && quest
-            .objectives
-            .iter()
-            .all(|o| matches!(o, QuestObjective::KillMob { .. }))
+        && quest.objectives.iter().all(|o| {
+            matches!(
+                o,
+                QuestObjective::KillMob { .. } | QuestObjective::KillAnyMob { .. }
+            )
+        })
 }
 
 /// Variant of `is_completable` that takes an owned character. Used after
@@ -838,6 +868,11 @@ pub fn describe_quest_offers(db: &Db, viewer_name: &str, mob_vnum: &str) -> Opti
                     continue;
                 }
             }
+            if let Some(set) = &q.achievement_set_prereq {
+                if !set.is_satisfied(&ch.achievements_unlocked) {
+                    continue;
+                }
+            }
             has_offerable = true;
         }
     }
@@ -911,6 +946,24 @@ fn format_objective_line(db: &Db, ch: &CharacterData, progress: &ActiveQuest, ob
                 .map(|m| m.short_desc)
                 .unwrap_or_else(|| format!("mob {}", vnum));
             format!("  Slay {}: {}/{}", label, cur, count)
+        }
+        QuestObjective::KillAnyMob { vnums, count } => {
+            let key = kill_any_key(vnums);
+            let cur = progress.kill_any_progress.get(&key).copied().unwrap_or(0);
+            let mut labels: Vec<String> = vnums
+                .iter()
+                .map(|v| {
+                    db.get_mobile_by_vnum(v)
+                        .ok()
+                        .flatten()
+                        .map(|m| m.short_desc)
+                        .unwrap_or_else(|| format!("mob {}", v))
+                })
+                .collect();
+            labels.sort();
+            labels.dedup();
+            let joined = labels.join(" / ");
+            format!("  Slay any of [{}]: {}/{}", joined, cur, count)
         }
         QuestObjective::BringItem {
             vnum,

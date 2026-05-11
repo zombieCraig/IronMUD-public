@@ -152,6 +152,11 @@ export type DialogueCondition = {
 /** True for embraced vampires who carry any clan_* trait. */
  | {
     kind: "is_clan_acknowledged";
+}
+/** True when the speaker has the named achievement unlocked. */
+ | {
+    kind: "has_achievement";
+    key: string;
 };
 export type DialogueEffect = {
     kind: "set_flag";
@@ -809,6 +814,12 @@ export type QuestObjective = {
     kind: "kill_mob";
     vnum: string;
     count: number;
+}
+/** Kill any of the listed prototype vnums until the shared counter hits `count`. */
+ | {
+    kind: "kill_any_mob";
+    vnums: string[];
+    count: number;
 } | {
     kind: "bring_item";
     vnum: string;
@@ -822,6 +833,15 @@ export type QuestObjective = {
     var: string;
     value: string;
 };
+/**
+ * Set-count achievement gate. Quest is offerable only when at least
+ * `min_count` keys in `keys` are unlocked in the player's
+ * `achievements_unlocked` map.
+ */
+export interface AchievementSetPrereq {
+    keys: string[];
+    min_count: number;
+}
 export type QuestReward = {
     kind: "gold";
     amount: number;
@@ -865,6 +885,7 @@ export interface Quest {
     prereq_quest_vnum?: string | null;
     min_player_skill_total?: number | null;
     duration_secs?: number | null;
+    achievement_set_prereq?: AchievementSetPrereq | null;
 }
 export interface CreateQuestRequest {
     vnum: string;
@@ -880,6 +901,7 @@ export interface CreateQuestRequest {
     prereq_quest_vnum?: string;
     min_player_skill_total?: number;
     duration_secs?: number;
+    achievement_set_prereq?: AchievementSetPrereq;
 }
 export interface UpdateQuestRequest {
     name?: string;
@@ -894,6 +916,8 @@ export interface UpdateQuestRequest {
     prereq_quest_vnum?: string;
     min_player_skill_total?: number;
     duration_secs?: number;
+    /** Pass `{keys: [], min_count: 0}` (or any object with empty keys / non-positive min_count) to clear. */
+    achievement_set_prereq?: AchievementSetPrereq;
 }
 export type ForageType = "city" | "wilderness" | "shallow_water" | "deep_water" | "underwater";
 export interface ForageEntry {

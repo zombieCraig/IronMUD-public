@@ -154,6 +154,7 @@ pub(super) fn translate_quest(q: &IrQuest, warnings: &mut Vec<Warning>) -> Optio
         prereq_quest_vnum: None,
         min_player_skill_total: None,
         duration_secs: None,
+        achievement_set_prereq: None,
     };
 
     Some(PlannedQuest {

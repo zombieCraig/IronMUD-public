@@ -46,6 +46,45 @@ pub struct QuestData {
     /// have elapsed since `started_at`. None = no expiry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration_secs: Option<i64>,
+    /// Set-count prereq: require `min_count` of the listed achievement keys
+    /// to be unlocked before the quest becomes offerable. Mirrors the
+    /// `HasAchievement` dialogue condition's read path. Use this for endgame
+    /// quests gated on "completed N of M investigation lines" — no fixed
+    /// ordering, only a threshold.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub achievement_set_prereq: Option<AchievementSetPrereq>,
+}
+
+/// Set-count achievement gate. The quest is offerable when at least
+/// `min_count` keys in `keys` are present in the player's
+/// `achievements_unlocked` map.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AchievementSetPrereq {
+    #[serde(default)]
+    pub keys: Vec<String>,
+    #[serde(default)]
+    pub min_count: i32,
+}
+
+impl AchievementSetPrereq {
+    /// Returns the number of `keys` currently present in `unlocked`. Used by
+    /// both prereq enforcement and offer-cue rendering.
+    pub fn unlocked_count<V>(&self, unlocked: &HashMap<String, V>) -> i32 {
+        self.keys
+            .iter()
+            .filter(|k| unlocked.contains_key(*k))
+            .count() as i32
+    }
+
+    /// Is this prereq satisfied right now? Returns true when `keys` is empty
+    /// or `min_count` is non-positive (treated as "no gate"), or when the
+    /// unlocked count meets the threshold.
+    pub fn is_satisfied<V>(&self, unlocked: &HashMap<String, V>) -> bool {
+        if self.keys.is_empty() || self.min_count <= 0 {
+            return true;
+        }
+        self.unlocked_count(unlocked) >= self.min_count
+    }
 }
 
 impl QuestData {
@@ -64,6 +103,7 @@ impl QuestData {
             prereq_quest_vnum: None,
             min_player_skill_total: None,
             duration_secs: None,
+            achievement_set_prereq: None,
         }
     }
 }
@@ -73,6 +113,17 @@ impl QuestData {
 pub enum QuestObjective {
     /// Slay `count` instances of the named mob prototype vnum.
     KillMob { vnum: String, count: i32 },
+    /// Slay `count` instances drawn from any of the listed prototype vnums.
+    /// Use this when the questgiver wants "any hunter" or "any migrant
+    /// arrival" semantics — every kill of any listed vnum increments a
+    /// shared counter. Progress is stored under a stable key derived from
+    /// the (sorted) vnum set so the same objective re-evaluates the same
+    /// bucket across server restarts.
+    KillAnyMob {
+        #[serde(default)]
+        vnums: Vec<String>,
+        count: i32,
+    },
     /// Acquire (and turn in) `qty` of the named item vnum. When
     /// `return_to_mob_vnum` is `Some`, handing the items to that mob via
     /// `give` consumes them and advances progress; auto-completion fires
@@ -115,6 +166,16 @@ pub enum QuestReward {
     EmbraceClan { clan: String },
 }
 
+/// Build the stable storage key for a `KillAnyMob` objective's progress
+/// bucket. Sorts and joins the vnum set so equal sets (regardless of input
+/// order) map to the same `kill_any_progress` key.
+pub fn kill_any_key(vnums: &[String]) -> String {
+    let mut sorted: Vec<&str> = vnums.iter().map(String::as_str).collect();
+    sorted.sort_unstable();
+    sorted.dedup();
+    sorted.join(",")
+}
+
 /// Per-player quest progress carried on `CharacterData.active_quests`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ActiveQuest {
@@ -124,6 +185,11 @@ pub struct ActiveQuest {
     /// Mob prototype vnum -> kills accumulated.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub kill_progress: HashMap<String, i32>,
+    /// KillAnyMob progress: kill_any_key(sorted vnums) -> kills accumulated.
+    /// Independent from `kill_progress` so a quest may carry both a
+    /// `KillMob` and a `KillAnyMob` objective without cross-talk.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub kill_any_progress: HashMap<String, i32>,
     /// Item prototype vnum -> qty turned in (BringItem with
     /// `return_to_mob_vnum`) OR currently in inventory toward the goal.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]

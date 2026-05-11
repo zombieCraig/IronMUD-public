@@ -110,6 +110,12 @@ pub enum DialogueCondition {
     /// Useful for sire-NPC branches that should only fire after the player
     /// has completed the embrace progression.
     IsClanAcknowledged,
+    /// True when the speaker has the named achievement unlocked. Reads
+    /// `CharacterData.achievements_unlocked` — the same map that
+    /// `QuestReward::Achievement` writes to. Lets dialogue trees gate on
+    /// long-term progression milestones (e.g. "met all sires") that survive
+    /// quest cleanup and clan respec.
+    HasAchievement { key: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

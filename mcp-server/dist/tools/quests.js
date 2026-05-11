@@ -18,6 +18,19 @@ const objectiveSchema = {
         {
             type: "object",
             properties: {
+                kind: { const: "kill_any_mob" },
+                vnums: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Mob prototype vnums whose kills feed a shared counter. Use this for 'any of these' kill objectives (e.g. multi-vnum migrant hunters).",
+                },
+                count: { type: "number", description: "Total kills required across the set. Default 1." },
+            },
+            required: ["kind", "vnums"],
+        },
+        {
+            type: "object",
+            properties: {
                 kind: { const: "bring_item" },
                 vnum: { type: "string", description: "Item prototype vnum to collect" },
                 qty: { type: "number", description: "How many. Default 1." },
@@ -160,6 +173,15 @@ export const questToolDefinitions = [
                     type: "number",
                     description: "Time limit in seconds (None / 0 = no expiry). Active instances are dropped after duration_secs since started_at.",
                 },
+                achievement_set_prereq: {
+                    type: "object",
+                    description: "Set-count gate: quest is offerable only when at least min_count of the listed achievement keys are unlocked. Pair with QuestReward::Achievement on the upstream quests to assemble 'completed N of M' endgame gates. Empty keys or non-positive min_count clears the prereq.",
+                    properties: {
+                        keys: { type: "array", items: { type: "string" } },
+                        min_count: { type: "number" },
+                    },
+                    required: ["keys", "min_count"],
+                },
             },
             required: ["vnum", "name"],
         },
@@ -183,6 +205,15 @@ export const questToolDefinitions = [
                 prereq_quest_vnum: { type: "string" },
                 min_player_skill_total: { type: "number" },
                 duration_secs: { type: "number" },
+                achievement_set_prereq: {
+                    type: "object",
+                    description: "Set-count gate. Pass {keys: [], min_count: 0} (or any object with empty keys / non-positive min_count) to clear.",
+                    properties: {
+                        keys: { type: "array", items: { type: "string" } },
+                        min_count: { type: "number" },
+                    },
+                    required: ["keys", "min_count"],
+                },
             },
             required: ["vnum"],
         },

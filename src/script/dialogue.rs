@@ -1750,6 +1750,7 @@ fn evaluate_condition(cond: &DialogueCondition, ch: &CharacterData, mob: &Mobile
             ch.vampire_state.is_some()
                 && crate::script::vampire::pc_clan_from_traits(ch).is_some()
         }
+        DialogueCondition::HasAchievement { key } => ch.achievements_unlocked.contains_key(key),
     }
 }
 
@@ -2320,6 +2321,30 @@ mod tests {
             };
             assert!(!evaluate_condition(&cond5, &ch, &mob, &db));
             assert!(evaluate_condition(&cond4, &ch, &mob, &db));
+        }));
+        let _ = std::fs::remove_dir_all(&path);
+        result.unwrap();
+    }
+
+    #[test]
+    fn has_achievement_condition_reads_unlocks_map() {
+        let mut ch = make_character("hero");
+        let mut mob = MobileData::new("seneschal".into());
+        mob.vnum = "3004".into();
+        mob.dialogue_tree = Some(mk_tree());
+        let path = format!("test_dialogue_achievement_{}.db", std::process::id());
+        let _ = std::fs::remove_dir_all(&path);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let db = Db::open(&path).expect("open db");
+            let cond = DialogueCondition::HasAchievement {
+                key: "met_all_sires".into(),
+            };
+            assert!(!evaluate_condition(&cond, &ch, &mob, &db));
+            ch.achievements_unlocked.insert(
+                "met_all_sires".into(),
+                crate::types::AchievementUnlock { unlocked_at: 1 },
+            );
+            assert!(evaluate_condition(&cond, &ch, &mob, &db));
         }));
         let _ = std::fs::remove_dir_all(&path);
         result.unwrap();

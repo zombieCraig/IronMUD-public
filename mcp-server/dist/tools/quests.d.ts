@@ -17,6 +17,7 @@ export declare const questToolDefinitions: ({
             prereq_quest_vnum?: undefined;
             min_player_skill_total?: undefined;
             duration_secs?: undefined;
+            achievement_set_prereq?: undefined;
         };
         required?: undefined;
     };
@@ -42,6 +43,7 @@ export declare const questToolDefinitions: ({
             prereq_quest_vnum?: undefined;
             min_player_skill_total?: undefined;
             duration_secs?: undefined;
+            achievement_set_prereq?: undefined;
         };
         required: string[];
     };
@@ -95,6 +97,31 @@ export declare const questToolDefinitions: ({
                                 type: string;
                                 description: string;
                             };
+                            vnums?: undefined;
+                            qty?: undefined;
+                            return_to_mob_vnum?: undefined;
+                            var?: undefined;
+                            value?: undefined;
+                        };
+                        required: string[];
+                    } | {
+                        type: string;
+                        properties: {
+                            kind: {
+                                const: string;
+                            };
+                            vnums: {
+                                type: string;
+                                items: {
+                                    type: string;
+                                };
+                                description: string;
+                            };
+                            count: {
+                                type: string;
+                                description: string;
+                            };
+                            vnum?: undefined;
                             qty?: undefined;
                             return_to_mob_vnum?: undefined;
                             var?: undefined;
@@ -120,6 +147,7 @@ export declare const questToolDefinitions: ({
                                 description: string;
                             };
                             count?: undefined;
+                            vnums?: undefined;
                             var?: undefined;
                             value?: undefined;
                         };
@@ -135,6 +163,7 @@ export declare const questToolDefinitions: ({
                                 description: string;
                             };
                             count?: undefined;
+                            vnums?: undefined;
                             qty?: undefined;
                             return_to_mob_vnum?: undefined;
                             var?: undefined;
@@ -157,6 +186,7 @@ export declare const questToolDefinitions: ({
                             };
                             vnum?: undefined;
                             count?: undefined;
+                            vnums?: undefined;
                             qty?: undefined;
                             return_to_mob_vnum?: undefined;
                         };
@@ -305,6 +335,22 @@ export declare const questToolDefinitions: ({
                 type: string;
                 description: string;
             };
+            achievement_set_prereq: {
+                type: string;
+                description: string;
+                properties: {
+                    keys: {
+                        type: string;
+                        items: {
+                            type: string;
+                        };
+                    };
+                    min_count: {
+                        type: string;
+                    };
+                };
+                required: string[];
+            };
         };
         required: string[];
     };
@@ -358,6 +404,31 @@ export declare const questToolDefinitions: ({
                                 type: string;
                                 description: string;
                             };
+                            vnums?: undefined;
+                            qty?: undefined;
+                            return_to_mob_vnum?: undefined;
+                            var?: undefined;
+                            value?: undefined;
+                        };
+                        required: string[];
+                    } | {
+                        type: string;
+                        properties: {
+                            kind: {
+                                const: string;
+                            };
+                            vnums: {
+                                type: string;
+                                items: {
+                                    type: string;
+                                };
+                                description: string;
+                            };
+                            count: {
+                                type: string;
+                                description: string;
+                            };
+                            vnum?: undefined;
                             qty?: undefined;
                             return_to_mob_vnum?: undefined;
                             var?: undefined;
@@ -383,6 +454,7 @@ export declare const questToolDefinitions: ({
                                 description: string;
                             };
                             count?: undefined;
+                            vnums?: undefined;
                             var?: undefined;
                             value?: undefined;
                         };
@@ -398,6 +470,7 @@ export declare const questToolDefinitions: ({
                                 description: string;
                             };
                             count?: undefined;
+                            vnums?: undefined;
                             qty?: undefined;
                             return_to_mob_vnum?: undefined;
                             var?: undefined;
@@ -420,6 +493,7 @@ export declare const questToolDefinitions: ({
                             };
                             vnum?: undefined;
                             count?: undefined;
+                            vnums?: undefined;
                             qty?: undefined;
                             return_to_mob_vnum?: undefined;
                         };
@@ -567,6 +641,22 @@ export declare const questToolDefinitions: ({
             duration_secs: {
                 type: string;
                 description?: undefined;
+            };
+            achievement_set_prereq: {
+                type: string;
+                description: string;
+                properties: {
+                    keys: {
+                        type: string;
+                        items: {
+                            type: string;
+                        };
+                    };
+                    min_count: {
+                        type: string;
+                    };
+                };
+                required: string[];
             };
         };
         required: string[];

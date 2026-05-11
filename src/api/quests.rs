@@ -33,6 +33,12 @@ pub enum ObjectiveRequest {
         #[serde(default = "default_one_i32")]
         count: i32,
     },
+    KillAnyMob {
+        #[serde(default)]
+        vnums: Vec<String>,
+        #[serde(default = "default_one_i32")]
+        count: i32,
+    },
     BringItem {
         vnum: String,
         #[serde(default = "default_one_i32")]
@@ -98,6 +104,8 @@ pub struct CreateQuestRequest {
     pub min_player_skill_total: Option<i32>,
     #[serde(default)]
     pub duration_secs: Option<i64>,
+    #[serde(default)]
+    pub achievement_set_prereq: Option<AchievementSetPrereqRequest>,
 }
 
 #[derive(Deserialize)]
@@ -114,6 +122,35 @@ pub struct UpdateQuestRequest {
     pub prereq_quest_vnum: Option<String>,
     pub min_player_skill_total: Option<i32>,
     pub duration_secs: Option<i64>,
+    pub achievement_set_prereq: Option<AchievementSetPrereqRequest>,
+}
+
+/// Wire shape for `achievement_set_prereq`. Empty `keys` or non-positive
+/// `min_count` clears the prereq on update.
+#[derive(Deserialize)]
+pub struct AchievementSetPrereqRequest {
+    #[serde(default)]
+    pub keys: Vec<String>,
+    #[serde(default)]
+    pub min_count: i32,
+}
+
+fn convert_achievement_set(
+    req: &AchievementSetPrereqRequest,
+) -> Option<crate::types::AchievementSetPrereq> {
+    let cleaned: Vec<String> = req
+        .keys
+        .iter()
+        .map(|k| k.trim().to_string())
+        .filter(|k| !k.is_empty())
+        .collect();
+    if cleaned.is_empty() || req.min_count <= 0 {
+        return None;
+    }
+    Some(crate::types::AchievementSetPrereq {
+        keys: cleaned,
+        min_count: req.min_count,
+    })
 }
 
 fn default_one_i32() -> i32 {
@@ -140,6 +177,22 @@ fn convert_objective(req: &ObjectiveRequest) -> Result<QuestObjective, ApiError>
             }
             Ok(QuestObjective::KillMob {
                 vnum: vnum.clone(),
+                count: (*count).max(1),
+            })
+        }
+        ObjectiveRequest::KillAnyMob { vnums, count } => {
+            let cleaned: Vec<String> = vnums
+                .iter()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+                .collect();
+            if cleaned.is_empty() {
+                return Err(ApiError::InvalidInput(
+                    "KillAnyMob requires at least one vnum".into(),
+                ));
+            }
+            Ok(QuestObjective::KillAnyMob {
+                vnums: cleaned,
                 count: (*count).max(1),
             })
         }
@@ -300,6 +353,7 @@ async fn create_quest(
             .and_then(|s| if s.trim().is_empty() { None } else { Some(s) }),
         min_player_skill_total: req.min_player_skill_total,
         duration_secs: req.duration_secs.and_then(|n| if n <= 0 { None } else { Some(n) }),
+        achievement_set_prereq: req.achievement_set_prereq.as_ref().and_then(convert_achievement_set),
     };
 
     state
@@ -373,6 +427,9 @@ async fn update_quest(
     }
     if let Some(v) = req.duration_secs {
         quest.duration_secs = if v <= 0 { None } else { Some(v) };
+    }
+    if let Some(set_req) = req.achievement_set_prereq {
+        quest.achievement_set_prereq = convert_achievement_set(&set_req);
     }
 
     state

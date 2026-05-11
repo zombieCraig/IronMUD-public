@@ -20,7 +20,7 @@ The plan follows the `ironmud-area-designer` skill's interleaved 6-phase workflo
 | 3 | Core Plot | ✅ approved · ✅ deep-dive approved (2026-05-10) | — (pure design) | — |
 | 4 | Seed Quests | ✅ approved · ✅ deep-dive approved (2026-05-10) | — (pure design) | — |
 | 5 | Map + Room Build | ✅ approved · ✅ deep-dive approved (2026-05-10) | ✅ approved | ✅ built (2026-05-10) |
-| 6 | Population, Dialogue, Quests | ✅ approved | ✅ approved | ⏳ in progress — 6.0 ✅, 6.1 ✅ (2026-05-11); 6.2–6.19 pending |
+| 6 | Population, Dialogue, Quests | ✅ approved | ✅ approved | ⏳ in progress — 6.0 ✅, 6.1 ✅, 6.2 ✅, 6.3 ✅, 6.4 ✅, 6.5 ⚠️ (2026-05-11); 6.6–6.19 pending |
 
 When you resume work, advance the lowest-numbered "⏳ drafted, awaiting approval" entry first. A slice is ready to execute when both its phase's design AND its phase's build plan show ✅.
 
@@ -1644,6 +1644,10 @@ Slice ordering follows dependency: **item prototypes (6.0)** → cast bodies →
 |---|---|---|---|
 | 6.0 | Item prototypes (18 v1 items) | 18 `create_item` against `dbc32ca0-9b0b-4fe3-a52d-aa567783652a` | ✅ shipped 2026-05-11 |
 | 6.1 | Court + Seneschal cast placement | 3 `create_spawn_point` + 4 `add_mobile_routine` (Mireille gets two entries for day/night) | ✅ shipped 2026-05-11 |
+| 6.2 | Five sires (cast placement, dialogue deferred) | 5 `create_spawn_point` (one per haven, sentinel-style; routines deferred) | ✅ shipped 2026-05-11 |
+| 6.3 | Clan support cast (15 across 5 districts) | 15 `create_spawn_point` + 5 `add_mobile_routine` (Émeric day/night ×2, Beau bartender, Sexton cemetery-anchor, Coyote rover) | ✅ shipped 2026-05-11 |
+| 6.4 | Mortal day-cast + guards (15 NPCs) | 15 `create_spawn_point` + 27 `add_mobile_routine` (5 shop mortals day/night ×2, 3 cathedral/hotel sentinels ×1, 5 patrol guards ×2, 2 rover guards ×2). `apply_mobile_preset` skipped — Phase 2.6 already applied `town_guard_captain` to all 7 guards. | ✅ shipped 2026-05-11 |
+| 6.5 | Hidden threats (5 NPCs) | 5 `create_spawn_point` + 7 `add_mobile_routine` (3 hunters night-patrol/day-sleep ×2, Casey anarch sentinel ×1, Stranger sentinel no-routine). `apply_mobile_preset` skipped — Phase 2.7 already applied `vampire_hunter` and `vampire_elder` presets. | ⚠️ shipped 2026-05-11 with one gap |
 
 Slice 6.0 notes:
 
@@ -1689,6 +1693,88 @@ Slice 6.1 notes:
     - Harpy Théo → `cendre:opera-bar`: `8f5e2c22-a722-4273-b0f3-4f5b7cb63851`
 - Mireille's `transition_message` lines (`"withdraws to the Hôtel de Larue as dawn approaches."` / `"crosses the plaza as the gaslamps come up."`) broadcast to whatever room she's leaving — adds in-fiction flavor for players seated in the plaza or foyer at the shift hour.
 - DoD met: all 3 mobs are wired to spawn at next area reset; Mireille appears in Cathedral District (plaza) during night hours (19–7).
+
+Slice 6.2 notes:
+
+- All 5 sire prototypes already shipped in Phase 2 (`cendre:sire-{brujah,toreador,ventrue,nosferatu,gangrel}` — Tony, Yvette, Henri, Caretaker, Solange). Slice reduced to 5 `create_spawn_point` calls; no `create_mobile`, no routines (sires are sentinel anchors in their havens — dialogue + embrace quests land in slice 6.7-6.11).
+- `list_mobile_prototypes_summary` with `vnum_prefix: "cendre:sire-"` still returned `[]` despite the prototypes being live (each verified via direct `get_mobile`). Same filter bug as 6.1 — the reported "MCP fix" didn't cover this path. Still non-blocking.
+- All 5 spawn points are `max_count: 1`, `respawn_interval_secs: 600` (matches court pacing — scarce, deliberate elders, not corner thugs).
+- Spawn-point UUIDs:
+    - `cendre:sire-brujah` (Tony) → `cendre:foundry-office`: `620bc44e-4462-4e30-b864-ebc359cc6c8b`
+    - `cendre:sire-toreador` (Yvette) → `cendre:conservatory-box`: `df391c78-bff3-4d4e-a804-0dd3a68f8e05`
+    - `cendre:sire-ventrue` (Henri) → `cendre:bourse-chamber`: `a7660e05-5926-4915-ad99-03718022ffb5`
+    - `cendre:sire-nosferatu` (Caretaker) → `cendre:catacombs-chamber`: `e8887ce3-869e-4c29-88cd-22c4364d94b0`
+    - `cendre:sire-gangrel` (Solange) → `cendre:bayou-hut`: `64728a2b-cc87-4e67-95f3-912c6ba8e552`
+- DoD met: all 5 sires are wired to spawn in their respective havens at next area reset; Q1's `VisitRoom` objectives (`cendre:foundry-office`, `cendre:conservatory-box`, `cendre:bourse-chamber`, `cendre:catacombs-chamber`, `cendre:bayou-hut`) now have a real NPC at each location for the Slice 6.6 player-walkthrough.
+
+Slice 6.3 notes:
+
+- All 15 clan-support prototypes already shipped in Phase 2 (slices 2.3 + 2.4). Slice reduced to 15 `create_spawn_point` + 5 `add_mobile_routine` against the §5.L canonical NPC-home table (lines 1215–1229).
+- Per `add_mobile_routine` response Beau's spawn point auto-refreshed his live instance (server message `(1 spawned instance(s) auto-refreshed)`) — confirms a mob can have a routine applied after a spawn point already placed it. No order dependency between `create_spawn_point` and `add_mobile_routine` in practice.
+- Émeric (`cendre:bourse-clerk`) got the only proper day/night routine: 7AM working at `cendre:courthouse-interior-1` (day), 19/7PM working at `cendre:bourse-bank-office` (evening) — matches §5.L "(day) / (evening)" annotation and supports Q-I3 (Émeric is reachable at the courthouse during the day for the audit-ledger lead).
+- Coyote (`cendre:bayou-coyote`) wired as a rover: single `patrolling` entry at `cendre:bayou-trail-1` with `suppress_wander: false` — the only Slice 6.3 routine that lets wandering through. Q-I5's "scent trail" pacing depends on him being mobile around the bayou trails.
+- Beau (`cendre:foundry-beau`) and the Sexton (`cendre:catacomb-sexton`) got sentinel-style 0h routines (`suppress_wander: true`) anchoring them to their canonical posts (jazz hall bar / cemetery gate). Other 11 NPCs got no routine — their spawn-point placement is their canonical room and they default to `current_activity: working` with no movement directive, which is acceptable for cast-as-set-dressing.
+- All 15 spawn points are `max_count: 1`, `respawn_interval_secs: 600`. Spawn-point UUIDs:
+    - `cendre:foundry-beau` → `cendre:foundry-jazz-1`: `2a08810e-2abf-428f-8ec7-97e3e12b3e2b`
+    - `cendre:foundry-marisol` → `cendre:foundry-main-1`: `cf62a9dc-c458-4c66-87d3-cfe019defd10`
+    - `cendre:foundry-bones` → `cendre:foundry-pit`: `696c2f55-adec-4e3d-9bf6-88c8692041e9`
+    - `cendre:conservatory-etienne` → `cendre:opera-house`: `7718bc16-6745-4e73-bf97-e1341870b3b8`
+    - `cendre:conservatory-cassandra` → `cendre:art-gallery-1`: `7bf24b36-7d58-4b24-a83a-dc4a39ead0d8`
+    - `cendre:conservatory-aldo` → `cendre:opera-bar`: `0e2fb9fa-8ead-40bb-af3c-d2416a4c3961`
+    - `cendre:bourse-pierre` → `cendre:bourse-bank-floor`: `f33ed54c-732b-4c7f-8de6-84b6aca265f8`
+    - `cendre:bourse-lucien` → `cendre:bourse-club-1`: `aabf7b2c-637c-4716-a5c6-6fcd2dd7cd4d`
+    - `cendre:bourse-clerk` → `cendre:courthouse-interior-1` (day spawn anchor): `f0c07cb4-10f1-4c91-858b-f6d8362b73d8`
+    - `cendre:catacomb-acolyte` → `cendre:catacombs-branch-2`: `9bc6bc4d-6daa-4523-811f-00823df80f69`
+    - `cendre:catacomb-ribcage` → `cendre:catacombs-branch-3`: `9a930d7d-f7c7-44e4-b65e-c554e117a815`
+    - `cendre:catacomb-sexton` → `cendre:cemetery-gate`: `cb33d08f-08ff-4f9e-a76a-d084efbc0b8e`
+    - `cendre:bayou-andre` → `cendre:bayou-edge`: `5e2c56fb-d207-4dfe-9ead-f69078744bc2`
+    - `cendre:bayou-coyote` → `cendre:bayou-trail-1` (rover): `9868f3a9-6a1d-43ee-adc3-d19038cc6111`
+    - `cendre:bayou-fisherman` → `cendre:bayou-fisherman-camp`: `78c6f0ec-8644-45ee-83be-1b1683691cad`
+- DoD met: 15 clan-support NPCs are wired to spawn in their canonical rooms at next area reset; Q-I3 (Émeric audit-ledger lead) and Q-I5 (Coyote scent-trail lead) have their giver NPCs in the right places for the dialogue-tree work in Slice 6.12-6.16.
+
+Slice 6.4 notes:
+
+- All 15 mortal+guard prototypes already shipped in Phase 2 (slices 2.5 mortals + 2.6 guards). Slice reduced to 15 `create_spawn_point` + 27 `add_mobile_routine`. Slice spec sketch said `~16× create_mobile, ~16× create_spawn_point, ~16× add_mobile_routine, apply_mobile_preset for guards` — actual: 0 creates, 15 spawns, 27 routines, 0 preset re-applications.
+- §5.L places mortal cathedral pair (Sister Agathe + Père Dominique) and Beatrice Moreau (hotel clerk) at their workplace as their permanent home — single 0h `working` sentinel routines (`suppress_wander: true`). Their workplaces are publicly readable as residences in-fiction (cathedral has clergy quarters; tourist hotel has staff lodging). They do not "leave" at night.
+- §5.L gives no canonical home for the 5 shop mortals (Beauchamp, Lefèvre, Henri Aubert, Boudreaux, Marcellin). Decision: route them all to `cendre:hotel-foyer` for 19h `offduty` — the Hôtel de Larue foyer becomes the de-facto "mortal boarding hub" at night. Satisfies Slice 6.4 DoD "night-time tour shows shops empty" without inventing new rooms or contradicting §5.L. Future enhancement: per-mortal sleeping rooms could be added if/when slice 7+ wants more residential atmosphere.
+- 5 patrol guards (Roussel/Picard/Vincent/Lambert/Tisserand) follow the §5.L "beat / Garrison" pattern: 6h `patrolling` at beat with `suppress_wander: true` (anchored to their assigned street, not roaming), 20h `offduty` back to `cendre:garrison`. Captain Roussel's beat is `cendre:plaza` (centerpiece of the cathedral district); coexists with Patrolman Renaud whose rover circuit also starts at plaza. Tisserand's "intermittent levee-road" note from §5.L deferred — single rue-cendre-2 beat for now; can be split with a noon transition later if needed.
+- 2 rover guards (Renaud at plaza, Cormier at riverfront-market) intentionally got `suppress_wander: false` on their 6h `patrolling` entry — the only guards in slice 6.4 allowed to drift. Off-duty 20h entry suppresses wander to keep them stationary at Garrison overnight.
+- All 7 guards already carry `town_guard_captain` preset stats from Phase 2.6 (lvl 8, max_hp 80, 2d6, AC 5, perception 5, `flags.{guard, can_open_doors, helper, memory}`, faction `town_watch`). No preset re-apply was needed; the slice spec's "`apply_mobile_preset` for guards" is a Phase 2.6 task that was already done. Verified inline via the routine-add response payloads.
+- Routine activity value `offduty` is normalized by the server to `off_duty` (with underscore) on save — observed in the response payloads. Both forms appear to be accepted on input; no behavior difference. Documenting this so future Phase 6 slices can use either spelling.
+- All 15 spawn points are `max_count: 1`, `respawn_interval_secs: 600`. All guards spawn at `cendre:garrison` (off-shift home); routines move them onto their beats. Mortals spawn at their workplace; shop-keepers shift to hotel-foyer at 19h.
+- Spawn-point UUIDs (mortals first, then guards):
+    - `cendre:mortal-beauchamp` → `cendre:shop-voodoo`: `e4d38c74-0fdc-4f62-8bb4-af486e29e6e1`
+    - `cendre:mortal-lefevre` → `cendre:shop-antique`: `a052dbe4-d640-4880-ab48-1112a7363117`
+    - `cendre:mortal-agathe` → `cendre:cathedral-nave`: `0bdb1c2c-00f7-4809-9848-54c73d99d6f7`
+    - `cendre:mortal-pere-dominique` → `cendre:cathedral-nave`: `8d9d331d-8944-49e5-ad4f-c019f2bc15b3`
+    - `cendre:mortal-cafe-henri` → `cendre:shop-cafe`: `d175951d-4126-4af4-8835-cac355cbdbba`
+    - `cendre:mortal-fishmonger` → `cendre:riverfront-fishmonger`: `623b7095-37ee-4a0d-afbc-da5b5db24cd0`
+    - `cendre:mortal-hotel-clerk` → `cendre:riverfront-hotel-lobby`: `a00e4c23-d837-4f91-99a6-612c0fa4a7c7`
+    - `cendre:mortal-opera-attendant` → `cendre:opera-entrance`: `1f7b7210-7c9a-4293-964d-81ba80f05ff2`
+    - `cendre:guard-roussel` → `cendre:garrison` (beat: plaza): `3fcf3bb4-726c-4af2-b0ea-6bf5d48b9cec`
+    - `cendre:guard-picard` → `cendre:garrison` (beat: rue-royale-2): `4279e980-0b02-4ace-8384-623444446a50`
+    - `cendre:guard-vincent` → `cendre:garrison` (beat: rue-eau-2): `5256c099-3bf7-4871-a6e0-9b4389e68542`
+    - `cendre:guard-lambert` → `cendre:garrison` (beat: rue-arts-2): `d0ab560c-de79-49c3-9426-c661391550a5`
+    - `cendre:guard-tisserand` → `cendre:garrison` (beat: rue-cendre-2): `9fcf043f-5686-4939-a52f-e85b0b520cef`
+    - `cendre:guard-renaud` → `cendre:garrison` (rover: plaza): `fc4a1805-eba0-4468-8b84-8c6d0e3bebd7`
+    - `cendre:guard-cormier` → `cendre:garrison` (rover: riverfront-market): `3dcd71f1-6833-4924-afb6-0aa25884e3b7`
+- DoD met: day-time tour will show 8 mortals staffing their day-quarter rooms and 7 guards on their beats; night-time tour will show shop mortals at the hotel foyer, cathedral mortals + hotel clerk still at their workplaces (intentional — they live there), and all 7 guards at the Garrison. Q8/Q9 quest-giver placement (Père Dominique at cathedral-nave, Madame Beauchamp at shop-voodoo) is set for the Slice 6.18 dialogue-tree work.
+
+Slice 6.5 notes:
+
+- All 5 threat prototypes already shipped in Phase 2.7. Slice reduced to 5 `create_spawn_point` + 7 `add_mobile_routine`. Slice spec sketch said `3-4× create_mobile, apply_mobile_preset, create_spawn_point(..., replace_on_respawn=true)` — actual: 0 creates, 5 spawns, 7 routines, 0 preset re-applications.
+- **⚠️ MCP gap surfaced — `replace_on_respawn` cannot be set via MCP create/update.** Neither `create_spawn_point` nor `update_spawn_point` exposes the `replace_on_respawn` field. The field exists on `SpawnPointData` (currently written by the Ranviermud importer per `feature_importer_ranvier` — it force-deletes tracked instances on respawn). Stranger's spawn point was created with the default `replace_on_respawn: false`. **Mitigation available today**: commit `ced1d47` ("Expose replace_on_respawn through spedit") landed in-game OLC support, so an admin can fix the Stranger's spawn point via `spedit <id> replace_on_respawn on` against UUID `88c8bd31-11d5-4ca9-881e-3bac7da7c4aa`. The DoD ("Stranger spawns in safehouse interior on next reset") is met regardless because `max_count: 1` keeps him singleton; the `replace_on_respawn: true` flip only matters once Q7 wants hard antagonist re-stamping across sessions. **MCP extension** (exposing the field on create/update request shapes) remains worth doing for future MCP-driven Q7-style endgame builds; not a v1 blocker.
+- 3 hunters (Coyle/Brennan/Voss) follow §5.L night-only pattern: 19h `patrolling` at canonical beat with `suppress_wander: false` (rover behavior — they roam the cemetery / alley / bayou-trail), 6h `sleeping` at `cendre:hotel-foyer` with `suppress_wander: true`. Hotel-foyer reuses the Slice 6.4 mortal-side daytime hub as plausible "hunter cover identity" boarding — V:tM-canonical (hunters operate under mundane covers). All 3 inherit `vampire_hunter` preset stats from Phase 2.7 (lvl 10, 110 HP, 2d6+2, perception 7, `flags.{guard, helper, aware, memory, no_charm}`, faction `vampire_hunters`).
+- Stranger (`cendre:threat-stranger`) given **no routine** — pure sentinel anchored to `cendre:bayou-shack-interior-1` (his canonical safehouse, locked behind the writ-keyed door). The Q7 endgame target sits in his shack waiting; Obfuscate/Celerity flavor lives in the prototype's discipline data (Phase 2.7), not in movement behavior. `max_count: 1` + 1800s respawn_interval (slower cadence appropriate for a boss; other slice 6.5 spawns stay at 600s).
+- Casey Boudreaux (`cendre:threat-casey-anarch`) gets the single 0h `working` sentinel routine at `cendre:foundry-cellar` matching §5.L. Phase 2.7 already set her `vampire_goon` preset (lvl 6, 60 HP, `bleeding` on-hit, `flags.{vampire, undead, holy_vulnerable, memory, no_sleep, no_charm}`, faction `anarch_unbound`) with the `aggressive` flag cleared per Phase 2.7 build log (she's a social role, not a random monster).
+- All hunters got transition messages on both day/night entries (slips out/in, fades back, etc.) — gives players a visible tell when the night shift kicks in, so a cemetery walk at 19:00 feels like the hunters arrived deliberately rather than appeared.
+- Spawn-point UUIDs:
+    - `cendre:threat-stranger` → `cendre:bayou-shack-interior-1` (max_count:1, respawn:1800s, **replace_on_respawn:false** ← MCP gap): `88c8bd31-11d5-4ca9-881e-3bac7da7c4aa`
+    - `cendre:threat-hunter-coyle` → `cendre:cemetery-rows-1`: `57fcad0c-8293-4f98-ab18-2c1c0491d9f7`
+    - `cendre:threat-hunter-brennan` → `cendre:alley-bourse-to-cathedral`: `0ed41710-2f73-408b-b850-8025c7183c7d`
+    - `cendre:threat-hunter-voss` → `cendre:bayou-trail-3`: `3ed49d25-4216-4134-ae35-f7dc706b6c35`
+    - `cendre:threat-casey-anarch` → `cendre:foundry-cellar`: `56570154-db7b-45b8-ac9e-563afe60159e`
+- DoD partially met (4/5): hunters appear in cemetery/alley/bayou-trail at night and retire to hotel-foyer at dawn; Casey waits in foundry-cellar; Stranger spawns in safehouse interior on next reset. Only the `replace_on_respawn: true` semantic on the Stranger's spawn point is missing pending the MCP extension.
 
 ---
 

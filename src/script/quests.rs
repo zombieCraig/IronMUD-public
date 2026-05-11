@@ -253,6 +253,39 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         );
     }
 
+    // set_quest_achievement_set_prereq(vnum, keys, min_count) -> String.
+    // Empty keys or non-positive min_count clears the prereq.
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "set_quest_achievement_set_prereq",
+            move |vnum: String, keys: rhai::Array, min_count: i64| -> String {
+                let mut q = match cloned_db.get_quest_data(&vnum) {
+                    Ok(Some(q)) => q,
+                    _ => return format!("no such quest `{}`", vnum),
+                };
+                let cleaned: Vec<String> = keys
+                    .into_iter()
+                    .filter_map(|d| d.into_string().ok())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                q.achievement_set_prereq = if cleaned.is_empty() || min_count <= 0 {
+                    None
+                } else {
+                    Some(crate::types::AchievementSetPrereq {
+                        keys: cleaned,
+                        min_count: min_count as i32,
+                    })
+                };
+                if let Err(e) = cloned_db.save_quest_data(&q) {
+                    return format!("save error: {}", e);
+                }
+                String::new()
+            },
+        );
+    }
+
     // set_quest_duration(vnum, secs) -> String — 0 or negative clears (no expiry).
     {
         let cloned_db = db.clone();
@@ -299,6 +332,27 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     vnum: item_vnum,
                     qty: qty.max(1) as i32,
                     return_to_mob_vnum: return_to,
+                })
+            },
+        );
+    }
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "add_quest_objective_kill_any",
+            move |vnum: String, mob_vnums: rhai::Array, count: i64| -> String {
+                let vnums: Vec<String> = mob_vnums
+                    .into_iter()
+                    .filter_map(|d| d.into_string().ok())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                if vnums.is_empty() {
+                    return "add_quest_objective_kill_any requires at least one vnum".to_string();
+                }
+                push_objective(&cloned_db, &vnum, QuestObjective::KillAnyMob {
+                    vnums,
+                    count: count.max(1) as i32,
                 })
             },
         );
@@ -782,6 +836,9 @@ fn push_reward(db: &Db, vnum: &str, reward: QuestReward) -> String {
 fn format_objective_summary(obj: &QuestObjective) -> String {
     match obj {
         QuestObjective::KillMob { vnum, count } => format!("Kill {} (x{})", vnum, count),
+        QuestObjective::KillAnyMob { vnums, count } => {
+            format!("Kill any of [{}] (x{})", vnums.join(", "), count)
+        }
         QuestObjective::BringItem {
             vnum,
             qty,
@@ -835,6 +892,23 @@ fn render_one_progress_line(
                 .map(|m| m.short_desc)
                 .unwrap_or_else(|| format!("mob {}", vnum));
             format!("Slay {}: {}/{}", label, cur, count)
+        }
+        QuestObjective::KillAnyMob { vnums, count } => {
+            let key = crate::types::kill_any_key(vnums);
+            let cur = progress.kill_any_progress.get(&key).copied().unwrap_or(0);
+            let mut labels: Vec<String> = vnums
+                .iter()
+                .map(|v| {
+                    db.get_mobile_by_vnum(v)
+                        .ok()
+                        .flatten()
+                        .map(|m| m.short_desc)
+                        .unwrap_or_else(|| format!("mob {}", v))
+                })
+                .collect();
+            labels.sort();
+            labels.dedup();
+            format!("Slay any of [{}]: {}/{}", labels.join(" / "), cur, count)
         }
         QuestObjective::BringItem {
             vnum,
