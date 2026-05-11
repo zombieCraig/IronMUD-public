@@ -16,6 +16,18 @@ pub fn load_command_metadata() -> Result<HashMap<String, CommandMeta>> {
     Ok(metadata)
 }
 
+/// Parse a JSON object into `HashMap<String, T>`, skipping keys that start with `_`
+/// so files may carry sibling documentation fields like `"_doc": "..."`.
+fn parse_doc_tolerant_map<T: serde::de::DeserializeOwned>(
+    content: &str,
+) -> Result<HashMap<String, T>, serde_json::Error> {
+    let raw: HashMap<String, serde_json::Value> = serde_json::from_str(content)?;
+    raw.into_iter()
+        .filter(|(k, _)| !k.starts_with('_'))
+        .map(|(k, v)| serde_json::from_value::<T>(v).map(|val| (k, val)))
+        .collect()
+}
+
 /// Resolve the class definitions file path based on the `class_preset` setting.
 /// Defaults to "fantasy" for new installs. Falls back to legacy `classes.json`.
 fn resolve_classes_path(preset: Option<String>) -> String {
@@ -222,7 +234,7 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
         .unwrap_or_else(|| "fantasy".to_string());
     let spells_path = format!("scripts/data/spells_{}.json", spell_preset);
     match std::fs::read_to_string(&spells_path) {
-        Ok(content) => match serde_json::from_str::<HashMap<String, SpellDefinition>>(&content) {
+        Ok(content) => match parse_doc_tolerant_map::<SpellDefinition>(&content) {
             Ok(spells) => {
                 info!("Loaded {} spell definitions from {}", spells.len(), spells_path);
                 world.spell_definitions = spells;
@@ -241,7 +253,7 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
     // / `requires_clan` so they can't be cast by non-vampires.
     let vampire_spells_path = "scripts/data/spells_vampire.json";
     match std::fs::read_to_string(vampire_spells_path) {
-        Ok(content) => match serde_json::from_str::<HashMap<String, SpellDefinition>>(&content) {
+        Ok(content) => match parse_doc_tolerant_map::<SpellDefinition>(&content) {
             Ok(spells) => {
                 info!(
                     "Loaded {} vampire discipline spells from {}",
