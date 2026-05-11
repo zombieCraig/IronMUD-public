@@ -300,10 +300,16 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     );
 
     // get_email_send_stats() -> Map { day_count, day_cap, month_count,
-    //                                   month_cap, day_started_at, month_started_at }
-    // Snapshot of the global email-send counters and configured caps. Used
-    // by `admin email-stats` to surface budget headroom without touching the
-    // settings tree directly.
+    //                                   month_cap, day_started_at, month_started_at,
+    //                                   verification_required, smtp_host,
+    //                                   smtp_from_address, smtp_port, smtp_user_set,
+    //                                   smtp_from_name }
+    // Snapshot of the global email-send counters, configured caps, and the
+    // minimum SMTP config that `send_verification_email` / `send_password_reset_email`
+    // require. Used by `admin email-stats` to surface budget headroom AND to
+    // diagnose "is email actually wired up on this server right now?" without
+    // touching the settings tree directly. Missing strings come back empty so
+    // the admin display can render "<unset>" markers.
     let cloned_db = db.clone();
     engine.register_fn("get_email_send_stats", move || -> rhai::Map {
         let mut map = rhai::Map::new();
@@ -313,12 +319,62 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         let month_start = read_i64_setting(&cloned_db, "email_sent_count_month_start");
         let day_cap = read_setting_or_default_i64(&cloned_db, "email_daily_cap", 20);
         let month_cap = read_setting_or_default_i64(&cloned_db, "email_monthly_cap", 150);
+        let verification_required = cloned_db
+            .get_setting("email_verification_required")
+            .ok()
+            .flatten()
+            .map(|v| v == "true")
+            .unwrap_or(false);
+        let smtp_host = cloned_db
+            .get_setting("smtp_host")
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let smtp_from_address = cloned_db
+            .get_setting("smtp_from_address")
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let smtp_port = cloned_db
+            .get_setting("smtp_port")
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let smtp_user_set = cloned_db
+            .get_setting("smtp_user")
+            .ok()
+            .flatten()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false);
+        let smtp_from_name = cloned_db
+            .get_setting("smtp_from_name")
+            .ok()
+            .flatten()
+            .unwrap_or_default();
         map.insert("day_count".into(), rhai::Dynamic::from(day_count));
         map.insert("day_cap".into(), rhai::Dynamic::from(day_cap));
         map.insert("month_count".into(), rhai::Dynamic::from(month_count));
         map.insert("month_cap".into(), rhai::Dynamic::from(month_cap));
         map.insert("day_started_at".into(), rhai::Dynamic::from(day_start));
         map.insert("month_started_at".into(), rhai::Dynamic::from(month_start));
+        map.insert(
+            "verification_required".into(),
+            rhai::Dynamic::from(verification_required),
+        );
+        map.insert("smtp_host".into(), rhai::Dynamic::from(smtp_host));
+        map.insert(
+            "smtp_from_address".into(),
+            rhai::Dynamic::from(smtp_from_address),
+        );
+        map.insert("smtp_port".into(), rhai::Dynamic::from(smtp_port));
+        map.insert(
+            "smtp_user_set".into(),
+            rhai::Dynamic::from(smtp_user_set),
+        );
+        map.insert(
+            "smtp_from_name".into(),
+            rhai::Dynamic::from(smtp_from_name),
+        );
         map
     });
 

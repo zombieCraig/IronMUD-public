@@ -18,8 +18,7 @@ export interface Area {
     migration_interval_days?: number;
     migration_max_per_check?: number;
     last_migration_check_day?: number | null;
-    immigration_guard_chance?: number;
-    immigration_vampire_chance?: number;
+    immigration_variation_chances?: ImmigrationVariationChances;
     migrant_starting_gold?: GoldRange;
     guard_wage_per_hour?: number;
     healer_wage_per_hour?: number;
@@ -33,6 +32,12 @@ export type CombatZoneType = "pve" | "safe" | "pvp";
 export interface GoldRange {
     min: number;
     max: number;
+}
+export interface ImmigrationVariationChances {
+    guard?: number;
+    healer?: number;
+    scavenger?: number;
+    vampire?: number;
 }
 export interface AreaFlags {
     always_climate?: boolean;
@@ -463,6 +468,8 @@ export interface UpdateAreaRequest {
     migration_interval_days?: number;
     migration_max_per_check?: number;
     immigration_guard_chance?: number;
+    immigration_healer_chance?: number;
+    immigration_scavenger_chance?: number;
     immigration_vampire_chance?: number;
     migrant_starting_gold?: GoldRange;
     donation_room_vnum?: string | null;

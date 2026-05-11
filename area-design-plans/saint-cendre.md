@@ -139,6 +139,12 @@ Area-level config: `combat_zone: Pvp`, `climate: Temperate`, `immigration_enable
 - **MCP calls (sketch)**: 12× `set_room_exit(...)` (3 per arterial × 4 arterials = 12 forward edges; `set_room_exit` handles the reverse implicitly if used per-edge twice, otherwise call both directions). Then `update_area("Saint-Cendre", immigration_enabled=true, ...)`.
 - **Done when**: `get_room("cendre:plaza")` shows 4 exits; walking from plaza in each direction reaches the outer arterial segment in 3 steps; `get_area("Saint-Cendre")` returns the immigration fields populated.
 
+#### Slice 1.8 — Portal-alley entrance (post-hoc add)
+- **Goal**: Hidden arrival room with a glowing portal-window on the north wall, looking through to a dark cave. North exit is reserved for the portal target (left unwired until the cave-source room is built in a future task). Soft landing for first-time arrivals.
+- **Deliverables**: Room `cendre:portal-alley` "A Disused Alley" with `flags.no_mob: true` and `flags.combat_zone: safe`. Description ends with the load-bearing portal sentence (north-wall amber pane onto damp cave, cold air leaking through). Bidirectional east/west exit to `cendre:rue-cendre-2` — the alley sits off the rough middle stretch of Rue de la Cendre, deliberately attached to a side direction (not the plaza) to stay hidden from business traffic.
+- **MCP calls (sketch)**: 1× `create_room`, 2× `set_room_exit` (`cendre:rue-cendre-2 west ↔ cendre:portal-alley east`).
+- **Done when**: `get_room("cendre:portal-alley")` shows the room with `no_mob: true`, `combat_zone: safe`, east exit pointing at rue-cendre-2, north exit `null` (intentional). `get_room("cendre:rue-cendre-2")` shows a west exit pointing at the alley.
+
 ### Definition of phase done
 - All 7 slices' DoDs met.
 - In-game `look` from `cendre:plaza` reads atmospheric and shows 4 exits.
@@ -147,9 +153,9 @@ Area-level config: `combat_zone: Pvp`, `climate: Temperate`, `immigration_enable
 
 ### Phase 1 build log (2026-05-10)
 - Area `Saint-Cendre` created (id `dbc32ca0-9b0b-4fe3-a52d-aa567783652a`), all 13 anchor rooms live with per-room `combat_zone: safe` override (via MCP `flags.safe: true`). 24 bidirectional exits wired. Immigration on (`generic` names, `human` visuals, 3-day interval, max 2 per check, entry `cendre:plaza`).
-- **Two MCP gaps requiring in-game / out-of-band follow-up:**
-  1. **Area `combat_zone` defaulted to `pve`** — MCP `create_area`/`update_area` do not expose the field (api/areas.rs:105 comment). Needs in-game `aedit Saint-Cendre combat_zone pvp` to match the design (Pvp area default + per-room Safe overrides).
-  2. **`immigration_vampire_chance` is not exposed** — the `immigration_variation_chances` map only has `guard`/`healer`/`scavenger` (no `vampire` variation registered in `src/migration/variations.rs`). Clan presence will be seeded explicitly in Phase 6 (cast bodies + spawn points) rather than via immigration. If we want self-sustaining vampire migrants later, that's a code-side addition (new variation + chance field + mob template).
+- Area `combat_zone` set to `pvp` via MCP (now exposed on `update_area` after commit `c9e12c6` + server redeploy).
+- Slice 1.8 added: portal-alley entrance room (`cendre:portal-alley`) with `no_mob` + `safe` flags, east-wired into `cendre:rue-cendre-2`. North exit reserved for the portal target — left unwired pending the cave-source room (future task). Anchor total now 14 rooms.
+- **Remaining MCP gap:** `immigration_vampire_chance` is accepted by the MCP schema (the `vampire` key now appears in `immigration_variation_chances`) but the deployed handler does not apply the supplied value — submitting `0.3` leaves the stored value at `0`. Until that's fixed server-side, clan presence will be seeded explicitly in Phase 6 (cast bodies + spawn points) rather than via migration.
 
 ---
 

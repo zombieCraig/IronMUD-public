@@ -74,6 +74,8 @@ pub struct UpdateAreaRequest {
     pub migration_interval_days: Option<u8>,
     pub migration_max_per_check: Option<u8>,
     pub immigration_guard_chance: Option<f32>,
+    pub immigration_healer_chance: Option<f32>,
+    pub immigration_scavenger_chance: Option<f32>,
     pub immigration_vampire_chance: Option<f32>,
     /// Inclusive [min, max] range from which a new migrant's starting purse is rolled.
     /// `{0, 0}` keeps legacy "broke at spawn" behavior.
@@ -425,6 +427,12 @@ async fn update_area(
     }
     if let Some(v) = req.immigration_guard_chance {
         area.immigration_variation_chances.guard = v.clamp(0.0, 1.0);
+    }
+    if let Some(v) = req.immigration_healer_chance {
+        area.immigration_variation_chances.healer = v.clamp(0.0, 1.0);
+    }
+    if let Some(v) = req.immigration_scavenger_chance {
+        area.immigration_variation_chances.scavenger = v.clamp(0.0, 1.0);
     }
     if let Some(v) = req.immigration_vampire_chance {
         area.immigration_variation_chances.vampire = v.clamp(0.0, 1.0);

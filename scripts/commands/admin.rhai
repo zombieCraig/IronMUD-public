@@ -1616,7 +1616,50 @@ fn handle_email_stats(connection_id) {
     let day_pct = if day_cap > 0 { (day_count * 100) / day_cap } else { 0 };
     let month_pct = if month_cap > 0 { (month_count * 100) / month_cap } else { 0 };
 
-    let out = "Email send budget:\n";
+    // Config status first — if any of the required pieces are missing, the
+    // banner / forgot / verify-on-create flows are all silently disabled.
+    let verification_required = stats.verification_required;
+    let smtp_host = stats.smtp_host;
+    let smtp_from_address = stats.smtp_from_address;
+    let smtp_port = stats.smtp_port;
+    let smtp_user_set = stats.smtp_user_set;
+    let smtp_from_name = stats.smtp_from_name;
+
+    let host_set = smtp_host != "";
+    let from_set = smtp_from_address != "";
+    let fully_ready = verification_required && host_set && from_set;
+
+    let out = "Email configuration:\n";
+    if verification_required {
+        out += "  email_verification_required: true  [OK]\n";
+    } else {
+        out += "  email_verification_required: <unset>  [!] Email features OFF (banner hides create/forgot lines, create.rhai skips verify, forgot.rhai refuses)\n";
+    }
+    if host_set {
+        let port_display = if smtp_port == "" { "587 (default)" } else { smtp_port };
+        out += "  smtp_host:                   " + smtp_host + "  (port " + port_display + ")  [OK]\n";
+    } else {
+        out += "  smtp_host:                   <unset>  [!] Required — sends will fail with config_missing\n";
+    }
+    if from_set {
+        let name_display = if smtp_from_name == "" { "IronMUD (default)" } else { smtp_from_name };
+        out += "  smtp_from_address:           " + smtp_from_address + "  (name: " + name_display + ")  [OK]\n";
+    } else {
+        out += "  smtp_from_address:           <unset>  [!] Required — sends will fail with config_missing\n";
+    }
+    if smtp_user_set {
+        out += "  smtp_user / smtp_pass:       set  [OK]\n";
+    } else {
+        out += "  smtp_user / smtp_pass:       <unset>  (OK only if relay accepts unauthenticated)\n";
+    }
+    if fully_ready {
+        out += "  Status: READY\n";
+    } else {
+        out += "  Status: NOT CONFIGURED — fix the [!] rows above\n";
+    }
+    out += "\n";
+
+    out += "Email send budget:\n";
     out += "  Today:      " + day_count + " / " + day_cap + " (" + day_pct + "%)\n";
     out += "  This month: " + month_count + " / " + month_cap + " (" + month_pct + "%)\n";
     out += "\nOverride caps via settings 'email_daily_cap' and 'email_monthly_cap'.";

@@ -22,6 +22,8 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            immigration_healer_chance?: undefined;
+            immigration_scavenger_chance?: undefined;
             immigration_vampire_chance?: undefined;
             migrant_starting_gold?: undefined;
             guard_wage_per_hour?: undefined;
@@ -67,6 +69,8 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            immigration_healer_chance?: undefined;
+            immigration_scavenger_chance?: undefined;
             immigration_vampire_chance?: undefined;
             migrant_starting_gold?: undefined;
             guard_wage_per_hour?: undefined;
@@ -135,6 +139,8 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            immigration_healer_chance?: undefined;
+            immigration_scavenger_chance?: undefined;
             immigration_vampire_chance?: undefined;
             migrant_starting_gold?: undefined;
             guard_wage_per_hour?: undefined;
@@ -226,6 +232,14 @@ export declare const areaToolDefinitions: ({
                 description: string;
             };
             immigration_guard_chance: {
+                type: string;
+                description: string;
+            };
+            immigration_healer_chance: {
+                type: string;
+                description: string;
+            };
+            immigration_scavenger_chance: {
                 type: string;
                 description: string;
             };
@@ -376,6 +390,8 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            immigration_healer_chance?: undefined;
+            immigration_scavenger_chance?: undefined;
             immigration_vampire_chance?: undefined;
             migrant_starting_gold?: undefined;
             guard_wage_per_hour?: undefined;
@@ -422,6 +438,8 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            immigration_healer_chance?: undefined;
+            immigration_scavenger_chance?: undefined;
             immigration_vampire_chance?: undefined;
             migrant_starting_gold?: undefined;
             guard_wage_per_hour?: undefined;
@@ -485,6 +503,8 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            immigration_healer_chance?: undefined;
+            immigration_scavenger_chance?: undefined;
             immigration_vampire_chance?: undefined;
             migrant_starting_gold?: undefined;
             guard_wage_per_hour?: undefined;
@@ -535,6 +555,8 @@ export declare const areaToolDefinitions: ({
             migration_interval_days?: undefined;
             migration_max_per_check?: undefined;
             immigration_guard_chance?: undefined;
+            immigration_healer_chance?: undefined;
+            immigration_scavenger_chance?: undefined;
             immigration_vampire_chance?: undefined;
             migrant_starting_gold?: undefined;
             guard_wage_per_hour?: undefined;

@@ -99,6 +99,8 @@ export const areaToolDefinitions = [
         migration_interval_days: { type: "number", description: "Game-days between migration checks (1-30)" },
         migration_max_per_check: { type: "number", description: "Max migrants spawned per check" },
         immigration_guard_chance: { type: "number", description: "Per-spawn chance (0.0-1.0) that an immigrant arrives as a town guard" },
+        immigration_healer_chance: { type: "number", description: "Per-spawn chance (0.0-1.0) that an immigrant arrives as a herbalist healer" },
+        immigration_scavenger_chance: { type: "number", description: "Per-spawn chance (0.0-1.0) that an immigrant arrives as a scavenger" },
         immigration_vampire_chance: { type: "number", description: "Per-spawn chance (0.0-1.0) that an immigrant arrives as a freshly-embraced vampire (random clan + starter discipline). Auto-suppressed when the area's combat_zone is 'safe'." },
         migrant_starting_gold: {
           type: "object",
