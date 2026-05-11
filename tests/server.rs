@@ -10452,6 +10452,217 @@ fn test_quest_reward_embrace_clan_round_trip() {
 }
 
 #[test]
+fn test_quest_reward_embrace_anarch_round_trip() {
+    use ironmud::types::QuestReward;
+
+    // With discipline.
+    let with = QuestReward::EmbraceAnarch {
+        discipline: Some("potence".to_string()),
+    };
+    let json = serde_json::to_string(&with).expect("serialize");
+    assert!(json.contains("embrace_anarch"));
+    assert!(json.contains("potence"));
+    let back: QuestReward = serde_json::from_str(&json).expect("deserialize");
+    match back {
+        QuestReward::EmbraceAnarch { discipline } => {
+            assert_eq!(discipline.as_deref(), Some("potence"))
+        }
+        _ => panic!("variant mismatch"),
+    }
+
+    // Without discipline (runtime choice path).
+    let without = QuestReward::EmbraceAnarch { discipline: None };
+    let json = serde_json::to_string(&without).expect("serialize");
+    let back: QuestReward = serde_json::from_str(&json).expect("deserialize");
+    match back {
+        QuestReward::EmbraceAnarch { discipline } => assert_eq!(discipline, None),
+        _ => panic!("variant mismatch"),
+    }
+}
+
+#[test]
+fn test_apply_anarch_acknowledgment_stamps_trait_sentinel_and_discipline() {
+    use ironmud::script::vampire::{
+        ANARCH_SIRE_SENTINEL, ANARCH_TRAIT, CLAN_BLOOD_POOL_MAX, apply_anarch_acknowledgment,
+    };
+    use ironmud::types::VampireState;
+
+    let mut ch = vampire_test_pc("rogue");
+    ch.vampire_state = Some(VampireState::default());
+    if let Some(v) = ch.vampire_state.as_mut() {
+        v.max_blood_pool = 6;
+        v.blood_pool = 4;
+    }
+
+    let changed = apply_anarch_acknowledgment(&mut ch, "celerity");
+    assert!(changed, "first acknowledgment changes state");
+
+    assert!(ch.traits.iter().any(|t| t == ANARCH_TRAIT));
+    let v = ch.vampire_state.as_ref().expect("vampire");
+    assert_eq!(v.max_blood_pool, CLAN_BLOOD_POOL_MAX);
+    assert_eq!(v.blood_pool, CLAN_BLOOD_POOL_MAX);
+    assert_eq!(v.sire_id.as_deref(), Some(ANARCH_SIRE_SENTINEL));
+    let cel = ch.skills.get("celerity").expect("celerity seeded");
+    assert_eq!(cel.level, 1);
+}
+
+#[test]
+fn test_apply_anarch_acknowledgment_noop_on_mortal_or_empty() {
+    use ironmud::script::vampire::apply_anarch_acknowledgment;
+    use ironmud::types::VampireState;
+
+    // Mortal: no vampire_state.
+    let mut mortal = vampire_test_pc("mortal");
+    assert!(!apply_anarch_acknowledgment(&mut mortal, "potence"));
+    assert!(mortal.traits.is_empty());
+
+    // Vampire but empty discipline.
+    let mut ch = vampire_test_pc("rogue");
+    ch.vampire_state = Some(VampireState::default());
+    assert!(!apply_anarch_acknowledgment(&mut ch, ""));
+    assert!(!apply_anarch_acknowledgment(&mut ch, "   "));
+    assert!(ch.traits.is_empty());
+}
+
+#[test]
+fn test_apply_anarch_acknowledgment_idempotent() {
+    use ironmud::script::vampire::{ANARCH_TRAIT, apply_anarch_acknowledgment};
+    use ironmud::types::VampireState;
+
+    let mut ch = vampire_test_pc("rogue");
+    ch.vampire_state = Some(VampireState::default());
+
+    let first = apply_anarch_acknowledgment(&mut ch, "fortitude");
+    assert!(first);
+    let second = apply_anarch_acknowledgment(&mut ch, "fortitude");
+    assert!(!second, "second call is a no-op");
+
+    assert_eq!(
+        ch.traits.iter().filter(|t| *t == ANARCH_TRAIT).count(),
+        1,
+        "trait deduped"
+    );
+    assert_eq!(ch.skills.get("fortitude").unwrap().level, 1);
+}
+
+#[test]
+fn test_known_disciplines_reads_clan_preferred_union() {
+    use ironmud::script::vampire::known_disciplines;
+
+    // The Anarch path's discipline allow-list is the union of every clan's
+    // first-pick preferences (matching what EmbraceClan would seed). The
+    // exact set depends on `scripts/data/vampire_clans.json`; we just
+    // assert the contract: at least one entry, deduped, all lowercase, and
+    // includes the disciplines that the canonical core clans seed.
+    let set = known_disciplines();
+    assert!(!set.is_empty(), "known disciplines should not be empty");
+    for d in &set {
+        assert_eq!(d, &d.to_lowercase());
+    }
+    let mut dedup = set.clone();
+    dedup.sort();
+    dedup.dedup();
+    assert_eq!(dedup.len(), set.len(), "duplicates present: {:?}", set);
+    // Smoke: at minimum the disciplines exercised in apply_clan_acknowledgment
+    // for the canonical core clans must be in the set.
+    for d in &["potence", "celerity", "auspex", "obfuscate"] {
+        assert!(set.iter().any(|x| x == d), "missing {} in {:?}", d, set);
+    }
+}
+
+#[test]
+fn test_set_quest_choice_writes_choice_var_when_quest_active() {
+    use ironmud::types::{ActiveQuest, CharacterData, DialogueEffect};
+
+    // Direct mutation test — mirrors the dialogue handler's effect path
+    // without exercising the full dialogue evaluator. The handler's
+    // semantics: when quest is active, write key=value to choice_vars;
+    // when not active, no-op (and log a warn).
+    let mut ch: CharacterData = vampire_test_pc("seeker");
+    ch.active_quests.insert(
+        "cendre:q-anarch-pact".to_string(),
+        ActiveQuest::default(),
+    );
+
+    let effect = DialogueEffect::SetQuestChoice {
+        quest_vnum: "cendre:q-anarch-pact".to_string(),
+        key: "discipline".to_string(),
+        value: "auspex".to_string(),
+    };
+    // Replicate the handler's read/mutate to avoid pulling in the
+    // dialogue test harness (which needs a mob/db scaffold).
+    if let DialogueEffect::SetQuestChoice {
+        quest_vnum,
+        key,
+        value,
+    } = &effect
+    {
+        if let Some(aq) = ch.active_quests.get_mut(quest_vnum) {
+            aq.choice_vars.insert(key.clone(), value.clone());
+        }
+    }
+
+    let aq = ch
+        .active_quests
+        .get("cendre:q-anarch-pact")
+        .expect("quest active");
+    assert_eq!(aq.choice_vars.get("discipline").map(String::as_str), Some("auspex"));
+
+    // No-op when quest absent.
+    let mut empty = vampire_test_pc("noquest");
+    if let DialogueEffect::SetQuestChoice {
+        quest_vnum,
+        key,
+        value,
+    } = &effect
+    {
+        if let Some(aq) = empty.active_quests.get_mut(quest_vnum) {
+            aq.choice_vars.insert(key.clone(), value.clone());
+        }
+    }
+    assert!(empty.active_quests.is_empty());
+}
+
+#[test]
+fn test_quest_choice_equals_condition_round_trip() {
+    use ironmud::types::DialogueCondition;
+
+    let cond = DialogueCondition::QuestChoiceEquals {
+        quest_vnum: "cendre:q-anarch-pact".to_string(),
+        key: "discipline".to_string(),
+        value: "obfuscate".to_string(),
+    };
+    let json = serde_json::to_string(&cond).expect("serialize");
+    assert!(json.contains("quest_choice_equals"));
+    assert!(json.contains("obfuscate"));
+
+    let back: DialogueCondition = serde_json::from_str(&json).expect("deserialize");
+    assert!(matches!(
+        back,
+        DialogueCondition::QuestChoiceEquals { ref value, .. } if value == "obfuscate"
+    ));
+}
+
+#[test]
+fn test_active_quest_choice_vars_default_empty_and_roundtrips() {
+    use ironmud::types::ActiveQuest;
+
+    let aq = ActiveQuest::default();
+    assert!(aq.choice_vars.is_empty());
+
+    let mut aq = aq;
+    aq.choice_vars.insert("discipline".into(), "potence".into());
+    let json = serde_json::to_string(&aq).expect("serialize");
+    assert!(json.contains("choice_vars"));
+    assert!(json.contains("potence"));
+    let back: ActiveQuest = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(
+        back.choice_vars.get("discipline").map(String::as_str),
+        Some("potence")
+    );
+}
+
+#[test]
 fn test_thinblood_takes_half_sun_damage_via_mob() {
     use ironmud::MobileData;
     use ironmud::db::Db;

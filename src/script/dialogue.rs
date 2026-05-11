@@ -1751,6 +1751,16 @@ fn evaluate_condition(cond: &DialogueCondition, ch: &CharacterData, mob: &Mobile
                 && crate::script::vampire::pc_clan_from_traits(ch).is_some()
         }
         DialogueCondition::HasAchievement { key } => ch.achievements_unlocked.contains_key(key),
+        DialogueCondition::QuestChoiceEquals {
+            quest_vnum,
+            key,
+            value,
+        } => ch
+            .active_quests
+            .get(quest_vnum)
+            .and_then(|aq| aq.choice_vars.get(key))
+            .map(|v| v == value)
+            .unwrap_or(false),
     }
 }
 
@@ -1936,6 +1946,26 @@ fn apply_effect(
             } else {
                 Some(format!("[ Not on quest {} ]", vnum))
             }
+        }
+        DialogueEffect::SetQuestChoice {
+            quest_vnum,
+            key,
+            value,
+        } => {
+            match ch.active_quests.get_mut(quest_vnum) {
+                Some(aq) => {
+                    aq.choice_vars.insert(key.clone(), value.clone());
+                }
+                None => {
+                    tracing::warn!(
+                        char = %ch.name,
+                        quest_vnum = %quest_vnum,
+                        key = %key,
+                        "SetQuestChoice fired against a quest the player isn't on — no-op",
+                    );
+                }
+            }
+            None
         }
         DialogueEffect::CompleteQuest { vnum } => {
             // Persist any in-progress mutations on `ch` first so try_complete

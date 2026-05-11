@@ -295,6 +295,15 @@ pub fn try_complete(
         }
     }
 
+    // Capture per-quest choice vars (set by `DialogueEffect::SetQuestChoice`)
+    // before the active quest is removed below — reward variants like
+    // `EmbraceAnarch` consume runtime choices recorded on the active quest.
+    let choice_vars = ch
+        .active_quests
+        .get(&quest.vnum)
+        .map(|aq| aq.choice_vars.clone())
+        .unwrap_or_default();
+
     // Move the quest from active to completed BEFORE granting rewards so a
     // reward that itself touches character state (gold, achievements) sees a
     // consistent quest state.
@@ -320,7 +329,15 @@ pub fn try_complete(
 
     // Apply rewards.
     for reward in &quest.rewards {
-        apply_reward(db, connections, state, &ch.name, reward, giver_name.as_deref());
+        apply_reward(
+            db,
+            connections,
+            state,
+            &ch.name,
+            reward,
+            giver_name.as_deref(),
+            &choice_vars,
+        );
     }
 
     let line = format!("\x1b[1;33m[ Quest complete: {} ]\x1b[0m", quest.name);
@@ -359,6 +376,7 @@ fn apply_reward(
     char_name: &str,
     reward: &QuestReward,
     giver_name: Option<&str>,
+    choice_vars: &std::collections::HashMap<String, String>,
 ) {
     match reward {
         QuestReward::Gold { amount } => {
@@ -487,6 +505,93 @@ fn apply_reward(
                 &format!(
                     "\x1b[1;31m[ Your blood thickens. You are kindred of clan {}. ]\x1b[0m",
                     clan
+                ),
+            );
+        }
+        QuestReward::EmbraceAnarch { discipline } => {
+            let mut ch = match db.get_character_data(&char_name.to_lowercase()) {
+                Ok(Some(c)) => c,
+                _ => return,
+            };
+            if ch.vampire_state.is_none() {
+                tracing::warn!(
+                    char = %char_name,
+                    "EmbraceAnarch reward fired on a mortal — no vampire state to upgrade",
+                );
+                return;
+            }
+            if crate::script::vampire::pc_clan_from_traits(&ch).is_some() {
+                tracing::warn!(
+                    char = %char_name,
+                    "EmbraceAnarch reward fired on already-acknowledged kindred — skipping",
+                );
+                return;
+            }
+            if ch
+                .traits
+                .iter()
+                .any(|t| t == crate::script::vampire::ANARCH_TRAIT)
+            {
+                tracing::warn!(
+                    char = %char_name,
+                    "EmbraceAnarch reward fired on a character already walking the Anarch path — skipping",
+                );
+                return;
+            }
+
+            // Resolve the discipline: hardcoded > runtime choice_var > bail.
+            let resolved = discipline
+                .as_ref()
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    choice_vars
+                        .get("discipline")
+                        .map(|s| s.trim().to_lowercase())
+                        .filter(|s| !s.is_empty())
+                });
+            let resolved = match resolved {
+                Some(d) => d,
+                None => {
+                    tracing::warn!(
+                        char = %char_name,
+                        "EmbraceAnarch reward fired without a discipline (neither hardcoded nor choice_vars[\"discipline\"]) — skipping",
+                    );
+                    return;
+                }
+            };
+
+            // Validate against the canonical discipline allow-list.
+            let allowed = crate::script::vampire::known_disciplines();
+            if !allowed.iter().any(|d| d == &resolved) {
+                tracing::warn!(
+                    char = %char_name,
+                    discipline = %resolved,
+                    "EmbraceAnarch reward rejected — discipline not in known set",
+                );
+                return;
+            }
+
+            if !crate::script::vampire::apply_anarch_acknowledgment(&mut ch, &resolved) {
+                return;
+            }
+            let _ = db.save_character_data(ch.clone());
+            if let Ok(mut conns) = connections.lock() {
+                for (_id, sess) in conns.iter_mut() {
+                    if let Some(sc) = sess.character.as_mut() {
+                        if sc.name.eq_ignore_ascii_case(char_name) {
+                            *sc = ch.clone();
+                            break;
+                        }
+                    }
+                }
+            }
+            notify(
+                connections,
+                char_name,
+                &format!(
+                    "\x1b[1;31m[ Your blood thickens. You walk the Anarch road — your gift is {}. ]\x1b[0m",
+                    resolved
                 ),
             );
         }

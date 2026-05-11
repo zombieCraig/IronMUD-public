@@ -116,6 +116,15 @@ pub enum DialogueCondition {
     /// long-term progression milestones (e.g. "met all sires") that survive
     /// quest cleanup and clan respec.
     HasAchievement { key: String },
+    /// True when the player's `ActiveQuest.choice_vars[key]` for `quest_vnum`
+    /// equals `value`. Lets dialogue branches confirm or inspect a prior
+    /// choice the player made earlier in the same tree (e.g. "Casey nods —
+    /// so you've chosen Potence.").
+    QuestChoiceEquals {
+        quest_vnum: String,
+        key: String,
+        value: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -172,6 +181,14 @@ pub enum DialogueEffect {
     CompleteQuest { vnum: String },
     /// Drop the quest from `active_quests` (progress lost).
     AbandonQuest { vnum: String },
+    /// Write a value to the player's `ActiveQuest.choice_vars` map for the
+    /// named quest. No-op (with a warn-log) if the quest isn't active —
+    /// dialogue trees should `OfferQuest` first, then `SetQuestChoice`.
+    SetQuestChoice {
+        quest_vnum: String,
+        key: String,
+        value: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]

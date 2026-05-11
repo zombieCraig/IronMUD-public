@@ -40,6 +40,15 @@ pub const THINBLOOD_BLOOD_POOL_MAX: i32 = 6;
 /// powers — locked from thinbloods. Lifted on clan acknowledgment.
 pub const THINBLOOD_TIER_LOCK: i32 = 5;
 
+/// Trait stamped on a character who walks the Anarch path. Mutually
+/// exclusive with `clan_*` traits at the acknowledgment gate.
+pub const ANARCH_TRAIT: &str = "anarch_unbound";
+
+/// Sentinel string written to `VampireState.sire_id` for Anarch
+/// acknowledgments — there's no actual sire mob, so the placeholder
+/// surfaces "no clan, no master" in score / dialogue.
+pub const ANARCH_SIRE_SENTINEL: &str = "Anarch Unbound";
+
 fn now_secs() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -72,6 +81,54 @@ pub fn first_preferred_discipline_for_clan(clan: &str) -> Option<String> {
     let entry = parsed.get(clan)?;
     let arr = entry.get("preferred_disciplines")?.as_array()?;
     arr.iter().find_map(|v| v.as_str().map(str::to_string))
+}
+
+/// Enumerate every discipline mentioned in any clan's
+/// `preferred_disciplines` list in `scripts/data/vampire_clans.json`.
+/// Used to validate runtime-chosen disciplines (Anarch path) against a
+/// stable allow-list. Falls back to the canonical core five so the
+/// allow-list is never empty if the data file is missing/unparseable.
+pub fn known_disciplines() -> Vec<String> {
+    let fallback = || {
+        vec![
+            "potence".to_string(),
+            "celerity".to_string(),
+            "auspex".to_string(),
+            "obfuscate".to_string(),
+            "fortitude".to_string(),
+        ]
+    };
+    let raw = match std::fs::read_to_string("scripts/data/vampire_clans.json") {
+        Ok(s) => s,
+        Err(_) => return fallback(),
+    };
+    let parsed: serde_json::Value = match serde_json::from_str(&raw) {
+        Ok(v) => v,
+        Err(_) => return fallback(),
+    };
+    let obj = match parsed.as_object() {
+        Some(o) => o,
+        None => return fallback(),
+    };
+    let mut set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for (k, entry) in obj {
+        if k.starts_with('_') {
+            continue;
+        }
+        let arr = match entry.get("preferred_disciplines").and_then(|v| v.as_array()) {
+            Some(a) => a,
+            None => continue,
+        };
+        for v in arr {
+            if let Some(s) = v.as_str() {
+                set.insert(s.to_lowercase());
+            }
+        }
+    }
+    if set.is_empty() {
+        return fallback();
+    }
+    set.into_iter().collect()
 }
 
 /// Enumerate clan ids known to `scripts/data/vampire_clans.json`. Skips
@@ -159,6 +216,63 @@ pub fn apply_clan_acknowledgment(
             entry.level = 1;
             changed = true;
         }
+    }
+
+    changed
+}
+
+/// Apply Anarch acknowledgment to an already-embraced character. The
+/// thinblood path's sibling to `apply_clan_acknowledgment`: same uplift
+/// (max blood pool 6 -> 10, blood refilled, tier-3 disciplines unlocked
+/// via the absence of the thinblood-state check) but stamps the
+/// `anarch_unbound` trait rather than a `clan_*` trait, writes the
+/// `"Anarch Unbound"` sire sentinel, and seeds the caller-supplied
+/// `discipline` rather than reading the clan's preferred list.
+///
+/// Idempotent: trait pushed only if missing, blood uplifted only on
+/// first acknowledgment, sire written only if absent or different,
+/// discipline seeded at level 1 only when not already known.
+///
+/// Returns `true` if anything changed and the character should be saved.
+pub fn apply_anarch_acknowledgment(ch: &mut CharacterData, discipline: &str) -> bool {
+    let v = match ch.vampire_state.as_mut() {
+        Some(v) => v,
+        None => return false,
+    };
+    let disc_trim = discipline.trim().to_lowercase();
+    if disc_trim.is_empty() {
+        return false;
+    }
+    let mut changed = false;
+
+    let trait_id = ANARCH_TRAIT.to_string();
+    if !ch.traits.iter().any(|t| t == &trait_id) {
+        ch.traits.push(trait_id);
+        changed = true;
+    }
+
+    if v.max_blood_pool < CLAN_BLOOD_POOL_MAX {
+        v.max_blood_pool = CLAN_BLOOD_POOL_MAX;
+        changed = true;
+    }
+    if v.blood_pool < CLAN_BLOOD_POOL_MAX {
+        v.blood_pool = CLAN_BLOOD_POOL_MAX;
+        changed = true;
+    }
+
+    let sentinel = ANARCH_SIRE_SENTINEL.to_string();
+    if v.sire_id.as_ref().map(|s| s != &sentinel).unwrap_or(true) {
+        v.sire_id = Some(sentinel);
+        changed = true;
+    }
+
+    let entry = ch
+        .skills
+        .entry(disc_trim)
+        .or_insert(SkillProgress::default());
+    if entry.level < 1 {
+        entry.level = 1;
+        changed = true;
     }
 
     changed

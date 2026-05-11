@@ -157,6 +157,17 @@ export type DialogueCondition = {
  | {
     kind: "has_achievement";
     key: string;
+}
+/**
+ * True when the player's `ActiveQuest.choice_vars[key]` for `quest_vnum`
+ * equals `value`. Pairs with `SetQuestChoice` to gate follow-up
+ * branches on a prior in-tree decision.
+ */
+ | {
+    kind: "quest_choice_equals";
+    quest_vnum: string;
+    key: string;
+    value: string;
 };
 export type DialogueEffect = {
     kind: "set_flag";
@@ -195,6 +206,18 @@ export type DialogueEffect = {
     kind: "fire_dg_trigger";
     trigger_type: string;
     arg?: string;
+}
+/**
+ * Record a per-quest runtime choice on the player's active quest. No-op
+ * (with a warn-log) if the quest isn't active — author the tree to
+ * `OfferQuest` first, then `SetQuestChoice`. Consumed by reward
+ * variants like `embrace_anarch` whose payload depends on player input.
+ */
+ | {
+    kind: "set_quest_choice";
+    quest_vnum: string;
+    key: string;
+    value: string;
 };
 export interface DialogueChoice {
     keyword: string;
@@ -869,6 +892,18 @@ export type QuestReward = {
  | {
     kind: "embrace_clan";
     clan: string;
+}
+/**
+ * Anarch-path uplift on quest completion. Lifts the thinblood gates
+ * without claiming a clan: stamps the `anarch_unbound` trait, sets sire
+ * to the sentinel "Anarch Unbound", and seeds 1 dot of the chosen
+ * discipline. When `discipline` is omitted, the reward reads the
+ * player's runtime choice from `ActiveQuest.choice_vars["discipline"]`
+ * (set earlier in the dialogue tree via `SetQuestChoice`).
+ */
+ | {
+    kind: "embrace_anarch";
+    discipline?: string;
 };
 export interface Quest {
     /** Quest vnum (e.g. "qst:100"); canonical id. */

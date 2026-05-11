@@ -125,6 +125,18 @@ const rewardSchema = {
       },
       required: ["kind", "clan"],
     },
+    {
+      type: "object",
+      properties: {
+        kind: { const: "embrace_anarch" },
+        discipline: {
+          type: "string",
+          description:
+            "Optional hardcoded discipline (one of: potence, celerity, auspex, obfuscate, fortitude). Omit to let the reward read the player's runtime pick from the active quest's choice_vars[\"discipline\"] — set earlier in dialogue via SetQuestChoice. Lifts thinblood gates without claiming a clan; stamps the `anarch_unbound` trait and sets sire to \"Anarch Unbound\".",
+        },
+      },
+      required: ["kind"],
+    },
   ],
 };
 

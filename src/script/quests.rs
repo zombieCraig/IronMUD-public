@@ -464,6 +464,33 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     {
         let cloned_db = db.clone();
         engine.register_fn(
+            "add_quest_reward_embrace_anarch",
+            move |vnum: String, discipline: String| -> String {
+                let trimmed = discipline.trim().to_lowercase();
+                let discipline = if trimmed.is_empty() {
+                    None
+                } else {
+                    let allowed = crate::script::vampire::known_disciplines();
+                    if !allowed.iter().any(|d| d == &trimmed) {
+                        return format!(
+                            "unknown discipline `{}` — expected one of: {}",
+                            trimmed,
+                            allowed.join(", ")
+                        );
+                    }
+                    Some(trimmed)
+                };
+                push_reward(
+                    &cloned_db,
+                    &vnum,
+                    QuestReward::EmbraceAnarch { discipline },
+                )
+            },
+        );
+    }
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
             "remove_quest_reward",
             move |vnum: String, idx: i64| -> String {
                 let mut q = match cloned_db.get_quest_data(&vnum) {
@@ -860,6 +887,10 @@ fn format_reward(reward: &QuestReward) -> String {
         QuestReward::Achievement { key } => format!("achievement {}", key),
         QuestReward::LearnRecipe { recipe_id } => format!("recipe {}", recipe_id),
         QuestReward::EmbraceClan { clan } => format!("embrace clan {}", clan),
+        QuestReward::EmbraceAnarch { discipline } => match discipline {
+            Some(d) => format!("embrace anarch ({})", d),
+            None => "embrace anarch (player choice)".to_string(),
+        },
     }
 }
 

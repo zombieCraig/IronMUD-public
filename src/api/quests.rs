@@ -76,6 +76,13 @@ pub enum RewardRequest {
     LearnRecipe {
         recipe_id: String,
     },
+    EmbraceClan {
+        clan: String,
+    },
+    EmbraceAnarch {
+        #[serde(default)]
+        discipline: Option<String>,
+    },
 }
 
 #[derive(Deserialize)]
@@ -263,6 +270,32 @@ fn convert_reward(req: &RewardRequest) -> Result<QuestReward, ApiError> {
             }
             Ok(QuestReward::LearnRecipe {
                 recipe_id: recipe_id.clone(),
+            })
+        }
+        RewardRequest::EmbraceClan { clan } => {
+            let trimmed = clan.trim().to_lowercase();
+            if trimmed.is_empty() {
+                return Err(ApiError::InvalidInput("EmbraceClan clan required".into()));
+            }
+            Ok(QuestReward::EmbraceClan { clan: trimmed })
+        }
+        RewardRequest::EmbraceAnarch { discipline } => {
+            let normalized = discipline
+                .as_ref()
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| !s.is_empty());
+            if let Some(d) = normalized.as_ref() {
+                let allowed = crate::script::vampire::known_disciplines();
+                if !allowed.iter().any(|x| x == d) {
+                    return Err(ApiError::InvalidInput(format!(
+                        "EmbraceAnarch discipline `{}` not in known set (expected one of: {})",
+                        d,
+                        allowed.join(", ")
+                    )));
+                }
+            }
+            Ok(QuestReward::EmbraceAnarch {
+                discipline: normalized,
             })
         }
     }

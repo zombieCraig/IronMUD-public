@@ -164,6 +164,21 @@ pub enum QuestReward {
     /// `giver_mob_vnum` prototype name when present. No-op for mortals
     /// or already-acknowledged kindred.
     EmbraceClan { clan: String },
+    /// Anarch-path counterpart to `EmbraceClan`. Lifts the thinblood gates
+    /// (blood pool 6 -> 10, refill, sun damage normal, humanity normal,
+    /// tier-3 disciplines unlocked) without claiming a clan. Stamps the
+    /// `anarch_unbound` trait, sets sire to the sentinel `"Anarch Unbound"`,
+    /// and seeds 1 dot of the chosen discipline.
+    ///
+    /// `discipline = Some(name)` hardcodes the seeded discipline; `None`
+    /// pulls it from the player's `ActiveQuest.choice_vars["discipline"]`
+    /// (set by a `DialogueEffect::SetQuestChoice` earlier in the tree).
+    /// No-op for mortals or already-acknowledged kindred (clan_* trait or
+    /// existing `anarch_unbound` trait).
+    EmbraceAnarch {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        discipline: Option<String>,
+    },
 }
 
 /// Build the stable storage key for a `KillAnyMob` objective's progress
@@ -200,4 +215,9 @@ pub struct ActiveQuest {
     /// DG flag keys that have hit their target value. Slice 2 listener.
     #[serde(default, skip_serializing_if = "std::collections::HashSet::is_empty")]
     pub flags_set: std::collections::HashSet<String>,
+    /// Free-form per-quest choice vars set by `DialogueEffect::SetQuestChoice`.
+    /// Consumed by reward handlers that need a runtime-chosen value (e.g. the
+    /// Anarch path's player-picked discipline on Q10). Empty by default.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub choice_vars: HashMap<String, String>,
 }

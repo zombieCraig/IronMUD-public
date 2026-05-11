@@ -213,6 +213,7 @@ export declare const questToolDefinitions: ({
                             key?: undefined;
                             recipe_id?: undefined;
                             clan?: undefined;
+                            discipline?: undefined;
                         };
                         required: string[];
                     } | {
@@ -234,6 +235,7 @@ export declare const questToolDefinitions: ({
                             key?: undefined;
                             recipe_id?: undefined;
                             clan?: undefined;
+                            discipline?: undefined;
                         };
                         required: string[];
                     } | {
@@ -255,6 +257,7 @@ export declare const questToolDefinitions: ({
                             key?: undefined;
                             recipe_id?: undefined;
                             clan?: undefined;
+                            discipline?: undefined;
                         };
                         required: string[];
                     } | {
@@ -273,6 +276,7 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             recipe_id?: undefined;
                             clan?: undefined;
+                            discipline?: undefined;
                         };
                         required: string[];
                     } | {
@@ -291,6 +295,7 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             key?: undefined;
                             clan?: undefined;
+                            discipline?: undefined;
                         };
                         required: string[];
                     } | {
@@ -310,6 +315,26 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            discipline?: undefined;
+                        };
+                        required: string[];
+                    } | {
+                        type: string;
+                        properties: {
+                            kind: {
+                                const: string;
+                            };
+                            discipline: {
+                                type: string;
+                                description: string;
+                            };
+                            amount?: undefined;
+                            vnum?: undefined;
+                            qty?: undefined;
+                            skill?: undefined;
+                            key?: undefined;
+                            recipe_id?: undefined;
+                            clan?: undefined;
                         };
                         required: string[];
                     })[];
@@ -520,6 +545,7 @@ export declare const questToolDefinitions: ({
                             key?: undefined;
                             recipe_id?: undefined;
                             clan?: undefined;
+                            discipline?: undefined;
                         };
                         required: string[];
                     } | {
@@ -541,6 +567,7 @@ export declare const questToolDefinitions: ({
                             key?: undefined;
                             recipe_id?: undefined;
                             clan?: undefined;
+                            discipline?: undefined;
                         };
                         required: string[];
                     } | {
@@ -562,6 +589,7 @@ export declare const questToolDefinitions: ({
                             key?: undefined;
                             recipe_id?: undefined;
                             clan?: undefined;
+                            discipline?: undefined;
                         };
                         required: string[];
                     } | {
@@ -580,6 +608,7 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             recipe_id?: undefined;
                             clan?: undefined;
+                            discipline?: undefined;
                         };
                         required: string[];
                     } | {
@@ -598,6 +627,7 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             key?: undefined;
                             clan?: undefined;
+                            discipline?: undefined;
                         };
                         required: string[];
                     } | {
@@ -617,6 +647,26 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            discipline?: undefined;
+                        };
+                        required: string[];
+                    } | {
+                        type: string;
+                        properties: {
+                            kind: {
+                                const: string;
+                            };
+                            discipline: {
+                                type: string;
+                                description: string;
+                            };
+                            amount?: undefined;
+                            vnum?: undefined;
+                            qty?: undefined;
+                            skill?: undefined;
+                            key?: undefined;
+                            recipe_id?: undefined;
+                            clan?: undefined;
                         };
                         required: string[];
                     })[];

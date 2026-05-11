@@ -71,7 +71,15 @@ impl IpRateLimiter {
     /// Try to claim a connection slot for `ip`. Returns true on success;
     /// false if the IP is already at `MAX_CONNECTIONS_PER_IP`. The caller
     /// MUST pair every successful acquire with `release(ip)`.
+    ///
+    /// Loopback addresses (127.0.0.0/8, ::1) are always allowed and skip
+    /// bookkeeping entirely — the ttyd web proxy fronts every browser
+    /// session through localhost, so we'd otherwise cap the whole web
+    /// gateway at eight users.
     pub fn try_acquire(&self, ip: IpAddr) -> bool {
+        if ip.is_loopback() {
+            return true;
+        }
         let mut map = self.inner.lock().unwrap();
         let entry = map.entry(ip).or_default();
         if entry.active >= MAX_CONNECTIONS_PER_IP {
@@ -82,6 +90,9 @@ impl IpRateLimiter {
     }
 
     pub fn release(&self, ip: IpAddr) {
+        if ip.is_loopback() {
+            return;
+        }
         let mut map = self.inner.lock().unwrap();
         if let Some(entry) = map.get_mut(&ip) {
             entry.active = entry.active.saturating_sub(1);
@@ -98,6 +109,9 @@ impl IpRateLimiter {
     /// True if `ip` has hit either the per-hour or per-day email-send cap.
     /// Each call prunes both windows so stale timestamps don't pile up.
     pub fn is_email_send_throttled(&self, ip: IpAddr) -> bool {
+        if ip.is_loopback() {
+            return false;
+        }
         let mut map = self.inner.lock().unwrap();
         let entry = map.entry(ip).or_default();
         prune_window_with(&mut entry.email_sends, EMAIL_SEND_DAY_WINDOW);
@@ -112,6 +126,9 @@ impl IpRateLimiter {
     /// only invoking this AFTER the SMTP send returns Ok — failed sends
     /// don't count against the budget.
     pub fn record_email_send(&self, ip: IpAddr) {
+        if ip.is_loopback() {
+            return;
+        }
         let mut map = self.inner.lock().unwrap();
         let entry = map.entry(ip).or_default();
         prune_window_with(&mut entry.email_sends, EMAIL_SEND_DAY_WINDOW);
@@ -124,6 +141,9 @@ impl IpRateLimiter {
     /// True if `ip` has hit `MAX_CREATIONS_PER_WINDOW` character creations
     /// within the rolling window. Stale entries are evicted on inspection.
     pub fn is_creation_throttled(&self, ip: IpAddr) -> bool {
+        if ip.is_loopback() {
+            return false;
+        }
         let mut map = self.inner.lock().unwrap();
         let entry = map.entry(ip).or_default();
         prune_window_with(&mut entry.creations, CREATION_WINDOW);
@@ -131,6 +151,9 @@ impl IpRateLimiter {
     }
 
     pub fn record_creation(&self, ip: IpAddr) {
+        if ip.is_loopback() {
+            return;
+        }
         let mut map = self.inner.lock().unwrap();
         let entry = map.entry(ip).or_default();
         prune_window_with(&mut entry.creations, CREATION_WINDOW);
@@ -143,6 +166,9 @@ impl IpRateLimiter {
     /// True if `ip` has hit `MAX_FAILED_AUTH_PER_WINDOW` failures within
     /// the rolling window. Stale entries are evicted on inspection.
     pub fn is_login_throttled(&self, ip: IpAddr) -> bool {
+        if ip.is_loopback() {
+            return false;
+        }
         let mut map = self.inner.lock().unwrap();
         let entry = map.entry(ip).or_default();
         prune_window(&mut entry.failed_auths);
@@ -150,6 +176,9 @@ impl IpRateLimiter {
     }
 
     pub fn record_auth_failure(&self, ip: IpAddr) {
+        if ip.is_loopback() {
+            return;
+        }
         let mut map = self.inner.lock().unwrap();
         let entry = map.entry(ip).or_default();
         prune_window(&mut entry.failed_auths);
@@ -195,7 +224,7 @@ mod tests {
     #[test]
     fn try_acquire_caps_at_limit_and_release_frees_slot() {
         let lim = IpRateLimiter::new();
-        let ip = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+        let ip = IpAddr::V4(Ipv4Addr::new(203, 0, 113, 1));
         for _ in 0..MAX_CONNECTIONS_PER_IP {
             assert!(lim.try_acquire(ip));
         }
@@ -204,6 +233,38 @@ mod tests {
         // Release one slot, then acquire succeeds again.
         lim.release(ip);
         assert!(lim.try_acquire(ip));
+    }
+
+    #[test]
+    fn loopback_bypasses_all_gates() {
+        // The ttyd web gateway fronts every browser player through 127.0.0.1.
+        // Capping it at 8 would mean only eight web users could ever connect,
+        // and a single bad password from one user would lock out the whole
+        // gateway. Verify every axis short-circuits on loopback.
+        let lim = IpRateLimiter::new();
+        let v4 = IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1));
+        let v6 = IpAddr::V6(std::net::Ipv6Addr::LOCALHOST);
+        for ip in [v4, v6] {
+            // Connection cap: well past MAX_CONNECTIONS_PER_IP.
+            for _ in 0..(MAX_CONNECTIONS_PER_IP * 4) {
+                assert!(lim.try_acquire(ip), "loopback should never cap: {ip}");
+            }
+            // Auth failures: blast past the window threshold.
+            for _ in 0..(MAX_FAILED_AUTH_PER_WINDOW * 2) {
+                lim.record_auth_failure(ip);
+            }
+            assert!(!lim.is_login_throttled(ip), "loopback should never throttle login: {ip}");
+            // Creations.
+            for _ in 0..(MAX_CREATIONS_PER_WINDOW * 2) {
+                lim.record_creation(ip);
+            }
+            assert!(!lim.is_creation_throttled(ip), "loopback should never throttle creation: {ip}");
+            // Email sends.
+            for _ in 0..(MAX_EMAIL_SENDS_PER_DAY * 2) {
+                lim.record_email_send(ip);
+            }
+            assert!(!lim.is_email_send_throttled(ip), "loopback should never throttle email: {ip}");
+        }
     }
 
     #[test]
