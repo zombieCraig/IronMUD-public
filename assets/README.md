@@ -6,3 +6,4 @@ Static files used by the server.
 |------|---------|
 | `banner.txt` | ASCII art displayed on connection |
 | `matrix_avatar.png` | Avatar for Matrix bot integration |
+| `ironmud.tin` | TinTin++ MUD client configuration script |

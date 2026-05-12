@@ -40,6 +40,15 @@ pub const OPT_TTYPE: u8 = 24; // Terminal Type (RFC 1091)
 pub const OPT_NAWS: u8 = 31; // Window Size (RFC 1073)
 pub const OPT_LINEMODE: u8 = 34; // Linemode (RFC 1184)
 pub const OPT_MXP: u8 = 91; // MUD eXtension Protocol
+pub const OPT_MSDP: u8 = 69; // Mud Server Data Protocol
+
+// MSDP Commands
+pub const MSDP_VAR: u8 = 1;
+pub const MSDP_VAL: u8 = 2;
+pub const MSDP_TABLE_OPEN: u8 = 3;
+pub const MSDP_TABLE_CLOSE: u8 = 4;
+pub const MSDP_ARRAY_OPEN: u8 = 5;
+pub const MSDP_ARRAY_CLOSE: u8 = 6;
 
 // TTYPE subnegotiation commands (RFC 1091)
 pub const TTYPE_IS: u8 = 0; // Client sending terminal type
@@ -96,6 +105,8 @@ pub struct TelnetState {
     pub window_height: u16,
     /// Client supports MXP (MUD eXtension Protocol)
     pub mxp_supported: bool,
+    /// Client supports MSDP (Mud Server Data Protocol)
+    pub msdp_supported: bool,
     /// TTYPE negotiation stage (0=not started, 1-3=stage, 4=complete)
     pub ttype_stage: u8,
     /// Client name from TTYPE stage 1 (e.g., "MUDLET")
@@ -106,6 +117,8 @@ pub struct TelnetState {
     pub mtts_flags: u32,
     /// Derived: client supports UTF-8 (from MTTS or assumed)
     pub utf8_supported: bool,
+    /// Variables the client has requested to REPORT via MSDP
+    pub msdp_reported_variables: std::collections::HashSet<String>,
 }
 
 impl TelnetState {
@@ -118,11 +131,13 @@ impl TelnetState {
             window_width: 80,
             window_height: 24,
             mxp_supported: false,
+            msdp_supported: false,
             ttype_stage: 0,
             client_name: None,
             terminal_type: None,
             mtts_flags: 0,
             utf8_supported: false,
+            msdp_reported_variables: std::collections::HashSet::new(),
         }
     }
 }
@@ -570,13 +585,16 @@ pub fn build_initial_negotiations() -> Vec<u8> {
     // Request MXP support
     bytes.extend_from_slice(&[IAC, DO, OPT_MXP]);
 
+    // Advertise MSDP support (Mud Server Data Protocol)
+    bytes.extend_from_slice(&[IAC, WILL, OPT_MSDP]);
+
     bytes
 }
 
 /// Build response to client's DO request
 pub fn respond_to_do(option: u8) -> Vec<u8> {
     match option {
-        OPT_ECHO | OPT_SGA => build_negotiation(WILL, option),
+        OPT_ECHO | OPT_SGA | OPT_MSDP => build_negotiation(WILL, option),
         _ => build_negotiation(WONT, option),
     }
 }
@@ -584,7 +602,7 @@ pub fn respond_to_do(option: u8) -> Vec<u8> {
 /// Build response to client's WILL offer
 pub fn respond_to_will(option: u8) -> Vec<u8> {
     match option {
-        OPT_SGA | OPT_NAWS | OPT_TTYPE | OPT_MXP => build_negotiation(DO, option),
+        OPT_SGA | OPT_NAWS | OPT_TTYPE | OPT_MXP | OPT_MSDP => build_negotiation(DO, option),
         _ => build_negotiation(DONT, option),
     }
 }
@@ -604,6 +622,19 @@ pub fn build_mxp_activation() -> Vec<u8> {
 /// Format: IAC SB TTYPE SEND IAC SE
 pub fn build_ttype_send() -> Vec<u8> {
     vec![IAC, SB, OPT_TTYPE, TTYPE_SEND, IAC, SE]
+}
+
+/// Build MSDP variable update sequence
+///
+/// Format: IAC SB MSDP MSDP_VAR <name> MSDP_VAL <value> IAC SE
+pub fn build_msdp_var(var_name: &str, var_value: &str) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    bytes.extend_from_slice(&[IAC, SB, OPT_MSDP, MSDP_VAR]);
+    bytes.extend(var_name.as_bytes());
+    bytes.push(MSDP_VAL);
+    bytes.extend(var_value.as_bytes());
+    bytes.extend_from_slice(&[IAC, SE]);
+    bytes
 }
 
 /// Parse TTYPE IS subnegotiation response
@@ -645,6 +676,46 @@ pub fn parse_naws(data: &[u8]) -> Option<(u16, u16)> {
     } else {
         None
     }
+}
+
+/// Parse MSDP subnegotiation data
+///
+/// Simplified parser that extracts variable/value pairs.
+/// Returns a list of (Variable Name, Value) pairs.
+pub fn parse_msdp(data: &[u8]) -> Vec<(String, String)> {
+    let mut results = Vec::new();
+    let mut current_var = String::new();
+    let mut i = 0;
+
+    while i < data.len() {
+        match data[i] {
+            MSDP_VAR => {
+                i += 1;
+                let mut var_bytes = Vec::new();
+                while i < data.len() && data[i] >= 32 && data[i] < 127 {
+                    var_bytes.push(data[i]);
+                    i += 1;
+                }
+                current_var = String::from_utf8_lossy(&var_bytes).to_string();
+            }
+            MSDP_VAL => {
+                i += 1;
+                let mut val_bytes = Vec::new();
+                while i < data.len() && data[i] >= 32 && data[i] < 127 {
+                    val_bytes.push(data[i]);
+                    i += 1;
+                }
+                let val = String::from_utf8_lossy(&val_bytes).to_string();
+                if !current_var.is_empty() {
+                    results.push((current_var.clone(), val));
+                }
+            }
+            _ => {
+                i += 1;
+            }
+        }
+    }
+    results
 }
 
 /// Check if terminal supports OSC title updates

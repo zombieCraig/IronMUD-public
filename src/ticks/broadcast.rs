@@ -28,6 +28,7 @@ pub fn sync_character_to_session(connections: &SharedConnections, char_data: &Ch
             if let Some(ref existing_char) = session.character {
                 if existing_char.name.to_lowercase() == char_data.name.to_lowercase() {
                     session.character = Some(char_data.clone());
+                    session.sync_msdp_vitals();
                     return;
                 }
             }

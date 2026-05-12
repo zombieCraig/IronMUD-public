@@ -625,6 +625,7 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections) -> Result<()
 
             if modified {
                 let _ = db.save_character_data(char.clone());
+                session.sync_msdp_vitals();
             }
         }
     }

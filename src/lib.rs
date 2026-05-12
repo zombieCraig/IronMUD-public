@@ -90,6 +90,7 @@ pub type ConnectionId = Uuid;
 pub struct PlayerSession {
     pub character: Option<CharacterData>,
     pub sender: mpsc::UnboundedSender<String>,
+    pub raw_sender: Option<mpsc::UnboundedSender<Vec<u8>>>,
     pub input_sender: mpsc::Sender<InputEvent>,
     pub addr: std::net::SocketAddr,
     // OLC (Online Creation) fields
@@ -1082,6 +1083,45 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
     format!("{}{}{}{}> ", base_prompt, distance_tag, extra, build_tag)
 }
 
+impl PlayerSession {
+    /// Sync MSDP vitals if supported and requested
+    pub fn sync_msdp_vitals(&self) {
+        if !self.telnet_state.msdp_supported
+            || self.telnet_state.msdp_reported_variables.is_empty()
+            || self.raw_sender.is_none()
+        {
+            return;
+        }
+
+        let char_data = match &self.character {
+            Some(c) => c,
+            None => return,
+        };
+
+        let tx_raw = self.raw_sender.as_ref().unwrap();
+        let reported = &self.telnet_state.msdp_reported_variables;
+
+        if reported.contains("HEALTH") {
+            let _ = tx_raw.send(telnet::build_msdp_var("HEALTH", &char_data.hp.to_string()));
+        }
+        if reported.contains("HEALTH_MAX") {
+            let _ = tx_raw.send(telnet::build_msdp_var("HEALTH_MAX", &char_data.max_hp.to_string()));
+        }
+        if reported.contains("STAMINA") {
+            let _ = tx_raw.send(telnet::build_msdp_var("STAMINA", &char_data.stamina.to_string()));
+        }
+        if reported.contains("STAMINA_MAX") {
+            let _ = tx_raw.send(telnet::build_msdp_var("STAMINA_MAX", &char_data.max_stamina.to_string()));
+        }
+        if reported.contains("MANA") {
+            let _ = tx_raw.send(telnet::build_msdp_var("MANA", &char_data.mana.to_string()));
+        }
+        if reported.contains("MANA_MAX") {
+            let _ = tx_raw.send(telnet::build_msdp_var("MANA_MAX", &char_data.max_mana.to_string()));
+        }
+    }
+}
+
 /// Collect prompt contributions from equipped items with on_prompt triggers
 fn collect_on_prompt_contributions(
     connection_id: &ConnectionId,
@@ -1208,6 +1248,7 @@ pub async fn handle_connection(
             PlayerSession {
                 character: None,
                 sender: tx_client.clone(),
+                raw_sender: Some(tx_raw.clone()),
                 input_sender: tx_input.clone(),
                 addr,
                 olc_mode: None,
@@ -1296,6 +1337,12 @@ pub async fn handle_connection(
                 .unwrap_or(false)
         };
         if !is_char_mode {
+            {
+                let conns = connections.lock().unwrap();
+                if let Some(session) = conns.get(&connection_id) {
+                    session.sync_msdp_vitals();
+                }
+            }
             let prompt = build_prompt(&connection_id, &connections, &state);
             if let Err(e) = tx_client.send(prompt) {
                 error!("Failed to send prompt to socket {}: {}", addr, e);
@@ -2824,6 +2871,14 @@ pub async fn handle_connection(
                 }
             }
 
+            // Sync MSDP vitals before sending prompt
+            {
+                let conns = connections.lock().unwrap();
+                if let Some(session) = conns.get(&connection_id) {
+                    session.sync_msdp_vitals();
+                }
+            }
+
             // Send prompt after command execution
             let prompt = build_prompt(&connection_id, &connections, &state);
             if let Err(e) = tx_client.send(prompt) {
@@ -3027,7 +3082,11 @@ async fn handle_read_char_mode(
                                             let _ = tx_raw.send(build_ttype_send());
                                         }
                                     }
+                                    OPT_MSDP => {
+                                        session.telnet_state.msdp_supported = true;
+                                    }
                                     _ => {
+
                                         // Send standard response for other options
                                         let _ = tx_raw.send(respond_to_will(opt));
                                     }
@@ -3055,7 +3114,11 @@ async fn handle_read_char_mode(
                                     OPT_SGA => {
                                         session.telnet_state.suppress_go_ahead = true;
                                     }
+                                    OPT_MSDP => {
+                                        session.telnet_state.msdp_supported = true;
+                                    }
                                     _ => {}
+
                                 }
                             }
                         }
@@ -3128,6 +3191,21 @@ async fn handle_read_char_mode(
                                                     );
                                                 }
                                                 _ => {}
+                                            }
+                                        }
+                                    }
+                                }
+                                OPT_MSDP => {
+                                    let vars = parse_msdp(&subneg_data);
+                                    let mut conns = connections.lock().unwrap();
+                                    if let Some(session) = conns.get_mut(&connection_id) {
+                                        for (var, val) in vars {
+                                            if var == "REPORT" {
+                                                debug!("MSDP Client {} requested REPORT for {}", connection_id, val);
+                                                session.telnet_state.msdp_reported_variables.insert(val.to_uppercase());
+                                            } else if var == "UNREPORT" {
+                                                debug!("MSDP Client {} requested UNREPORT for {}", connection_id, val);
+                                                session.telnet_state.msdp_reported_variables.remove(&val.to_uppercase());
                                             }
                                         }
                                     }

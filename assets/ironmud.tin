@@ -1,0 +1,82 @@
+#CONFIG {CHARSET} {UTF-8}
+#CONFIG {COLOR} {ON}
+#CONFIG {COMMAND ECHO} {OFF}
+
+/* Session Alias */
+#ALIAS {ironmud} {
+    #SESSION {ironmud} {play.ironmud.games} {4000};
+}
+
+/* 
+ * Connection & Login Handlers 
+ * IronMUD uses "login <user> <pass>" or "create <user> <pass> [email]"
+ */
+
+#ACTION {^What is your account name?} {
+    #ECHO {Enter account name: };
+    #CURSOR {SET} {20} {1};
+}
+
+#ALIAS {login} {
+    #VARIABLE {username} {%1};
+    #IF {"%2" == ""} {
+        #ECHO {Usage: login <username> <password>};
+    } {
+        #SEND {login %1 %2};
+    }
+}
+
+#ALIAS {create} {
+    #IF {"%2" == ""} {
+        #ECHO {Usage: create <username> <password> [email]};
+    } {
+        #IF {"%3" == ""} {
+            #SEND {create %1 %2};
+        } {
+            #SEND {create %1 %2 %3};
+        }
+    }
+}
+
+/* UI Setup */
+#SPLIT 1 0
+#PROMPT {^[%dHP:%d/%d] [%dST:%d/%d]} {<277>HP: %2/%3 <237>ST: %5/%6} {1}
+
+/* Status bar initialization */
+#SHOWME {<177>  Welcome to IronMUD  |  Type 'ironmud' to connect  } {1}
+
+/* Common Shortcuts */
+#ALIAS {l} {look}
+#ALIAS {i} {inventory}
+#ALIAS {sc} {status}
+#ALIAS {ex} {exits}
+#ALIAS {who} {who}
+
+/* 
+ * MSDP Integration
+ * TinTin++ receives variables like HEALTH, STAMINA, etc.
+ */
+#EVENT {IAC WILL MSDP} {
+    #SEND {IAC DO MSDP};
+    #SEND {IAC SB MSDP MSDP_VAR "REPORT" MSDP_VAL "HEALTH" MSDP_VAL "HEALTH_MAX" MSDP_VAL "STAMINA" MSDP_VAL "STAMINA_MAX" IAC SE};
+}
+
+#EVENT {MSDP VARIABLE HEALTH} {
+    #VARIABLE {hp} {%1};
+    #SHOWME {<277>  Health: $hp / $max_hp  |  Stamina: $st / $max_st  } {1};
+}
+
+#EVENT {MSDP VARIABLE HEALTH_MAX} {
+    #VARIABLE {max_hp} {%1};
+    #SHOWME {<277>  Health: $hp / $max_hp  |  Stamina: $st / $max_st  } {1};
+}
+
+#EVENT {MSDP VARIABLE STAMINA} {
+    #VARIABLE {st} {%1};
+    #SHOWME {<277>  Health: $hp / $max_hp  |  Stamina: $st / $max_st  } {1};
+}
+
+#EVENT {MSDP VARIABLE STAMINA_MAX} {
+    #VARIABLE {max_st} {%1};
+    #SHOWME {<277>  Health: $hp / $max_hp  |  Stamina: $st / $max_st  } {1};
+}
