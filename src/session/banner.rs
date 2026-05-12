@@ -51,23 +51,12 @@ mod tests {
 
     struct TempDb {
         db: Db,
-        path: String,
+        _temp: tempfile::TempDir,
     }
-    impl Drop for TempDb {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.path);
-        }
-    }
-    fn open_temp(tag: &str) -> TempDb {
-        let path = format!(
-            "test_banner_{}_{}_{}.db",
-            tag,
-            std::process::id(),
-            uuid::Uuid::new_v4().simple()
-        );
-        let _ = std::fs::remove_dir_all(&path);
-        let db = Db::open(&path).expect("open db");
-        TempDb { db, path }
+    fn open_temp(_tag: &str) -> TempDb {
+        let temp = tempfile::tempdir().expect("create temp dir");
+        let db = Db::open(temp.path()).expect("open db");
+        TempDb { db, _temp: temp }
     }
 
     #[test]

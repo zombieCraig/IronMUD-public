@@ -17,18 +17,11 @@ fn ranvier_starter_bundle() -> Option<PathBuf> {
     if p.is_dir() { Some(p) } else { None }
 }
 
-fn temp_db_path(name: &str) -> PathBuf {
-    let pid = std::process::id();
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.subsec_nanos())
-        .unwrap_or(0);
-    PathBuf::from(format!("/tmp/ironmud-ranvier-test-{name}-{pid}-{nanos}.db"))
-}
-
-fn cleanup_sidecar(bundle_name: &str) {
-    let p = PathBuf::from("imports").join(format!("{bundle_name}.vnum-map.json"));
-    let _ = std::fs::remove_file(p);
+fn cleanup_sidecar(label: &str) {
+    let sidecar = PathBuf::from("imports").join(format!("{}.vnum-map.json", label));
+    if sidecar.exists() {
+        let _ = std::fs::remove_file(sidecar);
+    }
 }
 
 #[test]
@@ -37,11 +30,10 @@ fn imports_starter_bundle_with_expected_counts() {
         eprintln!("skip: ranvier starter bundle not present");
         return;
     };
-    let db_path = temp_db_path("counts");
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
     cleanup_sidecar("test-bundle-counts");
 
-    let db = Db::open(db_path.to_str().unwrap()).expect("open db");
+    let db = Db::open(temp.path()).expect("open db");
     let import = ranvier::import_bundle(
         &bundle,
         "test-bundle-counts",
@@ -100,7 +92,6 @@ fn imports_starter_bundle_with_expected_counts() {
         .or_else(|| spawns.iter().find(|s| s.replace_on_respawn));
     assert!(chest_spawn.is_some(), "expected at least one replace_on_respawn spawn");
 
-    let _ = std::fs::remove_dir_all(&db_path);
     cleanup_sidecar("test-bundle-counts");
 }
 

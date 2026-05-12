@@ -184,20 +184,10 @@ mod tests {
     use crate::{ApiKey, ApiPermissions};
     use uuid::Uuid;
 
-    fn open_temp_db(tag: &str) -> (crate::db::Db, String) {
-        let path = format!(
-            "test_authz_{}_{}_{}.db",
-            tag,
-            std::process::id(),
-            Uuid::new_v4().simple()
-        );
-        let _ = std::fs::remove_dir_all(&path);
-        let db = crate::db::Db::open(&path).expect("open db");
-        (db, path)
-    }
-
-    fn cleanup(path: &str) {
-        let _ = std::fs::remove_dir_all(path);
+    fn open_temp_db(_tag: &str) -> (crate::db::Db, tempfile::TempDir) {
+        let temp = tempfile::tempdir().expect("create temp dir");
+        let db = crate::db::Db::open(temp.path()).expect("open db");
+        (db, temp)
     }
 
     fn user_for(character: &str, write: bool, admin: bool) -> AuthenticatedUser {
@@ -236,55 +226,55 @@ mod tests {
 
     #[test]
     fn authorize_existing_area_blocks_non_owner_on_owner_only() {
-        let (db, path) = open_temp_db("owner_only_block");
+        let (db, _temp) = open_temp_db(
+"owner_only_block");
         let area_id = save_area(&db, Some("alice"), AreaPermission::OwnerOnly);
         let bob = user_for("bob", true, false);
         let res = authorize_existing_area(&db, &bob, Some(area_id));
         assert!(matches!(res, Err(super::super::error::ApiError::Forbidden(_))));
-        cleanup(&path);
     }
 
     #[test]
     fn authorize_existing_area_allows_owner_on_owner_only() {
-        let (db, path) = open_temp_db("owner_only_allow");
+        let (db, _temp) = open_temp_db(
+"owner_only_allow");
         let area_id = save_area(&db, Some("alice"), AreaPermission::OwnerOnly);
         let alice = user_for("alice", true, false);
         assert!(authorize_existing_area(&db, &alice, Some(area_id)).is_ok());
-        cleanup(&path);
     }
 
     #[test]
     fn authorize_existing_area_allows_all_builders() {
-        let (db, path) = open_temp_db("all_builders");
+        let (db, _temp) = open_temp_db(
+"all_builders");
         let area_id = save_area(&db, Some("alice"), AreaPermission::AllBuilders);
         let bob = user_for("bob", true, false);
         assert!(authorize_existing_area(&db, &bob, Some(area_id)).is_ok());
-        cleanup(&path);
     }
 
     #[test]
     fn authorize_existing_area_admin_bypasses_owner_only() {
-        let (db, path) = open_temp_db("admin_bypass");
+        let (db, _temp) = open_temp_db(
+"admin_bypass");
         let area_id = save_area(&db, Some("alice"), AreaPermission::OwnerOnly);
         let admin = user_for("eve", true, true);
         assert!(authorize_existing_area(&db, &admin, Some(area_id)).is_ok());
-        cleanup(&path);
     }
 
     #[test]
     fn authorize_existing_area_passes_orphans() {
-        let (db, path) = open_temp_db("orphan");
+        let (db, _temp) = open_temp_db(
+"orphan");
         let bob = user_for("bob", true, false);
         assert!(authorize_existing_area(&db, &bob, None).is_ok());
-        cleanup(&path);
     }
 
     #[test]
     fn authorize_existing_area_passes_dangling_uuid() {
-        let (db, path) = open_temp_db("dangling");
+        let (db, _temp) = open_temp_db(
+"dangling");
         let bob = user_for("bob", true, false);
         // Random UUID that has no area row — historically treated as orphan.
         assert!(authorize_existing_area(&db, &bob, Some(Uuid::new_v4())).is_ok());
-        cleanup(&path);
     }
 }

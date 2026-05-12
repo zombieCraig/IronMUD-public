@@ -2650,6 +2650,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 cmd_canonical: String::new(),
                 authored_by: None,
                 elevated: false,
+                #[cfg(test)]
+                test_temp_dir: None,
             };
             let _ = name;
             crate::script::dg::cmds::attach_trigger_proto(&proto.vnum, &uid.to_string(), &ctx);

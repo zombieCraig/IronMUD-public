@@ -11,19 +11,13 @@ use ironmud::db::Db;
 use ironmud::script::map::{Direction, Visibility, compute_map_layout, render_map_for_player};
 use ironmud::types::{AreaData, CharacterData, DoorState, RoomData};
 use std::collections::HashSet;
+use tempfile;
 use uuid::Uuid;
 
-fn fresh_db(label: &str) -> (Db, String) {
-    let path = format!("/tmp/test_map_{}_{}.db", label, std::process::id());
-    let _ = std::fs::remove_dir_all(&path);
-    let db = Db::open(&path).expect("open db");
-    (db, path)
-}
-
-fn run(label: &str, body: impl FnOnce(&Db)) {
-    let (db, path) = fresh_db(label);
+fn run(_label: &str, body: impl FnOnce(&Db)) {
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db = Db::open(temp.path()).expect("open db");
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| body(&db)));
-    let _ = std::fs::remove_dir_all(&path);
     if let Err(e) = outcome {
         std::panic::resume_unwind(e);
     }

@@ -1670,6 +1670,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
             // Other characters in room (green) - show generic if dark/blind, with position
             let others_with_positions = crate::get_characters_in_room_with_positions(&conns, room_uuid);
+            let idle_threshold: i64 = cloned_db
+                .get_setting_or_default("idle_timeout_secs", "300")
+                .unwrap_or_else(|_| "300".to_string())
+                .parse::<i64>()
+                .unwrap_or(300)
+                .max(30);
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64;
+
             let visible_others: Vec<String> = others_with_positions
                 .into_iter()
                 .filter(|(name, _)| name != &exclude_char_name)
@@ -1762,24 +1773,32 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         crate::CharacterPosition::Standing => "",
                     };
 
-                    // Check if this player is AFK
-                    let afk_suffix = {
+                    // Check player status tags (Disconnected, AFK, Idle)
+                    let status_suffix = {
                         let conns_guard = conns.lock().unwrap();
-                        let is_afk = conns_guard.values().any(|session| {
+                        let mut status = "";
+                        for session in conns_guard.values() {
                             if let Some(ref char) = session.character {
-                                char.name == name_for_afk && session.afk
-                            } else {
-                                false
+                                if char.name == name_for_afk {
+                                    if session.disconnected_at.is_some() {
+                                        status = " [Disconnected]";
+                                    } else if session.afk {
+                                        status = " [AFK]";
+                                    } else if now.saturating_sub(session.last_activity_time) > idle_threshold {
+                                        status = " [Idle]";
+                                    }
+                                    break;
+                                }
                             }
-                        });
-                        if is_afk { " [AFK]" } else { "" }
+                        }
+                        status
                     };
 
                     // Add glowing indicator for god mode
                     let glow_suffix = if is_glowing { " (glowing)" } else { "" };
 
                     color(
-                        &format!("{}{}{}{}", display_name, glow_suffix, position_suffix, afk_suffix),
+                        &format!("{}{}{}{}", display_name, glow_suffix, position_suffix, status_suffix),
                         ANSI_GREEN,
                     )
                 })

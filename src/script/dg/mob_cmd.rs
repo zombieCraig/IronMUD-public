@@ -767,6 +767,8 @@ fn do_order(rest: &str, ctx: &EvalCtx) {
         cmd_canonical: ctx.cmd_canonical.clone(),
         authored_by: ctx.authored_by.clone(),
         elevated: ctx.elevated,
+        #[cfg(test)]
+        test_temp_dir: None,
     };
     let (sub_verb, sub_rest) = split2(&cmdline);
     let _ = try_dispatch(&sub_verb, &sub_rest, &sub_ctx);
@@ -958,9 +960,9 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
-    fn make_ctx(room_id: Uuid, mob: &MobileData, label: &str) -> EvalCtx {
-        let path = format!("test_mobcmd_{}_{}.db", label, Uuid::new_v4().simple());
-        let _ = std::fs::remove_dir_all(&path);
+    fn make_ctx(room_id: Uuid, mob: &MobileData, _label: &str) -> EvalCtx {
+        let temp = tempfile::tempdir().expect("create temp dir");
+        let path = temp.path().to_owned();
         let db = Arc::new(crate::db::Db::open(&path).expect("open db"));
         let connections: crate::SharedConnections = Arc::new(Mutex::new(HashMap::new()));
         EvalCtx {
@@ -978,6 +980,7 @@ mod tests {
             cmd_canonical: String::new(),
             authored_by: None,
             elevated: false,
+            test_temp_dir: Some(Arc::new(temp)),
         }
     }
 

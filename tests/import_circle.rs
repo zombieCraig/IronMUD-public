@@ -80,7 +80,7 @@ fn parses_fixture_into_plan() {
 #[test]
 fn applies_fixture_to_tmp_db() {
     let dir = tmpdir("ironmud-import-test");
-    let db_path = dir.join("ironmud.db");
+    let db_path = dir.path().join("ironmud.db");
     {
         let db = Db::open(&db_path).expect("open tmp db");
         let (ir, _) = CircleEngine.parse(&fixture_root()).expect("parse");
@@ -129,8 +129,6 @@ fn applies_fixture_to_tmp_db() {
         assert!(east_door.is_closed);
         assert_eq!(east_door.name, "gate");
     }
-    // Drop the Db (Sled holds a file lock); cleanup directory.
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -266,7 +264,7 @@ fn parses_mobiles_into_plan() {
 #[test]
 fn applies_mobiles_to_tmp_db() {
     let dir = tmpdir("ironmud-import-mob-test");
-    let db_path = dir.join("ironmud.db");
+    let db_path = dir.path().join("ironmud.db");
     {
         let db = Db::open(&db_path).expect("open tmp db");
         let (ir, _) = CircleEngine.parse(&fixture_root()).expect("parse");
@@ -318,7 +316,6 @@ fn applies_mobiles_to_tmp_db() {
             "legacy SEX warning must be gone now that the importer maps it"
         );
     }
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -522,7 +519,7 @@ fn applies_items_to_tmp_db() {
     use ironmud::types::ItemType;
 
     let dir = tmpdir("ironmud-import-obj-test");
-    let db_path = dir.join("ironmud.db");
+    let db_path = dir.path().join("ironmud.db");
     {
         let db = Db::open(&db_path).expect("open tmp db");
         let (ir, _) = CircleEngine.parse(&fixture_root()).expect("parse");
@@ -565,7 +562,6 @@ fn applies_items_to_tmp_db() {
             .expect("key saved");
         assert_eq!(key.item_type, ItemType::Key);
     }
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -688,7 +684,7 @@ fn parses_shops_into_plan() {
 #[test]
 fn applies_shops_to_tmp_db() {
     let dir = tmpdir("ironmud-import-shp-test");
-    let db_path = dir.join("ironmud.db");
+    let db_path = dir.path().join("ironmud.db");
     {
         let db = Db::open(&db_path).expect("open tmp db");
         let (ir, _) = CircleEngine.parse(&fixture_root()).expect("parse");
@@ -754,7 +750,6 @@ fn applies_shops_to_tmp_db() {
         assert!(beast.flags.hostile_on_steal);
         assert!(!wanderer.flags.hostile_on_steal);
     }
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -762,7 +757,7 @@ fn translates_zon_resets() {
     use ironmud::types::{SpawnDestination, SpawnEntityType, WearLocation};
 
     let dir = tmpdir("ironmud-import-resets");
-    let root = write_reset_fixture(&dir);
+    let root = write_reset_fixture(dir.path());
 
     let (ir, parse_warnings) = CircleEngine.parse(&root).expect("parse");
     // Synthetic root has no `src/` directory, so the engine emits a single
@@ -942,7 +937,7 @@ fn translates_zon_resets() {
 
     // Round-trip through the writer: spawn points land in the DB and carry
     // their dependencies.
-    let db_path = dir.join("ironmud.db");
+    let db_path = dir.path().join("ironmud.db");
     {
         let db = Db::open(&db_path).expect("open tmp db");
         let summary = writer::apply(&db, &plan, &warnings).expect("apply");
@@ -962,13 +957,12 @@ fn translates_zon_resets() {
         assert_eq!(wanderer_sp.dependencies.len(), 2);
         assert_eq!(wanderer_sp.respawn_interval_secs, 600);
     }
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// Inline fixture builder for the reset-translation test. Each writer
 /// creates the minimum file shape `CircleEngine.parse` will accept (zon +
 /// wld + mob + obj under `lib/world/`).
-fn write_reset_fixture(root: &PathBuf) -> PathBuf {
+fn write_reset_fixture(root: &std::path::Path) -> PathBuf {
     let world = root.join("lib/world");
     std::fs::create_dir_all(world.join("zon")).unwrap();
     std::fs::create_dir_all(world.join("wld")).unwrap();
@@ -1108,19 +1102,11 @@ fn write_reset_fixture(root: &PathBuf) -> PathBuf {
     )
     .unwrap();
 
-    root.clone()
+    root.to_path_buf()
 }
 
-fn tmpdir(prefix: &str) -> PathBuf {
-    let mut p = std::env::temp_dir();
-    let pid = std::process::id();
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    p.push(format!("{prefix}-{pid}-{nonce}"));
-    std::fs::create_dir_all(&p).expect("create tmp dir");
-    p
+fn tmpdir(_prefix: &str) -> tempfile::TempDir {
+    tempfile::tempdir().expect("create temp dir")
 }
 
 // ===== Specproc / trigger import tests =====
@@ -1155,8 +1141,8 @@ fn parses_specprocs_into_ir() {
 fn applies_specprocs_to_tmp_db() {
     use ironmud::types::{ItemTriggerType, MobileTriggerType, TriggerType};
 
-    let dir = tmpdir("ironmud-import-specs");
-    let db_path = dir.join("ironmud.db");
+    let temp = tmpdir("ironmud-import-specs");
+    let db_path = temp.path().join("ironmud.db");
     {
         let db = Db::open(&db_path).expect("open db");
         let (ir, _) = CircleEngine.parse(&fixture_root()).expect("parse");
@@ -1268,7 +1254,6 @@ fn applies_specprocs_to_tmp_db() {
             "snake → MobileFlags.poisonous (second flag of set_mob_flags)"
         );
     }
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -1361,13 +1346,13 @@ fn postmaster_with_no_spawn_warns() {
     // Synthetic minimal fixture: a postmaster mob with NO M-reset placing
     // it. The fan-out should produce zero overlays and one Warn line.
     let dir = tmpdir("ironmud-import-pm-orphan");
-    let world = dir.join("lib").join("world");
+    let world = dir.path().join("lib").join("world");
     std::fs::create_dir_all(world.join("wld")).unwrap();
     std::fs::create_dir_all(world.join("zon")).unwrap();
     std::fs::create_dir_all(world.join("mob")).unwrap();
     std::fs::create_dir_all(world.join("obj")).unwrap();
     std::fs::create_dir_all(world.join("shp")).unwrap();
-    std::fs::create_dir_all(dir.join("src")).unwrap();
+    std::fs::create_dir_all(dir.path().join("src")).unwrap();
     // Single room.
     std::fs::write(
         world.join("wld").join("90.wld"),
@@ -1390,12 +1375,13 @@ fn postmaster_with_no_spawn_warns() {
     .unwrap();
     // spec_assign binding the orphan mob to postmaster.
     std::fs::write(
-        dir.join("src").join("spec_assign.c"),
+        dir.path().join(
+"src").join("spec_assign.c"),
         "void assign_mobiles(void) {\n  ASSIGNMOB(9100, postmaster);\n}\n",
     )
     .unwrap();
 
-    let (ir, _) = CircleEngine.parse(&dir).expect("parse");
+    let (ir, parse_warnings) = CircleEngine.parse(dir.path()).expect("parse");
     let opts = MappingOptions {
         circle: mapping::CircleMappingTable::load_default(),
         existing_area_prefixes: Vec::new(),
@@ -1425,8 +1411,6 @@ fn postmaster_with_no_spawn_warns() {
         "postmaster with no spawn → one explanatory warn line: all warnings = {:?}",
         warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
     );
-
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -1480,17 +1464,18 @@ fn castle_binding_warns() {
 fn missing_spec_assign_is_info_only() {
     // Synthetic minimal tree with no `src/` directory.
     let dir = tmpdir("ironmud-import-no-spec");
-    let world = dir.join("lib").join("world");
+    let world = dir.path().join("lib").join("world");
     std::fs::create_dir_all(world.join("wld")).unwrap();
     std::fs::create_dir_all(world.join("zon")).unwrap();
     std::fs::write(world.join("wld").join("90.wld"), "$\n").unwrap();
     std::fs::write(
         world.join("zon").join("90.zon"),
-        "#90\nMin Zone~\n9000 9099 30 2\nS\n$\n",
+        "#90\nFlag Zone~\n9000 9099 30 2\nS\n$\n",
     )
     .unwrap();
 
-    let (ir, parse_warnings) = CircleEngine.parse(&dir).expect("parse");
+    let (ir, parse_warnings) = CircleEngine.parse(dir.path()).expect("parse");
+
     assert_eq!(ir.triggers.len(), 0, "no triggers parsed");
     let infos: Vec<_> = parse_warnings
         .iter()
@@ -1506,7 +1491,6 @@ fn missing_spec_assign_is_info_only() {
         .filter(|w| w.severity != Severity::Info)
         .collect();
     assert!(non_info.is_empty(), "no Warn/Block from missing src/");
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

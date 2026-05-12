@@ -356,6 +356,20 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         false
     });
 
+    // is_player_disconnected(char_name) -> bool - Check if player is linkdead
+    let conns = connections.clone();
+    engine.register_fn("is_player_disconnected", move |char_name: String| {
+        let conns = conns.lock().unwrap();
+        for session in conns.values() {
+            if let Some(ref character) = session.character {
+                if character.name.eq_ignore_ascii_case(&char_name) {
+                    return session.disconnected_at.is_some();
+                }
+            }
+        }
+        false
+    });
+
     // ========== Builder Debug Channel Functions ==========
 
     // broadcast_to_builders(message) - Send message to builders with debug enabled

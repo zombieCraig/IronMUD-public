@@ -1,7 +1,9 @@
 #![recursion_limit = "512"]
 
 use anyhow::Result;
+use tempfile;
 use ironmud::{World, load_command_metadata, load_game_data, load_scripts, run_server, script, watch_scripts};
+use ironmud::db::Db;
 use rhai::Engine;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -1343,11 +1345,10 @@ fn test_seed_rooms_have_bidirectional_exits() {
     // Cross-area exits are handled within the seed data; this test walks every
     // seeded room and asserts that for each outgoing exit there is a matching
     // reverse exit from the destination room.
-    let db_path = format!("test_seed_bidir_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = ironmud::db::Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
         ironmud::seed::seed_demo_world(&db).expect("seed_demo_world");
 
         let rooms = db.list_all_rooms().expect("list_all_rooms");
@@ -1422,7 +1423,7 @@ fn test_seed_rooms_have_bidirectional_exits() {
         assert!(errors.is_empty(), "Non-bidirectional exits:\n  {}", errors.join("\n  "));
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -1431,12 +1432,10 @@ fn test_seed_rooms_have_bidirectional_exits() {
 #[test]
 fn test_seed_demo_world() {
     // Use a unique temp DB to avoid conflicts with other tests
-    let db_path = format!("test_seed_{}.db", std::process::id());
-    // Clean up any leftover DB from a previous failed run
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = ironmud::db::Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         // First call should seed and return true
         let seeded = ironmud::seed::seed_demo_world(&db).expect("seed_demo_world");
@@ -1493,9 +1492,6 @@ fn test_seed_demo_world() {
         let stats_after_reseed = db.world_stats().expect("world_stats after reseed");
         assert_eq!(stats_after_reseed.areas, 5, "Should have 5 areas after re-seed");
     }));
-
-    // Clean up temp DB
-    let _ = std::fs::remove_dir_all(&db_path);
 
     if let Err(e) = result {
         std::panic::resume_unwind(e);
@@ -1636,15 +1632,10 @@ mod migration_tests {
         db.save_game_time(&gt).expect("save_game_time");
     }
 
-    fn open_temp_db(tag: &str) -> (Db, String) {
-        let path = format!("test_migration_{}_{}.db", tag, std::process::id());
-        let _ = std::fs::remove_dir_all(&path);
-        let db = Db::open(&path).expect("open DB");
-        (db, path)
-    }
-
-    fn cleanup(path: &str) {
-        let _ = std::fs::remove_dir_all(path);
+    fn open_temp_db(_tag: &str) -> (Db, tempfile::TempDir) {
+        let temp = tempfile::tempdir().expect("create temp dir");
+        let db = Db::open(temp.path()).expect("open DB");
+        (db, temp)
     }
 
     fn run_one_tick(db: &Db, data: &MigrationData) {
@@ -1666,7 +1657,8 @@ mod migration_tests {
 
     #[test]
     fn test_migration_spawns_when_room_available() {
-        let (db, path) = open_temp_db("spawn");
+        let (db, _temp) = open_temp_db(
+"spawn");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("mig_spawn");
             db.save_area_data(area.clone()).unwrap();
@@ -1703,7 +1695,6 @@ mod migration_tests {
             let refreshed_area = db.get_area_data(&area.id).unwrap().unwrap();
             assert_eq!(refreshed_area.last_migration_check_day, Some(10));
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -1711,7 +1702,8 @@ mod migration_tests {
 
     #[test]
     fn test_migration_skips_when_no_capacity() {
-        let (db, path) = open_temp_db("nocap");
+        let (db, _temp) = open_temp_db(
+"nocap");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("mig_nocap");
             db.save_area_data(area.clone()).unwrap();
@@ -1735,7 +1727,6 @@ mod migration_tests {
                 .collect();
             assert!(real_mobs.is_empty(), "no migrants when all slots full");
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -1743,7 +1734,8 @@ mod migration_tests {
 
     #[test]
     fn test_migration_respects_max_per_check() {
-        let (db, path) = open_temp_db("maxcheck");
+        let (db, _temp) = open_temp_db(
+"maxcheck");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("mig_max");
             area.migration_max_per_check = 3;
@@ -1767,7 +1759,6 @@ mod migration_tests {
                 .collect();
             assert_eq!(mobs.len(), 3, "spawn capped to migration_max_per_check");
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -1775,7 +1766,8 @@ mod migration_tests {
 
     #[test]
     fn test_migration_respects_interval() {
-        let (db, path) = open_temp_db("interval");
+        let (db, _temp) = open_temp_db(
+"interval");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("mig_interval");
             area.migration_interval_days = 5;
@@ -1816,7 +1808,6 @@ mod migration_tests {
                 .collect();
             assert!(!mobs_after.is_empty(), "migrants spawn once interval elapses");
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -1824,7 +1815,8 @@ mod migration_tests {
 
     #[test]
     fn test_death_releases_residency() {
-        let (db, path) = open_temp_db("death");
+        let (db, _temp) = open_temp_db(
+"death");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("mig_death");
             db.save_area_data(area.clone()).unwrap();
@@ -1857,7 +1849,6 @@ mod migration_tests {
                 "residency released on mobile deletion"
             );
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -1865,7 +1856,8 @@ mod migration_tests {
 
     #[test]
     fn test_guard_variation_never_when_chance_zero() {
-        let (db, path) = open_temp_db("variation_zero");
+        let (db, _temp) = open_temp_db(
+"variation_zero");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("mig_var0");
             // Default chances == zero — explicit for clarity.
@@ -1893,7 +1885,6 @@ mod migration_tests {
                 assert!(m.vnum.starts_with("migrant:") && !m.vnum.starts_with("migrant:guard:"));
             }
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -1902,7 +1893,8 @@ mod migration_tests {
     #[test]
     fn test_guard_variation_always_when_chance_one() {
         use ironmud::types::ActivityState;
-        let (db, path) = open_temp_db("variation_one");
+        let (db, _temp) = open_temp_db(
+"variation_one");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("mig_var1");
             area.immigration_variation_chances.guard = 1.0;
@@ -1936,7 +1928,6 @@ mod migration_tests {
                 assert!(m.long_desc.contains("insignia"));
             }
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -1944,7 +1935,8 @@ mod migration_tests {
 
     #[test]
     fn test_guard_variation_keywords_include_guard() {
-        let (db, path) = open_temp_db("variation_kw");
+        let (db, _temp) = open_temp_db(
+"variation_kw");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("mig_varkw");
             area.immigration_variation_chances.guard = 1.0;
@@ -1972,7 +1964,6 @@ mod migration_tests {
                 "guard keyword present so `look guard` works"
             );
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -1980,7 +1971,8 @@ mod migration_tests {
 
     #[test]
     fn test_healer_variation_never_when_chance_zero() {
-        let (db, path) = open_temp_db("healer_zero");
+        let (db, _temp) = open_temp_db(
+"healer_zero");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("mig_hvar0");
             assert_eq!(area.immigration_variation_chances.healer, 0.0);
@@ -2007,7 +1999,6 @@ mod migration_tests {
                 assert!(m.vnum.starts_with("migrant:") && !m.vnum.starts_with("migrant:healer:"));
             }
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -2016,7 +2007,8 @@ mod migration_tests {
     #[test]
     fn test_healer_variation_always_when_chance_one() {
         use ironmud::types::ActivityState;
-        let (db, path) = open_temp_db("healer_one");
+        let (db, _temp) = open_temp_db(
+"healer_one");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("mig_hvar1");
             area.immigration_variation_chances.healer = 1.0;
@@ -2049,7 +2041,6 @@ mod migration_tests {
                 assert!(m.long_desc.contains("tending the wounded"));
             }
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -2057,7 +2048,8 @@ mod migration_tests {
 
     #[test]
     fn test_healer_variation_keywords_include_healer() {
-        let (db, path) = open_temp_db("healer_kw");
+        let (db, _temp) = open_temp_db(
+"healer_kw");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("mig_hvarkw");
             area.immigration_variation_chances.healer = 1.0;
@@ -2085,7 +2077,6 @@ mod migration_tests {
                 "healer keyword present so `look healer` works"
             );
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -2093,7 +2084,8 @@ mod migration_tests {
 
     #[test]
     fn test_scavenger_variation_never_when_chance_zero() {
-        let (db, path) = open_temp_db("scav_zero");
+        let (db, _temp) = open_temp_db(
+"scav_zero");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("mig_svar0");
             assert_eq!(area.immigration_variation_chances.scavenger, 0.0);
@@ -2120,7 +2112,6 @@ mod migration_tests {
                 assert!(m.vnum.starts_with("migrant:") && !m.vnum.starts_with("migrant:scavenger:"));
             }
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -2129,7 +2120,8 @@ mod migration_tests {
     #[test]
     fn test_scavenger_variation_always_when_chance_one() {
         use ironmud::types::ActivityState;
-        let (db, path) = open_temp_db("scav_one");
+        let (db, _temp) = open_temp_db(
+"scav_one");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("mig_svar1");
             area.immigration_variation_chances.scavenger = 1.0;
@@ -2163,7 +2155,6 @@ mod migration_tests {
                 assert!(m.long_desc.contains("practiced squint"));
             }
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -2171,7 +2162,8 @@ mod migration_tests {
 
     #[test]
     fn test_scavenger_variation_keywords_include_scavenger() {
-        let (db, path) = open_temp_db("scav_kw");
+        let (db, _temp) = open_temp_db(
+"scav_kw");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("mig_svarkw");
             area.immigration_variation_chances.scavenger = 1.0;
@@ -2199,7 +2191,6 @@ mod migration_tests {
                 "scavenger keyword present so `look scavenger` works"
             );
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -2282,7 +2273,8 @@ mod migration_tests {
         use ironmud::aging::process_aging_tick;
         use ironmud::types::{Characteristics, MobileData};
 
-        let (db, path) = open_temp_db("aging_advance");
+        let (db, _temp) = open_temp_db(
+"aging_advance");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut m = MobileData::new("Kenji".to_string());
             m.is_prototype = false;
@@ -2329,7 +2321,6 @@ mod migration_tests {
             assert_eq!(c.age, 30);
             assert_eq!(c.age_label, "adult", "label re-derived from LifeStage");
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -2340,7 +2331,8 @@ mod migration_tests {
         use ironmud::aging::process_aging_tick;
         use ironmud::types::{Characteristics, MobileData};
 
-        let (db, path) = open_temp_db("aging_gated");
+        let (db, _temp) = open_temp_db(
+"aging_gated");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut m = MobileData::new("Aya".to_string());
             m.is_prototype = false;
@@ -2383,7 +2375,6 @@ mod migration_tests {
             );
             let _ = first_birth;
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -2400,7 +2391,8 @@ mod migration_tests {
         use rand::SeedableRng;
         use rand::rngs::StdRng;
 
-        let (db, path) = open_temp_db("aging_skip_vampires");
+        let (db, _temp) = open_temp_db(
+"aging_skip_vampires");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut flagged = MobileData::new("Lucien".to_string());
             flagged.is_prototype = false;
@@ -2443,7 +2435,6 @@ mod migration_tests {
             assert_eq!(chars.birth_day, 100, "vampire birth_day untouched");
             assert_eq!(chars.age, 105, "vampire age untouched");
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -2458,7 +2449,8 @@ mod migration_tests {
         use rand::SeedableRng;
         use rand::rngs::StdRng;
 
-        let (db, path) = open_temp_db("aging_skip_vstate_only");
+        let (db, _temp) = open_temp_db(
+"aging_skip_vstate_only");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut m = MobileData::new("Stateful".to_string());
             m.is_prototype = false;
@@ -2493,7 +2485,6 @@ mod migration_tests {
             assert_eq!(chars.age, 30, "vampire_state-only mob still does not age");
             assert_eq!(chars.birth_day, 100);
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -2514,7 +2505,8 @@ mod migration_tests {
         assert_eq!(death_probability_per_game_day(100), 0.05);
         assert_eq!(death_probability_per_game_day(150), 0.05);
 
-        let (db, path) = open_temp_db("aging_death");
+        let (db, _temp) = open_temp_db(
+"aging_death");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             // Spawn a 105-year-old Elderly mobile. At 5%/day, 1000 rolls is
             // basically certain to kill them.
@@ -2558,7 +2550,6 @@ mod migration_tests {
                 "mobile must be deleted on natural death"
             );
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -2596,7 +2587,8 @@ mod migration_tests {
         );
 
         // Full cascade: deletes a parent, confirms the child mourns.
-        let (db, path) = open_temp_db("grief_family");
+        let (db, _temp) = open_temp_db(
+"grief_family");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut parent = MobileData::new("Akio".to_string());
             parent.is_prototype = false;
@@ -2647,7 +2639,6 @@ mod migration_tests {
                 "family relationship kind NOT demoted to Friend on death"
             );
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -2657,7 +2648,8 @@ mod migration_tests {
     fn test_hated_parent_death_skips_grief() {
         use ironmud::types::{MobileData, Relationship, RelationshipKind, SocialState};
 
-        let (db, path) = open_temp_db("grief_hated");
+        let (db, _temp) = open_temp_db(
+"grief_hated");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut parent = MobileData::new("Cruel Mother".to_string());
             parent.is_prototype = false;
@@ -2688,7 +2680,6 @@ mod migration_tests {
             assert!(s.bereaved_until_day.is_none(), "no mourning window");
             assert!(s.bereaved_for.is_empty(), "no bereavement note");
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -2699,7 +2690,8 @@ mod migration_tests {
         use ironmud::social::{FamilyError, set_family_relationship};
         use ironmud::types::{MobileData, RelationshipKind};
 
-        let (db, path) = open_temp_db("family_set");
+        let (db, _temp) = open_temp_db(
+"family_set");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut p = MobileData::new("Parent".to_string());
             p.is_prototype = false;
@@ -2738,7 +2730,6 @@ mod migration_tests {
                 Err(FamilyError::SelfLink)
             );
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -2749,7 +2740,8 @@ mod migration_tests {
         use ironmud::social::{FamilyError, set_family_relationship};
         use ironmud::types::MobileData;
 
-        let (db, path) = open_temp_db("monogamy");
+        let (db, _temp) = open_temp_db(
+"monogamy");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut a = MobileData::new("A".to_string());
             a.is_prototype = false;
@@ -2779,7 +2771,6 @@ mod migration_tests {
             // Re-setting the same pair is idempotent (not a conflict).
             assert!(set_family_relationship(&db, aid, bid, "partner").is_ok());
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -2790,7 +2781,8 @@ mod migration_tests {
         use ironmud::migration::process_pair_housing;
         use ironmud::types::{Characteristics, MobileData, Relationship, RelationshipKind, SocialState};
 
-        let (db, path) = open_temp_db("cohab_household");
+        let (db, _temp) = open_temp_db(
+"cohab_household");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("cohab");
             db.save_area_data(area.clone()).unwrap();
@@ -2867,7 +2859,6 @@ mod migration_tests {
             assert!(a.household_id.is_some(), "alice has household");
             assert_eq!(a.household_id, b.household_id, "shared household_id");
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -2880,7 +2871,8 @@ mod migration_tests {
         use rand::SeedableRng;
         use rand::rngs::StdRng;
 
-        let (db, path) = open_temp_db("pregnancy");
+        let (db, _temp) = open_temp_db(
+"pregnancy");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             // Use a real area so spawn_child can resolve visual/name pools.
             let area = new_area("preg");
@@ -3001,7 +2993,6 @@ mod migration_tests {
                     .any(|r| r.other_id == newborn.id && r.kind == RelationshipKind::Child)
             );
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -3014,7 +3005,8 @@ mod migration_tests {
         use rand::SeedableRng;
         use rand::rngs::StdRng;
 
-        let (db, path) = open_temp_db("no_conceive");
+        let (db, _temp) = open_temp_db(
+"no_conceive");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("same");
             db.save_area_data(area.clone()).unwrap();
@@ -3075,7 +3067,6 @@ mod migration_tests {
                 "same-gender Partners don't conceive"
             );
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -3085,7 +3076,8 @@ mod migration_tests {
     fn test_orphan_flagged_on_last_parent_death() {
         use ironmud::types::{Characteristics, MobileData, Relationship, RelationshipKind, SocialState};
 
-        let (db, path) = open_temp_db("orphan_flag");
+        let (db, _temp) = open_temp_db(
+"orphan_flag");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mk = |name: &str, age: i32, gender: &str| {
                 let mut m = MobileData::new(name.to_string());
@@ -3159,7 +3151,6 @@ mod migration_tests {
             let k = db.get_mobile_data(&child_id).unwrap().unwrap();
             assert!(k.adoption_pending, "both parents dead, child flagged for adoption");
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -3170,7 +3161,8 @@ mod migration_tests {
         // An adult child who loses a parent doesn't need an adopter.
         use ironmud::types::{Characteristics, MobileData, Relationship, RelationshipKind, SocialState};
 
-        let (db, path) = open_temp_db("orphan_adult");
+        let (db, _temp) = open_temp_db(
+"orphan_adult");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mk_adult = |name: &str| {
                 let mut m = MobileData::new(name.to_string());
@@ -3215,7 +3207,6 @@ mod migration_tests {
             let c = db.get_mobile_data(&cid).unwrap().unwrap();
             assert!(!c.adoption_pending, "adult children aren't flagged");
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -3228,7 +3219,8 @@ mod migration_tests {
         use rand::SeedableRng;
         use rand::rngs::StdRng;
 
-        let (db, path) = open_temp_db("orphan_adopt");
+        let (db, _temp) = open_temp_db(
+"orphan_adopt");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("orph");
             db.save_area_data(area.clone()).unwrap();
@@ -3301,7 +3293,6 @@ mod migration_tests {
                 "orphan has Parent link to adopter"
             );
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -3314,7 +3305,8 @@ mod migration_tests {
         };
         use ironmud::types::{Characteristics, MobileData, Relationship, RelationshipKind, SocialState};
 
-        let (db, path) = open_temp_db("adopt_weight");
+        let (db, _temp) = open_temp_db(
+"adopt_weight");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mk = |name: &str, gender: &str| {
                 let mut m = MobileData::new(name.to_string());
@@ -3391,7 +3383,6 @@ mod migration_tests {
             assert!((w_og - ADOPT_WEIGHT_OPPOSITE_PAIR * 1.8).abs() < 0.01);
             assert!((w_single - ADOPT_WEIGHT_SINGLE).abs() < 0.01);
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -3406,7 +3397,8 @@ mod migration_tests {
             BereavementNote, Characteristics, MobileData, Relationship, RelationshipKind, SocialState,
         };
 
-        let (db, path) = open_temp_db("examine_cues");
+        let (db, _temp) = open_temp_db(
+"examine_cues");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             // Room with both mobiles in it.
             let room = new_room(Uuid::new_v4(), "examine:test", false, 0);
@@ -3517,7 +3509,6 @@ mod migration_tests {
                 cues
             );
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -3527,7 +3518,8 @@ mod migration_tests {
     fn test_migration_spawns_parent_child_family() {
         use ironmud::types::{ImmigrationFamilyChance, RelationshipKind};
 
-        let (db, path) = open_temp_db("family_spawn_pc");
+        let (db, _temp) = open_temp_db(
+"family_spawn_pc");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("fam_pc");
             // Force the family roll to always hit parent_child.
@@ -3604,7 +3596,6 @@ mod migration_tests {
             assert!(child.social.is_none());
             assert!(child.simulation.is_none());
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -3614,7 +3605,8 @@ mod migration_tests {
     fn test_migration_spawns_sibling_pair() {
         use ironmud::types::{ImmigrationFamilyChance, RelationshipKind};
 
-        let (db, path) = open_temp_db("family_spawn_sibs");
+        let (db, _temp) = open_temp_db(
+"family_spawn_sibs");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("fam_sib");
             area.immigration_family_chance = ImmigrationFamilyChance {
@@ -3660,7 +3652,6 @@ mod migration_tests {
             let b_last = b.name.split_once(' ').map(|(_, l)| l).unwrap_or("");
             assert_eq!(a_last, b_last, "siblings share last name");
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -3696,7 +3687,8 @@ mod migration_tests {
         use ironmud::aging::process_aging_tick;
         use ironmud::types::{BereavementNote, Characteristics, MobileData, RelationshipKind, SocialState};
 
-        let (db, path) = open_temp_db("grief_prune");
+        let (db, _temp) = open_temp_db(
+"grief_prune");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut m = MobileData::new("Mourner".to_string());
             m.is_prototype = false;
@@ -3739,7 +3731,6 @@ mod migration_tests {
             let after = db.get_mobile_data(&mobile_id).unwrap().unwrap();
             assert!(after.social.unwrap().bereaved_for.is_empty(), "expired note dropped");
         }));
-        cleanup(&path);
         if let Err(e) = result {
             std::panic::resume_unwind(e);
         }
@@ -3776,14 +3767,13 @@ mod migration_tests {
 #[test]
 fn test_item_extra_descs_persist() {
     use ironmud::ItemData;
-    use ironmud::db::Db;
+    
     use ironmud::types::ExtraDesc;
 
-    let db_path = format!("test_item_extra_descs_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut item = ItemData::new(
             "lantern".to_string(),
@@ -3817,7 +3807,7 @@ fn test_item_extra_descs_persist() {
         assert_eq!(loaded2.extra_descs[0].keywords, vec!["letters", "inscription"]);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -3826,13 +3816,12 @@ fn test_item_extra_descs_persist() {
 #[test]
 fn test_item_hit_damage_bonus_persist() {
     use ironmud::ItemData;
-    use ironmud::db::Db;
+    
 
-    let db_path = format!("test_item_hd_bonus_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut item = ItemData::new(
             "magic ring".to_string(),
@@ -3862,7 +3851,7 @@ fn test_item_hit_damage_bonus_persist() {
         assert_eq!(loaded2.damage_bonus, 5);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -3871,13 +3860,12 @@ fn test_item_hit_damage_bonus_persist() {
 #[test]
 fn test_item_light_hours_remaining_persists() {
     use ironmud::ItemData;
-    use ironmud::db::Db;
+    
 
-    let db_path = format!("test_light_hours_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut item = ItemData::new(
             "torch".to_string(),
@@ -3912,7 +3900,7 @@ fn test_item_light_hours_remaining_persists() {
         assert!(!final_state.flags.provides_light, "burnout clears provides_light");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -3922,14 +3910,13 @@ fn test_item_light_hours_remaining_persists() {
 fn test_item_cast_on_use_persists() {
     use ironmud::ItemData;
     use ironmud::ItemType;
-    use ironmud::db::Db;
+    
     use ironmud::types::CastOnUse;
 
-    let db_path = format!("test_cast_on_use_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut item = ItemData::new(
             "wand".to_string(),
@@ -3968,7 +3955,7 @@ fn test_item_cast_on_use_persists() {
         assert_eq!(reloaded.cast_on_use.as_ref().unwrap().max_charges, 5);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -3977,13 +3964,12 @@ fn test_item_cast_on_use_persists() {
 #[test]
 fn test_item_max_hp_mana_bonus_persists() {
     use ironmud::ItemData;
-    use ironmud::db::Db;
+    
 
-    let db_path = format!("test_max_hp_mana_bonus_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
         let mut item = ItemData::new(
             "ring".to_string(),
             "an enchanted ring".to_string(),
@@ -4001,7 +3987,7 @@ fn test_item_max_hp_mana_bonus_persists() {
         assert_eq!(loaded.max_mana_bonus, 10);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4010,13 +3996,12 @@ fn test_item_max_hp_mana_bonus_persists() {
 #[test]
 fn test_item_magical_flag_auto_adds_category() {
     use ironmud::ItemData;
-    use ironmud::db::Db;
+    
 
-    let db_path = format!("test_magical_category_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut item = ItemData::new(
             "amulet".to_string(),
@@ -4052,7 +4037,7 @@ fn test_item_magical_flag_auto_adds_category() {
         assert!(again.categories.iter().any(|c| c == "magical"));
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4063,7 +4048,7 @@ fn test_area_caps_persist_and_count_helpers_match() {
     // Persistence round-trip for the new max_* cap fields, plus a check
     // that the per-area count helpers used by F6's create-time gate
     // distinguish in-area, orphan, and other-area entities correctly.
-    use ironmud::db::Db;
+    
     use ironmud::types::{
         AreaData, AreaFlags, AreaPermission, ClimateProfile, CombatZoneType, GoldRange,
         ImmigrationFamilyChance, ImmigrationVariationChances, RoomFlags,
@@ -4071,11 +4056,10 @@ fn test_area_caps_persist_and_count_helpers_match() {
     use ironmud::{ItemData, MobileData};
     use uuid::Uuid;
 
-    let db_path = format!("test_area_caps_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let area_id = Uuid::new_v4();
         let area = AreaData {
@@ -4165,7 +4149,7 @@ fn test_area_caps_persist_and_count_helpers_match() {
         assert_eq!(db.count_spawn_points_in_area(&area_id).expect("count"), 0);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4173,15 +4157,14 @@ fn test_area_caps_persist_and_count_helpers_match() {
 
 #[test]
 fn test_item_and_mobile_area_id_persists() {
-    use ironmud::db::Db;
+    
     use ironmud::{ItemData, MobileData};
     use uuid::Uuid;
 
-    let db_path = format!("test_proto_area_id_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let area_uuid = Uuid::new_v4();
 
@@ -4210,7 +4193,7 @@ fn test_item_and_mobile_area_id_persists() {
         assert_eq!(loaded_mob.area_id, Some(area_uuid), "mobile area_id round-trips");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4219,13 +4202,12 @@ fn test_item_and_mobile_area_id_persists() {
 #[test]
 fn test_item_note_content_persists() {
     use ironmud::ItemData;
-    use ironmud::db::Db;
+    
 
-    let db_path = format!("test_note_content_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut item = ItemData::new(
             "parchment".to_string(),
@@ -4253,7 +4235,7 @@ fn test_item_note_content_persists() {
         assert!(loaded2.note_content.is_none(), "None persists");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4261,14 +4243,13 @@ fn test_item_note_content_persists() {
 
 #[test]
 fn test_item_on_hit_effects_persist() {
-    use ironmud::db::Db;
+    
     use ironmud::{ItemData, OnHitEffect};
 
-    let db_path = format!("test_item_on_hit_effects_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut item = ItemData::new(
             "cutlass".to_string(),
@@ -4303,7 +4284,7 @@ fn test_item_on_hit_effects_persist() {
         assert_eq!(loaded.on_hit_effects[1].duration, 5);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4311,14 +4292,13 @@ fn test_item_on_hit_effects_persist() {
 
 #[test]
 fn test_mobile_on_hit_effects_persist() {
-    use ironmud::db::Db;
+    
     use ironmud::{MobileData, OnHitEffect};
 
-    let db_path = format!("test_mob_on_hit_effects_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut mob = MobileData::new("a fire elemental".to_string());
         assert!(mob.on_hit_effects.is_empty(), "fresh mobs start empty");
@@ -4338,7 +4318,7 @@ fn test_mobile_on_hit_effects_persist() {
         assert_eq!(loaded.on_hit_effects[0].magnitude, 4);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4347,14 +4327,13 @@ fn test_mobile_on_hit_effects_persist() {
 #[test]
 fn test_item_type_note_and_pen_round_trip() {
     use ironmud::ItemData;
-    use ironmud::db::Db;
+    
     use ironmud::types::ItemType;
 
-    let db_path = format!("test_note_pen_types_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut paper = ItemData::new(
             "paper blank".to_string(),
@@ -4387,7 +4366,7 @@ fn test_item_type_note_and_pen_round_trip() {
         assert_eq!(ItemType::from_str("pen"), Some(ItemType::Pen));
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4396,14 +4375,13 @@ fn test_item_type_note_and_pen_round_trip() {
 #[test]
 fn test_donation_fields_round_trip() {
     use ironmud::ItemData;
-    use ironmud::db::Db;
+    
     use ironmud::types::AreaPermission;
 
-    let db_path = format!("test_donation_round_trip_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         // ItemFlags.no_donate persists.
         let mut item = ItemData::new(
@@ -4474,7 +4452,7 @@ fn test_donation_fields_round_trip() {
         );
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4512,11 +4490,10 @@ fn test_donation_decay_pass_deletes_expired_items_only() {
     use ironmud::ItemData;
     use ironmud::types::ItemLocation;
 
-    let db_path = format!("test_donation_decay_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = ironmud::db::Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
         let room_id = uuid::Uuid::new_v4();
 
         // Expired donation — donated_at is the epoch.
@@ -4571,7 +4548,7 @@ fn test_donation_decay_pass_deletes_expired_items_only() {
         );
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4633,18 +4610,17 @@ fn test_spawn_crafted_item_copies_liquid_ammo_and_note_fields() {
 
 #[test]
 fn test_area_default_room_flags_apply_to_new_rooms() {
-    use ironmud::db::Db;
+    
     use ironmud::types::{
         AreaData, AreaFlags, AreaPermission, CombatZoneType, ImmigrationFamilyChance, ImmigrationVariationChances,
         RoomData, RoomExits, RoomFlags, WaterType,
     };
     use std::collections::HashMap as StdHashMap;
 
-    let db_path = format!("test_area_default_flags_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         // Underground area with indoors + no_windows as defaults
         let mut defaults = RoomFlags::default();
@@ -4769,7 +4745,7 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
         assert!(loaded.flags.dark);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4779,9 +4755,8 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
 fn test_exit_delays_round_trip_through_db() {
     use ironmud::types::RoomData;
 
-    let db_path = format!("test_exit_delays_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
-    let db = ironmud::db::Db::open(&db_path).expect("open db");
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db = ironmud::db::Db::open(temp.path()).expect("open db");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut room: RoomData = serde_json::from_value(serde_json::json!({
@@ -4802,7 +4777,7 @@ fn test_exit_delays_round_trip_through_db() {
         assert_eq!(loaded.exit_delays.get("south"), None);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4812,9 +4787,8 @@ fn test_exit_delays_round_trip_through_db() {
 fn test_pending_slow_move_round_trip_through_db() {
     use ironmud::types::{CharacterData, PendingSlowMove};
 
-    let db_path = format!("test_pending_slow_move_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
-    let db = ironmud::db::Db::open(&db_path).expect("open db");
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db = ironmud::db::Db::open(temp.path()).expect("open db");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let room_id = uuid::Uuid::new_v4();
@@ -4853,7 +4827,7 @@ fn test_pending_slow_move_round_trip_through_db() {
         assert!(reloaded.pending_slow_move.is_none());
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4963,17 +4937,16 @@ fn test_climate_temperature_offset_applies() {
 
 #[test]
 fn test_area_climate_persists() {
-    use ironmud::db::Db;
+    
     use ironmud::types::{
         AreaData, AreaFlags, AreaPermission, ClimateProfile, CombatZoneType, ImmigrationFamilyChance,
         ImmigrationVariationChances, RoomFlags,
     };
 
-    let db_path = format!("test_area_climate_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let area = AreaData {
             id: uuid::Uuid::new_v4(),
@@ -5037,7 +5010,7 @@ fn test_area_climate_persists() {
         );
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5045,7 +5018,7 @@ fn test_area_climate_persists() {
 
 #[test]
 fn test_area_combat_zone_persists_and_parses() {
-    use ironmud::db::Db;
+    
     use ironmud::types::{
         AreaData, AreaFlags, AreaPermission, ClimateProfile, CombatZoneType, ImmigrationFamilyChance,
         ImmigrationVariationChances, RoomFlags,
@@ -5059,11 +5032,10 @@ fn test_area_combat_zone_persists_and_parses() {
     assert_eq!(CombatZoneType::from_str("pvp"), Some(CombatZoneType::Pvp));
     assert_eq!(CombatZoneType::from_str("gibberish"), None);
 
-    let db_path = format!("test_area_combat_zone_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let area = AreaData {
             id: uuid::Uuid::new_v4(),
@@ -5125,7 +5097,7 @@ fn test_area_combat_zone_persists_and_parses() {
         );
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5213,14 +5185,13 @@ fn test_mobile_dot_flags_apply_on_hit() {
 #[test]
 fn test_buried_flag_and_lock_vnums_round_trip() {
     use ironmud::ItemData;
-    use ironmud::db::Db;
+    
     use ironmud::types::DoorState;
 
-    let db_path = format!("test_buried_lock_vnums_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         // Buried + can_dig + detect_buried flag persistence
         let mut chest = ItemData::new(
@@ -5294,7 +5265,7 @@ fn test_buried_flag_and_lock_vnums_round_trip() {
         assert!(legacy_door.key_vnum.is_none(), "missing key_vnum defaults to None");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5302,15 +5273,14 @@ fn test_buried_flag_and_lock_vnums_round_trip() {
 
 #[test]
 fn test_spawn_point_bury_on_spawn_field_persists() {
-    use ironmud::db::Db;
+    
     use ironmud::types::{SpawnEntityType, SpawnPointData};
     use uuid::Uuid;
 
-    let db_path = format!("test_spawn_point_bury_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let sp = SpawnPointData {
             id: Uuid::new_v4(),
@@ -5355,7 +5325,7 @@ fn test_spawn_point_bury_on_spawn_field_persists() {
         assert!(!loaded_no.bury_on_spawn, "bury_on_spawn=false persists",);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5364,13 +5334,12 @@ fn test_spawn_point_bury_on_spawn_field_persists() {
 #[test]
 fn test_item_unique_flag_caps_spawn_at_one() {
     use ironmud::ItemData;
-    use ironmud::db::Db;
+    
 
-    let db_path = format!("test_item_unique_cap_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut proto = ItemData::new(
             "the crown of Sigil".to_string(),
@@ -5401,7 +5370,7 @@ fn test_item_unique_flag_caps_spawn_at_one() {
         assert!(third.is_some(), "deletion frees the cap");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5409,14 +5378,13 @@ fn test_item_unique_flag_caps_spawn_at_one() {
 
 #[test]
 fn test_class_loadout_round_trip_through_db() {
-    use ironmud::db::Db;
+    
     use ironmud::types::ClassLoadout;
 
-    let db_path = format!("test_class_loadout_rt_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let loadout = ClassLoadout {
             class_id: "fighter".to_string(),
@@ -5455,7 +5423,7 @@ fn test_class_loadout_round_trip_through_db() {
         assert!(missing.is_none());
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5467,20 +5435,19 @@ fn test_class_loadout_skips_missing_item_vnum_at_spawn() {
     // vnum the DB has never seen returns Ok(None) without panicking. The
     // create.rhai loop relies on this to emit a builderdebug warning and
     // continue on bad vnums.
-    use ironmud::db::Db;
+    
 
-    let db_path = format!("test_class_kit_missing_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
         let spawn = db
             .spawn_item_from_prototype("nonexistent:vnum_for_kit")
             .expect("call must not error");
         assert!(spawn.is_none(), "missing vnum yields None, not panic");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5488,14 +5455,13 @@ fn test_class_loadout_skips_missing_item_vnum_at_spawn() {
 
 #[test]
 fn test_mobile_world_max_count_caps_spawn() {
-    use ironmud::db::Db;
+    
     use ironmud::types::MobileData;
 
-    let db_path = format!("test_mob_world_cap_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut proto = MobileData::new("a captain of the guard".to_string());
         proto.is_prototype = true;
@@ -5529,7 +5495,7 @@ fn test_mobile_world_max_count_caps_spawn() {
         assert!(w2.is_none(), "second warden refused under unique flag");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5537,7 +5503,7 @@ fn test_mobile_world_max_count_caps_spawn() {
 
 #[test]
 fn test_spawn_dependencies_apply_inventory_equip_container() {
-    use ironmud::db::Db;
+    
     use ironmud::spawn::apply_spawn_dependencies;
     use ironmud::types::{
         ItemData, ItemType, MobileData, SpawnDependency, SpawnDestination, SpawnEntityType, SpawnPointData, WearLocation,
@@ -5546,11 +5512,10 @@ fn test_spawn_dependencies_apply_inventory_equip_container() {
     use std::sync::{Arc, Mutex};
     use uuid::Uuid;
 
-    let db_path = format!("test_spawn_deps_apply_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
         let connections = Arc::new(Mutex::new(HashMap::new()));
 
         // Mob prototype that the spawn point will produce.
@@ -5675,7 +5640,7 @@ fn test_spawn_dependencies_apply_inventory_equip_container() {
         assert_eq!(contents[0].vnum.as_deref(), Some("test:coin"));
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5683,7 +5648,7 @@ fn test_spawn_dependencies_apply_inventory_equip_container() {
 
 #[test]
 fn test_spawn_dependencies_skip_equip_when_wear_locations_mismatch() {
-    use ironmud::db::Db;
+    
     use ironmud::spawn::apply_spawn_dependencies;
     use ironmud::types::{
         ItemData, MobileData, SpawnDependency, SpawnDestination, SpawnEntityType, SpawnPointData, WearLocation,
@@ -5692,11 +5657,10 @@ fn test_spawn_dependencies_skip_equip_when_wear_locations_mismatch() {
     use std::sync::{Arc, Mutex};
     use uuid::Uuid;
 
-    let db_path = format!("test_spawn_deps_mismatch_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
         let connections = Arc::new(Mutex::new(HashMap::new()));
 
         let mut mob_proto = MobileData::new("a sentry".to_string());
@@ -5746,7 +5710,7 @@ fn test_spawn_dependencies_skip_equip_when_wear_locations_mismatch() {
         assert!(equipped.is_empty(), "mismatched item is not equipped");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5754,14 +5718,13 @@ fn test_spawn_dependencies_skip_equip_when_wear_locations_mismatch() {
 
 #[test]
 fn test_sanctuary_buff_on_prototype_carries_to_spawn() {
-    use ironmud::db::Db;
+    
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
-    let db_path = format!("test_sanctuary_proto_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut proto = MobileData::new("a glowing wisp".to_string());
         proto.is_prototype = true;
@@ -5790,7 +5753,7 @@ fn test_sanctuary_buff_on_prototype_carries_to_spawn() {
         assert_eq!(buff.source, "innate sanctuary");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5870,14 +5833,13 @@ fn stay_zone_test_room(area_id: Option<uuid::Uuid>) -> ironmud::types::RoomData 
 
 #[test]
 fn test_home_area_id_is_stamped_on_first_room_placement() {
-    use ironmud::db::Db;
+    
     use ironmud::types::MobileData;
 
-    let db_path = format!("test_home_area_stamp_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let area_id = uuid::Uuid::new_v4();
         let other_area_id = uuid::Uuid::new_v4();
@@ -5909,7 +5871,7 @@ fn test_home_area_id_is_stamped_on_first_room_placement() {
         );
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5917,14 +5879,13 @@ fn test_home_area_id_is_stamped_on_first_room_placement() {
 
 #[test]
 fn test_memory_resets_on_mob_respawn() {
-    use ironmud::db::Db;
+    
     use ironmud::types::{MobileData, RememberedEnemy};
 
-    let db_path = format!("test_memory_respawn_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         // Prototype with the memory flag and an empty enemies list — the
         // expected stable state.
@@ -5960,7 +5921,7 @@ fn test_memory_resets_on_mob_respawn() {
         assert_eq!(still.remembered_enemies.len(), 1);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6000,14 +5961,13 @@ fn test_record_mob_memory_caps_at_ten_and_decays() {
 
 #[test]
 fn test_aff_buffs_carry_from_prototype_to_spawn() {
-    use ironmud::db::Db;
+    
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
-    let db_path = format!("test_aff_buffs_spawn_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         // Prototype mirroring a Circle import of a mob with AFF_INVISIBLE +
         // AFF_DETECT_INVIS + AFF_DETECT_MAGIC: three permanent buffs.
@@ -6044,7 +6004,7 @@ fn test_aff_buffs_carry_from_prototype_to_spawn() {
         }
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6124,14 +6084,13 @@ fn test_night_vision_effect_type_roundtrip() {
 
 #[test]
 fn test_aff_infravision_imports_as_night_vision_buff() {
-    use ironmud::db::Db;
+    
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
-    let db_path = format!("test_aff_infravision_spawn_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         // Mirror what the importer stamps for AFF_INFRAVISION.
         let mut proto = MobileData::new("an owl".to_string());
@@ -6158,7 +6117,7 @@ fn test_aff_infravision_imports_as_night_vision_buff() {
         );
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6180,14 +6139,13 @@ fn test_sleep_blind_effect_type_roundtrip() {
 
 #[test]
 fn test_no_sleep_no_blind_no_bash_flags_persist() {
-    use ironmud::db::Db;
+    
     use ironmud::types::MobileData;
 
-    let db_path = format!("test_immunity_flags_persist_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut mob = MobileData::new("an iron golem".to_string());
         mob.flags.no_sleep = true;
@@ -6202,7 +6160,7 @@ fn test_no_sleep_no_blind_no_bash_flags_persist() {
         assert!(loaded.flags.no_bash);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6210,14 +6168,13 @@ fn test_no_sleep_no_blind_no_bash_flags_persist() {
 
 #[test]
 fn test_sleep_buff_persists_on_mobile() {
-    use ironmud::db::Db;
+    
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
-    let db_path = format!("test_sleep_buff_persists_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut mob = MobileData::new("a slumbering ogre".to_string());
         mob.active_buffs.push(ActiveBuff {
@@ -6239,7 +6196,7 @@ fn test_sleep_buff_persists_on_mobile() {
         );
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6265,14 +6222,13 @@ fn test_summon_spell_definition_loads() {
 
 #[test]
 fn test_no_summon_flag_persists() {
-    use ironmud::db::Db;
+    
     use ironmud::types::MobileData;
 
-    let db_path = format!("test_no_summon_persists_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut mob = MobileData::new("a stone sentinel".to_string());
         mob.flags.no_summon = true;
@@ -6283,7 +6239,7 @@ fn test_no_summon_flag_persists() {
         assert!(loaded.flags.no_summon);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6291,13 +6247,12 @@ fn test_no_summon_flag_persists() {
 
 #[test]
 fn test_summonable_field_defaults_off_and_persists() {
-    use ironmud::db::Db;
+    
 
-    let db_path = format!("test_summonable_persists_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         // Build a CharacterData via serde so missing fields take their
         // serde defaults — proves `summonable` defaults to false.
@@ -6320,7 +6275,7 @@ fn test_summonable_field_defaults_off_and_persists() {
         assert!(loaded.summonable, "summonable persists across roundtrip");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6328,13 +6283,12 @@ fn test_summonable_field_defaults_off_and_persists() {
 
 #[test]
 fn test_character_gender_persists_and_accepts_free_strings() {
-    use ironmud::db::Db;
+    
 
-    let db_path = format!("test_gender_persists_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut char: ironmud::types::CharacterData =
             serde_json::from_value(serde_json::json!({
@@ -6365,7 +6319,7 @@ fn test_character_gender_persists_and_accepts_free_strings() {
         assert_eq!(loaded.gender, "starfolk");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6468,14 +6422,13 @@ fn test_redit_flag_safe_alias_routes_to_combat_zone() {
 
 #[test]
 fn test_no_charm_flag_persists() {
-    use ironmud::db::Db;
+    
     use ironmud::types::MobileData;
 
-    let db_path = format!("test_no_charm_persists_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut mob = MobileData::new("an iron golem".to_string());
         mob.flags.no_charm = true;
@@ -6486,7 +6439,7 @@ fn test_no_charm_flag_persists() {
         assert!(loaded.flags.no_charm);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6494,14 +6447,13 @@ fn test_no_charm_flag_persists() {
 
 #[test]
 fn test_charmed_buff_persists_with_master_source() {
-    use ironmud::db::Db;
+    
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
-    let db_path = format!("test_charmed_buff_persists_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut mob = MobileData::new("a hapless thrall".to_string());
         mob.active_buffs.push(ActiveBuff {
@@ -6523,7 +6475,7 @@ fn test_charmed_buff_persists_with_master_source() {
         assert_eq!(loaded.charm_master(), Some("Wizard"));
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6532,14 +6484,13 @@ fn test_charmed_buff_persists_with_master_source() {
 #[test]
 fn test_break_all_charms_by_player_clears_only_matching_buffs() {
     use ironmud::break_all_charms_by_player;
-    use ironmud::db::Db;
+    
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
-    let db_path = format!("test_break_charms_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let make_charmed = |name: &str, master: &str| -> MobileData {
             let mut m = MobileData::new(name.to_string());
@@ -6572,7 +6523,7 @@ fn test_break_all_charms_by_player_clears_only_matching_buffs() {
         assert!(c.is_charmed_by("Cleric"), "Cleric's charm should remain");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6580,14 +6531,13 @@ fn test_break_all_charms_by_player_clears_only_matching_buffs() {
 
 #[test]
 fn test_tameable_flag_persists() {
-    use ironmud::db::Db;
+    
     use ironmud::types::MobileData;
 
-    let db_path = format!("test_tameable_persists_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut mob = MobileData::new("a stray kitten".to_string());
         mob.flags.tameable = true;
@@ -6601,7 +6551,7 @@ fn test_tameable_flag_persists() {
         assert!(!plain.flags.tameable);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6609,14 +6559,13 @@ fn test_tameable_flag_persists() {
 
 #[test]
 fn test_pet_owner_field_persists() {
-    use ironmud::db::Db;
+    
     use ironmud::types::MobileData;
 
-    let db_path = format!("test_pet_owner_persists_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut pet = MobileData::new("a tabby cat".to_string());
         pet.is_prototype = false;
@@ -6632,7 +6581,7 @@ fn test_pet_owner_field_persists() {
         assert!(plain.pet_owner.is_none());
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6641,14 +6590,13 @@ fn test_pet_owner_field_persists() {
 #[test]
 fn test_break_all_charms_skips_pets_of_quitting_player() {
     use ironmud::break_all_charms_by_player;
-    use ironmud::db::Db;
+    
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
-    let db_path = format!("test_break_charms_pets_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         // A regular charm by Alice (should be cleared).
         let mut charmed = MobileData::new("a hapless thrall".to_string());
@@ -6696,7 +6644,7 @@ fn test_break_all_charms_skips_pets_of_quitting_player() {
         assert!(pet_after.charm_stay, "pet retains stay/follow overrides");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6704,14 +6652,13 @@ fn test_break_all_charms_skips_pets_of_quitting_player() {
 
 #[test]
 fn test_mobile_position_default_and_persists() {
-    use ironmud::db::Db;
+    
     use ironmud::types::{MobileData, MobilePosition};
 
-    let db_path = format!("test_mob_position_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         // Defaults to Standing.
         let plain = MobileData::new("a generic mob".to_string());
@@ -6726,7 +6673,7 @@ fn test_mobile_position_default_and_persists() {
         assert_eq!(loaded.position, MobilePosition::Sleeping);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6748,14 +6695,13 @@ fn test_mobile_position_parse_handles_aliases() {
 
 #[test]
 fn test_mobile_nickname_field_defaults_none_and_persists() {
-    use ironmud::db::Db;
+    
     use ironmud::types::MobileData;
 
-    let db_path = format!("test_mob_nickname_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let plain = MobileData::new("a forest wolf".to_string());
         assert!(plain.nickname.is_none(), "default nickname is None");
@@ -6771,7 +6717,7 @@ fn test_mobile_nickname_field_defaults_none_and_persists() {
         assert_eq!(loaded.display_name(), "Fido", "display_name prefers nickname");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6797,14 +6743,13 @@ fn test_mobile_display_name_treats_empty_nickname_as_unset() {
 
 #[test]
 fn test_mailbox_purged_on_character_delete() {
-    use ironmud::db::Db;
+    
     use ironmud::types::MailMessage;
 
-    let db_path = format!("test_mail_purge_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         // Send 3 mails to "alice" + 1 unrelated to "bob".
         for body in &["hello", "again", "third"] {
@@ -6840,7 +6785,7 @@ fn test_mailbox_purged_on_character_delete() {
         );
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6850,14 +6795,13 @@ fn test_mailbox_purged_on_character_delete() {
 
 #[test]
 fn test_board_post_persists_and_lists_oldest_first() {
-    use ironmud::db::Db;
+    
     use ironmud::types::BoardPost;
 
-    let db_path = format!("test_board_persist_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         // Insert three posts with explicit posted_at to verify oldest-first
         // listing regardless of insertion order.
@@ -6882,7 +6826,7 @@ fn test_board_post_persists_and_lists_oldest_first() {
         assert_eq!(db.count_board_posts("3099").expect("count"), 0);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6890,14 +6834,13 @@ fn test_board_post_persists_and_lists_oldest_first() {
 
 #[test]
 fn test_board_max_messages_evicts_oldest() {
-    use ironmud::db::Db;
+    
     use ironmud::types::BoardPost;
 
-    let db_path = format!("test_board_evict_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         for (i, subj) in ["one", "two", "three"].iter().enumerate() {
             let mut p = BoardPost::new(
@@ -6916,7 +6859,7 @@ fn test_board_max_messages_evicts_oldest() {
         assert_eq!(listed[1].subject, "three");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6924,14 +6867,13 @@ fn test_board_max_messages_evicts_oldest() {
 
 #[test]
 fn test_board_posts_purged_on_character_delete() {
-    use ironmud::db::Db;
+    
     use ironmud::types::BoardPost;
 
-    let db_path = format!("test_board_purge_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         for subj in &["a", "b", "c"] {
             let p = BoardPost::new(
@@ -6964,7 +6906,7 @@ fn test_board_posts_purged_on_character_delete() {
         assert_eq!(db.count_board_posts("3098").expect("count after"), 0);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6975,11 +6917,10 @@ fn test_board_default_cap_uses_engine_constant() {
     use ironmud::db::Db;
     use ironmud::types::BoardPost;
 
-    let db_path = format!("test_board_default_cap_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         // Insert DEFAULT_BOARD_MAX_MESSAGES + 1 posts with `None` cap; the
         // engine default should evict.
@@ -7000,7 +6941,7 @@ fn test_board_default_cap_uses_engine_constant() {
         assert_eq!(listed[0].subject, "post 1");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7216,14 +7157,13 @@ fn test_curse_effect_type_round_trips_via_serde() {
 
 #[test]
 fn test_permanent_aff_buffs_persist_on_mobile() {
-    use ironmud::db::Db;
+    
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
-    let db_path = format!("test_permanent_aff_buffs_persist_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut mob = MobileData::new("a cursed sleeper".to_string());
         mob.is_prototype = false;
@@ -7265,7 +7205,7 @@ fn test_permanent_aff_buffs_persist_on_mobile() {
         assert_eq!(curse.remaining_secs, -1);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7273,14 +7213,13 @@ fn test_permanent_aff_buffs_persist_on_mobile() {
 
 #[test]
 fn test_charm_stay_and_follow_persist() {
-    use ironmud::db::Db;
+    
     use ironmud::types::MobileData;
 
-    let db_path = format!("test_charm_stay_follow_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut mob = MobileData::new("a thrall".to_string());
         // Defaults
@@ -7297,7 +7236,7 @@ fn test_charm_stay_and_follow_persist() {
         assert_eq!(loaded.charm_follow_player.as_deref(), Some("Other"));
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7306,14 +7245,13 @@ fn test_charm_stay_and_follow_persist() {
 #[test]
 fn test_break_all_charms_clears_stay_follow_and_dangling_follow_targets() {
     use ironmud::break_all_charms_by_player;
-    use ironmud::db::Db;
+    
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
-    let db_path = format!("test_break_charms_clears_overrides_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         // Mob A: charmed by Wizard, with stay set.
         let mut a = MobileData::new("thrall A".to_string());
@@ -7356,7 +7294,7 @@ fn test_break_all_charms_clears_stay_follow_and_dangling_follow_targets() {
         );
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7366,14 +7304,13 @@ fn test_break_all_charms_clears_stay_follow_and_dangling_follow_targets() {
 /// Default chance is 50, default list is empty.
 #[test]
 fn test_mobile_combat_spells_persist() {
-    use ironmud::db::Db;
+    
     use ironmud::types::MobileData;
 
-    let db_path = format!("test_combat_spells_persist_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut mob = MobileData::new("an apprentice mage".to_string());
         assert!(mob.combat_spells.is_empty(), "defaults to empty list");
@@ -7389,7 +7326,7 @@ fn test_mobile_combat_spells_persist() {
         assert_eq!(loaded.combat_spell_chance, 75);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7626,15 +7563,14 @@ fn test_control_weather_spell_definition_loads() {
 
 #[test]
 fn test_corpse_source_vnum_persists() {
-    use ironmud::db::Db;
+    
     use ironmud::types::{ItemData, ItemFlags, ItemLocation};
     use uuid::Uuid;
 
-    let db_path = format!("test_corpse_source_vnum_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         // Default: corpse_source_vnum is None.
         let flags_default = ItemFlags::default();
@@ -7660,7 +7596,7 @@ fn test_corpse_source_vnum_persists() {
         );
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7670,14 +7606,13 @@ fn test_corpse_source_vnum_persists() {
 
 #[test]
 fn test_cast_on_use_cooldown_secs_round_trips() {
-    use ironmud::db::Db;
+    
     use ironmud::{CastOnUse, ItemData};
 
-    let db_path = format!("test_cast_on_use_cooldown_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut item = ItemData::new(
             "wand".to_string(),
@@ -7723,7 +7658,7 @@ fn test_cast_on_use_cooldown_secs_round_trips() {
         );
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7854,15 +7789,14 @@ fn test_lookup_effect_cross_ref_uses_buff_effect_match() {
 
 #[test]
 fn test_contextual_commands_round_trip() {
-    use ironmud::db::Db;
+    
     use ironmud::types::{ContextualCommand, RoomData, RoomExits, RoomFlags, WaterType};
     use std::collections::HashMap;
 
-    let db_path = format!("test_contextual_commands_round_trip_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let room = RoomData {
             id: uuid::Uuid::new_v4(),
@@ -7928,7 +7862,7 @@ fn test_contextual_commands_round_trip() {
         );
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8016,18 +7950,15 @@ fn test_tab_completion_appends_room_contextual_verbs() {
 
 // ===== Multi-character accounts (foundation slice) =====
 
-fn fresh_account_db_path(label: &str) -> String {
-    format!("test_account_{}_{}.db", label, std::process::id())
-}
-
 #[test]
 fn test_account_migration_creates_one_to_one_account() {
     use ironmud::db::Db;
 
-    let db_path = fresh_account_db_path("migration");
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db_path = temp.path();
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+
         // Seed two pre-feature characters BEFORE migration runs. We do that by
         // opening the DB once (which seeds an empty `accounts` tree and stamps
         // accounts_migrated=true), then writing characters, then resetting the
@@ -8091,7 +8022,7 @@ fn test_account_migration_creates_one_to_one_account() {
         );
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8102,11 +8033,10 @@ fn test_account_password_round_trip() {
     use ironmud::db::Db;
     use ironmud::types::AccountData;
 
-    let db_path = fresh_account_db_path("password_round_trip");
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(temp.path()).expect("open DB");
 
         let mut account = AccountData::new("Roundtrip".into(), "hash-rt".into());
         account.email = Some("a@b".into());
@@ -8132,7 +8062,7 @@ fn test_account_password_round_trip() {
         assert_eq!(by_id.name, loaded.name);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8151,14 +8081,13 @@ fn test_max_characters_per_account_constant_present() {
 
 #[test]
 fn test_add_and_remove_character_from_account_roundtrips() {
-    use ironmud::db::Db;
     use ironmud::types::AccountData;
 
-    let db_path = fresh_account_db_path("addremove");
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db_path = temp.path();
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(db_path).expect("open DB");
 
         let account = AccountData::new("Addremove".into(), "h".into());
         let id = account.id;
@@ -8182,7 +8111,7 @@ fn test_add_and_remove_character_from_account_roundtrips() {
         assert_eq!(found.unwrap().id, id);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8322,14 +8251,14 @@ fn test_login_refuses_banned_account() {
 fn test_account_email_field_persists_when_set() {
     // Roundtrip with email = Some(...) so the future verification slice has a
     // place to attach. Schema bump prevention.
-    use ironmud::db::Db;
     use ironmud::types::AccountData;
 
-    let db_path = fresh_account_db_path("email_persist");
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db_path = temp.path();
+    
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(db_path).expect("open DB");
         let mut account = AccountData::new("Emailer".into(), "h".into());
         account.email = Some("verified@example.com".into());
         db.save_account(account).unwrap();
@@ -8338,7 +8267,7 @@ fn test_account_email_field_persists_when_set() {
         assert_eq!(loaded.email.as_deref(), Some("verified@example.com"));
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8426,14 +8355,14 @@ fn test_create_refuses_when_playing_a_character() {
 
 #[test]
 fn test_delete_character_clears_account_roster_pointer() {
-    use ironmud::db::Db;
     use ironmud::types::AccountData;
 
-    let db_path = fresh_account_db_path("delete_clears_roster");
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db_path = temp.path();
+    
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(db_path).expect("open DB");
 
         // Build an account with one character. Use a real CharacterData so
         // delete_character_data works end-to-end.
@@ -8459,7 +8388,7 @@ fn test_delete_character_clears_account_roster_pointer() {
         );
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8496,14 +8425,14 @@ fn test_email_verified_defaults_true_for_legacy_accounts() {
 
 #[test]
 fn test_email_verification_fields_round_trip() {
-    use ironmud::db::Db;
     use ironmud::types::AccountData;
 
-    let db_path = fresh_account_db_path("email_verify_round_trip");
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db_path = temp.path();
+
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(db_path).expect("open DB");
         let mut account = AccountData::new("Codey".into(), "h".into());
         account.email = Some("codey@example.com".into());
         account.email_verified = false;
@@ -8526,7 +8455,7 @@ fn test_email_verification_fields_round_trip() {
         );
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8534,15 +8463,14 @@ fn test_email_verification_fields_round_trip() {
 
 #[test]
 fn test_find_account_by_email() {
-    use ironmud::db::Db;
     use ironmud::types::AccountData;
 
-    let db_path = fresh_account_db_path("find_by_email");
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db_path = temp.path();
+
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
-
+        let db = Db::open(db_path).expect("open DB");
         let mut a = AccountData::new("Alice".into(), "h".into());
         a.email = Some("Alice@Example.COM".into());
         db.save_account(a).unwrap();
@@ -8573,7 +8501,7 @@ fn test_find_account_by_email() {
         assert!(empty.is_none());
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8676,13 +8604,13 @@ fn test_admin_account_subcommands_present() {
 fn test_email_verification_disabled_by_default() {
     // No setting in the tree means the verification gate is off. This is the
     // private/tailscale/homelab default.
-    use ironmud::db::Db;
 
-    let db_path = fresh_account_db_path("email_disabled_default");
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db_path = temp.path();
+    
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(db_path).expect("open DB");
         let v = db.get_setting("email_verification_required").unwrap();
         assert!(
             v.is_none(),
@@ -8690,7 +8618,7 @@ fn test_email_verification_disabled_by_default() {
         );
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8721,10 +8649,10 @@ fn test_ban_record_round_trips() {
     use ironmud::db::Db;
     use ironmud::types::{AccountData, BanRecord};
 
-    let db_path = fresh_account_db_path("ban_record_roundtrip");
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
+    
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(temp.path()).expect("open DB");
         let mut a = AccountData::new("BanRT".into(), "h".into());
         a.is_banned = true;
         a.ban_record = Some(BanRecord {
@@ -8742,7 +8670,7 @@ fn test_ban_record_round_trips() {
         assert_eq!(r.banned_at, 1_700_000_000);
         assert_eq!(r.expires_at, Some(1_900_000_000));
     }));
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8776,10 +8704,10 @@ fn test_site_ban_round_trips_and_lazy_expires() {
     use ironmud::types::SiteBanRecord;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    let db_path = fresh_account_db_path("siteban_roundtrip");
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
+    
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(temp.path()).expect("open DB");
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -8824,7 +8752,7 @@ fn test_site_ban_round_trips_and_lazy_expires() {
         assert!(db.remove_site_ban("10.0.0.1").unwrap());
         assert!(!db.remove_site_ban("10.0.0.1").unwrap());
     }));
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8836,10 +8764,10 @@ fn test_record_account_ip_seen_and_lookup() {
     use ironmud::types::AccountData;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    let db_path = fresh_account_db_path("ip_history");
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
+    
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(temp.path()).expect("open DB");
         let alpha = AccountData::new("Alpha".into(), "h".into());
         let beta = AccountData::new("Beta".into(), "h".into());
         let alpha_id = alpha.id;
@@ -8869,7 +8797,7 @@ fn test_record_account_ip_seen_and_lookup() {
         let none = db.list_accounts_by_ip("10.0.0.99", since).unwrap();
         assert!(none.is_empty());
     }));
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8910,10 +8838,10 @@ fn test_find_account_by_normalized_email() {
     use ironmud::email::normalize_email;
     use ironmud::types::AccountData;
 
-    let db_path = fresh_account_db_path("normalized_email");
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
+    
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(temp.path()).expect("open DB");
         let mut a = AccountData::new("Alpha".into(), "h".into());
         a.email = Some("Test.User+stuff@Gmail.com".into());
         a.normalized_email = normalize_email("Test.User+stuff@Gmail.com");
@@ -8931,7 +8859,7 @@ fn test_find_account_by_normalized_email() {
         let other = normalize_email("someone-else@gmail.com").unwrap();
         assert!(db.find_account_by_normalized_email(&other).unwrap().is_none());
     }));
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9061,17 +8989,17 @@ fn test_shared_bank_gold_round_trips() {
     use ironmud::db::Db;
     use ironmud::types::AccountData;
 
-    let db_path = fresh_account_db_path("shared_bank_roundtrip");
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
+    
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(temp.path()).expect("open DB");
         let mut a = AccountData::new("Vault".into(), "h".into());
         a.shared_bank_gold = 12345;
         db.save_account(a).unwrap();
         let reloaded = db.get_account("vault").unwrap().expect("account");
         assert_eq!(reloaded.shared_bank_gold, 12345);
     }));
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9082,10 +9010,10 @@ fn test_add_shared_bank_gold_refuses_negative_balance() {
     use ironmud::db::Db;
     use ironmud::types::AccountData;
 
-    let db_path = fresh_account_db_path("shared_bank_negative");
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
+    
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(temp.path()).expect("open DB");
         let mut a = AccountData::new("Coffers".into(), "h".into());
         a.shared_bank_gold = 50;
         let id = a.id;
@@ -9103,7 +9031,7 @@ fn test_add_shared_bank_gold_refuses_negative_balance() {
         let after = db.get_account_by_id(&id).unwrap().expect("account");
         assert_eq!(after.shared_bank_gold, 150);
     }));
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9114,10 +9042,10 @@ fn test_save_account_preferences_marks_is_set() {
     use ironmud::db::Db;
     use ironmud::types::{AccountData, AccountPreferences};
 
-    let db_path = fresh_account_db_path("save_account_prefs");
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
+    
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(temp.path()).expect("open DB");
         let a = AccountData::new("Prefs".into(), "h".into());
         let id = a.id;
         db.save_account(a).unwrap();
@@ -9139,7 +9067,7 @@ fn test_save_account_preferences_marks_is_set() {
         assert_eq!(d.automap_radius, 5);
         assert!(d.helpline_enabled);
     }));
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9150,10 +9078,10 @@ fn test_clear_account_preferences_resets_is_set() {
     use ironmud::db::Db;
     use ironmud::types::{AccountData, AccountPreferences};
 
-    let db_path = fresh_account_db_path("clear_account_prefs");
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
+    
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(temp.path()).expect("open DB");
         let a = AccountData::new("Prefs2".into(), "h".into());
         let id = a.id;
         db.save_account(a).unwrap();
@@ -9170,7 +9098,7 @@ fn test_clear_account_preferences_resets_is_set() {
         assert!(!reloaded.character_defaults.is_set);
         assert_eq!(reloaded.character_defaults.prompt_mode, "");
     }));
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9241,11 +9169,10 @@ fn test_apply_world_preset_switches_settings_and_reloads() {
     // Drives `apply_world_preset` through a free-standing engine so eval()
     // doesn't run while we hold the World lock — the binding itself locks
     // state and would deadlock otherwise (std::sync::Mutex isn't reentrant).
-    let db_path = format!("test_world_preset_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = ironmud::db::Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
         let connections = Arc::new(Mutex::new(HashMap::new()));
         let command_metadata = load_command_metadata().expect("load command metadata");
 
@@ -9340,7 +9267,7 @@ fn test_apply_world_preset_switches_settings_and_reloads() {
         assert_eq!(val, "fantasy");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9377,14 +9304,13 @@ fn test_apply_mobile_preset_stamps_flags_and_stats() {
 #[test]
 fn test_apply_mobile_preset_persists_through_db_round_trip() {
     use ironmud::MobileData;
-    use ironmud::db::Db;
+    
     use ironmud::script::mobile_presets::{apply_preset_to_mobile, find_preset_by_id};
 
-    let db_path = format!("test_apply_mobile_preset_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
         let preset = find_preset_by_id("town_guard_captain").expect("guard preset present");
 
         let mut mob = MobileData::new("a recruit".to_string());
@@ -9400,7 +9326,7 @@ fn test_apply_mobile_preset_persists_through_db_round_trip() {
         assert_eq!(loaded.faction.as_deref(), Some("town_watch"));
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9449,17 +9375,16 @@ fn vampire_test_room(title: &str, indoors: bool) -> ironmud::types::RoomData {
 #[test]
 fn test_sun_tick_burns_outdoor_vampire_mob_during_day() {
     use ironmud::MobileData;
-    use ironmud::db::Db;
+    
     use ironmud::vampire::process_sun_tick;
     use ironmud::types::VampireState;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
-    let db_path = format!("test_sun_tick_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         // Force daytime: noon-ish.
         let mut gt = db.get_game_time().expect("read time");
@@ -9501,7 +9426,7 @@ fn test_sun_tick_burns_outdoor_vampire_mob_during_day() {
         assert_eq!(unburned.current_hp, 100, "mortal untouched");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9510,17 +9435,16 @@ fn test_sun_tick_burns_outdoor_vampire_mob_during_day() {
 #[test]
 fn test_sun_tick_skips_indoor_vampire() {
     use ironmud::MobileData;
-    use ironmud::db::Db;
+    
     use ironmud::vampire::process_sun_tick;
     use ironmud::types::VampireState;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
-    let db_path = format!("test_sun_tick_indoors_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut gt = db.get_game_time().expect("read time");
         gt.hour = 12;
@@ -9547,7 +9471,7 @@ fn test_sun_tick_skips_indoor_vampire() {
         assert_eq!(after.current_hp, 100, "indoor vampire is safe");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9556,17 +9480,16 @@ fn test_sun_tick_skips_indoor_vampire() {
 #[test]
 fn test_sun_tick_skips_at_night() {
     use ironmud::MobileData;
-    use ironmud::db::Db;
+    
     use ironmud::vampire::process_sun_tick;
     use ironmud::types::VampireState;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
-    let db_path = format!("test_sun_tick_night_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut gt = db.get_game_time().expect("read time");
         gt.hour = 1; // dead of night
@@ -9593,7 +9516,7 @@ fn test_sun_tick_skips_at_night() {
         assert_eq!(after.current_hp, 100, "night gives no damage");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9852,17 +9775,16 @@ fn test_vampire_spells_json_has_disciplines_with_skills() {
 #[test]
 fn test_sun_tick_first_lethal_hit_floors_at_one_hp_and_stamps_burning() {
     use ironmud::MobileData;
-    use ironmud::db::Db;
+    
     use ironmud::types::{EffectType, VampireState};
     use ironmud::vampire::process_sun_tick;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
-    let db_path = format!("test_sun_rescue_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut gt = db.get_game_time().expect("read time");
         gt.hour = 12;
@@ -9900,7 +9822,7 @@ fn test_sun_tick_first_lethal_hit_floors_at_one_hp_and_stamps_burning() {
         assert_eq!(after2.current_hp, 0, "second tick is lethal");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9909,17 +9831,16 @@ fn test_sun_tick_first_lethal_hit_floors_at_one_hp_and_stamps_burning() {
 #[test]
 fn test_sun_tick_clears_burning_when_moved_indoors() {
     use ironmud::MobileData;
-    use ironmud::db::Db;
+    
     use ironmud::types::{EffectType, VampireState};
     use ironmud::vampire::process_sun_tick;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
-    let db_path = format!("test_sun_rescue_drag_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut gt = db.get_game_time().expect("read time");
         gt.hour = 12;
@@ -9971,7 +9892,7 @@ fn test_sun_tick_clears_burning_when_moved_indoors() {
         assert_eq!(after.current_hp, 1, "still injured but alive");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -10012,17 +9933,16 @@ fn test_vampire_presets_load_and_apply() {
 #[test]
 fn test_blood_tick_decays_vampire_mob_pool() {
     use ironmud::MobileData;
-    use ironmud::db::Db;
+    
     use ironmud::vampire::process_blood_tick;
     use ironmud::types::VampireState;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
-    let db_path = format!("test_blood_tick_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut vamp = MobileData::new("a brujah".to_string());
         vamp.is_prototype = false;
@@ -10049,7 +9969,7 @@ fn test_blood_tick_decays_vampire_mob_pool() {
         assert!(mortal_after.vampire_state.is_none(), "mortals untouched");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -10058,14 +9978,13 @@ fn test_blood_tick_decays_vampire_mob_pool() {
 #[test]
 fn test_mobile_vampire_state_round_trips() {
     use ironmud::MobileData;
-    use ironmud::db::Db;
+    
     use ironmud::types::VampireState;
 
-    let db_path = format!("test_mob_vampire_state_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut mob = MobileData::new("a brujah elder".to_string());
         assert!(mob.vampire_state.is_none(), "fresh mobs are mortal");
@@ -10086,7 +10005,7 @@ fn test_mobile_vampire_state_round_trips() {
         assert_eq!(state.embrace_time, Some(1_700_000_000));
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -10124,13 +10043,12 @@ fn test_vampire_state_frenzy_window() {
 #[test]
 fn test_undead_vampire_holy_vulnerable_flags_persist() {
     use ironmud::MobileData;
-    use ironmud::db::Db;
+    
 
-    let db_path = format!("test_vampire_flags_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut mob = MobileData::new("a fledgling".to_string());
         assert!(!mob.flags.undead);
@@ -10149,7 +10067,7 @@ fn test_undead_vampire_holy_vulnerable_flags_persist() {
         assert!(loaded.flags.holy_vulnerable);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -10158,13 +10076,12 @@ fn test_undead_vampire_holy_vulnerable_flags_persist() {
 #[test]
 fn test_item_holy_flag_persists() {
     use ironmud::ItemData;
-    use ironmud::db::Db;
+    
 
-    let db_path = format!("test_item_holy_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let mut item = ItemData::new(
             "holy water vial".to_string(),
@@ -10180,7 +10097,7 @@ fn test_item_holy_flag_persists() {
         assert!(loaded.flags.holy);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -10665,17 +10582,16 @@ fn test_active_quest_choice_vars_default_empty_and_roundtrips() {
 #[test]
 fn test_thinblood_takes_half_sun_damage_via_mob() {
     use ironmud::MobileData;
-    use ironmud::db::Db;
+    
     use ironmud::types::VampireState;
     use ironmud::vampire::process_sun_tick;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
-    let db_path = format!("test_thinblood_sun_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         // Force daytime.
         let mut gt = db.get_game_time().expect("read time");
@@ -10712,7 +10628,7 @@ fn test_thinblood_takes_half_sun_damage_via_mob() {
         assert_eq!(after.current_hp, 190, "mob takes full sun damage");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
+    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }

@@ -1140,6 +1140,9 @@ fn finalize_character(connection_id) {
     let room_id = char_data.current_room_id;
     broadcast_to_room(room_id, char_name + " appears in a flash of light.", char_name);
 
+    // Announce to Matrix/Discord room
+    matrix_broadcast(char_name + " has entered the realm.");
+
     // Display the room
     display_room(room_id, connection_id, char_name);
 }

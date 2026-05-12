@@ -13,6 +13,7 @@ use ironmud::types::{
     DialoguePairState, DialogueTarget, DialogueTree, FlagScope, MobileData,
 };
 use std::collections::HashMap;
+use tempfile;
 use uuid::Uuid;
 
 #[test]
@@ -315,11 +316,10 @@ fn dialogue_tree_attaches_to_mobile_data() {
 fn granular_helpers_compose_a_full_tree_via_db() {
     use ironmud::db::Db;
 
-    let path = format!("test_dialogue_granular_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&path).expect("open db");
+        let db = Db::open(temp.path()).expect("open db");
 
         // Save a fresh prototype mob with no tree.
         let mut mob = MobileData::new("greeter".into());
@@ -423,7 +423,6 @@ fn granular_helpers_compose_a_full_tree_via_db() {
         assert_eq!(greet.on_exit.len(), 1);
     }));
 
-    let _ = std::fs::remove_dir_all(&path);
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }

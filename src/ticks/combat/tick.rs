@@ -517,17 +517,10 @@ mod tests {
         m
     }
 
-    fn fresh_db(label: &str) -> (db::Db, String) {
-        let path = format!("/tmp/test_helper_{}_{}.db", label, std::process::id());
-        let _ = std::fs::remove_dir_all(&path);
-        let db = db::Db::open(&path).expect("open db");
-        (db, path)
-    }
-
-    fn run_with_db(label: &str, body: impl FnOnce(&db::Db)) {
-        let (db, path) = fresh_db(label);
+    fn run_with_db(_label: &str, body: impl FnOnce(&db::Db)) {
+        let temp = tempfile::tempdir().expect("create temp dir");
+        let db = db::Db::open(temp.path()).expect("open db");
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| body(&db)));
-        let _ = std::fs::remove_dir_all(&path);
         if let Err(e) = outcome {
             std::panic::resume_unwind(e);
         }

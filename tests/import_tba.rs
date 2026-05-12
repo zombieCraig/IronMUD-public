@@ -216,14 +216,8 @@ fn analyzer_does_not_warn_on_clean_bodies() {
 
 #[test]
 fn applies_tba_fixture_to_tmp_db() {
-    let mut p = std::env::temp_dir();
-    let nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    p.push(format!("ironmud-import-tba-{}-{nonce}", std::process::id()));
-    std::fs::create_dir_all(&p).expect("create tmp dir");
-    let db_path = p.join("tba.db");
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db_path = temp.path().join("tba.db");
     let db = Db::open(&db_path).expect("open tmp db");
 
     let (ir, _) = TbaEngine.parse(&fixture_root()).expect("parse");
@@ -243,7 +237,4 @@ fn applies_tba_fixture_to_tmp_db() {
         .find(|m| m.is_prototype && m.vnum == "northern_midgaard_3000")
         .expect("wizard prototype");
     assert_eq!(wizard.name, "the wizard");
-
-    drop(db);
-    std::fs::remove_dir_all(&p).ok();
 }

@@ -15,6 +15,7 @@ use ironmud::{SharedConnections, SharedState, World, db::Db, script};
 use rhai::Engine;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use tempfile;
 
 fn make_def_counter(key: &str, name: &str, counter: &str, threshold: u32, title: &str) -> AchievementDef {
     AchievementDef {
@@ -130,11 +131,10 @@ fn make_character(name: &str) -> CharacterData {
 
 #[test]
 fn test_counter_threshold_unlocks_achievement() {
-    let db_path = format!("test_ach_counter_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(temp.path()).expect("open DB");
         let mut ch = make_character("hero");
         db.save_character_data(ch.clone()).expect("save");
 
@@ -169,7 +169,6 @@ fn test_counter_threshold_unlocks_achievement() {
         assert_eq!(ch.achievements_unlocked.len(), 1, "still only one unlock");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -177,11 +176,10 @@ fn test_counter_threshold_unlocks_achievement() {
 
 #[test]
 fn test_skill_event_unlocks_threshold() {
-    let db_path = format!("test_ach_skill_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(temp.path()).expect("open DB");
         let ch = make_character("scholar");
         db.save_character_data(ch).expect("save");
 
@@ -212,7 +210,6 @@ fn test_skill_event_unlocks_threshold() {
         assert_eq!(ch.achievements_unlocked.len(), 1);
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -220,11 +217,10 @@ fn test_skill_event_unlocks_threshold() {
 
 #[test]
 fn test_admin_toggle_disables_notify() {
-    let db_path = format!("test_ach_disabled_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(temp.path()).expect("open DB");
         let ch = make_character("npc");
         db.save_character_data(ch).expect("save");
 
@@ -248,7 +244,6 @@ fn test_admin_toggle_disables_notify() {
         );
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -256,11 +251,10 @@ fn test_admin_toggle_disables_notify() {
 
 #[test]
 fn test_manual_award_only_for_manual_criterion() {
-    let db_path = format!("test_ach_manual_{}.db", std::process::id());
-    let _ = std::fs::remove_dir_all(&db_path);
+    let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let db = Db::open(&db_path).expect("open DB");
+        let db = Db::open(temp.path()).expect("open DB");
         let ch = make_character("hero");
         db.save_character_data(ch).expect("save");
 
@@ -294,7 +288,6 @@ fn test_manual_award_only_for_manual_criterion() {
         assert!(!ok, "second manual award is idempotent");
     }));
 
-    let _ = std::fs::remove_dir_all(&db_path);
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }

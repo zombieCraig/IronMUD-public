@@ -1447,24 +1447,13 @@ mod pair_housing_tests {
 
     struct DbGuard {
         db: Db,
-        path: String,
-    }
-    impl Drop for DbGuard {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.path);
-        }
+        _temp: tempfile::TempDir,
     }
 
-    fn open_db(tag: &str) -> DbGuard {
-        let path = format!(
-            "test_pair_{}_{}_{}.db",
-            tag,
-            std::process::id(),
-            Uuid::new_v4().simple()
-        );
-        let _ = std::fs::remove_dir_all(&path);
-        let db = Db::open(&path).expect("open db");
-        DbGuard { db, path }
+    fn open_db(_tag: &str) -> DbGuard {
+        let temp = tempfile::tempdir().expect("create temp dir");
+        let db = Db::open(temp.path()).expect("open db");
+        DbGuard { db, _temp: temp }
     }
 
     fn mk_area(db: &Db) -> AreaData {

@@ -1627,6 +1627,7 @@ dependencies = [
  "serenity",
  "sled",
  "socket2 0.5.10",
+ "tempfile",
  "time",
  "tokio",
  "tower 0.4.13",

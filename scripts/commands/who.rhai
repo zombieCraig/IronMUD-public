@@ -11,9 +11,11 @@ fn format_player_line(player) {
     if is_player_afk(player.name) {
         afk_tag = " [AFK]";
     }
-    let idle_tag = "";
-    if is_player_idle(player.name) {
-        idle_tag = " [Idle]";
+    let status_tag = "";
+    if is_player_disconnected(player.name) {
+        status_tag = " [Disconnected]";
+    } else if is_player_idle(player.name) {
+        status_tag = " [Idle]";
     }
     // Check for god mode glow
     let glow_tag = "";
@@ -31,7 +33,7 @@ fn format_player_line(player) {
             title_tag = " " + title_text;
         }
     }
-    return "  " + player.name + title_tag + level_tag + glow_tag + afk_tag + idle_tag + " - " + room_name + " [" + player.addr + "]\n";
+    return "  " + player.name + title_tag + level_tag + glow_tag + afk_tag + status_tag + " - " + room_name + " [" + player.addr + "]\n";
 }
 
 fn run_command(args, connection_id) {

@@ -13,7 +13,31 @@ telnet yourserver.com 4000
 Popular MUD clients with enhanced features:
 - [Mudlet](https://www.mudlet.org/) (Windows, Mac, Linux)
 - [MUSHclient](http://www.gammon.com.au/mushclient) (Windows)
+- [TinTin++](https://tintin.mudhalla.net/) (Linux, Mac, Windows/WSL)
 - [Blightmud](https://github.com/Blightmud/Blightmud) (Terminal)
+
+### TinTin++ Setup
+
+IronMUD provides a pre-configured script for TinTin++ users that enables a split-screen status bar and real-time stat updates via MSDP.
+
+1. **Download the script**: Locate `assets/ironmud.tin` in the IronMUD repository.
+2. **Load the script**: Inside TinTin++, type:
+   ```tintin
+   #read assets/ironmud.tin
+   ```
+3. **Connect**: Type `ironmud` to connect to the server.
+
+#### Optional: Auto-login
+
+To automatically log in when you connect, edit your `assets/ironmud.tin` file and add the following at the bottom:
+
+```tintin
+#ACTION {^What is your account name?} {
+    #SEND {login MyAccountName MyPassword};
+}
+```
+
+Replace `MyAccountName` and `MyPassword` with your actual credentials.
 
 ## Creating a Character
 

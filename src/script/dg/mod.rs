@@ -158,6 +158,9 @@ pub struct EvalCtx {
     /// When true, dangerous DG opcodes (force/at/purge/load/teleport)
     /// bypass the per-author area gate.
     pub elevated: bool,
+    /// RAII cleanup for test databases.
+    #[cfg(test)]
+    pub test_temp_dir: Option<Arc<tempfile::TempDir>>,
 }
 
 impl EvalCtx {
@@ -348,6 +351,8 @@ pub fn fire_room_dg(
         cmd_canonical: String::new(),
         authored_by,
         elevated,
+        #[cfg(test)]
+        test_temp_dir: None,
     };
     fire_dg(body, &ctx)
 }
@@ -383,6 +388,8 @@ pub fn fire_item_dg(
         cmd_canonical: String::new(),
         authored_by,
         elevated,
+        #[cfg(test)]
+        test_temp_dir: None,
     };
     fire_dg(body, &ctx)
 }
@@ -414,6 +421,8 @@ pub fn fire_mobile_dg(
         cmd_canonical: String::new(),
         authored_by,
         elevated,
+        #[cfg(test)]
+        test_temp_dir: None,
     };
     fire_dg(body, &ctx)
 }
@@ -502,6 +511,8 @@ pub fn fire_room_dg_triggers(
             },
             authored_by: t.authored_by.clone(),
             elevated: t.elevated,
+            #[cfg(test)]
+            test_temp_dir: None,
         };
         if matches!(fire_dg(body, &ctx), Outcome::Return(0)) {
             cancelled = true;
@@ -558,6 +569,8 @@ pub fn fire_mobile_dg_triggers(
             },
             authored_by: t.authored_by.clone(),
             elevated: t.elevated,
+            #[cfg(test)]
+            test_temp_dir: None,
         };
         if matches!(fire_dg(body, &ctx), Outcome::Return(0)) {
             cancelled = true;
@@ -692,6 +705,8 @@ fn fire_item_dg_oncommand(
             },
             authored_by: t.authored_by.clone(),
             elevated: t.elevated,
+            #[cfg(test)]
+            test_temp_dir: None,
         };
         if matches!(fire_dg(body, &ctx), Outcome::Return(0)) {
             cancelled = true;
@@ -754,8 +769,8 @@ mod tests {
     /// session. Sufficient to exercise control flow, vars, and the
     /// no-actor branches of cmds.
     fn make_ctx(self_kind: SelfKind, self_id: Uuid, self_name: &str) -> EvalCtx {
-        let path = format!("test_dg_{}.db", Uuid::new_v4().simple());
-        let _ = std::fs::remove_dir_all(&path);
+        let temp = tempfile::tempdir().expect("create temp dir");
+        let path = temp.path().to_owned();
         let db = Arc::new(Db::open(&path).expect("open db"));
         let connections: SharedConnections = Arc::new(Mutex::new(HashMap::new()));
         EvalCtx {
@@ -773,6 +788,7 @@ mod tests {
             cmd_canonical: String::new(),
             authored_by: None,
             elevated: false,
+            test_temp_dir: Some(Arc::new(temp)),
         }
     }
 

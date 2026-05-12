@@ -165,6 +165,9 @@ pub struct PlayerSession {
     /// completion command; `go.rhai` reads-and-clears it on entry. Not
     /// persisted — purely in-flight movement state.
     pub slow_move_completing: bool,
+    /// Unix timestamp when the connection was lost. If `Some`, the player is
+    /// in the Linkdead grace period. `None` means the connection is active.
+    pub disconnected_at: Option<i64>,
 }
 
 /// Input events from the read handler
@@ -1289,6 +1292,7 @@ pub async fn handle_connection(
                 account_id: None,
                 account_name: None,
                 slow_move_completing: false,
+                disconnected_at: None,
             },
         );
     }
@@ -2890,58 +2894,92 @@ pub async fn handle_connection(
     info!("Connection closed: {}", addr);
 
     // Clean up character on unexpected disconnect (TCP close without logout/quit)
-    let cleanup_info = {
-        let conns = connections.lock().unwrap();
-        if let Some(session) = conns.get(&connection_id) {
-            if let Some(ref character) = session.character {
-                Some((character.clone(), character.current_room_id))
+    // Mark as linkdead and wait 3 minutes before final cleanup.
+    let character_present = {
+        let mut conns = connections.lock().unwrap();
+        if let Some(session) = conns.get_mut(&connection_id) {
+            if session.character.is_some() {
+                session.disconnected_at = Some(
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs() as i64,
+                );
+                true
             } else {
-                None
+                // Unauthenticated connection: remove immediately
+                conns.remove(&connection_id);
+                false
             }
         } else {
-            None
+            false
         }
     };
 
-    if let Some((character, room_id)) = cleanup_info {
-        let char_name = character.name.clone();
+    if character_present {
+        let cleanup_connections = connections.clone();
+        let cleanup_state = state.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_secs(180)).await;
 
-        // Save character to database
-        {
-            let world = state.lock().unwrap();
-            if let Err(e) = world.db.save_character_data(character) {
-                error!("Failed to save {} on disconnect: {}", char_name, e);
-            } else {
-                info!("Saved character {} on disconnect", char_name);
+            // Lock connections and check if this session still exists and is still linkdead.
+            // If it was reclaimed by a reconnect, it would have been removed from the map
+            // by disconnect_existing_session in login.rhai.
+            let cleanup_info = {
+                let mut conns = cleanup_connections.lock().unwrap();
+                if let Some(session) = conns.get(&connection_id) {
+                    if session.disconnected_at.is_some() {
+                        if let Some(ref character) = session.character {
+                            let info = Some((character.clone(), character.current_room_id));
+                            conns.remove(&connection_id);
+                            info
+                        } else {
+                            conns.remove(&connection_id);
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            };
+
+            if let Some((character, room_id)) = cleanup_info {
+                let char_name = character.name.clone();
+
+                // Save character to database
+                {
+                    let world = cleanup_state.lock().unwrap();
+                    if let Err(e) = world.db.save_character_data(character) {
+                        error!("Failed to save {} on disconnect timeout: {}", char_name, e);
+                    } else {
+                        info!("Saved character {} on disconnect timeout", char_name);
+                    }
+                }
+
+                // Broadcast disconnect message to room
+                broadcast_to_room(
+                    &cleanup_connections,
+                    room_id,
+                    format!("{} has lost their connection.", char_name),
+                    Some(&char_name),
+                );
+
+                // Notify chat integrations (Matrix/Discord)
+                {
+                    let world = cleanup_state.lock().unwrap();
+                    if let Some(ref chat_tx) = world.chat_sender {
+                        let _ = chat_tx.send(chat::ChatMessage::Broadcast(format!(
+                            "{} has lost their connection.",
+                            char_name
+                        )));
+                    }
+                }
+
+                info!("Cleaned up disconnected player after timeout: {}", char_name);
             }
-        }
-
-        // Broadcast disconnect message to room
-        broadcast_to_room(
-            &connections,
-            room_id,
-            format!("{} has lost their connection.", char_name),
-            Some(&char_name),
-        );
-
-        // Notify chat integrations (Matrix/Discord)
-        {
-            let world = state.lock().unwrap();
-            if let Some(ref chat_tx) = world.chat_sender {
-                let _ = chat_tx.send(chat::ChatMessage::Broadcast(format!(
-                    "{} has lost their connection.",
-                    char_name
-                )));
-            }
-        }
-
-        info!("Cleaned up disconnected player: {}", char_name);
-    }
-
-    // Remove connection from map
-    {
-        let mut conns = connections.lock().unwrap();
-        conns.remove(&connection_id);
+        });
     }
 }
 

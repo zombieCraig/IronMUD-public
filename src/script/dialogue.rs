@@ -2216,11 +2216,10 @@ mod tests {
         .expect("build character")
     }
 
-    fn open_temp_db(label: &str) -> (Db, String) {
-        let path = format!("test_dialogue_{}_{}.db", label, std::process::id());
-        let _ = std::fs::remove_dir_all(&path);
-        let db = Db::open(&path).expect("open db");
-        (db, path)
+    fn open_temp_db(_label: &str) -> (Db, tempfile::TempDir) {
+        let temp = tempfile::tempdir().expect("create temp dir");
+        let db = Db::open(temp.path()).expect("open db");
+        (db, temp)
     }
 
     /// Build dummy SharedConnections + SharedState for tests that don't need
@@ -2271,10 +2270,9 @@ mod tests {
             name: "asked".into(),
             scope: FlagScope::Local,
         };
-        let path = format!("test_dialogue_flags_{}.db", std::process::id());
-        let _ = std::fs::remove_dir_all(&path);
+        let temp = tempfile::tempdir().expect("create temp dir");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let db = Db::open(&path).expect("open db");
+            let db = Db::open(temp.path()).expect("open db");
             let (conns, st) = dummy_conns_and_state(&db);
             assert!(!evaluate_condition(&local_set, &ch, &mob, &db));
             assert!(evaluate_condition(&local_unset, &ch, &mob, &db));
@@ -2320,7 +2318,6 @@ mod tests {
             );
             assert!(ch.dialogue_flags.contains_key("saved_village"));
         }));
-        let _ = std::fs::remove_dir_all(&path);
         result.unwrap();
     }
 
@@ -2337,10 +2334,10 @@ mod tests {
         let mut mob = MobileData::new("guard".into());
         mob.vnum = "3002".into();
         mob.dialogue_tree = Some(mk_tree());
-        let path = format!("test_dialogue_skill_{}.db", std::process::id());
-        let _ = std::fs::remove_dir_all(&path);
+        let temp = tempfile::tempdir().expect("create temp dir");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let db = Db::open(&path).expect("open db");
+            let db = Db::open(temp.path()).expect("open db");
+
             let cond5 = DialogueCondition::SkillAtLeast {
                 key: "elvish".into(),
                 level: 5,
@@ -2352,7 +2349,6 @@ mod tests {
             assert!(!evaluate_condition(&cond5, &ch, &mob, &db));
             assert!(evaluate_condition(&cond4, &ch, &mob, &db));
         }));
-        let _ = std::fs::remove_dir_all(&path);
         result.unwrap();
     }
 
@@ -2362,10 +2358,10 @@ mod tests {
         let mut mob = MobileData::new("seneschal".into());
         mob.vnum = "3004".into();
         mob.dialogue_tree = Some(mk_tree());
-        let path = format!("test_dialogue_achievement_{}.db", std::process::id());
-        let _ = std::fs::remove_dir_all(&path);
+        let temp = tempfile::tempdir().expect("create temp dir");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let db = Db::open(&path).expect("open db");
+            let db = Db::open(temp.path()).expect("open db");
+
             let cond = DialogueCondition::HasAchievement {
                 key: "met_all_sires".into(),
             };
@@ -2376,7 +2372,6 @@ mod tests {
             );
             assert!(evaluate_condition(&cond, &ch, &mob, &db));
         }));
-        let _ = std::fs::remove_dir_all(&path);
         result.unwrap();
     }
 
@@ -2387,10 +2382,10 @@ mod tests {
         let mut mob = MobileData::new("foreman".into());
         mob.vnum = "3003".into();
         mob.dialogue_tree = Some(mk_tree());
-        let path = format!("test_dialogue_counter_{}.db", std::process::id());
-        let _ = std::fs::remove_dir_all(&path);
+        let temp = tempfile::tempdir().expect("create temp dir");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let db = Db::open(&path).expect("open db");
+            let db = Db::open(temp.path()).expect("open db");
+
             let lo = DialogueCondition::CounterAtLeast {
                 key: "quests.rats".into(),
                 value: 5,
@@ -2402,7 +2397,6 @@ mod tests {
             assert!(evaluate_condition(&lo, &ch, &mob, &db));
             assert!(!evaluate_condition(&hi, &ch, &mob, &db));
         }));
-        let _ = std::fs::remove_dir_all(&path);
         result.unwrap();
     }
 
@@ -2414,10 +2408,10 @@ mod tests {
         mob.vnum = "3004".into();
         mob.dg_vars.insert("on_duty".into(), "1".into());
         mob.dialogue_tree = Some(mk_tree());
-        let path = format!("test_dialogue_dgvar_{}.db", std::process::id());
-        let _ = std::fs::remove_dir_all(&path);
+        let temp = tempfile::tempdir().expect("create temp dir");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let db = Db::open(&path).expect("open db");
+            let db = Db::open(temp.path()).expect("open db");
+
             let player_match = DialogueCondition::DgVarEquals {
                 scope: DgScope::Player,
                 key: "faction".into(),
@@ -2437,7 +2431,6 @@ mod tests {
             assert!(!evaluate_condition(&player_miss, &ch, &mob, &db));
             assert!(evaluate_condition(&mob_match, &ch, &mob, &db));
         }));
-        let _ = std::fs::remove_dir_all(&path);
         result.unwrap();
     }
 
@@ -2446,10 +2439,10 @@ mod tests {
         let mut ch = make_character("hero");
         let mut mob = MobileData::new("clerk".into());
         mob.vnum = "3005".into();
-        let path = format!("test_dialogue_counter_effects_{}.db", std::process::id());
-        let _ = std::fs::remove_dir_all(&path);
+        let temp = tempfile::tempdir().expect("create temp dir");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let db = Db::open(&path).expect("open db");
+            let db = Db::open(temp.path()).expect("open db");
+
             let (conns, st) = dummy_conns_and_state(&db);
             let _ = apply_effect(
                 &db,
@@ -2476,7 +2469,6 @@ mod tests {
             );
             assert_eq!(ch.achievement_counters.get("shipments.delivered"), Some(&5));
         }));
-        let _ = std::fs::remove_dir_all(&path);
         result.unwrap();
     }
 
@@ -2525,10 +2517,10 @@ mod tests {
         let mut mob = MobileData::new("vendor".into());
         mob.vnum = "3006".into();
         mob.dialogue_tree = Some(tree);
-        let path = format!("test_dialogue_visible_{}.db", std::process::id());
-        let _ = std::fs::remove_dir_all(&path);
+        let temp = tempfile::tempdir().expect("create temp dir");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let db = Db::open(&path).expect("open db");
+            let db = Db::open(temp.path()).expect("open db");
+
             let node = &mob.dialogue_tree.as_ref().unwrap().nodes["root"];
             let visible = visible_choices(node, &ch, &mob, &db);
             assert_eq!(visible.len(), 1);
@@ -2539,7 +2531,6 @@ mod tests {
             let visible2 = visible_choices(node, &ch2, &mob, &db);
             assert_eq!(visible2.len(), 2);
         }));
-        let _ = std::fs::remove_dir_all(&path);
         result.unwrap();
     }
 
@@ -2746,10 +2737,10 @@ mod tests {
             nodes,
         });
         let mut ch = make_character("hero");
-        let path = format!("test_dialogue_visits_{}.db", std::process::id());
-        let _ = std::fs::remove_dir_all(&path);
+        let temp = tempfile::tempdir().expect("create temp dir");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let db = Db::open(&path).expect("open db");
+            let db = Db::open(temp.path()).expect("open db");
+
             let (conns, st) = dummy_conns_and_state(&db);
             let go_to_shop = DialogueChoice {
                 keyword: "shop".into(),
@@ -2792,7 +2783,6 @@ mod tests {
                 .unwrap_or(0);
             assert_eq!(visits, 2);
         }));
-        let _ = std::fs::remove_dir_all(&path);
         result.unwrap();
     }
 
@@ -2839,10 +2829,10 @@ mod tests {
                 choices_picked_once: std::collections::HashSet::new(),
             },
         );
-        let path = format!("test_dialogue_on_exit_{}.db", std::process::id());
-        let _ = std::fs::remove_dir_all(&path);
+        let temp = tempfile::tempdir().expect("create temp dir");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let db = Db::open(&path).expect("open db");
+            let db = Db::open(temp.path()).expect("open db");
+
             let (conns, st) = dummy_conns_and_state(&db);
             let bye = DialogueChoice {
                 keyword: "bye".into(),
@@ -2858,7 +2848,6 @@ mod tests {
             assert!(finished);
             assert_eq!(ch.dialogue_flags.get("9001:said_goodbye"), Some(&true));
         }));
-        let _ = std::fs::remove_dir_all(&path);
         result.unwrap();
     }
 
@@ -2914,10 +2903,10 @@ mod tests {
                 choices_picked_once: std::collections::HashSet::new(),
             },
         );
-        let path = format!("test_dialogue_repeat_{}.db", std::process::id());
-        let _ = std::fs::remove_dir_all(&path);
+        let temp = tempfile::tempdir().expect("create temp dir");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let db = Db::open(&path).expect("open db");
+            let db = Db::open(temp.path()).expect("open db");
+
             let (conns, st) = dummy_conns_and_state(&db);
             let again = DialogueChoice {
                 keyword: "again".into(),
@@ -2935,7 +2924,6 @@ mod tests {
             assert!(ch.achievement_counters.get("visits").is_none());
             assert!(ch.achievement_counters.get("exits").is_none());
         }));
-        let _ = std::fs::remove_dir_all(&path);
         result.unwrap();
     }
 
@@ -2981,7 +2969,8 @@ mod tests {
                 once_per_player: false,
             }],
         );
-        let (db, path) = open_temp_db("classify_locked_hint");
+        let (db, _temp) = open_temp_db(
+"classify_locked_hint");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let node = mob.dialogue_tree.as_ref().unwrap().nodes.get("root").unwrap();
             let classified = classify_choices("root", node, &ch, &mob, &db, 1_000);
@@ -2996,7 +2985,6 @@ mod tests {
             assert!(menu.contains("(?)"), "menu line should mark locked: {}", menu);
             assert!(menu.contains("gauges your hands"));
         }));
-        let _ = std::fs::remove_dir_all(&path);
         result.unwrap();
     }
 
@@ -3019,7 +3007,8 @@ mod tests {
                 once_per_player: false,
             }],
         );
-        let (db, path) = open_temp_db("classify_no_hint_hidden");
+        let (db, _temp) = open_temp_db(
+"classify_no_hint_hidden");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let node = mob.dialogue_tree.as_ref().unwrap().nodes.get("root").unwrap();
             let classified = classify_choices("root", node, &ch, &mob, &db, 1_000);
@@ -3030,7 +3019,6 @@ mod tests {
             let menu = render_classified_menu(&classified);
             assert_eq!(menu, "  bye. (leave)");
         }));
-        let _ = std::fs::remove_dir_all(&path);
         result.unwrap();
     }
 
@@ -3050,7 +3038,8 @@ mod tests {
                 once_per_player: false,
             }],
         );
-        let (db, path) = open_temp_db("classify_cd_blocks");
+        let (db, _temp) = open_temp_db(
+"classify_cd_blocks");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let node = mob
                 .dialogue_tree
@@ -3085,7 +3074,6 @@ mod tests {
             assert_eq!(classified.len(), 1);
             assert_eq!(classified[0].visibility, ChoiceVisibility::Available);
         }));
-        let _ = std::fs::remove_dir_all(&path);
         result.unwrap();
     }
 
@@ -3105,7 +3093,8 @@ mod tests {
                 once_per_player: true,
             }],
         );
-        let (db, path) = open_temp_db("classify_once");
+        let (db, _temp) = open_temp_db(
+"classify_once");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let node = mob
                 .dialogue_tree
@@ -3137,7 +3126,6 @@ mod tests {
                 "once-picked choice must drop from output"
             );
         }));
-        let _ = std::fs::remove_dir_all(&path);
         result.unwrap();
     }
 }

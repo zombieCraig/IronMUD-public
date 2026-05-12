@@ -40,10 +40,10 @@
 
 /* UI Setup */
 #SPLIT 1 0
-#PROMPT {^[%dHP:%d/%d] [%dST:%d/%d]} {<277>HP: %2/%3 <237>ST: %5/%6} {1}
+#PROMPT {^[%dHP:%d/%d] [%dST:%d/%d]} {<170>HP: %2/%3 <160>ST: %5/%6} {1}
 
 /* Status bar initialization */
-#SHOWME {<177>  Welcome to IronMUD  |  Type 'ironmud' to connect  } {1}
+#SHOWME {<170>  Welcome to IronMUD  |  Type 'ironmud' to connect  } {1}
 
 /* Common Shortcuts */
 #ALIAS {l} {look}
@@ -61,22 +61,11 @@
     #SEND {IAC SB MSDP MSDP_VAR "REPORT" MSDP_VAL "HEALTH" MSDP_VAL "HEALTH_MAX" MSDP_VAL "STAMINA" MSDP_VAL "STAMINA_MAX" IAC SE};
 }
 
-#EVENT {MSDP VARIABLE HEALTH} {
-    #VARIABLE {hp} {%1};
-    #SHOWME {<277>  Health: $hp / $max_hp  |  Stamina: $st / $max_st  } {1};
-}
-
-#EVENT {MSDP VARIABLE HEALTH_MAX} {
-    #VARIABLE {max_hp} {%1};
-    #SHOWME {<277>  Health: $hp / $max_hp  |  Stamina: $st / $max_st  } {1};
-}
-
-#EVENT {MSDP VARIABLE STAMINA} {
-    #VARIABLE {st} {%1};
-    #SHOWME {<277>  Health: $hp / $max_hp  |  Stamina: $st / $max_st  } {1};
-}
-
-#EVENT {MSDP VARIABLE STAMINA_MAX} {
-    #VARIABLE {max_st} {%1};
-    #SHOWME {<277>  Health: $hp / $max_hp  |  Stamina: $st / $max_st  } {1};
+#EVENT {MSDP VARIABLE} {
+    #IF {"%0" == "HEALTH"} {#VARIABLE {hp} {%1}};
+    #IF {"%0" == "HEALTH_MAX"} {#VARIABLE {max_hp} {%1}};
+    #IF {"%0" == "STAMINA"} {#VARIABLE {st} {%1}};
+    #IF {"%0" == "STAMINA_MAX"} {#VARIABLE {max_st} {%1}};
+    
+    #SHOWME {<170>  Health: $hp / $max_hp  |  Stamina: $st / $max_st  } {1};
 }

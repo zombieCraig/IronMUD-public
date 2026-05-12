@@ -16,15 +16,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
-fn temp_db_path(label: &str) -> String {
-    format!("/tmp/ironmud_quest_test_{}_{}", label, std::process::id())
-}
-
-fn fresh_db(label: &str) -> (Db, String) {
-    let path = temp_db_path(label);
-    let _ = std::fs::remove_dir_all(&path);
-    let db = Db::open(&path).expect("open db");
-    (db, path)
+fn fresh_db(_label: &str) -> (Db, tempfile::TempDir) {
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db = Db::open(temp.path()).expect("open db");
+    (db, temp)
 }
 
 fn empty_connections() -> SharedConnections {
@@ -104,7 +99,8 @@ fn quest_data_round_trips_through_json() {
 
 #[test]
 fn quest_offer_adds_to_active_then_idempotent() {
-    let (db, path) = fresh_db("offer_idempotent");
+    let (db, _temp) = fresh_db(
+"offer_idempotent");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let q = make_quest("qst:1", "First");
         db.save_quest_data(&q).expect("save quest");
@@ -117,13 +113,13 @@ fn quest_offer_adds_to_active_then_idempotent() {
         let err = ironmud::quest::offer(&db, "alice", "qst:1");
         assert!(err.contains("already"));
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
 
 #[test]
 fn quest_kill_listener_increments_progress() {
-    let (db, path) = fresh_db("kill_listener");
+    let (db, _temp) = fresh_db(
+"kill_listener");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:2", "Kill the Mice");
         q.objectives.push(QuestObjective::KillMob {
@@ -149,13 +145,13 @@ fn quest_kill_listener_increments_progress() {
         assert!(!ch.active_quests.contains_key("qst:2"));
         assert!(ch.completed_quests.contains("qst:2"));
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
 
 #[test]
 fn quest_item_turn_in_consumes_item_and_advances() {
-    let (db, path) = fresh_db("item_turn_in");
+    let (db, _temp) = fresh_db(
+"item_turn_in");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         // Quest "bring 1 mouse_tail to mob 100".
         let mut q = make_quest("qst:3", "Tail Tribute");
@@ -192,13 +188,13 @@ fn quest_item_turn_in_consumes_item_and_advances() {
         assert!(ch.completed_quests.contains("qst:3"));
         assert_eq!(ch.gold, 100 + 25, "gold reward applied");
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
 
 #[test]
 fn quest_item_turn_in_ignores_unrelated_item() {
-    let (db, path) = fresh_db("item_unrelated");
+    let (db, _temp) = fresh_db(
+"item_unrelated");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:4", "Specific Pelt");
         q.objectives.push(QuestObjective::BringItem {
@@ -229,13 +225,13 @@ fn quest_item_turn_in_ignores_unrelated_item() {
         let ch = db.get_character_data("dan").unwrap().unwrap();
         assert!(ch.active_quests.contains_key("qst:4"));
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
 
 #[test]
 fn quest_completion_grants_skill_xp() {
-    let (db, path) = fresh_db("skill_xp_reward");
+    let (db, _temp) = fresh_db(
+"skill_xp_reward");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:5", "Xp Quest");
         q.objectives.push(QuestObjective::KillMob {
@@ -258,13 +254,13 @@ fn quest_completion_grants_skill_xp() {
         let progress = ch.skills.get("tracking").expect("skill recorded");
         assert_eq!(progress.experience, 35);
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
 
 #[test]
 fn quest_repeatable_can_re_accept_after_completion() {
-    let (db, path) = fresh_db("repeatable");
+    let (db, _temp) = fresh_db(
+"repeatable");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:6", "Endless");
         q.repeatable = true;
@@ -286,13 +282,13 @@ fn quest_repeatable_can_re_accept_after_completion() {
         let ch = db.get_character_data("frank").unwrap().unwrap();
         assert!(ch.active_quests.contains_key("qst:6"));
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
 
 #[test]
 fn quest_non_repeatable_refuses_re_accept() {
-    let (db, path) = fresh_db("non_repeatable");
+    let (db, _temp) = fresh_db(
+"non_repeatable");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:7", "Once");
         q.objectives.push(QuestObjective::KillMob {
@@ -308,13 +304,13 @@ fn quest_non_repeatable_refuses_re_accept() {
         let err = ironmud::quest::offer(&db, "gina", "qst:7");
         assert!(err.contains("already completed"));
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
 
 #[test]
 fn quest_abandon_drops_progress() {
-    let (db, path) = fresh_db("abandon");
+    let (db, _temp) = fresh_db(
+"abandon");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:8", "Quitter");
         q.objectives.push(QuestObjective::KillMob {
@@ -352,7 +348,6 @@ fn quest_abandon_drops_progress() {
         let progress = ch.active_quests.get("qst:8").unwrap();
         assert!(progress.kill_progress.is_empty());
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
 
@@ -373,7 +368,8 @@ fn active_quest_default_skip_serializes_clean() {
 /// containing both names — both should advance.
 #[test]
 fn quest_party_credit_advances_all_damagers() {
-    let (db, path) = fresh_db("party_credit");
+    let (db, _temp) = fresh_db(
+"party_credit");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:party", "Slay the Hydra");
         q.objectives.push(QuestObjective::KillMob {
@@ -402,7 +398,6 @@ fn quest_party_credit_advances_all_damagers() {
         assert!(alice.completed_quests.contains("qst:party"), "alice should be credited");
         assert!(bob.completed_quests.contains("qst:party"), "bob should be credited");
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
 
@@ -411,7 +406,8 @@ fn quest_party_credit_advances_all_damagers() {
 /// expiry helper directly.
 #[test]
 fn quest_expires_when_duration_elapsed() {
-    let (db, path) = fresh_db("expire");
+    let (db, _temp) = fresh_db(
+"expire");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:tl1", "Tick Tock");
         q.duration_secs = Some(60);
@@ -440,14 +436,14 @@ fn quest_expires_when_duration_elapsed() {
         let err = ironmud::quest::offer(&db, "racer", "qst:tl1");
         assert_eq!(err, "");
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
 
 /// Slice 3a: prereq_quest_vnum gates `offer` until the prereq is completed.
 #[test]
 fn quest_offer_blocked_by_prereq() {
-    let (db, path) = fresh_db("offer_prereq");
+    let (db, _temp) = fresh_db(
+"offer_prereq");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut prereq = make_quest("qst:p1", "Tutorial");
         prereq.objectives.push(QuestObjective::KillMob {
@@ -477,7 +473,6 @@ fn quest_offer_blocked_by_prereq() {
         let err = ironmud::quest::offer(&db, "novice", "qst:p2");
         assert_eq!(err, "");
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
 
@@ -485,7 +480,8 @@ fn quest_offer_blocked_by_prereq() {
 /// skill levels meet the threshold.
 #[test]
 fn quest_offer_blocked_by_skill_total() {
-    let (db, path) = fresh_db("offer_skill");
+    let (db, _temp) = fresh_db(
+"offer_skill");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:s1", "Master Class");
         q.min_player_skill_total = Some(15);
@@ -515,7 +511,6 @@ fn quest_offer_blocked_by_skill_total() {
         let err = ironmud::quest::offer(&db, "apprentice", "qst:s1");
         assert_eq!(err, "");
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
 
@@ -525,7 +520,8 @@ fn quest_offer_blocked_by_skill_total() {
 /// quest's offer flips on automatically.
 #[test]
 fn quest_offer_blocked_by_achievement_set_prereq() {
-    let (db, path) = fresh_db("offer_achievement_set");
+    let (db, _temp) = fresh_db(
+"offer_achievement_set");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:endgame", "Court of the Concord");
         q.achievement_set_prereq = Some(ironmud::types::AchievementSetPrereq {
@@ -575,7 +571,6 @@ fn quest_offer_blocked_by_achievement_set_prereq() {
         let ch = db.get_character_data("investigator").unwrap().unwrap();
         assert!(ch.active_quests.contains_key("qst:endgame"));
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
 
@@ -583,7 +578,8 @@ fn quest_offer_blocked_by_achievement_set_prereq() {
 /// and auto-completes a kill-only quest when the threshold is met.
 #[test]
 fn quest_kill_any_mob_objective_accumulates_and_completes() {
-    let (db, path) = fresh_db("kill_any");
+    let (db, _temp) = fresh_db(
+"kill_any");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:bounty", "Hunter Bounty");
         q.objectives.push(QuestObjective::KillAnyMob {
@@ -626,7 +622,6 @@ fn quest_kill_any_mob_objective_accumulates_and_completes() {
         assert!(!ch.active_quests.contains_key("qst:bounty"));
         assert!(ch.completed_quests.contains("qst:bounty"));
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
 
@@ -646,7 +641,8 @@ fn kill_any_key_is_stable_across_input_order() {
 /// visit-only quest.
 #[test]
 fn quest_visit_room_listener_completes_visit_quest() {
-    let (db, path) = fresh_db("visit_listener");
+    let (db, _temp) = fresh_db(
+"visit_listener");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:60", "Wander to the Crossroads");
         q.objectives.push(QuestObjective::VisitRoom {
@@ -664,7 +660,6 @@ fn quest_visit_room_listener_completes_visit_quest() {
         assert!(ch.completed_quests.contains("qst:60"));
         assert!(!ch.active_quests.contains_key("qst:60"));
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
 
@@ -672,7 +667,8 @@ fn quest_visit_room_listener_completes_visit_quest() {
 /// flag-only quest.
 #[test]
 fn quest_dg_flag_listener_completes_flag_quest() {
-    let (db, path) = fresh_db("dg_flag_listener");
+    let (db, _temp) = fresh_db(
+"dg_flag_listener");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:61", "Solve the Riddle");
         q.objectives.push(QuestObjective::DgFlag {
@@ -698,7 +694,6 @@ fn quest_dg_flag_listener_completes_flag_quest() {
         let ch = db.get_character_data("thinker").unwrap().unwrap();
         assert!(ch.completed_quests.contains("qst:61"));
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
 
@@ -707,7 +702,8 @@ fn quest_dg_flag_listener_completes_flag_quest() {
 /// return".
 #[test]
 fn quest_describe_quest_offers_returns_cue() {
-    let (db, path) = fresh_db("describe_offers");
+    let (db, _temp) = fresh_db(
+"describe_offers");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:70", "Hunt the Wolves");
         q.giver_mob_vnum = Some("hunter".into());
@@ -749,7 +745,6 @@ fn quest_describe_quest_offers_returns_cue() {
         // Non-repeatable -> already-completed mobs get nothing.
         assert_eq!(cue, None);
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
 
@@ -764,7 +759,8 @@ fn quest_complete_grants_achievement_reward_via_try_complete() {
         AchievementCategory, AchievementCriterion, AchievementDef, AchievementReward,
         AchievementSource,
     };
-    let (db, path) = fresh_db("achievement_reward");
+    let (db, _temp) = fresh_db(
+"achievement_reward");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         // Achievement: must be Manual so award_core(manual=true) accepts it.
         let ach = AchievementDef {
@@ -812,6 +808,5 @@ fn quest_complete_grants_achievement_reward_via_try_complete() {
             ch.achievements_unlocked.keys().collect::<Vec<_>>()
         );
     }));
-    let _ = std::fs::remove_dir_all(&path);
     result.unwrap();
 }
