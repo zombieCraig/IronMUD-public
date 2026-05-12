@@ -3148,7 +3148,7 @@ fn show_item_flags(item, item_id, connection_id) {
             output += "  Burn time: permanent (no decay)\n";
         }
     }
-    output += build_flag_line("night_vision", flags.night_vision, "Grants night vision when equipped (CircleMUD AFF_INFRAVISION)", display_id, connection_id);
+    output += build_flag_line("night_vision", flags.night_vision, "Grants night vision when equipped", display_id, connection_id);
     output += build_flag_line("fishing_rod", flags.fishing_rod, "Can be used for fishing when held", display_id, connection_id);
     output += build_flag_line("bait", flags.bait, "Can be used as fishing bait", display_id, connection_id);
     output += build_flag_line("foraging_tool", flags.foraging_tool, "Can be used as foraging tool (uses quality for bonus)", display_id, connection_id);

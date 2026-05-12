@@ -92,6 +92,10 @@ pub fn broadcast_to_room(connections: &SharedConnections, room_id: Uuid, message
                     if character.name == exclude {
                         continue;
                     }
+                    // Ignore check: if recipient is ignoring the sender, skip
+                    if character.ignored.iter().any(|i| i == exclude) {
+                        continue;
+                    }
                 }
                 let _ = session.sender.send(message.clone() + "\n");
             }
@@ -118,6 +122,10 @@ pub fn broadcast_to_room_awake(
                     if character.name == exclude {
                         continue;
                     }
+                    // Ignore check: if recipient is ignoring the sender, skip
+                    if character.ignored.iter().any(|i| i == exclude) {
+                        continue;
+                    }
                 }
                 let _ = session.sender.send(message.clone() + "\n");
             }
@@ -142,6 +150,10 @@ pub fn broadcast_to_room_dreaming(
                     if character.name == exclude {
                         continue;
                     }
+                    // Ignore check: if recipient is ignoring the sender, skip
+                    if character.ignored.iter().any(|i| i == exclude) {
+                        continue;
+                    }
                 }
                 let msg = if character.position == CharacterPosition::Sleeping {
                     sleeping_message.clone() + "\n"
@@ -155,10 +167,19 @@ pub fn broadcast_to_room_dreaming(
 }
 
 /// Broadcast a message to all logged-in players
-pub fn broadcast_to_all_players(connections: &SharedConnections, message: &str) {
+pub fn broadcast_to_all_players(connections: &SharedConnections, message: &str, exclude_name: Option<&str>) {
     let conns = connections.lock().unwrap();
     for session in conns.values() {
-        if session.character.is_some() {
+        if let Some(ref character) = session.character {
+            if let Some(exclude) = exclude_name {
+                if character.name == exclude {
+                    continue;
+                }
+                // Ignore check: if recipient is ignoring the sender, skip
+                if character.ignored.iter().any(|i| i == exclude) {
+                    continue;
+                }
+            }
             let _ = session.sender.send(message.to_string());
         }
     }

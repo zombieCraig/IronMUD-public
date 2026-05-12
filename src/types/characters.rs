@@ -98,6 +98,11 @@ pub struct CharacterData {
     // Learned recipes (recipe IDs learned from books/trainers, not auto-learned)
     #[serde(default)]
     pub learned_recipes: std::collections::HashSet<String>,
+    // Social lists
+    #[serde(default)]
+    pub friends: Vec<String>,
+    #[serde(default)]
+    pub ignored: Vec<String>,
     // Foraging cooldown tracking (room_id -> timestamp of last forage)
     #[serde(default)]
     pub foraged_rooms: HashMap<String, i64>,

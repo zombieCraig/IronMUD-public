@@ -126,7 +126,7 @@ fn process_time_tick(db: &db::Db, connections: &SharedConnections) -> Result<()>
     // Fire OnSeasonChange triggers if season changed
     if old_season != new_season {
         let message = get_season_transition_message(&new_season);
-        broadcast_to_all_players(connections, &format!("\n{}\n", message));
+        broadcast_to_all_players(connections, &format!("\n{}\n", message), None);
 
         let mut context = std::collections::HashMap::new();
         context.insert("old_season".to_string(), format!("{}", old_season).to_lowercase());

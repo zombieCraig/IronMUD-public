@@ -52,6 +52,15 @@ fn run_command(args, connection_id) {
 
     // Get target's actual name (proper capitalization)
     let target_char = get_player_character(target_conn);
+    
+    // Ignore check: if target is ignoring the sender, pretend they are offline
+    for i in target_char.ignored {
+        if i.to_lower() == char.name.to_lower() {
+            send_client_message(connection_id, "Player '" + target_name + "' is not online.");
+            return;
+        }
+    }
+
     let actual_name = target_char.name;
 
     // Apply jaw garbling to outgoing speech

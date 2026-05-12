@@ -83,6 +83,18 @@
     "access": "user",
     "description": "Send a private message to another player"
   },
+  "friend": {
+    "access": "user",
+    "description": "Manage your friend list and see their status"
+  },
+  "ftalk": {
+    "access": "user",
+    "description": "Send a message to all online mutual friends"
+  },
+  "ignore": {
+    "access": "user",
+    "description": "Block messages and notifications from specific players"
+  },
   "time": {
     "access": "user",
     "description": "Check the time by looking at the sky"

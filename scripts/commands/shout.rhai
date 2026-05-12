@@ -66,6 +66,10 @@ fn run_command(args, connection_id) {
     let chars_in_room = get_characters_in_room(room_id);
     for listener_name in chars_in_room {
         if listener_name.to_lower() == char_name.to_lower() { continue; }
+        
+        // Ignore check
+        if is_ignoring(listener_name, char_name) { continue; }
+
         let listener_conn = find_player_connection_by_name(listener_name);
         if listener_conn == "" { continue; }
         let heard = spoken;
@@ -105,6 +109,9 @@ fn run_command(args, connection_id) {
         if adj_room_data != () && adj_room_data.flags.soundproof { continue; }
         let adj_chars = get_characters_in_room(adj_room);
         for listener_name in adj_chars {
+            // Ignore check
+            if is_ignoring(listener_name, char_name) { continue; }
+
             let listener_conn = find_player_connection_by_name(listener_name);
             if listener_conn == "" { continue; }
             let heard = spoken;

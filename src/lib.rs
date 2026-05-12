@@ -2917,6 +2917,18 @@ pub async fn handle_connection(
     };
 
     if character_present {
+        let char_name_for_linkdead = {
+            let conns = connections.lock().unwrap();
+            conns
+                .get(&connection_id)
+                .and_then(|s| s.character.as_ref().map(|c| c.name.clone()))
+                .unwrap_or_default()
+        };
+
+        if !char_name_for_linkdead.is_empty() {
+            notify_friends_linkdead(&connections, &state, &char_name_for_linkdead);
+        }
+
         let cleanup_connections = connections.clone();
         let cleanup_state = state.clone();
         tokio::spawn(async move {
@@ -3543,6 +3555,30 @@ pub async fn run_server(state: SharedState, listener: TcpListener, shutdown_rx: 
         } => {},
         _ = shutdown_rx => {
             info!("Shutting down server...");
+        }
+    }
+}
+
+/// Notify friends when a player enters the Linkdead state
+fn notify_friends_linkdead(connections: &SharedConnections, state: &SharedState, char_name: &str) {
+    let world = state.lock().unwrap();
+    if let Ok(all_chars) = world.db.list_all_characters() {
+        let conns = connections.lock().unwrap();
+        for char_data in all_chars {
+            if char_data.friends.iter().any(|f| f.eq_ignore_ascii_case(char_name)) {
+                if char_data.ignored.iter().all(|i| !i.eq_ignore_ascii_case(char_name)) {
+                    for session in conns.values() {
+                        if let Some(ref c) = session.character {
+                            if c.name == char_data.name && session.disconnected_at.is_none() {
+                                let _ = session.sender.send(format!(
+                                    "\x1b[1;33m[Friend] {} has lost their connection.\x1b[0m\n",
+                                    char_name
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -506,6 +506,7 @@ fn complete_login(connection_id, char_data) {
     }
 
     send_client_message(connection_id, "Welcome, " + char_data.name + "!");
+    notify_friends_login(char_data.name);
 
     // Check for must_change_password flag
     if char_data.must_change_password {

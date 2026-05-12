@@ -595,6 +595,7 @@ async fn main() -> Result<()> {
     broadcast_to_all_players(
         &connections,
         "\n*** SERVER NOTICE: The server is shutting down. Your progress will be saved. ***\n",
+        None,
     );
 
     // Notify chat integrations about shutdown
@@ -645,7 +646,7 @@ async fn run_shutdown_countdown(
         "\n*** SERVER SHUTDOWN INITIATED ***\nReason: {}\nInitiated by: {}\nServer will shut down in {} seconds.\nType 'admin cancel' to abort.\n",
         cmd.reason, cmd.admin_name, remaining
     );
-    broadcast_to_all_players(connections, &initial_msg);
+    broadcast_to_all_players(connections, &initial_msg, None);
     let _ = chat_tx.send(ChatMessage::Broadcast(format!(
         "Server shutdown initiated by {} ({}). Shutting down in {} seconds.",
         cmd.admin_name, cmd.reason, remaining
@@ -657,7 +658,7 @@ async fn run_shutdown_countdown(
     while remaining > 0 {
         // Check if cancelled
         if *cancel_rx.borrow() {
-            broadcast_to_all_players(connections, "\n*** SERVER SHUTDOWN CANCELLED ***\n");
+            broadcast_to_all_players(connections, "\n*** SERVER SHUTDOWN CANCELLED ***\n", None);
             let _ = chat_tx.send(ChatMessage::Broadcast(
                 "Server shutdown has been cancelled.".to_string(),
             ));
@@ -681,7 +682,7 @@ async fn run_shutdown_countdown(
                     _ = tokio::time::sleep(Duration::from_secs(1)) => {}
                     _ = cancel_rx.changed() => {
                         if *cancel_rx.borrow() {
-                            broadcast_to_all_players(connections, "\n*** SERVER SHUTDOWN CANCELLED ***\n");
+                            broadcast_to_all_players(connections, "\n*** SERVER SHUTDOWN CANCELLED ***\n", None);
                             let _ = chat_tx.send(ChatMessage::Broadcast("Server shutdown has been cancelled.".to_string()));
                             return true;
                         }
@@ -695,7 +696,7 @@ async fn run_shutdown_countdown(
         if remaining > 0 && milestones.contains(&remaining) {
             let unit = if remaining == 1 { "second" } else { "seconds" };
             let msg = format!("\n*** SERVER SHUTDOWN in {} {} ***\n", remaining, unit);
-            broadcast_to_all_players(connections, &msg);
+            broadcast_to_all_players(connections, &msg, None);
         }
 
         // If we're at 0 or below a milestone, break to continue shutdown
@@ -705,6 +706,6 @@ async fn run_shutdown_countdown(
     }
 
     // Final countdown completed
-    broadcast_to_all_players(connections, "\n*** SERVER SHUTDOWN NOW ***\n");
+    broadcast_to_all_players(connections, "\n*** SERVER SHUTDOWN NOW ***\n", None);
     false // Not cancelled, proceed with shutdown
 }

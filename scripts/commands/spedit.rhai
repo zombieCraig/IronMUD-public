@@ -9,7 +9,7 @@ import "olc_helpers" as olc;
 
 // Resolve spawn point from index or UUID within a filtered list
 fn resolve_spawn_point(spawns, identifier) {
-    let idx = parse_int(identifier);
+    let idx = try_parse_int(identifier);
     if idx != () {
         if idx >= 0 && idx < spawns.len() {
             return spawns[idx];
@@ -234,14 +234,15 @@ fn handle_buried(spawns, parts, idx_pos, connection_id) {
         send_client_message(connection_id, "Usage: spedit buried [filter] <index> <on|off>");
         return;
     }
-    let idx = parse_int(parts[idx_pos]);
-    if idx == () { send_client_message(connection_id, "Invalid index."); return; }
-    let zero_idx = idx - 1;
-    if zero_idx < 0 || zero_idx >= spawns.len() {
-        send_client_message(connection_id, "Index out of range.");
+
+    let sp_identifier = parts[idx_pos];
+    let sp = resolve_spawn_point(spawns, sp_identifier);
+
+    if sp == () {
+        send_client_message(connection_id, "Spawn point not found: " + sp_identifier);
         return;
     }
-    let sp = spawns[zero_idx];
+
     if sp.entity_type != "Item" {
         send_client_message(connection_id, "buried only applies to item spawn points.");
         return;
@@ -416,8 +417,8 @@ fn handle_create(area, parts, connection_id) {
 
     let entity_type = parts[2];
     let vnum = parts[3];
-    let max_count = parse_int(parts[4]);
-    let interval_secs = parse_int(parts[5]);
+    let max_count = try_parse_int(parts[4]);
+    let interval_secs = try_parse_int(parts[5]);
 
     if max_count == () || interval_secs == () {
         send_client_message(connection_id, "Invalid numbers for max_count or interval.");
@@ -535,7 +536,7 @@ fn handle_max(spawns, parts, idx_pos, connection_id) {
         return;
     }
 
-    let count = parse_int(parts[idx_pos + 1]);
+    let count = try_parse_int(parts[idx_pos + 1]);
     if count == () {
         send_client_message(connection_id, "Invalid count.");
         return;
@@ -560,7 +561,7 @@ fn handle_interval(spawns, parts, idx_pos, connection_id) {
         return;
     }
 
-    let secs = parse_int(parts[idx_pos + 1]);
+    let secs = try_parse_int(parts[idx_pos + 1]);
     if secs == () {
         send_client_message(connection_id, "Invalid interval.");
         return;
@@ -806,7 +807,7 @@ fn handle_dep_add(sp, parts, idx_offset, connection_id) {
 fn parse_dep_count(parts, idx) {
     // Parse optional count parameter at the given index
     if parts.len() <= idx { return 1; }
-    let parsed = parse_int(parts[idx]);
+    let parsed = try_parse_int(parts[idx]);
     if parsed == () { return 1; }
     parsed
 }
@@ -814,7 +815,7 @@ fn parse_dep_count(parts, idx) {
 fn parse_dep_chance(parts, idx) {
     // Parse optional chance parameter at the given index
     if parts.len() <= idx { return 100; }
-    let parsed = parse_int(parts[idx]);
+    let parsed = try_parse_int(parts[idx]);
     if parsed == () { return 100; }
     parsed
 }
@@ -829,7 +830,7 @@ fn handle_dep_remove(sp, parts, idx_offset, connection_id) {
         return;
     }
 
-    let idx = parse_int(parts[idx_offset + 2]);
+    let idx = try_parse_int(parts[idx_offset + 2]);
     if idx == () {
         send_client_message(connection_id, "Invalid index.");
         return;

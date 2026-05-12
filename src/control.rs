@@ -110,7 +110,7 @@ fn execute(cmd: ControlCommand, connections: &SharedConnections) -> ControlRespo
             if !msg.ends_with('\n') {
                 msg.push('\n');
             }
-            broadcast_to_all_players(connections, &msg);
+            broadcast_to_all_players(connections, &msg, None);
             info!("Control: broadcast delivered ({} bytes)", msg.len());
             ControlResponse::Ok
         }

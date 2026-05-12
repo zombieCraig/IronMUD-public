@@ -1,7 +1,7 @@
 // src/script/utilities.rs
 // MXP, ANSI colors, AFK, terminal size, and text formatting functions
 
-use crate::SharedConnections;
+use crate::{SharedConnections, SharedState};
 use crate::db::Db;
 use rhai::Engine;
 use std::sync::Arc;
@@ -33,7 +33,7 @@ pub fn strip_mxp_tags(s: &str) -> String {
 }
 
 /// Register utility functions (MXP, ANSI colors, AFK, terminal, text formatting)
-pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections) {
+pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, state: SharedState) {
     // ========== MXP (MUD eXtension Protocol) Functions ==========
 
     // is_mxp_enabled(connection_id) -> bool - Check if MXP is enabled for connection
@@ -329,6 +329,87 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             }
         }
         0
+    });
+
+    // ========== Social & Notification Functions ==========
+
+    // notify_friends_logout(char_name) - Notify friends when a player logs out
+    let conns = connections.clone();
+    let state_clone = state.clone();
+    engine.register_fn("notify_friends_logout", move |char_name: String| {
+        let world = state_clone.lock().unwrap();
+        if let Ok(all_chars) = world.db.list_all_characters() {
+            let conns = conns.lock().unwrap();
+            for char_data in all_chars {
+                if char_data.friends.iter().any(|f: &String| f.eq_ignore_ascii_case(&char_name)) {
+                    if char_data.ignored.iter().all(|i: &String| !i.eq_ignore_ascii_case(&char_name)) {
+                        for session in conns.values() {
+                            if let Some(ref c) = session.character {
+                                if c.name == char_data.name && session.disconnected_at.is_none() {
+                                    let _ = session.sender.send(format!(
+                                        "\x1b[1;31m[Friend] {} has left the realm.\x1b[0m\n",
+                                        char_name
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // notify_friends_login(char_name) - Notify friends when a player logs in
+    let conns = connections.clone();
+    let state_clone = state.clone();
+    engine.register_fn("notify_friends_login", move |char_name: String| {
+        let world = state_clone.lock().unwrap();
+        // Get all characters to find who has this player as a friend
+        if let Ok(all_chars) = world.db.list_all_characters() {
+            let conns = conns.lock().unwrap();
+            for char_data in all_chars {
+                if char_data.friends.iter().any(|f: &String| f.eq_ignore_ascii_case(&char_name)) {
+                    // This character has char_name as a friend.
+                    // If they are online and NOT ignoring char_name, notify them.
+                    if char_data.ignored.iter().all(|i: &String| !i.eq_ignore_ascii_case(&char_name)) {
+                        for session in conns.values() {
+                            if let Some(ref c) = session.character {
+                                if c.name == char_data.name && session.disconnected_at.is_none() {
+                                    let _ = session.sender.send(format!(
+                                        "\x1b[1;32m[Friend] {} has entered the realm.\x1b[0m\n",
+                                        char_name
+                                    ));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // is_ignoring(player_name, target_name) -> bool - Check if player is ignoring target
+    let state_clone = state.clone();
+    engine.register_fn("is_ignoring", move |player_name: String, target_name: String| {
+        let world = state_clone.lock().unwrap();
+        if let Ok(Some(char_data)) = world.db.get_character_data(&player_name) {
+            return char_data.ignored.iter().any(|i: &String| i.eq_ignore_ascii_case(&target_name));
+        }
+        false
+    });
+
+    // is_player_online(char_name) -> bool - Check if character is online
+    let conns = connections.clone();
+    engine.register_fn("is_player_online", move |char_name: String| {
+        let conns = conns.lock().unwrap();
+        for session in conns.values() {
+            if let Some(ref character) = session.character {
+                if character.name.eq_ignore_ascii_case(&char_name) {
+                    return session.disconnected_at.is_none();
+                }
+            }
+        }
+        false
     });
 
     // is_player_idle(char_name) -> bool - Check idle status by character name

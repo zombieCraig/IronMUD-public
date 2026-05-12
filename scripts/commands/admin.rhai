@@ -450,7 +450,7 @@ fn handle_broadcast(connection_id, args) {
     let announcement = "\n*** SERVER ANNOUNCEMENT ***\n" + message + "\n***************************\n";
 
     // Broadcast to all players
-    broadcast_to_all(announcement);
+    broadcast_to_all_players(announcement);
 
     send_client_message(connection_id, "Broadcast sent to all players.");
 }

@@ -32,6 +32,7 @@ fn run_command(args, connection_id) {
         clear_player_character(connection_id);
 
         send_client_message(connection_id, "Goodbye, " + char_name + ".");
+        notify_friends_logout(char_name);
     } else {
         send_client_message(connection_id, "Goodbye.");
     }

@@ -934,7 +934,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         }
         if season_changed {
             let msg = get_season_transition_message(&new_season);
-            broadcast_to_all_players(&conns, &format!("\n{}\n", msg));
+            broadcast_to_all_players(&conns, &format!("\n{}\n", msg), None);
         }
 
         rhai::Dynamic::from(result)

@@ -114,7 +114,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         tour_origin_room,
         spawn_room_id
     );
-    register_string_vec!(engine, CharacterData, traits, learned_spells);
+    register_string_vec!(engine, CharacterData, traits, learned_spells, friends, ignored);
 
     engine
         .register_get("bank_gold", |c: &mut CharacterData| c.bank_gold)
@@ -246,6 +246,9 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 skills: std::collections::HashMap::new(),
                 // Learned recipes
                 learned_recipes: std::collections::HashSet::new(),
+                // Social lists
+                friends: Vec::new(),
+                ignored: Vec::new(),
                 // Foraging cooldown
                 foraged_rooms: std::collections::HashMap::new(),
                 // Group/Party system
@@ -973,8 +976,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
 
     // broadcast_to_all(message) - Send message to all logged-in players
     let conns = connections.clone();
-    engine.register_fn("broadcast_to_all", move |message: String| {
-        crate::broadcast_to_all_players(&conns, &message);
+    engine.register_fn("broadcast_to_all_players", move |message: String| {
+        crate::broadcast_to_all_players(&conns, &message, None);
     });
 
     // Register connection management functions (using SharedConnections, not SharedState)
@@ -1945,7 +1948,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     );
 
     // Register submodule functions
-    utilities::register(engine, db.clone(), connections.clone());
+    utilities::register(engine, db.clone(), connections.clone(), state.clone());
     spawn::register(engine, db.clone(), connections.clone());
     api_keys::register(engine, db.clone());
     areas::register(engine, db.clone());
