@@ -20,7 +20,7 @@ The plan follows the `ironmud-area-designer` skill's interleaved 6-phase workflo
 | 3 | Core Plot | ✅ approved · ✅ deep-dive approved (2026-05-10) | — (pure design) | — |
 | 4 | Seed Quests | ✅ approved · ✅ deep-dive approved (2026-05-10) | — (pure design) | — |
 | 5 | Map + Room Build | ✅ approved · ✅ deep-dive approved (2026-05-10) | ✅ approved | ✅ built (2026-05-10) |
-| 6 | Population, Dialogue, Quests | ✅ approved | ✅ approved | ⏳ in progress — 6.0 ✅, 6.1 ✅, 6.2 ✅, 6.3 ✅, 6.4 ✅, 6.5 ⚠️ (2026-05-11); 6.6–6.19 pending |
+| 6 | Population, Dialogue, Quests | ✅ approved | ✅ approved | ⏳ in progress — 6.0 ✅, 6.1 ✅, 6.2 ✅, 6.3 ✅, 6.4 ✅, 6.5 ⚠️, 6.6 ✅, 6.7 ✅, 6.8 ✅, 6.9 ✅, 6.10 ✅ (2026-05-11); 6.11–6.19 pending |
 
 When you resume work, advance the lowest-numbered "⏳ drafted, awaiting approval" entry first. A slice is ready to execute when both its phase's design AND its phase's build plan show ✅.
 
@@ -1648,6 +1648,8 @@ Slice ordering follows dependency: **item prototypes (6.0)** → cast bodies →
 | 6.3 | Clan support cast (15 across 5 districts) | 15 `create_spawn_point` + 5 `add_mobile_routine` (Émeric day/night ×2, Beau bartender, Sexton cemetery-anchor, Coyote rover) | ✅ shipped 2026-05-11 |
 | 6.4 | Mortal day-cast + guards (15 NPCs) | 15 `create_spawn_point` + 27 `add_mobile_routine` (5 shop mortals day/night ×2, 3 cathedral/hotel sentinels ×1, 5 patrol guards ×2, 2 rover guards ×2). `apply_mobile_preset` skipped — Phase 2.6 already applied `town_guard_captain` to all 7 guards. | ✅ shipped 2026-05-11 |
 | 6.5 | Hidden threats (5 NPCs) | 5 `create_spawn_point` + 7 `add_mobile_routine` (3 hunters night-patrol/day-sleep ×2, Casey anarch sentinel ×1, Stranger sentinel no-routine). `apply_mobile_preset` skipped — Phase 2.7 already applied `vampire_hunter` and `vampire_elder` presets. | ⚠️ shipped 2026-05-11 with one gap |
+| 6.6 | Mireille tutorial dialogue + Q1 | 1 `create_quest` (`cendre:q-tutorial`, 5× VisitRoom + Item journal + Achievement `cendre_met_all_sires`) + 8 `add_mobile_dialogue_node` (root/concord/havens/prince/offer/accepted/progress/turnin/post_completion) + 19 `add_mobile_dialogue_choice` (gated by `IsThinblood` + local `tutorial_acknowledged` flag, `QuestActive`, `QuestCompletable`, `HasAchievement`). VisitRoom listeners auto-progress — no `add_room_trigger` needed (spec's room-trigger sketch is obsolete since `feature_quests_slices2_3`). | ✅ shipped 2026-05-11 |
+| 6.7 | Brujah embrace (Q2 "Iron and Blood") | 1 `create_mobile` (`cendre:foundry-enforcer`, lvl 6, clan_brujah, world_max 3) + 1 `apply_mobile_preset` (vampire_goon) + 1 `create_spawn_point` in foundry-pit (max 3, 300s respawn) + 1 `create_quest` (KillMob foundry-enforcer ×3 → EmbraceClan brujah; prereq q-tutorial) + 7 `add_mobile_dialogue_node` (root/challenge/accepted/proving/proven/pit_chat/marcel) + 16 `add_mobile_dialogue_choice` (gated by IsThinblood + quest_complete q-tutorial + local `challenge_offered` flag; QuestActive proving; quest_complete proven). Marcel branch teases Q-I1 (Q-I1 itself lands in slice 6.12). | ✅ shipped 2026-05-11 |
 
 Slice 6.0 notes:
 
@@ -1775,6 +1777,97 @@ Slice 6.5 notes:
     - `cendre:threat-hunter-voss` → `cendre:bayou-trail-3`: `3ed49d25-4216-4134-ae35-f7dc706b6c35`
     - `cendre:threat-casey-anarch` → `cendre:foundry-cellar`: `56570154-db7b-45b8-ac9e-563afe60159e`
 - DoD partially met (4/5): hunters appear in cemetery/alley/bayou-trail at night and retire to hotel-foyer at dawn; Casey waits in foundry-cellar; Stranger spawns in safehouse interior on next reset. Only the `replace_on_respawn: true` semantic on the Stranger's spawn point is missing pending the MCP extension.
+
+Slice 6.6 notes:
+
+- Q1 (`cendre:q-tutorial`) created with the five VisitRoom objectives matching §4.B; auto-progress fires via the `feature_quests_slices2_3` room-visit listener, so the spec's 5× `add_room_trigger` was skipped (per-haven progress flag is unnecessary — VisitRoom progress is tracked on the active quest natively).
+- Mireille's dialogue tree: 8 nodes (`root`, `concord`, `havens`, `prince`, `offer`, `accepted`, `progress`, `turnin`, `post_completion`) and 19 choices. Tree shape:
+  - `root` is always-on greeting; offers concord/havens/prince flavor branches plus the state-gated path.
+  - State gates on root choices: `duty` (IsThinblood AND `flag_unset` local `tutorial_acknowledged`), `progress` (QuestActive), `witness` (QuestCompletable, fires CompleteQuest), `respects` (HasAchievement cendre_met_all_sires).
+  - `offer.accept` carries `once_per_player: true` + effects `[OfferQuest cendre:q-tutorial, SetFlag tutorial_acknowledged local]`. The local flag hides the duty choice forever after first acceptance (Rust's `DialogueCondition` has no negation, so we gate on `flag_unset` of a stamp-on-accept flag rather than trying to express `NOT QuestActive AND NOT QuestComplete`).
+  - Defensive turn-in: even if auto-complete fires before the player returns, `respects` still surfaces post-completion flavor via the achievement check. If somehow the listener missed the 5th visit, `witness` still completes via the dialogue effect path.
+- Q1's giver_mob_vnum is `cendre:seneschal-mireille` (canonical), so player `quest` lookups + builder tooling correctly back-reference the seneschal. Server-side spawn auto-refreshed Mireille's live instances on each node/choice add.
+- No `add_room_trigger` calls landed for this slice (5 saved against the original sketch).
+- Local flag `tutorial_acknowledged` is scoped to mob vnum `cendre:seneschal-mireille` and won't collide with any other dialogue tree's namespace.
+
+Slice 6.7 notes:
+
+- Q2 (`cendre:q-embrace-brujah`) follows the canonical §4.B table shape: `KillMob cendre:foundry-enforcer × 3 → EmbraceClan brujah`. The Slice 6.7 sketch line (BringItem foundry-token from foundry-bones via `add_spawn_dependency`) is obsolete — §4.B was authoritative; built per §4.B. Saved one `add_spawn_dependency` call and the now-unused token tracking.
+- New mob `cendre:foundry-enforcer` (UUID `bd4c3b73-4052-40a6-b738-48c966baa508`): lvl 6, `vampire_goon` preset applied → flags {aggressive, memory, no_sleep, no_charm, undead, vampire, holy_vulnerable}, on-hit bleeding (50% / 3 / 3), HP 60, faction `clan_brujah`, `world_max_count: 3` matches the §4.A spec and `cendre:foundry-pit`'s 3-cap room note. Gender male.
+- Spawn point UUID `656c6502-9e82-4af8-8f34-7f5873ccdad0` at `cendre:foundry-pit` (`c339d93f-b7d4-4a98-b608-0da8cddb5b08`), enabled, `max_count: 3`, `respawn_interval_secs: 300`. The pit auto-fills with three enforcers waiting for a thinblood to step in.
+- Tony's tree mirrors the slice 6.6 pattern with one extra branch: `marcel` (Iron Marcel teaser) is always accessible. Tony references Marcel both pre- and post-embrace; this seeds Q-I1 narrative without depending on Q-I1's actual existence (Q-I1 hooks land in slice 6.12). When Q-I1 ships, `marcel` choice text may evolve into an OfferQuest hand-off branch.
+- State gates on root: `challenge` (IsThinblood + quest_complete q-tutorial + flag_unset local `challenge_offered`), `progress` (QuestActive), `acknowledge` (quest_complete). Same once_per_player + stamp-on-accept pattern as Mireille's tree.
+- `accepted` node is exit-only — Tony's not interested in further chat the moment he's set you on the pit. (No "back" choice; pacing is part of his voice.)
+- `proven` is the canonical "you're in the clan" beat. The trait `clan_brujah` is granted automatically by `apply_clan_acknowledgment` via the EmbraceClan reward's listener path on the third kill; Tony's `proven` branch gates on `quest_complete` which is set in the same path.
+- Spec drift fix: the §4.B-vs-Slice-sketch mismatch (KillMob vs BringItem) is now resolved; spec-table-canonical pattern confirmed for the remaining 4 embrace quests in 6.8-6.11.
+
+UUIDs assigned for slice 6.7:
+
+```
+cendre:foundry-enforcer (mob)         bd4c3b73-4052-40a6-b738-48c966baa508
+cendre:foundry-enforcer (spawn)       656c6502-9e82-4af8-8f34-7f5873ccdad0
+```
+
+Slice 6.8 notes:
+
+- Q3 (`cendre:q-embrace-toreador`) follows the canonical §4.B shape: `BringItem cendre:item-painting × 1, return_to_mob_vnum: cendre:sire-toreador → EmbraceClan toreador`. Auto-turn-in fires through the give-listener path; no `CompleteQuest` dialogue branch needed. Prereq `cendre:q-tutorial`.
+- The painting (`cendre:item-painting`, already-existing Slice 6.0 prototype) is sourced via a fresh world-spawn at `cendre:conservatory-collector-apt-2` (per Slice 6.7-6.11 sketch: world-find rather than drop dependency). Single instance, 600s respawn — the collector's gallery refills slowly so a second thinblood arriving the same night finds it bare.
+- New mob `cendre:conservatory-collector` (Bertrand Lacaille, UUID `5df7dff2-cf62-4892-8ffc-e09ab4321360`): mortal, no preset, no faction, sentinel, lvl 4 / 28 HP / 1d4 damage / AC 10. Sits in apt-1 as scenery + future Q-I hook. `world_max_count: 1`. No dialogue tree this slice — the "negotiate path" prose hook in §4.B stays an unimplemented flavor option for now; today the only path is the world-find. Could land as a future polish slice if dialogue-driven `GiveItem` becomes the preferred design.
+- Spawn-point UUIDs:
+    - `cendre:conservatory-collector` → `cendre:conservatory-collector-apt-1` (max_count:1, respawn:600s): `5dc755d4-96fe-4d76-9d83-6bfb555a39cb`
+    - `cendre:item-painting` → `cendre:conservatory-collector-apt-2` (max_count:1, respawn:600s): `c486f508-9700-4c68-b484-14f3d2a543bf`
+- Yvette's tree: 7 nodes (`root`, `offer`, `accepted`, `progress`, `proven`, `mathilde`, `stage`) and 14 choices. Voice: imperial Old World restraint — short pronouncements, single sentences, occasional sardonic kindness. The `mathilde` branch is the Q-I2 narrative teaser (always accessible, parallels Tony's `marcel` branch in 6.7); seeds murder-investigation thread for slice 6.13. The `stage` branch gives Conservatory political flavor (the Toreador self-image as the regime's mirror).
+- State gates mirror the Mireille/Tony pattern: `commission` (IsThinblood + `quest_complete cendre:q-tutorial` + `flag_unset` local `commission_offered`); `progress` (QuestActive); `acknowledge` (quest_complete). `offer.accept` carries `once_per_player: true` + effects `[offer_quest, set_flag commission_offered local]`. Stamp-on-accept local flag scopes to `cendre:sire-toreador`, no collision risk.
+- **Builder-schema correction caught**: the first attempt at `flag_unset` used `key: "..."` (the field name from set-quest-choice work). Rust's `DialogueCondition::FlagUnset` uses `name`, not `key`. Discovered via a 422 on the first choice add; verified against `src/types/dialogue.rs:69` and rebuilt. Recording here so 6.9–6.11 (and any future flag-gated choice) use `{kind: "flag_unset", name: "...", scope: "local"}`.
+
+UUIDs assigned for slice 6.8:
+
+```
+cendre:conservatory-collector (mob)   5df7dff2-cf62-4892-8ffc-e09ab4321360
+cendre:conservatory-collector (spawn) 5dc755d4-96fe-4d76-9d83-6bfb555a39cb
+cendre:item-painting (spawn)          c486f508-9700-4c68-b484-14f3d2a543bf
+```
+
+Slice 6.9 notes:
+
+- Q4 (`cendre:q-embrace-ventrue`) follows the canonical §4.B shape: `BringItem cendre:item-debt-marker × 1, return_to_mob_vnum: cendre:sire-ventrue → EmbraceClan ventrue`. Prereq `cendre:q-tutorial`. Sourced via spawn-dependency (not world-find), matching the Slice 6.7–6.11 sketch line for Q4: `add_spawn_dependency(cendre:bourse-debtor, cendre:item-debt-marker)`.
+- New mob `cendre:bourse-debtor` (Vidal Cassen, UUID `5aa6f099-7c29-4045-aea6-e1c0e44ace3b`): mortal ghoul, lvl 5 / 42 HP / 1d6+2 / AC 9, faction `clan_ventrue`, `flags.{cowardly, aware}`, perception 4, no preset (per §4.A "no preset, no faction" — but the spec note says faction `clan_ventrue`; followed the table). `world_max_count: 1`. The cowardly flag is thematic: a ghoul running thin on his patron's blood flees at low HP, making the encounter feel like collection rather than execution.
+- **Spec-vs-room-flag conflict resolved**: §4.D maps debtor to `cendre:bourse-bank-office` (or wanders bourse district), but bank-office is `combat_zone: "safe"` — blocks the kill objective entirely. Placed the spawn at `cendre:bourse-club-2` ("The Club's Back Rooms", pvp / indoors / dark / no_magic) instead. Thematically tighter: he's literally hiding in the unmapped rooms beneath the salon, exactly as Saint-Clair says in the dialogue. Pattern note: Q5/Q6 may hit the same combat_zone gotcha when placing their drop mobs — always grep the room's `combat_zone` before assigning to a kill-objective spawn.
+- Spawn-point UUID `da89f2a0-3765-4f71-bba3-e5c332de164c` at `cendre:bourse-club-2` (max_count:1, respawn:600s). Drop dependency: `cendre:item-debt-marker` × 1 to `inventory` (chance 100). On first spawn (debtor was already live in the world after creation), the dependency listener auto-attached an inventory copy to the existing instance — no manual `spawn_item` needed.
+- Henri's tree: 7 nodes (`root`, `offer`, `accepted`, `progress`, `proven`, `forgery`, `concord`) + 14 choices. Voice: judicial gravitas, banker's economy of speech, only one or two words ever wasted ("Discipline." / "Satisfactory."). Two narrative-teaser branches always-on:
+  - `forgery` seeds Q-I3 (forged seals / Émeric the clerk audit-ledger thread) for slice 6.14.
+  - `concord` gives Henri's view of the political settlement — useful future Q7 endgame hook.
+- State gates mirror Mireille/Tony/Yvette: `duty` (IsThinblood + `quest_complete cendre:q-tutorial` + `flag_unset` local `duty_offered`); `progress` (QuestActive); `acknowledge` (quest_complete). `offer.accept` carries `once_per_player: true` + effects `[offer_quest, set_flag duty_offered local]`. Local stamp-flag scope: `cendre:sire-ventrue`. Three-slice consistency (6.6/6.7/6.8/6.9) on the gate pattern — confirmed reusable for 6.10/6.11.
+- No FlagUnset 422 this slice (the schema correction from 6.8 stuck — used `name`/`scope` from the start).
+
+UUIDs assigned for slice 6.9:
+
+```
+cendre:bourse-debtor (mob)            5aa6f099-7c29-4045-aea6-e1c0e44ace3b
+cendre:bourse-debtor (spawn)          da89f2a0-3765-4f71-bba3-e5c332de164c
+```
+
+Slice 6.10 notes:
+
+- Q5 (`cendre:q-embrace-nosferatu`) follows the canonical §4.B shape: `BringItem cendre:item-relic × 1, return_to_mob_vnum: cendre:sire-nosferatu → EmbraceClan nosferatu`. Prereq `cendre:q-tutorial`.
+- **Source path picked: world-find at `cendre:catacombs-branch-3`** (Slice 6.7–6.11 sketch offered either world-find OR `add_spawn_dependency(cendre:catacomb-ribcage, cendre:item-relic)`). Chose world-find for two reasons: (1) thematic — Caretaker's "sealed-tomb relic" framing is graverobbing, not assassination; (2) avoids the dissonance of killing fellow-Nosferatu Ribcage to earn admission to his own clan. Ribcage remains pure flavor / Q-I scout. Pattern note: same logic should apply to the other clan-staffed havens (don't make players kill clan-aligned NPCs to embrace into that clan).
+- New mob `cendre:catacomb-risen` (UUID `ecd4c6f9-3169-49ad-8a7f-0c56cc162ae2`): lvl 5 / 38 HP / 1d6+1 / AC 8, `flags.{aggressive, no_sleep, no_charm}`, no faction, no preset, `world_max_count: 2`. Acts as atmospheric guards in the crumbling passage between cemetery and deeper catacombs — they don't gate the relic (relic is in branch-3, risen are in branch-1), but they make the descent feel populated and dangerous. Spec §4.A specified `world_max_count: 2` and ×2 cap; honored both. (Some §4.A spec language said "1–2 minor risen mobs" — settled on 2 for a stronger ambient presence.)
+- Spawn-point UUIDs:
+    - `cendre:catacomb-risen` → `cendre:catacombs-branch-1` (max_count:2, respawn:600s): `5bee89e7-eecd-4c39-9855-e7890ca48169`
+    - `cendre:item-relic` → `cendre:catacombs-branch-3` (max_count:1, respawn:600s): `c3a87f87-12e0-46f2-939a-6e151b52886c`
+- Caretaker's tree: 7 nodes (`root`, `offer`, `accepted`, `progress`, `proven`, `gris`, `below`) + 14 choices. Voice: archival patience, slow precision, the rare flash of fondness for the dead. Two always-on narrative-teaser branches:
+  - `gris` is the **Q-I4 narrative seed AND embedded Q-I4 hook**. The Caretaker is the canonical Q-I4 quest-giver (§4.D + line 768 note "Dialogue branch bypasses IsClanAcknowledged for this thread"). Today the `gris` branch is exposition-only — the OfferQuest effect for Q-I4 will be added in slice 6.15 (Q-I4 build). The flavor text already names the item-soil-bayou and item-soil-catacomb sample loop and points to the exam chamber east, so the player can plausibly start hunting samples even before the formal quest exists.
+  - `below` is the Catacombs-as-archive philosophy beat — useful Q7 endgame hook ("we know a great deal. we use very little of it").
+- State gates mirror 6.6–6.9: `errand` (IsThinblood + `quest_complete cendre:q-tutorial` + `flag_unset` local `errand_offered`); `progress` (QuestActive); `acknowledge` (quest_complete). `offer.accept` carries `once_per_player: true` + effects `[offer_quest, set_flag errand_offered local]`. Local stamp-flag scope: `cendre:sire-nosferatu`. Four-slice consistency now confirmed (6.7/6.8/6.9/6.10) — pattern is locked for 6.11.
+- No combat-zone gotcha this slice (branch-3 is `combat_zone: null` PvP), but item-spawn was world-find anyway so it was moot.
+
+UUIDs assigned for slice 6.10:
+
+```
+cendre:catacomb-risen (mob)           ecd4c6f9-3169-49ad-8a7f-0c56cc162ae2
+cendre:catacomb-risen (spawn)         5bee89e7-eecd-4c39-9855-e7890ca48169
+cendre:item-relic (spawn)             c3a87f87-12e0-46f2-939a-6e151b52886c
+```
 
 ---
 

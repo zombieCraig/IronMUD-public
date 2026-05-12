@@ -549,7 +549,6 @@ pub fn build_negotiation(cmd: u8, option: u8) -> Vec<u8> {
 /// Build initial negotiation sequence for character mode
 ///
 /// Sends:
-/// - WILL ECHO (server will echo characters)
 /// - WILL SGA (suppress go ahead)
 /// - DO SGA (request client suppress go ahead)
 /// - DO NAWS (request window size)
@@ -557,9 +556,6 @@ pub fn build_negotiation(cmd: u8, option: u8) -> Vec<u8> {
 /// - DO MXP (request MXP support)
 pub fn build_initial_negotiations() -> Vec<u8> {
     let mut bytes = Vec::new();
-
-    // Server will echo characters back
-    bytes.extend_from_slice(&[IAC, WILL, OPT_ECHO]);
 
     // Suppress Go Ahead (required for character mode)
     bytes.extend_from_slice(&[IAC, WILL, OPT_SGA]);
@@ -692,6 +688,71 @@ pub fn supports_title_updates(state: &TelnetState) -> bool {
     false
 }
 
+/// Check if the client should have server-side echo enabled.
+///
+/// We only enable server-side echo (which triggers character-at-a-time mode)
+/// for standard terminal emulators. Dedicated MUD clients generally handle
+/// their own local echo and input editing, and interpreting WILL ECHO as
+/// password masking mode ruins the user experience.
+pub fn should_enable_server_echo(state: &TelnetState) -> bool {
+    // If it's a known MUD client, do not enable server echo
+    if let Some(ref client) = state.client_name {
+        let client_lower = client.to_lowercase();
+        if client_lower.contains("mudlet")
+            || client_lower.contains("tintin")
+            || client_lower.contains("blightmud")
+            || client_lower.contains("cmud")
+            || client_lower.contains("zmud")
+            || client_lower.contains("mushclient")
+            || client_lower.contains("portal")
+            || client_lower.contains("gmud")
+        {
+            return false;
+        }
+    }
+
+    // If it looks like a standard terminal emulator, enable server echo
+    if let Some(ref ttype) = state.terminal_type {
+        let ttype_lower = ttype.to_lowercase();
+        if ttype_lower.contains("xterm")
+            || ttype_lower.contains("kitty")
+            || ttype_lower.contains("iterm")
+            || ttype_lower.contains("putty")
+            || ttype_lower.contains("vte")
+            || ttype_lower.contains("gnome")
+            || ttype_lower.contains("konsole")
+            || ttype_lower.contains("rxvt")
+            || ttype_lower.contains("alacritty")
+            || ttype_lower.contains("linux")
+            || ttype_lower.contains("ansi")
+        {
+            return true;
+        }
+    }
+
+    // Also check client_name for terminal emulator names, because non-MTTS clients
+    // just send their terminal type in response to the first TTYPE request.
+    if let Some(ref client) = state.client_name {
+        let client_lower = client.to_lowercase();
+        if client_lower.contains("xterm")
+            || client_lower.contains("kitty")
+            || client_lower.contains("iterm")
+            || client_lower.contains("putty")
+            || client_lower.contains("vte")
+            || client_lower.contains("gnome")
+            || client_lower.contains("konsole")
+            || client_lower.contains("rxvt")
+            || client_lower.contains("alacritty")
+            || client_lower.contains("linux")
+            || client_lower.contains("ansi")
+        {
+            return true;
+        }
+    }
+
+    false // Default to no server echo (line mode) for unknown clients
+}
+
 /// Sanitize title string for safe OSC output
 ///
 /// Removes control characters and escape sequences that could
@@ -810,8 +871,13 @@ mod tests {
     #[test]
     fn test_build_initial_negotiations() {
         let negs = build_initial_negotiations();
-        // Should contain WILL ECHO, WILL SGA, DO SGA, DO NAWS
-        assert!(negs.len() >= 12); // At least 4 commands * 3 bytes
+        // Should contain WILL SGA, DO SGA, DO NAWS, DO TTYPE, DO MXP
+        assert!(negs.len() >= 9); // At least 3 commands * 3 bytes
+        // Assert that it does NOT contain WILL ECHO (255, 251, 1)
+        let contains_will_echo = negs
+            .chunks(3)
+            .any(|c| c == &[IAC, WILL, OPT_ECHO]);
+        assert!(!contains_will_echo, "Initial negotiations should not contain WILL ECHO");
     }
 
     // Tests for escape sequence parsing
@@ -1181,5 +1247,33 @@ mod tests {
         let flags = MTTS_UTF8;
         assert!((flags & MTTS_UTF8) != 0);
         assert!((flags & MTTS_ANSI) == 0);
+    }
+
+    #[test]
+    fn test_should_enable_server_echo() {
+        let mut state = TelnetState::new();
+
+        // MUD clients should NOT have server echo enabled
+        state.client_name = Some("TINTIN++".to_string());
+        assert!(!should_enable_server_echo(&state));
+
+        state.client_name = Some("MUDLET".to_string());
+        assert!(!should_enable_server_echo(&state));
+
+        // Standard terminals SHOULD have server echo enabled
+        state.client_name = Some("XTERM".to_string());
+        assert!(should_enable_server_echo(&state));
+
+        state.client_name = None;
+        state.terminal_type = Some("xterm-256color".to_string());
+        assert!(should_enable_server_echo(&state));
+
+        state.terminal_type = Some("putty".to_string());
+        assert!(should_enable_server_echo(&state));
+
+        // Unknown should default to false
+        state.client_name = None;
+        state.terminal_type = Some("unknown".to_string());
+        assert!(!should_enable_server_echo(&state));
     }
 }

@@ -131,6 +131,10 @@
     "access": "builder",
     "description": "Teleport to a room by ID"
   },
+  "mgoto": {
+    "access": "builder",
+    "description": "Teleport to a mobile's room"
+  },
   "rdelete": {
     "access": "builder",
     "description": "Delete a room from the database"

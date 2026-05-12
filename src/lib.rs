@@ -3101,6 +3101,19 @@ async fn handle_read_char_mode(
                                                     }
                                                     session.telnet_state.ttype_stage = 4; // Complete
 
+                                                    // Dynamically enable server-side echo for standard terminal emulators.
+                                                    // This avoids triggering password masking mode in dedicated MUD clients.
+                                                    if telnet::should_enable_server_echo(&session.telnet_state) {
+                                                        debug!(
+                                                            "Enabling server-side echo for terminal client {}",
+                                                            connection_id
+                                                        );
+                                                        let _ = tx_raw.send(telnet::build_negotiation(
+                                                            telnet::WILL,
+                                                            telnet::OPT_ECHO,
+                                                        ));
+                                                    }
+
                                                     // Log client capabilities
                                                     let ts = &session.telnet_state;
                                                     info!(

@@ -258,6 +258,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         })
         .register_get("flags", |m: &mut MobileData| m.flags.clone())
         .register_get("position", |m: &mut MobileData| m.position.to_string())
+        .register_get("room_id", |m: &mut MobileData| {
+            m.current_room_id.map(|u| u.to_string()).unwrap_or_default()
+        })
+        .register_get("has_room_id", |m: &mut MobileData| m.current_room_id.is_some())
         .register_get("has_pet_owner", |m: &mut MobileData| m.pet_owner.is_some())
         .register_get("has_nickname", |m: &mut MobileData| {
             m.nickname.as_deref().filter(|s| !s.is_empty()).is_some()
