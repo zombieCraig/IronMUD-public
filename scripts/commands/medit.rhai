@@ -965,14 +965,14 @@ fn handle_position_subcommand(mobile_id, parts, connection_id) {
 fn handle_faction_subcommand(mobile_id, parts, connection_id) {
     if parts.len() < 3 {
         let current = get_mobile_faction(mobile_id);
-        let shown = if current == "" { "(none — Circle-stock fallback applies)" } else { current };
+        let shown = if current == "" { "(none)" } else { current };
         send_client_message(connection_id, "Faction: " + shown + "\nUsage: medit " + mobile_id + " faction <tag|clear>");
         return;
     }
     let value = parts[2];
     if value.to_lower() == "clear" || value == "" {
         set_mobile_faction(mobile_id, "");
-        send_client_message(connection_id, "Faction cleared (helper falls back to Circle-stock semantics).");
+        send_client_message(connection_id, "Faction cleared.");
         return;
     }
     set_mobile_faction(mobile_id, value);
@@ -1412,10 +1412,15 @@ fn build_commands_help(mobile_id, mobile) {
     output += "  medit " + display_id + " gold <amount>            (gold dropped on death)\n";
     output += "  medit " + display_id + " perception <0-10>       (stealth detection ability)\n";
     output += "  medit " + display_id + " world_max <n>           (cap live copies world-wide; 0 = unlimited)\n";
-    output += "  medit " + display_id + " faction <tag|clear>     (helper system: matching tags ally; empty = Circle-stock)\n";
+    output += "  medit " + display_id + " faction <tag|clear>     (helper system: matching tags ally)\n";
+    output += "  medit " + display_id + " language <key|clear>    (spoken language)\n";
+    output += "  medit " + display_id + " position <standing|sitting|sleeping>\n";
+    output += "  medit " + display_id + " gender <male|female|nonbinary|clear>\n";
     output += "  medit " + display_id + " stat <str|dex|con|int|wis|cha> <value>\n";
     output += "  medit " + display_id + " flags\n";
     output += "  medit " + display_id + " flag <name> [on|off]\n";
+    output += "  medit " + display_id + " presets               (list available presets)\n";
+    output += "  medit " + display_id + " preset <id>           (apply a preset)\n";
 
     output += "\nDialogue Commands:\n";
     output += "  medit " + display_id + " dialogue <keyword> <response>\n";

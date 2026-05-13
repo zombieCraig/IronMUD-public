@@ -986,6 +986,8 @@ fn run_command(args, connection_id) {
         output += "  redit cmd [list|add|rm|clear] - Manage contextual commands (TAB + look hints)\n";
         output += "  " + cmd_vnum + " [alias|clear] - Set or clear room vnum\n";
         output += "  " + cmd_area + " [id|clear] - Set or clear room area\n";
+        let cmd_zone = mxp_or(mxp_send("redit zone", "redit zone"), "redit zone", connection_id);
+        output += "  " + cmd_zone + " [pve|safe|pvp|inherit] - Set combat zone\n";
         let cmd_trigger = mxp_or(mxp_send("redit trigger", "redit trigger"), "redit trigger", connection_id);
         output += "  " + cmd_trigger + " - Manage room triggers\n";
         let cmd_exit = mxp_or(mxp_send("redit exit", "redit exit"), "redit exit", connection_id);
