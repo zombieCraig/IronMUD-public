@@ -136,6 +136,16 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "account" {
+        handle_account(connection_id, args, char);
+        return;
+    }
+
+    if subcommand == "world" {
+        handle_world(connection_id, args, char);
+        return;
+    }
+
     if subcommand == "config" {
         handle_config(connection_id, args, char);
         return;
@@ -230,40 +240,100 @@ fn handle_masquerade_reset(connection_id, args, admin_char) {
 }
 
 // `admin config <key> [<value>]` — runtime-tunable server settings.
-// Currently exposes a curated allowlist (vampire creation flag, possibly more
-// later). Reading without a value shows the current setting; writing accepts
-// on/off / true/false / a literal string.
+// Reading without a value shows the current setting; writing accepts
+// on/off / true/false / a literal string. Set <value> to '' to delete.
 fn handle_config(connection_id, args, admin_char) {
     let parts = args.split(" ");
-    if parts.len() < 2 || parts[1] == "" {
-        send_client_message(connection_id, "Usage: admin config <key> [<value>]");
-        send_client_message(connection_id, "Allowed keys:");
-        send_client_message(connection_id, "  enable_vampire_creation on|off  — Show 'vampire' in the new-character class list");
+    
+    let allowed_keys = [
+        "enable_vampire_creation", "builder_mode", "motd", "recall_enabled",
+        "login_lockout_duration", "idle_timeout_secs", "starting_room_id",
+        "stamina_regen_standing", "stamina_regen_sitting", "stamina_regen_sleeping",
+        "hp_regen_sitting", "hp_regen_sleeping",
+        "mana_regen_standing", "mana_regen_sitting", "mana_regen_sleeping",
+        "stamina_cost_move", "stamina_cost_move_difficult", "stamina_cost_attack",
+        "stamina_cost_recall", "stamina_cost_flee",
+        "thirst_base_rate", "hunger_base_rate",
+        "player_corpse_decay_secs", "mobile_corpse_decay_secs",
+        "rent_period_game_days", "escrow_expiry_real_days",
+        "mail_stamp_price", "mail_max_messages", "mail_level_requirement",
+        "wander_chance_percent", "min_attackable_age",
+        "conception_chance_per_day", "adoption_chance_per_day",
+        "email_verification_required", "email_daily_cap", "email_monthly_cap",
+        "email_verification_code_ttl_secs"
+    ];
+
+    if parts.len() < 2 || parts[1] == "" || parts[1] == "list" {
+        let output = "Configurable settings:\n";
+        let configured = list_all_settings();
+        
+        for k in allowed_keys {
+            let val = "(not set)";
+            for entry in configured {
+                if entry.key == k {
+                    val = entry.value;
+                    break;
+                }
+            }
+            output += "  " + pad_right(k, 35) + " " + val + "\n";
+        }
+        
+        // Show any extra configured settings not in the allowed list
+        let extra_shown = false;
+        for entry in configured {
+            let is_allowed = false;
+            for k in allowed_keys { if k == entry.key { is_allowed = true; break; } }
+            if !is_allowed {
+                if !extra_shown {
+                    output += "\nExtra configured settings:\n";
+                    extra_shown = true;
+                }
+                output += "  " + pad_right(entry.key, 35) + " " + entry.value + "\n";
+            }
+        }
+        
+        send_client_message(connection_id, output);
+        send_client_message(connection_id, "\nUsage: admin config <key> [<value>]   — Set <value> to '' to delete");
         return;
     }
+    
     let key = parts[1].to_lower();
 
-    let allowed_keys = ["enable_vampire_creation"];
-    let allowed = false;
-    for k in allowed_keys { if k == key { allowed = true; } }
-    if !allowed {
-        send_client_message(connection_id, "Config key '" + key + "' is not admin-tunable. (Allowed: enable_vampire_creation)");
+    if parts.len() < 3 {
+        let current = get_setting(key);
+        if current == "" {
+            send_client_message(connection_id, key + " is not set.");
+        } else {
+            send_client_message(connection_id, key + " is currently: " + current);
+        }
         return;
     }
 
-    if parts.len() < 3 || parts[2] == "" {
-        let current = get_setting_or_default(key, "off");
-        send_client_message(connection_id, key + " is currently: " + current);
+    // Build value from remaining parts
+    let value_parts = [];
+    for i in 2..parts.len() {
+        value_parts.push(parts[i]);
+    }
+    let value_in = value_parts.join(" ");
+    
+    if value_in == "''" || value_in == "\"\"" {
+        if delete_setting(key) {
+            send_client_message(connection_id, "Deleted setting " + key + ".");
+            broadcast_to_builders("[admin] " + admin_char.name + " deleted setting " + key);
+        } else {
+            send_client_message(connection_id, "Setting " + key + " was not set.");
+        }
         return;
     }
-    let value_in = parts[2].to_lower();
-    let value = if value_in == "on" || value_in == "true" || value_in == "1" || value_in == "enable" {
-        "on"
-    } else if value_in == "off" || value_in == "false" || value_in == "0" || value_in == "disable" {
-        "off"
+
+    let value = if value_in.to_lower() == "on" || value_in.to_lower() == "true" || value_in == "1" || value_in.to_lower() == "enable" {
+        "true"
+    } else if value_in.to_lower() == "off" || value_in.to_lower() == "false" || value_in == "0" || value_in.to_lower() == "disable" {
+        "false"
     } else {
         value_in
     };
+
     if set_setting(key, value) {
         send_client_message(connection_id, "Set " + key + " = " + value + ".");
         broadcast_to_builders("[admin] " + admin_char.name + " set " + key + " = " + value);
@@ -296,9 +366,268 @@ fn show_help(connection_id) {
     help += "  admin embrace <player> [<clan>]   - Embrace a PC as kindred (clans: brujah/toreador/ventrue/nosferatu/gangrel)\n";
     help += "  admin embrace_revoke <player>     - Restore mortality to a vampire PC\n";
     help += "  admin masquerade_reset <player>   - Clear masquerade_broken on a vampire PC\n";
-    help += "  admin config <key> [<value>]      - Read or write a runtime setting (e.g. enable_vampire_creation on|off)\n";
+    help += "  admin config [<key>] [<value>]    - Read, write, or list runtime settings\n";
+    help += "  admin account ...                 - Account management (type 'admin account' for help)\n";
+    help += "  admin world ...                   - World statistics and management (type 'admin world' for help)\n";
     help += "  admin help                        - Show this help\n";
     send_client_message(connection_id, help);
+}
+
+fn handle_account(connection_id, args, admin_char) {
+    let parts = args.split(" ");
+    let action = if parts.len() > 1 && parts[1] != "" {
+        parts[1].to_lower()
+    } else {
+        ""
+    };
+
+    if action == "" || action == "help" {
+        let help = "Account Management Commands:\n";
+        help += "  admin account list                    - List all accounts\n";
+        help += "  admin account info <name>             - Show detailed account info\n";
+        help += "  admin account ban <name> [dur] [msg]  - Suspend an account\n";
+        help += "  admin account unban <name>            - Lift account suspension\n";
+        help += "  admin account alts <name>             - Show possible alts\n";
+        help += "  admin account verify <name>           - Mark email as verified\n";
+        help += "  admin account unverify <name>         - Mark email as unverified\n";
+        help += "  admin account set-email <name> <addr> - Set account email\n";
+        help += "  admin account send-code <name>        - Send fresh verification code\n";
+        help += "  admin account adjust-bank <name> <n>  - Adjust shared bank gold\n";
+        help += "  admin account delete <name>           - Delete account and characters\n";
+        send_client_message(connection_id, help);
+        return;
+    }
+
+    if action == "list" {
+        let accounts = list_all_accounts();
+        if accounts.len() == 0 {
+            send_client_message(connection_id, "No accounts found.");
+            return;
+        }
+        let output = "Name                     Chars    Banned   Characters\n";
+        output += "----------------------------------------------------------------------\n";
+        for a in accounts {
+            let name = pad_right(a.name, 24);
+            let chars_count = pad_right(a.character_names.len().to_string(), 8);
+            let banned = pad_right(if a.is_banned { "Yes" } else { "No" }, 8);
+            let char_list = a.character_names.join(", ");
+            output += name + " " + chars_count + " " + banned + " " + char_list + "\n";
+        }
+        output += "\nTotal: " + accounts.len() + " account(s)";
+        send_client_message(connection_id, output);
+        return;
+    }
+
+    if parts.len() < 3 || parts[2] == "" {
+        send_client_message(connection_id, "Usage: admin account " + action + " <account_name> [...]");
+        return;
+    }
+
+    let target_name = parts[2];
+
+    if action == "ban" {
+        handle_ban(connection_id, "ban " + args.sub_string(args.find("ban") + 4), admin_char);
+        return;
+    }
+
+    if action == "unban" {
+        handle_unban(connection_id, "unban " + args.sub_string(args.find("unban") + 6), admin_char);
+        return;
+    }
+
+    if action == "alts" {
+        handle_alts(connection_id, "alts " + args.sub_string(args.find("alts") + 5));
+        return;
+    }
+
+    let account = get_account_by_name(target_name);
+    if account == () {
+        send_client_message(connection_id, "Account '" + target_name + "' not found.");
+        return;
+    }
+
+    if action == "info" {
+        let output = "Account Details: " + account.name + "\n";
+        output += "----------------------------------------\n";
+        output += "ID:             " + account.id + "\n";
+        output += "Banned:         " + account.is_banned + "\n";
+        if account.contains("ban_record") {
+            let br = account.ban_record;
+            output += "  Reason:       " + br.reason + "\n";
+            output += "  By:           " + br.banned_by + "\n";
+            output += "  At:           " + format_unix_time(br.banned_at) + "\n";
+            if br.expires_at != () {
+                output += "  Expires at:   " + format_unix_time(br.expires_at) + "\n";
+            } else {
+                output += "  Expires at:   permanent\n";
+            }
+        }
+        output += "Email:          " + (if account.email == "" { "(none)" } else { account.email }) + "\n";
+        output += "Normalized:     " + (if account.normalized_email == "" { "(none)" } else { account.normalized_email }) + "\n";
+        output += "Email Verified: " + account.email_verified + "\n";
+        output += "Pending Code:   " + account.pending_code + "\n";
+        output += "Last Login IP:  " + (if account.last_login_ip == "" { "(none)" } else { account.last_login_ip }) + "\n";
+        output += "Creation IP:    " + (if account.creation_ip == "" { "(none)" } else { account.creation_ip }) + "\n";
+        output += "Created At:     " + format_unix_time(account.created_at) + "\n";
+        output += "Last Login At:  " + (if account.last_login_at == 0 { "Never" } else { format_unix_time(account.last_login_at) }) + "\n";
+        output += "Shared Bank:    " + account.shared_bank_gold + " gold\n";
+        output += "Characters:     " + account.character_names.join(", ") + "\n";
+        
+        let d = account.character_defaults;
+        if d.is_set {
+            output += "Character Defaults:\n";
+            output += "  prompt=" + (if d.prompt_mode == "" { "default" } else { d.prompt_mode }) + " colors=" + d.colors_enabled + " mxp=" + d.mxp_enabled + "\n";
+            output += "  abbrev=" + d.abbrev_enabled + " helpline=" + d.helpline_enabled + " summonable=" + d.summonable + "\n";
+            output += "  automap=" + d.automap_enabled + " radius=" + d.automap_radius + " ascii=" + d.ascii_map + "\n";
+        }
+        
+        send_client_message(connection_id, output);
+        return;
+    }
+
+    if action == "verify" {
+        if verify_account(account.id) {
+            send_client_message(connection_id, "Account '" + account.name + "' marked as email-verified.");
+            broadcast_to_builders("[admin] " + admin_char.name + " verified account " + account.name);
+        } else {
+            send_client_message(connection_id, "Failed to verify account.");
+        }
+        return;
+    }
+
+    if action == "unverify" {
+        if unverify_account(account.id) {
+            send_client_message(connection_id, "Account '" + account.name + "' marked as unverified.");
+            broadcast_to_builders("[admin] " + admin_char.name + " unverified account " + account.name);
+        } else {
+            send_client_message(connection_id, "Failed to unverify account.");
+        }
+        return;
+    }
+
+    if action == "set-email" {
+        if parts.len() < 4 {
+            send_client_message(connection_id, "Usage: admin account set-email <name> <email_address>");
+            return;
+        }
+        let email = parts[3];
+        if set_account_email(account.id, email) {
+            send_client_message(connection_id, "Account '" + account.name + "' email updated to: " + email);
+            broadcast_to_builders("[admin] " + admin_char.name + " set email for " + account.name + " to " + email);
+        } else {
+            send_client_message(connection_id, "Failed to update email.");
+        }
+        return;
+    }
+
+    if action == "send-code" {
+        if account.email == "" {
+            send_client_message(connection_id, "Account has no email on file. Use 'admin account set-email' first.");
+            return;
+        }
+        if send_verification_code(account.id, account.email) {
+            send_client_message(connection_id, "Verification code sent to " + account.email + " for account '" + account.name + "'.");
+        } else {
+            send_client_message(connection_id, "Failed to send verification code (check SMTP config).");
+        }
+        return;
+    }
+
+    if action == "adjust-bank" {
+        if parts.len() < 4 {
+            send_client_message(connection_id, "Usage: admin account adjust-bank <name> <amount>");
+            return;
+        }
+        let amount = try_parse_int(parts[3]);
+        if amount == () {
+            send_client_message(connection_id, "Invalid amount.");
+            return;
+        }
+        if add_shared_bank_gold(account.id, amount) {
+            let updated = get_account_by_id(account.id);
+            send_client_message(connection_id, "Adjusted shared bank for '" + account.name + "' by " + amount + ". New balance: " + updated.shared_bank_gold + " gold.");
+            broadcast_to_builders("[admin] " + admin_char.name + " adjusted shared bank for " + account.name + " by " + amount);
+        } else {
+            send_client_message(connection_id, "Failed to adjust bank (insufficient funds for debit?).");
+        }
+        return;
+    }
+
+    if action == "delete" {
+        if parts.len() < 5 || parts[3].to_lower() != "confirm" || parts[4].to_lower() != account.name.to_lower() {
+            send_client_message(connection_id, "WARNING: You are about to delete account '" + account.name + "' AND all of its characters:");
+            for n in account.character_names {
+                send_client_message(connection_id, "  - " + n);
+            }
+            send_client_message(connection_id, "This action is PERMANENT and cannot be undone.");
+            send_client_message(connection_id, "To confirm, type: admin account delete " + account.name + " confirm " + account.name);
+            return;
+        }
+
+        // Kick all characters first
+        for n in account.character_names {
+            kick_player(n, "Your account has been deleted by an administrator.", admin_char.name);
+            delete_character(n);
+        }
+        
+        if delete_account(account.name) {
+            send_client_message(connection_id, "Account '" + account.name + "' and all owned characters have been deleted.");
+            broadcast_to_builders("[admin] " + admin_char.name + " DELETED account " + account.name);
+        } else {
+            send_client_message(connection_id, "Failed to delete account.");
+        }
+        return;
+    }
+
+    send_client_message(connection_id, "Unknown account action. Type 'admin account help' for help.");
+}
+
+fn handle_world(connection_id, args, admin_char) {
+    let parts = args.split(" ");
+    let action = if parts.len() > 1 && parts[1] != "" {
+        parts[1].to_lower()
+    } else {
+        ""
+    };
+
+    if action == "info" || action == "" {
+        let stats = world_stats();
+        let output = "World Statistics\n";
+        output += "------------------------------\n";
+        output += "  Areas:              " + pad_right(stats.areas.to_string(), 6) + "\n";
+        output += "  Rooms:              " + pad_right(stats.rooms.to_string(), 6) + "\n";
+        output += "  Items:              " + pad_right(stats.items.to_string(), 6) + "\n";
+        output += "  Mobiles:            " + pad_right(stats.mobiles.to_string(), 6) + "\n";
+        output += "  Spawn Points:       " + pad_right(stats.spawn_points.to_string(), 6) + "\n";
+        output += "  Recipes:            " + pad_right(stats.recipes.to_string(), 6) + "\n";
+        output += "  Transports:         " + pad_right(stats.transports.to_string(), 6) + "\n";
+        output += "  Property Templates: " + pad_right(stats.property_templates.to_string(), 6) + "\n";
+        output += "  Leases:             " + pad_right(stats.leases.to_string(), 6) + "\n";
+        output += "  Plant Prototypes:   " + pad_right(stats.plant_prototypes.to_string(), 6) + "\n";
+        output += "  Plants:             " + pad_right(stats.plants.to_string(), 6) + "\n";
+        output += "  Characters:         " + pad_right(stats.characters.to_string(), 6) + "\n";
+        send_client_message(connection_id, output);
+        return;
+    }
+
+    if action == "clear" {
+        if parts.len() < 3 || parts[2] != "CONFIRM" {
+            send_client_message(connection_id, "WARNING: This will permanently delete ALL world data.");
+            send_client_message(connection_id, "Characters, settings, and API keys will be preserved.");
+            send_client_message(connection_id, "To confirm, type: admin world clear CONFIRM");
+            return;
+        }
+
+        if clear_world_data() {
+            send_client_message(connection_id, "World data cleared. Restart the server to re-seed the demo world.");
+            broadcast_to_builders("[admin] " + admin_char.name + " CLEARED ALL WORLD DATA");
+        } else {
+            send_client_message(connection_id, "Failed to clear world data.");
+        }
+        return;
+    }
+
+    send_client_message(connection_id, "Unknown world action. Use 'admin world info' or 'admin world clear'.");
 }
 
 fn handle_kick(connection_id, args, admin_char) {

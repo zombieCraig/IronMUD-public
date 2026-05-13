@@ -610,6 +610,51 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         }
     });
 
+    // world_stats() -> Map
+    let cloned_db = db.clone();
+    engine.register_fn("world_stats", move || -> rhai::Map {
+        match cloned_db.world_stats() {
+            Ok(stats) => {
+                let mut map = rhai::Map::new();
+                map.insert("areas".into(), rhai::Dynamic::from(stats.areas as i64));
+                map.insert("rooms".into(), rhai::Dynamic::from(stats.rooms as i64));
+                map.insert("items".into(), rhai::Dynamic::from(stats.items as i64));
+                map.insert("mobiles".into(), rhai::Dynamic::from(stats.mobiles as i64));
+                map.insert(
+                    "spawn_points".into(),
+                    rhai::Dynamic::from(stats.spawn_points as i64),
+                );
+                map.insert("recipes".into(), rhai::Dynamic::from(stats.recipes as i64));
+                map.insert(
+                    "transports".into(),
+                    rhai::Dynamic::from(stats.transports as i64),
+                );
+                map.insert(
+                    "property_templates".into(),
+                    rhai::Dynamic::from(stats.property_templates as i64),
+                );
+                map.insert("leases".into(), rhai::Dynamic::from(stats.leases as i64));
+                map.insert(
+                    "plant_prototypes".into(),
+                    rhai::Dynamic::from(stats.plant_prototypes as i64),
+                );
+                map.insert("plants".into(), rhai::Dynamic::from(stats.plants as i64));
+                map.insert(
+                    "characters".into(),
+                    rhai::Dynamic::from(stats.characters as i64),
+                );
+                map
+            }
+            Err(_) => rhai::Map::new(),
+        }
+    });
+
+    // clear_world_data() -> bool
+    let cloned_db = db.clone();
+    engine.register_fn("clear_world_data", move || -> bool {
+        cloned_db.clear_world_data().is_ok()
+    });
+
     // wrap_text(text, width) -> string - Word-wrap text to specified width
     engine.register_fn("wrap_text", |text: String, width: i64| -> String {
         let width = width.max(10) as usize; // Minimum width of 10

@@ -698,6 +698,29 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         cloned_db.set_setting(&key, &value).is_ok()
     });
 
+    // list_all_settings() -> Array of Maps #{ key, value }
+    let cloned_db = db.clone();
+    engine.register_fn("list_all_settings", move || -> rhai::Array {
+        match cloned_db.list_all_settings() {
+            Ok(settings) => settings
+                .into_iter()
+                .map(|(key, value)| {
+                    let mut map = rhai::Map::new();
+                    map.insert("key".into(), rhai::Dynamic::from(key));
+                    map.insert("value".into(), rhai::Dynamic::from(value));
+                    rhai::Dynamic::from_map(map)
+                })
+                .collect(),
+            Err(_) => rhai::Array::new(),
+        }
+    });
+
+    // delete_setting(key) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn("delete_setting", move |key: String| -> bool {
+        cloned_db.delete_setting(&key).unwrap_or(false)
+    });
+
     // resolve_starting_room_uuid() -> String
     // Reads the `starting_room_id` setting (a room vnum). If set and resolvable via the
     // vnum index, returns that room's UUID as a string. Falls back to STARTING_ROOM_ID

@@ -256,6 +256,63 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             .unwrap_or(0);
         cloned_db.save_account(account).is_ok()
     });
+
+    // list_all_accounts() -> Array of Maps
+    let cloned_db = db.clone();
+    engine.register_fn("list_all_accounts", move || -> rhai::Array {
+        match cloned_db.list_accounts() {
+            Ok(accounts) => accounts
+                .into_iter()
+                .map(|a| rhai::Dynamic::from_map(account_to_map(&a)))
+                .collect(),
+            Err(_) => rhai::Array::new(),
+        }
+    });
+
+    // verify_account(account_id_str) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn("verify_account", move |account_id: String| -> bool {
+        let uuid = match uuid::Uuid::parse_str(&account_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let mut account = match cloned_db.get_account_by_id(&uuid) {
+            Ok(Some(a)) => a,
+            _ => return false,
+        };
+        account.email_verified = true;
+        account.email_verification_code = None;
+        account.email_verification_code_expires_at = 0;
+        cloned_db.save_account(account).is_ok()
+    });
+
+    // unverify_account(account_id_str) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn("unverify_account", move |account_id: String| -> bool {
+        let uuid = match uuid::Uuid::parse_str(&account_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let mut account = match cloned_db.get_account_by_id(&uuid) {
+            Ok(Some(a)) => a,
+            _ => return false,
+        };
+        account.email_verified = false;
+        cloned_db.save_account(account).is_ok()
+    });
+
+    // add_shared_bank_gold(account_id_str, amount) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "add_shared_bank_gold",
+        move |account_id: String, amount: i64| -> bool {
+            let uuid = match uuid::Uuid::parse_str(&account_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            cloned_db.add_shared_bank_gold(&uuid, amount).is_ok()
+        },
+    );
 }
 
 fn account_to_map(account: &crate::types::AccountData) -> rhai::Map {
@@ -273,9 +330,52 @@ fn account_to_map(account: &crate::types::AccountData) -> rhai::Map {
         .collect();
     map.insert("character_names".into(), rhai::Dynamic::from(names));
     map.insert("is_banned".into(), rhai::Dynamic::from(account.is_banned));
+
+    if let Some(ref record) = account.ban_record {
+        let mut ban = rhai::Map::new();
+        ban.insert("reason".into(), rhai::Dynamic::from(record.reason.clone()));
+        ban.insert(
+            "banned_by".into(),
+            rhai::Dynamic::from(record.banned_by.clone()),
+        );
+        ban.insert("banned_at".into(), rhai::Dynamic::from(record.banned_at));
+        ban.insert(
+            "expires_at".into(),
+            match record.expires_at {
+                Some(t) => rhai::Dynamic::from(t),
+                None => rhai::Dynamic::UNIT,
+            },
+        );
+        map.insert("ban_record".into(), rhai::Dynamic::from_map(ban));
+    }
+
     map.insert(
         "email".into(),
         rhai::Dynamic::from(account.email.clone().unwrap_or_default()),
+    );
+    map.insert(
+        "normalized_email".into(),
+        rhai::Dynamic::from(account.normalized_email.clone().unwrap_or_default()),
+    );
+    map.insert(
+        "email_verified".into(),
+        rhai::Dynamic::from(account.email_verified),
+    );
+    map.insert(
+        "pending_code".into(),
+        rhai::Dynamic::from(account.email_verification_code.is_some()),
+    );
+    map.insert(
+        "email_verification_code_expires_at".into(),
+        rhai::Dynamic::from(account.email_verification_code_expires_at),
+    );
+    map.insert(
+        "last_login_ip".into(),
+        rhai::Dynamic::from(account.last_login_ip.clone()),
+    );
+    map.insert(
+        "creation_ip".into(),
+        rhai::Dynamic::from(account.creation_ip.clone()),
     );
     map.insert(
         "created_at".into(),
@@ -285,5 +385,43 @@ fn account_to_map(account: &crate::types::AccountData) -> rhai::Map {
         "last_login_at".into(),
         rhai::Dynamic::from(account.last_login_at),
     );
+    map.insert(
+        "shared_bank_gold".into(),
+        rhai::Dynamic::from(account.shared_bank_gold),
+    );
+
+    // Character defaults
+    let d = &account.character_defaults;
+    let mut prefs = rhai::Map::new();
+    prefs.insert(
+        "prompt_mode".into(),
+        rhai::Dynamic::from(d.prompt_mode.clone()),
+    );
+    prefs.insert(
+        "colors_enabled".into(),
+        rhai::Dynamic::from(d.colors_enabled),
+    );
+    prefs.insert("mxp_enabled".into(), rhai::Dynamic::from(d.mxp_enabled));
+    prefs.insert(
+        "abbrev_enabled".into(),
+        rhai::Dynamic::from(d.abbrev_enabled),
+    );
+    prefs.insert(
+        "helpline_enabled".into(),
+        rhai::Dynamic::from(d.helpline_enabled),
+    );
+    prefs.insert("summonable".into(), rhai::Dynamic::from(d.summonable));
+    prefs.insert(
+        "automap_enabled".into(),
+        rhai::Dynamic::from(d.automap_enabled),
+    );
+    prefs.insert(
+        "automap_radius".into(),
+        rhai::Dynamic::from(d.automap_radius as i64),
+    );
+    prefs.insert("ascii_map".into(), rhai::Dynamic::from(d.ascii_map));
+    prefs.insert("is_set".into(), rhai::Dynamic::from(d.is_set));
+    map.insert("character_defaults".into(), rhai::Dynamic::from_map(prefs));
+
     map
 }
