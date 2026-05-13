@@ -114,7 +114,7 @@ fn elevate_trigger(host_kind, host_id, rest, connection_id) {
         send_client_message(connection_id, "Only admins can elevate DG triggers.");
         return;
     }
-    let idx = parse_int(rest[0]);
+    let idx = try_parse_int(rest[0]);
     if idx == () { send_client_message(connection_id, "Index must be a number."); return; }
     let want_on = true;
     if rest.len() >= 2 {
@@ -131,7 +131,7 @@ fn elevate_trigger(host_kind, host_id, rest, connection_id) {
 
 fn view_trigger(host_kind, host_id, rest, connection_id) {
     if rest.len() < 1 { send_client_message(connection_id, "Usage: trigger dg view <index>"); return; }
-    let idx = parse_int(rest[0]);
+    let idx = try_parse_int(rest[0]);
     if idx == () { send_client_message(connection_id, "Index must be a number."); return; }
     let body = body_for(host_kind, host_id, idx);
     if body == "" { send_client_message(connection_id, "Trigger #" + idx + " has no DG body."); return; }
@@ -164,7 +164,7 @@ fn add_trigger(host_kind, host_id, rest, connection_id) {
 
 fn edit_trigger(host_kind, host_id, rest, connection_id) {
     if rest.len() < 1 { send_client_message(connection_id, "Usage: trigger dg edit <index>"); return; }
-    let idx = parse_int(rest[0]);
+    let idx = try_parse_int(rest[0]);
     if idx == () { send_client_message(connection_id, "Index must be a number."); return; }
     open_editor(host_kind, host_id, idx, connection_id);
 }

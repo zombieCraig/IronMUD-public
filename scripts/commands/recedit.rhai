@@ -145,7 +145,7 @@ fn handle_level_subcommand(vnum, parts, connection_id) {
         send_client_message(connection_id, "Usage: recedit " + vnum + " level <0-10>");
         return;
     }
-    let level = parse_int(parts[2]);
+    let level = try_parse_int(parts[2]);
     if level == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -183,7 +183,7 @@ fn handle_difficulty_subcommand(vnum, parts, connection_id) {
         send_client_message(connection_id, "Usage: recedit " + vnum + " difficulty <1-10>");
         return;
     }
-    let difficulty = parse_int(parts[2]);
+    let difficulty = try_parse_int(parts[2]);
     if difficulty == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -204,7 +204,7 @@ fn handle_xp_subcommand(vnum, parts, connection_id) {
         send_client_message(connection_id, "Usage: recedit " + vnum + " xp <amount>");
         return;
     }
-    let xp = parse_int(parts[2]);
+    let xp = try_parse_int(parts[2]);
     if xp == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -228,7 +228,7 @@ fn handle_output_subcommand(vnum, parts, connection_id) {
     let output_vnum = parts[2];
     let quantity = 1;
     if parts.len() >= 4 {
-        let q = parse_int(parts[3]);
+        let q = try_parse_int(parts[3]);
         if q != () && q > 0 {
             quantity = q;
         }
@@ -341,7 +341,7 @@ fn add_ingredient(vnum, parts, connection_id) {
     }
 
     let spec = parts[3];
-    let quantity = parse_int(parts[4]);
+    let quantity = try_parse_int(parts[4]);
 
     if quantity == () || quantity < 1 {
         send_client_message(connection_id, "Quantity must be a positive number.");
@@ -372,7 +372,7 @@ fn remove_ingredient(vnum, parts, connection_id) {
         return;
     }
 
-    let idx = parse_int(parts[3]);
+    let idx = try_parse_int(parts[3]);
     if idx == () {
         send_client_message(connection_id, "Invalid index.");
         return;
@@ -499,7 +499,7 @@ fn remove_tool(vnum, parts, connection_id) {
         return;
     }
 
-    let idx = parse_int(parts[3]);
+    let idx = try_parse_int(parts[3]);
     if idx == () {
         send_client_message(connection_id, "Invalid index.");
         return;

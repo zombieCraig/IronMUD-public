@@ -543,7 +543,7 @@ fn tree_delchoice(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: medit <id> tree delchoice <node> <index>");
         return;
     }
-    let idx = parse_int(parts[3]);
+    let idx = try_parse_int(parts[3]);
     if idx == () {
         send_client_message(connection_id, "Index must be a non-negative number.");
         return;
@@ -564,7 +564,7 @@ fn tree_editchoice(mobile_id, parts, connection_id) {
         return;
     }
     let node = parts[2];
-    let idx = parse_int(parts[3]);
+    let idx = try_parse_int(parts[3]);
     if idx == () {
         send_client_message(connection_id, "Index must be a non-negative number.");
         return;
@@ -664,7 +664,7 @@ fn handle_vampire_blood(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: medit <id> vampire blood <n>");
         return;
     }
-    let n = parse_int(parts[3]);
+    let n = try_parse_int(parts[3]);
     if n == () || n < 0 {
         send_client_message(connection_id, "Blood must be a non-negative integer.");
         return;
@@ -681,7 +681,7 @@ fn handle_vampire_humanity(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: medit <id> vampire humanity <0-10>");
         return;
     }
-    let n = parse_int(parts[3]);
+    let n = try_parse_int(parts[3]);
     if n == () || n < 0 || n > 10 {
         send_client_message(connection_id, "Humanity must be between 0 and 10.");
         return;
@@ -805,7 +805,7 @@ fn handle_level_subcommand(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: medit " + mobile_id + " level <value>");
         return;
     }
-    let level = parse_int(parts[2]);
+    let level = try_parse_int(parts[2]);
     if level == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -823,7 +823,7 @@ fn handle_hp_subcommand(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: medit " + mobile_id + " hp <value>");
         return;
     }
-    let hp = parse_int(parts[2]);
+    let hp = try_parse_int(parts[2]);
     if hp == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -851,7 +851,7 @@ fn handle_ac_subcommand(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: medit " + mobile_id + " ac <value>");
         return;
     }
-    let ac = parse_int(parts[2]);
+    let ac = try_parse_int(parts[2]);
     if ac == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -865,7 +865,7 @@ fn handle_gold_subcommand(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: medit " + mobile_id + " gold <amount>");
         return;
     }
-    let amount = parse_int(parts[2]);
+    let amount = try_parse_int(parts[2]);
     if amount == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -883,7 +883,7 @@ fn handle_perception_subcommand(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: medit " + mobile_id + " perception <0-10>");
         return;
     }
-    let value = parse_int(parts[2]);
+    let value = try_parse_int(parts[2]);
     if value == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -901,7 +901,7 @@ fn handle_world_max_subcommand(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: medit " + mobile_id + " world_max <n>  (0 = unlimited)");
         return;
     }
-    let n = parse_int(parts[2]);
+    let n = try_parse_int(parts[2]);
     if n == () {
         send_client_message(connection_id, "Cap must be a whole number (0 to clear).");
         return;
@@ -1030,7 +1030,7 @@ fn handle_stat_subcommand(mobile_id, parts, connection_id) {
         return;
     }
     let stat_name = parts[2].to_lower();
-    let value = parse_int(parts[3]);
+    let value = try_parse_int(parts[3]);
     if value == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -1834,7 +1834,7 @@ fn handle_shop_buyrate(mobile_id, parts, connection_id) {
         return;
     }
 
-    let rate = parse_int(parts[3]);
+    let rate = try_parse_int(parts[3]);
     if rate == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -1858,7 +1858,7 @@ fn handle_shop_sellrate(mobile_id, parts, connection_id) {
         return;
     }
 
-    let rate = parse_int(parts[3]);
+    let rate = try_parse_int(parts[3]);
     if rate == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -2116,7 +2116,7 @@ fn handle_shop_minvalue(mobile_id, parts, connection_id) {
         return;
     }
 
-    let val = parse_int(parts[3]);
+    let val = try_parse_int(parts[3]);
     if val == () || val < 0 {
         send_client_message(connection_id, "Invalid value. Use a positive number or 'clear'.");
         return;
@@ -2149,7 +2149,7 @@ fn handle_shop_maxvalue(mobile_id, parts, connection_id) {
         return;
     }
 
-    let val = parse_int(parts[3]);
+    let val = try_parse_int(parts[3]);
     if val == () || val < 0 {
         send_client_message(connection_id, "Invalid value. Use a positive number or 'clear'.");
         return;
@@ -2531,7 +2531,7 @@ fn handle_healer_cost(mobile_id, parts, connection_id) {
         return;
     }
 
-    let cost = parse_int(parts[3]);
+    let cost = try_parse_int(parts[3]);
     if cost == () || cost < 0 {
         send_client_message(connection_id, "Cost must be a positive number (percent of base price).");
         return;
@@ -2654,7 +2654,7 @@ fn test_trigger(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: medit <id> trigger test <index>");
         return;
     }
-    let idx = parse_int(parts[3]);
+    let idx = try_parse_int(parts[3]);
     if idx == () {
         send_client_message(connection_id, "Invalid index.");
         return;
@@ -2840,7 +2840,7 @@ fn remove_trigger(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: medit <id> trigger remove <index>");
         return;
     }
-    let idx = parse_int(parts[3]);
+    let idx = try_parse_int(parts[3]);
     if idx == () {
         send_client_message(connection_id, "Invalid index.");
         return;
@@ -2860,7 +2860,7 @@ fn set_trigger_state(mobile_id, parts, enabled, connection_id) {
         send_client_message(connection_id, "Usage: medit <id> trigger " + action + " <index>");
         return;
     }
-    let idx = parse_int(parts[3]);
+    let idx = try_parse_int(parts[3]);
     if idx == () {
         send_client_message(connection_id, "Invalid index.");
         return;
@@ -2880,8 +2880,8 @@ fn set_trigger_chance_cmd(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: medit <id> trigger chance <index> <1-100>");
         return;
     }
-    let idx = parse_int(parts[3]);
-    let chance = parse_int(parts[4]);
+    let idx = try_parse_int(parts[3]);
+    let chance = try_parse_int(parts[4]);
     if idx == () || chance == () {
         send_client_message(connection_id, "Invalid numbers.");
         return;
@@ -2903,8 +2903,8 @@ fn set_trigger_interval_cmd(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: medit <id> trigger interval <index> <seconds>");
         return;
     }
-    let idx = parse_int(parts[3]);
-    let secs = parse_int(parts[4]);
+    let idx = try_parse_int(parts[3]);
+    let secs = try_parse_int(parts[4]);
     if idx == () || secs == () {
         send_client_message(connection_id, "Invalid numbers.");
         return;
@@ -3077,8 +3077,8 @@ fn handle_transport_set(mobile_id, parts, connection_id) {
     }
 
     let transport_ref = parts[3];
-    let home_stop = parse_int(parts[4]);
-    let dest_stop = parse_int(parts[5]);
+    let home_stop = try_parse_int(parts[4]);
+    let dest_stop = try_parse_int(parts[5]);
 
     if home_stop == () || dest_stop == () {
         send_client_message(connection_id, "Stop indices must be numbers.");
@@ -3135,8 +3135,8 @@ fn handle_transport_fixed(mobile_id, parts, connection_id) {
         return;
     }
 
-    let depart = parse_int(parts[3]);
-    let return_hour = parse_int(parts[4]);
+    let depart = try_parse_int(parts[3]);
+    let return_hour = try_parse_int(parts[4]);
 
     if depart == () || return_hour == () {
         send_client_message(connection_id, "Hours must be numbers (0-23).");
@@ -3169,7 +3169,7 @@ fn handle_transport_random(mobile_id, parts, connection_id) {
         return;
     }
 
-    let chance = parse_int(parts[3]);
+    let chance = try_parse_int(parts[3]);
     if chance == () || chance < 1 || chance > 100 {
         send_client_message(connection_id, "Chance must be 1-100.");
         return;
@@ -3383,7 +3383,7 @@ fn handle_routine_add(mobile_id, parts, connection_id) {
         return;
     }
 
-    let hour = parse_int(parts[4]);
+    let hour = try_parse_int(parts[4]);
     if hour == () || hour < 0 || hour > 23 {
         send_client_message(connection_id, "Hour must be 0-23.");
         return;
@@ -3412,7 +3412,7 @@ fn handle_routine_remove(mobile_id, parts, connection_id) {
         return;
     }
 
-    let hour = parse_int(parts[4]);
+    let hour = try_parse_int(parts[4]);
     if hour == () || hour < 0 || hour > 23 {
         send_client_message(connection_id, "Hour must be 0-23.");
         return;
@@ -3486,7 +3486,7 @@ fn handle_routine_msg(mobile_id, parts, connection_id) {
         return;
     }
 
-    let hour = parse_int(parts[4]);
+    let hour = try_parse_int(parts[4]);
     if hour == () || hour < 0 || hour > 23 {
         send_client_message(connection_id, "Hour must be 0-23.");
         return;
@@ -3506,7 +3506,7 @@ fn handle_routine_wander(mobile_id, parts, connection_id) {
         return;
     }
 
-    let hour = parse_int(parts[4]);
+    let hour = try_parse_int(parts[4]);
     if hour == () || hour < 0 || hour > 23 {
         send_client_message(connection_id, "Hour must be 0-23.");
         return;
@@ -3554,7 +3554,7 @@ fn handle_routine_dialogue(mobile_id, parts, connection_id) {
         return;
     }
 
-    let hour = parse_int(parts[4]);
+    let hour = try_parse_int(parts[4]);
     if hour == () || hour < 0 || hour > 23 {
         send_client_message(connection_id, "Hour must be 0-23.");
         return;
@@ -3686,7 +3686,7 @@ fn handle_sim_pay(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: medit <id> simulation pay <amount>");
         return;
     }
-    let amount = parse_int(parts[4]);
+    let amount = try_parse_int(parts[4]);
     if amount == () {
         send_client_message(connection_id, "Invalid amount.");
         return;
@@ -3703,8 +3703,8 @@ fn handle_sim_hours(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: medit <id> simulation hours <start> <end>");
         return;
     }
-    let start = parse_int(parts[4]);
-    let end = parse_int(parts[5]);
+    let start = try_parse_int(parts[4]);
+    let end = try_parse_int(parts[5]);
     if start == () || end == () {
         send_client_message(connection_id, "Invalid hour values.");
         return;
@@ -3735,7 +3735,7 @@ fn handle_sim_decay(mobile_id, parts, connection_id) {
         return;
     }
     let need = parts[4].to_lower();
-    let rate = parse_int(parts[5]);
+    let rate = try_parse_int(parts[5]);
     if rate == () {
         send_client_message(connection_id, "Invalid rate value.");
         return;
@@ -3753,7 +3753,7 @@ fn handle_sim_lowgold(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "When the NPC's gold drops to this value or below, they prioritize work over food.");
         return;
     }
-    let threshold = parse_int(parts[4]);
+    let threshold = try_parse_int(parts[4]);
     if threshold == () {
         send_client_message(connection_id, "Invalid threshold value.");
         return;
@@ -3820,7 +3820,7 @@ fn handle_social_happiness(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: medit <id> social happiness <0-100>");
         return;
     }
-    let value = parse_int(parts[4]);
+    let value = try_parse_int(parts[4]);
     if value == () {
         send_client_message(connection_id, "Invalid happiness value.");
         return;
@@ -3843,7 +3843,7 @@ fn handle_social_affinity(mobile_id, parts, connection_id) {
         return;
     }
     let other_id = parts[4];
-    let value = parse_int(parts[5]);
+    let value = try_parse_int(parts[5]);
     if value == () {
         send_client_message(connection_id, "Invalid affinity value.");
         return;
@@ -4015,7 +4015,7 @@ fn handle_pregnancy_set(mobile_id, parts, connection_id) {
         return;
     }
     let father_id = parts[4];
-    let days = if parts.len() >= 6 { parse_int(parts[5]) } else { 0 };
+    let days = if parts.len() >= 6 { try_parse_int(parts[5]) } else { 0 };
     if days == () { days = 0; }
     if force_pregnancy(mobile_id, father_id, days) {
         send_client_message(connection_id, "Pregnancy set (father " + father_id + ", " +
@@ -4064,7 +4064,7 @@ fn handle_mob_on_hit_subcommand(uuid, mobile_id, parts, connection_id) {
             send_client_message(connection_id, "Usage: medit " + mobile_id + " on_hit remove <index>");
             return;
         }
-        let one_based = parse_int(parts[3]);
+        let one_based = try_parse_int(parts[3]);
         if one_based == () || one_based < 1 {
             send_client_message(connection_id, "Index must be a positive number (see 'medit " + mobile_id + " on_hit list').");
             return;
@@ -4095,9 +4095,9 @@ fn handle_mob_on_hit_subcommand(uuid, mobile_id, parts, connection_id) {
             return;
         }
         let effect_str = parts[3].to_lower();
-        let chance = parse_int(parts[4]);
-        let magnitude = parse_int(parts[5]);
-        let duration = parse_int(parts[6]);
+        let chance = try_parse_int(parts[4]);
+        let magnitude = try_parse_int(parts[5]);
+        let duration = try_parse_int(parts[6]);
         if chance == () || magnitude == () || duration == () {
             send_client_message(connection_id, "chance, magnitude, and duration must all be whole numbers.");
             return;
@@ -4211,7 +4211,7 @@ fn handle_combat_spells_subcommand(mobile, mobile_id, parts, connection_id) {
             send_client_message(connection_id, "Usage: medit <id> combat_spells chance <0-100>");
             return;
         }
-        let chance = parse_int(parts[3]);
+        let chance = try_parse_int(parts[3]);
         if chance == () {
             send_client_message(connection_id, "Chance must be a number 0-100.");
             return;

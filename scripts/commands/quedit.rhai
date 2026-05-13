@@ -106,7 +106,7 @@ fn run_command(args, connection_id) {
             send_client_message(connection_id, "Usage: quedit <vnum> min_skill <n>  (0 clears)");
             return;
         }
-        let n = parse_int(parts[2]);
+        let n = try_parse_int(parts[2]);
         let err = set_quest_min_skill(vnum, n);
         let label = if n <= 0 { "cleared" } else { "set to " + n };
         report(err, "Min skill total " + label + ".", connection_id);
@@ -117,7 +117,7 @@ fn run_command(args, connection_id) {
             send_client_message(connection_id, "Usage: quedit <vnum> duration <secs>  (0 clears, no expiry)");
             return;
         }
-        let secs = parse_int(parts[2]);
+        let secs = try_parse_int(parts[2]);
         let err = set_quest_duration(vnum, secs);
         let label = if secs <= 0 { "cleared (no expiry)" } else { "set to " + secs + " seconds" };
         report(err, "Duration " + label + ".", connection_id);
@@ -186,7 +186,7 @@ fn handle_objective(vnum, parts, connection_id) {
                 send_client_message(connection_id, "Usage: quedit <vnum> objective add kill <mob_vnum> <count>");
                 return;
             }
-            let count = parse_int(parts[5]);
+            let count = try_parse_int(parts[5]);
             let err = add_quest_objective_kill(vnum, parts[4], count);
             report(err, "Added kill objective.", connection_id);
             return;
@@ -196,7 +196,7 @@ fn handle_objective(vnum, parts, connection_id) {
                 send_client_message(connection_id, "Usage: quedit <vnum> objective add bring <item_vnum> <qty> [<return_mob>]");
                 return;
             }
-            let qty = parse_int(parts[5]);
+            let qty = try_parse_int(parts[5]);
             let return_mob = if parts.len() >= 7 { parts[6] } else { "" };
             let err = add_quest_objective_bring(vnum, parts[4], qty, return_mob);
             report(err, "Added bring objective.", connection_id);
@@ -228,7 +228,7 @@ fn handle_objective(vnum, parts, connection_id) {
             send_client_message(connection_id, "Usage: quedit <vnum> objective remove <idx>");
             return;
         }
-        let idx = parse_int(parts[3]);
+        let idx = try_parse_int(parts[3]);
         let err = remove_quest_objective(vnum, idx);
         report(err, "Removed objective " + idx + ".", connection_id);
         return;
@@ -253,7 +253,7 @@ fn handle_reward(vnum, parts, connection_id) {
                 send_client_message(connection_id, "Usage: quedit <vnum> reward add gold <amount>");
                 return;
             }
-            let amt = parse_int(parts[4]);
+            let amt = try_parse_int(parts[4]);
             let err = add_quest_reward_gold(vnum, amt);
             report(err, "Added gold reward.", connection_id);
             return;
@@ -263,7 +263,7 @@ fn handle_reward(vnum, parts, connection_id) {
                 send_client_message(connection_id, "Usage: quedit <vnum> reward add item <item_vnum> <qty>");
                 return;
             }
-            let qty = parse_int(parts[5]);
+            let qty = try_parse_int(parts[5]);
             let err = add_quest_reward_item(vnum, parts[4], qty);
             report(err, "Added item reward.", connection_id);
             return;
@@ -273,7 +273,7 @@ fn handle_reward(vnum, parts, connection_id) {
                 send_client_message(connection_id, "Usage: quedit <vnum> reward add skill <skill_key> <amount>");
                 return;
             }
-            let amt = parse_int(parts[5]);
+            let amt = try_parse_int(parts[5]);
             let err = add_quest_reward_skill(vnum, parts[4], amt);
             report(err, "Added skill xp reward.", connection_id);
             return;
@@ -313,7 +313,7 @@ fn handle_reward(vnum, parts, connection_id) {
             send_client_message(connection_id, "Usage: quedit <vnum> reward remove <idx>");
             return;
         }
-        let idx = parse_int(parts[3]);
+        let idx = try_parse_int(parts[3]);
         let err = remove_quest_reward(vnum, idx);
         report(err, "Removed reward " + idx + ".", connection_id);
         return;

@@ -18,7 +18,7 @@ fn run_command(args, connection_id) {
     let radius = 5;
     let parts = args.split(" ");
     if parts.len() > 0 && parts[0] != "" {
-        let n = parse_int(parts[0]);
+        let n = try_parse_int(parts[0]);
         if n != () {
             if n < 1 { radius = 1; }
             else if n > 8 { radius = 8; }

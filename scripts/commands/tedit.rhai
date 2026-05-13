@@ -260,8 +260,8 @@ fn handle_traveltime(transport, parts, start, connection_id) {
         send_client_message(connection_id, "Usage: tedit <vnum> traveltime <seconds>");
         return true;
     }
-    let seconds = parse_int(parts[start + 1]);
-    if seconds < 1 { seconds = 1; }
+    let seconds = try_parse_int(parts[start + 1]);
+    if seconds == () || seconds < 1 { seconds = 1; }
     set_transport_travel_time(transport.id, seconds);
     send_client_message(connection_id, "Travel time set to: " + seconds + " seconds");
     return true;
@@ -291,16 +291,16 @@ fn handle_gametime_schedule(transport, parts, start, connection_id) {
         send_client_message(connection_id, "Usage: schedule gametime <freq_hours> <start_hour> <end_hour> <dwell_secs>");
         return true;
     }
-    let freq = parse_int(parts[start + 2]);
-    let sh = parse_int(parts[start + 3]);
-    let eh = parse_int(parts[start + 4]);
-    let dwell = parse_int(parts[start + 5]);
-    if freq < 1 { freq = 1; }
-    if sh < 0 { sh = 0; }
+    let freq = try_parse_int(parts[start + 2]);
+    let sh = try_parse_int(parts[start + 3]);
+    let eh = try_parse_int(parts[start + 4]);
+    let dwell = try_parse_int(parts[start + 5]);
+    if freq == () || freq < 1 { freq = 1; }
+    if sh == () || sh < 0 { sh = 0; }
     if sh > 23 { sh = 23; }
-    if eh < 0 { eh = 0; }
+    if eh == () || eh < 0 { eh = 0; }
     if eh > 23 { eh = 23; }
-    if dwell < 1 { dwell = 1; }
+    if dwell == () || dwell < 1 { dwell = 1; }
     set_transport_schedule_gametime(transport.id, freq, sh, eh, dwell);
     send_client_message(connection_id, "Schedule set to: every " + freq + "h, " + sh + ":00-" + eh + ":00");
     return true;
@@ -387,8 +387,8 @@ fn handle_stop_remove(transport, parts, start, connection_id) {
         send_client_message(connection_id, "Usage: stop remove <index>");
         return true;
     }
-    let index = parse_int(parts[start + 2]);
-    if index < 1 || index > transport.stops.len() {
+    let index = try_parse_int(parts[start + 2]);
+    if index == () || index < 1 || index > transport.stops.len() {
         send_client_message(connection_id, "Invalid index.");
         return true;
     }

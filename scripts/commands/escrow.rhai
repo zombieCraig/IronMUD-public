@@ -80,7 +80,7 @@ fn handle_retrieve(escrows, parts, char, connection_id) {
     }
 
     let index_str = parts[1];
-    let index = parse_int(index_str);
+    let index = try_parse_int(index_str);
     if index == () || index < 1 || index > escrows.len() {
         send_client_message(connection_id, "Invalid escrow number. Use 'escrow' to see available entries.");
         return;

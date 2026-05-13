@@ -74,13 +74,11 @@ fn show_trait_selection(connection_id, char_data) {
 }
 
 fn handle_trait_input(input, connection_id) {
-    let lower = "";
-    for ch in input.chars() {
-        if ch >= 'A' && ch <= 'Z' {
-            lower += ch + 32;
-        } else {
-            lower += ch;
-        }
+    let lower = input.to_lower().trim();
+
+    if lower == "" {
+        send_client_message(connection_id, "Commands: <number> to preview, 'accept <number>' to add trait, 'back' to exit\n> ");
+        return;
     }
 
     if lower == "back" || lower == "exit" || lower == "quit" {
@@ -91,8 +89,8 @@ fn handle_trait_input(input, connection_id) {
 
     // Check for "accept N" command
     if lower.index_of("accept ") == 0 {
-        let num_str = lower.sub_string(7, lower.len() - 7);
-        let idx = parse_int(num_str);
+        let num_str = lower.sub_string(7).trim();
+        let idx = try_parse_int(num_str);
         if idx != () {
             accept_trait(connection_id, idx);
         } else {
@@ -102,7 +100,7 @@ fn handle_trait_input(input, connection_id) {
     }
 
     // Try to preview a trait by number
-    let idx = parse_int(lower);
+    let idx = try_parse_int(lower);
     if idx != () {
         preview_trait(connection_id, idx);
         return;

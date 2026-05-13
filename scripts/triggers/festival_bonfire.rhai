@@ -12,7 +12,8 @@ fn run_trigger(room_id, connection_id, context) {
     let new_month = context.get("new_month");
     if new_month == () { return "continue"; }
 
-    let month = parse_int(new_month);
+    let month = try_parse_int(new_month);
+    if month == () { return "continue"; }
     let is_festival = (month == 4 || month == 8 || month == 12);
 
     if is_festival {

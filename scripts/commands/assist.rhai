@@ -84,7 +84,7 @@ fn run_command(args, connection_id) {
 
     // Check stamina (configurable via settings)
     let stamina_cost_str = get_setting_or_default("stamina_cost_attack", "5");
-    let stamina_cost = parse_int(stamina_cost_str);
+    let stamina_cost = try_parse_int(stamina_cost_str);
     if stamina_cost == () { stamina_cost = 5; }
     if char.stamina < stamina_cost {
         send_client_message(connection_id, "You are too exhausted to join the fight. Rest to recover stamina.");

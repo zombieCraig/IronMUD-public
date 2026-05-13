@@ -41,7 +41,7 @@ fn run_command(args, connection_id) {
     if item_parts.len() >= 2 {
         let last_word = item_parts[item_parts.len() - 1].to_lower();
         if last_word == "gold" || last_word == "coins" {
-            let amount = parse_int(item_parts[0]);
+            let amount = try_parse_int(item_parts[0]);
             if amount != () && amount > 0 {
                 put_gold_in_container(char, amount, container_keyword, connection_id);
                 return;

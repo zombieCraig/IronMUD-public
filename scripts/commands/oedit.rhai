@@ -699,7 +699,7 @@ fn handle_ac_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " ac <value> (use -1 to clear)");
         return;
     }
-    let ac = parse_int(parts[2]);
+    let ac = try_parse_int(parts[2]);
     if ac == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -793,7 +793,7 @@ fn handle_weight_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " weight <value>");
         return;
     }
-    let weight = parse_int(parts[2]);
+    let weight = try_parse_int(parts[2]);
     if weight == () {
         send_client_message(connection_id, "Weight must be a whole number (e.g., 1, 5, 10).");
         return;
@@ -807,7 +807,7 @@ fn handle_value_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " value <gold>");
         return;
     }
-    let val = parse_int(parts[2]);
+    let val = try_parse_int(parts[2]);
     if val == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -837,7 +837,7 @@ fn handle_on_hit_subcommand(uuid, item_id, parts, connection_id) {
             send_client_message(connection_id, "Usage: oedit " + item_id + " on_hit remove <index>");
             return;
         }
-        let one_based = parse_int(parts[3]);
+        let one_based = try_parse_int(parts[3]);
         if one_based == () || one_based < 1 {
             send_client_message(connection_id, "Index must be a positive number (see 'oedit " + item_id + " on_hit list').");
             return;
@@ -867,9 +867,9 @@ fn handle_on_hit_subcommand(uuid, item_id, parts, connection_id) {
             return;
         }
         let effect_str = parts[3].to_lower();
-        let chance = parse_int(parts[4]);
-        let magnitude = parse_int(parts[5]);
-        let duration = parse_int(parts[6]);
+        let chance = try_parse_int(parts[4]);
+        let magnitude = try_parse_int(parts[5]);
+        let duration = try_parse_int(parts[6]);
         if chance == () || magnitude == () || duration == () {
             send_client_message(connection_id, "chance, magnitude, and duration must all be whole numbers.");
             return;
@@ -929,7 +929,7 @@ fn handle_world_max_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " world_max <n>  (0 = unlimited)");
         return;
     }
-    let n = parse_int(parts[2]);
+    let n = try_parse_int(parts[2]);
     if n == () {
         send_client_message(connection_id, "Cap must be a whole number (0 to clear).");
         return;
@@ -947,8 +947,8 @@ fn handle_damage_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " damage <dice_count> <dice_sides> (e.g., 2 6 for 2d6)");
         return;
     }
-    let count = parse_int(parts[2]);
-    let sides = parse_int(parts[3]);
+    let count = try_parse_int(parts[2]);
+    let sides = try_parse_int(parts[3]);
     if count == () || sides == () {
         send_client_message(connection_id, "Invalid numbers.");
         return;
@@ -1062,7 +1062,7 @@ fn handle_ammocount_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " ammocount <amount>");
         return;
     }
-    let count = parse_int(parts[2]);
+    let count = try_parse_int(parts[2]);
     if count == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -1076,7 +1076,7 @@ fn handle_ammobonus_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " ammobonus <bonus>");
         return;
     }
-    let bonus = parse_int(parts[2]);
+    let bonus = try_parse_int(parts[2]);
     if bonus == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -1139,7 +1139,7 @@ fn handle_magsize_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " magsize <capacity>");
         return;
     }
-    let size = parse_int(parts[2]);
+    let size = try_parse_int(parts[2]);
     if size == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -1153,7 +1153,7 @@ fn handle_loadedammo_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " loadedammo <count>");
         return;
     }
-    let count = parse_int(parts[2]);
+    let count = try_parse_int(parts[2]);
     if count == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -1249,8 +1249,8 @@ fn handle_ammoeffect_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " ammoeffect <type> <duration> <damage>");
         return;
     }
-    let dur = parse_int(parts[3]);
-    let dmg = parse_int(parts[4]);
+    let dur = try_parse_int(parts[3]);
+    let dmg = try_parse_int(parts[4]);
     if dur == () || dmg == () {
         send_client_message(connection_id, "Duration and damage must be numbers.");
         return;
@@ -1336,7 +1336,7 @@ fn handle_attachment_int_field(item_id, parts, field, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " attachment " + field + " <number>");
         return;
     }
-    let val = parse_int(parts[3]);
+    let val = try_parse_int(parts[3]);
     if val == () {
         send_client_message(connection_id, "Value must be a number.");
         return;
@@ -1693,7 +1693,7 @@ fn handle_board_subcommand(item, item_id, subcommand, parts, connection_id) {
         return;
     }
     if subcommand == "board_max" {
-        let n = parse_int(parts[2]);
+        let n = try_parse_int(parts[2]);
         if n == () {
             send_client_message(connection_id, "Cap must be a whole number (0 = engine default 60).");
             return;
@@ -2149,8 +2149,8 @@ fn handle_capacity_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " capacity <max_items> <max_weight>\n(Use 0 for unlimited)");
         return;
     }
-    let max_items = parse_int(parts[2]);
-    let max_weight = parse_int(parts[3]);
+    let max_items = try_parse_int(parts[2]);
+    let max_weight = try_parse_int(parts[3]);
     if max_items == () || max_weight == () {
         send_client_message(connection_id, "Invalid numbers.");
         return;
@@ -2224,8 +2224,8 @@ fn handle_liquid_subcommand(item_id, parts, connection_id) {
         return;
     }
     let type_str = parts[2].to_lower();
-    let current = parse_int(parts[3]);
-    let max = parse_int(parts[4]);
+    let current = try_parse_int(parts[3]);
+    let max = try_parse_int(parts[4]);
     if current == () || max == () {
         send_client_message(connection_id, "Invalid numbers.");
         return;
@@ -2330,8 +2330,8 @@ fn handle_liqeffect_subcommand(item_id, parts, connection_id) {
         return;
     }
     let type_str = parts[2].to_lower();
-    let magnitude = parse_int(parts[3]);
-    let duration = parse_int(parts[4]);
+    let magnitude = try_parse_int(parts[3]);
+    let duration = try_parse_int(parts[4]);
     if magnitude == () || duration == () {
         send_client_message(connection_id, "Invalid numbers.");
         return;
@@ -2357,7 +2357,7 @@ fn handle_nutrition_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " nutrition <value>");
         return;
     }
-    let nutrition = parse_int(parts[2]);
+    let nutrition = try_parse_int(parts[2]);
     if nutrition == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -2374,7 +2374,7 @@ fn handle_spoil_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " spoil <hours> (0 = never spoils, 1 hour ~ 1 game day)");
         return;
     }
-    let hours = parse_float(parts[2]);
+    let hours = try_parse_float(parts[2]);
     if hours == () || hours < 0.0 {
         send_client_message(connection_id, "Invalid number. Provide hours (e.g. 2, 0.5).");
         return;
@@ -2413,8 +2413,8 @@ fn handle_foodeffect_subcommand(item_id, parts, connection_id) {
         return;
     }
     let type_str = parts[2].to_lower();
-    let magnitude = parse_int(parts[3]);
-    let duration = parse_int(parts[4]);
+    let magnitude = try_parse_int(parts[3]);
+    let duration = try_parse_int(parts[4]);
     if magnitude == () || duration == () {
         send_client_message(connection_id, "Invalid numbers.");
         return;
@@ -2443,8 +2443,8 @@ fn handle_preservation_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit <id> preservation <0|1|2>\n  0 = none, 1 = cool/fridge, 2 = frozen/freezer");
         return;
     }
-    let level = parse_int(parts[2]);
-    if level < 0 || level > 2 {
+    let level = try_parse_int(parts[2]);
+    if level == () || level < 0 || level > 2 {
         send_client_message(connection_id, "Preservation level must be 0, 1, or 2.");
         return;
     }
@@ -2458,8 +2458,8 @@ fn handle_spoilage_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit <id> spoilage <0.0-1.0>  (manually set spoilage points)");
         return;
     }
-    let points = parse_float(parts[2]);
-    if points < 0.0 || points > 1.0 {
+    let points = try_parse_float(parts[2]);
+    if points == () || points < 0.0 || points > 1.0 {
         send_client_message(connection_id, "Spoilage points must be between 0.0 and 1.0.");
         return;
     }
@@ -3190,7 +3190,7 @@ fn handle_level_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " level <value> (0 = no requirement)");
         return;
     }
-    let level = parse_int(parts[2]);
+    let level = try_parse_int(parts[2]);
     if level == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -3213,7 +3213,7 @@ fn handle_stat_subcommand(item_id, parts, connection_id) {
         return;
     }
     let stat_name = parts[2].to_lower();
-    let value = parse_int(parts[3]);
+    let value = try_parse_int(parts[3]);
     if value == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -3243,7 +3243,7 @@ fn handle_hit_bonus_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " hit_bonus <value>");
         return;
     }
-    let value = parse_int(parts[2]);
+    let value = try_parse_int(parts[2]);
     if value == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -3263,7 +3263,7 @@ fn handle_damage_bonus_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " damage_bonus <value>");
         return;
     }
-    let value = parse_int(parts[2]);
+    let value = try_parse_int(parts[2]);
     if value == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -3283,7 +3283,7 @@ fn handle_max_hp_bonus_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " max_hp_bonus <value>");
         return;
     }
-    let value = parse_int(parts[2]);
+    let value = try_parse_int(parts[2]);
     if value == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -3303,7 +3303,7 @@ fn handle_max_mana_bonus_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " max_mana_bonus <value>");
         return;
     }
-    let value = parse_int(parts[2]);
+    let value = try_parse_int(parts[2]);
     if value == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -3323,7 +3323,7 @@ fn handle_light_hours_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit " + item_id + " light_hours <value>  (0 = permanent)");
         return;
     }
-    let value = parse_int(parts[2]);
+    let value = try_parse_int(parts[2]);
     if value == () || value < 0 {
         send_client_message(connection_id, "Invalid number (must be >= 0).");
         return;
@@ -3364,12 +3364,12 @@ fn handle_cast_on_use_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Unknown spell id: " + spell_id + " (use `lookup spell` to browse).");
         return;
     }
-    let min_level = parse_int(parts[3]);
+    let min_level = try_parse_int(parts[3]);
     if min_level == () || min_level < 0 {
         send_client_message(connection_id, "Invalid min_level (must be >= 0).");
         return;
     }
-    let charges = parse_int(parts[4]);
+    let charges = try_parse_int(parts[4]);
     if charges == () || charges < 0 {
         send_client_message(connection_id, "Invalid charges (must be >= 0).");
         return;
@@ -3377,7 +3377,7 @@ fn handle_cast_on_use_subcommand(item_id, parts, connection_id) {
     // Optional 4th positional: per-item cooldown override.
     let cooldown_secs = -1;
     if parts.len() >= 6 {
-        let cd = parse_int(parts[5]);
+        let cd = try_parse_int(parts[5]);
         if cd == () || cd < 0 {
             send_client_message(connection_id, "Invalid cooldown_secs (must be >= 0; 0 clears the override).");
             return;
@@ -3445,7 +3445,7 @@ fn handle_insulation_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit <item> insulation <0-100>");
         return;
     }
-    let value = parse_int(parts[2]);
+    let value = try_parse_int(parts[2]);
     if value == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -3589,7 +3589,7 @@ fn test_item_trigger_cmd(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit <id> trigger test <index>");
         return;
     }
-    let idx = parse_int(parts[3]);
+    let idx = try_parse_int(parts[3]);
     if idx == () {
         send_client_message(connection_id, "Invalid index.");
         return;
@@ -3739,7 +3739,7 @@ fn remove_trigger(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit <id> trigger remove <index>");
         return;
     }
-    let idx = parse_int(parts[3]);
+    let idx = try_parse_int(parts[3]);
     if idx == () {
         send_client_message(connection_id, "Invalid index.");
         return;
@@ -3759,7 +3759,7 @@ fn set_trigger_state(item_id, parts, enabled, connection_id) {
         send_client_message(connection_id, "Usage: oedit <id> trigger " + action + " <index>");
         return;
     }
-    let idx = parse_int(parts[3]);
+    let idx = try_parse_int(parts[3]);
     if idx == () {
         send_client_message(connection_id, "Invalid index.");
         return;
@@ -3779,8 +3779,8 @@ fn set_trigger_chance_cmd(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit <id> trigger chance <index> <1-100>");
         return;
     }
-    let idx = parse_int(parts[3]);
-    let chance = parse_int(parts[4]);
+    let idx = try_parse_int(parts[3]);
+    let chance = try_parse_int(parts[4]);
     if idx == () || chance == () {
         send_client_message(connection_id, "Invalid numbers.");
         return;
@@ -3911,7 +3911,7 @@ fn handle_vending_sellrate(item_id, parts, connection_id) {
         return;
     }
 
-    let rate = parse_int(parts[3]);
+    let rate = try_parse_int(parts[3]);
     if rate == () {
         send_client_message(connection_id, "Invalid number.");
         return;
@@ -3948,7 +3948,7 @@ fn handle_quality_subcommand(item_id, parts, connection_id) {
         return;
     }
 
-    let quality = parse_int(parts[2]);
+    let quality = try_parse_int(parts[2]);
     if quality == () || quality < 0 || quality > 100 {
         send_client_message(connection_id, "Quality must be a number from 0-100.");
         return;
@@ -3968,7 +3968,7 @@ fn handle_baituses_subcommand(item_id, parts, connection_id) {
         return;
     }
 
-    let uses = parse_int(parts[2]);
+    let uses = try_parse_int(parts[2]);
     if uses == () || uses < 0 {
         send_client_message(connection_id, "Uses must be a non-negative number (0-1 = single use).");
         return;
@@ -3997,7 +3997,7 @@ fn handle_weightreduction_subcommand(item_id, parts, connection_id) {
         return;
     }
 
-    let percent = parse_int(parts[2]);
+    let percent = try_parse_int(parts[2]);
     if percent == () || percent < 0 || percent > 100 {
         send_client_message(connection_id, "Weight reduction must be a number from 0-100.");
         return;
@@ -4118,7 +4118,7 @@ fn handle_medical_tier(item_id, parts, connection_id) {
         return;
     }
 
-    let tier = parse_int(parts[3]);
+    let tier = try_parse_int(parts[3]);
     if tier == () || tier < 1 || tier > 3 {
         send_client_message(connection_id, "Tier must be 1, 2, or 3.");
         return;
@@ -4141,7 +4141,7 @@ fn handle_medical_uses(item_id, parts, connection_id) {
         return;
     }
 
-    let uses = parse_int(parts[3]);
+    let uses = try_parse_int(parts[3]);
     if uses == () || uses < 0 {
         send_client_message(connection_id, "Uses must be a non-negative number (0 = reusable).");
         return;
@@ -4269,7 +4269,7 @@ fn handle_fertduration_subcommand(item_id, parts, connection_id) {
         send_client_message(connection_id, "Usage: oedit <id> fertduration <hours>  (set fertilizer effect duration in game hours)");
         return;
     }
-    let hours = parse_int(parts[2]);
+    let hours = try_parse_int(parts[2]);
     if hours == () {
         send_client_message(connection_id, "Invalid number: " + parts[2]);
         return;

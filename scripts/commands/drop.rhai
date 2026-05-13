@@ -32,7 +32,7 @@ fn run_command(args, connection_id) {
         let last_word = parts[parts.len() - 1].to_lower();
         if last_word == "gold" || last_word == "coins" {
             let amount_str = parts[0];
-            let amount = parse_int(amount_str);
+            let amount = try_parse_int(amount_str);
             if amount != () && amount > 0 {
                 drop_gold_from_balance(char, amount, connection_id);
                 return;

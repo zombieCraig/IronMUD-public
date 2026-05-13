@@ -52,8 +52,8 @@ fn handle_vehicle_press(char, transport, args, arg_lower, connection_id) {
     }
 
     // Try to parse as a floor number (1-indexed for users)
-    let floor_num = parse_int(args);
-    if floor_num > 0 {
+    let floor_num = try_parse_int(args);
+    if floor_num != () && floor_num > 0 {
         select_floor_by_number(char, transport, floor_num, connection_id);
         return;
     }

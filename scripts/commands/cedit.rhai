@@ -126,7 +126,7 @@ fn handle_gold(class_id, parts, connection_id) {
         return;
     }
     let amount_str = parts[2];
-    let amount = parse_int(amount_str);
+    let amount = try_parse_int(amount_str);
     if amount == () {
         send_client_message(connection_id, "Amount must be a non-negative integer.");
         return;

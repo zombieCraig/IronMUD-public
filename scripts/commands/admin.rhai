@@ -343,10 +343,10 @@ fn handle_settime(connection_id, args) {
     }
 
     // Parse numeric values
-    let hour = parse_int(parts[1]);
-    let day = parse_int(parts[2]);
-    let month = parse_int(parts[3]);
-    let year = parse_int(parts[4]);
+    let hour = try_parse_int(parts[1]);
+    let day = try_parse_int(parts[2]);
+    let month = try_parse_int(parts[3]);
+    let year = try_parse_int(parts[4]);
 
     if hour == () || day == () || month == () || year == () {
         send_client_message(connection_id, "Error: All values must be valid integers.");
@@ -465,7 +465,7 @@ fn handle_shutdown(connection_id, args, admin_char) {
         return;
     }
 
-    let delay = parse_int(parts[1]);
+    let delay = try_parse_int(parts[1]);
     if delay == () {
         send_client_message(connection_id, "Error: Delay must be a valid integer.");
         return;
@@ -1377,7 +1377,7 @@ fn parse_duration_to_expires_at(tok) {
     } else {
         return -1;
     };
-    let n = parse_int(num_str);
+    let n = try_parse_int(num_str);
     if n == () || n <= 0 {
         return -1;
     }

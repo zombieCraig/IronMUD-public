@@ -641,7 +641,7 @@ fn handle_automap_radius(connection_id, value_arg) {
         return;
     }
 
-    let n = parse_int(value_arg);
+    let n = try_parse_int(value_arg);
     if n == () {
         send_client_message(connection_id, "Automap radius must be a number between 1 and 8.");
         return;

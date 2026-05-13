@@ -121,7 +121,7 @@ fn cmd_list(connection_id, char) {
 }
 
 fn cmd_read(connection_id, char, num_str) {
-    let num = parse_int(num_str);
+    let num = try_parse_int(num_str);
     if num == () || num < 1 {
         send_client_message(connection_id, "Usage: mail read <number>");
         return;
@@ -149,7 +149,7 @@ fn cmd_read(connection_id, char, num_str) {
 }
 
 fn cmd_delete(connection_id, char, num_str) {
-    let num = parse_int(num_str);
+    let num = try_parse_int(num_str);
     if num == () || num < 1 {
         send_client_message(connection_id, "Usage: mail delete <number>");
         return;
@@ -209,7 +209,7 @@ fn cmd_send(connection_id, char, args) {
 }
 
 fn cmd_reply(connection_id, char, num_str) {
-    let num = parse_int(num_str);
+    let num = try_parse_int(num_str);
     if num == () || num < 1 {
         send_client_message(connection_id, "Usage: mail reply <number>");
         return;

@@ -139,7 +139,7 @@ fn run_command(args, connection_id) {
 
     // Check stamina (configurable via settings)
     let stamina_cost_str = get_setting_or_default("stamina_cost_attack", "5");
-    let stamina_cost = parse_int(stamina_cost_str);
+    let stamina_cost = try_parse_int(stamina_cost_str);
     if stamina_cost == () { stamina_cost = 5; }
     if char.stamina < stamina_cost {
         send_client_message(connection_id, "You are too exhausted to attack. Rest to recover stamina.");
@@ -184,7 +184,7 @@ fn find_attack_target(room_id, keyword, attacker_name, zone, god_mode) {
         if !god_mode && mobile.has_characteristics && mobile.age > 0 {
             let min_age_str = get_setting("min_attackable_age");
             if min_age_str != "" {
-                let min_age = parse_int(min_age_str);
+                let min_age = try_parse_int(min_age_str);
                 if min_age != () && min_age > 0 && mobile.age < min_age {
                     result.error = mobile.name + " is too young to harm.";
                     return result;

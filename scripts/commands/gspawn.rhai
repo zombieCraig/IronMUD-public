@@ -16,7 +16,7 @@ fn run_command(args, connection_id) {
     }
 
     let parts = args.split(" ");
-    let amount = parse_int(parts[0]);
+    let amount = try_parse_int(parts[0]);
     if amount == () || amount <= 0 {
         send_client_message(connection_id, "Amount must be a positive number.");
         return;

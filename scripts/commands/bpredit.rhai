@@ -383,7 +383,7 @@ fn handle_minvalue(preset, parts, connection_id) {
         return;
     }
 
-    let val = parse_int(parts[2]);
+    let val = try_parse_int(parts[2]);
     if val == () || val < 0 {
         send_client_message(connection_id, "Invalid value. Use a positive number or 'clear'.");
         return;
@@ -412,7 +412,7 @@ fn handle_maxvalue(preset, parts, connection_id) {
         return;
     }
 
-    let val = parse_int(parts[2]);
+    let val = try_parse_int(parts[2]);
     if val == () || val < 0 {
         send_client_message(connection_id, "Invalid value. Use a positive number or 'clear'.");
         return;

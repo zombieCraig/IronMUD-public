@@ -730,6 +730,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         }
     });
 
+    // try_parse_float(s) -> float or () - Parse string to float, returning () on failure
+    engine.register_fn("try_parse_float", |s: String| -> rhai::Dynamic {
+        match s.parse::<f64>() {
+            Ok(n) => rhai::Dynamic::from(n),
+            Err(_) => rhai::Dynamic::UNIT,
+        }
+    });
+
     // ========== Argument Parsing Functions ==========
 
     // split_quoted_args(text) -> array - Split string into args, respecting quoted strings

@@ -358,9 +358,9 @@ fn run_command(args, connection_id) {
             send_client_message(connection_id, "Usage: aedit levels <min> <max>");
             return;
         }
-        let min = parse_int(remaining[0]);
-        let max = parse_int(remaining[1]);
-        if min < 0 || max < 0 {
+        let min = try_parse_int(remaining[0]);
+        let max = try_parse_int(remaining[1]);
+        if min == () || max == () || min < 0 || max < 0 {
             send_client_message(connection_id, "Level values must be non-negative integers.");
             return;
         }
@@ -596,7 +596,7 @@ fn handle_caps_subcommand(area, args, connection_id) {
             send_client_message(connection_id, "Unknown cap kind: " + kind + ". Use rooms, items, mobiles, or spawn_points.");
             return;
         }
-        let n = parse_int(args[2]);
+        let n = try_parse_int(args[2]);
         if set_area_max(area.id, kind, n) {
             if n <= 0 {
                 send_client_message(connection_id, kind + " cap cleared (unlimited).");
@@ -790,8 +790,8 @@ fn handle_immigration_subcommand(area, args, connection_id) {
             send_client_message(connection_id, "Usage: aedit immigration interval <1-30>");
             return;
         }
-        let days = parse_int(args[1]);
-        if days < 1 || days > 30 {
+        let days = try_parse_int(args[1]);
+        if days == () || days < 1 || days > 30 {
             send_client_message(connection_id, "Interval must be between 1 and 30 game days.");
             return;
         }
@@ -805,8 +805,8 @@ fn handle_immigration_subcommand(area, args, connection_id) {
             send_client_message(connection_id, "Usage: aedit immigration max <n>");
             return;
         }
-        let n = parse_int(args[1]);
-        if n < 0 {
+        let n = try_parse_int(args[1]);
+        if n == () || n < 0 {
             send_client_message(connection_id, "Max per check must be non-negative.");
             return;
         }
@@ -820,8 +820,12 @@ fn handle_immigration_subcommand(area, args, connection_id) {
             send_client_message(connection_id, "Usage: aedit immigration workhours <start> <end>");
             return;
         }
-        let start = parse_int(args[1]);
-        let end = parse_int(args[2]);
+        let start = try_parse_int(args[1]);
+        let end = try_parse_int(args[2]);
+        if start == () || end == () {
+            send_client_message(connection_id, "Hours must be numbers.");
+            return;
+        }
         set_area_migrant_sim_work_hours(area.id, start, end);
         send_client_message(connection_id, "Migrant work hours set to " + start + "-" + end + ".");
         return;
@@ -832,7 +836,11 @@ fn handle_immigration_subcommand(area, args, connection_id) {
             send_client_message(connection_id, "Usage: aedit immigration pay <gold>");
             return;
         }
-        let pay = parse_int(args[1]);
+        let pay = try_parse_int(args[1]);
+        if pay == () {
+            send_client_message(connection_id, "Pay must be a number.");
+            return;
+        }
         set_area_migrant_sim_work_pay(area.id, pay);
         send_client_message(connection_id, "Migrant work pay set to " + pay + " gold.");
         return;
@@ -847,9 +855,9 @@ fn handle_immigration_subcommand(area, args, connection_id) {
             );
             return;
         }
-        let lo = parse_int(args[1]);
-        let hi = parse_int(args[2]);
-        if lo < 0 || hi < 0 {
+        let lo = try_parse_int(args[1]);
+        let hi = try_parse_int(args[2]);
+        if lo == () || hi == () || lo < 0 || hi < 0 {
             send_client_message(connection_id, "Gold values must be non-negative.");
             return;
         }
@@ -869,8 +877,8 @@ fn handle_immigration_subcommand(area, args, connection_id) {
             );
             return;
         }
-        let gold = parse_int(args[1]);
-        if gold < 0 {
+        let gold = try_parse_int(args[1]);
+        if gold == () || gold < 0 {
             send_client_message(connection_id, "Wage must be non-negative.");
             return;
         }
@@ -939,7 +947,7 @@ fn handle_immigration_family_chances_subcommand(area, args, connection_id) {
         return;
     }
 
-    let chance = parse_float(args[2]);
+    let chance = try_parse_float(args[2]);
     if chance == () || chance < 0.0 || chance > 1.0 {
         send_client_message(connection_id, "Chance must be a number between 0.0 and 1.0 (e.g. 0.1 = 10%).");
         return;
@@ -1043,7 +1051,7 @@ fn handle_immigration_variations_subcommand(area, args, connection_id) {
         return;
     }
 
-    let chance = parse_float(args[2]);
+    let chance = try_parse_float(args[2]);
     if chance == () || chance < 0.0 || chance > 1.0 {
         send_client_message(connection_id, "Chance must be a number between 0.0 and 1.0 (e.g. 0.1 = 10%).");
         return;
@@ -1154,7 +1162,7 @@ fn handle_forage_add(area, forage_type, args, connection_id) {
     }
 
     let vnum = args[2];
-    let min_skill = parse_int(args[3]);
+    let min_skill = try_parse_int(args[3]);
     let rarity = args[4].to_lower();
 
     if min_skill == () || min_skill < 0 || min_skill > 10 {

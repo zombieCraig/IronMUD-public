@@ -107,8 +107,8 @@ fn handle_read(ticket_str, connection_id) {
         send_client_message(connection_id, "Usage: bugs read <ticket#>");
         return;
     }
-    let ticket = parse_int(ticket_str);
-    if ticket <= 0 {
+    let ticket = try_parse_int(ticket_str);
+    if ticket == () || ticket <= 0 {
         send_client_message(connection_id, "Invalid ticket number.");
         return;
     }
@@ -199,8 +199,8 @@ fn handle_approve(ticket_str, connection_id, admin_name) {
         send_client_message(connection_id, "Usage: bugs approve <ticket#>");
         return;
     }
-    let ticket = parse_int(ticket_str);
-    if ticket <= 0 {
+    let ticket = try_parse_int(ticket_str);
+    if ticket == () || ticket <= 0 {
         send_client_message(connection_id, "Invalid ticket number.");
         return;
     }
@@ -231,8 +231,8 @@ fn handle_note(rest, connection_id, admin_name) {
         send_client_message(connection_id, "Usage: bugs note <ticket#> <message>");
         return;
     }
-    let ticket = parse_int(ticket_str);
-    if ticket <= 0 {
+    let ticket = try_parse_int(ticket_str);
+    if ticket == () || ticket <= 0 {
         send_client_message(connection_id, "Invalid ticket number.");
         return;
     }
@@ -253,8 +253,8 @@ fn handle_status(rest, connection_id, admin_name) {
         send_client_message(connection_id, "Usage: bugs status <ticket#> <open|inprogress|resolved|closed>");
         return;
     }
-    let ticket = parse_int(ticket_str);
-    if ticket <= 0 {
+    let ticket = try_parse_int(ticket_str);
+    if ticket == () || ticket <= 0 {
         send_client_message(connection_id, "Invalid ticket number.");
         return;
     }
@@ -289,8 +289,8 @@ fn handle_priority(rest, connection_id) {
         send_client_message(connection_id, "Usage: bugs priority <ticket#> <low|normal|high|critical>");
         return;
     }
-    let ticket = parse_int(ticket_str);
-    if ticket <= 0 {
+    let ticket = try_parse_int(ticket_str);
+    if ticket == () || ticket <= 0 {
         send_client_message(connection_id, "Invalid ticket number.");
         return;
     }
@@ -317,8 +317,8 @@ fn handle_close(rest, connection_id, admin_name) {
         send_client_message(connection_id, "Usage: bugs close <ticket#> [resolution note]");
         return;
     }
-    let ticket = parse_int(ticket_str);
-    if ticket <= 0 {
+    let ticket = try_parse_int(ticket_str);
+    if ticket == () || ticket <= 0 {
         send_client_message(connection_id, "Invalid ticket number.");
         return;
     }
@@ -342,8 +342,8 @@ fn handle_delete(ticket_str, connection_id) {
         send_client_message(connection_id, "Usage: bugs delete <ticket#>");
         return;
     }
-    let ticket = parse_int(ticket_str);
-    if ticket <= 0 {
+    let ticket = try_parse_int(ticket_str);
+    if ticket == () || ticket <= 0 {
         send_client_message(connection_id, "Invalid ticket number.");
         return;
     }

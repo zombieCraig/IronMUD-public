@@ -249,7 +249,7 @@ fn handle_rent(template, parts, connection_id) {
         send_client_message(connection_id, "Usage: pedit rent <amount>");
         return;
     }
-    let amount = parse_int(parts[1]);
+    let amount = try_parse_int(parts[1]);
     if amount == () || amount < 0 {
         send_client_message(connection_id, "Invalid rent amount. Must be a positive number.");
         return;
@@ -268,7 +268,7 @@ fn handle_max(template, parts, connection_id) {
         send_client_message(connection_id, "Usage: pedit max <count> (0=unlimited)");
         return;
     }
-    let count = parse_int(parts[1]);
+    let count = try_parse_int(parts[1]);
     if count == () || count < 0 {
         send_client_message(connection_id, "Invalid count. Must be a non-negative number.");
         return;
@@ -288,7 +288,7 @@ fn handle_level(template, parts, connection_id) {
         send_client_message(connection_id, "Usage: pedit level <num> (0=no requirement)");
         return;
     }
-    let level = parse_int(parts[1]);
+    let level = try_parse_int(parts[1]);
     if level == () || level < 0 {
         send_client_message(connection_id, "Invalid level. Must be a non-negative number.");
         return;

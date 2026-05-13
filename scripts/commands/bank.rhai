@@ -102,7 +102,7 @@ fn cmd_shared_deposit(connection_id, char, amount_str) {
             return;
         }
     } else {
-        amount = parse_int(amount_str);
+        amount = try_parse_int(amount_str);
         if amount == () || amount <= 0 {
             send_client_message(connection_id, "Usage: bank shared deposit <amount|all>");
             return;
@@ -140,7 +140,7 @@ fn cmd_shared_withdraw(connection_id, char, amount_str) {
             return;
         }
     } else {
-        amount = parse_int(amount_str);
+        amount = try_parse_int(amount_str);
         if amount == () || amount <= 0 {
             send_client_message(connection_id, "Usage: bank shared withdraw <amount|all>");
             return;
@@ -205,7 +205,7 @@ fn cmd_deposit(connection_id, char, amount_str) {
             return;
         }
     } else {
-        amount = parse_int(amount_str);
+        amount = try_parse_int(amount_str);
         if amount == () || amount <= 0 {
             send_client_message(connection_id, "Usage: bank deposit <amount|all>");
             return;
@@ -246,7 +246,7 @@ fn cmd_withdraw(connection_id, char, amount_str) {
             return;
         }
     } else {
-        amount = parse_int(amount_str);
+        amount = try_parse_int(amount_str);
         if amount == () || amount <= 0 {
             send_client_message(connection_id, "Usage: bank withdraw <amount|all>");
             return;

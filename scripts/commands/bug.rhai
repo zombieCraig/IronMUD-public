@@ -85,6 +85,6 @@ fn run_command(args, connection_id) {
         if preview.len() > 60 {
             preview = preview.sub_string(0, 57) + "...";
         }
-        notify_admins_bug(char.name, parse_int(ticket), preview);
+        notify_admins_bug(char.name, try_parse_int(ticket), preview);
     }
 }

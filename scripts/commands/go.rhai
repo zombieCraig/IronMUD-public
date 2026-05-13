@@ -301,10 +301,10 @@ fn run_command(args, connection_id) {
 
     // Calculate stamina cost based on terrain (configurable via settings)
     let base_cost_str = get_setting_or_default("stamina_cost_move", "1");
-    let base_cost = parse_int(base_cost_str);
+    let base_cost = try_parse_int(base_cost_str);
     if base_cost == () { base_cost = 1; }
     let difficult_cost_str = get_setting_or_default("stamina_cost_move_difficult", "2");
-    let difficult_cost = parse_int(difficult_cost_str);
+    let difficult_cost = try_parse_int(difficult_cost_str);
     if difficult_cost == () { difficult_cost = 2; }
 
     let stamina_cost = base_cost;

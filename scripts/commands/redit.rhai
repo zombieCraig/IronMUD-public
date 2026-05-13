@@ -462,8 +462,8 @@ fn handle_trigger_subcommand(connection_id, room, parts) {
             send_client_message(connection_id, "Usage: redit trigger remove <index>");
             return;
         }
-        let idx = parse_int(parts[2]);
-        if idx < 0 {
+        let idx = try_parse_int(parts[2]);
+        if idx == () || idx < 0 {
             send_client_message(connection_id, "Invalid index.");
             return;
         }
@@ -480,7 +480,11 @@ fn handle_trigger_subcommand(connection_id, room, parts) {
             send_client_message(connection_id, "Usage: redit trigger enable <index>");
             return;
         }
-        let idx = parse_int(parts[2]);
+        let idx = try_parse_int(parts[2]);
+        if idx == () {
+            send_client_message(connection_id, "Invalid index.");
+            return;
+        }
         if set_trigger_enabled(room.id, idx, true) {
             send_client_message(connection_id, "Trigger " + idx + " enabled.");
         } else {
@@ -494,7 +498,11 @@ fn handle_trigger_subcommand(connection_id, room, parts) {
             send_client_message(connection_id, "Usage: redit trigger disable <index>");
             return;
         }
-        let idx = parse_int(parts[2]);
+        let idx = try_parse_int(parts[2]);
+        if idx == () {
+            send_client_message(connection_id, "Invalid index.");
+            return;
+        }
         if set_trigger_enabled(room.id, idx, false) {
             send_client_message(connection_id, "Trigger " + idx + " disabled.");
         } else {
@@ -508,9 +516,9 @@ fn handle_trigger_subcommand(connection_id, room, parts) {
             send_client_message(connection_id, "Usage: redit trigger interval <index> <seconds>");
             return;
         }
-        let idx = parse_int(parts[2]);
-        let secs = parse_int(parts[3]);
-        if secs < 1 {
+        let idx = try_parse_int(parts[2]);
+        let secs = try_parse_int(parts[3]);
+        if idx == () || secs == () || secs < 1 {
             send_client_message(connection_id, "Interval must be at least 1 second.");
             return;
         }
@@ -527,9 +535,9 @@ fn handle_trigger_subcommand(connection_id, room, parts) {
             send_client_message(connection_id, "Usage: redit trigger chance <index> <1-100>");
             return;
         }
-        let idx = parse_int(parts[2]);
-        let chance = parse_int(parts[3]);
-        if chance < 1 || chance > 100 {
+        let idx = try_parse_int(parts[2]);
+        let chance = try_parse_int(parts[3]);
+        if idx == () || chance == () || chance < 1 || chance > 100 {
             send_client_message(connection_id, "Chance must be between 1 and 100.");
             return;
         }
@@ -546,7 +554,7 @@ fn handle_trigger_subcommand(connection_id, room, parts) {
             send_client_message(connection_id, "Usage: redit trigger test <index>");
             return;
         }
-        let idx = parse_int(parts[2]);
+        let idx = try_parse_int(parts[2]);
         if idx == () {
             send_client_message(connection_id, "Invalid index.");
             return;
@@ -1442,8 +1450,8 @@ fn run_command(args, connection_id) {
                 "\nUsage: redit capacity <n>");
             return;
         }
-        let cap = parse_int(parts[1]);
-        if cap < 0 {
+        let cap = try_parse_int(parts[1]);
+        if cap == () || cap < 0 {
             send_client_message(connection_id, "Capacity must be non-negative.");
             return;
         }
@@ -1534,7 +1542,7 @@ fn handle_delay_subcommand(connection_id, room, parts) {
         return;
     }
 
-    let secs = parse_int(parts[2]);
+    let secs = try_parse_int(parts[2]);
     if secs == () || secs < 0 {
         send_client_message(connection_id, "Invalid seconds: " + parts[2]);
         return;
@@ -2254,8 +2262,8 @@ fn handle_catch_add(room_id, parts, connection_id) {
     }
 
     let vnum = parts[2];
-    let weight = parse_int(parts[3]);
-    let min_skill = parse_int(parts[4]);
+    let weight = try_parse_int(parts[3]);
+    let min_skill = try_parse_int(parts[4]);
     let rarity = parts[5].to_lower();
 
     // Validate weight

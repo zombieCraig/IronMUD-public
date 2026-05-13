@@ -277,7 +277,7 @@ fn handle_int_field(proto, uuid, field, parts, connection_id) {
         send_client_message(connection_id, "Usage: plantedit <vnum> " + field + " <number>");
         return;
     }
-    let value = parse_int(parts[2]);
+    let value = try_parse_int(parts[2]);
     if value == () {
         send_client_message(connection_id, "Invalid number: " + parts[2]);
         return;
@@ -314,8 +314,8 @@ fn handle_water(proto, uuid, parts, connection_id) {
         send_client_message(connection_id, "Current: consumption=" + proto.water_consumption_per_hour + "/hr, capacity=" + proto.water_capacity);
         return;
     }
-    let consumption = parse_float(parts[2]);
-    let capacity = parse_float(parts[3]);
+    let consumption = try_parse_float(parts[2]);
+    let capacity = try_parse_float(parts[3]);
     if consumption == () || capacity == () {
         send_client_message(connection_id, "Invalid numbers.");
         return;
@@ -373,7 +373,7 @@ fn handle_stage(proto, uuid, parts, connection_id) {
             return;
         }
         let stage_name = parts[3];
-        let hours = parse_int(parts[4]);
+        let hours = try_parse_int(parts[4]);
         if hours == () {
             send_client_message(connection_id, "Invalid hours: " + parts[4]);
             return;
@@ -398,7 +398,7 @@ fn handle_stage(proto, uuid, parts, connection_id) {
             send_client_message(connection_id, "Usage: plantedit <vnum> stage remove <index>");
             return;
         }
-        let index = parse_int(parts[3]);
+        let index = try_parse_int(parts[3]);
         if index == () {
             send_client_message(connection_id, "Invalid index.");
             return;
