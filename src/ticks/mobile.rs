@@ -9,7 +9,7 @@ use tracing::{debug, error, warn};
 
 use ironmud::{
     CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, CombatZoneType, EffectType, InputEvent,
-    ItemData, MobileData, RoomData, SharedConnections, WoundType, broadcast_to_builders, db, get_opposite_direction,
+    ItemData, MobileData, RoomData, SharedConnections, SharedState, WoundType, broadcast_to_builders, db, get_opposite_direction,
 };
 
 use super::broadcast::{
@@ -24,13 +24,13 @@ pub const WANDER_TICK_INTERVAL_SECS: u64 = 60;
 pub const MOBILE_EFFECTS_TICK_INTERVAL_SECS: u64 = 30;
 
 /// Background task that processes mobile wandering periodically
-pub async fn run_wander_tick(db: db::Db, connections: SharedConnections) {
+pub async fn run_wander_tick(db: db::Db, connections: SharedConnections, state: SharedState) {
     let mut ticker = interval(Duration::from_secs(WANDER_TICK_INTERVAL_SECS));
 
     loop {
         ticker.tick().await;
 
-        if let Err(e) = process_wander_tick(&db, &connections) {
+        if let Err(e) = process_wander_tick(&db, &connections, &state) {
             error!("Wander tick error: {}", e);
         }
     }
@@ -412,7 +412,7 @@ fn should_suppress_wander(mobile: &MobileData) -> bool {
 }
 
 /// Process wandering for all non-sentinel mobiles
-fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
+fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &SharedState) -> Result<()> {
     use rand::Rng;
     use rand::seq::SliceRandom;
 
@@ -681,7 +681,7 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
                                 // Player also at ranged distance from mob
                                 char.combat.distances.insert(current_mobile.id, CombatDistance::Ranged);
                                 let _ = db.save_character_data(char.clone());
-                                sync_character_to_session(connections, &char);
+                                sync_character_to_session(connections, &char, state);
 
                                 // Notify the room (sleeping players don't see this).
                                 // Memory-driven attacks get a recognition emote.
@@ -771,7 +771,7 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
                                         let stolen = rng.gen_range(1..=max_steal);
                                         char.gold -= stolen;
                                         let _ = db.save_character_data(char.clone());
-                                        sync_character_to_session(connections, &char);
+                                        sync_character_to_session(connections, &char, state);
 
                                         current_mobile.gold += stolen;
                                         let _ = db.update_mobile(&current_mobile.id, |m| {
@@ -839,7 +839,7 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections) -> Result<(
                                             }
                                             char.combat.distances.insert(current_mobile.id, CombatDistance::Melee);
                                             let _ = db.save_character_data(char.clone());
-                                            sync_character_to_session(connections, &char);
+                                            sync_character_to_session(connections, &char, state);
 
                                             broadcast_to_room_awake(
                                                 connections,
@@ -1233,17 +1233,17 @@ pub fn find_aggression_target_for_mob(
 }
 
 /// Background task that processes mobile periodic effects (poison emotes, etc.)
-pub async fn run_mobile_effects_tick(db: db::Db, connections: SharedConnections) {
+pub async fn run_mobile_effects_tick(db: db::Db, connections: SharedConnections, state: SharedState) {
     let mut ticker = interval(Duration::from_secs(MOBILE_EFFECTS_TICK_INTERVAL_SECS));
     loop {
         ticker.tick().await;
-        if let Err(e) = process_mobile_effects(&db, &connections) {
+        if let Err(e) = process_mobile_effects(&db, &connections, &state) {
             error!("Mobile effects tick error: {}", e);
         }
     }
 }
 
-fn process_mobile_effects(db: &db::Db, connections: &SharedConnections) -> Result<()> {
+fn process_mobile_effects(db: &db::Db, connections: &SharedConnections, _state: &SharedState) -> Result<()> {
     use rand::Rng;
     let mobiles = db.list_all_mobiles()?;
     let mut rng = rand::thread_rng();

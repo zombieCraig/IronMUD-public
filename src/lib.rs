@@ -1088,7 +1088,7 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
 
 impl PlayerSession {
     /// Sync MSDP vitals if supported and requested
-    pub fn sync_msdp_vitals(&self) {
+    pub fn sync_msdp_vitals(&self, state: &SharedState) {
         if !self.telnet_state.msdp_supported
             || self.telnet_state.msdp_reported_variables.is_empty()
             || self.raw_sender.is_none()
@@ -1121,6 +1121,53 @@ impl PlayerSession {
         }
         if reported.contains("MANA_MAX") {
             let _ = tx_raw.send(telnet::build_msdp_var("MANA_MAX", &char_data.max_mana.to_string()));
+        }
+        if reported.contains("GOLD") {
+            let _ = tx_raw.send(telnet::build_msdp_var("GOLD", &char_data.gold.to_string()));
+        }
+        if reported.contains("BANK_GOLD") {
+            let _ = tx_raw.send(telnet::build_msdp_var("BANK_GOLD", &char_data.bank_gold.to_string()));
+        }
+        if reported.contains("LEVEL") {
+            let _ = tx_raw.send(telnet::build_msdp_var("LEVEL", &char_data.level.to_string()));
+        }
+        if reported.contains("ROOM_NAME") {
+            if let Some(ref char) = self.character {
+                let world = state.lock().unwrap();
+                if let Ok(Some(room)) = world.db.get_room_data(&char.current_room_id) {
+                    let _ = tx_raw.send(telnet::build_msdp_var("ROOM_NAME", &room.title));
+                }
+            }
+        }
+        if reported.contains("OPPONENT_HEALTH") || reported.contains("OPPONENT_NAME") {
+            if let Some(ref char) = self.character {
+                if char.combat.in_combat && !char.combat.targets.is_empty() {
+                    let world = state.lock().unwrap();
+                    let primary = &char.combat.targets[0];
+                    if reported.contains("OPPONENT_NAME") {
+                        let target_name = match primary.target_type {
+                            CombatTargetType::Mobile => world.db.get_mobile_data(&primary.target_id).ok().flatten().map(|m| m.name.clone()).unwrap_or_else(|| "opponent".to_string()),
+                            CombatTargetType::Player => "another player".to_string(), // Character lookup by Uuid is not yet supported
+                        };
+                        let _ = tx_raw.send(telnet::build_msdp_var("OPPONENT_NAME", &target_name));
+                    }
+                    if reported.contains("OPPONENT_HEALTH") {
+                        let (hp, max_hp) = match primary.target_type {
+                            CombatTargetType::Mobile => world.db.get_mobile_data(&primary.target_id).ok().flatten().map(|m| (m.current_hp, m.max_hp)).unwrap_or((0, 1)),
+                            CombatTargetType::Player => (100, 100), // HP lookup for other players not yet supported
+                        };
+                        let pct: i32 = (hp * 100) / max_hp;
+                        let _ = tx_raw.send(telnet::build_msdp_var("OPPONENT_HEALTH", &pct.to_string()));
+                    }
+                } else {
+                    if reported.contains("OPPONENT_NAME") {
+                        let _ = tx_raw.send(telnet::build_msdp_var("OPPONENT_NAME", ""));
+                    }
+                    if reported.contains("OPPONENT_HEALTH") {
+                        let _ = tx_raw.send(telnet::build_msdp_var("OPPONENT_HEALTH", "0"));
+                    }
+                }
+            }
         }
     }
 }
@@ -1344,7 +1391,7 @@ pub async fn handle_connection(
             {
                 let conns = connections.lock().unwrap();
                 if let Some(session) = conns.get(&connection_id) {
-                    session.sync_msdp_vitals();
+                    session.sync_msdp_vitals(&state);
                 }
             }
             let prompt = build_prompt(&connection_id, &connections, &state);
@@ -2879,7 +2926,7 @@ pub async fn handle_connection(
             {
                 let conns = connections.lock().unwrap();
                 if let Some(session) = conns.get(&connection_id) {
-                    session.sync_msdp_vitals();
+                    session.sync_msdp_vitals(&state);
                 }
             }
 

@@ -1,6 +1,11 @@
 #CONFIG {CHARSET} {UTF-8}
 #CONFIG {COLOR} {ON}
 #CONFIG {COMMAND ECHO} {OFF}
+#CONFIG {MOUSE} {ON}
+
+/* Mouse Wheel Scrolling */
+#EVENT {SCROLLED MOUSE WHEEL UP}   {#buffer up 3}
+#EVENT {SCROLLED MOUSE WHEEL DOWN} {#buffer down 3}
 
 /* Session Alias */
 #ALIAS {ironmud} {
@@ -9,9 +14,7 @@
 
 /* 
  * Connection & Login Handlers 
- * IronMUD uses "login <user> <pass>" or "create <user> <pass> [email]"
  */
-
 #ACTION {^What is your account name?} {
     #ECHO {Enter account name: };
     #CURSOR {SET} {20} {1};
@@ -23,7 +26,7 @@
         #ECHO {Usage: login <username> <password>};
     } {
         #SEND {login %1 %2};
-    }
+    };
 }
 
 #ALIAS {create} {
@@ -34,31 +37,69 @@
             #SEND {create %1 %2};
         } {
             #SEND {create %1 %2 %3};
-        }
-    }
+        };
+    };
 }
 
 /* UI Setup */
-#SPLIT 1 0
-#PROMPT {^[%dHP:%d/%d] [%dST:%d/%d]} {<170>HP: %2/%3 <160>ST: %5/%6} {1}
+#VARIABLE {chat_pos} {1};
+#VARIABLE {chat_enabled} {1};
+#VARIABLE {status_line} {<170>  Welcome to IronMUD  |  Type 'ironmud' to connect  };
+#SPLIT 7 1;
+
+/* Action to capture communications and move them to the chat tile */
+#ACTION {^%1 {says|tells you|shouts|tells the group|talks}: %2} {
+    #IF {"$chat_enabled" == "1"} {
+        #LINE GAG;
+        #SHOWME {%0} {$chat_pos};
+        #MATH {chat_pos} {$chat_pos % 5 + 1};
+    };
+}
+#ACTION {^You {say|tell %*|shout|tell the group|tell your friends}: %2} {
+    #IF {"$chat_enabled" == "1"} {
+        #LINE GAG;
+        #SHOWME {%0} {$chat_pos};
+        #MATH {chat_pos} {$chat_pos % 5 + 1};
+    };
+}
+
+/* 
+ * Prompt handling
+ * Captures HP/ST and optional extras.
+ * TinTin++ strips colors before matching by default.
+ */
+#PROMPT {^%*HP:%d/%d] [%*ST:%d/%d]%*>} {<170>HP: %2/%3 <160>ST: %5/%6 %7} {6}
 
 /* Status bar initialization */
-#SHOWME {<170>  Welcome to IronMUD  |  Type 'ironmud' to connect  } {1}
+#SHOWME {$status_line} {6}
 
 /* Common Shortcuts */
 #ALIAS {l} {look}
 #ALIAS {i} {inventory}
 #ALIAS {sc} {status}
 #ALIAS {ex} {exits}
-#ALIAS {who} {who}
+#ALIAS {who} {#SEND {who}}
+
+#ALIAS {chat_toggle} {
+    #IF {"$chat_enabled" == "0"} {
+        #VARIABLE {chat_enabled} {1};
+        #SPLIT 7 1;
+        #ECHO {Chat tiling enabled.};
+        #SHOWME {$status_line} {6};
+    } {
+        #VARIABLE {chat_enabled} {0};
+        #SPLIT 2 1;
+        #ECHO {Chat tiling disabled.};
+        #SHOWME {$status_line} {1};
+    };
+}
 
 /* 
  * MSDP Integration
- * TinTin++ receives variables like HEALTH, STAMINA, etc.
  */
 #EVENT {IAC WILL MSDP} {
     #SEND {IAC DO MSDP};
-    #SEND {IAC SB MSDP MSDP_VAR "REPORT" MSDP_VAL "HEALTH" MSDP_VAL "HEALTH_MAX" MSDP_VAL "STAMINA" MSDP_VAL "STAMINA_MAX" IAC SE};
+    #SEND {IAC SB MSDP MSDP_VAR "REPORT" MSDP_VAL "HEALTH" MSDP_VAL "HEALTH_MAX" MSDP_VAL "STAMINA" MSDP_VAL "STAMINA_MAX" MSDP_VAL "MANA" MSDP_VAL "MANA_MAX" MSDP_VAL "GOLD" MSDP_VAL "LEVEL" MSDP_VAL "ROOM_NAME" MSDP_VAL "OPPONENT_NAME" MSDP_VAL "OPPONENT_HEALTH" IAC SE};
 }
 
 #EVENT {MSDP VARIABLE} {
@@ -66,6 +107,27 @@
     #IF {"%0" == "HEALTH_MAX"} {#VARIABLE {max_hp} {%1}};
     #IF {"%0" == "STAMINA"} {#VARIABLE {st} {%1}};
     #IF {"%0" == "STAMINA_MAX"} {#VARIABLE {max_st} {%1}};
-    
-    #SHOWME {<170>  Health: $hp / $max_hp  |  Stamina: $st / $max_st  } {1};
+    #IF {"%0" == "MANA"} {#VARIABLE {mp} {%1}};
+    #IF {"%0" == "MANA_MAX"} {#VARIABLE {max_mp} {%1}};
+    #IF {"%0" == "GOLD"} {#VARIABLE {gold} {%1}};
+    #IF {"%0" == "LEVEL"} {#VARIABLE {level} {%1}};
+    #IF {"%0" == "ROOM_NAME"} {#VARIABLE {room} {%1}};
+    #IF {"%0" == "OPPONENT_NAME"} {#VARIABLE {opp_name} {%1}};
+    #IF {"%0" == "OPPONENT_HEALTH"} {#VARIABLE {opp_hp} {%1}};
+
+    #VARIABLE {status_line} {<170> Lv: $level | HP: $hp/$max_hp | ST: $st/$max_st};
+    #IF {"$max_mp" != "0" && "$max_mp" != ""} {
+        #VARIABLE {status_line} {$status_line | MP: $mp/$max_mp};
+    };
+    #VARIABLE {status_line} {$status_line | Gold: $gold | $room};
+
+    #IF {"$opp_name" != "" && "$opp_hp" != "0"} {
+        #VARIABLE {status_line} {$status_line | <110>Enemy: $opp_name ($opp_hp%%)};
+    };
+
+    #IF {"$chat_enabled" == "1"} {
+        #SHOWME {$status_line} {6};
+    } {
+        #SHOWME {$status_line} {1};
+    };
 }

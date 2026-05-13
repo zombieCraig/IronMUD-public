@@ -203,20 +203,23 @@ async fn main() -> Result<()> {
 
     // Start background thirst tick (player thirst updates)
     let thirst_connections = connections.clone();
+    let thirst_state = state.clone();
     tokio::spawn(async move {
-        run_thirst_tick(tick_db4, thirst_connections).await;
+        run_thirst_tick(tick_db4, thirst_connections, thirst_state).await;
     });
 
     // Start background regen tick (stamina and HP regeneration)
     let regen_connections = connections.clone();
+    let regen_state = state.clone();
     tokio::spawn(async move {
-        run_regen_tick(tick_db5, regen_connections).await;
+        run_regen_tick(tick_db5, regen_connections, regen_state).await;
     });
 
     // Start background wander tick (mobile wandering)
     let wander_connections = connections.clone();
+    let wander_state = state.clone();
     tokio::spawn(async move {
-        run_wander_tick(tick_db6, wander_connections).await;
+        run_wander_tick(tick_db6, wander_connections, wander_state).await;
     });
 
     // Start background combat tick (combat round processing)
@@ -252,8 +255,9 @@ async fn main() -> Result<()> {
 
     // Start background hunger tick (player hunger updates)
     let hunger_connections = connections.clone();
+    let hunger_state = state.clone();
     tokio::spawn(async move {
-        run_hunger_tick(tick_db12, hunger_connections).await;
+        run_hunger_tick(tick_db12, hunger_connections, hunger_state).await;
     });
 
     // Start background spoilage tick (food spoilage accumulation)
@@ -264,14 +268,16 @@ async fn main() -> Result<()> {
 
     // Start background mobile effects tick (poison emotes, etc.)
     let mobile_effects_connections = connections.clone();
+    let mobile_effects_state = state.clone();
     tokio::spawn(async move {
-        run_mobile_effects_tick(tick_db14, mobile_effects_connections).await;
+        run_mobile_effects_tick(tick_db14, mobile_effects_connections, mobile_effects_state).await;
     });
 
     // Start background pursuit tick (mob pursuit after sniping)
     let pursuit_connections = connections.clone();
+    let pursuit_state = state.clone();
     tokio::spawn(async move {
-        run_pursuit_tick(tick_db15, pursuit_connections).await;
+        run_pursuit_tick(tick_db15, pursuit_connections, pursuit_state).await;
     });
 
     // Start background routine tick (mobile daily routines)
@@ -286,29 +292,35 @@ async fn main() -> Result<()> {
         run_garden_tick(tick_db17, garden_connections).await;
     });
 
-    // Start background hunting tick (player auto-follow while hunting)
+    // Start background hunting tick (auto-follow target movement)
     let hunting_connections = connections.clone();
+    let hunting_state = state.clone();
     tokio::spawn(async move {
-        run_hunting_tick(tick_db18, hunting_connections).await;
+        run_hunting_tick(tick_db18, hunting_connections, hunting_state).await;
     });
+
 
     // Start background drowning tick (breath depletion and drowning damage)
     let drowning_connections = connections.clone();
+    let drowning_state = state.clone();
     tokio::spawn(async move {
-        run_drowning_tick(tick_db19, drowning_connections).await;
+        run_drowning_tick(tick_db19, drowning_connections, drowning_state).await;
     });
 
     // Start background slow-move tick (releases players from delayed exits)
     let slow_move_connections = connections.clone();
+    let slow_move_state = state.clone();
     tokio::spawn(async move {
-        run_slow_move_tick(tick_db28, slow_move_connections).await;
+        run_slow_move_tick(tick_db28, slow_move_connections, slow_move_state).await;
     });
 
-    // Start background bleeding tick (wound bleeding damage)
+    // Start background bleeding tick (wound damage accumulation)
     let bleeding_connections = connections.clone();
+    let bleeding_state = state.clone();
     tokio::spawn(async move {
-        run_bleeding_tick(tick_db20, bleeding_connections).await;
+        run_bleeding_tick(tick_db20, bleeding_connections, bleeding_state).await;
     });
+
 
     // Start background simulation tick (NPC needs simulation)
     let simulation_connections = connections.clone();

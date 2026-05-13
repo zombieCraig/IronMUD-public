@@ -6,7 +6,7 @@ use anyhow::Result;
 use tokio::time::{Duration, interval};
 use tracing::error;
 
-use ironmud::{BodyPart, CharacterData, CharacterPosition, EffectType, InputEvent, SharedConnections, TemperatureCategory, db};
+use ironmud::{BodyPart, CharacterData, CharacterPosition, EffectType, InputEvent, SharedConnections, SharedState, TemperatureCategory, db};
 
 /// Thirst tick interval in seconds (check thirst every minute)
 pub const THIRST_TICK_INTERVAL_SECS: u64 = 60;
@@ -22,20 +22,20 @@ pub const REGEN_TICK_INTERVAL_SECS: u64 = 10;
 pub const SLOW_MOVE_TICK_INTERVAL_SECS: u64 = 1;
 
 /// Background task that processes player thirst periodically
-pub async fn run_thirst_tick(db: db::Db, connections: SharedConnections) {
+pub async fn run_thirst_tick(db: db::Db, connections: SharedConnections, state: SharedState) {
     let mut ticker = interval(Duration::from_secs(THIRST_TICK_INTERVAL_SECS));
 
     loop {
         ticker.tick().await;
 
-        if let Err(e) = process_thirst_tick(&db, &connections) {
+        if let Err(e) = process_thirst_tick(&db, &connections, &state) {
             error!("Thirst tick error: {}", e);
         }
     }
 }
 
 /// Process thirst for all logged-in players
-fn process_thirst_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
+fn process_thirst_tick(db: &db::Db, connections: &SharedConnections, _state: &SharedState) -> Result<()> {
     let game_time = db.get_game_time()?;
     let temp_category = game_time.get_temperature_category();
 
@@ -161,20 +161,20 @@ pub fn calculate_character_insulation(char: &CharacterData, db: &db::Db) -> i32 
 }
 
 /// Background task that processes player hunger periodically
-pub async fn run_hunger_tick(db: db::Db, connections: SharedConnections) {
+pub async fn run_hunger_tick(db: db::Db, connections: SharedConnections, state: SharedState) {
     let mut ticker = interval(Duration::from_secs(HUNGER_TICK_INTERVAL_SECS));
 
     loop {
         ticker.tick().await;
 
-        if let Err(e) = process_hunger_tick(&db, &connections) {
+        if let Err(e) = process_hunger_tick(&db, &connections, &state) {
             error!("Hunger tick error: {}", e);
         }
     }
 }
 
 /// Process hunger for all logged-in players
-fn process_hunger_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
+fn process_hunger_tick(db: &db::Db, connections: &SharedConnections, _state: &SharedState) -> Result<()> {
     let hunger_base_rate: i32 = db
         .get_setting_or_default("hunger_base_rate", "1")
         .unwrap_or_else(|_| "1".to_string())
@@ -259,21 +259,22 @@ fn get_hunger_message(old: i32, new: i32, max: i32) -> Option<&'static str> {
     }
 }
 
-/// Background task that processes stamina and HP regeneration
-pub async fn run_regen_tick(db: db::Db, connections: SharedConnections) {
+/// Background task that processes stamina and HP regeneration periodically
+pub async fn run_regen_tick(db: db::Db, connections: SharedConnections, state: SharedState) {
     let mut ticker = interval(Duration::from_secs(REGEN_TICK_INTERVAL_SECS));
 
     loop {
         ticker.tick().await;
 
-        if let Err(e) = process_regen_tick(&db, &connections) {
+        if let Err(e) = process_regen_tick(&db, &connections, &state) {
             error!("Regen tick error: {}", e);
         }
     }
 }
 
 /// Process stamina and HP regeneration for all logged-in players
-fn process_regen_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
+fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &SharedState) -> Result<()> {
+
     let stamina_regen_standing: i32 = db
         .get_setting_or_default("stamina_regen_standing", "1")
         .unwrap_or_else(|_| "1".to_string())
@@ -625,7 +626,7 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections) -> Result<()
 
             if modified {
                 let _ = db.save_character_data(char.clone());
-                session.sync_msdp_vitals();
+                session.sync_msdp_vitals(state);
             }
         }
     }
@@ -656,20 +657,20 @@ fn get_stamina_message(old: i32, new: i32, max: i32) -> Option<&'static str> {
 pub const HUNTING_TICK_INTERVAL_SECS: u64 = 5;
 
 /// Background task that processes player hunting auto-follow periodically
-pub async fn run_hunting_tick(db: db::Db, connections: SharedConnections) {
+pub async fn run_hunting_tick(db: db::Db, connections: SharedConnections, state: SharedState) {
     let mut ticker = interval(Duration::from_secs(HUNTING_TICK_INTERVAL_SECS));
 
     loop {
         ticker.tick().await;
 
-        if let Err(e) = process_hunting_tick(&db, &connections) {
+        if let Err(e) = process_hunting_tick(&db, &connections, &state) {
             error!("Hunting tick error: {}", e);
         }
     }
 }
 
 /// Process hunting auto-follow for all logged-in players with active hunt targets
-fn process_hunting_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
+fn process_hunting_tick(db: &db::Db, connections: &SharedConnections, state: &SharedState) -> Result<()> {
     use super::broadcast::{broadcast_to_room_except_awake, send_message_to_character, sync_character_to_session};
     use super::mobile::get_opposite_direction_rust;
 
@@ -726,7 +727,7 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections) -> Result<
             if let Ok(Some(mut char)) = db.get_character_data(&char_name) {
                 char.hunting_target.clear();
                 let _ = db.save_character_data(char.clone());
-                sync_character_to_session(connections, &char);
+                sync_character_to_session(connections, &char, state);
             }
             send_message_to_character(connections, &char_name, &format!("You have found {}!", hunt_target));
             continue;
@@ -815,7 +816,7 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections) -> Result<
         if char.stamina <= 0 && !char.god_mode && !ironmud::check_build_mode(db, &char_name, &char.current_room_id) {
             char.hunting_target.clear();
             let _ = db.save_character_data(char.clone());
-            sync_character_to_session(connections, &char);
+            sync_character_to_session(connections, &char, state);
             send_message_to_character(connections, &char_name, "You are too exhausted to continue hunting.");
             continue;
         }
@@ -852,7 +853,7 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections) -> Result<
         }
         char.current_room_id = target_room_id;
         let _ = db.save_character_data(char.clone());
-        sync_character_to_session(connections, &char);
+        sync_character_to_session(connections, &char, state);
 
         // Send tracking message
         send_message_to_character(
@@ -885,20 +886,20 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections) -> Result<
 pub const DROWNING_TICK_INTERVAL_SECS: u64 = 10;
 
 /// Background task that processes drowning for players in underwater rooms
-pub async fn run_drowning_tick(db: db::Db, connections: SharedConnections) {
+pub async fn run_drowning_tick(db: db::Db, connections: SharedConnections, state: SharedState) {
     let mut ticker = interval(Duration::from_secs(DROWNING_TICK_INTERVAL_SECS));
 
     loop {
         ticker.tick().await;
 
-        if let Err(e) = process_drowning_tick(&db, &connections) {
+        if let Err(e) = process_drowning_tick(&db, &connections, &state) {
             error!("Drowning tick error: {}", e);
         }
     }
 }
 
 /// Process breath/drowning for all logged-in players
-fn process_drowning_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
+fn process_drowning_tick(db: &db::Db, connections: &SharedConnections, state: &SharedState) -> Result<()> {
     use super::broadcast::{send_message_to_character, sync_character_to_session};
 
     // Collect player data outside the lock to avoid holding it during db operations
@@ -943,7 +944,7 @@ fn process_drowning_tick(db: &db::Db, connections: &SharedConnections) -> Result
                 if char.breath < char.max_breath {
                     char.breath = char.max_breath;
                     db.save_character_data(char.clone())?;
-                    sync_character_to_session(connections, &char);
+                    sync_character_to_session(connections, &char, state);
                 }
                 continue;
             }
@@ -1039,7 +1040,7 @@ fn process_drowning_tick(db: &db::Db, connections: &SharedConnections) -> Result
             }
 
             db.save_character_data(char.clone())?;
-            sync_character_to_session(connections, &char);
+            sync_character_to_session(connections, &char, state);
         } else {
             // Not underwater: recover breath
             if char.breath < char.max_breath {
@@ -1064,7 +1065,7 @@ fn process_drowning_tick(db: &db::Db, connections: &SharedConnections) -> Result
                 }
 
                 db.save_character_data(char.clone())?;
-                sync_character_to_session(connections, &char);
+                sync_character_to_session(connections, &char, state);
             }
         }
     }
@@ -1096,7 +1097,7 @@ fn get_buff_expiry_message(effect_type: EffectType) -> String {
 /// `<direction>` input event. `go.rhai` consumes the flag and bypasses the
 /// exit-delay check exactly once. The `pending_slow_move` field on the
 /// character is cleared as we send the event.
-pub async fn run_slow_move_tick(db: db::Db, connections: SharedConnections) {
+pub async fn run_slow_move_tick(db: db::Db, connections: SharedConnections, _state: SharedState) {
     let mut ticker = interval(Duration::from_secs(SLOW_MOVE_TICK_INTERVAL_SECS));
     loop {
         ticker.tick().await;

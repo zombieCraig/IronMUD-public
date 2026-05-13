@@ -4,7 +4,7 @@
 //! They are internal to the ticks module and duplicate some functions
 //! from lib.rs with slightly different signatures for efficiency.
 
-use ironmud::{CharacterData, CharacterPosition, SharedConnections};
+use ironmud::{CharacterData, CharacterPosition, SharedConnections, SharedState};
 use tracing::debug;
 
 /// Send a message to a specific character by name
@@ -22,13 +22,13 @@ pub fn send_message_to_character(connections: &SharedConnections, char_name: &st
 }
 
 /// Sync character data from database to session (for automatic combat updates)
-pub fn sync_character_to_session(connections: &SharedConnections, char_data: &CharacterData) {
+pub fn sync_character_to_session(connections: &SharedConnections, char_data: &CharacterData, state: &SharedState) {
     if let Ok(mut conns) = connections.lock() {
         for (_, session) in conns.iter_mut() {
             if let Some(ref existing_char) = session.character {
                 if existing_char.name.to_lowercase() == char_data.name.to_lowercase() {
                     session.character = Some(char_data.clone());
-                    session.sync_msdp_vitals();
+                    session.sync_msdp_vitals(state);
                     return;
                 }
             }

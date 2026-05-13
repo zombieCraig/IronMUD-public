@@ -9,7 +9,7 @@ use tokio::time::{Duration, interval};
 use tracing::{debug, error};
 
 use ironmud::{
-    CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, CombatZoneType, SharedConnections, db,
+    CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, CombatZoneType, SharedConnections, SharedState, db,
 };
 
 use super::broadcast::{
@@ -24,20 +24,20 @@ use super::mobile::{
 pub const PURSUIT_TICK_INTERVAL_SECS: u64 = 10;
 
 /// Background task that processes mob pursuit periodically
-pub async fn run_pursuit_tick(db: db::Db, connections: SharedConnections) {
+pub async fn run_pursuit_tick(db: db::Db, connections: SharedConnections, state: SharedState) {
     let mut ticker = interval(Duration::from_secs(PURSUIT_TICK_INTERVAL_SECS));
 
     loop {
         ticker.tick().await;
 
-        if let Err(e) = process_pursuit_tick(&db, &connections) {
+        if let Err(e) = process_pursuit_tick(&db, &connections, &state) {
             error!("Pursuit tick error: {}", e);
         }
     }
 }
 
 /// Process pursuit for all mobs with active pursuit state
-fn process_pursuit_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
+fn process_pursuit_tick(db: &db::Db, connections: &SharedConnections, state: &SharedState) -> Result<()> {
     use rand::Rng;
     use rand::seq::SliceRandom;
 
@@ -217,7 +217,7 @@ fn process_pursuit_tick(db: &db::Db, connections: &SharedConnections) -> Result<
                                     c.combat.distances.insert(mob_id, CombatDistance::Ranged);
                                 })?;
                                 if let Some(fresh) = after {
-                                    sync_character_to_session(connections, &fresh);
+                                    sync_character_to_session(connections, &fresh, state);
                                 }
 
                                 broadcast_to_room_awake(

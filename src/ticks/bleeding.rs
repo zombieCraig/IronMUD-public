@@ -7,7 +7,7 @@ use anyhow::Result;
 use tokio::time::{Duration, interval};
 use tracing::error;
 
-use ironmud::{BloodTrail, SharedConnections, db};
+use ironmud::{BloodTrail, SharedConnections, SharedState, db};
 
 use super::broadcast::{
     broadcast_to_room_awake, broadcast_to_room_except, send_message_to_character, sync_character_to_session,
@@ -58,27 +58,28 @@ fn deposit_blood_trail(db: &db::Db, room_id: &uuid::Uuid, name: &str, bleeding: 
 }
 
 /// Background task that processes bleeding damage periodically
-pub async fn run_bleeding_tick(db: db::Db, connections: SharedConnections) {
+pub async fn run_bleeding_tick(db: db::Db, connections: SharedConnections, state: SharedState) {
     let mut ticker = interval(Duration::from_secs(BLEEDING_TICK_INTERVAL_SECS));
 
     loop {
         ticker.tick().await;
 
-        if let Err(e) = process_bleeding_tick(&db, &connections) {
+        if let Err(e) = process_bleeding_tick(&db, &connections, &state) {
             error!("Bleeding tick error: {}", e);
         }
     }
 }
 
 /// Process bleeding damage for all characters and mobiles
-fn process_bleeding_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
-    process_character_bleeding(db, connections)?;
+fn process_bleeding_tick(db: &db::Db, connections: &SharedConnections, state: &SharedState) -> Result<()> {
+    process_character_bleeding(db, connections, state)?;
     process_mobile_bleeding(db, connections)?;
     Ok(())
 }
 
 /// Phase A: Process bleeding for all logged-in player characters
-fn process_character_bleeding(db: &db::Db, connections: &SharedConnections) -> Result<()> {
+fn process_character_bleeding(db: &db::Db, connections: &SharedConnections, state: &SharedState) -> Result<()> {
+
     // Collect player names outside the lock
     let player_names: Vec<String> = {
         let conns = connections.lock().unwrap();
@@ -120,7 +121,7 @@ fn process_character_bleeding(db: &db::Db, connections: &SharedConnections) -> R
             let Some(mut char) = post else { continue };
 
             if char.bleedout_rounds_remaining <= 0 {
-                process_player_death(db, connections, &mut char, &room_id)?;
+                process_player_death(db, connections, &mut char, &room_id, state)?;
                 continue;
             }
 
@@ -171,7 +172,7 @@ fn process_character_bleeding(db: &db::Db, connections: &SharedConnections) -> R
             if let Some(updated) = post {
                 char = updated;
             }
-            sync_character_to_session(connections, &char);
+            sync_character_to_session(connections, &char, state);
 
             send_message_to_character(connections, &char_name, "You collapse, unconscious from blood loss!");
             broadcast_to_room_except(
@@ -183,7 +184,7 @@ fn process_character_bleeding(db: &db::Db, connections: &SharedConnections) -> R
             continue;
         }
 
-        sync_character_to_session(connections, &char);
+        sync_character_to_session(connections, &char, state);
     }
 
     Ok(())

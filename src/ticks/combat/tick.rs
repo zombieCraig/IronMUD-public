@@ -129,7 +129,7 @@ fn process_character_combat_round(
 
         if char.bleedout_rounds_remaining <= 0 {
             // Bleedout timer expired - death!
-            process_player_death(db, connections, &mut char, &room_id)?;
+            process_player_death(db, connections, &mut char, &room_id, state)?;
             return Ok(());
         }
 
@@ -235,7 +235,7 @@ fn process_character_combat_round(
             char.is_unconscious = true;
             char.bleedout_rounds_remaining = 5;
             db.save_character_data(char.clone())?;
-            sync_character_to_session(connections, &char);
+            sync_character_to_session(connections, &char, state);
 
             send_message_to_character(connections, char_name, "You collapse, unconscious!");
             broadcast_to_room_except(
@@ -286,7 +286,7 @@ fn process_character_combat_round(
     if char.combat.reloading {
         char.combat.reloading = false;
         db.save_character_data(char.clone())?;
-        sync_character_to_session(connections, &char);
+        sync_character_to_session(connections, &char, state);
         send_message_to_character(connections, char_name, "You finish reloading.");
         return Ok(());
     }
@@ -299,7 +299,7 @@ fn process_character_combat_round(
         // Too exhausted - skip turn but restore minimum stamina
         char.stamina = MIN_STAMINA_RESTORE;
         db.save_character_data(char.clone())?;
-        sync_character_to_session(connections, &char);
+        sync_character_to_session(connections, &char, state);
         send_message_to_character(
             connections,
             char_name,
@@ -343,7 +343,7 @@ fn process_character_combat_round(
     }
 
     db.save_character_data(char.clone())?;
-    sync_character_to_session(connections, &char);
+    sync_character_to_session(connections, &char, state);
     Ok(())
 }
 
@@ -660,7 +660,7 @@ fn process_character_attacks_mobile(
             }
             // Save changes to database and sync to session
             db.save_character_data(char.clone())?;
-            sync_character_to_session(connections, char);
+            sync_character_to_session(connections, char, state);
             return Ok(());
         }
     };
@@ -676,7 +676,7 @@ fn process_character_attacks_mobile(
             char.combat.distances.clear();
         }
         db.save_character_data(char.clone())?;
-        sync_character_to_session(connections, char);
+        sync_character_to_session(connections, char, state);
         send_message_to_character(connections, &char.name, "Your target is no longer here.");
         return Ok(());
     }
@@ -766,7 +766,7 @@ fn process_character_attacks_mobile(
                                 if char.combat.ammo_depleted == 0 {
                                     char.combat.ammo_depleted = 1;
                                     db.save_character_data(char.clone())?;
-                                    sync_character_to_session(connections, char);
+                                    sync_character_to_session(connections, char, state);
                                     send_message_to_character(
                                         connections,
                                         &char.name,
@@ -852,7 +852,7 @@ fn process_character_attacks_mobile(
                                 if char.combat.ammo_depleted == 0 {
                                     char.combat.ammo_depleted = 1;
                                     db.save_character_data(char.clone())?;
-                                    sync_character_to_session(connections, char);
+                                    sync_character_to_session(connections, char, state);
                                     send_message_to_character(connections, &char.name, "You're out of ammunition!");
                                     return Ok(());
                                 }
@@ -900,7 +900,7 @@ fn process_character_attacks_mobile(
             // If still not at melee range, skip attack this round
             if closer != CombatDistance::Melee {
                 db.save_character_data(char.clone())?;
-                sync_character_to_session(connections, char);
+                sync_character_to_session(connections, char, state);
                 return Ok(());
             }
         }
@@ -1396,7 +1396,7 @@ fn process_character_attacks_player(
 
 /// Attempt to have a mobile flee from combat
 /// Returns Some(true) if successfully fled, Some(false) if failed, None if couldn't attempt
-fn attempt_mobile_flee(db: &db::Db, connections: &SharedConnections, mobile: &mut MobileData) -> Option<bool> {
+fn attempt_mobile_flee(db: &db::Db, connections: &SharedConnections, mobile: &mut MobileData, state: &SharedState) -> Option<bool> {
     use rand::Rng;
     use rand::seq::SliceRandom;
 
@@ -1497,7 +1497,7 @@ fn attempt_mobile_flee(db: &db::Db, connections: &SharedConnections, mobile: &mu
 
     // Sync all updated characters to their sessions (safe - no lock held)
     for char_data in chars_to_sync {
-        sync_character_to_session(connections, &char_data);
+        sync_character_to_session(connections, &char_data, state);
     }
 
     // Move mobile
@@ -1705,7 +1705,7 @@ fn process_mobile_combat_round(
             // Cowardly mobs always flee; normal mobs have 30% chance
             let should_flee = mobile.flags.cowardly || rng.gen_range(0..100) < 30;
             if should_flee {
-                if let Some(fled) = attempt_mobile_flee(db, connections, &mut mobile) {
+                if let Some(fled) = attempt_mobile_flee(db, connections, &mut mobile, state) {
                     if fled {
                         // Successfully fled - skip attack this round
                         return Ok(());
@@ -1925,7 +1925,7 @@ fn process_mobile_attacks_player(
     if was_sleeping {
         char.position = CharacterPosition::Standing;
         db.save_character_data(char.clone())?;
-        sync_character_to_session(connections, &char);
+        sync_character_to_session(connections, &char, state);
         send_message_to_character(connections, player_name, "You are jolted awake by an attack!");
         broadcast_to_room_except_awake(
             connections,
@@ -1945,7 +1945,7 @@ fn process_mobile_attacks_player(
             });
         }
         db.save_character_data(char.clone())?;
-        sync_character_to_session(connections, &char);
+        sync_character_to_session(connections, &char, state);
     }
 
     let mut rng = rand::thread_rng();
@@ -2284,7 +2284,7 @@ fn process_mobile_attacks_player(
     }
 
     // Sync updated character to session so prompt shows correct HP
-    sync_character_to_session(connections, &char);
+    sync_character_to_session(connections, &char, state);
 
     // Build message with crit text (yellow/bold)
     let crit_text = if is_crit {
@@ -2332,7 +2332,7 @@ fn process_mobile_attacks_player(
     if char.hp <= 0 {
         if char.is_unconscious {
             // Already unconscious and took damage - instant death!
-            process_player_death(db, connections, &mut char, room_id)?;
+            process_player_death(db, connections, &mut char, room_id, state)?;
 
             // Remove player from mobile's targets
             mobile
@@ -2348,7 +2348,7 @@ fn process_mobile_attacks_player(
             char.bleedout_rounds_remaining = 5; // 5 round bleedout timer
             let char_name_for_msg = char.name.clone();
             db.save_character_data(char.clone())?;
-            sync_character_to_session(connections, &char);
+            sync_character_to_session(connections, &char, state);
 
             send_message_to_character(connections, player_name, "You collapse, unconscious!");
             broadcast_to_room_except_awake(
@@ -2362,7 +2362,7 @@ fn process_mobile_attacks_player(
             if mobile.flags.aggressive {
                 // Reload character and process instant death
                 if let Ok(Some(mut char)) = db.get_character_data(player_name) {
-                    process_player_death(db, connections, &mut char, room_id)?;
+                    process_player_death(db, connections, &mut char, room_id, state)?;
 
                     // Remove player from mobile's targets
                     mobile
@@ -2438,7 +2438,7 @@ fn mob_cast_spell_at_player(
             });
         }
         db.save_character_data(char.clone())?;
-        sync_character_to_session(connections, &char);
+        sync_character_to_session(connections, &char, state);
     }
 
     match spell.spell_type.as_str() {
@@ -2485,7 +2485,7 @@ fn mob_cast_spell_at_player(
             if player_was_sleeping {
                 send_message_to_character(connections, &char.name, "You jolt awake!");
             }
-            sync_character_to_session(connections, &char);
+            sync_character_to_session(connections, &char, state);
 
             let dtype_lower = spell.damage_type.to_lowercase();
             send_message_to_character(
@@ -2509,7 +2509,7 @@ fn mob_cast_spell_at_player(
             // Death handling mirrors process_mobile_attacks_player.
             if char.hp <= 0 {
                 if char.is_unconscious {
-                    process_player_death(db, connections, &mut char, room_id)?;
+                    process_player_death(db, connections, &mut char, room_id, state)?;
                     mobile
                         .combat
                         .targets
@@ -2522,7 +2522,7 @@ fn mob_cast_spell_at_player(
                     char.bleedout_rounds_remaining = 5;
                     let char_name_for_msg = char.name.clone();
                     db.save_character_data(char.clone())?;
-                    sync_character_to_session(connections, &char);
+                    sync_character_to_session(connections, &char, state);
                     send_message_to_character(connections, player_name, "You collapse, unconscious!");
                     broadcast_to_room_except_awake(
                         connections,
@@ -2532,7 +2532,7 @@ fn mob_cast_spell_at_player(
                     );
                     if mobile.flags.aggressive {
                         if let Ok(Some(mut char)) = db.get_character_data(player_name) {
-                            process_player_death(db, connections, &mut char, room_id)?;
+                            process_player_death(db, connections, &mut char, room_id, state)?;
                             mobile
                                 .combat
                                 .targets
@@ -2569,7 +2569,7 @@ fn mob_cast_spell_at_player(
                 source: mobile.name.clone(),
             });
             db.save_character_data(char.clone())?;
-            sync_character_to_session(connections, &char);
+            sync_character_to_session(connections, &char, state);
 
             send_message_to_character(
                 connections,
@@ -3206,6 +3206,7 @@ pub fn process_player_death(
     connections: &SharedConnections,
     char: &mut CharacterData,
     room_id: &uuid::Uuid,
+    state: &SharedState,
 ) -> Result<()> {
     let char_name = char.name.clone();
 
@@ -3281,7 +3282,7 @@ pub fn process_player_death(
     char.food_sick = false;
 
     db.save_character_data(char.clone())?;
-    sync_character_to_session(connections, &char);
+    sync_character_to_session(connections, &char, state);
 
     // Send respawn message
     send_message_to_character(connections, &char_name, "You awaken at your spawn point...");
