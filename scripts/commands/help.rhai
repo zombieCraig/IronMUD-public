@@ -54,6 +54,7 @@ fn run_command(args, connection_id) {
 }
 
 fn show_command_help(name, commands, connection_id) {
+    // First try exact match
     for cmd in commands {
         if cmd.name == name {
             let colored = color_cmd_name(cmd.name, cmd.access, connection_id);
@@ -62,5 +63,23 @@ fn show_command_help(name, commands, connection_id) {
             return;
         }
     }
-    send_client_message(connection_id, "Unknown command: " + name);
+
+    // If no exact match, search names and descriptions
+    let matches = [];
+    for cmd in commands {
+        if cmd.name.contains(name) || cmd.description.to_lower().contains(name) {
+            let colored = color_cmd_name(cmd.name, cmd.access, connection_id);
+            matches.push(colored + " - " + cmd.description);
+        }
+    }
+
+    if matches.len() > 0 {
+        let output = "No exact match for '" + name + "', but found these possibilities:\n";
+        for m in matches {
+            output += m + "\n";
+        }
+        send_client_message(connection_id, output.trim());
+    } else {
+        send_client_message(connection_id, "Unknown command: " + name);
+    }
 }
