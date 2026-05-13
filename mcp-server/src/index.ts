@@ -990,6 +990,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           respawn_interval_secs: args?.respawn_interval_secs as number | undefined,
           enabled: args?.enabled as boolean | undefined,
           bury_on_spawn: args?.bury_on_spawn as boolean | undefined,
+          replace_on_respawn: args?.replace_on_respawn as boolean | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(spawnPoint, null, 2) }],
@@ -1003,6 +1004,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           respawn_interval_secs: args?.respawn_interval_secs as number | undefined,
           enabled: args?.enabled as boolean | undefined,
           bury_on_spawn: args?.bury_on_spawn as boolean | undefined,
+          replace_on_respawn: args?.replace_on_respawn as boolean | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(spawnPoint, null, 2) }],

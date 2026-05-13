@@ -51,6 +51,11 @@ export const spawnPointToolDefinitions = [
           default: false,
           description: "For item spawns: spawned items appear buried (must be a dirt_floor room and dug up to access).",
         },
+        replace_on_respawn: {
+          type: "boolean",
+          default: false,
+          description: "When true, the spawn tick force-deletes any tracked live instance on each respawn cycle so a fresh copy always appears (use for plot-critical mobs/items that must reset for quests). Default false preserves existing semantics.",
+        },
       },
       required: ["area_id", "room_id", "entity_type", "vnum"],
     },
@@ -68,6 +73,10 @@ export const spawnPointToolDefinitions = [
         bury_on_spawn: {
           type: "boolean",
           description: "For item spawns: whether spawned items appear buried.",
+        },
+        replace_on_respawn: {
+          type: "boolean",
+          description: "Force-replace any tracked live instance on each respawn cycle. Use for plot-critical mobs/items that must come back fresh for quests.",
         },
       },
       required: ["id"],

@@ -47,6 +47,8 @@ pub struct CreateSpawnPointRequest {
     pub enabled: bool,
     #[serde(default)]
     pub bury_on_spawn: bool,
+    #[serde(default)]
+    pub replace_on_respawn: bool,
 }
 
 fn default_max_count() -> i32 {
@@ -65,6 +67,7 @@ pub struct UpdateSpawnPointRequest {
     pub respawn_interval_secs: Option<i64>,
     pub enabled: Option<bool>,
     pub bury_on_spawn: Option<bool>,
+    pub replace_on_respawn: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -243,7 +246,7 @@ async fn create_spawn_point(
         spawned_entities: Vec::new(),
         dependencies: Vec::new(),
         bury_on_spawn: req.bury_on_spawn,
-        replace_on_respawn: false,
+        replace_on_respawn: req.replace_on_respawn,
     };
 
     state
@@ -302,6 +305,9 @@ async fn update_spawn_point(
     }
     if let Some(bury_on_spawn) = req.bury_on_spawn {
         spawn_point.bury_on_spawn = bury_on_spawn;
+    }
+    if let Some(replace_on_respawn) = req.replace_on_respawn {
+        spawn_point.replace_on_respawn = replace_on_respawn;
     }
 
     state

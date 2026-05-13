@@ -449,6 +449,7 @@ export interface SpawnPoint {
     spawned_entities: string[];
     dependencies: SpawnDependency[];
     bury_on_spawn?: boolean;
+    replace_on_respawn?: boolean;
 }
 export interface SpawnDependency {
     item_vnum: string;
@@ -651,6 +652,7 @@ export interface CreateSpawnPointRequest {
     respawn_interval_secs?: number;
     enabled?: boolean;
     bury_on_spawn?: boolean;
+    replace_on_respawn?: boolean;
 }
 export interface SetExitRequest {
     target_room_id: string;

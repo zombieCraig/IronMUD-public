@@ -16,6 +16,7 @@ export declare const spawnPointToolDefinitions: ({
             respawn_interval_secs?: undefined;
             enabled?: undefined;
             bury_on_spawn?: undefined;
+            replace_on_respawn?: undefined;
             spawn_point_id?: undefined;
             item_vnum?: undefined;
             destination?: undefined;
@@ -43,6 +44,7 @@ export declare const spawnPointToolDefinitions: ({
             respawn_interval_secs?: undefined;
             enabled?: undefined;
             bury_on_spawn?: undefined;
+            replace_on_respawn?: undefined;
             spawn_point_id?: undefined;
             item_vnum?: undefined;
             destination?: undefined;
@@ -94,6 +96,11 @@ export declare const spawnPointToolDefinitions: ({
                 default: boolean;
                 description: string;
             };
+            replace_on_respawn: {
+                type: string;
+                default: boolean;
+                description: string;
+            };
             id?: undefined;
             spawn_point_id?: undefined;
             item_vnum?: undefined;
@@ -129,6 +136,11 @@ export declare const spawnPointToolDefinitions: ({
                 default?: undefined;
             };
             bury_on_spawn: {
+                type: string;
+                description: string;
+                default?: undefined;
+            };
+            replace_on_respawn: {
                 type: string;
                 description: string;
                 default?: undefined;
@@ -182,6 +194,7 @@ export declare const spawnPointToolDefinitions: ({
             respawn_interval_secs?: undefined;
             enabled?: undefined;
             bury_on_spawn?: undefined;
+            replace_on_respawn?: undefined;
             index?: undefined;
         };
         required: string[];
@@ -209,6 +222,7 @@ export declare const spawnPointToolDefinitions: ({
             respawn_interval_secs?: undefined;
             enabled?: undefined;
             bury_on_spawn?: undefined;
+            replace_on_respawn?: undefined;
             item_vnum?: undefined;
             destination?: undefined;
             wear_location?: undefined;
