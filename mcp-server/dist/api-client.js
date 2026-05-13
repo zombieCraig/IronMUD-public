@@ -441,6 +441,15 @@ export class IronMUDApiClient {
     async deleteBugReport(id) {
         await this.request("delete", `/bugs/${id}`);
     }
+    // Logs
+    async getBuilderDebug(limit) {
+        const params = new URLSearchParams();
+        if (limit !== undefined)
+            params.set("limit", limit.toString());
+        const query = params.toString();
+        const response = await this.request("get", `/logs/builder-debug${query ? `?${query}` : ""}`);
+        return response.data;
+    }
     // Helper methods for description context gathering
     /**
      * Get all rooms connected to a room via exits

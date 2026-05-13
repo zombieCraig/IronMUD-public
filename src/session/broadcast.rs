@@ -1,11 +1,27 @@
 //! Broadcasting functions for sending messages to players
 
+use std::collections::VecDeque;
+use std::sync::{Mutex, OnceLock};
 use uuid::Uuid;
 
 use crate::db;
 use crate::script::dialogue::DialogueSayLine;
 use crate::script::lang::garble_for_listener;
 use crate::{CharacterPosition, SharedConnections, SharedState};
+
+/// Global buffer for the last 50 builder debug messages
+static BUILDER_DEBUG_LOG: OnceLock<Mutex<VecDeque<String>>> = OnceLock::new();
+
+/// Get a reference to the builder debug log
+fn get_builder_debug_log() -> &'static Mutex<VecDeque<String>> {
+    BUILDER_DEBUG_LOG.get_or_init(|| Mutex::new(VecDeque::with_capacity(50)))
+}
+
+/// Retrieve the last N lines from the builder debug log
+pub fn get_builder_debug_lines(limit: usize) -> Vec<String> {
+    let log = get_builder_debug_log().lock().unwrap();
+    log.iter().rev().take(limit).cloned().collect::<Vec<_>>().into_iter().rev().collect()
+}
 
 /// Get all character names in a specific room
 pub fn get_characters_in_room(connections: &SharedConnections, room_id: Uuid) -> Vec<String> {
@@ -214,6 +230,15 @@ pub fn broadcast_to_outdoor_players(db: &db::Db, connections: &SharedConnections
 
 /// Broadcast a message to builders/admins who have builder_debug_enabled
 pub fn broadcast_to_builders(connections: &SharedConnections, message: &str) {
+    // Store in global log buffer
+    {
+        let mut log = get_builder_debug_log().lock().unwrap();
+        if log.len() >= 50 {
+            log.pop_front();
+        }
+        log.push_back(message.to_string());
+    }
+
     let conns = connections.lock().unwrap();
     for session in conns.values() {
         if let Some(ref character) = session.character {

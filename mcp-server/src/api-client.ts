@@ -883,6 +883,18 @@ export class IronMUDApiClient {
     await this.request("delete", `/bugs/${id}`);
   }
 
+  // Logs
+  async getBuilderDebug(limit?: number): Promise<string[]> {
+    const params = new URLSearchParams();
+    if (limit !== undefined) params.set("limit", limit.toString());
+    const query = params.toString();
+    const response = await this.request<{ success: boolean; data: string[] }>(
+      "get",
+      `/logs/builder-debug${query ? `?${query}` : ""}`
+    );
+    return response.data;
+  }
+
   // Helper methods for description context gathering
 
   /**

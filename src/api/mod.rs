@@ -17,6 +17,7 @@ pub mod spawn;
 pub mod quotas;
 pub mod transports;
 pub mod validate;
+pub mod logs;
 
 use axum::{Json, Router, middleware, routing::get};
 use std::sync::Arc;
@@ -45,6 +46,7 @@ pub fn create_router(state: Arc<ApiState>) -> Router {
         .nest("/recipes", recipes::routes())
         .nest("/quests", quests::routes())
         .nest("/bugs", bugs::routes())
+        .nest("/logs", logs::routes())
         .route("/health", get(health_check))
         .layer(middleware::from_fn_with_state(state.clone(), auth::auth_middleware));
 

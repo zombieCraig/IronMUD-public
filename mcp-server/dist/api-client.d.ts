@@ -186,6 +186,7 @@ export declare class IronMUDApiClient {
     updateBugReport(id: string, data: UpdateBugReportRequest): Promise<BugReport>;
     addBugNote(id: string, data: AddBugNoteRequest): Promise<BugReport>;
     deleteBugReport(id: string): Promise<void>;
+    getBuilderDebug(limit?: number): Promise<string[]>;
     /**
      * Get all rooms connected to a room via exits
      */

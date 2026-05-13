@@ -20,6 +20,7 @@ import { plantToolDefinitions } from "./tools/plants.js";
 import { recipeToolDefinitions } from "./tools/recipes.js";
 import { questToolDefinitions } from "./tools/quests.js";
 import { bugToolDefinitions } from "./tools/bugs.js";
+import { logToolDefinitions } from "./tools/logs.js";
 import {
   buildRoomContext,
   buildItemContext,
@@ -101,6 +102,7 @@ const allTools = [
   ...recipeToolDefinitions,
   ...questToolDefinitions,
   ...bugToolDefinitions,
+  ...logToolDefinitions,
 ];
 
 // Handle list tools request
@@ -1524,6 +1526,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [
             { type: "text", text: `Bug report ${identifier} deleted successfully` },
           ],
+        };
+      }
+
+      case "get_builder_debug_log": {
+        const limit = args?.limit as number | undefined;
+        const lines = await api.getBuilderDebug(limit);
+        return {
+          content: [{ type: "text", text: lines.join("\n") }],
         };
       }
 

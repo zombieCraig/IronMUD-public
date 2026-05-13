@@ -1270,3 +1270,8 @@ export interface AddBugNoteRequest {
   author: string;
   message: string;
 }
+
+export interface BuilderDebugResponse {
+  success: boolean;
+  data: string[];
+}
