@@ -248,7 +248,9 @@ global counter                     * promote 'counter' to durable per-entity sto
 set counter 0                      * persists on self.dg_vars across reboots
 unset counter                      * clear all scopes
 
-remote zn118_state %actor.id% 1    * write 'zn118_state' on the actor's dg_vars
+set zn118_state 1                  * stage value in a local
+remote zn118_state %actor.id%      * write current local to actor's dg_vars
+remote greeting %actor.id% Welcome back!   * (IronMUD ext.) 3-arg form: write the substituted value directly
 %actor.zn118_state%                * read it back later
 rdelete zn118_state %actor.id%     * delete the entity-side var
 
@@ -256,6 +258,10 @@ context %actor.id%                 * switch durable scope to that entity
 ```
 
 Lookup order for bare `%name%`: locals → context-bound durable → entity-resolved durable.
+
+> **`remote` 3-arg form** is an IronMUD extension. Stock tbamud's `remote VAR TARGET` always writes the current local value of `VAR`; the 3-arg `remote VAR TARGET VALUE` lets you write a substituted value without first staging it in a local of the same name. The remainder of the line (after the target token) becomes the value, so multi-word values work without quoting. Stock 2-arg triggers are unaffected.
+
+> **Players are valid targets.** `%actor.id%` resolves to the character's name for PCs (IronMUD characters have no UUID — they're keyed by name). `remote` and `rdelete` accept either a UUID (mob/item/room) or a character name.
 
 ### `arg` — the player's text
 

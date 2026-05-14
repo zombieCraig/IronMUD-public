@@ -178,11 +178,23 @@ impl<'a> Parser<'a> {
                 }
                 "remote" => {
                     let rest = trimmed["remote".len()..].trim();
-                    let mut tok = rest.split_whitespace();
-                    let var = tok.next().unwrap_or("").to_string();
-                    let target = tok.next().unwrap_or("").to_string();
+                    // Take var + target as whitespace tokens; the remainder
+                    // (if any) is the optional explicit value, preserved as
+                    // a single string so multi-word values like
+                    // `remote greeting %actor.id% Welcome back` round-trip.
+                    let var_end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+                    let var = rest[..var_end].to_string();
+                    let after_var = rest[var_end..].trim_start();
+                    let target_end = after_var.find(char::is_whitespace).unwrap_or(after_var.len());
+                    let target = after_var[..target_end].to_string();
+                    let after_target = after_var[target_end..].trim_start();
+                    let value = if after_target.is_empty() {
+                        None
+                    } else {
+                        Some(after_target.to_string())
+                    };
                     self.idx += 1;
-                    out.push(Stmt::Remote { var, target });
+                    out.push(Stmt::Remote { var, target, value });
                 }
                 "rdelete" => {
                     let rest = trimmed["rdelete".len()..].trim();

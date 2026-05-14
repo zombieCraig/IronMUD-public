@@ -74,8 +74,16 @@ pub enum Stmt {
     /// `detach <trig_vnum> <target>` — Phase 3.
     Detach { trig_vnum: String, target: String },
     /// `remote <var> <uuid>` — write `var`'s current value (resolved
-    /// from locals → globals) into the entity's `dg_vars`.
-    Remote { var: String, target: String },
+    /// from locals → globals) into the entity's `dg_vars`. IronMUD also
+    /// accepts a third-arg form `remote <var> <uuid> <value>` that
+    /// writes the substituted `<value>` directly without consulting
+    /// locals — handy when the source value isn't bound to a local of
+    /// the same name as the destination.
+    Remote {
+        var: String,
+        target: String,
+        value: Option<String>,
+    },
     /// `rdelete <var> <uuid>` — remove `var` from the entity's `dg_vars`.
     Rdelete { var: String, target: String },
 }

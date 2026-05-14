@@ -193,7 +193,7 @@ fn eval_stmt(stmt: &Stmt, ctx: &EvalCtx, state: &mut State) -> Result<Flow, Eval
             Ok(Flow::Continue)
         }
 
-        Stmt::Remote { var, target } => {
+        Stmt::Remote { var, target, value } => {
             let var_name = var.trim();
             if var_name.is_empty() {
                 super::warn_builder(ctx, "remote: missing variable name");
@@ -208,10 +208,15 @@ fn eval_stmt(stmt: &Stmt, ctx: &EvalCtx, state: &mut State) -> Result<Flow, Eval
                 );
                 return Ok(Flow::Continue);
             };
-            // Source value: the current scope's value of var (locals first,
-            // then durable lookup if globalled).
-            let value = vars::resolve(var_name, ctx, state);
-            if !set_entity_var(ctx, &scope, var_name, &value) {
+            // Source value: with no explicit 3rd arg, resolve `var_name`
+            // from locals → durable (stock tbamud semantics). With a 3rd
+            // arg present, substitute and use it directly — IronMUD
+            // extension that avoids needing a local of the same name.
+            let resolved_value = match value {
+                Some(v) => vars::substitute(v, ctx, state),
+                None => vars::resolve(var_name, ctx, state),
+            };
+            if !set_entity_var(ctx, &scope, var_name, &resolved_value) {
                 super::warn_builder(
                     ctx,
                     &format!("remote {var_name}: no entity with id/name '{}'", interp.trim()),

@@ -1784,6 +1784,98 @@ end";
     }
 
     #[test]
+    fn remote_three_arg_form_writes_explicit_value() {
+        // IronMUD extension: `remote VAR TARGET VALUE` substitutes
+        // VALUE and writes it directly, bypassing the local-of-same-name
+        // lookup. Lets builders compute a value in `eval` under one
+        // name and remote it under a different name.
+        let tag = "remote-3arg";
+        let cid = Uuid::new_v4();
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), tag);
+        let ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "alex",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ctx.db.save_character_data(ch).expect("save");
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: cid.to_string(),
+            char_id: cid,
+            name: "alex".to_string(),
+        });
+
+        let body = "\
+eval today 99
+remote cookie_day %actor.id% %today%
+if %actor.cookie_day% == 99
+  return 5
+end";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Return(5));
+        let after = ctx.db.get_character_data("alex").unwrap().unwrap();
+        assert_eq!(after.dg_vars.get("cookie_day").map(String::as_str), Some("99"));
+    }
+
+    #[test]
+    fn remote_two_arg_form_still_resolves_var_locally() {
+        // Stock tbamud behavior: `remote VAR TARGET` writes the current
+        // value of local VAR. Make sure the 3-arg extension didn't
+        // regress this.
+        let tag = "remote-2arg";
+        let cid = Uuid::new_v4();
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), tag);
+        let ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "alex",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ctx.db.save_character_data(ch).expect("save");
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: cid.to_string(),
+            char_id: cid,
+            name: "alex".to_string(),
+        });
+
+        let body = "\
+set score 7
+remote score %actor.id%
+if %actor.score% == 7
+  return 6
+end";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Return(6));
+    }
+
+    #[test]
+    fn remote_three_arg_form_accepts_multi_word_value() {
+        // The third arg captures everything after the target token, so
+        // `remote greeting %actor.id% Welcome back!` writes the full phrase.
+        let tag = "remote-3arg-multiword";
+        let cid = Uuid::new_v4();
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), tag);
+        let ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "alex",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ctx.db.save_character_data(ch).expect("save");
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: cid.to_string(),
+            char_id: cid,
+            name: "alex".to_string(),
+        });
+
+        let body = "remote greeting %actor.id% Welcome back!";
+        let _ = fire_dg(body, &ctx);
+        let after = ctx.db.get_character_data("alex").unwrap().unwrap();
+        assert_eq!(
+            after.dg_vars.get("greeting").map(String::as_str),
+            Some("Welcome back!")
+        );
+    }
+
+    #[test]
     fn percent_verb_survives_substitution() {
         // Regression: `%send% %actor% msg` must dispatch to cmd_send,
         // not be eaten by vars::substitute as a bare-name lookup of

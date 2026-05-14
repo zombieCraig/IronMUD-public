@@ -131,7 +131,13 @@ fn walk_stmt(stmt: &Stmt, out: &mut Vec<Issue>) {
             check_interps(target, out);
         }
 
-        Stmt::Remote { target, .. } | Stmt::Rdelete { target, .. } => check_interps(target, out),
+        Stmt::Remote { target, value, .. } => {
+            check_interps(target, out);
+            if let Some(v) = value {
+                check_interps(v, out);
+            }
+        }
+        Stmt::Rdelete { target, .. } => check_interps(target, out),
     }
 }
 
