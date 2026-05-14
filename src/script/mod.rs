@@ -1012,6 +1012,16 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     });
 
     let conns = connections.clone();
+    let force_save_state = state.clone();
+    engine.register_fn("force_save_editor_for_self", move |connection_id: String| {
+        // Called from quit.rhai so an in-progress multi-line edit isn't lost
+        // when the player intentionally logs out. No-op when not writing.
+        if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+            crate::force_save_editor(conn_id, &conns, &force_save_state);
+        }
+    });
+
+    let conns = connections.clone();
     engine.register_fn("disconnect_client", move |connection_id: String| {
         crate::disconnect_client(&conns, connection_id)
     });

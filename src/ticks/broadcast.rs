@@ -42,6 +42,10 @@ pub fn broadcast_to_room_except(connections: &SharedConnections, room_id: &uuid:
         for (_, session) in conns.iter() {
             if let Some(ref char) = session.character {
                 if char.current_room_id == *room_id && char.name.to_lowercase() != exclude.to_lowercase() {
+                    // Writers are deafened to ambient room broadcasts.
+                    if ironmud::session_is_writing(session) {
+                        continue;
+                    }
                     let _ = session.sender.send(format!("{}\n", message));
                 }
             }
@@ -63,6 +67,9 @@ pub fn broadcast_to_room_except_awake(
                     && char.name.to_lowercase() != exclude.to_lowercase()
                     && char.position != CharacterPosition::Sleeping
                 {
+                    if ironmud::session_is_writing(session) {
+                        continue;
+                    }
                     let _ = session.sender.send(format!("{}\n", message));
                 }
             }
@@ -89,6 +96,9 @@ pub fn broadcast_to_room_except_awake_per_viewer<F>(
                     && char.name.to_lowercase() != exclude.to_lowercase()
                     && char.position != CharacterPosition::Sleeping
                 {
+                    if ironmud::session_is_writing(session) {
+                        continue;
+                    }
                     let msg = fmt(char);
                     let _ = session.sender.send(format!("{}\n", msg));
                 }
@@ -105,6 +115,9 @@ pub fn broadcast_to_room(connections: &SharedConnections, room_id: &uuid::Uuid, 
         for (_, session) in conns.iter() {
             if let Some(ref char) = session.character {
                 if char.current_room_id == *room_id {
+                    if ironmud::session_is_writing(session) {
+                        continue;
+                    }
                     let _ = session.sender.send(format!("{}\n", message));
                 }
             }
@@ -121,6 +134,9 @@ pub fn broadcast_to_room_awake(connections: &SharedConnections, room_id: &uuid::
         for (_, session) in conns.iter() {
             if let Some(ref char) = session.character {
                 if char.current_room_id == *room_id && char.position != CharacterPosition::Sleeping {
+                    if ironmud::session_is_writing(session) {
+                        continue;
+                    }
                     let _ = session.sender.send(format!("{}\n", message));
                 }
             }
@@ -135,6 +151,9 @@ pub fn broadcast_to_room_mobiles(connections: &SharedConnections, room_id: &uuid
         for (_, session) in conns.iter() {
             if let Some(ref char) = session.character {
                 if char.current_room_id == *room_id && char.position != CharacterPosition::Sleeping {
+                    if ironmud::session_is_writing(session) {
+                        continue;
+                    }
                     let _ = session.sender.send(message.to_string());
                 }
             }

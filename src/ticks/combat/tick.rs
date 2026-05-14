@@ -27,6 +27,7 @@ use crate::ticks::mobile::{
 /// Combat tick interval in seconds (5 second rounds)
 pub const COMBAT_TICK_INTERVAL_SECS: u64 = 5;
 
+
 /// Background task that processes combat rounds periodically (5 second rounds)
 pub async fn run_combat_tick(db: db::Db, connections: SharedConnections, state: SharedState) {
     let mut ticker = interval(Duration::from_secs(COMBAT_TICK_INTERVAL_SECS));
@@ -209,6 +210,7 @@ fn process_character_combat_round(
         let ongoing_damage: i32 = per_effect_damage.iter().sum();
         if ongoing_damage > 0 {
             char.hp -= ongoing_damage;
+            ironmud::interrupt_writer_by_name(connections, state, char_name);
 
             // Build message from active effects
             for (effect, &effect_dmg) in char.ongoing_effects.iter().zip(per_effect_damage.iter()) {
@@ -2256,6 +2258,7 @@ fn process_mobile_attacks_player(
     // Apply damage
     damage = ironmud::script::apply_damage_reduction(damage, &char.active_buffs);
     char.hp -= damage;
+    ironmud::interrupt_writer_by_name(connections, state, &char.name);
 
     // Apply on-hit DoT effects from mobile flags (poisonous, fiery, chilling, corrosive, shocking)
     ironmud::script::apply_mobile_on_hit_dots(mobile, &mut char.ongoing_effects, "body");
@@ -2474,6 +2477,7 @@ fn mob_cast_spell_at_player(
             }
 
             char.hp -= damage;
+            ironmud::interrupt_writer_by_name(connections, state, &char.name);
 
             // Magical sleep breaks on any damage taken.
             let player_was_sleeping = char.active_buffs.iter().any(|b| b.effect_type == EffectType::Sleep);

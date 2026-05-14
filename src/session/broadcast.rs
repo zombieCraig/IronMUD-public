@@ -104,6 +104,10 @@ pub fn broadcast_to_room(connections: &SharedConnections, room_id: Uuid, message
     for (_id, session) in conns.iter() {
         if let Some(ref character) = session.character {
             if character.current_room_id == room_id {
+                // Writers are deafened to ambient room broadcasts.
+                if crate::session_is_writing(session) {
+                    continue;
+                }
                 if let Some(exclude) = exclude_name {
                     if character.name == exclude {
                         continue;
@@ -134,6 +138,10 @@ pub fn broadcast_to_room_awake(
                 if character.position == CharacterPosition::Sleeping {
                     continue;
                 }
+                // Writers are deafened to ambient room broadcasts.
+                if crate::session_is_writing(session) {
+                    continue;
+                }
                 if let Some(exclude) = exclude_name {
                     if character.name == exclude {
                         continue;
@@ -162,6 +170,10 @@ pub fn broadcast_to_room_dreaming(
     for (_id, session) in conns.iter() {
         if let Some(ref character) = session.character {
             if character.current_room_id == room_id {
+                // Writers are deafened to ambient room broadcasts.
+                if crate::session_is_writing(session) {
+                    continue;
+                }
                 if let Some(exclude) = exclude_name {
                     if character.name == exclude {
                         continue;
@@ -187,6 +199,10 @@ pub fn broadcast_to_all_players(connections: &SharedConnections, message: &str, 
     let conns = connections.lock().unwrap();
     for session in conns.values() {
         if let Some(ref character) = session.character {
+            // Writers are deafened to world-wide ambient broadcasts.
+            if crate::session_is_writing(session) {
+                continue;
+            }
             if let Some(exclude) = exclude_name {
                 if character.name == exclude {
                     continue;
@@ -207,6 +223,10 @@ pub fn broadcast_to_outdoor_players(db: &db::Db, connections: &SharedConnections
     let conns = connections.lock().unwrap();
     for session in conns.values() {
         if let Some(ref character) = session.character {
+            // Writers are deafened to weather/time-of-day broadcasts.
+            if crate::session_is_writing(session) {
+                continue;
+            }
             if let Ok(Some(room)) = db.get_room_data(&character.current_room_id) {
                 // Check for climate_controlled (room or area inherited)
                 let is_climate_controlled = room.flags.climate_controlled

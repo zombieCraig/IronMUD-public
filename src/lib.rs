@@ -846,6 +846,330 @@ fn handle_editor_command(
     EditorCommandResult::AppendText(trimmed.to_string())
 }
 
+/// True for OLC modes that own a multi-line text buffer. `ai_confirm` is an
+/// olc_mode value too but represents a yes/no prompt with no buffer — it is
+/// intentionally excluded so the writing tag and broadcast mute don't apply.
+pub fn is_text_editor_mode(mode: &str) -> bool {
+    matches!(
+        mode,
+        "collecting_desc"
+            | "collecting_note"
+            | "collecting_board_post"
+            | "collecting_dg_body"
+            | "collecting_dialogue_node_text"
+            | "collecting_extra_desc"
+            | "collecting_motd"
+    )
+}
+
+/// True when the session is composing in the multi-line editor and should
+/// therefore be deafened to ambient/room broadcasts.
+pub fn session_is_writing(session: &PlayerSession) -> bool {
+    session
+        .olc_mode
+        .as_deref()
+        .map(is_text_editor_mode)
+        .unwrap_or(false)
+}
+
+/// Clear every editor-related slot on a session.
+fn clear_olc_state(session: &mut PlayerSession) {
+    session.olc_mode = None;
+    session.olc_buffer.clear();
+    session.olc_edit_room = None;
+    session.olc_edit_item = None;
+    session.olc_edit_mobile = None;
+    session.olc_edit_board_vnum = None;
+    session.olc_board_subject = None;
+    session.olc_edit_trigger_host = None;
+    session.olc_edit_trigger_index = None;
+    session.olc_dialogue_node_name = None;
+    session.olc_extra_keywords.clear();
+    session.olc_undo_buffer = None;
+}
+
+/// Emergency-save the in-progress editor buffer to its target entity, then
+/// clear all OLC state on the session. Returns `true` if a save was attempted
+/// (regardless of whether the underlying DB write succeeded), `false` if the
+/// session was not in a text-editor mode.
+///
+/// Used for combat interrupts, quit/disconnect, and other paths that need to
+/// rip the player out of the editor without losing buffered work. Buffers over
+/// their per-mode size cap are truncated rather than refused — the alternative
+/// is silent data loss.
+pub fn force_save_editor(
+    connection_id: ConnectionId,
+    connections: &SharedConnections,
+    state: &SharedState,
+) -> bool {
+    struct Snapshot {
+        mode: String,
+        content: String,
+        truncated: bool,
+        edit_room: Option<Uuid>,
+        edit_item: Option<Uuid>,
+        edit_mobile: Option<Uuid>,
+        board_vnum: Option<String>,
+        board_subject: Option<String>,
+        trigger_host: Option<String>,
+        trigger_index: Option<usize>,
+        dialogue_node_name: Option<String>,
+        extra_keywords: Vec<String>,
+        author: String,
+        author_is_admin: bool,
+        sender: mpsc::UnboundedSender<String>,
+    }
+
+    let snap: Option<Snapshot> = {
+        let conns = match connections.lock() {
+            Ok(c) => c,
+            Err(_) => return false,
+        };
+        let session = match conns.get(&connection_id) {
+            Some(s) => s,
+            None => return false,
+        };
+        let mode = match session.olc_mode.as_deref() {
+            Some(m) if is_text_editor_mode(m) => m.to_string(),
+            _ => return false,
+        };
+        let raw = session.olc_buffer.join("\n");
+        let cap = match mode.as_str() {
+            "collecting_desc" => crate::api::validate::DESCRIPTION_MAX,
+            // 32 KB matches the inline `.save` arms in handle_connection.
+            _ => 32 * 1024,
+        };
+        let (content, truncated) = if raw.len() > cap {
+            (raw[..cap].to_string(), true)
+        } else {
+            (raw, false)
+        };
+        let (author, author_is_admin) = session
+            .character
+            .as_ref()
+            .map(|c| (c.name.clone(), c.is_admin))
+            .unwrap_or((String::new(), false));
+        Some(Snapshot {
+            mode,
+            content,
+            truncated,
+            edit_room: session.olc_edit_room,
+            edit_item: session.olc_edit_item,
+            edit_mobile: session.olc_edit_mobile,
+            board_vnum: session.olc_edit_board_vnum.clone(),
+            board_subject: session.olc_board_subject.clone(),
+            trigger_host: session.olc_edit_trigger_host.clone(),
+            trigger_index: session.olc_edit_trigger_index,
+            dialogue_node_name: session.olc_dialogue_node_name.clone(),
+            extra_keywords: session.olc_extra_keywords.clone(),
+            author,
+            author_is_admin,
+            sender: session.sender.clone(),
+        })
+    };
+
+    let snap = match snap {
+        Some(s) => s,
+        None => return false,
+    };
+
+    if snap.truncated {
+        let _ = snap.sender.send(format!(
+            "Your work was truncated to {} bytes before saving.\n",
+            snap.content.len()
+        ));
+    }
+
+    // Per-mode save. State lock acquired only here; never held across the
+    // connections lock taken at the bottom.
+    match snap.mode.as_str() {
+        "collecting_desc" => {
+            if let Some(room_id) = snap.edit_room {
+                if let Ok(world) = state.lock() {
+                    if let Ok(Some(mut room)) = world.db.get_room_data(&room_id) {
+                        room.description = snap.content;
+                        let _ = world.db.save_room_data(room);
+                    }
+                }
+            }
+        }
+        "collecting_note" => {
+            if let Some(item_id) = snap.edit_item {
+                if let Ok(world) = state.lock() {
+                    if let Ok(Some(mut item)) = world.db.get_item_data(&item_id) {
+                        item.note_content = if snap.content.is_empty() {
+                            None
+                        } else {
+                            Some(snap.content)
+                        };
+                        let _ = world.db.save_item_data(item);
+                    }
+                }
+            }
+        }
+        "collecting_board_post" => {
+            // Boards refuse empty posts — match the inline policy: drop silently.
+            if !snap.content.is_empty() {
+                if let (Some(vnum), Some(subj)) = (snap.board_vnum, snap.board_subject) {
+                    if !snap.author.is_empty() {
+                        if let Ok(world) = state.lock() {
+                            let max = world
+                                .db
+                                .get_item_by_vnum(&vnum)
+                                .ok()
+                                .flatten()
+                                .and_then(|item| item.board_max_messages);
+                            let post = BoardPost::new(vnum, snap.author, subj, snap.content);
+                            let _ = world.db.store_board_post(post, max);
+                        }
+                    }
+                }
+            }
+        }
+        "collecting_dg_body" => {
+            if let (Some(kind), Some(idx)) = (snap.trigger_host, snap.trigger_index) {
+                let host_id = match kind.as_str() {
+                    "mobile" => snap.edit_mobile,
+                    "item" => snap.edit_item,
+                    "room" => snap.edit_room,
+                    _ => None,
+                };
+                if let Some(id) = host_id {
+                    let body = if snap.content.is_empty() {
+                        None
+                    } else {
+                        Some(snap.content)
+                    };
+                    let author_opt = if snap.author.is_empty() {
+                        None
+                    } else {
+                        Some(snap.author)
+                    };
+                    let author_is_admin = snap.author_is_admin;
+                    if let Ok(world) = state.lock() {
+                        match kind.as_str() {
+                            "mobile" => {
+                                let _ = world.db.update_mobile(&id, |m| {
+                                    if idx < m.triggers.len() {
+                                        m.triggers[idx].dg_body = body.clone();
+                                        m.triggers[idx].authored_by = author_opt.clone();
+                                        if !author_is_admin {
+                                            m.triggers[idx].elevated = false;
+                                        }
+                                    }
+                                });
+                            }
+                            "item" => {
+                                let _ = world.db.update_item(&id, |i| {
+                                    if idx < i.triggers.len() {
+                                        i.triggers[idx].dg_body = body.clone();
+                                        i.triggers[idx].authored_by = author_opt.clone();
+                                        if !author_is_admin {
+                                            i.triggers[idx].elevated = false;
+                                        }
+                                    }
+                                });
+                            }
+                            "room" => {
+                                let _ = world.db.update_room(&id, |r| {
+                                    if idx < r.triggers.len() {
+                                        r.triggers[idx].dg_body = body.clone();
+                                        r.triggers[idx].authored_by = author_opt.clone();
+                                        if !author_is_admin {
+                                            r.triggers[idx].elevated = false;
+                                        }
+                                    }
+                                });
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        "collecting_dialogue_node_text" => {
+            if let (Some(mid), Some(name)) = (snap.edit_mobile, snap.dialogue_node_name) {
+                if let Ok(world) = state.lock() {
+                    let _ = world.db.update_mobile(&mid, |m| {
+                        if let Some(tree) = m.dialogue_tree.as_mut() {
+                            if let Some(node) = tree.nodes.get_mut(&name) {
+                                node.text = snap.content.clone();
+                            }
+                        }
+                    });
+                }
+            }
+        }
+        "collecting_extra_desc" => {
+            if let Some(item_id) = snap.edit_item {
+                if let Ok(world) = state.lock() {
+                    if let Ok(Some(mut item)) = world.db.get_item_data(&item_id) {
+                        item.extra_descs.push(ExtraDesc {
+                            keywords: snap.extra_keywords,
+                            description: snap.content,
+                        });
+                        let _ = world.db.save_item_data(item);
+                    }
+                }
+            } else if let Some(room_id) = snap.edit_room {
+                if let Ok(world) = state.lock() {
+                    if let Ok(Some(mut room)) = world.db.get_room_data(&room_id) {
+                        room.extra_descs.push(ExtraDesc {
+                            keywords: snap.extra_keywords,
+                            description: snap.content,
+                        });
+                        let _ = world.db.save_room_data(room);
+                    }
+                }
+            }
+        }
+        "collecting_motd" => {
+            if let Ok(world) = state.lock() {
+                let _ = world.db.set_setting("motd", &snap.content);
+            }
+        }
+        _ => {}
+    }
+
+    // Clear OLC state regardless of save outcome.
+    if let Ok(mut conns) = connections.lock() {
+        if let Some(session) = conns.get_mut(&connection_id) {
+            clear_olc_state(session);
+        }
+    }
+    true
+}
+
+/// If a player named `char_name` is composing in the multi-line editor when a
+/// "major interruption" (combat damage, drowning, environmental harm) lands,
+/// force-save their buffer, clear the writing state, and inform them. No-op
+/// for players who aren't currently writing. Lives in lib.rs so combat ticks,
+/// script-side combat, and environmental damage paths can all call it.
+pub fn interrupt_writer_by_name(
+    connections: &SharedConnections,
+    state: &SharedState,
+    char_name: &str,
+) {
+    let Some(conn_id) = find_player_connection_by_name(connections, char_name) else {
+        return;
+    };
+    let writing = match connections.lock() {
+        Ok(conns) => conns.get(&conn_id).map(session_is_writing).unwrap_or(false),
+        Err(_) => false,
+    };
+    if !writing {
+        return;
+    }
+    force_save_editor(conn_id, connections, state);
+    if let Ok(conns) = connections.lock() {
+        if let Some(session) = conns.get(&conn_id) {
+            let _ = session
+                .sender
+                .send("You're interrupted! Your work is saved.\n".to_string());
+        }
+    }
+}
+
 /// Build the prompt string for a connection, respecting prompt_mode setting.
 /// Returns simple "> " for guests or when prompt_mode is "simple".
 /// Returns verbose "[HP:current/max] >" with color coding when prompt_mode is "verbose".
@@ -2997,6 +3321,12 @@ pub async fn handle_connection(
         }
     }
     info!("Connection closed: {}", addr);
+
+    // Best-effort save of any in-progress multi-line edit before the session
+    // goes linkdead. The buffer lives only in PlayerSession, so without this
+    // a TCP drop while editing would silently lose the work even though the
+    // linkdead window keeps the character around for 3 minutes.
+    force_save_editor(connection_id, &connections, &state);
 
     // Clean up character on unexpected disconnect (TCP close without logout/quit)
     // Mark as linkdead and wait 3 minutes before final cleanup.

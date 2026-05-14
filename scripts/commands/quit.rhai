@@ -3,6 +3,10 @@
 // Function to handle the 'quit' command
 // connection_id: string - the ID of the current connection
 fn run_command(args, connection_id) {
+    // Force-save any in-progress multi-line edit so a buffer isn't lost on
+    // intentional logout. No-op when the player isn't writing.
+    force_save_editor_for_self(connection_id);
+
     // Use try-catch since get_player_character throws if not logged in
     let char = ();
     try {

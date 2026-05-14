@@ -1773,7 +1773,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         crate::CharacterPosition::Standing => "",
                     };
 
-                    // Check player status tags (Disconnected, AFK, Idle)
+                    // Check player status tags (Disconnected, Writing, AFK, Idle)
                     let status_suffix = {
                         let conns_guard = conns.lock().unwrap();
                         let mut status = "";
@@ -1782,6 +1782,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                                 if char.name == name_for_afk {
                                     if session.disconnected_at.is_some() {
                                         status = " [Disconnected]";
+                                    } else if crate::session_is_writing(session) {
+                                        status = " [Writing]";
                                     } else if session.afk {
                                         status = " [AFK]";
                                     } else if now.saturating_sub(session.last_activity_time) > idle_threshold {
