@@ -463,8 +463,7 @@ export class IronMUDApiClient {
         if (limit !== undefined)
             params.set("limit", limit.toString());
         const query = params.toString();
-        const response = await this.request("get", `/logs/builder-debug${query ? `?${query}` : ""}`);
-        return response.data;
+        return await this.request("get", `/logs/builder-debug${query ? `?${query}` : ""}`);
     }
     // Helper methods for description context gathering
     /**

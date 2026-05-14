@@ -913,11 +913,10 @@ export class IronMUDApiClient {
     const params = new URLSearchParams();
     if (limit !== undefined) params.set("limit", limit.toString());
     const query = params.toString();
-    const response = await this.request<{ success: boolean; data: string[] }>(
+    return await this.request<string[]>(
       "get",
       `/logs/builder-debug${query ? `?${query}` : ""}`
     );
-    return response.data;
   }
 
   // Helper methods for description context gathering
