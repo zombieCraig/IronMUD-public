@@ -10,6 +10,21 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if mode == "retire_pick" {
+        handle_retire_pick(args, connection_id);
+        return;
+    }
+
+    if mode == "retire_confirm" {
+        handle_retire_confirm(args, connection_id);
+        return;
+    }
+
+    if mode == "delete_account_confirm" {
+        handle_delete_account_confirm(args, connection_id);
+        return;
+    }
+
     // If in migration prompt mode, handle that first
     if mode == "migration_prompt" {
         handle_migration_prompt(args, connection_id);
@@ -176,6 +191,8 @@ fn show_character_roster(connection_id, summaries) {
         output += "  [" + idx + "] " + s.name + " — level " + s.level + " " + race_str + " " + class_str + ", in " + where_str + "\n";
         idx += 1;
     }
+    output += "  [R] Retire a character (permanent)\n";
+    output += "  [X] Delete entire account (permanent)\n";
     output += "\nType a number to play that character, `new` to create another, or `quit` to log out.\n> ";
     send_client_message(connection_id, output);
 }
@@ -207,6 +224,16 @@ fn handle_select_character(input, connection_id) {
         return;
     }
 
+    if trimmed == "r" || trimmed == "retire" {
+        start_retire_pick(connection_id, account_id);
+        return;
+    }
+
+    if trimmed == "x" || trimmed == "delete account" {
+        start_delete_account_confirm(connection_id, account_id);
+        return;
+    }
+
     let summaries = get_account_character_summaries(account_id);
     let idx = try_parse_int(trimmed);
 
@@ -224,7 +251,192 @@ fn handle_select_character(input, connection_id) {
         }
     }
 
-    send_client_message(connection_id, "Type a number 1-" + summaries.len() + ", `new`, or `quit`.\n> ");
+    send_client_message(connection_id, "Type a number 1-" + summaries.len() + ", `new`, `R` to retire, `X` to delete the account, or `quit`.\n> ");
+}
+
+fn start_retire_pick(connection_id, account_id) {
+    let summaries = get_account_character_summaries(account_id);
+    if summaries.len() == 0 {
+        send_client_message(connection_id, "You have no characters to retire.");
+        set_olc_mode(connection_id, "select_character");
+        show_character_roster(connection_id, summaries);
+        return;
+    }
+    set_olc_mode(connection_id, "retire_pick");
+    let output ="\nRetire which character? This is PERMANENT and cannot be undone.\n";
+    let idx = 1;
+    for s in summaries {
+        output += "  [" + idx + "] " + s.name + "\n";
+        idx += 1;
+    }
+    output += "\nType the number or name, or `cancel` to go back.\n> ";
+    send_client_message(connection_id, output);
+}
+
+fn handle_retire_pick(input, connection_id) {
+    let trimmed = input.to_lower();
+    let account_id = get_authenticated_account_id(connection_id);
+    if account_id == "" {
+        set_olc_mode(connection_id, "");
+        send_client_message(connection_id, "Session expired. Please log in again.");
+        return;
+    }
+
+    if trimmed == "" || trimmed == "cancel" || trimmed == "q" || trimmed == "quit" {
+        let summaries = get_account_character_summaries(account_id);
+        set_olc_mode(connection_id, "select_character");
+        show_character_roster(connection_id, summaries);
+        return;
+    }
+
+    let summaries = get_account_character_summaries(account_id);
+    let chosen_name = "";
+    let idx = try_parse_int(trimmed);
+    if idx != () && idx >= 1 && idx <= summaries.len() {
+        chosen_name = summaries[idx - 1].name;
+    } else {
+        for s in summaries {
+            if s.name.to_lower() == trimmed {
+                chosen_name = s.name;
+                break;
+            }
+        }
+    }
+
+    if chosen_name == "" {
+        send_client_message(connection_id, "Pick a number 1-" + summaries.len() + ", the character's name, or `cancel`.\n> ");
+        return;
+    }
+
+    set_wizard_data(connection_id, "retire_target=" + chosen_name);
+    set_olc_mode(connection_id, "retire_confirm");
+    send_client_message(connection_id, "\nPermanently delete `" + chosen_name + "`?\nType the character's name exactly (case-insensitive) to confirm, or `cancel` to abort.\n> ");
+}
+
+fn handle_retire_confirm(input, connection_id) {
+    let trimmed = input.to_lower();
+    let account_id = get_authenticated_account_id(connection_id);
+    if account_id == "" {
+        set_olc_mode(connection_id, "");
+        send_client_message(connection_id, "Session expired. Please log in again.");
+        return;
+    }
+
+    let target = "";
+    let raw = get_wizard_data(connection_id);
+    if raw != () {
+        for part in raw.split(";") {
+            if part.index_of("retire_target=") == 0 {
+                target = part.sub_string(14);
+            }
+        }
+    }
+
+    if trimmed == "" || trimmed == "cancel" || trimmed == "q" || trimmed == "quit" {
+        clear_wizard_data(connection_id);
+        let summaries = get_account_character_summaries(account_id);
+        set_olc_mode(connection_id, "select_character");
+        send_client_message(connection_id, "Retire cancelled.");
+        show_character_roster(connection_id, summaries);
+        return;
+    }
+
+    if target == "" || trimmed != target.to_lower() {
+        send_client_message(connection_id, "Names don't match. Type `" + target + "` exactly to confirm, or `cancel` to abort.\n> ");
+        return;
+    }
+
+    // Kick if somehow online on another connection (shouldn't happen — caller
+    // is at the roster, but defensive). kick_player is a no-op when offline.
+    kick_player(target, "Your character has been retired.", target);
+
+    if delete_character(target) {
+        send_client_message(connection_id, "\n`" + target + "` has been retired. Their threads are cut from the world.");
+    } else {
+        send_client_message(connection_id, "Could not delete `" + target + "`. Contact an administrator.");
+    }
+
+    clear_wizard_data(connection_id);
+    let summaries = get_account_character_summaries(account_id);
+    if summaries.len() == 0 {
+        // Last character retired — drop into chargen name prompt, mirroring
+        // the empty-roster handling in roster.rhai.
+        set_olc_mode(connection_id, "chargen_name_prompt");
+        send_client_message(connection_id, "\nYour account has no characters left. What should your new character be named?\n> ");
+        return;
+    }
+    set_olc_mode(connection_id, "select_character");
+    show_character_roster(connection_id, summaries);
+}
+
+fn start_delete_account_confirm(connection_id, account_id) {
+    let account = get_account_by_id(account_id);
+    if account == () {
+        send_client_message(connection_id, "Could not load your account. Contact an administrator.");
+        return;
+    }
+    let summaries = get_account_character_summaries(account_id);
+    set_olc_mode(connection_id, "delete_account_confirm");
+    let output ="\nDELETE ENTIRE ACCOUNT — this is PERMANENT and cannot be undone.\n";
+    output += "Account: " + account.name + "\n";
+    if summaries.len() == 0 {
+        output += "Characters: (none)\n";
+    } else {
+        output += "Characters that will also be deleted:\n";
+        for s in summaries {
+            output += "  - " + s.name + "\n";
+        }
+    }
+    output += "\nType your account name `" + account.name + "` exactly (case-insensitive) to confirm, or `cancel` to abort.\n> ";
+    send_client_message(connection_id, output);
+}
+
+fn handle_delete_account_confirm(input, connection_id) {
+    let trimmed = input.to_lower();
+    let account_id = get_authenticated_account_id(connection_id);
+    if account_id == "" {
+        set_olc_mode(connection_id, "");
+        send_client_message(connection_id, "Session expired. Please log in again.");
+        return;
+    }
+
+    let account = get_account_by_id(account_id);
+    if account == () {
+        send_client_message(connection_id, "Could not load your account. Contact an administrator.");
+        set_olc_mode(connection_id, "");
+        return;
+    }
+
+    if trimmed == "" || trimmed == "cancel" || trimmed == "q" || trimmed == "quit" {
+        let summaries = get_account_character_summaries(account_id);
+        set_olc_mode(connection_id, "select_character");
+        send_client_message(connection_id, "Account deletion cancelled.");
+        show_character_roster(connection_id, summaries);
+        return;
+    }
+
+    if trimmed != account.name.to_lower() {
+        send_client_message(connection_id, "Names don't match. Type `" + account.name + "` exactly to confirm, or `cancel` to abort.\n> ");
+        return;
+    }
+
+    // Delete every owned character (kick is no-op when offline; defensive).
+    for n in account.character_names {
+        kick_player(n, "Account deleted by owner.", account.name);
+        delete_character(n);
+    }
+
+    let acct_name = account.name;
+    if delete_account(acct_name) {
+        send_client_message(connection_id, "\nAccount `" + acct_name + "` has been deleted. Goodbye.");
+    } else {
+        send_client_message(connection_id, "\nCharacters removed but account deletion failed. Contact an administrator.");
+    }
+
+    clear_wizard_data(connection_id);
+    clear_authenticated_account(connection_id);
+    set_olc_mode(connection_id, "");
+    disconnect_client(connection_id);
 }
 
 fn complete_character_selection(connection_id, char_name) {

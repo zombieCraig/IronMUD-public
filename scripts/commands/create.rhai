@@ -1150,21 +1150,6 @@ fn finalize_character(connection_id) {
         }
     }
 
-    // Vampire class auto-embrace. The runtime gate `enable_vampire_creation`
-    // is already checked at class-pick time (`get_class_list` filters
-    // vampire out when off), but we double-check here so a stale class_name
-    // can't accidentally embrace someone whose runtime toggle flipped.
-    // Default thinblood (no clan) — players earn a clan via the in-world
-    // sire quest or `admin embrace`.
-    if char_data.class_name == "vampire" {
-        let creation_on = get_setting_or_default("enable_vampire_creation", "off");
-        if creation_on == "on" || creation_on == "true" {
-            embrace_pc(connection_id, "(no sire)", "");
-            send_client_message(connection_id, "\x1b[1;31mYou wake to a world drained of color. Hunger sharpens your every sense — you are kindred.\x1b[0m");
-            send_client_message(connection_id, "Find a sire NPC or complete the embrace quest to claim a clan.");
-        }
-    }
-
     // Clear wizard state
     set_olc_mode(connection_id, "");
     clear_wizard_data(connection_id);
@@ -1179,6 +1164,23 @@ fn finalize_character(connection_id) {
 
     // Automatically log in the player
     set_player_character(connection_id, char_data);
+
+    // Vampire class auto-embrace. Must run AFTER set_player_character so
+    // embrace_pc can mutate session.character. The runtime gate
+    // `enable_vampire_creation` is already checked at class-pick time
+    // (`get_class_list` filters vampire out when off), but we double-check
+    // here so a stale class_name can't accidentally embrace someone whose
+    // runtime toggle flipped. Default thinblood (no clan) — players earn a
+    // clan via the in-world sire quest or `admin embrace`.
+    if char_data.class_name == "vampire" {
+        let creation_on = get_setting_or_default("enable_vampire_creation", "off");
+        if creation_on == "on" || creation_on == "true" {
+            embrace_pc(connection_id, "(no sire)", "");
+            char_data = get_character_data(char_name);
+            send_client_message(connection_id, "\x1b[1;31mYou wake to a world drained of color. Hunger sharpens your every sense — you are kindred.\x1b[0m");
+            send_client_message(connection_id, "Find a sire NPC or complete the embrace quest to claim a clan.");
+        }
+    }
 
     // Safety net: verify room exists, relocate if not
     let room = get_room_data(char_data.current_room_id);

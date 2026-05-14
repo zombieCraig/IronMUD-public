@@ -2570,9 +2570,14 @@ pub async fn handle_connection(
                 }
             } else if mode == "traits_select" {
                 Some("scripts/commands/traits.rhai".to_string())
-            } else if mode == "select_character" {
-                // Roster mode (post-auth, pre-character-pick). Inputs go to
-                // login.rhai's handle_select_character.
+            } else if mode == "select_character"
+                || mode == "retire_pick"
+                || mode == "retire_confirm"
+                || mode == "delete_account_confirm"
+            {
+                // Roster mode (post-auth, pre-character-pick) and its
+                // self-service retire / account-delete sub-flows. All inputs
+                // go to login.rhai, which branches on the OLC mode string.
                 Some("scripts/commands/login.rhai".to_string())
             } else if mode == "email_verify_prompt" {
                 // Email verification: 6-digit code, 'resend', or 'cancel'.

@@ -51,6 +51,8 @@ fn show_account_roster(connection_id, summaries) {
         output += "  [" + idx + "] " + s.name + " — level " + s.level + " " + race_str + " " + class_str + ", in " + where_str + "\n";
         idx += 1;
     }
+    output += "  [R] Retire a character (permanent)\n";
+    output += "  [X] Delete entire account (permanent)\n";
     output += "\nType a number to play that character, `new` to create another, or `quit` to log out.\n> ";
     send_client_message(connection_id, output);
 }

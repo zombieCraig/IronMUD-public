@@ -85,7 +85,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 set_session_dialogue_partner(&conns, conn_uuid, Some(mob.id));
                 let mut ch_mut = ch;
                 let view = enter_root_or_keep(&cloned_db, &conns, &st, &mut ch_mut, &mob);
-                let _ = cloned_db.save_character_data(ch_mut);
+                save_character_and_sync(&cloned_db, &conns, conn_uuid, ch_mut);
                 out.insert("ok".into(), rhai::Dynamic::from(true));
                 out.insert("mob_id".into(), rhai::Dynamic::from(mob.id.to_string()));
                 out.insert(
@@ -189,7 +189,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                             false,
                         ),
                     };
-                    let _ = cloned_db.save_character_data(ch_mut);
+                    save_character_and_sync(&cloned_db, &conns, conn_uuid, ch_mut);
                     if finished {
                         set_session_dialogue_partner(&conns, conn_uuid, None);
                     }
@@ -281,7 +281,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         false,
                     ),
                 };
-                let _ = cloned_db.save_character_data(ch_mut);
+                save_character_and_sync(&cloned_db, &conns, conn_uuid, ch_mut);
                 if finished {
                     set_session_dialogue_partner(&conns, conn_uuid, None);
                 }
@@ -328,7 +328,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     if let Some(state) = ch.dialogue_pair_state.get_mut(&mob.vnum) {
                         state.current_node = None;
                     }
-                    let _ = cloned_db.save_character_data(ch);
+                    save_character_and_sync(&cloned_db, &conns, conn_uuid, ch);
                 }
                 out.insert("ok".into(), rhai::Dynamic::from(true));
                 out.insert("mob_id".into(), rhai::Dynamic::from(mob.id.to_string()));
@@ -1000,7 +1000,7 @@ fn walk_choice_internal(
             false,
         ),
     };
-    let _ = db.save_character_data(ch);
+    save_character_and_sync(db, connections, connection_id, ch);
     if finished {
         clear_partner(connections, connection_id);
     }
@@ -1081,7 +1081,7 @@ fn walk_keyword_internal(
             false,
         ),
     };
-    let _ = db.save_character_data(ch);
+    save_character_and_sync(db, connections, connection_id, ch);
     if finished {
         clear_partner(connections, connection_id);
     }
@@ -1129,7 +1129,7 @@ fn exit_internal(
             if let Some(s) = ch.dialogue_pair_state.get_mut(&mob.vnum) {
                 s.current_node = None;
             }
-            let _ = db.save_character_data(ch);
+            save_character_and_sync(db, connections, connection_id, ch);
         }
         if !exit_msg.is_empty() {
             // on_exit effect-messages are bracketed status lines ("[ You
@@ -1226,6 +1226,24 @@ fn set_session_dialogue_partner(
 fn get_character_for_conn(connections: &SharedConnections, conn_id: Uuid) -> Option<CharacterData> {
     let conns = connections.lock().unwrap();
     conns.get(&conn_id).and_then(|s| s.character.clone())
+}
+
+/// Persist `ch` to the DB AND write it back to `session.character`.
+/// Dialogue walks mutate `dialogue_pair_state.current_node` on a clone of the
+/// session character; without syncing the session, the next input clones the
+/// stale pre-walk view and the player gets stuck on the root node.
+fn save_character_and_sync(
+    db: &Db,
+    connections: &SharedConnections,
+    conn_id: Uuid,
+    ch: CharacterData,
+) {
+    let _ = db.save_character_data(ch.clone());
+    if let Ok(mut conns) = connections.lock() {
+        if let Some(session) = conns.get_mut(&conn_id) {
+            session.character = Some(ch);
+        }
+    }
 }
 
 fn find_mob_in_room_with_tree(db: &Db, room_id: Uuid, keyword: &str) -> Option<MobileData> {
