@@ -516,9 +516,9 @@ fn tree_addchoice(mobile_id, parts, connection_id) {
             "Usage: medit <id> tree addchoice <node> <keyword> | <label> | <goto|exit|repeat> [target_node]");
         return;
     }
-    let keyword = segs[0].trim();
-    let label = segs[1].trim();
-    let target_part = segs[2].trim();
+    let keyword = segs[0];
+    let label = segs[1];
+    let target_part = segs[2];
     // target_part is "goto X" or "exit" or "repeat".
     let tparts = target_part.split(' ');
     let kind = if tparts.len() >= 1 { tparts[0].to_lower() } else { "" };
@@ -528,7 +528,7 @@ fn tree_addchoice(mobile_id, parts, connection_id) {
             if i > 1 { t += " "; }
             t += tparts[i];
         }
-        t.trim()
+        t
     } else { "" };
     let err = olc_add_dialogue_choice(mobile_id, node, keyword, label, kind, target_node);
     if err == "" {

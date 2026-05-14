@@ -40,7 +40,7 @@ fn show_ignored(char, connection_id) {
 }
 
 fn add_ignored(char, name, connection_id) {
-    let target_name = name.trim();
+    let target_name = name;
     if target_name == "" { return; }
 
     let lower_target = target_name.to_lower();

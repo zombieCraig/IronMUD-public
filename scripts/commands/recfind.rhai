@@ -28,7 +28,7 @@ fn run_command(args, connection_id) {
         return;
     }
 
-    let keyword = args.to_lower().trim();
+    let keyword = args.to_lower();
 
     // Search recipes
     let recipes = search_recipes(keyword);

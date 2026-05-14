@@ -11,7 +11,7 @@ fn run_command(args, connection_id) {
         return;
     }
 
-    let email = args.trim();
+    let email = args;
     if email == "" {
         send_client_message(connection_id, "Usage: forgot <email>");
         return;

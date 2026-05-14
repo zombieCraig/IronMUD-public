@@ -29,7 +29,7 @@ fn run_command(args, connection_id) {
     // Get optional skill filter
     let skill_filter = "";
     if args != "" {
-        let filter = args.to_lower().trim();
+        let filter = args.to_lower();
         if filter == "cooking" || filter == "crafting" {
             skill_filter = filter;
         } else {

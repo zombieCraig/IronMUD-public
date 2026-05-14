@@ -28,7 +28,7 @@ fn run_command(args, connection_id) {
     }
 
     // Find the target player
-    let target_name = args.trim();
+    let target_name = args;
 
     // Can't visit yourself
     if target_name.to_lower() == char.name.to_lower() {

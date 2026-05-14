@@ -3,7 +3,7 @@
 // Usage: ftalk <message>
 
 fn run_command(args, connection_id) {
-    if args.trim() == "" {
+    if args == "" {
         send_client_message(connection_id, "What do you want to say to your friends?");
         return;
     }

@@ -74,7 +74,7 @@ fn show_trait_selection(connection_id, char_data) {
 }
 
 fn handle_trait_input(input, connection_id) {
-    let lower = input.to_lower().trim();
+    let lower = input.to_lower();
 
     if lower == "" {
         send_client_message(connection_id, "Commands: <number> to preview, 'accept <number>' to add trait, 'back' to exit\n> ");
@@ -89,7 +89,7 @@ fn handle_trait_input(input, connection_id) {
 
     // Check for "accept N" command
     if lower.index_of("accept ") == 0 {
-        let num_str = lower.sub_string(7).trim();
+        let num_str = lower.sub_string(7);
         let idx = try_parse_int(num_str);
         if idx != () {
             accept_trait(connection_id, idx);

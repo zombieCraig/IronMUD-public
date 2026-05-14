@@ -75,7 +75,7 @@ fn show_friends_online(char, connection_id) {
 }
 
 fn add_friend(char, name, connection_id) {
-    let target_name = name.trim();
+    let target_name = name;
     if target_name == "" { return; }
     
     // Case-insensitive check

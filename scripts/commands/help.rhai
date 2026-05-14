@@ -78,7 +78,7 @@ fn show_command_help(name, commands, connection_id) {
         for m in matches {
             output += m + "\n";
         }
-        send_client_message(connection_id, output.trim());
+        send_client_message(connection_id, output);
     } else {
         send_client_message(connection_id, "Unknown command: " + name);
     }

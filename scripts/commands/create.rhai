@@ -37,7 +37,10 @@ fn run_command(args, connection_id) {
 
 // Handle character name input from the roster 'new' path.
 fn handle_name_prompt_input(input, connection_id) {
-    let name = input.trim();
+    if input == () {
+        return;
+    }
+    let name = input.to_string();
     let lower = name.to_lower();
 
     if name == "" || lower == "cancel" || lower == "back" {

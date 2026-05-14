@@ -19,7 +19,7 @@ fn run_command(args, connection_id) {
         return;
     }
 
-    let arg = args.trim();
+    let arg = args;
     if arg == "" {
         send_client_message(connection_id, "Talk to whom?");
         return;
