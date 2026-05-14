@@ -146,8 +146,9 @@ fn run_command(args, connection_id) {
     let summaries = get_account_character_summaries(account.id);
 
     if summaries.len() == 0 {
+        set_olc_mode(connection_id, "chargen_name_prompt");
         send_client_message(connection_id,
-            "\nYour account has no characters yet. Type `create <character_name>` to make one.\n");
+            "\nYour account has no characters yet. What should your new character be named?\n> ");
         return;
     }
 
@@ -198,11 +199,11 @@ fn handle_select_character(input, connection_id) {
     }
 
     if trimmed == "new" {
-        // Clear the roster mode so `create` runs as a normal command. The
+        // Drop straight into the name prompt for create.rhai. The
         // auth state stays — `create.rhai` reads it and skips the password
         // prompt for an authenticated connection.
-        set_olc_mode(connection_id, "");
-        send_client_message(connection_id, "Type `create <character_name>` to add a new character to your account.");
+        set_olc_mode(connection_id, "chargen_name_prompt");
+        send_client_message(connection_id, "\nWhat should your new character be named?\n> ");
         return;
     }
 

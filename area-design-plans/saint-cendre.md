@@ -20,7 +20,7 @@ The plan follows the `ironmud-area-designer` skill's interleaved 6-phase workflo
 | 3 | Core Plot | ✅ approved · ✅ deep-dive approved (2026-05-10) | — (pure design) | — |
 | 4 | Seed Quests | ✅ approved · ✅ deep-dive approved (2026-05-10) | — (pure design) | — |
 | 5 | Map + Room Build | ✅ approved · ✅ deep-dive approved (2026-05-10) | ✅ approved | ✅ built (2026-05-10) |
-| 6 | Population, Dialogue, Quests | ✅ approved | ✅ approved | ⏳ in progress — 6.0–6.4 ✅, 6.5 ⚠️, 6.6–6.18b ✅ (all 15 quests live), 6.19 ⏳ pre-flight 2026-05-13 — service spawns landed, replace_on_respawn surface patched (awaiting nutbox redeploy), achievement_set_prereq queued; live playthrough deferred until redeploy |
+| 6 | Population, Dialogue, Quests | ✅ approved | ✅ approved | ⏳ in progress — 6.0–6.4 ✅, 6.5 ⚠️, 6.6–6.18b ✅ (all 15 quests live), 6.19 ✅ static pre-flight clean post-redeploy (all 3 strict-mode blockers fixed: service spawns, `replace_on_respawn` `7357aaa`, `achievement_set_prereq` `e7bfd84`); live playthrough is the only remaining gate |
 
 When you resume work, advance the lowest-numbered "⏳ drafted, awaiting approval" entry first. A slice is ready to execute when both its phase's design AND its phase's build plan show ✅.
 
@@ -2211,7 +2211,7 @@ Two `create_spawn_point` calls landed via MCP:
 
 Both NPCs now spawn on their canonical rooms. Atmospheric check #3 is fully covered.
 
-**Blocker #1 — `replace_on_respawn` MCP+API surface: 🔧 CODE LANDED LOCALLY, AWAITING REDEPLOY.**
+**Blocker #1 — `replace_on_respawn` MCP+API surface: ✅ FIXED (commit `7357aaa`, deployed 2026-05-13).**
 
 The deployed `ironmud-public` API server (nutbox) did not previously expose `replace_on_respawn` on `create_spawn_point` / `update_spawn_point`. Patched:
 
@@ -2222,26 +2222,14 @@ The deployed `ironmud-public` API server (nutbox) did not previously expose `rep
 | `mcp-server/src/types.ts` | Added `replace_on_respawn?: boolean` to `SpawnPoint` and `CreateSpawnPointRequest` interfaces. |
 | `mcp-server/src/index.ts` | Forward `args.replace_on_respawn` through both handler call sites. |
 
-`cargo build` + `cargo test --test server` clean (248 passed). `npm run build` clean.
+`cargo build` + `cargo test --test server` clean (248 passed). `npm run build` clean. Deployed to nutbox; `update_spawn_point(id="88c8bd31-11d5-4ca9-881e-3bac7da7c4aa", replace_on_respawn=true)` returned `replace_on_respawn: true` post-redeploy. Step 7 closes.
 
-**Deployment step still required**: rebuild + restart the API server on nutbox + restart MCP TS. After redeploy, set the Stranger spawn:
+**Blocker #2 — Q7 unlock gate widening: ✅ FIXED (commit `e7bfd84`, deployed 2026-05-13).**
 
-```
-update_spawn_point(id="88c8bd31-11d5-4ca9-881e-3bac7da7c4aa", replace_on_respawn=true)
-```
-
-Step 7 then closes.
-
-**Blocker #2 — Q7 unlock gate widening: 🔧 PARTIALLY LANDED, AWAITING REDEPLOY VERIFICATION.**
-
-`update_quest cendre:q-endgame-court achievement_set_prereq={keys:[…all 5 cendre_investigation_*], min_count: 3}` was issued via MCP. The response omitted the field on both `update_quest` and a follow-up `get_quest` round-trip, suggesting the deployed API does not yet expose the field's serialization path (likely the same deployment-staleness as blocker #1). Local code (`src/api/quests.rs:115`, `132`, `389`, `464`) already wires the field — same redeploy cycle will land it.
+Root cause was an MCP TS handler-dispatch bug: `create_quest` destructured a fixed arg list and `update_quest` used a hardcoded `fields` whitelist — both omitted `achievement_set_prereq`, silently stripping it before it reached the (already-correct) Rust API. Commit `e7bfd84` added the field to both forwarding paths. Post-redeploy, `update_quest(vnum="cendre:q-endgame-court", achievement_set_prereq={keys:[…5 cendre_investigation_* keys…], min_count: 3})` round-trips cleanly on `get_quest`.
 
 **Mireille's dialogue gate design decision**: kept as `[has_achievement cendre_investigation_safehouse, flag_unset q7_offered]`. Rationale: Q-I5 (the safehouse-discovery investigation) is the narrative plot-key — players don't have anywhere to *aim* the writ until they've found the shack. The dialogue gate is the front-door visibility ("you have a reason to bring her evidence"); the quest prototype's `achievement_set_prereq` is the runtime backstop ("3+ investigations done"). Players who try to skip the bulk of the investigation track by going straight from Q-I5 to Mireille will see the choice but the `OfferQuest` effect's prereq check will block (silently feedback-line per the prototype's invariant). This dual-layer enforcement matches the §4.E.3 design — spec line 1511 is honored at the prototype level.
 
-Treating step 6 as **PASS post-redeploy** with this design recorded.
+Step 6 closes — **PASS** with the dual-layer design recorded.
 
-**Post-redeploy checklist** (single short MCP session):
-
-1. `update_spawn_point(id="88c8bd31-11d5-4ca9-881e-3bac7da7c4aa", replace_on_respawn=true)` — verify `replace_on_respawn: true` round-trips on the response.
-2. `update_quest(vnum="cendre:q-endgame-court", achievement_set_prereq={keys:[…5 cendre_investigation_* keys…], min_count: 3})` — verify `achievement_set_prereq` round-trips on a follow-up `get_quest`.
-3. Run the live smoke-test playthrough; fill in the log skeleton above.
+**Static pre-flight result**: all three strict-mode blockers resolved. The remaining step is the live smoke-test playthrough (fills in the log skeleton above) — gated only on a player with a MUD client.

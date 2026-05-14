@@ -24,13 +24,15 @@ fn run_command(args, connection_id) {
     // Drop the active character; auth (account_id) stays on the session.
     clear_player_character(connection_id);
 
-    // Re-enter the roster prompt that login.rhai owns.
+    // Re-enter the roster prompt that login.rhai already handles.
     let summaries = get_account_character_summaries(account_id);
     if summaries.len() == 0 {
-        // Edge case: every character was deleted. Surface the "create" hint.
-        send_client_message(connection_id, "\nYour account has no characters. Type `create <character_name>` to make one.\n");
+        // Edge case: every character was deleted. Surface the name prompt.
+        set_olc_mode(connection_id, "chargen_name_prompt");
+        send_client_message(connection_id, "\nYour account has no characters. What should your new character be named?\n> ");
         return;
     }
+
 
     set_olc_mode(connection_id, "select_character");
     show_account_roster(connection_id, summaries);

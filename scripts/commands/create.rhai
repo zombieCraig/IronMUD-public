@@ -6,6 +6,10 @@ fn run_command(args, connection_id) {
 
     // If already in wizard mode, handle input based on current state
     if mode != "" && mode.index_of("chargen_") == 0 {
+        if mode == "chargen_name_prompt" {
+            handle_name_prompt_input(args, connection_id);
+            return;
+        }
         handle_wizard_input(args, connection_id, mode);
         return;
     }
@@ -29,6 +33,53 @@ fn run_command(args, connection_id) {
     } else {
         run_unauthenticated_create(args, connection_id);
     }
+}
+
+// Handle character name input from the roster 'new' path.
+fn handle_name_prompt_input(input, connection_id) {
+    let name = input.trim();
+    let lower = name.to_lower();
+
+    if name == "" || lower == "cancel" || lower == "back" {
+        // Return to roster
+        let account_id = get_authenticated_account_id(connection_id);
+        let summaries = get_account_character_summaries(account_id);
+        if summaries.len() == 0 {
+            send_client_message(connection_id, "\nYou must create a character to continue. Type a name or 'quit'.\n> ");
+            return;
+        }
+        set_olc_mode(connection_id, "select_character");
+        show_character_roster_login(connection_id, summaries);
+        return;
+    }
+
+    if lower == "quit" || lower == "q" {
+        set_olc_mode(connection_id, "");
+        clear_authenticated_account(connection_id);
+        send_client_message(connection_id, "Logged out. Goodbye!");
+        return;
+    }
+
+    // Call the same logic as the `create <name>` command
+    run_authenticated_create(name, connection_id, get_authenticated_account_id(connection_id));
+}
+
+// Helper to show roster from create.rhai (mirrors login.rhai's show_character_roster)
+fn show_character_roster_login(connection_id, summaries) {
+    let output = "\n=== Your characters ===\n\n";
+    let idx = 1;
+    for s in summaries {
+        let class_str = s.class_name;
+        if class_str == "" { class_str = "unemployed"; }
+        let race_str = s.race;
+        if race_str == "" { race_str = "unknown"; }
+        let where_str = s.room_title;
+        if where_str == "" { where_str = "elsewhere"; }
+        output += "  [" + idx + "] " + s.name + " — level " + s.level + " " + race_str + " " + class_str + ", in " + where_str + "\n";
+        idx += 1;
+    }
+    output += "\nType a number to play that character, `new` to create another, or `quit` to log out.\n> ";
+    send_client_message(connection_id, output);
 }
 
 // "create <character_name>" on an authenticated connection — adds another
