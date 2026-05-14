@@ -60,6 +60,10 @@ pub fn process_sun_tick(db: &db::Db, connections: &SharedConnections) -> Result<
             if !exposed {
                 if already_burning {
                     remove_buff(&mut ch.active_buffs, EffectType::SunlightBurning);
+                    let _ = session.sender.send(
+                        "\n\x1b[1;33mYou drag yourself into shadow. The smoke fades. You will live — for now.\x1b[0m\n"
+                            .to_string(),
+                    );
                     let _ = db.save_character_data(ch.clone());
                 }
                 continue;
@@ -80,6 +84,23 @@ pub fn process_sun_tick(db: &db::Db, connections: &SharedConnections) -> Result<
                 dmg,
                 already_burning,
             );
+            let now_burning = has_buff(&ch.active_buffs, EffectType::SunlightBurning);
+            let msg = if ch.hp == 0 {
+                format!(
+                    "\n\x1b[1;31mThe sunlight finishes you. Your unliving flesh blackens, splits, ends.\x1b[0m\n"
+                )
+            } else if now_burning && !already_burning {
+                format!(
+                    "\n\x1b[1;31mThe sun ignites your dead flesh! You collapse, smoke pouring from your skin. ONE MORE MOMENT IN THE LIGHT AND YOU END. ({} dmg)\x1b[0m\n",
+                    dmg
+                )
+            } else {
+                format!(
+                    "\n\x1b[33mDirect sunlight sears your unliving flesh — {} damage. Find shade!\x1b[0m\n",
+                    dmg
+                )
+            };
+            let _ = session.sender.send(msg);
             let _ = db.save_character_data(ch.clone());
         }
     }
@@ -131,6 +152,10 @@ fn clear_burning_when_safe(db: &db::Db, connections: &SharedConnections) -> Resu
             };
             if has_buff(&ch.active_buffs, EffectType::SunlightBurning) {
                 remove_buff(&mut ch.active_buffs, EffectType::SunlightBurning);
+                let _ = session.sender.send(
+                    "\n\x1b[1;33mNightfall. The burning fades from your skin. You survived another day.\x1b[0m\n"
+                        .to_string(),
+                );
                 let _ = db.save_character_data(ch.clone());
             }
         }

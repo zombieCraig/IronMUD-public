@@ -863,6 +863,9 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
         colors_enabled,
         char_name,
         build_mode,
+        blood_pool,
+        max_blood_pool,
+        sunlight_burning,
     ) = {
         let conns = connections.lock().unwrap();
         let session = match conns.get(connection_id) {
@@ -905,6 +908,14 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
                 } else {
                     c.max_mana
                 };
+                let (blood, max_blood) = match c.vampire_state.as_ref() {
+                    Some(v) => (Some(v.blood_pool), Some(v.max_blood_pool)),
+                    None => (None, None),
+                };
+                let burning = c
+                    .active_buffs
+                    .iter()
+                    .any(|b| b.effect_type == crate::types::EffectType::SunlightBurning);
                 (
                     mode.to_string(),
                     c.hp,
@@ -919,6 +930,9 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
                     colors,
                     c.name.clone(),
                     c.build_mode,
+                    blood,
+                    max_blood,
+                    burning,
                 )
             }
             None => return "> ".to_string(), // Not logged in = simple prompt
@@ -1018,9 +1032,43 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
         String::new()
     };
 
+    // Blood pool segment (vampires only). Shows current/max blood; reddens
+    // as the pool empties so the player can pace feeding without `score`.
+    let blood_segment = match (blood_pool, max_blood_pool) {
+        (Some(bp), Some(max_bp)) if max_bp > 0 => {
+            let pct = (bp * 100) / max_bp;
+            let bp_color = if colors_enabled {
+                if pct >= 70 {
+                    "\x1b[31m" // Red: well-fed
+                } else if pct >= 30 {
+                    "\x1b[33m" // Yellow: peckish
+                } else {
+                    "\x1b[1;31m" // Bright red: hungry / frenzy risk
+                }
+            } else {
+                ""
+            };
+            format!("[{}BP:{}/{}{}] ", bp_color, bp, max_bp, reset)
+        }
+        _ => String::new(),
+    };
+
+    // SunlightBurning indicator — one more tick (or one blow) and the player
+    // ends. Loud, unmissable.
+    let burning_segment = if sunlight_burning {
+        if colors_enabled {
+            "\x1b[1;31m[BURNING]\x1b[0m ".to_string()
+        } else {
+            "[BURNING] ".to_string()
+        }
+    } else {
+        String::new()
+    };
+
     let base_prompt = format!(
-        "[{}HP:{}/{}{}] [{}ST:{}/{}{}] {}{}",
-        hp_color, hp, max_hp, reset, st_color, stamina, max_stamina, reset, mana_segment, breath_segment
+        "[{}HP:{}/{}{}] [{}ST:{}/{}{}] {}{}{}{}",
+        hp_color, hp, max_hp, reset, st_color, stamina, max_stamina, reset,
+        mana_segment, blood_segment, breath_segment, burning_segment
     );
 
     // Distance indicator for combat prompt
