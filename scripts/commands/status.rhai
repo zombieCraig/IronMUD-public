@@ -278,15 +278,26 @@ fn show_basic_status(char, connection_id) {
     let stamina_str = "Stamina: " + stamina_bar + " " + char.stamina + "/" + char.max_stamina;
     let stamina_colored = get_stamina_colored(stamina_str, stamina_pct, connection_id);
 
-    // Thirst bar
-    let thirst_bar = build_bar(char.thirst, char.max_thirst, 10);
-    let thirst_str = "Thirst: " + thirst_bar + " " + char.thirst + "/" + char.max_thirst;
-    let thirst_colored = color_or(ansi_cyan(thirst_str), thirst_str, connection_id);
+    // Thirst / Hunger — or, for the undead, blood pool in their place.
+    let is_vampire = is_pc_vampire(connection_id);
+    let thirst_colored = "";
+    let hunger_colored = "";
+    let blood_colored = "";
+    if is_vampire {
+        let bp = get_pc_blood_pool(connection_id);
+        let bp_max = get_pc_max_blood_pool(connection_id);
+        let bp_bar = build_bar(bp, bp_max, 10);
+        let bp_str = "Blood:  " + bp_bar + " " + bp + "/" + bp_max;
+        blood_colored = color_or(ansi_red(bp_str), bp_str, connection_id);
+    } else {
+        let thirst_bar = build_bar(char.thirst, char.max_thirst, 10);
+        let thirst_str = "Thirst: " + thirst_bar + " " + char.thirst + "/" + char.max_thirst;
+        thirst_colored = color_or(ansi_cyan(thirst_str), thirst_str, connection_id);
 
-    // Hunger bar
-    let hunger_bar = build_bar(char.hunger, char.max_hunger, 10);
-    let hunger_str = "Hunger: " + hunger_bar + " " + char.hunger + "/" + char.max_hunger;
-    let hunger_colored = color_or(ansi_cyan(hunger_str), hunger_str, connection_id);
+        let hunger_bar = build_bar(char.hunger, char.max_hunger, 10);
+        let hunger_str = "Hunger: " + hunger_bar + " " + char.hunger + "/" + char.max_hunger;
+        hunger_colored = color_or(ansi_cyan(hunger_str), hunger_str, connection_id);
+    }
 
     output += hp_colored + "   " + stamina_colored + "\n";
 
@@ -302,7 +313,11 @@ fn show_basic_status(char, connection_id) {
         output += mana_colored + "\n";
     }
 
-    output += thirst_colored + "   " + hunger_colored + "\n";
+    if is_vampire {
+        output += blood_colored + "\n";
+    } else {
+        output += thirst_colored + "   " + hunger_colored + "\n";
+    }
 
     // Position indicator
     let pos_str = "Position: " + char.position;
@@ -449,11 +464,18 @@ fn show_detailed_status(char, connection_id) {
         output += get_mana_colored(mana_str, mana_pct, connection_id) + "\n";
     }
 
-    let thirst_bar = build_bar(char.thirst, char.max_thirst, 10);
-    output += "Thirst: " + thirst_bar + " " + char.thirst + "/" + char.max_thirst + "\n";
+    if is_pc_vampire(connection_id) {
+        let bp = get_pc_blood_pool(connection_id);
+        let bp_max = get_pc_max_blood_pool(connection_id);
+        let bp_bar = build_bar(bp, bp_max, 10);
+        output += "Blood:  " + bp_bar + " " + bp + "/" + bp_max + "\n";
+    } else {
+        let thirst_bar = build_bar(char.thirst, char.max_thirst, 10);
+        output += "Thirst: " + thirst_bar + " " + char.thirst + "/" + char.max_thirst + "\n";
 
-    let hunger_bar = build_bar(char.hunger, char.max_hunger, 10);
-    output += "Hunger: " + hunger_bar + " " + char.hunger + "/" + char.max_hunger + "\n";
+        let hunger_bar = build_bar(char.hunger, char.max_hunger, 10);
+        output += "Hunger: " + hunger_bar + " " + char.hunger + "/" + char.max_hunger + "\n";
+    }
 
     output += "Position: " + char.position + "\n";
 

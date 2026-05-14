@@ -510,6 +510,28 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         },
     );
 
+    // get_pc_max_blood_pool(connection_id) -> i64. 0 for mortals.
+    let conns = connections.clone();
+    engine.register_fn(
+        "get_pc_max_blood_pool",
+        move |connection_id: String| -> i64 {
+            let conn_id = match uuid::Uuid::parse_str(&connection_id) {
+                Ok(u) => u,
+                Err(_) => return 0,
+            };
+            let conns_lock = match conns.lock() {
+                Ok(g) => g,
+                Err(_) => return 0,
+            };
+            conns_lock
+                .get(&conn_id)
+                .and_then(|s| s.character.as_ref())
+                .and_then(|c| c.vampire_state.as_ref())
+                .map(|v| v.max_blood_pool as i64)
+                .unwrap_or(0)
+        },
+    );
+
     // get_pc_humanity(connection_id) -> i64. -1 for mortals.
     let conns = connections.clone();
     engine.register_fn(
@@ -997,7 +1019,59 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             }
 
             let _ = cdb.save_character_data(ch.clone());
-            let _ = cdb.save_mobile_data(target);
+
+            if killed {
+                // Finish the death pipeline lib-side. Mirrors the work
+                // done by `process_mobile_death` (which is bin-only):
+                // build a corpse, transfer the victim's gear into it,
+                // then delete the mobile so the spawn point can repopulate.
+                let target_room = target.current_room_id;
+                let target_id = target.id;
+                let target_name = target.name.clone();
+                let target_vnum = target.vnum.clone();
+                let gold = crate::corpse::mobile_gold_with_variance(target.gold as i64);
+                if let Some(room_id) = target_room {
+                    let corpse = crate::corpse::CorpseBuilder::for_mobile(
+                        &target_name,
+                        room_id,
+                        gold,
+                    )
+                    .with_source_vnum(Some(target_vnum))
+                    .build();
+                    let corpse_id = corpse.id;
+                    if cdb.save_item_data(corpse).is_ok() {
+                        if let Ok(inv) = cdb.get_items_in_mobile_inventory(&target_id) {
+                            for item in inv {
+                                let item_id = item.id;
+                                let mut updated = item;
+                                updated.flags.death_only = false;
+                                updated.location = crate::types::ItemLocation::Container(corpse_id);
+                                if let Ok(Some(mut c)) = cdb.get_item_data(&corpse_id) {
+                                    c.container_contents.push(item_id);
+                                    let _ = cdb.save_item_data(c);
+                                }
+                                let _ = cdb.save_item_data(updated);
+                            }
+                        }
+                        if let Ok(equipped) = cdb.get_items_equipped_on_mobile(&target_id) {
+                            for item in equipped {
+                                let item_id = item.id;
+                                let mut updated = item;
+                                updated.flags.death_only = false;
+                                updated.location = crate::types::ItemLocation::Container(corpse_id);
+                                if let Ok(Some(mut c)) = cdb.get_item_data(&corpse_id) {
+                                    c.container_contents.push(item_id);
+                                    let _ = cdb.save_item_data(c);
+                                }
+                                let _ = cdb.save_item_data(updated);
+                            }
+                        }
+                    }
+                }
+                let _ = cdb.delete_mobile(&target_id);
+            } else {
+                let _ = cdb.save_mobile_data(target);
+            }
 
             put(&mut out, "success", rhai::Dynamic::from(true));
             put(&mut out, "damage", rhai::Dynamic::from(damage as i64));

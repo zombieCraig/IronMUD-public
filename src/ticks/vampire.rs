@@ -14,8 +14,31 @@ pub async fn run_sun_tick(db: db::Db, connections: SharedConnections) {
     let mut ticker = interval(Duration::from_secs(SUN_TICK_INTERVAL_SECS));
     loop {
         ticker.tick().await;
-        if let Err(e) = process_sun_tick(&db, &connections) {
-            error!("Sun tick error: {}", e);
+        match process_sun_tick(&db, &connections) {
+            Ok(deaths) => {
+                // Finish the death pipeline (corpse, inventory drop,
+                // spawn-point cleanup) for any mob the sun just killed.
+                // process_mobile_death lives bin-side and can't be called
+                // from src/vampire/mod.rs directly.
+                for mob_id in deaths {
+                    if let Ok(Some(mut mob)) = db.get_mobile_data(&mob_id) {
+                        if let Some(room_id) = mob.current_room_id {
+                            if let Err(e) = crate::ticks::combat::process_mobile_death(
+                                &db,
+                                &connections,
+                                &mut mob,
+                                &room_id,
+                            ) {
+                                error!(
+                                    "Sun-death cleanup failed for {}: {}",
+                                    mob.name, e
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => error!("Sun tick error: {}", e),
         }
     }
 }

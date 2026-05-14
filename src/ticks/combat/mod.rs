@@ -3,9 +3,11 @@
 //! This module contains:
 //! - `tick` - Main combat tick processing (combat rounds, damage)
 //! - `wounds` - Unified wound handling via the Woundable trait
-//! - `corpse` - Corpse creation builder pattern
+//!
+//! Corpse construction lives lib-side at `ironmud::corpse` so lib-side
+//! kill paths (vampire feed, etc.) can build corpses without crossing
+//! the bin boundary.
 
-pub(crate) mod corpse;
 mod on_hit;
 mod tick;
 mod wounds;

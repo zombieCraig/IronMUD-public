@@ -57,20 +57,23 @@ fn run_command(args, connection_id) {
         output += " (" + temp + "C / " + temp_f + "F)";
     }
 
-    // Check thirst status
-    let thirst = get_character_thirst(connection_id);
-    if thirst != () {
-        output += "\n\n";
-        if thirst.percent > 75 {
-            output += "You feel well hydrated.";
-        } else if thirst.percent > 50 {
-            output += "You could use a drink soon.";
-        } else if thirst.percent > 25 {
-            output += "You are quite thirsty.";
-        } else if thirst.percent > 10 {
-            output += "You are very thirsty!";
-        } else {
-            output += "You are dangerously dehydrated!";
+    // Mortal thirst flavor. Vampires don't drink water — their blood
+    // pool is reported in `score`.
+    if !is_pc_vampire(connection_id) {
+        let thirst = get_character_thirst(connection_id);
+        if thirst != () {
+            output += "\n\n";
+            if thirst.percent > 75 {
+                output += "You feel well hydrated.";
+            } else if thirst.percent > 50 {
+                output += "You could use a drink soon.";
+            } else if thirst.percent > 25 {
+                output += "You are quite thirsty.";
+            } else if thirst.percent > 10 {
+                output += "You are very thirsty!";
+            } else {
+                output += "You are dangerously dehydrated!";
+            }
         }
     }
 

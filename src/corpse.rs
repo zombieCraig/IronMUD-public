@@ -3,7 +3,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-use ironmud::{ItemData, ItemFlags, ItemLocation, ItemType, LiquidType};
+use crate::{ItemData, ItemFlags, ItemLocation, ItemType, LiquidType};
 
 /// Builder for creating corpses from dead entities
 pub struct CorpseBuilder {

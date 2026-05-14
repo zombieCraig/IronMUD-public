@@ -1377,6 +1377,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             return 0;
         }
 
+        // Vampires don't tick thirst, so they shouldn't be penalised
+        // for it. Their blood pool is the analogous resource.
+        if char.vampire_state.is_some() {
+            return 0;
+        }
+
         // Calculate thirst percentage
         if char.max_thirst == 0 {
             return 0;

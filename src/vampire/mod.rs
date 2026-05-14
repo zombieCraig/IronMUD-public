@@ -33,13 +33,22 @@ const BLOOD_DECAY_PER_TICK: i32 = 1;
 /// drags them to a sheltered room before the next sun tick, the buff is
 /// cleared and they wake injured. Subsequent ticks while still exposed and
 /// already burning are lethal.
-pub fn process_sun_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
+///
+/// Returns the IDs of mobs whose HP reached 0 this tick. The caller is
+/// expected to finish the death pipeline (corpse, inventory drop, spawn
+/// cleanup) via `process_mobile_death` — which lives bin-side and can't
+/// be called from here.
+pub fn process_sun_tick(
+    db: &db::Db,
+    connections: &SharedConnections,
+) -> Result<Vec<uuid::Uuid>> {
+    let mut mob_deaths: Vec<uuid::Uuid> = Vec::new();
     let game_time = db.get_game_time()?;
     if !game_time.is_daytime() {
         // Vampires sheltered from the sun (but still SunlightBurning from a
         // prior daytime exposure) get the rescue benefit at nightfall too.
         clear_burning_when_safe(db, connections)?;
-        return Ok(());
+        return Ok(mob_deaths);
     }
 
     {
@@ -133,10 +142,15 @@ pub fn process_sun_tick(db: &db::Db, connections: &SharedConnections) -> Result<
             dmg,
             already_burning,
         );
+        let died = mob.current_hp == 0;
+        let mob_id = mob.id;
         let _ = db.save_mobile_data(mob);
+        if died {
+            mob_deaths.push(mob_id);
+        }
     }
 
-    Ok(())
+    Ok(mob_deaths)
 }
 
 /// At night (or when daytime exposure ends), clear SunlightBurning from

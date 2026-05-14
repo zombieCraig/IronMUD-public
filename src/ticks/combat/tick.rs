@@ -12,7 +12,7 @@ use ironmud::{
     WearLocation, WoundLevel, WoundType, break_all_charms_by_player, db,
 };
 
-use super::corpse::{CorpseBuilder, mobile_gold_with_variance};
+use ironmud::corpse::{CorpseBuilder, mobile_gold_with_variance};
 use super::on_hit::{apply_on_hit_effects_to_character, apply_on_hit_effects_to_mobile};
 use super::wounds::{add_wound_bleeding, escalate_wound_to_severe};
 

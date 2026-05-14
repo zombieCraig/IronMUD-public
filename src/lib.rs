@@ -32,6 +32,7 @@ pub mod ratelimit;
 pub mod readline;
 pub mod throttle;
 pub mod script;
+pub mod corpse;
 pub mod seed;
 pub mod session;
 pub mod social;

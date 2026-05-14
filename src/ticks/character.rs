@@ -60,6 +60,12 @@ fn process_thirst_tick(db: &db::Db, connections: &SharedConnections, _state: &Sh
                 continue;
             }
 
+            // Vampires are undead — they don't tick thirst. Blood pool
+            // is the analogous resource (see vampire/mod.rs blood tick).
+            if char.vampire_state.is_some() {
+                continue;
+            }
+
             // Calculate base thirst decrease
             let mut decrease = thirst_base_rate;
 
@@ -193,6 +199,12 @@ fn process_hunger_tick(db: &db::Db, connections: &SharedConnections, _state: &Sh
 
             // Skip hunger for god mode and build mode players
             if char.god_mode || ironmud::check_build_mode(db, &char.name, &char.current_room_id) {
+                continue;
+            }
+
+            // Vampires are undead — they don't tick hunger. Blood pool
+            // is the analogous resource (see vampire/mod.rs blood tick).
+            if char.vampire_state.is_some() {
                 continue;
             }
 
