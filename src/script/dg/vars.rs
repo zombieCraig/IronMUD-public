@@ -360,13 +360,28 @@ fn resolve_bare_name(name: &str, ctx: &EvalCtx, state: &State) -> String {
 
 fn lookup_durable(ctx: &EvalCtx, state: &State, name: &str) -> Option<String> {
     // Context entity's dg_vars take precedence when context is set.
-    if let Some(uid) = state.context {
-        if let Some(v) = remote_entity_var_opt(ctx, &uid, name) {
+    if let Some(scope) = state.context.as_ref() {
+        if let Some(v) = scope_var_opt(ctx, scope, name) {
             return Some(v);
         }
     }
     // World globals.
     ctx.db.get_dg_global(name).ok().flatten()
+}
+
+/// Read `field` from the scope's `dg_vars`. Mirrors
+/// `eval::set_entity_var` — handles UUID-keyed mob/item/room and
+/// name-keyed PCs.
+fn scope_var_opt(ctx: &EvalCtx, scope: &super::eval::ScopeRef, field: &str) -> Option<String> {
+    match scope {
+        super::eval::ScopeRef::Uuid(uid) => remote_entity_var_opt(ctx, uid, field),
+        super::eval::ScopeRef::Player(pname) => ctx
+            .db
+            .get_character_data(pname)
+            .ok()
+            .flatten()
+            .and_then(|ch| ch.dg_vars.get(field).cloned()),
+    }
 }
 
 fn remote_entity_var(ctx: &EvalCtx, uid: &uuid::Uuid, field: &str) -> String {
@@ -426,12 +441,16 @@ fn resolve_actor_field(actor: Option<&ActorRef>, field: Option<&str>, ctx: &Eval
         return s;
     }
     match actor {
-        ActorRef::Player { name, char_id, .. } => {
+        ActorRef::Player { name, .. } => {
             // Cheap fields first to avoid the db hit.
             match field {
                 "name" => return name.clone(),
                 "is_pc" => return "1".to_string(),
-                "id" => return char_id.to_string(),
+                // PCs are keyed by name in IronMUD (no character UUID).
+                // Returning the name here makes `remote VAR %actor.id% V`
+                // and `context %actor.id%` route through `parse_scope_ref`
+                // to the character's `dg_vars`.
+                "id" => return name.clone(),
                 _ => {}
             }
             if let Ok(Some(ch)) = ctx.db.get_character_data(name) {

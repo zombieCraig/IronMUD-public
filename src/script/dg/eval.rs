@@ -51,6 +51,17 @@ impl std::fmt::Display for EvalError {
 
 impl std::error::Error for EvalError {}
 
+/// Identifies an entity that owns a durable `dg_vars` map. `remote` /
+/// `rdelete` / `context` accept either a UUID (mob/item/room) or a
+/// character name (PCs are keyed by name, not UUID, in IronMUD).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScopeRef {
+    /// Mobile, item, or room — looked up by UUID.
+    Uuid(Uuid),
+    /// Player character — looked up by lowercase name.
+    Player(String),
+}
+
 /// Per-script mutable state. Created fresh on each `fire_dg` call.
 ///
 /// Holds the variable scopes the DG model exposes:
@@ -60,13 +71,13 @@ impl std::error::Error for EvalError {}
 ///   the durable store (world `dg_globals` if `context` is None, the
 ///   context entity's `dg_vars` otherwise).
 /// - `context` — current `context %expr%` binding. `None` means world
-///   scope; `Some(uid)` means subsequent `global`/`unset` writes target
-///   that entity's `dg_vars`.
+///   scope; `Some(ScopeRef)` means subsequent `global`/`unset` writes
+///   target that entity's `dg_vars` (works for PCs too — IronMUD-specific).
 #[derive(Debug, Default)]
 pub struct State {
     pub locals: HashMap<String, String>,
     pub globals: HashSet<String>,
-    pub context: Option<Uuid>,
+    pub context: Option<ScopeRef>,
 }
 
 impl State {
@@ -139,7 +150,7 @@ fn eval_stmt(stmt: &Stmt, ctx: &EvalCtx, state: &mut State) -> Result<Flow, Eval
 
         Stmt::Context(arg) => {
             let interp = vars::substitute(arg.trim(), ctx, state);
-            state.context = parse_context_uuid(&interp);
+            state.context = parse_scope_ref(&interp);
             Ok(Flow::Continue)
         }
 
@@ -169,8 +180,8 @@ fn eval_stmt(stmt: &Stmt, ctx: &EvalCtx, state: &mut State) -> Result<Flow, Eval
             // least-surprise; otherwise an old global value would shadow
             // a new local.
             let _ = ctx.db.unset_dg_global(name);
-            if let Some(uid) = state.context {
-                clear_entity_var(ctx, &uid, name);
+            if let Some(scope) = state.context.clone() {
+                clear_entity_var(ctx, &scope, name);
             }
             Ok(Flow::Continue)
         }
@@ -181,13 +192,13 @@ fn eval_stmt(stmt: &Stmt, ctx: &EvalCtx, state: &mut State) -> Result<Flow, Eval
                 return Ok(Flow::Continue);
             }
             let interp = vars::substitute(target.trim(), ctx, state);
-            let Some(uid) = parse_context_uuid(&interp) else {
+            let Some(scope) = parse_scope_ref(&interp) else {
                 return Ok(Flow::Continue);
             };
             // Source value: the current scope's value of var (locals first,
             // then durable lookup if globalled).
             let value = vars::resolve(var_name, ctx, state);
-            set_entity_var(ctx, &uid, var_name, &value);
+            set_entity_var(ctx, &scope, var_name, &value);
             Ok(Flow::Continue)
         }
 
@@ -197,10 +208,10 @@ fn eval_stmt(stmt: &Stmt, ctx: &EvalCtx, state: &mut State) -> Result<Flow, Eval
                 return Ok(Flow::Continue);
             }
             let interp = vars::substitute(target.trim(), ctx, state);
-            let Some(uid) = parse_context_uuid(&interp) else {
+            let Some(scope) = parse_scope_ref(&interp) else {
                 return Ok(Flow::Continue);
             };
-            clear_entity_var(ctx, &uid, var_name);
+            clear_entity_var(ctx, &scope, var_name);
             Ok(Flow::Continue)
         }
 
@@ -462,61 +473,90 @@ fn apply_cmp(op: &str, l: &str, r: &str) -> bool {
 /// Parse a DG `context` argument into a UUID. Empty / "0" / unparseable
 /// values clear the context (return None), matching the convention of
 /// `context 0` meaning "world scope".
-fn parse_context_uuid(s: &str) -> Option<Uuid> {
+/// Parse the interpolated target of `remote`/`rdelete`/`context` into a
+/// [`ScopeRef`]. UUID strings resolve to [`ScopeRef::Uuid`] (mob/item/room);
+/// any other non-empty value is treated as a character name (PCs are keyed
+/// by name, not UUID). `""` and `"0"` mean "no scope".
+fn parse_scope_ref(s: &str) -> Option<ScopeRef> {
     let t = s.trim();
     if t.is_empty() || t == "0" {
         return None;
     }
-    Uuid::parse_str(t).ok()
+    if let Ok(u) = Uuid::parse_str(t) {
+        return Some(ScopeRef::Uuid(u));
+    }
+    Some(ScopeRef::Player(t.to_ascii_lowercase()))
 }
 
 /// Write `name = value` into the durable scope: world `dg_globals` when
 /// no context is set, the context entity's `dg_vars` otherwise.
 fn store_durable(ctx: &EvalCtx, state: &State, name: &str, value: &str) {
-    match state.context {
+    match state.context.as_ref() {
         None => {
             let _ = ctx.db.set_dg_global(name, value);
         }
-        Some(uid) => set_entity_var(ctx, &uid, name, value),
+        Some(scope) => set_entity_var(ctx, scope, name, value),
     }
 }
 
-/// Set `name = value` on the entity's `dg_vars`. Tries mobiles first,
-/// then items, then rooms — DG context ids are typed only by lookup.
-pub(super) fn set_entity_var(ctx: &EvalCtx, uid: &Uuid, name: &str, value: &str) {
-    if let Ok(Some(mut mob)) = ctx.db.get_mobile_data(uid) {
-        mob.dg_vars.insert(name.to_string(), value.to_string());
-        let _ = ctx.db.save_mobile_data(mob);
-        return;
-    }
-    if let Ok(Some(mut item)) = ctx.db.get_item_data(uid) {
-        item.dg_vars.insert(name.to_string(), value.to_string());
-        let _ = ctx.db.save_item_data(item);
-        return;
-    }
-    if let Ok(Some(mut room)) = ctx.db.get_room_data(uid) {
-        room.dg_vars.insert(name.to_string(), value.to_string());
-        let _ = ctx.db.save_room_data(room);
+/// Set `name = value` on the scope's `dg_vars`. For UUID scopes, tries
+/// mobiles → items → rooms. For player scopes, writes to the character's
+/// `dg_vars` keyed by lowercase name.
+pub(super) fn set_entity_var(ctx: &EvalCtx, scope: &ScopeRef, name: &str, value: &str) {
+    match scope {
+        ScopeRef::Uuid(uid) => {
+            if let Ok(Some(mut mob)) = ctx.db.get_mobile_data(uid) {
+                mob.dg_vars.insert(name.to_string(), value.to_string());
+                let _ = ctx.db.save_mobile_data(mob);
+                return;
+            }
+            if let Ok(Some(mut item)) = ctx.db.get_item_data(uid) {
+                item.dg_vars.insert(name.to_string(), value.to_string());
+                let _ = ctx.db.save_item_data(item);
+                return;
+            }
+            if let Ok(Some(mut room)) = ctx.db.get_room_data(uid) {
+                room.dg_vars.insert(name.to_string(), value.to_string());
+                let _ = ctx.db.save_room_data(room);
+            }
+        }
+        ScopeRef::Player(pname) => {
+            if let Ok(Some(mut ch)) = ctx.db.get_character_data(pname) {
+                ch.dg_vars.insert(name.to_string(), value.to_string());
+                let _ = ctx.db.save_character_data(ch);
+            }
+        }
     }
 }
 
-/// Remove `name` from the entity's `dg_vars`. Mirror of [`set_entity_var`].
-pub(super) fn clear_entity_var(ctx: &EvalCtx, uid: &Uuid, name: &str) {
-    if let Ok(Some(mut mob)) = ctx.db.get_mobile_data(uid) {
-        if mob.dg_vars.remove(name).is_some() {
-            let _ = ctx.db.save_mobile_data(mob);
+/// Remove `name` from the scope's `dg_vars`. Mirror of [`set_entity_var`].
+pub(super) fn clear_entity_var(ctx: &EvalCtx, scope: &ScopeRef, name: &str) {
+    match scope {
+        ScopeRef::Uuid(uid) => {
+            if let Ok(Some(mut mob)) = ctx.db.get_mobile_data(uid) {
+                if mob.dg_vars.remove(name).is_some() {
+                    let _ = ctx.db.save_mobile_data(mob);
+                }
+                return;
+            }
+            if let Ok(Some(mut item)) = ctx.db.get_item_data(uid) {
+                if item.dg_vars.remove(name).is_some() {
+                    let _ = ctx.db.save_item_data(item);
+                }
+                return;
+            }
+            if let Ok(Some(mut room)) = ctx.db.get_room_data(uid) {
+                if room.dg_vars.remove(name).is_some() {
+                    let _ = ctx.db.save_room_data(room);
+                }
+            }
         }
-        return;
-    }
-    if let Ok(Some(mut item)) = ctx.db.get_item_data(uid) {
-        if item.dg_vars.remove(name).is_some() {
-            let _ = ctx.db.save_item_data(item);
-        }
-        return;
-    }
-    if let Ok(Some(mut room)) = ctx.db.get_room_data(uid) {
-        if room.dg_vars.remove(name).is_some() {
-            let _ = ctx.db.save_room_data(room);
+        ScopeRef::Player(pname) => {
+            if let Ok(Some(mut ch)) = ctx.db.get_character_data(pname) {
+                if ch.dg_vars.remove(name).is_some() {
+                    let _ = ctx.db.save_character_data(ch);
+                }
+            }
         }
     }
 }

@@ -182,7 +182,7 @@ Show full Phase 4 draft in chat. AskUserQuestion: approve / add a faction's ques
 - **ASCII sketch** of district adjacency (not to scale, just topology)
 - **Room budget table by district**: rooms, combat-zone default, notable rooms. Total should hit the scale target (excluding rooms already built in Phase 1).
 - **Combat-zone rules**: area default + per-room overrides (the "main streets safe, alleys PvP" pattern is a strong default for cities)
-- **Special room flags** if the class needs them (`indoors + dark + no_magic` for vampire sun rescue, `no_mob` for safe-house thresholds, etc.)
+- **Special room flags** if the class needs them (`indoors + dark + no_magic` for vampire sun rescue, `no_mob` for safe-house thresholds, etc.). **`no_mob` is a hard wall to the pathfinder** — see Build-time pitfalls below. Never apply it to a room that is a routine destination OR a transit room on the only path to one. Use it for thresholds you want to be permanently mob-free (a player-only altar, a portal-arrival room).
 - **Day/night via routines** — prefer time-gated `daily_routine` on mobiles over DG flag-flipping. Note explicitly when DG is needed.
 - **Connectivity highlights** — central hub linkages, alleys as PvP shortcuts, special access (hidden doors, sealed locations gated by quests)
 - **Exit topology — cardinal directions ONLY.** `set_room_exit` accepts only `north`, `south`, `east`, `west`, `up`, `down`. Diagonals (`ne`/`nw`/`se`/`sw`), `in`, and `out` are **not supported** and must never appear in the plan — not in the ASCII sketch, not in the per-slice exit table, not in any "X ↔ Y (in/out)" shorthand. Author every edge as one of the six cardinals from the start, choosing the cardinal that reads naturally for the narrative (e.g., a basement nook is `down`/`up` from the street; a building entrance facing the street is `north`/`south` if the building sits north of it). Common cardinal substitutes for the in/out reflex:
@@ -228,6 +228,64 @@ Show the slice list in chat. AskUserQuestion: approve & start executing / adjust
 **Execute.** Per-slice as in Phase 5.
 
 **Definition of phase done.** All slices' DoDs met; smoke-test playthrough completes end-to-end on a fresh character. Area is v1-complete.
+
+## Build-time pitfalls
+
+Concrete bugs caught during recent Saint-Cendre Phase 6 + smoke-test work. Fold each into the relevant slice **before** the build runs, not as cleanup.
+
+### `no_mob` blocks the routine pathfinder
+
+The pathfinder used by `daily_routine` destination steps treats `no_mob` as a hard wall. A mob will never path **into** or **through** a `no_mob` room, even when it's the mob's own assigned destination. Symptoms in `get_builder_debug_log`:
+
+```
+Routine: <Mob> cannot reach destination (activity 'working') —
+from <home> to <dest>: no path found (explored N reachable rooms).
+Clearing destination.
+```
+
+Saint-Cendre Phase 6 surfaced five instances of this — including destinations the NPC was *supposed* to inhabit (the priest's nave, the cafe owner's cafe, the captain's garrison). The fix is to clear `no_mob` on those rooms; the routine NPC is the population the room is meant to hold.
+
+**Rule of thumb when authoring Phase 5:**
+- A room is **not** `no_mob` if any Phase 6 NPC has it as a routine `destination_vnum`.
+- A room is **not** `no_mob` if it sits on the only path between an NPC's spawn room and a routine destination.
+- `no_mob` is correct for: portal-arrival rooms, ritual chambers a player must enter alone, set-piece reveal rooms, anywhere you specifically want zero NPC presence forever.
+
+When the Phase 6 spawn/routine slice goes in, **diff the `no_mob` room list against the routine destination list** and clear the flag on any overlap before testing.
+
+### Sentinel must be set *before* first spawn
+
+Mob flags (`sentinel`, `aware`, `memory`, `no_charm`, etc.) are baked into the live instance at spawn time. Updating the **prototype** later does NOT propagate to already-alive instances — they keep their old flag set until they die and respawn.
+
+This bit Saint-Cendre's five clan sires: they spawned without `sentinel`, wandered out of their indoor havens via the wander tick, and the sun tick killed them outdoors. Adding `sentinel: true` to the prototype after the fact did nothing for the wandering instances.
+
+**Rule of thumb:**
+- Set all sentinel/aware/memory flags **in the initial `create_mobile` call**, never as a follow-up `update_mobile`.
+- If you must add a flag after first spawn (chargen drift, balance change, etc.), `delete_mobile` the live instances afterward so the spawn point repopulates them fresh.
+- For class-specific kill conditions (vampire sun tick, undead holy-vulnerable, etc.), place the affected NPC in a class-safe room *and* mark them sentinel — both are required.
+
+### `replace_on_respawn` + container contents
+
+`replace_on_respawn: true` on a container's spawn point force-deletes the tracked container each cycle so it reappears fresh. As of commit `175cb22` the deletion now cascades into the container's contents (via `db.delete_item_recursive`) — earlier orphaning is fixed.
+
+But there's still a design pitfall: putting a `flags.unique` (or `world_max_count: 1`) item inside a `replace_on_respawn` container is almost always wrong. The spawn point's `max_count: 1` already enforces "one container in the world" — which means "one of the inner item in the world" comes free. Adding `unique` on top adds a second cap that competes with the cascade-delete and re-creates the orphan failure mode if a player walks off with the inner item just before the chest replaces.
+
+**Rule of thumb:**
+- If the design intent is "one of these per spawn cycle," rely on the spawn point's `max_count` and **don't** also flag the item `unique`.
+- Reserve `flags.unique` / `world_max_count: 1` for items where exactly-one-in-the-world is a hard design promise the player can plan around (legendary artifacts, persistent quest pieces).
+
+### Short_desc nouns must be keywords
+
+If a mob's short_desc references the mob by a noun the player can see ("a stooped figure", "the priest", "a young man in a dinner jacket"), every salient noun in that string must appear in the mob's `keywords` array. Otherwise `talk priest`, `look figure`, `examine man` all fail — even though "priest" or "figure" is the only word the player has to address the NPC.
+
+Migrant-generated NPCs are the exception: the generator emits the rolled full name as the first words of short_desc, so name-words-as-keywords cover it.
+
+**Rule of thumb for any seeded NPC (sires, named mortals, antagonists):** before the `create_mobile` lands, scan short_desc for nouns and confirm each one is in `keywords`. The cost is a few seconds at authoring time; the cost of missing one is the NPC being effectively unaddressable until the player learns the lore name from some other source.
+
+### Death pipelines for non-combat damage
+
+When designing class systems that deal HP damage outside the combat tick (sun tick, drowning, bleeding, ongoing effects, vampire feed), the kill must run through the same death pipeline (`process_mobile_death`) that combat uses — corpse creation, inventory drop, spawn-point cleanup. As of commits `8689961` + `e7dd28e` the sun tick and vampire feed do this correctly; earlier, sun-killed mobs stood in the room as zombies until manually deleted.
+
+**Rule of thumb when proposing a new damage source for an area:** check that its tick handler delegates to `process_mobile_death` on HP-to-zero. If it doesn't, flag it as a code-change ask to the user before building the area around it. Half-implemented damage sources leave dead-mob debris in the world.
 
 ## Plan file conventions
 

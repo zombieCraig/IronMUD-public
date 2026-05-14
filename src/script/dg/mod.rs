@@ -1289,7 +1289,9 @@ end";
 
     #[test]
     fn actor_id_resolves_for_player_and_mob() {
-        // Player actor: %actor.id% == char_id (the connection_id we bound).
+        // Player actor: %actor.id% == name (PCs are keyed by name in
+        // IronMUD; this lets `remote ... %actor.id%` route through
+        // `parse_scope_ref` to the character's `dg_vars`).
         let cid = Uuid::new_v4();
         let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
         ctx.actor = Some(ActorRef::Player {
@@ -1297,17 +1299,12 @@ end";
             char_id: cid,
             name: "tester".to_string(),
         });
-        // Re-uses the local `set` path: assign %actor.id% into a local and
-        // verify equality.
-        let body = format!(
-            "\
+        let body = "\
 set aid %actor.id%
-if %aid% == {cid}
+if %aid% == tester
   return 7
-end",
-            cid = cid
-        );
-        assert_eq!(fire_dg(&body, &ctx), Outcome::Return(7));
+end";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Return(7));
 
         // Mob actor: %actor.id% == mobile_id.
         let mob_id = Uuid::new_v4();
@@ -1325,6 +1322,91 @@ end",
             mid = mob_id
         );
         assert_eq!(fire_dg(&body2, &ctx2), Outcome::Return(8));
+    }
+
+    #[test]
+    fn remote_writes_to_player_dg_vars() {
+        // tbamud's `remote VAR %actor.id% VALUE` pattern: write a var on
+        // the player's persistent `dg_vars` so a later trigger can read it
+        // via `%actor.VAR%`.
+        let cid = Uuid::new_v4();
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "alex",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ctx.db.save_character_data(ch).expect("save");
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: cid.to_string(),
+            char_id: cid,
+            name: "alex".to_string(),
+        });
+
+        let body = "\
+set cookie_day 42
+remote cookie_day %actor.id%
+if %actor.cookie_day% == 42
+  return 11
+end";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Return(11));
+
+        // Persisted on disk.
+        let after = ctx.db.get_character_data("alex").unwrap().unwrap();
+        assert_eq!(after.dg_vars.get("cookie_day").map(String::as_str), Some("42"));
+    }
+
+    #[test]
+    fn rdelete_clears_player_dg_var() {
+        let cid = Uuid::new_v4();
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let mut ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "alex",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ch.dg_vars.insert("score".to_string(), "99".to_string());
+        ctx.db.save_character_data(ch).expect("save");
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: cid.to_string(),
+            char_id: cid,
+            name: "alex".to_string(),
+        });
+
+        let body = "rdelete score %actor.id%";
+        let _ = fire_dg(body, &ctx);
+        let after = ctx.db.get_character_data("alex").unwrap().unwrap();
+        assert!(after.dg_vars.get("score").is_none());
+    }
+
+    #[test]
+    fn context_durable_writes_target_player() {
+        // `context %actor.id%` + `global var` + `set var V` should write
+        // V into the player's dg_vars.
+        let cid = Uuid::new_v4();
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "alex",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ctx.db.save_character_data(ch).expect("save");
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: cid.to_string(),
+            char_id: cid,
+            name: "alex".to_string(),
+        });
+
+        let body = "\
+context %actor.id%
+global quest_step
+set quest_step 3";
+        let _ = fire_dg(body, &ctx);
+        let after = ctx.db.get_character_data("alex").unwrap().unwrap();
+        assert_eq!(after.dg_vars.get("quest_step").map(String::as_str), Some("3"));
     }
 
     #[test]
