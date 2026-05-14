@@ -43,33 +43,38 @@ fn show_shopkeeper_list(shopkeeper, char, connection_id) {
     output += "Items for sale:\n\n";
 
     let has_items = false;
+    let index = 1;
 
     // Show base stock
     for vnum in stock {
-        let line = format_stock_item(vnum, sell_rate);
+        let line = format_stock_item(index, vnum, sell_rate);
         if line != "" {
             output += line;
             has_items = true;
+            index += 1;
         }
     }
 
     // Group bought inventory by prototype_vnum (or name+value fallback)
     let inv_groups = #{};
+    let inv_keys = []; // To keep track of order
     for item in inventory {
         let key = get_grouping_key(item);
         if key in inv_groups {
             inv_groups[key].count += 1;
         } else {
             inv_groups[key] = #{ item: item, count: 1 };
+            inv_keys.push(key);
         }
     }
 
     // Show grouped bought inventory
-    for key in inv_groups.keys() {
+    for key in inv_keys {
         let group = inv_groups[key];
-        let line = format_inv_item(group.item, sell_rate, group.count);
+        let line = format_inv_item(index, group.item, sell_rate, group.count);
         output += line;
         has_items = true;
+        index += 1;
     }
 
     if !has_items {
@@ -77,7 +82,7 @@ fn show_shopkeeper_list(shopkeeper, char, connection_id) {
     }
 
     output += "\nYour gold: " + char.gold;
-    output += "\n\nUse 'buy <item>' to purchase.";
+    output += "\n\nUse 'buy <item>' or 'buy <index>' to purchase.";
 
     send_client_message(connection_id, output);
 }
@@ -90,13 +95,15 @@ fn show_vending_list(vending, char, connection_id) {
     output += "Items for sale:\n\n";
 
     let has_items = false;
+    let index = 1;
 
     // Vending machines only have infinite stock
     for vnum in stock {
-        let line = format_stock_item(vnum, sell_rate);
+        let line = format_stock_item(index, vnum, sell_rate);
         if line != "" {
             output += line;
             has_items = true;
+            index += 1;
         }
     }
 
@@ -105,28 +112,33 @@ fn show_vending_list(vending, char, connection_id) {
     }
 
     output += "\nYour gold: " + char.gold;
-    output += "\n\nUse 'buy <item>' to purchase.";
+    output += "\n\nUse 'buy <item>' or 'buy <index>' to purchase.";
 
     send_client_message(connection_id, output);
 }
 
-fn format_stock_item(vnum, sell_rate) {
+fn format_stock_item(index, vnum, sell_rate) {
     let proto = get_item_by_vnum(vnum);
     if proto == () {
         return "";
     }
     let price = calculate_sell_price(proto.value, sell_rate);
     let suffix = get_item_info_suffix(proto);
-    return "  " + proto.name + " - " + price + " gold" + suffix + "\n";
+    let idx_str = index.to_string();
+    if index < 10 { idx_str = " " + idx_str; }
+    return idx_str + ") " + proto.name + " - " + price + " gold" + suffix + "\n";
 }
 
-fn format_inv_item(item, sell_rate, count) {
+fn format_inv_item(index, item, sell_rate, count) {
     let price = calculate_sell_price(item.value, sell_rate);
     let suffix = get_item_info_suffix(item);
+    let idx_str = index.to_string();
+    if index < 10 { idx_str = " " + idx_str; }
+    let name = item.name;
     if count > 1 {
-        return "  " + item.name + " - " + price + " gold" + suffix + " (used, x" + count + ")\n";
+        return idx_str + ") " + name + " - " + price + " gold" + suffix + " (used, x" + count + ")\n";
     }
-    return "  " + item.name + " - " + price + " gold" + suffix + " (used)\n";
+    return idx_str + ") " + name + " - " + price + " gold" + suffix + " (used)\n";
 }
 
 fn get_grouping_key(item) {
