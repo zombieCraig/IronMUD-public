@@ -121,7 +121,11 @@ fn process_spawn_points(db: &db::Db, connections: &SharedConnections) -> Result<
                         let _ = db.delete_mobile(&entity_id);
                     }
                     SpawnEntityType::Item => {
-                        let _ = db.delete_item(&entity_id);
+                        // Recursive: a container being replaced needs its
+                        // contents cleaned up too, or unique items inside
+                        // get orphaned and keep their world cap full
+                        // (e.g. pirates_chest re-burying with pirate_cutlass).
+                        let _ = db.delete_item_recursive(&entity_id);
                     }
                 }
             }
