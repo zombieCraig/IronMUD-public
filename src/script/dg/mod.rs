@@ -1784,6 +1784,37 @@ end";
     }
 
     #[test]
+    fn percent_verb_survives_substitution() {
+        // Regression: `%send% %actor% msg` must dispatch to cmd_send,
+        // not be eaten by vars::substitute as a bare-name lookup of
+        // "send" that then leaves the player name as the verb.
+        let tag = "percent-verb-pct";
+        let cid = Uuid::new_v4();
+        let mut ctx = make_ctx(SelfKind::Obj, Uuid::new_v4(), tag);
+        let ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "alex",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ctx.db.save_character_data(ch).expect("save");
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: cid.to_string(),
+            char_id: cid,
+            name: "alex".to_string(),
+        });
+
+        let body = "%send% %actor% You feel a tingle.";
+        let _ = fire_dg(body, &ctx);
+
+        let entries = find_log_entries_for(tag);
+        assert!(
+            !entries.iter().any(|e| e.contains("unknown command")),
+            "expected no 'unknown command' warning, got: {entries:?}"
+        );
+    }
+
+    #[test]
     fn warn_builder_surfaces_remote_empty_var_name() {
         let tag = "warnbuilder-remote-emptyvar";
         let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), tag);

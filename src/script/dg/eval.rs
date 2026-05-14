@@ -270,7 +270,7 @@ fn eval_stmt(stmt: &Stmt, ctx: &EvalCtx, state: &mut State) -> Result<Flow, Eval
         }
 
         Stmt::Cmd(line) => {
-            let interp = vars::substitute(line, ctx, state);
+            let interp = substitute_cmd_line(line, ctx, state);
             super::cmds::dispatch(&interp, ctx).map_err(|m| EvalError { msg: m })?;
             Ok(Flow::Continue)
         }
@@ -502,6 +502,36 @@ fn apply_cmp(op: &str, l: &str, r: &str) -> bool {
 /// Parse a DG `context` argument into a UUID. Empty / "0" / unparseable
 /// values clear the context (return None), matching the convention of
 /// `context 0` meaning "world scope".
+/// Substitute variables in a `Stmt::Cmd` line, but preserve a leading
+/// `%verb%` token when `verb` is a known DG command. Without this,
+/// `vars::substitute` would treat `%send%` as a bare-name var lookup
+/// (resolves to empty), making the line dispatch the next arg
+/// (typically `%actor%` → player name) as the verb. tbamud's
+/// `%send%`/`%echo%`/`%damage%`/etc. shorthand depends on the verb
+/// surviving substitution.
+fn substitute_cmd_line(line: &str, ctx: &EvalCtx, state: &State) -> String {
+    let trimmed = line.trim_start();
+    let leading_ws = &line[..line.len() - trimmed.len()];
+    if let Some(verb_end) = trimmed.find(char::is_whitespace) {
+        let verb_tok = &trimmed[..verb_end];
+        if verb_tok.starts_with('%') && verb_tok.ends_with('%') && verb_tok.len() > 2 {
+            let bare = verb_tok[1..verb_tok.len() - 1].to_ascii_lowercase();
+            if super::cmds::is_known_dg_verb(&bare) {
+                let rest = &trimmed[verb_end..];
+                let rest_interp = vars::substitute(rest, ctx, state);
+                return format!("{leading_ws}{verb_tok}{rest_interp}");
+            }
+        }
+    } else if trimmed.starts_with('%') && trimmed.ends_with('%') && trimmed.len() > 2 {
+        // Lone `%verb%` with no args.
+        let bare = trimmed[1..trimmed.len() - 1].to_ascii_lowercase();
+        if super::cmds::is_known_dg_verb(&bare) {
+            return line.to_string();
+        }
+    }
+    vars::substitute(line, ctx, state)
+}
+
 /// Parse the interpolated target of `remote`/`rdelete`/`context` into a
 /// [`ScopeRef`]. UUID strings resolve to [`ScopeRef::Uuid`] (mob/item/room);
 /// any other non-empty value is treated as a character name (PCs are keyed

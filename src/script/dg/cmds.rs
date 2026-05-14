@@ -119,6 +119,35 @@ fn strip_pct(s: &str) -> &str {
     s.strip_suffix('%').unwrap_or(s)
 }
 
+/// Return `true` when `verb` (already lowercased + `%`-stripped) is a
+/// known DG command. Used by the `Stmt::Cmd` evaluator to preserve a
+/// leading `%verb%` token through variable substitution — without this,
+/// `substitute` resolves `%send%` as a bare-name lookup and the
+/// command line becomes args-only, dispatching the player name as the
+/// verb. Keep this in sync with the `dispatch` match below.
+pub(super) fn is_known_dg_verb(verb: &str) -> bool {
+    matches!(
+        verb,
+        "send" | "msend" | "osend" | "wsend"
+        | "echo" | "mecho" | "oecho" | "wecho" | "recho" | "mrecho" | "orecho" | "wrecho"
+        | "echoaround" | "mechoaround" | "oechoaround" | "wechoaround"
+        | "echaround" | "echoround" | "echround"
+        | "zoneecho" | "zecho" | "wzoneecho" | "mzoneecho" | "ozoneecho"
+        | "damage" | "mdamage" | "odamage" | "wdamage"
+        | "teleport" | "mteleport" | "oteleport" | "wteleport"
+        | "purge" | "mpurge" | "opurge" | "wpurge"
+        | "load" | "mload" | "oload" | "wload"
+        | "log" | "mlog" | "olog" | "wlog"
+        | "dg_cast" | "dg_affect"
+        | "force" | "mforce" | "oforce" | "wforce"
+        | "mremember" | "mforget" | "mhunt"
+        | "at" | "mat" | "oat" | "wat"
+        | "mdoor" | "odoor" | "wdoor" | "door"
+        | "otimer" | "mtimer" | "wtimer" | "timer"
+        | "transform" | "mtransform" | "otransform"
+    )
+}
+
 // ---------- Commands ----------
 
 fn cmd_send(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
