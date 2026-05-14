@@ -235,6 +235,28 @@ impl EvalCtx {
     }
 }
 
+/// Push a writer-mistake notice to the BUILDER DEBUG channel. The message
+/// is prefixed with the trigger's host (`[DG mob guard]`) and suffixed with
+/// the author when known. Consecutive duplicates are suppressed so a
+/// periodic trigger doesn't saturate the 50-slot ring buffer.
+///
+/// Reserved for author errors — unknown verbs, malformed args, lookup
+/// failures that imply a typo. Gameplay-state no-ops (target left the
+/// room, item not in inventory) must stay silent.
+pub(crate) fn warn_builder(ctx: &EvalCtx, msg: &str) {
+    let kind = match ctx.self_kind {
+        SelfKind::Mob => "mob",
+        SelfKind::Obj => "obj",
+        SelfKind::Room => "room",
+    };
+    let author = match ctx.authored_by.as_deref() {
+        Some(a) if !a.is_empty() => format!(" (by {a})"),
+        _ => String::new(),
+    };
+    let line = format!("[DG {kind} {}] {msg}{author}", ctx.self_name);
+    crate::session::broadcast::broadcast_to_builders_dedup(&ctx.connections, &line);
+}
+
 /// Result of evaluating a DG body.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
@@ -271,6 +293,7 @@ pub fn fire_dg(body: &str, ctx: &EvalCtx) -> Outcome {
         Ok(b) => b,
         Err(e) => {
             tracing::warn!("DG parse error in trigger on {} ({:?}): {}", ctx.self_name, ctx.self_kind, e);
+            warn_builder(ctx, &format!("parse error: {e}"));
             return Outcome::Done;
         }
     };
@@ -285,6 +308,7 @@ pub fn fire_dg(body: &str, ctx: &EvalCtx) -> Outcome {
                     "DG eval error in trigger on {} ({:?}): {}",
                     ctx.self_name, ctx.self_kind, e
                 );
+                warn_builder(ctx, &format!("eval error: {e}"));
                 Outcome::Done
             }
         };
@@ -307,6 +331,7 @@ pub fn fire_dg(body: &str, ctx: &EvalCtx) -> Outcome {
                         "DG eval error in async trigger on {} ({:?}): {}",
                         self_name, self_kind, e
                     );
+                    warn_builder(&ctx_owned, &format!("eval error: {e}"));
                 }
             });
             Outcome::Done
@@ -1678,6 +1703,98 @@ end";
         assert!(
             ctx.db.get_mobile_data(&target_id).expect("get").is_none(),
             "system-authored triggers (authored_by=None) keep legacy permission"
+        );
+    }
+
+    // The BUILDER_DEBUG_LOG is process-global static state, so these
+    // tests use unique self_name strings to find their own entries
+    // amongst whatever else the test runner has pushed.
+    fn find_log_entries_for(self_name: &str) -> Vec<String> {
+        crate::session::broadcast::get_builder_debug_lines(50)
+            .into_iter()
+            .filter(|line| line.contains(self_name))
+            .collect()
+    }
+
+    #[test]
+    fn warn_builder_surfaces_unknown_command() {
+        let tag = "warnbuilder-unknown-cmd";
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), tag);
+        let body = "totallybogusverb foo bar";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Done);
+
+        let entries = find_log_entries_for(tag);
+        assert!(
+            entries.iter().any(|e| e.contains("unknown command: totallybogusverb")),
+            "expected 'unknown command' warning, got entries: {entries:?}"
+        );
+    }
+
+    #[test]
+    fn warn_builder_dedups_consecutive_identical_errors() {
+        let tag = "warnbuilder-dedup";
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), tag);
+        let body = "alsogibberish";
+
+        // Fire three times back-to-back — only one entry should land.
+        fire_dg(body, &ctx);
+        fire_dg(body, &ctx);
+        fire_dg(body, &ctx);
+
+        let entries = find_log_entries_for(tag);
+        let unknown_cmd_count = entries
+            .iter()
+            .filter(|e| e.contains("unknown command: alsogibberish"))
+            .count();
+        assert_eq!(
+            unknown_cmd_count, 1,
+            "dedup should suppress consecutive duplicates; got entries: {entries:?}"
+        );
+    }
+
+    #[test]
+    fn warn_builder_surfaces_parse_error() {
+        let tag = "warnbuilder-parse-error";
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), tag);
+        // Unclosed `if` triggers a parse error.
+        let body = "if %actor.level% > 5\n  say hi";
+        let _ = fire_dg(body, &ctx);
+
+        let entries = find_log_entries_for(tag);
+        assert!(
+            entries.iter().any(|e| e.contains("parse error")),
+            "expected 'parse error' warning, got entries: {entries:?}"
+        );
+    }
+
+    #[test]
+    fn warn_builder_silent_on_gameplay_state_lookups() {
+        // `mkill target_not_in_room` should NOT surface — that's
+        // gameplay state, not an author error.
+        let tag = "warnbuilder-gameplay-silent";
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), tag);
+        let body = "mkill nobody-by-that-name";
+        let _ = fire_dg(body, &ctx);
+
+        let entries = find_log_entries_for(tag);
+        assert!(
+            entries.is_empty(),
+            "gameplay no-op (target not in room) must stay silent; got entries: {entries:?}"
+        );
+    }
+
+    #[test]
+    fn warn_builder_surfaces_remote_empty_var_name() {
+        let tag = "warnbuilder-remote-emptyvar";
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), tag);
+        // `remote` with no var name token.
+        let body = "remote";
+        let _ = fire_dg(body, &ctx);
+
+        let entries = find_log_entries_for(tag);
+        assert!(
+            entries.iter().any(|e| e.contains("remote: missing variable name")),
+            "expected 'remote: missing variable name', got entries: {entries:?}"
         );
     }
 }

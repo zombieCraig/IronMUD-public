@@ -97,6 +97,7 @@ pub fn dispatch(line: &str, ctx: &EvalCtx) -> Result<(), String> {
                 return Ok(());
             }
             tracing::debug!("DG cmd '{}' not yet implemented (script self={})", v, ctx.self_name);
+            super::warn_builder(ctx, &format!("unknown command: {v}"));
             Ok(())
         }
     }
@@ -229,7 +230,10 @@ fn cmd_teleport(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
         Ok(u) => u,
         Err(_) => match ctx.db.get_room_by_vnum(dest_tok.trim()) {
             Ok(Some(r)) => r.id,
-            _ => return Ok(()),
+            _ => {
+                super::warn_builder(ctx, &format!("teleport: unknown room '{}'", dest_tok.trim()));
+                return Ok(());
+            }
         },
     };
     // F3 gate: teleport crosses area boundaries trivially. Authorize
@@ -241,6 +245,7 @@ fn cmd_teleport(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
         .flatten()
         .and_then(|r| r.area_id);
     if !ctx.opcode_authorized("teleport", dest_area) {
+        super::warn_builder(ctx, "teleport blocked: author lacks permission for destination area");
         return Ok(());
     }
     match actor {
@@ -262,6 +267,7 @@ fn cmd_purge(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     if target_tok.is_empty() {
         // Self-purge — gate against the host's own area.
         if !ctx.opcode_authorized("purge", None) {
+            super::warn_builder(ctx, "purge blocked: author lacks permission for host area");
             return Ok(());
         }
         match ctx.self_kind {
@@ -285,6 +291,7 @@ fn cmd_purge(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
             .flatten()
             .and_then(|m| m.area_id);
         if !ctx.opcode_authorized("purge", target_area) {
+            super::warn_builder(ctx, "purge blocked: author lacks permission for target's area");
             return Ok(());
         }
         let _ = ctx.db.delete_mobile(&mobile_id);
@@ -317,17 +324,28 @@ fn cmd_load(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
         .flatten()
         .and_then(|r| r.area_id);
     if !ctx.opcode_authorized("load", target_area) {
+        super::warn_builder(ctx, "load blocked: author lacks permission for host area");
         return Ok(());
     }
     match kind.as_str() {
-        "m" | "mob" | "mobile" => {
-            if let Ok(Some(mut spawned)) = ctx.db.spawn_mobile_from_prototype(&vnum) {
+        "m" | "mob" | "mobile" => match ctx.db.spawn_mobile_from_prototype(&vnum) {
+            Ok(Some(mut spawned)) => {
                 spawned.current_room_id = Some(room_id);
                 let _ = ctx.db.save_mobile_data(spawned);
             }
-        }
+            _ => {
+                super::warn_builder(
+                    ctx,
+                    &format!("load: unknown mob vnum '{vnum}' (or world-max cap hit)"),
+                );
+            }
+        },
         "o" | "obj" | "object" | "item" => {
             let Ok(Some(mut spawned)) = ctx.db.spawn_item_from_prototype(&vnum) else {
+                super::warn_builder(
+                    ctx,
+                    &format!("load: unknown obj vnum '{vnum}' (or world-max cap hit)"),
+                );
                 return Ok(());
             };
             if dest.is_empty() {
@@ -350,7 +368,9 @@ fn cmd_load(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
                 }
             }
         }
-        _ => {}
+        other => {
+            super::warn_builder(ctx, &format!("load: unknown kind '{other}' (expected m/mob or o/obj)"));
+        }
     }
     Ok(())
 }
@@ -375,12 +395,18 @@ fn cmd_dg_cast(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     let (spell, target_tok) = if let Some(rest2) = trimmed.strip_prefix('\'') {
         match rest2.find('\'') {
             Some(i) => (rest2[..i].to_string(), rest2[i + 1..].trim_start().to_string()),
-            None => return Ok(()),
+            None => {
+                super::warn_builder(ctx, "dg_cast: missing closing quote");
+                return Ok(());
+            }
         }
     } else if let Some(rest2) = trimmed.strip_prefix('"') {
         match rest2.find('"') {
             Some(i) => (rest2[..i].to_string(), rest2[i + 1..].trim_start().to_string()),
-            None => return Ok(()),
+            None => {
+                super::warn_builder(ctx, "dg_cast: missing closing quote");
+                return Ok(());
+            }
         }
     } else {
         let (a, b) = split_verb(trimmed);
@@ -552,6 +578,7 @@ fn cmd_dg_affect(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     let magnitude: i32 = tok.next().and_then(|s| s.parse().ok()).unwrap_or(1);
     let duration: i32 = tok.next().and_then(|s| s.parse().ok()).unwrap_or(60);
     if target_tok.is_empty() || effect.is_empty() {
+        super::warn_builder(ctx, "dg_affect: needs target and effect");
         return Ok(());
     }
     apply_dg_effect(&effect, &target_tok, magnitude, duration, ctx)
@@ -576,6 +603,7 @@ fn apply_dg_effect(
                 "DG: unknown effect '{}' on dg_cast/dg_affect (target={})",
                 effect_name, target_tok
             );
+            super::warn_builder(ctx, &format!("dg_cast/dg_affect: unknown effect '{effect_name}'"));
             return Ok(());
         }
     };
@@ -664,9 +692,11 @@ fn cmd_force(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
                 name,
                 cmdline
             );
+            super::warn_builder(ctx, &format!("force blocked: cannot force admin '{name}'"));
             return Ok(());
         }
         if !ctx.opcode_authorized("force", target_area) {
+            super::warn_builder(ctx, "force blocked: author lacks permission for target's area");
             return Ok(());
         }
         if let Ok(conns) = ctx.connections.lock() {
@@ -785,7 +815,10 @@ fn cmd_at(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
         Ok(u) => u,
         Err(_) => match ctx.db.get_room_by_vnum(room_tok.trim()) {
             Ok(Some(r)) => r.id,
-            _ => return Ok(()),
+            _ => {
+                super::warn_builder(ctx, &format!("at: unknown room '{}'", room_tok.trim()));
+                return Ok(());
+            }
         },
     };
     // F3 gate: `at` rebinds self_room to a different area. Authorize
@@ -799,6 +832,7 @@ fn cmd_at(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
         .flatten()
         .and_then(|r| r.area_id);
     if !ctx.opcode_authorized("at", dest_area) {
+        super::warn_builder(ctx, "at blocked: author lacks permission for destination area");
         return Ok(());
     }
     let mut sub = ctx.clone();
@@ -822,9 +856,19 @@ fn cmd_door(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
         Ok(u) => u,
         Err(_) => match ctx.db.get_room_by_vnum(&room_tok) {
             Ok(Some(r)) => r.id,
-            _ => return Ok(()),
+            _ => {
+                super::warn_builder(ctx, &format!("door: unknown room '{room_tok}'"));
+                return Ok(());
+            }
         },
     };
+    if !matches!(field.as_str(), "purge" | "description" | "flags") {
+        super::warn_builder(
+            ctx,
+            &format!("door: unknown field '{field}' (expected purge/description/flags)"),
+        );
+        return Ok(());
+    }
     let _ = ctx.db.update_room(&room_id, |room| match field.as_str() {
         "purge" => {
             room.doors.remove(&dir);
@@ -871,6 +915,7 @@ pub(crate) fn attach_trigger_proto(vnum: &str, target_tok: &str, ctx: &EvalCtx) 
         Ok(Some(p)) => p,
         _ => {
             tracing::debug!("DG: attach: unknown trigger proto vnum={}", vnum);
+            super::warn_builder(ctx, &format!("attach: no trigger proto vnum '{}'", vnum.trim()));
             return;
         }
     };
@@ -884,7 +929,10 @@ pub(crate) fn attach_trigger_proto(vnum: &str, target_tok: &str, ctx: &EvalCtx) 
 pub(crate) fn detach_trigger_proto(vnum: &str, target_tok: &str, ctx: &EvalCtx) {
     let proto = match ctx.db.get_dg_trigger_proto(vnum.trim()) {
         Ok(Some(p)) => p,
-        _ => return,
+        _ => {
+            super::warn_builder(ctx, &format!("detach: no trigger proto vnum '{}'", vnum.trim()));
+            return;
+        }
     };
     apply_detach(&proto, target_tok, ctx);
 }

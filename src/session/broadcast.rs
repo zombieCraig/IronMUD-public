@@ -268,3 +268,16 @@ pub fn broadcast_to_builders(connections: &SharedConnections, message: &str) {
         }
     }
 }
+
+/// Like [`broadcast_to_builders`], but suppresses the push when the most
+/// recent log entry is identical. Prevents a per-tick trigger from
+/// saturating the 50-slot ring buffer with one repeated error.
+pub fn broadcast_to_builders_dedup(connections: &SharedConnections, message: &str) {
+    {
+        let log = get_builder_debug_log().lock().unwrap();
+        if log.back().map(String::as_str) == Some(message) {
+            return;
+        }
+    }
+    broadcast_to_builders(connections, message);
+}

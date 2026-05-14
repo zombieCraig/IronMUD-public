@@ -149,8 +149,15 @@ fn eval_stmt(stmt: &Stmt, ctx: &EvalCtx, state: &mut State) -> Result<Flow, Eval
         }
 
         Stmt::Context(arg) => {
-            let interp = vars::substitute(arg.trim(), ctx, state);
-            state.context = parse_scope_ref(&interp);
+            let raw = arg.trim();
+            let interp = vars::substitute(raw, ctx, state);
+            let parsed = parse_scope_ref(&interp);
+            // Author wrote a non-empty, non-"0" arg but substitution
+            // produced nothing usable — likely a typoed field.
+            if parsed.is_none() && !raw.is_empty() && raw != "0" && (interp.trim().is_empty() || interp.trim() == "0") {
+                super::warn_builder(ctx, &format!("context: '{raw}' resolved to empty"));
+            }
+            state.context = parsed;
             Ok(Flow::Continue)
         }
 
@@ -189,29 +196,51 @@ fn eval_stmt(stmt: &Stmt, ctx: &EvalCtx, state: &mut State) -> Result<Flow, Eval
         Stmt::Remote { var, target } => {
             let var_name = var.trim();
             if var_name.is_empty() {
+                super::warn_builder(ctx, "remote: missing variable name");
                 return Ok(Flow::Continue);
             }
-            let interp = vars::substitute(target.trim(), ctx, state);
+            let raw_target = target.trim();
+            let interp = vars::substitute(raw_target, ctx, state);
             let Some(scope) = parse_scope_ref(&interp) else {
+                super::warn_builder(
+                    ctx,
+                    &format!("remote {var_name}: target '{raw_target}' resolved to empty"),
+                );
                 return Ok(Flow::Continue);
             };
             // Source value: the current scope's value of var (locals first,
             // then durable lookup if globalled).
             let value = vars::resolve(var_name, ctx, state);
-            set_entity_var(ctx, &scope, var_name, &value);
+            if !set_entity_var(ctx, &scope, var_name, &value) {
+                super::warn_builder(
+                    ctx,
+                    &format!("remote {var_name}: no entity with id/name '{}'", interp.trim()),
+                );
+            }
             Ok(Flow::Continue)
         }
 
         Stmt::Rdelete { var, target } => {
             let var_name = var.trim();
             if var_name.is_empty() {
+                super::warn_builder(ctx, "rdelete: missing variable name");
                 return Ok(Flow::Continue);
             }
-            let interp = vars::substitute(target.trim(), ctx, state);
+            let raw_target = target.trim();
+            let interp = vars::substitute(raw_target, ctx, state);
             let Some(scope) = parse_scope_ref(&interp) else {
+                super::warn_builder(
+                    ctx,
+                    &format!("rdelete {var_name}: target '{raw_target}' resolved to empty"),
+                );
                 return Ok(Flow::Continue);
             };
-            clear_entity_var(ctx, &scope, var_name);
+            if !clear_entity_var(ctx, &scope, var_name) {
+                super::warn_builder(
+                    ctx,
+                    &format!("rdelete {var_name}: no entity with id/name '{}'", interp.trim()),
+                );
+            }
             Ok(Flow::Continue)
         }
 
@@ -495,68 +524,84 @@ fn store_durable(ctx: &EvalCtx, state: &State, name: &str, value: &str) {
         None => {
             let _ = ctx.db.set_dg_global(name, value);
         }
-        Some(scope) => set_entity_var(ctx, scope, name, value),
+        Some(scope) => {
+            let _ = set_entity_var(ctx, scope, name, value);
+        }
     }
 }
 
 /// Set `name = value` on the scope's `dg_vars`. For UUID scopes, tries
 /// mobiles → items → rooms. For player scopes, writes to the character's
 /// `dg_vars` keyed by lowercase name.
-pub(super) fn set_entity_var(ctx: &EvalCtx, scope: &ScopeRef, name: &str, value: &str) {
+///
+/// Returns `true` when the scope resolved to an entity that was found
+/// and written. `false` means the target didn't match anything — the
+/// caller should surface this to the builder.
+pub(super) fn set_entity_var(ctx: &EvalCtx, scope: &ScopeRef, name: &str, value: &str) -> bool {
     match scope {
         ScopeRef::Uuid(uid) => {
             if let Ok(Some(mut mob)) = ctx.db.get_mobile_data(uid) {
                 mob.dg_vars.insert(name.to_string(), value.to_string());
                 let _ = ctx.db.save_mobile_data(mob);
-                return;
+                return true;
             }
             if let Ok(Some(mut item)) = ctx.db.get_item_data(uid) {
                 item.dg_vars.insert(name.to_string(), value.to_string());
                 let _ = ctx.db.save_item_data(item);
-                return;
+                return true;
             }
             if let Ok(Some(mut room)) = ctx.db.get_room_data(uid) {
                 room.dg_vars.insert(name.to_string(), value.to_string());
                 let _ = ctx.db.save_room_data(room);
+                return true;
             }
+            false
         }
         ScopeRef::Player(pname) => {
             if let Ok(Some(mut ch)) = ctx.db.get_character_data(pname) {
                 ch.dg_vars.insert(name.to_string(), value.to_string());
                 let _ = ctx.db.save_character_data(ch);
+                return true;
             }
+            false
         }
     }
 }
 
 /// Remove `name` from the scope's `dg_vars`. Mirror of [`set_entity_var`].
-pub(super) fn clear_entity_var(ctx: &EvalCtx, scope: &ScopeRef, name: &str) {
+/// Returns `true` when the scope resolved to an entity (even if the var
+/// wasn't present); `false` when the target didn't match anything.
+pub(super) fn clear_entity_var(ctx: &EvalCtx, scope: &ScopeRef, name: &str) -> bool {
     match scope {
         ScopeRef::Uuid(uid) => {
             if let Ok(Some(mut mob)) = ctx.db.get_mobile_data(uid) {
                 if mob.dg_vars.remove(name).is_some() {
                     let _ = ctx.db.save_mobile_data(mob);
                 }
-                return;
+                return true;
             }
             if let Ok(Some(mut item)) = ctx.db.get_item_data(uid) {
                 if item.dg_vars.remove(name).is_some() {
                     let _ = ctx.db.save_item_data(item);
                 }
-                return;
+                return true;
             }
             if let Ok(Some(mut room)) = ctx.db.get_room_data(uid) {
                 if room.dg_vars.remove(name).is_some() {
                     let _ = ctx.db.save_room_data(room);
                 }
+                return true;
             }
+            false
         }
         ScopeRef::Player(pname) => {
             if let Ok(Some(mut ch)) = ctx.db.get_character_data(pname) {
                 if ch.dg_vars.remove(name).is_some() {
                     let _ = ctx.db.save_character_data(ch);
                 }
+                return true;
             }
+            false
         }
     }
 }
@@ -786,8 +831,14 @@ fn eval_stmt_async<'a>(stmt: &'a Stmt, ctx: &'a EvalCtx, state: &'a mut State) -
             // Wait is the whole reason for this path.
             Stmt::Wait(arg) => {
                 let interp = vars::substitute(arg, ctx, state);
+                let trimmed = interp.trim();
                 let secs = parse_wait_secs(&interp);
-                if secs > 0 {
+                if secs == 0 && !trimmed.is_empty() && trimmed != "0" {
+                    super::warn_builder(
+                        ctx,
+                        &format!("wait: unparseable duration '{trimmed}' (expected '<N> sec/min/hr')"),
+                    );
+                } else if secs > 0 {
                     tokio::time::sleep(Duration::from_secs(secs)).await;
                 }
                 Ok(Flow::Continue)
