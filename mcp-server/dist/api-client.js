@@ -441,6 +441,22 @@ export class IronMUDApiClient {
     async deleteBugReport(id) {
         await this.request("delete", `/bugs/${id}`);
     }
+    // Achievements
+    async listAchievements() {
+        return this.listRequest("/achievements");
+    }
+    async getAchievement(key) {
+        return this.request("get", `/achievements/${encodeURIComponent(key)}`);
+    }
+    async createAchievement(data) {
+        return this.request("post", "/achievements", data);
+    }
+    async updateAchievement(key, data) {
+        return this.request("put", `/achievements/${encodeURIComponent(key)}`, data);
+    }
+    async deleteAchievement(key) {
+        await this.request("delete", `/achievements/${encodeURIComponent(key)}`);
+    }
     // Logs
     async getBuilderDebug(limit) {
         const params = new URLSearchParams();

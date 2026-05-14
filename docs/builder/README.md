@@ -14,5 +14,6 @@ Detailed OLC editor documentation. Start with [Builder Guide](../builder-guide.m
 | `quests.md` | Quest authoring (`quedit`): objectives, rewards, gates, dialogue hooks |
 | `vampire-progression.md` | Sire-NPC + clan-embrace quest plumbing for thinblood progression |
 | `languages.md` | Language definitions, garbling, NPC `spoken_language` |
+| `achievements.md` | Achievement editor (achedit), criteria and rewards |
 | `recipes.md` | Recipe editor (recedit), crafting system |
 | `gardening.md` | Plant prototype editor (plantedit), gardening system |

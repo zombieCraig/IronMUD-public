@@ -48,6 +48,10 @@ import type {
   BugReport,
   UpdateBugReportRequest,
   AddBugNoteRequest,
+  Achievement,
+  AchievementSummary,
+  CreateAchievementRequest,
+  UpdateAchievementRequest,
 } from "./types.js";
 
 export class IronMUDApiClient {
@@ -881,6 +885,27 @@ export class IronMUDApiClient {
 
   async deleteBugReport(id: string): Promise<void> {
     await this.request("delete", `/bugs/${id}`);
+  }
+
+  // Achievements
+  async listAchievements(): Promise<AchievementSummary[]> {
+    return this.listRequest<AchievementSummary>("/achievements");
+  }
+
+  async getAchievement(key: string): Promise<Achievement> {
+    return this.request<Achievement>("get", `/achievements/${encodeURIComponent(key)}`);
+  }
+
+  async createAchievement(data: CreateAchievementRequest): Promise<Achievement> {
+    return this.request<Achievement>("post", "/achievements", data);
+  }
+
+  async updateAchievement(key: string, data: UpdateAchievementRequest): Promise<Achievement> {
+    return this.request<Achievement>("put", `/achievements/${encodeURIComponent(key)}`, data);
+  }
+
+  async deleteAchievement(key: string): Promise<void> {
+    await this.request("delete", `/achievements/${encodeURIComponent(key)}`);
   }
 
   // Logs

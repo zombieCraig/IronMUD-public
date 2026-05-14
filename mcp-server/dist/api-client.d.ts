@@ -1,4 +1,4 @@
-import type { Area, Room, Item, Mobile, SpawnPoint, Transport, PlantPrototype, Recipe, CreateRecipeRequest, UpdateRecipeRequest, Quest, CreateQuestRequest, UpdateQuestRequest, ForageTables, AddForageEntryRequest, ForageType, ItemSummary, RoomSummary, MobileSummary, AreaOverview, CreateAreaRequest, UpdateAreaRequest, CreateRoomRequest, CreateItemRequest, CreateMobileRequest, CreateSpawnPointRequest, CreateTransportRequest, CreatePlantPrototypeRequest, AddTransportStopRequest, SetExitRequest, AddDoorRequest, AddTriggerRequest, AddExtraDescRequest, AddDialogueRequest, AddDialogueNodeRequest, UpdateDialogueNodeRequest, DialogueChoiceRequest, AddMobileTriggerRequest, AddItemTriggerRequest, AddSpawnDependencyRequest, SpawnEntityRequest, BugReport, UpdateBugReportRequest, AddBugNoteRequest } from "./types.js";
+import type { Area, Room, Item, Mobile, SpawnPoint, Transport, PlantPrototype, Recipe, CreateRecipeRequest, UpdateRecipeRequest, Quest, CreateQuestRequest, UpdateQuestRequest, ForageTables, AddForageEntryRequest, ForageType, ItemSummary, RoomSummary, MobileSummary, AreaOverview, CreateAreaRequest, UpdateAreaRequest, CreateRoomRequest, CreateItemRequest, CreateMobileRequest, CreateSpawnPointRequest, CreateTransportRequest, CreatePlantPrototypeRequest, AddTransportStopRequest, SetExitRequest, AddDoorRequest, AddTriggerRequest, AddExtraDescRequest, AddDialogueRequest, AddDialogueNodeRequest, UpdateDialogueNodeRequest, DialogueChoiceRequest, AddMobileTriggerRequest, AddItemTriggerRequest, AddSpawnDependencyRequest, SpawnEntityRequest, BugReport, UpdateBugReportRequest, AddBugNoteRequest, Achievement, AchievementSummary, CreateAchievementRequest, UpdateAchievementRequest } from "./types.js";
 export declare class IronMUDApiClient {
     private client;
     constructor(baseUrl: string, apiKey: string);
@@ -186,6 +186,11 @@ export declare class IronMUDApiClient {
     updateBugReport(id: string, data: UpdateBugReportRequest): Promise<BugReport>;
     addBugNote(id: string, data: AddBugNoteRequest): Promise<BugReport>;
     deleteBugReport(id: string): Promise<void>;
+    listAchievements(): Promise<AchievementSummary[]>;
+    getAchievement(key: string): Promise<Achievement>;
+    createAchievement(data: CreateAchievementRequest): Promise<Achievement>;
+    updateAchievement(key: string, data: UpdateAchievementRequest): Promise<Achievement>;
+    deleteAchievement(key: string): Promise<void>;
     getBuilderDebug(limit?: number): Promise<string[]>;
     /**
      * Get all rooms connected to a room via exits

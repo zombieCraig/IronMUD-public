@@ -13,6 +13,7 @@ import { descriptionToolDefinitions } from "./tools/descriptions.js";
 import { plantToolDefinitions } from "./tools/plants.js";
 import { recipeToolDefinitions } from "./tools/recipes.js";
 import { questToolDefinitions } from "./tools/quests.js";
+import { achievementToolDefinitions } from "./tools/achievements.js";
 import { bugToolDefinitions } from "./tools/bugs.js";
 import { logToolDefinitions } from "./tools/logs.js";
 import { buildRoomContext, buildItemContext, buildMobileContext, getDescriptionExamples, } from "./description-context.js";
@@ -84,6 +85,7 @@ const allTools = [
     ...plantToolDefinitions,
     ...recipeToolDefinitions,
     ...questToolDefinitions,
+    ...achievementToolDefinitions,
     ...bugToolDefinitions,
     ...logToolDefinitions,
 ];
@@ -1324,6 +1326,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     prereq_quest_vnum: args?.prereq_quest_vnum,
                     min_player_skill_total: args?.min_player_skill_total,
                     duration_secs: args?.duration_secs,
+                    achievement_set_prereq: args?.achievement_set_prereq,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(quest, null, 2) }],
@@ -1338,6 +1341,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     "name", "keywords", "summary", "description", "completion_text",
                     "objectives", "rewards", "repeatable", "giver_mob_vnum",
                     "prereq_quest_vnum", "min_player_skill_total", "duration_secs",
+                    "achievement_set_prereq",
                 ];
                 for (const field of fields) {
                     if (args?.[field] !== undefined) {
@@ -1506,6 +1510,57 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     content: [
                         { type: "text", text: `Bug report ${identifier} deleted successfully` },
                     ],
+                };
+            }
+            // Achievement tools
+            case "list_achievements": {
+                const achievements = await api.listAchievements();
+                return {
+                    content: [{ type: "text", text: JSON.stringify(achievements, null, 2) }],
+                };
+            }
+            case "get_achievement": {
+                const key = args?.key;
+                if (!key)
+                    throw new Error("key is required");
+                const achievement = await api.getAchievement(key);
+                return {
+                    content: [{ type: "text", text: JSON.stringify(achievement, null, 2) }],
+                };
+            }
+            case "create_achievement": {
+                const achievement = await api.createAchievement({
+                    key: args?.key,
+                    name: args?.name,
+                    category: args?.category,
+                });
+                return {
+                    content: [{ type: "text", text: JSON.stringify(achievement, null, 2) }],
+                };
+            }
+            case "update_achievement": {
+                const key = args?.key;
+                if (!key)
+                    throw new Error("key is required");
+                const achievement = await api.updateAchievement(key, {
+                    name: args?.name,
+                    description: args?.description,
+                    category: args?.category,
+                    criterion: args?.criterion,
+                    reward: args?.reward,
+                    hidden: args?.hidden,
+                });
+                return {
+                    content: [{ type: "text", text: JSON.stringify(achievement, null, 2) }],
+                };
+            }
+            case "delete_achievement": {
+                const key = args?.key;
+                if (!key)
+                    throw new Error("key is required");
+                await api.deleteAchievement(key);
+                return {
+                    content: [{ type: "text", text: `Achievement '${key}' deleted successfully` }],
                 };
             }
             case "get_builder_debug_log": {

@@ -141,6 +141,10 @@ pub enum CompletionType {
     ClassId,
     CeditSubcommand,
     CeditItemsAction,
+    AcheditSubcommand,
+    AchievementCategory,
+    AchievementRewardAction,
+    AchievementCriterionAction,
 }
 
 /// Context for command argument completion

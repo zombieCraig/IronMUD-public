@@ -21,7 +21,9 @@ use rhai::{Array, Dynamic, Engine, Map};
 use std::sync::Arc;
 
 use crate::db::Db;
-use crate::types::{AchievementCriterion, AchievementDef, CharacterData};
+use crate::types::{
+    AchievementCategory, AchievementCriterion, AchievementDef, AchievementReward, AchievementSource, CharacterData,
+};
 use crate::{SharedConnections, SharedState};
 
 /// Read the admin toggle. Defaults to enabled when unset or unparseable.
@@ -378,21 +380,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 if def.hidden && unlock.is_none() {
                     continue;
                 }
-                let mut m = Map::new();
-                m.insert("key".into(), Dynamic::from(def.key.clone()));
-                m.insert("name".into(), Dynamic::from(def.name.clone()));
-                m.insert("description".into(), Dynamic::from(def.description.clone()));
-                m.insert(
-                    "category".into(),
-                    Dynamic::from(format!("{:?}", def.category).to_lowercase()),
-                );
-                m.insert("hidden".into(), Dynamic::from(def.hidden));
+                let mut m = achievement_to_map(def);
                 m.insert("unlocked".into(), Dynamic::from(unlock.is_some()));
                 m.insert(
                     "unlocked_at".into(),
                     Dynamic::from(unlock.map(|u| u.unlocked_at).unwrap_or(0)),
                 );
-                m.insert("title".into(), Dynamic::from(def.reward.title.clone()));
                 m.insert(
                     "active".into(),
                     Dynamic::from(ch.active_title.as_deref() == Some(key.as_str())),
@@ -471,6 +464,216 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let db = db.clone();
         engine.register_fn("achievements_enabled", move || -> bool { enabled(&db) });
     }
+
+    // list_achievement_defs() -> Array of Map
+    {
+        let state = state.clone();
+        engine.register_fn("list_achievement_defs", move || -> Array {
+            let world = match state.lock() {
+                Ok(w) => w,
+                Err(_) => return Array::new(),
+            };
+            let mut out: Vec<Map> = Vec::new();
+            for def in world.achievement_definitions.values() {
+                out.push(achievement_to_map(def));
+            }
+            out.sort_by(|a, b| {
+                let ak = a.get("key").and_then(|d| d.clone().into_string().ok()).unwrap_or_default();
+                let bk = b.get("key").and_then(|d| d.clone().into_string().ok()).unwrap_or_default();
+                ak.cmp(&bk)
+            });
+            out.into_iter().map(Dynamic::from).collect()
+        });
+    }
+
+    // === Builder Functions ===
+
+    // create_achievement(key, name, author) -> String (empty on success)
+    {
+        let db = db.clone();
+        engine.register_fn(
+            "create_achievement",
+            move |key: String, name: String, author: String| -> String {
+                let key_lc = key.to_lowercase();
+                if key_lc.is_empty() {
+                    return "key required".into();
+                }
+                if name.is_empty() {
+                    return "name required".into();
+                }
+                if let Ok(Some(_)) = db.get_achievement(&key_lc) {
+                    return format!("achievement '{}' already exists", key_lc);
+                }
+                let def = AchievementDef {
+                    key: key_lc,
+                    name,
+                    description: String::new(),
+                    category: AchievementCategory::Builder,
+                    criterion: AchievementCriterion::Manual,
+                    reward: AchievementReward::default(),
+                    hidden: false,
+                    source: AchievementSource::Db { author },
+                };
+                match db.save_achievement(def) {
+                    Ok(_) => String::new(),
+                    Err(e) => format!("db error: {}", e),
+                }
+            },
+        );
+    }
+
+    // delete_achievement(key) -> bool
+    {
+        let db = db.clone();
+        engine.register_fn("delete_achievement", move |key: String| -> bool {
+            db.delete_achievement(&key.to_lowercase()).unwrap_or(false)
+        });
+    }
+
+    // set_achievement_name(key, name) -> String
+    {
+        let db = db.clone();
+        engine.register_fn("set_achievement_name", move |key: String, name: String| -> String {
+            update_def(&db, &key, |d| d.name = name.clone())
+        });
+    }
+
+    // set_achievement_description(key, desc) -> String
+    {
+        let db = db.clone();
+        engine.register_fn("set_achievement_description", move |key: String, desc: String| -> String {
+            update_def(&db, &key, |d| d.description = desc.clone())
+        });
+    }
+
+    // set_achievement_category(key, category) -> String
+    {
+        let db = db.clone();
+        engine.register_fn("set_achievement_category", move |key: String, cat: String| -> String {
+            let category = match cat.to_lowercase().as_str() {
+                "skill" => AchievementCategory::Skill,
+                "combat" => AchievementCategory::Combat,
+                "crafting" => AchievementCategory::Crafting,
+                "exploration" => AchievementCategory::Exploration,
+                "social" => AchievementCategory::Social,
+                "wealth" => AchievementCategory::Wealth,
+                "builder" => AchievementCategory::Builder,
+                _ => return format!("unknown category '{}'", cat),
+            };
+            update_def(&db, &key, |d| d.category = category)
+        });
+    }
+
+    // set_achievement_hidden(key, hidden) -> String
+    {
+        let db = db.clone();
+        engine.register_fn("set_achievement_hidden", move |key: String, hidden: bool| -> String {
+            update_def(&db, &key, |d| d.hidden = hidden)
+        });
+    }
+
+    // set_achievement_reward_title(key, title) -> String
+    {
+        let db = db.clone();
+        engine.register_fn("set_achievement_reward_title", move |key: String, title: String| -> String {
+            update_def(&db, &key, |d| d.reward.title = title.clone())
+        });
+    }
+
+    // set_achievement_reward_gold(key, gold) -> String (0 clears)
+    {
+        let db = db.clone();
+        engine.register_fn("set_achievement_reward_gold", move |key: String, gold: i64| -> String {
+            update_def(&db, &key, |d| d.reward.gold = if gold <= 0 { None } else { Some(gold as i32) })
+        });
+    }
+
+    // set_achievement_reward_item(key, item_vnum) -> String (empty clears)
+    {
+        let db = db.clone();
+        engine.register_fn("set_achievement_reward_item", move |key: String, vnum: String| -> String {
+            update_def(&db, &key, |d| d.reward.item_vnum = if vnum.is_empty() { None } else { Some(vnum.clone()) })
+        });
+    }
+
+    // set_achievement_criterion_manual(key) -> String
+    {
+        let db = db.clone();
+        engine.register_fn("set_achievement_criterion_manual", move |key: String| -> String {
+            update_def(&db, &key, |d| d.criterion = AchievementCriterion::Manual)
+        });
+    }
+
+    // set_achievement_criterion_counter(key, counter, threshold) -> String
+    {
+        let db = db.clone();
+        engine.register_fn("set_achievement_criterion_counter", move |key: String, counter: String, threshold: i64| -> String {
+            update_def(&db, &key, |d| d.criterion = AchievementCriterion::Counter {
+                counter: counter.clone(),
+                threshold: threshold.max(1) as u32,
+            })
+        });
+    }
+
+    // set_achievement_criterion_skill(key, skill, level) -> String
+    {
+        let db = db.clone();
+        engine.register_fn("set_achievement_criterion_skill", move |key: String, skill: String, level: i64| -> String {
+            update_def(&db, &key, |d| d.criterion = AchievementCriterion::SkillReached {
+                skill: skill.clone(),
+                level: level as i32,
+            })
+        });
+    }
+
+    // set_achievement_criterion_recipe(key, recipe_key) -> String
+    {
+        let db = db.clone();
+        engine.register_fn("set_achievement_criterion_recipe", move |key: String, recipe_key: String| -> String {
+            update_def(&db, &key, |d| d.criterion = AchievementCriterion::LearnedRecipe {
+                recipe_key: recipe_key.clone(),
+            })
+        });
+    }
+
+    // set_achievement_criterion_lease(key, area_vnum) -> String (empty area_vnum for any)
+    {
+        let db = db.clone();
+        engine.register_fn("set_achievement_criterion_lease", move |key: String, area_vnum: String| -> String {
+            update_def(&db, &key, |d| d.criterion = AchievementCriterion::OwnedLease {
+                area_vnum: if area_vnum.is_empty() { None } else { Some(area_vnum.clone()) },
+            })
+        });
+    }
+
+    // set_achievement_criterion_gold(key, amount) -> String
+    {
+        let db = db.clone();
+        engine.register_fn("set_achievement_criterion_gold", move |key: String, amount: i64| -> String {
+            update_def(&db, &key, |d| d.criterion = AchievementCriterion::GoldHeld {
+                amount: amount as i32,
+            })
+        });
+    }
+}
+
+fn update_def<F>(db: &Db, key: &str, mutator: F) -> String
+where
+    F: FnOnce(&mut AchievementDef),
+{
+    let key_lc = key.to_lowercase();
+    match db.get_achievement(&key_lc) {
+        Ok(Some(mut def)) => {
+            mutator(&mut def);
+            if let Err(e) = db.save_achievement(def) {
+                format!("db error: {}", e)
+            } else {
+                String::new()
+            }
+        }
+        Ok(None) => format!("achievement '{}' not found in database (or it's a JSON-only definition)", key_lc),
+        Err(e) => format!("db error: {}", e),
+    }
 }
 
 fn achievement_to_map(def: &AchievementDef) -> Map {
@@ -483,6 +686,59 @@ fn achievement_to_map(def: &AchievementDef) -> Map {
         Dynamic::from(format!("{:?}", def.category).to_lowercase()),
     );
     m.insert("hidden".into(), Dynamic::from(def.hidden));
-    m.insert("title".into(), Dynamic::from(def.reward.title.clone()));
+
+    // Reward
+    let mut r = Map::new();
+    r.insert("title".into(), Dynamic::from(def.reward.title.clone()));
+    r.insert("gold".into(), Dynamic::from(def.reward.gold.unwrap_or(0) as i64));
+    r.insert("item_vnum".into(), Dynamic::from(def.reward.item_vnum.clone().unwrap_or_default()));
+    m.insert("reward".into(), Dynamic::from(r));
+    m.insert("title".into(), Dynamic::from(def.reward.title.clone())); // Legacy compat for achievements.rhai
+
+    // Criterion
+    let mut c = Map::new();
+    match &def.criterion {
+        AchievementCriterion::Counter { counter, threshold } => {
+            c.insert("kind".into(), Dynamic::from("counter"));
+            c.insert("counter".into(), Dynamic::from(counter.clone()));
+            c.insert("threshold".into(), Dynamic::from(*threshold as i64));
+        }
+        AchievementCriterion::SkillReached { skill, level } => {
+            c.insert("kind".into(), Dynamic::from("skill_reached"));
+            c.insert("skill".into(), Dynamic::from(skill.clone()));
+            c.insert("level".into(), Dynamic::from(*level as i64));
+        }
+        AchievementCriterion::LearnedRecipe { recipe_key } => {
+            c.insert("kind".into(), Dynamic::from("recipe_learned"));
+            c.insert("recipe_key".into(), Dynamic::from(recipe_key.clone()));
+        }
+        AchievementCriterion::OwnedLease { area_vnum } => {
+            c.insert("kind".into(), Dynamic::from("lease_owned"));
+            c.insert("area_vnum".into(), Dynamic::from(area_vnum.clone().unwrap_or_default()));
+        }
+        AchievementCriterion::GoldHeld { amount } => {
+            c.insert("kind".into(), Dynamic::from("gold_held"));
+            c.insert("amount".into(), Dynamic::from(*amount as i64));
+        }
+        AchievementCriterion::Manual => {
+            c.insert("kind".into(), Dynamic::from("manual"));
+        }
+    }
+    m.insert("criterion".into(), Dynamic::from(c));
+
+    // Source
+    let mut s = Map::new();
+    match &def.source {
+        AchievementSource::Json { file } => {
+            s.insert("kind".into(), Dynamic::from("json"));
+            s.insert("file".into(), Dynamic::from(file.clone()));
+        }
+        AchievementSource::Db { author } => {
+            s.insert("kind".into(), Dynamic::from("db"));
+            s.insert("author".into(), Dynamic::from(author.clone()));
+        }
+    }
+    m.insert("source".into(), Dynamic::from(s));
+
     m
 }

@@ -99,6 +99,10 @@
     "access": "user",
     "description": "Check the time by looking at the sky"
   },
+  "traits": {
+    "access": "user",
+    "description": "Spend remaining trait points or view your traits"
+  },
   "whisper": {
     "access": "user",
     "description": "Whisper to a player in the same room"
@@ -403,7 +407,12 @@
     "access": "user",
     "description": "List, inspect, or set the active title from your achievements"
   },
-  "traits": {
+  "achedit": {
+    "access": "builder",
+    "description": "Create or edit achievement definitions"
+  },
+  "alias": {
+
     "access": "user",
     "description": "Spend remaining trait points or view your traits"
   },

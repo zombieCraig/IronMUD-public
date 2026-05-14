@@ -1275,3 +1275,66 @@ export interface BuilderDebugResponse {
   success: boolean;
   data: string[];
 }
+
+// Achievements
+
+export type AchievementCategory =
+  | "skill"
+  | "combat"
+  | "crafting"
+  | "exploration"
+  | "social"
+  | "wealth"
+  | "builder";
+
+export type AchievementCriterion =
+  | { kind: "counter"; counter: string; threshold: number }
+  | { kind: "skill_reached"; skill: string; level: number }
+  | { kind: "recipe_learned"; recipe_key: string }
+  | { kind: "owned_lease"; area_vnum?: string | null }
+  | { kind: "gold_held"; amount: number }
+  | { kind: "manual" };
+
+export interface AchievementReward {
+  title: string;
+  item_vnum?: string | null;
+  gold?: number | null;
+}
+
+export type AchievementSource =
+  | { kind: "json"; file: string }
+  | { kind: "db"; author: string };
+
+export interface Achievement {
+  key: string;
+  name: string;
+  description: string;
+  category: AchievementCategory;
+  criterion: AchievementCriterion;
+  reward: AchievementReward;
+  hidden: boolean;
+  source: AchievementSource;
+}
+
+export interface AchievementSummary {
+  key: string;
+  name: string;
+  category: AchievementCategory;
+  source: AchievementSource;
+  hidden: boolean;
+}
+
+export interface CreateAchievementRequest {
+  key: string;
+  name: string;
+  category?: AchievementCategory;
+}
+
+export interface UpdateAchievementRequest {
+  name?: string;
+  description?: string;
+  category?: AchievementCategory;
+  criterion?: AchievementCriterion;
+  reward?: AchievementReward;
+  hidden?: boolean;
+}

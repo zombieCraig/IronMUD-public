@@ -678,3 +678,35 @@ pub const PLANT_STAGES: &[&str] = &["seed", "sprout", "seedling", "growing", "ma
 
 /// Plant categories
 pub const PLANT_CATEGORIES: &[&str] = &["vegetable", "herb", "flower", "fruit", "grain"];
+
+/// Achedit subcommands
+pub const ACHEDIT_SUBCOMMANDS: &[&str] = &[
+    "list",
+    "create",
+    "show",
+    "delete",
+    "name",
+    "desc",
+    "description",
+    "category",
+    "hidden",
+    "reward",
+    "criterion",
+];
+
+/// Achievement categories
+pub const ACHIEVEMENT_CATEGORIES: &[&str] = &[
+    "skill",
+    "combat",
+    "crafting",
+    "exploration",
+    "social",
+    "wealth",
+    "builder",
+];
+
+/// Achievement reward subcommands
+pub const ACHIEVEMENT_REWARD_ACTIONS: &[&str] = &["title", "gold", "item"];
+
+/// Achievement criterion subcommands
+pub const ACHIEVEMENT_CRITERION_ACTIONS: &[&str] = &["manual", "counter", "skill", "recipe", "lease", "gold"];
