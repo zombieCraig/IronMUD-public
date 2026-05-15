@@ -134,6 +134,10 @@ pub enum ItemTriggerType {
     OnDrop,
     OnUse,
     OnExamine,
+    /// Fires when a player `look`s at the item in the room or container.
+    /// Mirror of `OnExamine` for the casual-glance verb. `Return(0)` cancels
+    /// the default look output for that item.
+    OnLook,
     OnPrompt, // Fires when building prompt for equipped items
     /// Fires when an item is loaded (spawned from prototype). (DG OTRIG_LOAD)
     OnLoad,

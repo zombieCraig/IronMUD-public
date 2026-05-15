@@ -200,6 +200,14 @@ fn run_command(args, connection_id) {
                 look_at_corpse(item, connection_id);
                 return;
             }
+            // Fire on_look trigger - return 0 from the trigger cancels the default look output
+            let trigger_result = fire_item_trigger(item.id, "on_look", connection_id, #{
+                "char_name": char.name,
+                "room_id": room_id
+            });
+            if trigger_result == "cancel" {
+                return;
+            }
             let desc = item.long_desc;
             if desc == "" {
                 desc = "You see nothing special about " + item.name + ".";

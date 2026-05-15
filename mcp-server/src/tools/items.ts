@@ -432,7 +432,7 @@ export const itemToolDefinitions = [
         item_id: { type: "string", description: "Item UUID or vnum" },
         trigger_type: {
           type: "string",
-          enum: ["on_get", "on_drop", "on_use", "on_examine", "on_prompt"],
+          enum: ["on_get", "on_drop", "on_use", "on_examine", "on_look", "on_prompt"],
           description: "When the trigger fires",
         },
         script_name: {

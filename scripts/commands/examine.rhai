@@ -92,11 +92,14 @@ fn run_command(args, connection_id) {
         return;
     }
 
-    // Fire on_examine trigger (runs after item found, doesn't cancel)
-    fire_item_trigger(item.id, "on_examine", connection_id, #{
+    // Fire on_examine trigger - return 0 from the trigger cancels the default examine output
+    let trigger_result = fire_item_trigger(item.id, "on_examine", connection_id, #{
         "char_name": char.name,
         "room_id": char.current_room_id
     });
+    if trigger_result == "cancel" {
+        return;
+    }
 
     let output = item.name + "\n";
     output += "--------------------\n";

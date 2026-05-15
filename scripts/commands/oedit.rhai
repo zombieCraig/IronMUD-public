@@ -3116,7 +3116,7 @@ fn build_commands_help(item_id, item) {
     if triggers.len() > 0 {
         output += "\nTrigger Commands:\n";
         output += "  oedit " + display_id + " trigger list\n";
-        output += "  oedit " + display_id + " trigger add <get|drop|use|examine|on_prompt> <script>\n";
+        output += "  oedit " + display_id + " trigger add <get|drop|use|examine|look|on_prompt> <script>\n";
         output += "  oedit " + display_id + " trigger remove <index>\n";
         output += "  oedit " + display_id + " trigger enable/disable <index>\n";
         output += "  oedit " + display_id + " trigger chance <index> <1-100>\n";
@@ -3588,7 +3588,7 @@ fn show_trigger_help(item_id, connection_id) {
     output += "  oedit " + item_id + " trigger chance <index> <1-100>\n";
     output += "  oedit " + item_id + " trigger test <index>\n";
     output += "  oedit " + item_id + " trigger view <script_name>\n";
-    output += "\nTrigger types: get, drop, use, examine, on_prompt\n";
+    output += "\nTrigger types: get, drop, use, examine, look, on_prompt\n";
     output += "\nScript triggers: scripts/triggers/<script>.rhai\n";
     output += "  Available: " + list_available_trigger_scripts().join(", ") + "\n";
     output += "\nTemplate triggers (no script needed):\n";
@@ -3662,7 +3662,7 @@ fn list_item_triggers(item, item_id, connection_id) {
 }
 
 fn is_valid_item_trigger_type(trigger_type) {
-    trigger_type == "get" || trigger_type == "drop" || trigger_type == "use" || trigger_type == "examine" || trigger_type == "on_get" || trigger_type == "on_drop" || trigger_type == "on_use" || trigger_type == "on_examine" || trigger_type == "on_prompt" || trigger_type == "prompt"
+    trigger_type == "get" || trigger_type == "drop" || trigger_type == "use" || trigger_type == "examine" || trigger_type == "look" || trigger_type == "on_get" || trigger_type == "on_drop" || trigger_type == "on_use" || trigger_type == "on_examine" || trigger_type == "on_look" || trigger_type == "on_prompt" || trigger_type == "prompt"
 }
 
 fn add_item_template_trigger(item_id, trigger_type, script_name, parts, connection_id) {
@@ -3715,14 +3715,14 @@ fn add_item_template_trigger(item_id, trigger_type, script_name, parts, connecti
 fn add_trigger(item_id, parts, connection_id) {
     // oedit <id> trigger add <type> <script|@template> [args...]
     if parts.len() < 5 {
-        send_client_message(connection_id, "Usage: oedit <id> trigger add <get|drop|use|examine|on_prompt> <script_name>");
+        send_client_message(connection_id, "Usage: oedit <id> trigger add <get|drop|use|examine|look|on_prompt> <script_name>");
         return;
     }
     let trigger_type = parts[3].to_lower();
     let script_name = parts[4];
 
     if !is_valid_item_trigger_type(trigger_type) {
-        send_client_message(connection_id, "Invalid trigger type. Use: get, drop, use, examine, on_prompt");
+        send_client_message(connection_id, "Invalid trigger type. Use: get, drop, use, examine, look, on_prompt");
         return;
     }
 

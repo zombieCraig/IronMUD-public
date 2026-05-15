@@ -3648,11 +3648,23 @@ pub async fn handle_connection(
                 }
             }
 
-            // Send prompt after command execution
-            let prompt = build_prompt(&connection_id, &connections, &state);
-            if let Err(e) = tx_client.send(prompt) {
-                error!("Failed to send prompt to socket {}: {}", addr, e);
-                break;
+            // Send prompt after command execution — but skip when the
+            // command just opened the modern editor, otherwise the prompt
+            // lands on row 1 of the freshly-cleared editor screen as a
+            // visible remnant until the user redraws with ^L.
+            let suppress_prompt = {
+                let conns = connections.lock().unwrap();
+                conns
+                    .get(&connection_id)
+                    .map(session_in_modern_editor)
+                    .unwrap_or(false)
+            };
+            if !suppress_prompt {
+                let prompt = build_prompt(&connection_id, &connections, &state);
+                if let Err(e) = tx_client.send(prompt) {
+                    error!("Failed to send prompt to socket {}: {}", addr, e);
+                    break;
+                }
             }
         }
     }

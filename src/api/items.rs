@@ -1397,7 +1397,7 @@ async fn delete_item(
 
 #[derive(Deserialize)]
 pub struct AddItemTriggerRequest {
-    /// One of: on_get, on_drop, on_use, on_examine, on_prompt (leading "on_" optional).
+    /// One of: on_get, on_drop, on_use, on_examine, on_look, on_prompt (leading "on_" optional).
     pub trigger_type: String,
     /// Script filename without extension (e.g. "smart_watch"), or "@template" form.
     pub script_name: String,
@@ -1417,9 +1417,10 @@ fn parse_item_trigger_type(raw: &str) -> Result<ItemTriggerType, ApiError> {
         "drop" | "on_drop" => Ok(ItemTriggerType::OnDrop),
         "use" | "on_use" => Ok(ItemTriggerType::OnUse),
         "examine" | "on_examine" => Ok(ItemTriggerType::OnExamine),
+        "look" | "on_look" => Ok(ItemTriggerType::OnLook),
         "prompt" | "on_prompt" => Ok(ItemTriggerType::OnPrompt),
         _ => Err(ApiError::InvalidInput(format!(
-            "Invalid trigger type '{}'. Use: get, drop, use, examine, prompt",
+            "Invalid trigger type '{}'. Use: get, drop, use, examine, look, prompt",
             raw
         ))),
     }

@@ -35,6 +35,7 @@ pub(crate) fn parse_item_trigger_type(s: &str) -> Option<ItemTriggerType> {
         "on_drop" | "drop" => ItemTriggerType::OnDrop,
         "on_use" | "use" => ItemTriggerType::OnUse,
         "on_examine" | "examine" => ItemTriggerType::OnExamine,
+        "on_look" | "look" => ItemTriggerType::OnLook,
         "on_prompt" | "prompt" => ItemTriggerType::OnPrompt,
         "on_load" | "load" => ItemTriggerType::OnLoad,
         "on_command" | "command" => ItemTriggerType::OnCommand,
@@ -1064,6 +1065,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         ItemTriggerType::OnDrop => "on_drop".to_string(),
         ItemTriggerType::OnUse => "on_use".to_string(),
         ItemTriggerType::OnExamine => "on_examine".to_string(),
+        ItemTriggerType::OnLook => "on_look".to_string(),
         ItemTriggerType::OnPrompt => "on_prompt".to_string(),
         ItemTriggerType::OnLoad => "on_load".to_string(),
         ItemTriggerType::OnCommand => "on_command".to_string(),
@@ -1083,7 +1085,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     });
 
     // add_item_trigger(item_id, trigger_type, script_name) -> bool
-    // trigger_type: "on_get", "on_drop", "on_use", "on_examine", "on_prompt"
+    // trigger_type: "on_get", "on_drop", "on_use", "on_examine", "on_look", "on_prompt"
     let cloned_db = db.clone();
     engine.register_fn(
         "add_item_trigger",

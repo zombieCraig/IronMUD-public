@@ -261,11 +261,13 @@ export type ItemTriggerType =
   | "on_drop"
   | "on_use"
   | "on_examine"
+  | "on_look"
   | "on_prompt"
   | "get"
   | "drop"
   | "use"
   | "examine"
+  | "look"
   | "prompt";
 
 export interface AddItemTriggerRequest {

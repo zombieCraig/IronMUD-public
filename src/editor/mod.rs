@@ -205,8 +205,15 @@ impl EditorSession {
 
     /// Enable ANSI colour output. Called by the entry helper when the
     /// player has `colors_enabled` and the editor is hosting a DG body.
+    /// Re-renders if the value changed so the first-frame draw (done in
+    /// `new()` before the caller can flip this) picks up syntax colour
+    /// without forcing the player to hit ^L.
     pub fn set_colour_enabled(&mut self, on: bool) {
+        if self.colour_enabled == on {
+            return;
+        }
         self.colour_enabled = on;
+        self.render();
     }
 
     /// Is this an editor session that should activate DG-specific
