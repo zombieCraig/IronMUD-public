@@ -16,6 +16,9 @@ pub(super) fn complete_medit(
     let partial = get_partial(words, completing_word);
 
     match words.len() {
+        // `medit ` (trailing space, nothing to filter yet) — surface every
+        // mobile vnum so the builder can see what's available.
+        1 if !completing_word => all_dynamic(mobile_vnums, CompletionType::MobileVnum),
         // medit <partial_vnum> - complete vnum
         2 if completing_word => filter_dynamic(mobile_vnums, &partial, CompletionType::MobileVnum),
         // medit <vnum> - show all subcommands

@@ -12,6 +12,8 @@ pub(super) fn complete_recedit(
     let partial = get_partial(words, completing_word);
 
     match words.len() {
+        // `recedit ` (trailing space) — surface every recipe vnum.
+        1 if !completing_word => all_dynamic(recipe_vnums, CompletionType::RecipeVnum),
         // recedit <partial_vnum> - complete recipe vnum
         2 if completing_word => filter_dynamic(recipe_vnums, &partial, CompletionType::RecipeVnum),
         // recedit <vnum> - show all subcommands

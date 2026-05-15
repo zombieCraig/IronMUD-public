@@ -1551,6 +1551,268 @@ mod tests {
     }
 
     #[test]
+    fn test_medit_bare_completion() {
+        // `medit ` (trailing space) should list every mobile vnum; previously
+        // returned empty because the completer had no len==1 arm.
+        let commands = vec!["medit".to_string()];
+        let mobile_vnums = vec!["town:guard".to_string(), "town:merchant".to_string()];
+        let result = complete(
+            "medit ",
+            6,
+            &commands,
+            &[],
+            &[],
+            &mobile_vnums,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
+        assert!(result.completions.contains(&"town:guard".to_string()));
+        assert!(result.completions.contains(&"town:merchant".to_string()));
+        assert_eq!(result.completion_type, CompletionType::MobileVnum);
+    }
+
+    #[test]
+    fn test_oedit_bare_completion() {
+        let commands = vec!["oedit".to_string()];
+        let item_vnums = vec!["town:sword".to_string(), "town:shield".to_string()];
+        let result = complete(
+            "oedit ",
+            6,
+            &commands,
+            &[],
+            &item_vnums,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
+        assert!(result.completions.contains(&"town:sword".to_string()));
+        assert!(result.completions.contains(&"town:shield".to_string()));
+        assert_eq!(result.completion_type, CompletionType::ItemVnum);
+    }
+
+    #[test]
+    fn test_recedit_bare_completion() {
+        let commands = vec!["recedit".to_string()];
+        let recipe_vnums = vec!["smith:longsword".to_string(), "cook:stew".to_string()];
+        let result = complete(
+            "recedit ",
+            8,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &recipe_vnums,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
+        assert!(result.completions.contains(&"smith:longsword".to_string()));
+        assert!(result.completions.contains(&"cook:stew".to_string()));
+        assert_eq!(result.completion_type, CompletionType::RecipeVnum);
+    }
+
+    #[test]
+    fn test_bpredit_bare_completion() {
+        let commands = vec!["bpredit".to_string()];
+        let shop_preset_vnums = vec!["weapons_basic".to_string(), "potions_low".to_string()];
+        let result = complete(
+            "bpredit ",
+            8,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &shop_preset_vnums,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
+        assert!(result.completions.contains(&"list".to_string()));
+        assert!(result.completions.contains(&"create".to_string()));
+        assert!(result.completions.contains(&"weapons_basic".to_string()));
+        assert!(result.completions.contains(&"potions_low".to_string()));
+    }
+
+    #[test]
+    fn test_aedit_bare_completion() {
+        let commands = vec!["aedit".to_string()];
+        let area_prefixes = vec!["town".to_string(), "forest".to_string()];
+        let result = complete(
+            "aedit ",
+            6,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &area_prefixes,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            false,
+        );
+        // Both subcommands and area prefixes should be offered.
+        assert!(result.completions.contains(&"town".to_string()));
+        assert!(result.completions.contains(&"forest".to_string()));
+        assert!(result.completions.contains(&"permission".to_string()));
+    }
+
+    #[test]
+    fn test_cedit_bare_completion() {
+        let commands = vec!["cedit".to_string()];
+        let class_ids = vec!["fighter".to_string(), "mage".to_string()];
+        let result = complete(
+            "cedit ",
+            6,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &class_ids,
+            &[],
+            false,
+        );
+        assert!(result.completions.contains(&"fighter".to_string()));
+        assert!(result.completions.contains(&"mage".to_string()));
+        assert!(result.completions.contains(&"list".to_string()));
+        assert_eq!(result.completion_type, CompletionType::ClassId);
+    }
+
+    #[test]
+    fn test_achedit_bare_completion() {
+        let commands = vec!["achedit".to_string()];
+        let achievement_keys = vec![
+            "first_blood".to_string(),
+            "first_kill".to_string(),
+            "millionaire".to_string(),
+        ];
+
+        // `achedit ` (trailing space) should surface every subcommand AND every
+        // existing key — this previously returned empty because the completer
+        // had no words.len() == 1 arm.
+        let result = complete(
+            "achedit ",
+            8,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &achievement_keys,
+            true,
+        );
+        assert!(result.completions.contains(&"create".to_string()));
+        assert!(result.completions.contains(&"list".to_string()));
+        assert!(result.completions.contains(&"first_blood".to_string()));
+        assert!(result.completions.contains(&"millionaire".to_string()));
+        assert_eq!(result.completion_type, CompletionType::AcheditSubcommand);
+    }
+
+    #[test]
+    fn test_achedit_partial_completion() {
+        let commands = vec!["achedit".to_string()];
+        let achievement_keys = vec![
+            "first_blood".to_string(),
+            "first_kill".to_string(),
+            "millionaire".to_string(),
+        ];
+
+        // `achedit fi` should match both achievement keys starting with "fi"
+        // (subcommands like create/list don't start with "fi").
+        let result = complete(
+            "achedit fi",
+            10,
+            &commands,
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &[],
+            &achievement_keys,
+            true,
+        );
+        assert!(result.completions.contains(&"first_blood".to_string()));
+        assert!(result.completions.contains(&"first_kill".to_string()));
+        assert!(!result.completions.contains(&"millionaire".to_string()));
+    }
+
+    #[test]
     fn test_mail_subcommand_completion() {
         let commands = vec!["mail".to_string()];
         let online_players = vec!["Alice".to_string(), "Bob".to_string()];

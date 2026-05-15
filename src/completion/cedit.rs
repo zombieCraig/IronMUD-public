@@ -22,6 +22,14 @@ pub(super) fn complete_cedit(
     let partial = get_partial(words, completing_word);
 
     match words.len() {
+        // `cedit ` (trailing space) — surface every class id plus the `list`
+        // alias.
+        1 if !completing_word => {
+            let mut combined: Vec<String> = class_ids.to_vec();
+            combined.push("list".to_string());
+            combined.sort();
+            CompletionResult::new(combined, "", CompletionType::ClassId)
+        }
         // cedit <partial> — class id (or "list")
         2 if completing_word => {
             // Synthesize "list" alongside class ids so it tab-completes too.

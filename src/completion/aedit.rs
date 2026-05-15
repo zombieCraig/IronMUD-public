@@ -7,6 +7,13 @@ pub(super) fn complete_aedit(words: &[&str], completing_word: bool, area_prefixe
     let partial = get_partial(words, completing_word);
 
     match words.len() {
+        // `aedit ` (trailing space) — surface every subcommand AND every area
+        // prefix, since aedit accepts either form.
+        1 if !completing_word => {
+            let mut combined: Vec<String> = AEDIT_SUBCOMMANDS.iter().map(|s| s.to_string()).collect();
+            combined.extend(area_prefixes.iter().cloned());
+            CompletionResult::new(combined, "", CompletionType::AeditSubcommand)
+        }
         // aedit <partial> - complete to either an area prefix or a subcommand
         // (aedit.rhai accepts a leading subcommand and defaults area to current room)
         2 if completing_word => {

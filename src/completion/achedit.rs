@@ -7,6 +7,17 @@ pub(super) fn complete_achedit(words: &[&str], completing_word: bool, achievemen
     let partial = get_partial(words, completing_word);
 
     match words.len() {
+        // `achedit ` (trailing space, no partial token yet) — surface every
+        // subcommand and every existing achievement key. split_whitespace drops
+        // the trailing space, so this case lands as words.len() == 1, not 2.
+        1 if !completing_word => {
+            let mut combined: Vec<String> = ACHEDIT_SUBCOMMANDS
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            combined.extend(achievement_keys.iter().cloned());
+            CompletionResult::new(combined, "", CompletionType::AcheditSubcommand)
+        }
         // achedit <partial>
         2 if completing_word => {
             let mut combined: Vec<String> = ACHEDIT_SUBCOMMANDS

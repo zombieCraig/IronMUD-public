@@ -7,6 +7,12 @@ pub(super) fn complete_bpredit(words: &[&str], completing_word: bool, shop_prese
     let partial = get_partial(words, completing_word);
 
     match words.len() {
+        // `bpredit ` (trailing space) — surface the static commands plus every preset vnum.
+        1 if !completing_word => {
+            let mut matches: Vec<String> = vec!["list".to_string(), "create".to_string(), "delete".to_string()];
+            matches.extend(shop_preset_vnums.iter().cloned());
+            CompletionResult::new(matches, "", CompletionType::ShopPresetVnum)
+        }
         // bpredit <partial_vnum> - complete vnum (also matches "list", "create", "delete")
         2 if completing_word => {
             // Combine static subcommands and dynamic vnums

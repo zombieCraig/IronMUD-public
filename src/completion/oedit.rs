@@ -13,6 +13,8 @@ pub(super) fn complete_oedit(
     let partial = get_partial(words, completing_word);
 
     match words.len() {
+        // `oedit ` (trailing space) — surface every item vnum.
+        1 if !completing_word => all_dynamic(item_vnums, CompletionType::ItemVnum),
         // oedit <partial_vnum> - complete vnum
         2 if completing_word => filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum),
         // oedit <vnum> - show all subcommands

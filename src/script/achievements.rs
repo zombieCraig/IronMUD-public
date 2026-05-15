@@ -491,6 +491,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // create_achievement(key, name, author) -> String (empty on success)
     {
         let db = db.clone();
+        let state = state.clone();
         engine.register_fn(
             "create_achievement",
             move |key: String, name: String, author: String| -> String {
@@ -504,6 +505,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 if let Ok(Some(_)) = db.get_achievement(&key_lc) {
                     return format!("achievement '{}' already exists", key_lc);
                 }
+                // Default hidden=true so an in-progress achievement doesn't
+                // spoiler-leak through `achievements` / list_achievements until
+                // the builder explicitly flips it visible.
                 let def = AchievementDef {
                     key: key_lc,
                     name,
@@ -511,11 +515,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     category: AchievementCategory::Builder,
                     criterion: AchievementCriterion::Manual,
                     reward: AchievementReward::default(),
-                    hidden: false,
+                    hidden: true,
                     source: AchievementSource::Db { author },
                 };
-                match db.save_achievement(def) {
-                    Ok(_) => String::new(),
+                match db.save_achievement(def.clone()) {
+                    Ok(_) => {
+                        sync_world_after_save(&state, def);
+                        String::new()
+                    }
                     Err(e) => format!("db error: {}", e),
                 }
             },
@@ -525,30 +532,39 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // delete_achievement(key) -> bool
     {
         let db = db.clone();
+        let state = state.clone();
         engine.register_fn("delete_achievement", move |key: String| -> bool {
-            db.delete_achievement(&key.to_lowercase()).unwrap_or(false)
+            let key_lc = key.to_lowercase();
+            let ok = db.delete_achievement(&key_lc).unwrap_or(false);
+            if ok {
+                sync_world_after_delete(&state, &key_lc);
+            }
+            ok
         });
     }
 
     // set_achievement_name(key, name) -> String
     {
         let db = db.clone();
+        let state = state.clone();
         engine.register_fn("set_achievement_name", move |key: String, name: String| -> String {
-            update_def(&db, &key, |d| d.name = name.clone())
+            update_def(&db, &state, &key, |d| d.name = name.clone())
         });
     }
 
     // set_achievement_description(key, desc) -> String
     {
         let db = db.clone();
+        let state = state.clone();
         engine.register_fn("set_achievement_description", move |key: String, desc: String| -> String {
-            update_def(&db, &key, |d| d.description = desc.clone())
+            update_def(&db, &state, &key, |d| d.description = desc.clone())
         });
     }
 
     // set_achievement_category(key, category) -> String
     {
         let db = db.clone();
+        let state = state.clone();
         engine.register_fn("set_achievement_category", move |key: String, cat: String| -> String {
             let category = match cat.to_lowercase().as_str() {
                 "skill" => AchievementCategory::Skill,
@@ -560,55 +576,61 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 "builder" => AchievementCategory::Builder,
                 _ => return format!("unknown category '{}'", cat),
             };
-            update_def(&db, &key, |d| d.category = category)
+            update_def(&db, &state, &key, |d| d.category = category)
         });
     }
 
     // set_achievement_hidden(key, hidden) -> String
     {
         let db = db.clone();
+        let state = state.clone();
         engine.register_fn("set_achievement_hidden", move |key: String, hidden: bool| -> String {
-            update_def(&db, &key, |d| d.hidden = hidden)
+            update_def(&db, &state, &key, |d| d.hidden = hidden)
         });
     }
 
     // set_achievement_reward_title(key, title) -> String
     {
         let db = db.clone();
+        let state = state.clone();
         engine.register_fn("set_achievement_reward_title", move |key: String, title: String| -> String {
-            update_def(&db, &key, |d| d.reward.title = title.clone())
+            update_def(&db, &state, &key, |d| d.reward.title = title.clone())
         });
     }
 
     // set_achievement_reward_gold(key, gold) -> String (0 clears)
     {
         let db = db.clone();
+        let state = state.clone();
         engine.register_fn("set_achievement_reward_gold", move |key: String, gold: i64| -> String {
-            update_def(&db, &key, |d| d.reward.gold = if gold <= 0 { None } else { Some(gold as i32) })
+            update_def(&db, &state, &key, |d| d.reward.gold = if gold <= 0 { None } else { Some(gold as i32) })
         });
     }
 
     // set_achievement_reward_item(key, item_vnum) -> String (empty clears)
     {
         let db = db.clone();
+        let state = state.clone();
         engine.register_fn("set_achievement_reward_item", move |key: String, vnum: String| -> String {
-            update_def(&db, &key, |d| d.reward.item_vnum = if vnum.is_empty() { None } else { Some(vnum.clone()) })
+            update_def(&db, &state, &key, |d| d.reward.item_vnum = if vnum.is_empty() { None } else { Some(vnum.clone()) })
         });
     }
 
     // set_achievement_criterion_manual(key) -> String
     {
         let db = db.clone();
+        let state = state.clone();
         engine.register_fn("set_achievement_criterion_manual", move |key: String| -> String {
-            update_def(&db, &key, |d| d.criterion = AchievementCriterion::Manual)
+            update_def(&db, &state, &key, |d| d.criterion = AchievementCriterion::Manual)
         });
     }
 
     // set_achievement_criterion_counter(key, counter, threshold) -> String
     {
         let db = db.clone();
+        let state = state.clone();
         engine.register_fn("set_achievement_criterion_counter", move |key: String, counter: String, threshold: i64| -> String {
-            update_def(&db, &key, |d| d.criterion = AchievementCriterion::Counter {
+            update_def(&db, &state, &key, |d| d.criterion = AchievementCriterion::Counter {
                 counter: counter.clone(),
                 threshold: threshold.max(1) as u32,
             })
@@ -618,8 +640,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // set_achievement_criterion_skill(key, skill, level) -> String
     {
         let db = db.clone();
+        let state = state.clone();
         engine.register_fn("set_achievement_criterion_skill", move |key: String, skill: String, level: i64| -> String {
-            update_def(&db, &key, |d| d.criterion = AchievementCriterion::SkillReached {
+            update_def(&db, &state, &key, |d| d.criterion = AchievementCriterion::SkillReached {
                 skill: skill.clone(),
                 level: level as i32,
             })
@@ -629,8 +652,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // set_achievement_criterion_recipe(key, recipe_key) -> String
     {
         let db = db.clone();
+        let state = state.clone();
         engine.register_fn("set_achievement_criterion_recipe", move |key: String, recipe_key: String| -> String {
-            update_def(&db, &key, |d| d.criterion = AchievementCriterion::LearnedRecipe {
+            update_def(&db, &state, &key, |d| d.criterion = AchievementCriterion::LearnedRecipe {
                 recipe_key: recipe_key.clone(),
             })
         });
@@ -639,8 +663,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // set_achievement_criterion_lease(key, area_vnum) -> String (empty area_vnum for any)
     {
         let db = db.clone();
+        let state = state.clone();
         engine.register_fn("set_achievement_criterion_lease", move |key: String, area_vnum: String| -> String {
-            update_def(&db, &key, |d| d.criterion = AchievementCriterion::OwnedLease {
+            update_def(&db, &state, &key, |d| d.criterion = AchievementCriterion::OwnedLease {
                 area_vnum: if area_vnum.is_empty() { None } else { Some(area_vnum.clone()) },
             })
         });
@@ -649,15 +674,16 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // set_achievement_criterion_gold(key, amount) -> String
     {
         let db = db.clone();
+        let state = state.clone();
         engine.register_fn("set_achievement_criterion_gold", move |key: String, amount: i64| -> String {
-            update_def(&db, &key, |d| d.criterion = AchievementCriterion::GoldHeld {
+            update_def(&db, &state, &key, |d| d.criterion = AchievementCriterion::GoldHeld {
                 amount: amount as i32,
             })
         });
     }
 }
 
-fn update_def<F>(db: &Db, key: &str, mutator: F) -> String
+fn update_def<F>(db: &Db, state: &SharedState, key: &str, mutator: F) -> String
 where
     F: FnOnce(&mut AchievementDef),
 {
@@ -665,15 +691,46 @@ where
     match db.get_achievement(&key_lc) {
         Ok(Some(mut def)) => {
             mutator(&mut def);
-            if let Err(e) = db.save_achievement(def) {
+            if let Err(e) = db.save_achievement(def.clone()) {
                 format!("db error: {}", e)
             } else {
+                sync_world_after_save(state, def);
                 String::new()
             }
         }
         Ok(None) => format!("achievement '{}' not found in database (or it's a JSON-only definition)", key_lc),
         Err(e) => format!("db error: {}", e),
     }
+}
+
+/// Mirror the just-saved (or just-created) definition into the in-memory
+/// world map so subsequent reads (`get_achievement_def`, `list_achievement_defs`,
+/// counter notify path) see the update without requiring a restart. Also
+/// refreshes the counter index from scratch — the dataset is small.
+fn sync_world_after_save(state: &SharedState, def: AchievementDef) {
+    let Ok(mut world) = state.lock() else { return };
+    let key = def.key.to_lowercase();
+    world.achievement_definitions.insert(key, def);
+    world.achievement_index_by_counter = rebuild_counter_index(&world.achievement_definitions);
+}
+
+fn sync_world_after_delete(state: &SharedState, key: &str) {
+    let Ok(mut world) = state.lock() else { return };
+    let key_lc = key.to_lowercase();
+    world.achievement_definitions.remove(&key_lc);
+    world.achievement_index_by_counter = rebuild_counter_index(&world.achievement_definitions);
+}
+
+fn rebuild_counter_index(
+    defs: &std::collections::HashMap<String, AchievementDef>,
+) -> std::collections::HashMap<String, Vec<String>> {
+    let mut index: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    for (key, def) in defs {
+        if let AchievementCriterion::Counter { counter, .. } = &def.criterion {
+            index.entry(counter.clone()).or_default().push(key.clone());
+        }
+    }
+    index
 }
 
 fn achievement_to_map(def: &AchievementDef) -> Map {

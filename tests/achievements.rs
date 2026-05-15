@@ -293,6 +293,157 @@ fn test_manual_award_only_for_manual_criterion() {
     }
 }
 
+/// Builder-path setup: empty achievement map + engine wired up the same way
+/// the live server does, so we can call `create_achievement` / setters /
+/// `delete_achievement` and inspect what landed in the world map.
+fn setup_builder_engine() -> (
+    Engine,
+    SharedState,
+    SharedConnections,
+    tempfile::TempDir,
+) {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let db = Db::open(temp.path()).expect("open db");
+    let (state, connections) = build_state(db.clone(), vec![]);
+    let mut engine = Engine::new();
+    script::achievements::register(
+        &mut engine,
+        Arc::new(db),
+        connections.clone(),
+        state.clone(),
+    );
+    (engine, state, connections, temp)
+}
+
+#[test]
+fn create_achievement_syncs_world_map_and_defaults_hidden_true() {
+    let (engine, state, _conns, _temp) = setup_builder_engine();
+    let err: String = engine
+        .eval(r#"create_achievement("hero_a", "Hero A", "alice")"#)
+        .expect("eval create");
+    assert_eq!(err, "", "create_achievement returned error: {}", err);
+
+    let world = state.lock().unwrap();
+    let def = world
+        .achievement_definitions
+        .get("hero_a")
+        .expect("world should have the new achievement after create");
+    assert_eq!(def.key, "hero_a");
+    assert_eq!(def.name, "Hero A");
+    assert!(def.hidden, "new achievements must default hidden=true");
+    assert!(matches!(def.criterion, AchievementCriterion::Manual));
+    assert!(matches!(def.source, AchievementSource::Db { .. }));
+}
+
+#[test]
+fn get_achievement_def_finds_builder_authored_entry() {
+    let (engine, _state, _conns, _temp) = setup_builder_engine();
+    engine
+        .eval::<String>(r#"create_achievement("looker", "The Looker", "bob")"#)
+        .expect("create");
+    // Pre-fix this returned () because world.achievement_definitions was stale.
+    let looked_up: rhai::Dynamic = engine
+        .eval(r#"get_achievement_def("looker")"#)
+        .expect("get_def");
+    assert!(
+        !looked_up.is_unit(),
+        "get_achievement_def returned () for a freshly created entry"
+    );
+}
+
+#[test]
+fn list_achievement_defs_includes_new_achievement() {
+    let (engine, _state, _conns, _temp) = setup_builder_engine();
+    engine
+        .eval::<String>(r#"create_achievement("listed", "Listed One", "alice")"#)
+        .expect("create");
+    let listed: rhai::Array = engine.eval(r#"list_achievement_defs()"#).expect("list");
+    let keys: Vec<String> = listed
+        .iter()
+        .filter_map(|d| {
+            d.clone()
+                .try_cast::<rhai::Map>()
+                .and_then(|m| m.get("key").and_then(|k| k.clone().into_string().ok()))
+        })
+        .collect();
+    assert!(
+        keys.contains(&"listed".to_string()),
+        "list_achievement_defs missed the new entry; got {:?}",
+        keys
+    );
+}
+
+#[test]
+fn counter_criterion_updates_world_index() {
+    let (engine, state, _conns, _temp) = setup_builder_engine();
+    engine
+        .eval::<String>(r#"create_achievement("five_kills", "Five Kills", "alice")"#)
+        .expect("create");
+    let err: String = engine
+        .eval(r#"set_achievement_criterion_counter("five_kills", "mobs_killed", 5)"#)
+        .expect("set counter");
+    assert_eq!(err, "");
+
+    let world = state.lock().unwrap();
+    let def = world.achievement_definitions.get("five_kills").unwrap();
+    match &def.criterion {
+        AchievementCriterion::Counter { counter, threshold } => {
+            assert_eq!(counter, "mobs_killed");
+            assert_eq!(*threshold, 5);
+        }
+        other => panic!("expected Counter criterion, got {:?}", other),
+    }
+    // Counter index must list this achievement under the counter key, or the
+    // notify path will never reach it.
+    let bucket = world
+        .achievement_index_by_counter
+        .get("mobs_killed")
+        .expect("counter index missing the new bucket");
+    assert!(bucket.contains(&"five_kills".to_string()));
+}
+
+#[test]
+fn delete_achievement_removes_from_world_and_index() {
+    let (engine, state, _conns, _temp) = setup_builder_engine();
+    engine
+        .eval::<String>(r#"create_achievement("removable", "Removable", "alice")"#)
+        .expect("create");
+    engine
+        .eval::<String>(r#"set_achievement_criterion_counter("removable", "ctr", 1)"#)
+        .expect("counter");
+
+    let ok: bool = engine
+        .eval(r#"delete_achievement("removable")"#)
+        .expect("delete");
+    assert!(ok);
+
+    let world = state.lock().unwrap();
+    assert!(!world.achievement_definitions.contains_key("removable"));
+    // Counter index must drop the now-orphaned bucket entry.
+    let bucket = world.achievement_index_by_counter.get("ctr");
+    assert!(
+        bucket
+            .map(|v| !v.iter().any(|k| k == "removable"))
+            .unwrap_or(true),
+        "deleted achievement still listed in counter index"
+    );
+}
+
+#[test]
+fn set_hidden_persists_through_world_map() {
+    let (engine, state, _conns, _temp) = setup_builder_engine();
+    engine
+        .eval::<String>(r#"create_achievement("toggle_me", "Toggle", "alice")"#)
+        .expect("create");
+    // create defaults hidden=true; flip it off and re-read via the world map.
+    let err: String = engine
+        .eval(r#"set_achievement_hidden("toggle_me", false)"#)
+        .expect("set hidden");
+    assert_eq!(err, "");
+    let world = state.lock().unwrap();
+    assert!(!world.achievement_definitions.get("toggle_me").unwrap().hidden);
+}
+
 #[test]
 fn test_seed_json_files_parse() {
     use std::fs;

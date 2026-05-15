@@ -3004,6 +3004,7 @@ fn build_commands_help(item_id, item) {
         output += "\nWeapon Commands:\n";
         output += "  oedit " + display_id + " damage <count> <sides>\n";
         output += "  oedit " + display_id + " damtype <type>\n";
+        output += "  oedit " + display_id + " on_hit [list|add|remove|clear]   (per-hit DoT / status procs)\n";
         output += "  oedit " + display_id + " twohanded [on|off]\n";
         output += "  oedit " + display_id + " wskill <skill|none>\n";
         output += "  oedit " + display_id + " caliber <type|none>      (ammo type: arrow, bolt, etc.)\n";
