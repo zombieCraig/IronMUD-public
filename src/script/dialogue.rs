@@ -699,6 +699,114 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         );
     }
 
+    // olc_add_choice_condition(mobile_id, node, choice_idx, kind, args)
+    //   args is a free-form space-separated string parsed per kind.
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "olc_add_choice_condition",
+            move |mobile_id: String,
+                  node_name: String,
+                  choice_index: i64,
+                  kind: String,
+                  args: String|
+                  -> String {
+                if choice_index < 0 {
+                    return "choice index must be >= 0".to_string();
+                }
+                let condition = match parse_choice_condition(&kind, &args) {
+                    Ok(c) => c,
+                    Err(msg) => return msg,
+                };
+                mutate_tree(&cloned_db, &mobile_id, |slot| {
+                    crate::dialogue_edit::add_choice_condition(
+                        slot,
+                        &node_name,
+                        choice_index as usize,
+                        condition,
+                    )
+                })
+            },
+        );
+    }
+
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "olc_remove_choice_condition",
+            move |mobile_id: String,
+                  node_name: String,
+                  choice_index: i64,
+                  cond_index: i64|
+                  -> String {
+                if choice_index < 0 || cond_index < 0 {
+                    return "indices must be >= 0".to_string();
+                }
+                mutate_tree(&cloned_db, &mobile_id, |slot| {
+                    crate::dialogue_edit::remove_choice_condition(
+                        slot,
+                        &node_name,
+                        choice_index as usize,
+                        cond_index as usize,
+                    )
+                })
+            },
+        );
+    }
+
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "olc_add_choice_effect",
+            move |mobile_id: String,
+                  node_name: String,
+                  choice_index: i64,
+                  kind: String,
+                  args: String|
+                  -> String {
+                if choice_index < 0 {
+                    return "choice index must be >= 0".to_string();
+                }
+                let effect = match parse_choice_effect(&kind, &args) {
+                    Ok(e) => e,
+                    Err(msg) => return msg,
+                };
+                mutate_tree(&cloned_db, &mobile_id, |slot| {
+                    crate::dialogue_edit::add_choice_effect(
+                        slot,
+                        &node_name,
+                        choice_index as usize,
+                        effect,
+                    )
+                })
+            },
+        );
+    }
+
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "olc_remove_choice_effect",
+            move |mobile_id: String,
+                  node_name: String,
+                  choice_index: i64,
+                  effect_index: i64|
+                  -> String {
+                if choice_index < 0 || effect_index < 0 {
+                    return "indices must be >= 0".to_string();
+                }
+                mutate_tree(&cloned_db, &mobile_id, |slot| {
+                    crate::dialogue_edit::remove_choice_effect(
+                        slot,
+                        &node_name,
+                        choice_index as usize,
+                        effect_index as usize,
+                    )
+                })
+            },
+        );
+    }
+
     // List node names as a comma-joined string for medit display.
     {
         let cloned_db = db.clone();
@@ -759,20 +867,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                             DialogueTarget::Exit => "[exit]".to_string(),
                             DialogueTarget::Repeat => "[repeat]".to_string(),
                         };
-                        let cond_tag = if c.conditions.is_empty() {
-                            String::new()
-                        } else {
-                            format!(" ({} cond)", c.conditions.len())
-                        };
-                        let eff_tag = if c.effects.is_empty() {
-                            String::new()
-                        } else {
-                            format!(" ({} fx)", c.effects.len())
-                        };
                         let mut slice3_tags = String::new();
-                        if c.hint.as_ref().filter(|s| !s.is_empty()).is_some() {
-                            slice3_tags.push_str(" [hint]");
-                        }
                         if let Some(cd) = c.cooldown_secs.filter(|n| *n > 0) {
                             slice3_tags.push_str(&format!(" [cd:{}s]", cd));
                         }
@@ -780,9 +875,26 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                             slice3_tags.push_str(" [once]");
                         }
                         out.push_str(&format!(
-                            "    {}. [{}] {} {}{}{}{}\n",
-                            i, c.keyword, c.label, target_tag, cond_tag, eff_tag, slice3_tags
+                            "    {}. [{}] {} {}{}\n",
+                            i, c.keyword, c.label, target_tag, slice3_tags
                         ));
+                        for (ci, cond) in c.conditions.iter().enumerate() {
+                            out.push_str(&format!(
+                                "         if [{}] {}\n",
+                                ci,
+                                summarize_condition(cond)
+                            ));
+                        }
+                        for (ei, eff) in c.effects.iter().enumerate() {
+                            out.push_str(&format!(
+                                "         do [{}] {}\n",
+                                ei,
+                                summarize_effect(eff)
+                            ));
+                        }
+                        if let Some(hint) = c.hint.as_ref().filter(|s| !s.is_empty()) {
+                            out.push_str(&format!("         hint: {}\n", hint));
+                        }
                     }
                 }
                 let counts = (
@@ -816,6 +928,279 @@ fn parse_target(kind: &str, node: &str) -> Result<DialogueTarget, String> {
         "exit" => Ok(DialogueTarget::Exit),
         "repeat" => Ok(DialogueTarget::Repeat),
         other => Err(format!("unknown target kind `{}`", other)),
+    }
+}
+
+fn summarize_condition(c: &DialogueCondition) -> String {
+    match c {
+        DialogueCondition::FlagSet { name, scope } => {
+            format!("flag_set {} ({:?})", name, scope).to_lowercase()
+        }
+        DialogueCondition::FlagUnset { name, scope } => {
+            format!("flag_unset {} ({:?})", name, scope).to_lowercase()
+        }
+        DialogueCondition::HasItem { vnum, qty } => format!("has_item {} x{}", vnum, qty),
+        DialogueCondition::SkillAtLeast { key, level } => {
+            format!("skill_at_least {} {}", key, level)
+        }
+        DialogueCondition::CounterAtLeast { key, value } => {
+            format!("counter_at_least {} {}", key, value)
+        }
+        DialogueCondition::DgVarEquals { scope, key, value } => {
+            format!("dg_var_equals {:?}:{} == {}", scope, key, value).to_lowercase()
+        }
+        DialogueCondition::QuestActive { vnum } => format!("quest_active {}", vnum),
+        DialogueCondition::QuestComplete { vnum } => format!("quest_complete {}", vnum),
+        DialogueCondition::QuestCompletable { vnum } => format!("quest_completable {}", vnum),
+        DialogueCondition::HumanityAtLeast { threshold } => {
+            format!("humanity_at_least {}", threshold)
+        }
+        DialogueCondition::IsThinblood => "is_thinblood".into(),
+        DialogueCondition::IsClanAcknowledged => "is_clan_acknowledged".into(),
+        DialogueCondition::HasAchievement { key } => format!("has_achievement {}", key),
+        DialogueCondition::QuestChoiceEquals {
+            quest_vnum,
+            key,
+            value,
+        } => format!("quest_choice_equals {}:{} == {}", quest_vnum, key, value),
+    }
+}
+
+fn summarize_effect(e: &DialogueEffect) -> String {
+    match e {
+        DialogueEffect::SetFlag { name, scope } => {
+            format!("set_flag {} ({:?})", name, scope).to_lowercase()
+        }
+        DialogueEffect::ClearFlag { name, scope } => {
+            format!("clear_flag {} ({:?})", name, scope).to_lowercase()
+        }
+        DialogueEffect::GiveItem { vnum, qty } => format!("give_item {} x{}", vnum, qty),
+        DialogueEffect::TakeItem { vnum, qty } => format!("take_item {} x{}", vnum, qty),
+        DialogueEffect::AwardSkillXp { skill, amount } => {
+            format!("award_skill_xp {} {}", skill, amount)
+        }
+        DialogueEffect::SetCounter { key, value } => format!("set_counter {} {}", key, value),
+        DialogueEffect::IncrementCounter { key, by } => {
+            format!("increment_counter {} +{}", key, by)
+        }
+        DialogueEffect::SetDgVar { scope, key, value } => {
+            format!("set_dg_var {:?}:{} = {}", scope, key, value).to_lowercase()
+        }
+        DialogueEffect::FireDgTrigger { trigger_type, arg } => {
+            format!("fire_dg_trigger {} `{}`", trigger_type, arg)
+        }
+        DialogueEffect::OfferQuest { vnum } => format!("offer_quest {}", vnum),
+        DialogueEffect::CompleteQuest { vnum } => format!("complete_quest {}", vnum),
+        DialogueEffect::AbandonQuest { vnum } => format!("abandon_quest {}", vnum),
+        DialogueEffect::SetQuestChoice {
+            quest_vnum,
+            key,
+            value,
+        } => format!("set_quest_choice {}:{} = {}", quest_vnum, key, value),
+    }
+}
+
+/// Parse a flag scope token. Defaults to `Local` when omitted/blank.
+fn parse_flag_scope(token: Option<&str>) -> Result<FlagScope, String> {
+    match token.map(|s| s.to_lowercase()).as_deref() {
+        None | Some("") | Some("local") => Ok(FlagScope::Local),
+        Some("global") => Ok(FlagScope::Global),
+        Some(other) => Err(format!("unknown scope `{}` (use local|global)", other)),
+    }
+}
+
+/// Parse a `DialogueCondition` from a `kind` keyword and a space-separated
+/// `args` string. Only the common condition kinds are inlinable; rarer
+/// variants (DgVarEquals, IsThinblood, IsClanAcknowledged, QuestChoiceEquals,
+/// HumanityAtLeast) stay JSON/MCP-only.
+fn parse_choice_condition(kind: &str, args: &str) -> Result<DialogueCondition, String> {
+    let parts: Vec<&str> = args.split_whitespace().collect();
+    let need = |n: usize, fmt: &str| -> Result<(), String> {
+        if parts.len() < n {
+            Err(format!("{} requires {}", kind, fmt))
+        } else {
+            Ok(())
+        }
+    };
+    match kind.to_lowercase().as_str() {
+        "flag_set" | "flagset" => {
+            need(1, "<name> [local|global]")?;
+            Ok(DialogueCondition::FlagSet {
+                name: parts[0].to_string(),
+                scope: parse_flag_scope(parts.get(1).copied())?,
+            })
+        }
+        "flag_unset" | "flagunset" => {
+            need(1, "<name> [local|global]")?;
+            Ok(DialogueCondition::FlagUnset {
+                name: parts[0].to_string(),
+                scope: parse_flag_scope(parts.get(1).copied())?,
+            })
+        }
+        "has_item" | "hasitem" => {
+            need(1, "<vnum> [qty]")?;
+            let qty = parts
+                .get(1)
+                .and_then(|s| s.parse::<i32>().ok())
+                .unwrap_or(1);
+            Ok(DialogueCondition::HasItem {
+                vnum: parts[0].to_string(),
+                qty,
+            })
+        }
+        "skill_at_least" | "skillatleast" | "skill" => {
+            need(2, "<skill_key> <level>")?;
+            let level = parts[1]
+                .parse::<i32>()
+                .map_err(|_| "level must be an integer".to_string())?;
+            Ok(DialogueCondition::SkillAtLeast {
+                key: parts[0].to_string(),
+                level,
+            })
+        }
+        "counter_at_least" | "counteratleast" | "counter" => {
+            need(2, "<counter_key> <value>")?;
+            let value = parts[1]
+                .parse::<i32>()
+                .map_err(|_| "value must be an integer".to_string())?;
+            Ok(DialogueCondition::CounterAtLeast {
+                key: parts[0].to_string(),
+                value,
+            })
+        }
+        "quest_active" | "questactive" => {
+            need(1, "<quest_vnum>")?;
+            Ok(DialogueCondition::QuestActive {
+                vnum: parts[0].to_string(),
+            })
+        }
+        "quest_complete" | "questcomplete" => {
+            need(1, "<quest_vnum>")?;
+            Ok(DialogueCondition::QuestComplete {
+                vnum: parts[0].to_string(),
+            })
+        }
+        "quest_completable" | "questcompletable" => {
+            need(1, "<quest_vnum>")?;
+            Ok(DialogueCondition::QuestCompletable {
+                vnum: parts[0].to_string(),
+            })
+        }
+        "has_achievement" | "hasachievement" | "achievement" => {
+            need(1, "<achievement_key>")?;
+            Ok(DialogueCondition::HasAchievement {
+                key: parts[0].to_string(),
+            })
+        }
+        other => Err(format!(
+            "unknown condition kind `{}` (use flag_set|flag_unset|has_item|skill_at_least|counter_at_least|quest_active|quest_complete|quest_completable|has_achievement; use `tree set <json>` or MCP for dg_var_equals / vampire / quest_choice_equals)",
+            other
+        )),
+    }
+}
+
+/// Parse a `DialogueEffect` from a `kind` keyword and a space-separated
+/// `args` string. Rarer variants (SetDgVar, FireDgTrigger, SetQuestChoice)
+/// stay JSON/MCP-only.
+fn parse_choice_effect(kind: &str, args: &str) -> Result<DialogueEffect, String> {
+    let parts: Vec<&str> = args.split_whitespace().collect();
+    let need = |n: usize, fmt: &str| -> Result<(), String> {
+        if parts.len() < n {
+            Err(format!("{} requires {}", kind, fmt))
+        } else {
+            Ok(())
+        }
+    };
+    match kind.to_lowercase().as_str() {
+        "set_flag" | "setflag" => {
+            need(1, "<name> [local|global]")?;
+            Ok(DialogueEffect::SetFlag {
+                name: parts[0].to_string(),
+                scope: parse_flag_scope(parts.get(1).copied())?,
+            })
+        }
+        "clear_flag" | "clearflag" => {
+            need(1, "<name> [local|global]")?;
+            Ok(DialogueEffect::ClearFlag {
+                name: parts[0].to_string(),
+                scope: parse_flag_scope(parts.get(1).copied())?,
+            })
+        }
+        "give_item" | "giveitem" => {
+            need(1, "<vnum> [qty]")?;
+            let qty = parts
+                .get(1)
+                .and_then(|s| s.parse::<i32>().ok())
+                .unwrap_or(1);
+            Ok(DialogueEffect::GiveItem {
+                vnum: parts[0].to_string(),
+                qty,
+            })
+        }
+        "take_item" | "takeitem" => {
+            need(1, "<vnum> [qty]")?;
+            let qty = parts
+                .get(1)
+                .and_then(|s| s.parse::<i32>().ok())
+                .unwrap_or(1);
+            Ok(DialogueEffect::TakeItem {
+                vnum: parts[0].to_string(),
+                qty,
+            })
+        }
+        "award_skill_xp" | "awardskillxp" | "award_xp" => {
+            need(2, "<skill_key> <amount>")?;
+            let amount = parts[1]
+                .parse::<i32>()
+                .map_err(|_| "amount must be an integer".to_string())?;
+            Ok(DialogueEffect::AwardSkillXp {
+                skill: parts[0].to_string(),
+                amount,
+            })
+        }
+        "set_counter" | "setcounter" => {
+            need(2, "<counter_key> <value>")?;
+            let value = parts[1]
+                .parse::<i32>()
+                .map_err(|_| "value must be an integer".to_string())?;
+            Ok(DialogueEffect::SetCounter {
+                key: parts[0].to_string(),
+                value,
+            })
+        }
+        "increment_counter" | "incrementcounter" | "inc_counter" => {
+            need(1, "<counter_key> [by]")?;
+            let by = parts
+                .get(1)
+                .and_then(|s| s.parse::<i32>().ok())
+                .unwrap_or(1);
+            Ok(DialogueEffect::IncrementCounter {
+                key: parts[0].to_string(),
+                by,
+            })
+        }
+        "offer_quest" | "offerquest" => {
+            need(1, "<quest_vnum>")?;
+            Ok(DialogueEffect::OfferQuest {
+                vnum: parts[0].to_string(),
+            })
+        }
+        "complete_quest" | "completequest" => {
+            need(1, "<quest_vnum>")?;
+            Ok(DialogueEffect::CompleteQuest {
+                vnum: parts[0].to_string(),
+            })
+        }
+        "abandon_quest" | "abandonquest" => {
+            need(1, "<quest_vnum>")?;
+            Ok(DialogueEffect::AbandonQuest {
+                vnum: parts[0].to_string(),
+            })
+        }
+        other => Err(format!(
+            "unknown effect kind `{}` (use set_flag|clear_flag|give_item|take_item|award_skill_xp|set_counter|increment_counter|offer_quest|complete_quest|abandon_quest; use `tree set <json>` or MCP for set_dg_var / fire_dg_trigger / set_quest_choice)",
+            other
+        )),
     }
 }
 

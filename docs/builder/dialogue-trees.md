@@ -85,13 +85,48 @@ The OLC editor lives in `medit`. The full subcommand set:
 | `medit <id> tree editchoice <node> <index> hint <text>` | Set/clear hint (empty clears) |
 | `medit <id> tree editchoice <node> <index> cooldown <secs>` | Set cooldown (0 clears) |
 | `medit <id> tree editchoice <node> <index> once <on\|off>` | Toggle once_per_player |
+| `medit <id> tree addcond <node> <choice_idx> <kind> [args]` | Append a condition to a choice |
+| `medit <id> tree delcond <node> <choice_idx> <cond_idx>` | Remove a condition by index |
+| `medit <id> tree addfx <node> <choice_idx> <kind> [args]` | Append an effect to a choice |
+| `medit <id> tree delfx <node> <choice_idx> <fx_idx>` | Remove an effect by index |
 | `medit <id> tree set <json>` | Replace the whole tree from JSON |
 | `medit <id> tree clear` | Remove the tree entirely |
 
-The inline subcommands cover structure (nodes, choices, navigation, hint/cooldown/once). For conditions, effects, and node-level hooks (`on_enter`/`on_exit`/`on_each_visit`) you have two options:
+`tree show <node>` lists every condition and effect on each choice with its index, so you can verify what you've attached or pick the right `cond_idx` / `fx_idx` for deletion.
 
-1. **`tree set <json>`** — pass the full JSON document. Useful for bulk imports or copy-paste.
-2. **MCP tools** — programmatic authoring (see below). Recommended for quest writers building many trees.
+### Inline condition kinds (`addcond`)
+
+| Kind | Args | Notes |
+|------|------|-------|
+| `flag_set` | `<name> [local\|global]` | Scope defaults to `local`. |
+| `flag_unset` | `<name> [local\|global]` | |
+| `has_item` | `<vnum> [qty]` | `qty` defaults to 1. |
+| `skill_at_least` | `<skill_key> <level>` | |
+| `counter_at_least` | `<counter_key> <value>` | |
+| `quest_active` | `<quest_vnum>` | |
+| `quest_complete` | `<quest_vnum>` | |
+| `quest_completable` | `<quest_vnum>` | |
+| `has_achievement` | `<achievement_key>` | |
+
+### Inline effect kinds (`addfx`)
+
+| Kind | Args | Notes |
+|------|------|-------|
+| `set_flag` | `<name> [local\|global]` | |
+| `clear_flag` | `<name> [local\|global]` | |
+| `give_item` | `<vnum> [qty]` | |
+| `take_item` | `<vnum> [qty]` | |
+| `award_skill_xp` | `<skill_key> <amount>` | 100 XP = 1 level (cap 10). |
+| `set_counter` | `<counter_key> <value>` | |
+| `increment_counter` | `<counter_key> [by]` | `by` defaults to 1. |
+| `offer_quest` | `<quest_vnum>` | |
+| `complete_quest` | `<quest_vnum>` | |
+| `abandon_quest` | `<quest_vnum>` | |
+
+Rarer kinds (`dg_var_equals` / `set_dg_var` / `fire_dg_trigger`, the vampire-specific conditions, `quest_choice_equals` / `set_quest_choice`) plus node-level hooks (`on_enter` / `on_each_visit` / `on_exit`) aren't covered by inline subcommands. Use:
+
+1. **`tree set <json>`** — pass the full JSON document. Useful for bulk imports, copy-paste, and the kinds the inline editor doesn't cover.
+2. **MCP tools** — programmatic authoring (see below). Recommended for quest writers building many trees at once.
 
 ## Authoring via MCP
 
@@ -214,6 +249,56 @@ A guard captain who offers a quest, gates the turn-in branch on completion of th
 The three "bandits" choices on the greeting node are mutually exclusive: the engine picks the first whose conditions pass. Order matters — the `quest_complete` line shows for finished players, the `quest_active` line for in-progress, and the unconditional one for everyone else.
 
 The `turnin` choice is gated on `quest_completable` — it's invisible until the player has actually killed five brutes and is carrying the banner. Selecting it fires `complete_quest`, which validates objectives, prints the quest's `completion` text, and grants rewards.
+
+## Worked Example — OLC Only
+
+The same captain, built without touching JSON. Assumes the quest `bandit_camp` already exists (see [Quests](quests.md)) and that the captain's mob keyword is `captain`.
+
+```
+medit captain tree addnode greeting Captain Aldric nods. "Looking for work?"
+medit captain tree addnode bandit_brief The eastern hills are crawling with bandit scum. Five of their best fighters and their banner — that should send a message.
+medit captain tree addnode bandit_thanks You've done the town a service. Take this with our thanks.
+
+# Greeting choices, top-to-bottom: turn-in (gated), progress (gated), offer.
+medit captain tree addchoice greeting turnin | I've cleared the bandit camp. | goto bandit_thanks
+medit captain tree addcond  greeting 0 quest_completable bandit_camp
+medit captain tree addfx    greeting 0 complete_quest    bandit_camp
+
+medit captain tree addchoice greeting progress | I'm still hunting them. | goto bandit_brief
+medit captain tree addcond  greeting 1 quest_active bandit_camp
+
+medit captain tree addchoice greeting bandits | Tell me about the bandits. | goto bandit_brief
+
+medit captain tree addchoice greeting bye | Just passing through. | exit
+
+# On the brief node, "I'll do it." offers the quest and ends the conversation.
+medit captain tree addchoice bandit_brief accept | I'll do it. | exit
+medit captain tree addfx    bandit_brief 0 offer_quest bandit_camp
+
+medit captain tree addchoice bandit_brief back | Anything else? | goto greeting
+
+# The thanks node just needs an exit.
+medit captain tree addchoice bandit_thanks bye | It was my pleasure. | exit
+```
+
+The order of `addchoice` calls matters: the engine walks the choices top-to-bottom and shows the first one whose conditions pass. `turnin` (index 0) only appears after the player has met every objective; `progress` (index 1) only shows while the quest is active; the unconditional `bandits` choice (index 2) is the fallback that lets a new player ask about the quest in the first place.
+
+Verify the result with `medit captain tree show greeting`:
+
+```
+Node `greeting` [root]
+  text: Captain Aldric nods. "Looking for work?"
+  choices:
+    0. [turnin] I've cleared the bandit camp. -> bandit_thanks
+         if [0] quest_completable bandit_camp
+         do [0] complete_quest bandit_camp
+    1. [progress] I'm still hunting them. -> bandit_brief
+         if [0] quest_active bandit_camp
+    2. [bandits] Tell me about the bandits. -> bandit_brief
+    3. [bye] Just passing through. [exit]
+```
+
+The index numbers in `if [0]` and `do [0]` are the `cond_idx` / `fx_idx` you'd pass to `delcond` / `delfx` to remove them — e.g. `medit captain tree delcond greeting 0 0` drops the `quest_completable` gate from the turn-in choice.
 
 ## Related Documentation
 

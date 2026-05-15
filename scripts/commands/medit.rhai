@@ -313,20 +313,23 @@ fn dispatch_meta_subcommand(mobile, uuid, subcommand, parts, connection_id) {
 }
 
 // Dispatch group 4: Dialogue commands (dialogue, dialogues, rmdialogue, tree)
-fn dispatch_dialogue_subcommand(mobile, uuid, subcommand, parts, connection_id) {
+fn dispatch_dialogue_subcommand(mobile, uuid, mobile_id, subcommand, parts, connection_id) {
     if subcommand == "dialogue" { handle_dialogue_subcommand(uuid, parts, connection_id); return true; }
     if subcommand == "dialogues" { show_mobile_dialogues(mobile, uuid, connection_id); return true; }
     if subcommand == "rmdialogue" { handle_rmdialogue_subcommand(uuid, parts, connection_id); return true; }
-    if subcommand == "tree" { handle_tree_subcommand(uuid, parts, connection_id); return true; }
+    if subcommand == "tree" { handle_tree_subcommand(uuid, mobile_id, parts, connection_id); return true; }
     return false;
 }
 
-fn handle_tree_subcommand(mobile_id, parts, connection_id) {
-    if parts.len() < 2 {
-        tree_help(connection_id);
+// `mobile_id` is the UUID used by setter helpers; `display_id` is what
+// the user typed (vnum or keyword) and is echoed back in help / usage
+// lines so the examples stay re-typable.
+fn handle_tree_subcommand(mobile_id, display_id, parts, connection_id) {
+    if parts.len() < 3 {
+        tree_help(display_id, connection_id);
         return;
     }
-    let action = parts[1].to_lower();
+    let action = parts[2].to_lower();
     if action == "show" { tree_show(mobile_id, parts, connection_id); return; }
     if action == "nodes" { tree_nodes(mobile_id, connection_id); return; }
     if action == "clear" {
@@ -337,34 +340,46 @@ fn handle_tree_subcommand(mobile_id, parts, connection_id) {
         }
         return;
     }
-    if action == "set" { tree_set_json(mobile_id, parts, connection_id); return; }
-    if action == "addnode" { tree_addnode(mobile_id, parts, connection_id); return; }
-    if action == "delnode" { tree_delnode(mobile_id, parts, connection_id); return; }
-    if action == "setroot" { tree_setroot(mobile_id, parts, connection_id); return; }
-    if action == "text" { tree_text(mobile_id, parts, connection_id); return; }
-    if action == "edittext" { tree_edittext(mobile_id, parts, connection_id); return; }
-    if action == "addchoice" { tree_addchoice(mobile_id, parts, connection_id); return; }
-    if action == "delchoice" { tree_delchoice(mobile_id, parts, connection_id); return; }
-    if action == "editchoice" { tree_editchoice(mobile_id, parts, connection_id); return; }
-    tree_help(connection_id);
+    if action == "set" { tree_set_json(mobile_id, display_id, parts, connection_id); return; }
+    if action == "addnode" { tree_addnode(mobile_id, display_id, parts, connection_id); return; }
+    if action == "delnode" { tree_delnode(mobile_id, display_id, parts, connection_id); return; }
+    if action == "setroot" { tree_setroot(mobile_id, display_id, parts, connection_id); return; }
+    if action == "text" { tree_text(mobile_id, display_id, parts, connection_id); return; }
+    if action == "edittext" { tree_edittext(mobile_id, display_id, parts, connection_id); return; }
+    if action == "addchoice" { tree_addchoice(mobile_id, display_id, parts, connection_id); return; }
+    if action == "delchoice" { tree_delchoice(mobile_id, display_id, parts, connection_id); return; }
+    if action == "editchoice" { tree_editchoice(mobile_id, display_id, parts, connection_id); return; }
+    if action == "addcond" { tree_addcond(mobile_id, display_id, parts, connection_id); return; }
+    if action == "delcond" { tree_delcond(mobile_id, display_id, parts, connection_id); return; }
+    if action == "addfx" || action == "addeffect" { tree_addfx(mobile_id, display_id, parts, connection_id); return; }
+    if action == "delfx" || action == "deleffect" { tree_delfx(mobile_id, display_id, parts, connection_id); return; }
+    tree_help(display_id, connection_id);
 }
 
-fn tree_help(connection_id) {
+fn tree_help(display_id, connection_id) {
     let m = "Dialogue tree commands:\n"
-        + "  medit <id> tree show [<node>]      - Show JSON, or one node summary\n"
-        + "  medit <id> tree nodes              - List all node names\n"
-        + "  medit <id> tree addnode <name> <text>  - Add a node (first node becomes root)\n"
-        + "  medit <id> tree delnode <name>     - Remove a node (must not be root or referenced)\n"
-        + "  medit <id> tree setroot <name>     - Point root_node at an existing node\n"
-        + "  medit <id> tree text <node> <new text>  - Set node text in one line\n"
-        + "  medit <id> tree edittext <node>    - Open multi-line editor for node text\n"
-        + "  medit <id> tree addchoice <node> <kw> | <label> | <goto|exit|repeat> [target]\n"
-        + "  medit <id> tree delchoice <node> <index>\n"
-        + "  medit <id> tree editchoice <node> <index> hint <text...>   (empty clears)\n"
-        + "  medit <id> tree editchoice <node> <index> cooldown <secs>  (0 clears)\n"
-        + "  medit <id> tree editchoice <node> <index> once <on|off>\n"
-        + "  medit <id> tree set <json>         - Replace whole tree from JSON\n"
-        + "  medit <id> tree clear              - Remove the dialogue tree";
+        + "  medit " + display_id + " tree show [<node>]      - Show JSON, or one node summary\n"
+        + "  medit " + display_id + " tree nodes              - List all node names\n"
+        + "  medit " + display_id + " tree addnode <name> <text>  - Add a node (first node becomes root)\n"
+        + "  medit " + display_id + " tree delnode <name>     - Remove a node (must not be root or referenced)\n"
+        + "  medit " + display_id + " tree setroot <name>     - Point root_node at an existing node\n"
+        + "  medit " + display_id + " tree text <node> <new text>  - Set node text in one line\n"
+        + "  medit " + display_id + " tree edittext <node>    - Open multi-line editor for node text\n"
+        + "  medit " + display_id + " tree addchoice <node> <kw> | <label> | <goto|exit|repeat> [target]\n"
+        + "  medit " + display_id + " tree delchoice <node> <index>\n"
+        + "  medit " + display_id + " tree editchoice <node> <index> hint <text...>   (empty clears)\n"
+        + "  medit " + display_id + " tree editchoice <node> <index> cooldown <secs>  (0 clears)\n"
+        + "  medit " + display_id + " tree editchoice <node> <index> once <on|off>\n"
+        + "  medit " + display_id + " tree addcond <node> <choice_idx> <kind> [args...]\n"
+        + "    kinds: flag_set|flag_unset|has_item|skill_at_least|counter_at_least|\n"
+        + "           quest_active|quest_complete|quest_completable|has_achievement\n"
+        + "  medit " + display_id + " tree delcond <node> <choice_idx> <cond_idx>\n"
+        + "  medit " + display_id + " tree addfx <node> <choice_idx> <kind> [args...]\n"
+        + "    kinds: set_flag|clear_flag|give_item|take_item|award_skill_xp|\n"
+        + "           set_counter|increment_counter|offer_quest|complete_quest|abandon_quest\n"
+        + "  medit " + display_id + " tree delfx <node> <choice_idx> <fx_idx>\n"
+        + "  medit " + display_id + " tree set <json>         - Replace whole tree from JSON\n"
+        + "  medit " + display_id + " tree clear              - Remove the dialogue tree";
     send_client_message(connection_id, m);
 }
 
@@ -392,9 +407,9 @@ fn tree_nodes(mobile_id, connection_id) {
     }
 }
 
-fn tree_set_json(mobile_id, parts, connection_id) {
+fn tree_set_json(mobile_id, display_id, parts, connection_id) {
     if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: medit <id> tree set <json>");
+        send_client_message(connection_id, "Usage: medit " + display_id + " tree set <json>");
         return;
     }
     let payload = "";
@@ -410,9 +425,9 @@ fn tree_set_json(mobile_id, parts, connection_id) {
     }
 }
 
-fn tree_addnode(mobile_id, parts, connection_id) {
+fn tree_addnode(mobile_id, display_id, parts, connection_id) {
     if parts.len() < 4 {
-        send_client_message(connection_id, "Usage: medit <id> tree addnode <name> <text...>");
+        send_client_message(connection_id, "Usage: medit " + display_id + " tree addnode <name> <text...>");
         return;
     }
     let name = parts[2];
@@ -429,9 +444,9 @@ fn tree_addnode(mobile_id, parts, connection_id) {
     }
 }
 
-fn tree_delnode(mobile_id, parts, connection_id) {
+fn tree_delnode(mobile_id, display_id, parts, connection_id) {
     if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: medit <id> tree delnode <name>");
+        send_client_message(connection_id, "Usage: medit " + display_id + " tree delnode <name>");
         return;
     }
     let err = olc_remove_dialogue_node(mobile_id, parts[2]);
@@ -442,9 +457,9 @@ fn tree_delnode(mobile_id, parts, connection_id) {
     }
 }
 
-fn tree_setroot(mobile_id, parts, connection_id) {
+fn tree_setroot(mobile_id, display_id, parts, connection_id) {
     if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: medit <id> tree setroot <name>");
+        send_client_message(connection_id, "Usage: medit " + display_id + " tree setroot <name>");
         return;
     }
     let err = olc_set_dialogue_root(mobile_id, parts[2]);
@@ -455,9 +470,9 @@ fn tree_setroot(mobile_id, parts, connection_id) {
     }
 }
 
-fn tree_text(mobile_id, parts, connection_id) {
+fn tree_text(mobile_id, display_id, parts, connection_id) {
     if parts.len() < 4 {
-        send_client_message(connection_id, "Usage: medit <id> tree text <node> <new text...>");
+        send_client_message(connection_id, "Usage: medit " + display_id + " tree text <node> <new text...>");
         return;
     }
     let name = parts[2];
@@ -474,9 +489,9 @@ fn tree_text(mobile_id, parts, connection_id) {
     }
 }
 
-fn tree_edittext(mobile_id, parts, connection_id) {
+fn tree_edittext(mobile_id, display_id, parts, connection_id) {
     if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: medit <id> tree edittext <node>");
+        send_client_message(connection_id, "Usage: medit " + display_id + " tree edittext <node>");
         return;
     }
     let name = parts[2];
@@ -497,12 +512,12 @@ fn tree_edittext(mobile_id, parts, connection_id) {
         "Editing text for dialogue node `" + name + "`. Type lines, .h for help, .save to save, .abort to cancel.");
 }
 
-fn tree_addchoice(mobile_id, parts, connection_id) {
+fn tree_addchoice(mobile_id, display_id, parts, connection_id) {
     // Form: tree addchoice <node> <kw> | <label> | <kind> [target]
     // We re-join from parts[2..] and split on `|`.
     if parts.len() < 4 {
         send_client_message(connection_id,
-            "Usage: medit <id> tree addchoice <node> <keyword> | <label> | <goto|exit|repeat> [target_node]");
+            "Usage: medit " + display_id + " tree addchoice <node> <keyword> | <label> | <goto|exit|repeat> [target_node]");
         return;
     }
     let node = parts[2];
@@ -516,7 +531,7 @@ fn tree_addchoice(mobile_id, parts, connection_id) {
     let segs = rest.split('|');
     if segs.len() < 3 {
         send_client_message(connection_id,
-            "Usage: medit <id> tree addchoice <node> <keyword> | <label> | <goto|exit|repeat> [target_node]");
+            "Usage: medit " + display_id + " tree addchoice <node> <keyword> | <label> | <goto|exit|repeat> [target_node]");
         return;
     }
     let keyword = segs[0];
@@ -541,9 +556,9 @@ fn tree_addchoice(mobile_id, parts, connection_id) {
     }
 }
 
-fn tree_delchoice(mobile_id, parts, connection_id) {
+fn tree_delchoice(mobile_id, display_id, parts, connection_id) {
     if parts.len() < 4 {
-        send_client_message(connection_id, "Usage: medit <id> tree delchoice <node> <index>");
+        send_client_message(connection_id, "Usage: medit " + display_id + " tree delchoice <node> <index>");
         return;
     }
     let idx = try_parse_int(parts[3]);
@@ -559,11 +574,11 @@ fn tree_delchoice(mobile_id, parts, connection_id) {
     }
 }
 
-fn tree_editchoice(mobile_id, parts, connection_id) {
+fn tree_editchoice(mobile_id, display_id, parts, connection_id) {
     // Form: tree editchoice <node> <index> <field> [value...]
     if parts.len() < 5 {
         send_client_message(connection_id,
-            "Usage: medit <id> tree editchoice <node> <index> <hint|cooldown|once> [value]");
+            "Usage: medit " + display_id + " tree editchoice <node> <index> <hint|cooldown|once> [value]");
         return;
     }
     let node = parts[2];
@@ -583,6 +598,108 @@ fn tree_editchoice(mobile_id, parts, connection_id) {
     if err == "" {
         send_client_message(connection_id,
             "Choice " + idx + " on `" + node + "` updated (" + field + ").");
+    } else {
+        send_client_message(connection_id, "Error: " + err);
+    }
+}
+
+fn tree_addcond(mobile_id, display_id, parts, connection_id) {
+    // Form: tree addcond <node> <choice_idx> <kind> [args...]
+    if parts.len() < 6 {
+        send_client_message(connection_id,
+            "Usage: medit " + display_id + " tree addcond <node> <choice_idx> <kind> [args...]");
+        return;
+    }
+    let node = parts[3];
+    let idx = try_parse_int(parts[4]);
+    if idx == () {
+        send_client_message(connection_id, "Choice index must be a non-negative number.");
+        return;
+    }
+    let kind = parts[5].to_lower();
+    let args = "";
+    for i in 6..parts.len() {
+        if i > 6 { args += " "; }
+        args += parts[i];
+    }
+    let err = olc_add_choice_condition(mobile_id, node, idx, kind, args);
+    if err == "" {
+        send_client_message(connection_id,
+            "Condition added to choice " + idx + " on `" + node + "`.");
+    } else {
+        send_client_message(connection_id, "Error: " + err);
+    }
+}
+
+fn tree_delcond(mobile_id, display_id, parts, connection_id) {
+    // Form: tree delcond <node> <choice_idx> <cond_idx>
+    if parts.len() < 6 {
+        send_client_message(connection_id,
+            "Usage: medit " + display_id + " tree delcond <node> <choice_idx> <cond_idx>");
+        return;
+    }
+    let node = parts[3];
+    let choice_idx = try_parse_int(parts[4]);
+    let cond_idx = try_parse_int(parts[5]);
+    if choice_idx == () || cond_idx == () {
+        send_client_message(connection_id, "Indices must be non-negative numbers.");
+        return;
+    }
+    let err = olc_remove_choice_condition(mobile_id, node, choice_idx, cond_idx);
+    if err == "" {
+        send_client_message(connection_id,
+            "Condition " + cond_idx + " removed from choice " + choice_idx + " on `" + node + "`.");
+    } else {
+        send_client_message(connection_id, "Error: " + err);
+    }
+}
+
+fn tree_addfx(mobile_id, display_id, parts, connection_id) {
+    // Form: tree addfx <node> <choice_idx> <kind> [args...]
+    if parts.len() < 6 {
+        send_client_message(connection_id,
+            "Usage: medit " + display_id + " tree addfx <node> <choice_idx> <kind> [args...]");
+        return;
+    }
+    let node = parts[3];
+    let idx = try_parse_int(parts[4]);
+    if idx == () {
+        send_client_message(connection_id, "Choice index must be a non-negative number.");
+        return;
+    }
+    let kind = parts[5].to_lower();
+    let args = "";
+    for i in 6..parts.len() {
+        if i > 6 { args += " "; }
+        args += parts[i];
+    }
+    let err = olc_add_choice_effect(mobile_id, node, idx, kind, args);
+    if err == "" {
+        send_client_message(connection_id,
+            "Effect added to choice " + idx + " on `" + node + "`.");
+    } else {
+        send_client_message(connection_id, "Error: " + err);
+    }
+}
+
+fn tree_delfx(mobile_id, display_id, parts, connection_id) {
+    // Form: tree delfx <node> <choice_idx> <fx_idx>
+    if parts.len() < 6 {
+        send_client_message(connection_id,
+            "Usage: medit " + display_id + " tree delfx <node> <choice_idx> <fx_idx>");
+        return;
+    }
+    let node = parts[3];
+    let choice_idx = try_parse_int(parts[4]);
+    let fx_idx = try_parse_int(parts[5]);
+    if choice_idx == () || fx_idx == () {
+        send_client_message(connection_id, "Indices must be non-negative numbers.");
+        return;
+    }
+    let err = olc_remove_choice_effect(mobile_id, node, choice_idx, fx_idx);
+    if err == "" {
+        send_client_message(connection_id,
+            "Effect " + fx_idx + " removed from choice " + choice_idx + " on `" + node + "`.");
     } else {
         send_client_message(connection_id, "Error: " + err);
     }
@@ -776,7 +893,7 @@ fn handle_subcommand(mobile, mobile_id, subcommand, parts, char, connection_id) 
     if dispatch_text_subcommand(mobile, uuid, mobile_id, subcommand, parts, connection_id) { return; }
     if dispatch_combat_subcommand(uuid, subcommand, parts, connection_id) { return; }
     if dispatch_meta_subcommand(mobile, uuid, subcommand, parts, connection_id) { return; }
-    if dispatch_dialogue_subcommand(mobile, uuid, subcommand, parts, connection_id) { return; }
+    if dispatch_dialogue_subcommand(mobile, uuid, mobile_id, subcommand, parts, connection_id) { return; }
     if dispatch_role_subcommand(mobile, uuid, subcommand, parts, char, connection_id) { return; }
     if dispatch_advanced_subcommand(mobile, uuid, mobile_id, subcommand, parts, connection_id) { return; }
     if dispatch_routine_subcommand(mobile, uuid, subcommand, parts, connection_id) { return; }

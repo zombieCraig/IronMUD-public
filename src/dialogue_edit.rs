@@ -8,7 +8,7 @@
 //! `validate_tree` checks (root exists, choice targets resolve), so failed
 //! edits never persist a broken tree.
 
-use crate::types::{DialogueChoice, DialogueEffect, DialogueNode, DialogueTree};
+use crate::types::{DialogueChoice, DialogueCondition, DialogueEffect, DialogueNode, DialogueTree};
 
 #[derive(Debug, Clone)]
 pub enum DialogueEditError {
@@ -220,6 +220,108 @@ pub fn remove_choice(
         ));
     }
     node.choices.remove(index);
+    Ok(())
+}
+
+/// Append a condition to an existing choice. Bounds-checks node + choice index.
+pub fn add_choice_condition(
+    slot: &mut Option<DialogueTree>,
+    node_name: &str,
+    choice_index: usize,
+    condition: DialogueCondition,
+) -> EditResult<()> {
+    let tree = ensure_tree(slot)?;
+    let node = tree
+        .nodes
+        .get_mut(node_name)
+        .ok_or_else(|| DialogueEditError::NodeMissing(node_name.into()))?;
+    if choice_index >= node.choices.len() {
+        return Err(DialogueEditError::ChoiceIndexOutOfRange(
+            choice_index,
+            node.choices.len(),
+        ));
+    }
+    node.choices[choice_index].conditions.push(condition);
+    Ok(())
+}
+
+pub fn remove_choice_condition(
+    slot: &mut Option<DialogueTree>,
+    node_name: &str,
+    choice_index: usize,
+    cond_index: usize,
+) -> EditResult<()> {
+    let tree = ensure_tree(slot)?;
+    let node = tree
+        .nodes
+        .get_mut(node_name)
+        .ok_or_else(|| DialogueEditError::NodeMissing(node_name.into()))?;
+    if choice_index >= node.choices.len() {
+        return Err(DialogueEditError::ChoiceIndexOutOfRange(
+            choice_index,
+            node.choices.len(),
+        ));
+    }
+    let conditions = &mut node.choices[choice_index].conditions;
+    if cond_index >= conditions.len() {
+        return Err(DialogueEditError::Invalid(format!(
+            "condition index {} out of range (choice has {} conditions)",
+            cond_index,
+            conditions.len()
+        )));
+    }
+    conditions.remove(cond_index);
+    Ok(())
+}
+
+/// Append an effect to an existing choice. Bounds-checks node + choice index.
+pub fn add_choice_effect(
+    slot: &mut Option<DialogueTree>,
+    node_name: &str,
+    choice_index: usize,
+    effect: DialogueEffect,
+) -> EditResult<()> {
+    let tree = ensure_tree(slot)?;
+    let node = tree
+        .nodes
+        .get_mut(node_name)
+        .ok_or_else(|| DialogueEditError::NodeMissing(node_name.into()))?;
+    if choice_index >= node.choices.len() {
+        return Err(DialogueEditError::ChoiceIndexOutOfRange(
+            choice_index,
+            node.choices.len(),
+        ));
+    }
+    node.choices[choice_index].effects.push(effect);
+    Ok(())
+}
+
+pub fn remove_choice_effect(
+    slot: &mut Option<DialogueTree>,
+    node_name: &str,
+    choice_index: usize,
+    effect_index: usize,
+) -> EditResult<()> {
+    let tree = ensure_tree(slot)?;
+    let node = tree
+        .nodes
+        .get_mut(node_name)
+        .ok_or_else(|| DialogueEditError::NodeMissing(node_name.into()))?;
+    if choice_index >= node.choices.len() {
+        return Err(DialogueEditError::ChoiceIndexOutOfRange(
+            choice_index,
+            node.choices.len(),
+        ));
+    }
+    let effects = &mut node.choices[choice_index].effects;
+    if effect_index >= effects.len() {
+        return Err(DialogueEditError::Invalid(format!(
+            "effect index {} out of range (choice has {} effects)",
+            effect_index,
+            effects.len()
+        )));
+    }
+    effects.remove(effect_index);
     Ok(())
 }
 
