@@ -23,6 +23,7 @@ mod combat;
 mod crafting;
 pub mod dg;
 pub mod dialogue;
+mod editor;
 mod fishing;
 mod garden;
 mod groups;
@@ -80,7 +81,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         summonable, creation_complete, must_change_password, show_room_flags,
         mana_enabled, is_grouped, is_wet, has_hypothermia, is_unconscious,
         has_heat_exhaustion, has_heat_stroke, has_illness, food_sick, on_tour,
-        automap_enabled, ascii_map);
+        automap_enabled, ascii_map, new_editor_enabled);
 
     // Read-only bool getters
     register_bool_ro!(engine, CharacterData, is_builder, is_admin, god_mode, build_mode);
@@ -291,6 +292,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 summonable: false,
                 // Bloodfeed consent flag (vampire feed without humanity hit)
                 bloodfeed_willing: false,
+                // Beta opt-in for the modern multi-line editor (default off).
+                new_editor_enabled: false,
                 // Vampirism state (None = mortal). Stamped by the embrace flow.
                 vampire_state: None,
                 // Property rental system
@@ -1998,5 +2001,6 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     email::register(engine, db.clone());
     bans::register(engine, db.clone(), connections.clone());
     account_prefs::register(engine, db.clone(), connections.clone());
+    editor::register(engine, connections.clone());
     vampire::register(engine, db.clone(), connections.clone());
 }

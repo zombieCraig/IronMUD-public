@@ -181,6 +181,10 @@ pub struct CharacterData {
     /// non-consenting mortal carries the moral cost.
     #[serde(default)]
     pub bloodfeed_willing: bool,
+    /// Beta opt-in for the modern full-screen multi-line editor.
+    /// When off, OLC text composition uses the legacy line-oriented editor.
+    #[serde(default)]
+    pub new_editor_enabled: bool,
     /// Vampirism state. None = mortal (default for nearly every character).
     /// Some = kindred. Stamped by the embrace flow (admin / quest / class
     /// creation). See `crate::types::VampireState`.

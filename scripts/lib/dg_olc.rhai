@@ -1,11 +1,14 @@
 // scripts/lib/dg_olc.rhai
 // Shared DG-trigger builder UX helpers used by medit/oedit/redit.
 // Import with: import "dg_olc" as dg;
-// Public entry: dg::handle(host_kind, host_id, action, rest, connection_id);
+// Public entry: dg::handle(host_kind, host_id, display_id, action, rest, connection_id);
+//   `host_id` is the entity UUID used for setter lookups.
+//   `display_id` is the keyword/vnum the user typed; echoed back in help so
+//   the printed lines stay re-typable.
 
-fn handle(host_kind, host_id, action, rest, connection_id) {
+fn handle(host_kind, host_id, display_id, action, rest, connection_id) {
     if action == "" {
-        show_help(host_kind, host_id, connection_id);
+        show_help(host_kind, display_id, connection_id);
         return;
     }
     let act = action.to_lower();
@@ -18,14 +21,14 @@ fn handle(host_kind, host_id, action, rest, connection_id) {
     if act == "protos" { protos_list(connection_id); return; }
     if act == "elevate" { elevate_trigger(host_kind, host_id, rest, connection_id); return; }
 
-    show_help(host_kind, host_id, connection_id);
+    show_help(host_kind, display_id, connection_id);
 }
 
-fn show_help(host_kind, host_id, connection_id) {
+fn show_help(host_kind, display_id, connection_id) {
     let cmd = if host_kind == "mobile" { "medit" }
               else if host_kind == "item" { "oedit" }
               else { "redit" };
-    let id_part = if host_kind == "room" { "" } else { host_id + " " };
+    let id_part = if host_kind == "room" { "" } else { display_id + " " };
     let output = "DG Trigger commands (" + host_kind + "):\n"
         + "  " + cmd + " " + id_part + "trigger dg list           - List dg-bodied triggers\n"
         + "  " + cmd + " " + id_part + "trigger dg view <idx>     - Show body\n"
@@ -33,8 +36,19 @@ fn show_help(host_kind, host_id, connection_id) {
         + "  " + cmd + " " + id_part + "trigger dg edit <idx>     - Re-open the editor\n"
         + "  " + cmd + " " + id_part + "trigger dg attach <vnum>  - Attach an imported prototype by vnum\n"
         + "  " + cmd + " " + id_part + "trigger dg elevate <idx> [on|off]  - (admin) Bypass area gate on dangerous opcodes\n"
-        + "  " + cmd + " " + id_part + "trigger dg protos         - List imported prototypes";
+        + "  " + cmd + " " + id_part + "trigger dg protos         - List imported prototypes\n"
+        + "\nValid types for " + host_kind + ": " + valid_types_for(host_kind);
     send_client_message(connection_id, output);
+}
+
+fn valid_types_for(host_kind) {
+    if host_kind == "mobile" {
+        return "greet, attack, death, say, idle, always, flee, fight, hitprcnt, receive, bribe, load, command";
+    }
+    if host_kind == "item" {
+        return "get, drop, use, examine, prompt, load, command";
+    }
+    return "enter, exit, look, periodic, time_change, weather_change, season_change, month_change, command";
 }
 
 fn triggers_for(host_kind, host_id) {
@@ -139,7 +153,12 @@ fn view_trigger(host_kind, host_id, rest, connection_id) {
 }
 
 fn add_trigger(host_kind, host_id, rest, connection_id) {
-    if rest.len() < 1 { send_client_message(connection_id, "Usage: trigger dg add <type> [name]"); return; }
+    if rest.len() < 1 {
+        send_client_message(connection_id,
+            "Usage: trigger dg add <type> [name]\n"
+            + "Valid types for " + host_kind + ": " + valid_types_for(host_kind));
+        return;
+    }
     let ttype = rest[0];
     let name = "";
     if rest.len() > 1 {
@@ -156,7 +175,9 @@ fn add_trigger(host_kind, host_id, rest, connection_id) {
     else { new_idx = add_room_dg_trigger(host_id, ttype, name); }
 
     if new_idx < 0 {
-        send_client_message(connection_id, "Could not add trigger (unknown type '" + ttype + "'?).");
+        send_client_message(connection_id,
+            "Could not add trigger (unknown type '" + ttype + "').\n"
+            + "Valid types for " + host_kind + ": " + valid_types_for(host_kind));
         return;
     }
     open_editor(host_kind, host_id, new_idx, connection_id);
@@ -201,6 +222,9 @@ fn open_editor(host_kind, host_id, index, connection_id) {
     let body = body_for(host_kind, host_id, index);
     set_olc_buffer_text(connection_id, body);
     set_olc_mode(connection_id, "collecting_dg_body");
+    if try_enter_modern_editor(connection_id) {
+        return;
+    }
     send_client_message(connection_id,
         "Editing DG trigger #" + index + " body. Type lines, .h for help, .save to save, .abort to cancel.");
 }

@@ -50,6 +50,10 @@ fn run_command(args, connection_id) {
     set_olc_buffer(connection_id, lines);
     set_olc_mode(connection_id, "collecting_note");
 
+    if try_enter_modern_editor(connection_id) {
+        return;
+    }
+
     let output = "Writing on: " + item.short_desc + "\n";
     if lines.len() == 0 {
         output += "(blank)\n";

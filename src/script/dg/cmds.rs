@@ -119,6 +119,30 @@ fn strip_pct(s: &str) -> &str {
     s.strip_suffix('%').unwrap_or(s)
 }
 
+/// Canonical list of DG command verbs (lowercased, `%`-stripped). The
+/// editor's syntax highlighter and tab-completion source consume this
+/// directly so they never drift from the dispatcher. Aliases / typo
+/// spellings (`echaround`, `wmtimer`, etc.) are intentionally omitted
+/// from the surfaced list — keep them in `is_known_dg_verb` only.
+pub const COMMANDS: &[&str] = &[
+    "send", "msend", "osend", "wsend",
+    "echo", "mecho", "oecho", "wecho", "recho", "mrecho", "orecho", "wrecho",
+    "echoaround", "mechoaround", "oechoaround", "wechoaround",
+    "zoneecho", "zecho",
+    "damage", "mdamage", "odamage", "wdamage",
+    "teleport", "mteleport", "oteleport", "wteleport",
+    "purge", "mpurge", "opurge", "wpurge",
+    "load", "mload", "oload", "wload",
+    "log", "mlog", "olog", "wlog",
+    "dg_cast", "dg_affect",
+    "force", "mforce", "oforce", "wforce",
+    "mremember", "mforget", "mhunt",
+    "at", "mat", "oat", "wat",
+    "mdoor", "odoor", "wdoor", "door",
+    "otimer", "mtimer", "wtimer", "timer",
+    "transform", "mtransform", "otransform",
+];
+
 /// Return `true` when `verb` (already lowercased + `%`-stripped) is a
 /// known DG command. Used by the `Stmt::Cmd` evaluator to preserve a
 /// leading `%verb%` token through variable substitution — without this,

@@ -490,6 +490,9 @@ fn tree_edittext(mobile_id, parts, connection_id) {
     // empty if start fresh. Keep it simple — start with an empty buffer.
     set_olc_buffer_text(connection_id, "");
     set_olc_mode(connection_id, "collecting_dialogue_node_text");
+    if try_enter_modern_editor(connection_id) {
+        return;
+    }
     send_client_message(connection_id,
         "Editing text for dialogue node `" + name + "`. Type lines, .h for help, .save to save, .abort to cancel.");
 }
@@ -594,8 +597,8 @@ fn dispatch_role_subcommand(mobile, uuid, subcommand, parts, char, connection_id
 }
 
 // Dispatch group 6: Advanced features (trigger, transport, leasing, combat_spells)
-fn dispatch_advanced_subcommand(mobile, uuid, subcommand, parts, connection_id) {
-    if subcommand == "trigger" { handle_trigger_subcommand(mobile, uuid, parts, connection_id); return true; }
+fn dispatch_advanced_subcommand(mobile, uuid, mobile_id, subcommand, parts, connection_id) {
+    if subcommand == "trigger" { handle_trigger_subcommand(mobile, uuid, mobile_id, parts, connection_id); return true; }
     if subcommand == "transport" { handle_transport_subcommand(mobile, uuid, parts, connection_id); return true; }
     if subcommand == "leasing" { handle_leasing_subcommand(mobile, uuid, parts, connection_id); return true; }
     if subcommand == "combat_spells" || subcommand == "spells" { handle_combat_spells_subcommand(mobile, uuid, parts, connection_id); return true; }
@@ -775,7 +778,7 @@ fn handle_subcommand(mobile, mobile_id, subcommand, parts, char, connection_id) 
     if dispatch_meta_subcommand(mobile, uuid, subcommand, parts, connection_id) { return; }
     if dispatch_dialogue_subcommand(mobile, uuid, subcommand, parts, connection_id) { return; }
     if dispatch_role_subcommand(mobile, uuid, subcommand, parts, char, connection_id) { return; }
-    if dispatch_advanced_subcommand(mobile, uuid, subcommand, parts, connection_id) { return; }
+    if dispatch_advanced_subcommand(mobile, uuid, mobile_id, subcommand, parts, connection_id) { return; }
     if dispatch_routine_subcommand(mobile, uuid, subcommand, parts, connection_id) { return; }
     if dispatch_preset_subcommand(uuid, subcommand, parts, connection_id) { return; }
     if dispatch_vampire_subcommand(mobile, uuid, subcommand, parts, connection_id) { return; }
@@ -2551,12 +2554,14 @@ fn handle_healer_cost(mobile_id, parts, connection_id) {
 
 // === Trigger Subcommands ===
 
-fn handle_trigger_subcommand(mobile, mobile_id, parts, connection_id) {
+fn handle_trigger_subcommand(mobile, mobile_id, display_id, parts, connection_id) {
     // medit <id> trigger <action> [args...]
     // actions: list, add, remove, enable, disable, chance
+    // `mobile_id` is the mobile UUID used by setter helpers; `display_id`
+    // is what the user typed (vnum or keyword) — echoed back in help.
 
     if parts.len() < 3 {
-        show_trigger_help(mobile_id, connection_id);
+        show_trigger_help(display_id, connection_id);
         return;
     }
 
@@ -2612,11 +2617,11 @@ fn handle_trigger_subcommand(mobile, mobile_id, parts, connection_id) {
         let dg_rest = [];
         let i = 4;
         while i < parts.len() { dg_rest.push(parts[i]); i += 1; }
-        dg::handle("mobile", mobile_id, dg_action, dg_rest, connection_id);
+        dg::handle("mobile", mobile_id, display_id, dg_action, dg_rest, connection_id);
         return;
     }
 
-    show_trigger_help(mobile_id, connection_id);
+    show_trigger_help(display_id, connection_id);
 }
 
 fn show_trigger_help(mobile_id, connection_id) {

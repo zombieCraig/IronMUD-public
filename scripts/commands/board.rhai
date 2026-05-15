@@ -169,6 +169,9 @@ fn handle_write(char, connection_id, subject) {
     }
 
     if start_board_post(connection_id, board.vnum, subject) {
+        if try_enter_modern_editor(connection_id) {
+            return;
+        }
         send_client_message(connection_id, "Posting to " + board.short_desc + " — subject: " + subject);
         send_client_message(connection_id, "Enter your post; .save to commit, .cancel to abort, .h for editor help.");
     } else {

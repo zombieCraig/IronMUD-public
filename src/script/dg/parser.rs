@@ -13,6 +13,35 @@
 
 use super::ast::{Block, Stmt, SwitchCase};
 
+/// Canonical list of DG language keywords. Surfaced for the editor's
+/// syntax highlighter and tab-completion source. Keep this in sync with
+/// the dispatcher in `parse_block` below.
+pub const KEYWORDS: &[&str] = &[
+    "if", "elseif", "else", "end",
+    "while", "done",
+    "switch", "case", "default", "break",
+    "set", "eval", "halt", "return",
+    "wait", "context", "global", "unset",
+    "remote", "rdelete",
+];
+
+/// Common DG variable substitutions / fields. Used by tab completion
+/// after the user types `%`. The list is intentionally a curated subset
+/// — DG variables are open-ended (any UUID prefix works), so completion
+/// only knows the common ones.
+pub const VARIABLES: &[&str] = &[
+    "actor", "victim", "self", "arg", "cmd", "speech",
+    "actor.name", "actor.level", "actor.hitp", "actor.maxhp",
+    "actor.gold", "actor.move", "actor.vnum", "actor.is_pc",
+    "actor.room", "actor.fighting", "actor.heshe", "actor.himher",
+    "actor.hisher", "actor.str", "actor.dex", "actor.con",
+    "actor.int", "actor.wis", "actor.cha", "actor.class", "actor.race",
+    "self.name", "self.vnum", "self.room", "self.hitp", "self.maxhp",
+    "self.fighting", "self.is_pc",
+    "victim.name", "victim.vnum", "victim.hitp",
+    "random.10", "random.100", "random.6",
+];
+
 #[derive(Debug)]
 pub struct ParseError {
     pub line: usize,

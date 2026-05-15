@@ -70,6 +70,10 @@ fn enter_motd_editor(connection_id) {
     let lines = if existing != "" { existing.split("\n") } else { [] };
     set_olc_buffer(connection_id, lines);
 
+    if try_enter_modern_editor(connection_id) {
+        return;
+    }
+
     let output = "=== MOTD Editor ===\n";
     output += if lines.len() == 0 { "(empty)\n" } else { format_buffer_lines(lines) };
     output += "\nCommands: .h help | .l list | .s /old/new/ | . save | @ cancel\n";

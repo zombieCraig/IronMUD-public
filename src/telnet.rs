@@ -84,6 +84,13 @@ pub const CTRL_L: u8 = 0x0C; // Clear screen
 pub const CTRL_U: u8 = 0x15; // Kill to beginning of line
 pub const CTRL_T: u8 = 0x14; // Transpose characters
 pub const CTRL_W: u8 = 0x17; // Delete word backward
+pub const CTRL_X: u8 = 0x18; // Exit editor (nano-style)
+pub const CTRL_O: u8 = 0x0F; // Save (nano-style)
+pub const CTRL_G: u8 = 0x07; // Help (nano-style)
+pub const CTRL_Y: u8 = 0x19; // Redo (nano-ish; nano itself uses Alt-E)
+pub const CTRL_Z: u8 = 0x1A; // Undo
+pub const CTRL_BACKSLASH: u8 = 0x1C; // Replace (nano-standard)
+pub const CTRL_UNDERSCORE: u8 = 0x1F; // Goto line (nano-standard)
 
 /// Maximum command history size per session
 pub const MAX_HISTORY_SIZE: usize = 100;
@@ -153,6 +160,9 @@ pub enum EscapeState {
     GotCsi(Vec<u8>),
     /// Accumulating UTF-8 multi-byte sequence (buffer, expected total length)
     Utf8(Vec<u8>, usize),
+    /// Received CSI 'M' — collecting 3 raw bytes (button, col+32, row+32)
+    /// for an X10 / DECSET 1000 mouse report.
+    Mouse(Vec<u8>),
 }
 
 /// Parsed input key events for readline-like handling
@@ -177,6 +187,10 @@ pub enum KeyEvent {
     Home,
     /// End (end of line)
     End,
+    /// Page Up — scroll viewport up
+    PageUp,
+    /// Page Down — scroll viewport down
+    PageDown,
     /// Control key combinations
     CtrlA, // Beginning of line
     CtrlC, // Cancel/interrupt
@@ -187,6 +201,23 @@ pub enum KeyEvent {
     CtrlU, // Kill to beginning of line
     CtrlT, // Transpose characters
     CtrlW, // Delete word backward
+    CtrlX, // Exit editor (nano)
+    CtrlO, // Save (nano)
+    CtrlG, // Help (nano)
+    CtrlY, // Redo
+    CtrlZ, // Undo
+    CtrlBackslash, // Replace
+    CtrlUnderscore, // Goto line
+    /// Left-button mouse press at 1-based terminal (row, col).
+    /// Only emitted while mouse tracking is enabled (DECSET 1000).
+    MouseClick { row: u16, col: u16 },
+    /// Shift-modified navigation (extends selection in the editor).
+    ShiftArrowUp,
+    ShiftArrowDown,
+    ShiftArrowLeft,
+    ShiftArrowRight,
+    ShiftHome,
+    ShiftEnd,
     /// Unknown/ignored
     Unknown,
 }
@@ -210,6 +241,13 @@ pub fn parse_key_byte(state: EscapeState, byte: u8) -> (EscapeState, Option<KeyE
                 CTRL_T => (EscapeState::Normal, Some(KeyEvent::CtrlT)),
                 CTRL_U => (EscapeState::Normal, Some(KeyEvent::CtrlU)),
                 CTRL_W => (EscapeState::Normal, Some(KeyEvent::CtrlW)),
+                CTRL_X => (EscapeState::Normal, Some(KeyEvent::CtrlX)),
+                CTRL_O => (EscapeState::Normal, Some(KeyEvent::CtrlO)),
+                CTRL_G => (EscapeState::Normal, Some(KeyEvent::CtrlG)),
+                CTRL_Y => (EscapeState::Normal, Some(KeyEvent::CtrlY)),
+                CTRL_Z => (EscapeState::Normal, Some(KeyEvent::CtrlZ)),
+                CTRL_BACKSLASH => (EscapeState::Normal, Some(KeyEvent::CtrlBackslash)),
+                CTRL_UNDERSCORE => (EscapeState::Normal, Some(KeyEvent::CtrlUnderscore)),
                 0x00..=0x1F => (EscapeState::Normal, Some(KeyEvent::Unknown)),
                 _ => {
                     // Determine UTF-8 sequence length from lead byte
@@ -246,20 +284,47 @@ pub fn parse_key_byte(state: EscapeState, byte: u8) -> (EscapeState, Option<KeyE
             }
         }
         EscapeState::GotCsi(mut params) => {
+            // Shift-modifier detection: xterm emits "1;2" for shift+arrow,
+            // "1;5" for ctrl, etc. We only special-case shift today.
+            let shifted = matches!(params.as_slice(), [b'1', b';', b'2']);
             match byte {
                 // Final byte range for CSI sequences
-                b'A' => (EscapeState::Normal, Some(KeyEvent::ArrowUp)),
-                b'B' => (EscapeState::Normal, Some(KeyEvent::ArrowDown)),
-                b'C' => (EscapeState::Normal, Some(KeyEvent::ArrowRight)),
-                b'D' => (EscapeState::Normal, Some(KeyEvent::ArrowLeft)),
-                b'H' => (EscapeState::Normal, Some(KeyEvent::Home)),
-                b'F' => (EscapeState::Normal, Some(KeyEvent::End)),
+                b'A' => (
+                    EscapeState::Normal,
+                    Some(if shifted { KeyEvent::ShiftArrowUp } else { KeyEvent::ArrowUp }),
+                ),
+                b'B' => (
+                    EscapeState::Normal,
+                    Some(if shifted { KeyEvent::ShiftArrowDown } else { KeyEvent::ArrowDown }),
+                ),
+                b'C' => (
+                    EscapeState::Normal,
+                    Some(if shifted { KeyEvent::ShiftArrowRight } else { KeyEvent::ArrowRight }),
+                ),
+                b'D' => (
+                    EscapeState::Normal,
+                    Some(if shifted { KeyEvent::ShiftArrowLeft } else { KeyEvent::ArrowLeft }),
+                ),
+                b'H' => (
+                    EscapeState::Normal,
+                    Some(if shifted { KeyEvent::ShiftHome } else { KeyEvent::Home }),
+                ),
+                b'F' => (
+                    EscapeState::Normal,
+                    Some(if shifted { KeyEvent::ShiftEnd } else { KeyEvent::End }),
+                ),
+                b'M' => {
+                    // X10 mouse report — 3 raw bytes follow.
+                    (EscapeState::Mouse(Vec::new()), None)
+                }
                 b'~' => {
                     // Extended sequences: ESC [ n ~
                     let key = match params.as_slice() {
                         [b'1'] | [b'7'] => KeyEvent::Home,
                         [b'4'] | [b'8'] => KeyEvent::End,
                         [b'3'] => KeyEvent::Delete,
+                        [b'5'] => KeyEvent::PageUp,
+                        [b'6'] => KeyEvent::PageDown,
                         _ => KeyEvent::Unknown,
                     };
                     (EscapeState::Normal, Some(key))
@@ -272,6 +337,27 @@ pub fn parse_key_byte(state: EscapeState, byte: u8) -> (EscapeState, Option<KeyE
                 // Timeout or unknown - reset
                 _ => (EscapeState::Normal, Some(KeyEvent::Unknown)),
             }
+        }
+        EscapeState::Mouse(mut buf) => {
+            buf.push(byte);
+            if buf.len() == 3 {
+                // Xterm X10 mouse: each byte = value + 32. Left-button
+                // press has cb_actual == 0; release == 3. We only emit
+                // MouseClick for left press; everything else is dropped
+                // so other buttons / drag / wheel stay invisible to the
+                // editor for now.
+                let cb = buf[0].saturating_sub(32);
+                let cx = buf[1].saturating_sub(32) as u16;
+                let cy = buf[2].saturating_sub(32) as u16;
+                if cb & 0x3 == 0 {
+                    return (
+                        EscapeState::Normal,
+                        Some(KeyEvent::MouseClick { row: cy, col: cx }),
+                    );
+                }
+                return (EscapeState::Normal, Some(KeyEvent::Unknown));
+            }
+            (EscapeState::Mouse(buf), None)
         }
         EscapeState::Utf8(mut buf, expected) => {
             // Accumulating UTF-8 multi-byte sequence

@@ -234,6 +234,43 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         },
     );
 
+    // is_new_editor_enabled(connection_id) -> bool
+    let conns = connections.clone();
+    engine.register_fn(
+        "is_new_editor_enabled",
+        move |connection_id: String| -> bool {
+            if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+                let conns_lock = conns.lock().unwrap();
+                if let Some(session) = conns_lock.get(&conn_id) {
+                    if let Some(ref char) = session.character {
+                        return char.new_editor_enabled;
+                    }
+                }
+            }
+            false
+        },
+    );
+
+    // set_new_editor_enabled(connection_id, enabled) -> bool
+    let conns = connections.clone();
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_new_editor_enabled",
+        move |connection_id: String, enabled: bool| -> bool {
+            if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+                let mut conns_lock = conns.lock().unwrap();
+                if let Some(session) = conns_lock.get_mut(&conn_id) {
+                    if let Some(ref mut char) = session.character {
+                        char.new_editor_enabled = enabled;
+                        let _ = cloned_db.save_character_data(char.clone());
+                        return true;
+                    }
+                }
+            }
+            false
+        },
+    );
+
     // resolve_gender_pronouns(value) -> String
     // Returns "he/him/his" style triple for the resolved gender, mirroring
     // how DG Scripts parses %actor.heshe%/.himher%/.hisher%. Empty or

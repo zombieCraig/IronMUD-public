@@ -78,6 +78,11 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if setting_name == "new_editor" {
+        handle_new_editor(connection_id, value_arg);
+        return;
+    }
+
     if setting_name == "bloodfeed" {
         handle_bloodfeed(connection_id, value_arg);
         return;
@@ -179,6 +184,12 @@ fn show_settings_table(connection_id, is_builder, is_admin) {
     let sm_toggle = make_toggle_link("set summonable", sm_val, connection_id);
     output += "  " + pad_right("summonable", 14) + pad_right(sm_toggle, 10);
     output += "Allow other players to summon you with the summon spell\n";
+
+    // Modern editor beta opt-in
+    let ne_val = if is_new_editor_enabled(connection_id) { "on" } else { "off" };
+    let ne_toggle = make_toggle_link("set new_editor", ne_val, connection_id);
+    output += "  " + pad_right("new_editor", 14) + pad_right(ne_toggle, 10);
+    output += "[BETA] Use the modern full-screen multi-line editor\n";
 
     // Gender (free string)
     let gender_val = "(unset)";
@@ -562,6 +573,41 @@ fn handle_summonable(connection_id, value_arg) {
     }
 
     send_client_message(connection_id, "Usage: set summonable on|off");
+}
+
+fn handle_new_editor(connection_id, value_arg) {
+    let current = is_new_editor_enabled(connection_id);
+
+    if value_arg == "" {
+        let status = if current { "enabled" } else { "disabled" };
+        send_client_message(connection_id, "[BETA] New editor is currently " + status + ".");
+        send_client_message(connection_id, "Usage: set new_editor on|off");
+        send_client_message(connection_id, "");
+        send_client_message(connection_id, "When enabled, OLC text composition (descriptions, notes, board posts,");
+        send_client_message(connection_id, "DG triggers, dialogue, MOTD) uses the new full-screen modern editor.");
+        send_client_message(connection_id, "Falls back to the legacy line editor on clients without ANSI / char mode.");
+        return;
+    }
+
+    if value_arg == "on" || value_arg == "enable" || value_arg == "true" || value_arg == "1" {
+        if set_new_editor_enabled(connection_id, true) {
+            send_client_message(connection_id, "[BETA] New editor enabled. Open any OLC text field to try it.");
+        } else {
+            send_client_message(connection_id, "Error enabling new editor.");
+        }
+        return;
+    }
+
+    if value_arg == "off" || value_arg == "disable" || value_arg == "false" || value_arg == "0" {
+        if set_new_editor_enabled(connection_id, false) {
+            send_client_message(connection_id, "New editor disabled. Reverting to the legacy line editor.");
+        } else {
+            send_client_message(connection_id, "Error disabling new editor.");
+        }
+        return;
+    }
+
+    send_client_message(connection_id, "Usage: set new_editor on|off");
 }
 
 fn handle_bloodfeed(connection_id, value_arg) {

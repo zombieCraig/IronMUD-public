@@ -19,6 +19,7 @@ pub mod completion;
 pub mod control;
 pub mod db;
 pub mod dialogue_edit;
+pub mod editor;
 pub mod discord;
 pub mod email;
 pub mod game;
@@ -169,6 +170,12 @@ pub struct PlayerSession {
     /// Unix timestamp when the connection was lost. If `Some`, the player is
     /// in the Linkdead grace period. `None` means the connection is active.
     pub disconnected_at: Option<i64>,
+    /// Active modern multi-line editor instance. Present only while the
+    /// player is composing inside the new editor; mutually exclusive with
+    /// `olc_mode == Some(...)` routing through the legacy line editor
+    /// (we keep `olc_mode` set during a modern session so cleanup and
+    /// force-save paths still recognise the editor state).
+    pub modern_editor: Option<crate::editor::EditorSession>,
 }
 
 /// Input events from the read handler
@@ -180,6 +187,10 @@ pub enum InputEvent {
     Tab,
     /// Raw bytes for fallback line mode (client doesn't support char mode)
     RawLine(String),
+    /// Modern editor user saved — content is the joined buffer to commit.
+    ModernEditorSave(String),
+    /// Modern editor user cancelled — discard the buffer.
+    ModernEditorCancel,
 }
 
 pub type SharedConnections = Arc<Mutex<HashMap<ConnectionId, PlayerSession>>>;
@@ -865,6 +876,9 @@ pub fn is_text_editor_mode(mode: &str) -> bool {
 /// True when the session is composing in the multi-line editor and should
 /// therefore be deafened to ambient/room broadcasts.
 pub fn session_is_writing(session: &PlayerSession) -> bool {
+    if session.modern_editor.is_some() {
+        return true;
+    }
     session
         .olc_mode
         .as_deref()
@@ -886,6 +900,12 @@ fn clear_olc_state(session: &mut PlayerSession) {
     session.olc_dialogue_node_name = None;
     session.olc_extra_keywords.clear();
     session.olc_undo_buffer = None;
+    session.modern_editor = None;
+}
+
+/// True if the session is composing via the modern editor.
+pub fn session_in_modern_editor(session: &PlayerSession) -> bool {
+    session.modern_editor.is_some()
 }
 
 /// Emergency-save the in-progress editor buffer to its target entity, then
@@ -1138,6 +1158,226 @@ pub fn force_save_editor(
         }
     }
     true
+}
+
+/// Modern-editor save: commit the supplied buffer content to the entity
+/// targeted by the current OLC mode without tearing down the editor. The
+/// caller (modern editor Ctrl-O handler) re-renders the editor afterwards
+/// with `EditorSession::mark_saved`. Mirrors `force_save_editor` minus the
+/// truncation broadcast and the trailing `clear_olc_state` — both happen
+/// in the editor session instead.
+///
+/// Returns the number of bytes written on success, `None` if the session
+/// is not in a text-editor OLC mode or the buffer exceeds the per-mode cap.
+pub fn save_modern_editor(
+    connection_id: ConnectionId,
+    connections: &SharedConnections,
+    state: &SharedState,
+    content: String,
+) -> Option<usize> {
+    struct Snapshot {
+        mode: String,
+        content: String,
+        edit_room: Option<Uuid>,
+        edit_item: Option<Uuid>,
+        edit_mobile: Option<Uuid>,
+        board_vnum: Option<String>,
+        board_subject: Option<String>,
+        trigger_host: Option<String>,
+        trigger_index: Option<usize>,
+        dialogue_node_name: Option<String>,
+        extra_keywords: Vec<String>,
+        author: String,
+        author_is_admin: bool,
+    }
+
+    let snap = {
+        let conns = connections.lock().ok()?;
+        let session = conns.get(&connection_id)?;
+        let mode = match session.olc_mode.as_deref() {
+            Some(m) if is_text_editor_mode(m) => m.to_string(),
+            _ => return None,
+        };
+        let cap = match mode.as_str() {
+            "collecting_desc" => crate::api::validate::DESCRIPTION_MAX,
+            _ => 32 * 1024,
+        };
+        if content.len() > cap {
+            return None;
+        }
+        let (author, author_is_admin) = session
+            .character
+            .as_ref()
+            .map(|c| (c.name.clone(), c.is_admin))
+            .unwrap_or((String::new(), false));
+        Snapshot {
+            mode,
+            content,
+            edit_room: session.olc_edit_room,
+            edit_item: session.olc_edit_item,
+            edit_mobile: session.olc_edit_mobile,
+            board_vnum: session.olc_edit_board_vnum.clone(),
+            board_subject: session.olc_board_subject.clone(),
+            trigger_host: session.olc_edit_trigger_host.clone(),
+            trigger_index: session.olc_edit_trigger_index,
+            dialogue_node_name: session.olc_dialogue_node_name.clone(),
+            extra_keywords: session.olc_extra_keywords.clone(),
+            author,
+            author_is_admin,
+        }
+    };
+
+    let written = snap.content.len();
+
+    match snap.mode.as_str() {
+        "collecting_desc" => {
+            if let Some(room_id) = snap.edit_room {
+                if let Ok(world) = state.lock() {
+                    if let Ok(Some(mut room)) = world.db.get_room_data(&room_id) {
+                        room.description = snap.content;
+                        let _ = world.db.save_room_data(room);
+                    }
+                }
+            }
+        }
+        "collecting_note" => {
+            if let Some(item_id) = snap.edit_item {
+                if let Ok(world) = state.lock() {
+                    if let Ok(Some(mut item)) = world.db.get_item_data(&item_id) {
+                        item.note_content = if snap.content.is_empty() {
+                            None
+                        } else {
+                            Some(snap.content)
+                        };
+                        let _ = world.db.save_item_data(item);
+                    }
+                }
+            }
+        }
+        "collecting_board_post" => {
+            if !snap.content.is_empty() {
+                if let (Some(vnum), Some(subj)) = (snap.board_vnum, snap.board_subject) {
+                    if !snap.author.is_empty() {
+                        if let Ok(world) = state.lock() {
+                            let max = world
+                                .db
+                                .get_item_by_vnum(&vnum)
+                                .ok()
+                                .flatten()
+                                .and_then(|item| item.board_max_messages);
+                            let post = BoardPost::new(vnum, snap.author, subj, snap.content);
+                            let _ = world.db.store_board_post(post, max);
+                        }
+                    }
+                }
+            }
+        }
+        "collecting_dg_body" => {
+            if let (Some(kind), Some(idx)) = (snap.trigger_host, snap.trigger_index) {
+                let host_id = match kind.as_str() {
+                    "mobile" => snap.edit_mobile,
+                    "item" => snap.edit_item,
+                    "room" => snap.edit_room,
+                    _ => None,
+                };
+                if let Some(id) = host_id {
+                    let body = if snap.content.is_empty() {
+                        None
+                    } else {
+                        Some(snap.content)
+                    };
+                    let author_opt = if snap.author.is_empty() {
+                        None
+                    } else {
+                        Some(snap.author)
+                    };
+                    let author_is_admin = snap.author_is_admin;
+                    if let Ok(world) = state.lock() {
+                        match kind.as_str() {
+                            "mobile" => {
+                                let _ = world.db.update_mobile(&id, |m| {
+                                    if idx < m.triggers.len() {
+                                        m.triggers[idx].dg_body = body.clone();
+                                        m.triggers[idx].authored_by = author_opt.clone();
+                                        if !author_is_admin {
+                                            m.triggers[idx].elevated = false;
+                                        }
+                                    }
+                                });
+                            }
+                            "item" => {
+                                let _ = world.db.update_item(&id, |i| {
+                                    if idx < i.triggers.len() {
+                                        i.triggers[idx].dg_body = body.clone();
+                                        i.triggers[idx].authored_by = author_opt.clone();
+                                        if !author_is_admin {
+                                            i.triggers[idx].elevated = false;
+                                        }
+                                    }
+                                });
+                            }
+                            "room" => {
+                                let _ = world.db.update_room(&id, |r| {
+                                    if idx < r.triggers.len() {
+                                        r.triggers[idx].dg_body = body.clone();
+                                        r.triggers[idx].authored_by = author_opt.clone();
+                                        if !author_is_admin {
+                                            r.triggers[idx].elevated = false;
+                                        }
+                                    }
+                                });
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        "collecting_dialogue_node_text" => {
+            if let (Some(mid), Some(name)) = (snap.edit_mobile, snap.dialogue_node_name) {
+                if let Ok(world) = state.lock() {
+                    let _ = world.db.update_mobile(&mid, |m| {
+                        if let Some(tree) = m.dialogue_tree.as_mut() {
+                            if let Some(node) = tree.nodes.get_mut(&name) {
+                                node.text = snap.content.clone();
+                            }
+                        }
+                    });
+                }
+            }
+        }
+        "collecting_extra_desc" => {
+            if let Some(item_id) = snap.edit_item {
+                if let Ok(world) = state.lock() {
+                    if let Ok(Some(mut item)) = world.db.get_item_data(&item_id) {
+                        item.extra_descs.push(ExtraDesc {
+                            keywords: snap.extra_keywords,
+                            description: snap.content,
+                        });
+                        let _ = world.db.save_item_data(item);
+                    }
+                }
+            } else if let Some(room_id) = snap.edit_room {
+                if let Ok(world) = state.lock() {
+                    if let Ok(Some(mut room)) = world.db.get_room_data(&room_id) {
+                        room.extra_descs.push(ExtraDesc {
+                            keywords: snap.extra_keywords,
+                            description: snap.content,
+                        });
+                        let _ = world.db.save_room_data(room);
+                    }
+                }
+            }
+        }
+        "collecting_motd" => {
+            if let Ok(world) = state.lock() {
+                let _ = world.db.set_setting("motd", &snap.content);
+            }
+        }
+        _ => {}
+    }
+
+    Some(written)
 }
 
 /// If a player named `char_name` is composing in the multi-line editor when a
@@ -1713,6 +1953,7 @@ pub async fn handle_connection(
                 account_name: None,
                 slow_move_completing: false,
                 disconnected_at: None,
+                modern_editor: None,
             },
         );
     }
@@ -2120,9 +2361,104 @@ pub async fn handle_connection(
         // CRLF protocol breaks, and other control chars. Server-emitted
         // output is unaffected because it never passes through this
         // boundary.
+        // Modern editor signalling. The read handler emits these when the
+        // player presses Ctrl-X / Ctrl-O inside the new editor; we mirror
+        // the legacy save/cancel cleanup here without sanitising the
+        // content (the editor already controls what enters the buffer).
+        match &event {
+            InputEvent::ModernEditorCancel => {
+                {
+                    let mut conns = connections.lock().unwrap();
+                    if let Some(session) = conns.get_mut(&connection_id) {
+                        clear_olc_state(session);
+                    }
+                }
+                // Clear the screen the editor was painting on so the
+                // legacy prompt lands on a clean line.
+                if let Some(raw) = {
+                    let conns = connections.lock().unwrap();
+                    conns
+                        .get(&connection_id)
+                        .and_then(|s| s.raw_sender.clone())
+                } {
+                    // Disable X10 mouse tracking and clear the editor's
+                    // screen so the legacy prompt lands on a clean line.
+                    let _ = raw.send(b"\x1b[?1000l\x1b[2J\x1b[H".to_vec());
+                }
+                let _ = tx_client.send("Editing cancelled — no changes saved.\n".to_string());
+                let prompt = build_prompt(&connection_id, &connections, &state);
+                let _ = tx_client.send(prompt);
+                continue;
+            }
+            InputEvent::ModernEditorSave(content) => {
+                let mode = {
+                    let conns = connections.lock().unwrap();
+                    conns
+                        .get(&connection_id)
+                        .and_then(|s| s.olc_mode.clone())
+                };
+                let bytes = content.len();
+                let result = save_modern_editor(connection_id, &connections, &state, content.clone());
+                {
+                    let mut conns = connections.lock().unwrap();
+                    if let Some(session) = conns.get_mut(&connection_id) {
+                        clear_olc_state(session);
+                    }
+                }
+                if let Some(raw) = {
+                    let conns = connections.lock().unwrap();
+                    conns
+                        .get(&connection_id)
+                        .and_then(|s| s.raw_sender.clone())
+                } {
+                    // Disable X10 mouse tracking and clear the editor's
+                    // screen so the legacy prompt lands on a clean line.
+                    let _ = raw.send(b"\x1b[?1000l\x1b[2J\x1b[H".to_vec());
+                }
+                let msg = match (result, mode.as_deref()) {
+                    (Some(_), Some("collecting_desc")) => "Description saved.\n".to_string(),
+                    (Some(_), Some("collecting_note")) => {
+                        if bytes == 0 {
+                            "Note cleared.\n".to_string()
+                        } else {
+                            "Note saved.\n".to_string()
+                        }
+                    }
+                    (Some(_), Some("collecting_board_post")) => {
+                        if bytes == 0 {
+                            "Empty post discarded.\n".to_string()
+                        } else {
+                            "Post submitted.\n".to_string()
+                        }
+                    }
+                    (Some(_), Some("collecting_dg_body")) => "DG trigger body saved.\n".to_string(),
+                    (Some(_), Some("collecting_dialogue_node_text")) => {
+                        "Dialogue node text saved.\n".to_string()
+                    }
+                    (Some(_), Some("collecting_extra_desc")) => {
+                        "Extra description saved.\n".to_string()
+                    }
+                    (Some(_), Some("collecting_motd")) => "MOTD saved.\n".to_string(),
+                    (Some(_), _) => "Saved.\n".to_string(),
+                    (None, _) => format!(
+                        "Save refused (buffer too large: {} bytes). Re-enter the editor to trim.\n",
+                        bytes
+                    ),
+                };
+                let _ = tx_client.send(msg);
+                let prompt = build_prompt(&connection_id, &connections, &state);
+                let _ = tx_client.send(prompt);
+                continue;
+            }
+            _ => {}
+        }
+
         let input = match event {
             InputEvent::Line(s) | InputEvent::RawLine(s) => session::sanitize_player_text(&s),
             InputEvent::Tab => continue, // Already handled above
+            InputEvent::ModernEditorSave(_) | InputEvent::ModernEditorCancel => {
+                unreachable!("modern editor events handled above")
+            }
         };
 
         // Update last activity time for idle tracking
@@ -3734,6 +4070,63 @@ async fn handle_read_char_mode(
                         // Handle the key event
                         if let Some(key) = key_event {
                             use telnet::KeyEvent;
+
+                            // Modern editor intercept: when a beta editor
+                            // session is active on this connection, every
+                            // key is routed to it, draining any rendered
+                            // bytes to the raw output channel. We never
+                            // reach the readline / line-mode branches
+                            // below while the editor owns the screen.
+                            let modern_action = {
+                                let mut conns = connections.lock().unwrap();
+                                if let Some(session) = conns.get_mut(&connection_id) {
+                                    let w = session.telnet_state.window_width;
+                                    let h = session.telnet_state.window_height;
+                                    if let Some(ref mut editor) = session.modern_editor {
+                                        editor.set_size(w, h);
+                                        let action = editor.handle_key(&key);
+                                        let bytes = editor.take_output();
+                                        Some((action, bytes))
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    None
+                                }
+                            };
+
+                            if let Some((action, bytes)) = modern_action {
+                                if !bytes.is_empty() {
+                                    let _ = tx_raw.send(bytes);
+                                }
+                                use crate::editor::EditorAction;
+                                match action {
+                                    EditorAction::None => {}
+                                    EditorAction::Save => {
+                                        let content = {
+                                            let mut conns = connections.lock().unwrap();
+                                            conns
+                                                .get_mut(&connection_id)
+                                                .and_then(|s| s.modern_editor.take())
+                                                .map(|e| e.take_text())
+                                                .unwrap_or_default()
+                                        };
+                                        let _ = tx_input
+                                            .try_send(InputEvent::ModernEditorSave(content));
+                                    }
+                                    EditorAction::Cancel => {
+                                        {
+                                            let mut conns = connections.lock().unwrap();
+                                            if let Some(s) = conns.get_mut(&connection_id) {
+                                                s.modern_editor = None;
+                                            }
+                                        }
+                                        let _ = tx_input.try_send(InputEvent::ModernEditorCancel);
+                                    }
+                                }
+                                continue;
+                            }
+
                             match key {
                                 KeyEvent::Tab => {
                                     if tx_input.try_send(InputEvent::Tab).is_err() {
@@ -3841,6 +4234,34 @@ async fn handle_read_char_mode(
                                 }
                                 KeyEvent::Unknown => {
                                     // Ignore unknown keys
+                                }
+                                KeyEvent::CtrlX
+                                | KeyEvent::CtrlO
+                                | KeyEvent::CtrlG
+                                | KeyEvent::CtrlY
+                                | KeyEvent::CtrlZ
+                                | KeyEvent::CtrlBackslash
+                                | KeyEvent::CtrlUnderscore => {
+                                    // Modern editor keys outside the editor — ignore.
+                                }
+                                KeyEvent::PageUp | KeyEvent::PageDown => {
+                                    // Modern editor scroll keys outside the editor — ignore.
+                                }
+                                KeyEvent::MouseClick { .. } => {
+                                    // Mouse reports only matter inside the
+                                    // modern editor; mouse tracking is off
+                                    // outside it so we shouldn't normally
+                                    // see these.
+                                }
+                                KeyEvent::ShiftArrowUp
+                                | KeyEvent::ShiftArrowDown
+                                | KeyEvent::ShiftArrowLeft
+                                | KeyEvent::ShiftArrowRight
+                                | KeyEvent::ShiftHome
+                                | KeyEvent::ShiftEnd => {
+                                    // Shift-modified navigation extends a
+                                    // selection inside the modern editor;
+                                    // outside, ignore.
                                 }
                             }
                         }

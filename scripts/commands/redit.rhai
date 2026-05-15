@@ -400,7 +400,9 @@ fn handle_trigger_subcommand(connection_id, room, parts) {
         let dg_rest = [];
         let i = 3;
         while i < parts.len() { dg_rest.push(parts[i]); i += 1; }
-        dg::handle("room", room.id.to_string(), dg_action, dg_rest, connection_id);
+        // Rooms don't take a positional id in commands (always the current room),
+        // so the display_id is unused — pass empty.
+        dg::handle("room", room.id.to_string(), "", dg_action, dg_rest, connection_id);
         return;
     }
 
@@ -615,6 +617,13 @@ fn enter_desc_editor(room, connection_id) {
     let existing_desc = room.description;
     let lines = if existing_desc != "" { existing_desc.split("\n") } else { [] };
     set_olc_buffer(connection_id, lines);
+
+    // Beta opt-in: hand off to the modern full-screen editor if the player has
+    // it enabled and their client supports it. The helper renders its own UI,
+    // so we skip the legacy help text below when it succeeds.
+    if try_enter_modern_editor(connection_id) {
+        return;
+    }
 
     let output = "Editing description for: " + room.title + "\n";
     output += if lines.len() == 0 { "(empty)\n" } else { format_buffer_lines(lines) };
@@ -1260,6 +1269,9 @@ fn run_command(args, connection_id) {
             set_olc_edit_room(connection_id, room.id);
             clear_olc_buffer(connection_id);
             set_olc_extra_keywords(connection_id, keywords);
+            if try_enter_modern_editor(connection_id) {
+                return;
+            }
             let kw_str = format_keywords(keywords);
             let output = "Adding extra description for: " + kw_str + "\n";
             output += "(empty)\n";
@@ -1300,6 +1312,10 @@ fn run_command(args, connection_id) {
             set_olc_edit_room(connection_id, room.id);
             set_olc_buffer(connection_id, lines);
             set_olc_extra_keywords(connection_id, found_keywords);
+
+            if try_enter_modern_editor(connection_id) {
+                return;
+            }
 
             let kw_str = format_keywords(found_keywords);
             let output = "Editing extra description for: " + kw_str + "\n";

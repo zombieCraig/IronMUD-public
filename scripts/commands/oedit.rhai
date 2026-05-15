@@ -510,7 +510,7 @@ fn handle_subcommand(item, item_id, subcommand, parts, char, connection_id) {
 
     // Trigger subcommands
     if subcommand == "trigger" {
-        handle_trigger_subcommand(item, uuid, parts, connection_id);
+        handle_trigger_subcommand(item, uuid, item_id, parts, connection_id);
         return;
     }
 
@@ -1751,6 +1751,10 @@ fn handle_note_subcommand(item_id, parts, connection_id) {
     set_olc_buffer(connection_id, lines);
     set_olc_mode(connection_id, "collecting_note");
 
+    if try_enter_modern_editor(connection_id) {
+        return;
+    }
+
     let output = "Editing note for: " + item.short_desc + "\n";
     if lines.len() == 0 {
         output += "(empty)\n";
@@ -1845,6 +1849,9 @@ fn handle_extra_subcommand(item, item_id, parts, connection_id) {
         set_olc_edit_item(connection_id, item_id);
         clear_olc_buffer(connection_id);
         set_olc_extra_keywords(connection_id, keywords);
+        if try_enter_modern_editor(connection_id) {
+            return;
+        }
         let kw_str = fmt_extra_keywords(keywords);
         let output = "Adding extra description for: " + kw_str + "\n";
         output += "(empty)\n";
@@ -1880,6 +1887,10 @@ fn handle_extra_subcommand(item, item_id, parts, connection_id) {
         set_olc_edit_item(connection_id, item_id);
         set_olc_buffer(connection_id, lines);
         set_olc_extra_keywords(connection_id, found_keywords);
+
+        if try_enter_modern_editor(connection_id) {
+            return;
+        }
 
         let kw_str = fmt_extra_keywords(found_keywords);
         let output = "Editing extra description for: " + kw_str + "\n";
@@ -3501,12 +3512,15 @@ fn handle_vnum_subcommand(item_id, parts, connection_id) {
 
 // === Trigger Subcommands ===
 
-fn handle_trigger_subcommand(item, item_id, parts, connection_id) {
+fn handle_trigger_subcommand(item, item_id, display_id, parts, connection_id) {
     // oedit <id> trigger <action> [args...]
     // actions: list, add, remove, enable, disable, chance
+    // `item_id` is the item UUID used by setter helpers; `display_id`
+    // is what the user typed (vnum or keyword) and is what we echo back
+    // in help / list output so the lines are re-typable.
 
     if parts.len() < 3 {
-        show_trigger_help(item_id, connection_id);
+        show_trigger_help(display_id, connection_id);
         return;
     }
 
@@ -3557,11 +3571,11 @@ fn handle_trigger_subcommand(item, item_id, parts, connection_id) {
         let dg_rest = [];
         let i = 4;
         while i < parts.len() { dg_rest.push(parts[i]); i += 1; }
-        dg::handle("item", item_id, dg_action, dg_rest, connection_id);
+        dg::handle("item", item_id, display_id, dg_action, dg_rest, connection_id);
         return;
     }
 
-    show_trigger_help(item_id, connection_id);
+    show_trigger_help(display_id, connection_id);
 }
 
 fn show_trigger_help(item_id, connection_id) {
