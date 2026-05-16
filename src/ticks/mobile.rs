@@ -29,6 +29,7 @@ pub async fn run_wander_tick(db: db::Db, connections: SharedConnections, state: 
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("wander");
 
         if let Err(e) = process_wander_tick(&db, &connections, &state) {
             error!("Wander tick error: {}", e);
@@ -297,8 +298,15 @@ fn handle_routine_door(
         &format!("{} opens the {}.", mobile.name, door_name),
     );
 
-    // Update the other side of the door
-    if let Some(exit_target) = get_exit_target_for_direction(&db.get_room_data(room_id)?.unwrap(), direction) {
+    // Update the other side of the door.
+    // Re-fetch the room (a previous save just touched it); if it was deleted
+    // out from under us between the save and now, skip the opposite-side
+    // sync rather than panicking and taking the whole tick task down.
+    let refreshed = match db.get_room_data(room_id)? {
+        Some(r) => r,
+        None => return Ok(true),
+    };
+    if let Some(exit_target) = get_exit_target_for_direction(&refreshed, direction) {
         if let Some(opposite_dir) = get_opposite_direction(direction) {
             if let Ok(Some(mut target_room)) = db.get_room_data(&exit_target) {
                 if let Some(other_door) = target_room.doors.get_mut(opposite_dir) {
@@ -351,9 +359,14 @@ fn close_door_behind(
 
     db.save_room_data(room)?;
 
-    // Update the other side
-    if let Some(exit_target) = get_exit_target_for_direction(&db.get_room_data(departure_room_id)?.unwrap(), direction)
-    {
+    // Update the other side. Re-fetch the departure room; if it vanished
+    // between our save and this read, skip the opposite-side close rather
+    // than panicking and killing the tick.
+    let refreshed = match db.get_room_data(departure_room_id)? {
+        Some(r) => r,
+        None => return Ok(()),
+    };
+    if let Some(exit_target) = get_exit_target_for_direction(&refreshed, direction) {
         if let Some(opposite_dir) = get_opposite_direction(direction) {
             if let Ok(Some(mut target_room)) = db.get_room_data(&exit_target) {
                 if let Some(other_door) = target_room.doors.get_mut(opposite_dir) {
@@ -481,8 +494,19 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
                 // BFS to find next step
                 let bfs_result = bfs_next_step(db, current_room_id, dest_room_id, &current_mobile);
                 if let BfsOutcome::Step { direction, .. } = bfs_result {
-                    // Check for and handle door in this direction
-                    let room = db.get_room_data(&current_room_id)?.unwrap();
+                    // Check for and handle door in this direction. If the mob's
+                    // current room got deleted out from under us, clear the
+                    // routine destination and move on rather than panicking
+                    // (which would kill the entire tick task).
+                    let room = match db.get_room_data(&current_room_id)? {
+                        Some(r) => r,
+                        None => {
+                            db.update_mobile(&current_mobile.id, |m| {
+                                m.routine_destination_room = None;
+                            })?;
+                            continue;
+                        }
+                    };
                     let door_info = room.doors.get(&direction).map(|d| (d.is_closed, d.is_locked));
 
                     if let Some((is_closed, was_locked)) = door_info {
@@ -495,8 +519,17 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
                                 continue;
                             }
 
-                            // Reload room data after door changes
-                            let updated_room = db.get_room_data(&current_room_id)?.unwrap();
+                            // Reload room data after door changes. Same
+                            // missing-room hardening as above.
+                            let updated_room = match db.get_room_data(&current_room_id)? {
+                                Some(r) => r,
+                                None => {
+                                    db.update_mobile(&current_mobile.id, |m| {
+                                        m.routine_destination_room = None;
+                                    })?;
+                                    continue;
+                                }
+                            };
                             if let Some(target_id) = get_exit_target_for_direction(&updated_room, &direction) {
                                 // Move through
                                 if db.move_mobile_to_room(&current_mobile.id, &target_id).is_ok() {
@@ -1237,6 +1270,7 @@ pub async fn run_mobile_effects_tick(db: db::Db, connections: SharedConnections,
     let mut ticker = interval(Duration::from_secs(MOBILE_EFFECTS_TICK_INTERVAL_SECS));
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("mobile_effects");
         if let Err(e) = process_mobile_effects(&db, &connections, &state) {
             error!("Mobile effects tick error: {}", e);
         }

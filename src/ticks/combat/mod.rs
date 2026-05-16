@@ -13,4 +13,4 @@ mod tick;
 mod wounds;
 
 // Re-export the main combat tick function and death processors
-pub use tick::{process_mobile_death, process_player_death, run_combat_tick};
+pub use tick::{COMBAT_TICK_INTERVAL_SECS, process_mobile_death, process_player_death, run_combat_tick};

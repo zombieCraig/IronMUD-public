@@ -22,6 +22,7 @@ pub async fn run_corpse_decay_tick(db: db::Db, connections: SharedConnections) {
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("corpse_decay");
 
         if let Err(e) = process_corpse_decay(&db, &connections) {
             error!("Corpse decay tick error: {}", e);
@@ -94,6 +95,7 @@ pub async fn run_spoilage_tick(db: db::Db, connections: SharedConnections) {
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("spoilage");
 
         if let Err(e) = process_spoilage(&db, &connections) {
             error!("Spoilage tick error: {}", e);

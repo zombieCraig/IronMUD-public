@@ -14,6 +14,7 @@ pub async fn run_sun_tick(db: db::Db, connections: SharedConnections) {
     let mut ticker = interval(Duration::from_secs(SUN_TICK_INTERVAL_SECS));
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("sun");
         match process_sun_tick(&db, &connections) {
             Ok(deaths) => {
                 // Finish the death pipeline (corpse, inventory drop,
@@ -47,6 +48,7 @@ pub async fn run_blood_tick(db: db::Db, connections: SharedConnections) {
     let mut ticker = interval(Duration::from_secs(BLOOD_TICK_INTERVAL_SECS));
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("blood");
         if let Err(e) = process_blood_tick(&db, &connections) {
             error!("Blood tick error: {}", e);
         }

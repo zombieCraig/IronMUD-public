@@ -63,6 +63,7 @@ pub async fn run_bleeding_tick(db: db::Db, connections: SharedConnections, state
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("bleeding");
 
         if let Err(e) = process_bleeding_tick(&db, &connections, &state) {
             error!("Bleeding tick error: {}", e);

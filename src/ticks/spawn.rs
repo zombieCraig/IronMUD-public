@@ -20,6 +20,7 @@ pub async fn run_spawn_tick(db: db::Db, connections: SharedConnections) {
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("spawn");
 
         if let Err(e) = process_spawn_points(&db, &connections) {
             error!("Spawn tick error: {}", e);

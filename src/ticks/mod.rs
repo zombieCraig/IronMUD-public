@@ -33,6 +33,9 @@
 // Internal broadcast utilities shared across tick systems
 pub(crate) mod broadcast;
 
+// Liveness registry + watchdog — surfaces ticks whose tasks have died.
+pub mod heartbeat;
+
 // Submodules for each tick system
 pub mod achievements;
 pub mod aging;
@@ -56,6 +59,8 @@ pub mod triggers;
 pub mod vampire;
 
 // Re-export all the public tick runner functions
+pub use heartbeat::run_watchdog as run_heartbeat_watchdog;
+
 pub use aging::run_aging_tick;
 pub use bleeding::run_bleeding_tick;
 pub use character::{run_drowning_tick, run_hunger_tick, run_hunting_tick, run_regen_tick, run_slow_move_tick, run_thirst_tick};
@@ -75,3 +80,48 @@ pub use spoilage::{run_corpse_decay_tick, run_spoilage_tick};
 pub use transport::run_transport_tick;
 pub use triggers::run_periodic_trigger_tick;
 pub use vampire::{run_blood_tick, run_sun_tick};
+
+/// Register expected intervals for every tick task with the heartbeat
+/// registry. Call once at startup *before* spawning the tick tasks themselves
+/// so that the watchdog never flags a tick that simply hasn't beat yet.
+///
+/// When you add a new tick, add it here too — the watchdog only inspects
+/// registered names.
+pub fn register_all_heartbeats() {
+    use std::time::Duration;
+
+    let pairs: &[(&'static str, u64)] = &[
+        ("spawn", spawn::SPAWN_TICK_INTERVAL_SECS),
+        ("periodic_triggers", triggers::PERIODIC_TRIGGER_INTERVAL_SECS),
+        ("time", environment::TIME_TICK_INTERVAL_SECS),
+        ("exposure", environment::EXPOSURE_TICK_INTERVAL_SECS),
+        ("thirst", character::THIRST_TICK_INTERVAL_SECS),
+        ("hunger", character::HUNGER_TICK_INTERVAL_SECS),
+        ("regen", character::REGEN_TICK_INTERVAL_SECS),
+        ("hunting", character::HUNTING_TICK_INTERVAL_SECS),
+        ("drowning", character::DROWNING_TICK_INTERVAL_SECS),
+        ("slow_move", character::SLOW_MOVE_TICK_INTERVAL_SECS),
+        ("wander", mobile::WANDER_TICK_INTERVAL_SECS),
+        ("mobile_effects", mobile::MOBILE_EFFECTS_TICK_INTERVAL_SECS),
+        ("combat", combat::COMBAT_TICK_INTERVAL_SECS),
+        ("corpse_decay", spoilage::CORPSE_DECAY_INTERVAL_SECS),
+        ("spoilage", spoilage::SPOILAGE_TICK_INTERVAL_SECS),
+        ("transport", transport::TRANSPORT_TICK_INTERVAL_SECS),
+        ("rent", rent::RENT_TICK_INTERVAL_SECS),
+        ("pursuit", pursuit::PURSUIT_TICK_INTERVAL_SECS),
+        ("routine", routine::ROUTINE_TICK_INTERVAL_SECS),
+        ("garden", garden::GARDEN_TICK_INTERVAL_SECS),
+        ("bleeding", bleeding::BLEEDING_TICK_INTERVAL_SECS),
+        ("simulation", simulation::SIMULATION_TICK_INTERVAL_SECS),
+        ("migration", migration::MIGRATION_TICK_INTERVAL_SECS),
+        ("aging", aging::AGING_TICK_INTERVAL_SECS),
+        ("donation_decay", donation::DONATION_DECAY_INTERVAL_SECS),
+        ("quest", quests::QUEST_TICK_INTERVAL_SECS),
+        ("sun", ironmud::vampire::SUN_TICK_INTERVAL_SECS),
+        ("blood", ironmud::vampire::BLOOD_TICK_INTERVAL_SECS),
+    ];
+
+    for (name, secs) in pairs {
+        heartbeat::register(name, Duration::from_secs(*secs));
+    }
+}

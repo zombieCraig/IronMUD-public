@@ -21,6 +21,7 @@ pub async fn run_routine_tick(db: db::Db, connections: SharedConnections) {
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("routine");
 
         if let Err(e) = process_routine_tick(&db, &connections) {
             error!("Routine tick error: {}", e);

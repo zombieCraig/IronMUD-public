@@ -21,6 +21,7 @@ pub async fn run_transport_tick(db: db::Db, connections: SharedConnections) {
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("transport");
 
         if let Err(e) = process_transport_tick(&db, &connections) {
             error!("Transport tick error: {}", e);

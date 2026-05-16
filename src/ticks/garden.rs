@@ -21,6 +21,7 @@ pub async fn run_garden_tick(db: db::Db, connections: SharedConnections) {
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("garden");
 
         if let Err(e) = process_garden(&db, &connections) {
             error!("Garden tick error: {}", e);

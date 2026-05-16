@@ -27,6 +27,7 @@ pub async fn run_thirst_tick(db: db::Db, connections: SharedConnections, state: 
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("thirst");
 
         if let Err(e) = process_thirst_tick(&db, &connections, &state) {
             error!("Thirst tick error: {}", e);
@@ -172,6 +173,7 @@ pub async fn run_hunger_tick(db: db::Db, connections: SharedConnections, state: 
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("hunger");
 
         if let Err(e) = process_hunger_tick(&db, &connections, &state) {
             error!("Hunger tick error: {}", e);
@@ -277,6 +279,7 @@ pub async fn run_regen_tick(db: db::Db, connections: SharedConnections, state: S
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("regen");
 
         if let Err(e) = process_regen_tick(&db, &connections, &state) {
             error!("Regen tick error: {}", e);
@@ -674,6 +677,7 @@ pub async fn run_hunting_tick(db: db::Db, connections: SharedConnections, state:
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("hunting");
 
         if let Err(e) = process_hunting_tick(&db, &connections, &state) {
             error!("Hunting tick error: {}", e);
@@ -903,6 +907,7 @@ pub async fn run_drowning_tick(db: db::Db, connections: SharedConnections, state
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("drowning");
 
         if let Err(e) = process_drowning_tick(&db, &connections, &state) {
             error!("Drowning tick error: {}", e);
@@ -1113,6 +1118,7 @@ pub async fn run_slow_move_tick(db: db::Db, connections: SharedConnections, _sta
     let mut ticker = interval(Duration::from_secs(SLOW_MOVE_TICK_INTERVAL_SECS));
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("slow_move");
         if let Err(e) = process_slow_move_tick(&db, &connections) {
             error!("Slow-move tick error: {}", e);
         }

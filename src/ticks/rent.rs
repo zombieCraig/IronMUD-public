@@ -17,6 +17,7 @@ pub async fn run_rent_tick(db: db::Db, connections: SharedConnections) {
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("rent");
 
         if let Err(e) = process_rent_tick(&db, &connections) {
             error!("Rent tick error: {}", e);

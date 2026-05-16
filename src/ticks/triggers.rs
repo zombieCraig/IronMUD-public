@@ -20,6 +20,7 @@ pub async fn run_periodic_trigger_tick(db: db::Db, connections: SharedConnection
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("periodic_triggers");
 
         if let Err(e) = process_periodic_triggers(&db, &connections) {
             error!("Periodic trigger tick error: {}", e);

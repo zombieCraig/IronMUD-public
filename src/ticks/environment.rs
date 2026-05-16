@@ -28,6 +28,7 @@ pub async fn run_time_tick(db: db::Db, connections: SharedConnections) {
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("time");
 
         if let Err(e) = process_time_tick(&db, &connections) {
             error!("Time tick error: {}", e);
@@ -620,6 +621,7 @@ pub async fn run_exposure_tick(db: db::Db, connections: SharedConnections) {
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("exposure");
 
         if let Err(e) = process_exposure_tick(&db, &connections) {
             error!("Exposure tick error: {}", e);

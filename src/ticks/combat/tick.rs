@@ -34,6 +34,7 @@ pub async fn run_combat_tick(db: db::Db, connections: SharedConnections, state: 
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("combat");
 
         if let Err(e) = process_combat_round(&db, &connections, &state) {
             error!("Combat tick error: {}", e);

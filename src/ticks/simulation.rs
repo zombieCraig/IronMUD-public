@@ -30,6 +30,7 @@ pub async fn run_simulation_tick(db: db::Db, connections: SharedConnections) {
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("simulation");
 
         if let Err(e) = process_simulation_tick(&db, &connections) {
             error!("Simulation tick error: {}", e);

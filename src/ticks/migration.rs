@@ -21,6 +21,7 @@ pub async fn run_migration_tick(db: db::Db, connections: SharedConnections, data
     let mut ticker = interval(Duration::from_secs(MIGRATION_TICK_INTERVAL_SECS));
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("migration");
         match load_migration_data(&data_dir) {
             Ok(data) => {
                 if let Err(e) = process_migration_tick(&db, &connections, &data) {

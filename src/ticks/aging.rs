@@ -16,6 +16,7 @@ pub async fn run_aging_tick(db: db::Db, connections: SharedConnections) {
     let mut ticker = interval(Duration::from_secs(AGING_TICK_INTERVAL_SECS));
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("aging");
         if let Err(e) = process_aging_tick(&db, &connections) {
             error!("Aging tick error: {}", e);
         }

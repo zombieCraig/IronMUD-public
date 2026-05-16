@@ -151,7 +151,41 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "ticks" {
+        handle_ticks(connection_id);
+        return;
+    }
+
     send_client_message(connection_id, "Unknown subcommand. Type 'admin help' for commands.");
+}
+
+// `admin ticks` — show liveness for every background tick. Healthy
+// (recently-beaten) ticks are listed in green; stale ones in red.
+// Surfaces silent task deaths that wouldn't show up in logs at INFO.
+fn handle_ticks(connection_id) {
+    let entries = get_tick_heartbeats();
+    if entries.len() == 0 {
+        send_client_message(connection_id, "No ticks registered.");
+        return;
+    }
+    let output = "Tick heartbeats:\n";
+    let stale_count = 0;
+    for e in entries {
+        let status_tag = if e.stale {
+            stale_count += 1;
+            "\x1b[1;31mSTALE\x1b[0m"
+        } else {
+            "\x1b[1;32mOK   \x1b[0m"
+        };
+        output += "  " + status_tag + "  ";
+        output += pad_right(e.name, 22);
+        output += " " + pad_right(e.age_secs + "s ago", 12);
+        output += " (interval " + e.expected_secs + "s)\n";
+    }
+    if stale_count > 0 {
+        output += "\n\x1b[1;31m" + stale_count + " stale tick(s) — those tokio tasks may have died and need a server restart.\x1b[0m\n";
+    }
+    send_client_message(connection_id, output);
 }
 
 fn handle_embrace(connection_id, args, admin_char) {
@@ -367,6 +401,7 @@ fn show_help(connection_id) {
     help += "  admin embrace_revoke <player>     - Restore mortality to a vampire PC\n";
     help += "  admin masquerade_reset <player>   - Clear masquerade_broken on a vampire PC\n";
     help += "  admin config [<key>] [<value>]    - Read, write, or list runtime settings\n";
+    help += "  admin ticks                       - Show liveness of every background tick task\n";
     help += "  admin account ...                 - Account management (type 'admin account' for help)\n";
     help += "  admin world ...                   - World statistics and management (type 'admin world' for help)\n";
     help += "  admin help                        - Show this help\n";

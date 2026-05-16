@@ -22,6 +22,7 @@ pub async fn run_donation_decay_tick(db: db::Db, connections: SharedConnections)
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("donation_decay");
 
         if let Err(e) = process_donation_decay(&db, &connections) {
             error!("Donation decay tick error: {}", e);

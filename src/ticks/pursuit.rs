@@ -29,6 +29,7 @@ pub async fn run_pursuit_tick(db: db::Db, connections: SharedConnections, state:
 
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("pursuit");
 
         if let Err(e) = process_pursuit_tick(&db, &connections, &state) {
             error!("Pursuit tick error: {}", e);

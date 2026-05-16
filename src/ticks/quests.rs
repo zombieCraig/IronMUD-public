@@ -16,6 +16,7 @@ pub async fn run_quest_tick(db: db::Db, connections: SharedConnections) {
     let mut ticker = interval(Duration::from_secs(QUEST_TICK_INTERVAL_SECS));
     loop {
         ticker.tick().await;
+        crate::ticks::heartbeat::beat("quest");
         if let Err(e) = process_quest_tick(&db, &connections) {
             error!("Quest tick error: {}", e);
         }
