@@ -262,6 +262,54 @@ pub const ITEM_TRIGGER_ACTIONS: &[&str] = &["list", "add", "remove", "enable", "
 /// Item trigger types
 pub const ITEM_TRIGGER_TYPES: &[&str] = &["get", "drop", "use", "examine", "on_prompt", "on_wear", "on_remove"];
 
+/// `oedit <vnum> affect` sub-actions.
+pub const AFFECT_ACTIONS: &[&str] = &["list", "add", "rm", "clear"];
+
+/// Common EffectType names a builder is likely to put on an item via
+/// `oedit <vnum> affect add <effect> ...`. Grouped: stat boosts, combat
+/// bonuses, granted abilities, protection, and the cursed-item DoTs.
+pub const AFFECT_EFFECT_TYPES: &[&str] = &[
+    "strength_boost",
+    "dexterity_boost",
+    "constitution_boost",
+    "intelligence_boost",
+    "wisdom_boost",
+    "charisma_boost",
+    "hit_bonus",
+    "damage_bonus",
+    "max_hp_bonus",
+    "max_mana_bonus",
+    "armor_class_boost",
+    "night_vision",
+    "detect_invisible",
+    "detect_magic",
+    "water_breathing",
+    "regeneration",
+    "damage_resistance",
+    "status_resistance",
+    "damage_reduction",
+    "poison",
+    "blind",
+    "sleep",
+    "curse",
+    "invisibility",
+];
+
+/// Valid `vs_effect` tags after `oedit <vnum> affect add status_resistance ...`.
+/// `"*"` is the wildcard meaning "all status effects" (CircleMUD APPLY_SAVING_SPELL parity).
+pub const STATUS_RESISTANCE_VS_EFFECTS: &[&str] = &[
+    "*",
+    "sleep",
+    "charmed",
+    "blind",
+    "curse",
+    "poison",
+    "silence",
+    "slow",
+    "frenzy",
+    "dominated",
+];
+
 /// Item types
 pub const ITEM_TYPES: &[&str] = &[
     "armor",

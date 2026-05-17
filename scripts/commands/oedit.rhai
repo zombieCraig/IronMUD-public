@@ -2998,7 +2998,9 @@ fn build_commands_help(item_id, item) {
     output += "  oedit " + display_id + " value <gold>\n";
     output += "  oedit " + display_id + " world_max <n>              (cap live copies world-wide; 0 = unlimited)\n";
     output += "  oedit " + display_id + " level <value>\n";
-    output += "  oedit " + display_id + " stat <str|dex|con|int|wis|cha> <value>\n";
+    output += "  oedit " + display_id + " affect [list]                          (equip-time effects on the wearer)\n";
+    output += "  oedit " + display_id + " affect add <effect> [mag] [tag]        (e.g. strength_boost 2, damage_resistance 25 acid)\n";
+    output += "  oedit " + display_id + " affect rm <index> | clear              (see `affect` for full grammar)\n";
     output += "  oedit " + display_id + " category                    (recipe category management)\n";
     output += "  oedit " + display_id + " teaches <recipe_id|clear>  (recipe book/scroll)\n";
     output += "  oedit " + display_id + " teaches_spell <spell_id|clear>  (spell scroll)\n";

@@ -126,6 +126,10 @@ pub enum CompletionType {
     BugStatusFilter,
     BugPriorityValue,
     DamageType,
+    /// `oedit <vnum> affect <subcmd>` — list/add/rm/clear.
+    AffectAction,
+    /// `oedit <vnum> affect add <effect>` — snake_case EffectType.
+    EffectType,
     RoutineSubcommand,
     SimulationSubcommand,
     ActivityState,

@@ -198,6 +198,58 @@ pub(super) fn complete_oedit(
             }
             CompletionResult::new(matches, &partial, CompletionType::SpellName)
         }
+        // oedit <vnum> affect - show affect sub-actions
+        3 if !completing_word && (words[2].to_lowercase() == "affect" || words[2].to_lowercase() == "affects") => {
+            all_static(AFFECT_ACTIONS, CompletionType::AffectAction)
+        }
+        // oedit <vnum> affect <partial_action> - complete affect action
+        4 if completing_word && (words[2].to_lowercase() == "affect" || words[2].to_lowercase() == "affects") => {
+            filter_static(AFFECT_ACTIONS, &partial, CompletionType::AffectAction)
+        }
+        // oedit <vnum> affect add - show common effect types
+        4 if !completing_word
+            && (words[2].to_lowercase() == "affect" || words[2].to_lowercase() == "affects")
+            && words[3].to_lowercase() == "add" =>
+        {
+            all_static(AFFECT_EFFECT_TYPES, CompletionType::EffectType)
+        }
+        // oedit <vnum> affect add <partial_effect> - complete effect type
+        5 if completing_word
+            && (words[2].to_lowercase() == "affect" || words[2].to_lowercase() == "affects")
+            && words[3].to_lowercase() == "add" =>
+        {
+            filter_static(AFFECT_EFFECT_TYPES, &partial, CompletionType::EffectType)
+        }
+        // oedit <vnum> affect add damage_resistance <mag> - show damage types as tag
+        6 if !completing_word
+            && (words[2].to_lowercase() == "affect" || words[2].to_lowercase() == "affects")
+            && words[3].to_lowercase() == "add"
+            && words[4].to_lowercase() == "damage_resistance" =>
+        {
+            all_static(DAMAGE_TYPES, CompletionType::DamageType)
+        }
+        7 if completing_word
+            && (words[2].to_lowercase() == "affect" || words[2].to_lowercase() == "affects")
+            && words[3].to_lowercase() == "add"
+            && words[4].to_lowercase() == "damage_resistance" =>
+        {
+            filter_static(DAMAGE_TYPES, &partial, CompletionType::DamageType)
+        }
+        // oedit <vnum> affect add status_resistance <mag> - show vs_effect tags
+        6 if !completing_word
+            && (words[2].to_lowercase() == "affect" || words[2].to_lowercase() == "affects")
+            && words[3].to_lowercase() == "add"
+            && words[4].to_lowercase() == "status_resistance" =>
+        {
+            all_static(STATUS_RESISTANCE_VS_EFFECTS, CompletionType::EffectType)
+        }
+        7 if completing_word
+            && (words[2].to_lowercase() == "affect" || words[2].to_lowercase() == "affects")
+            && words[3].to_lowercase() == "add"
+            && words[4].to_lowercase() == "status_resistance" =>
+        {
+            filter_static(STATUS_RESISTANCE_VS_EFFECTS, &partial, CompletionType::EffectType)
+        }
         _ => CompletionResult::empty(),
     }
 }
