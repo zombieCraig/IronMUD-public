@@ -23,7 +23,9 @@ fn format_play_time(secs) {
 }
 
 fn run_command(args, connection_id) {
-    let name = args.trim();
+    // Rhai 1.17 does not register `trim` on strings; rely on the dispatcher
+    // having stripped leading whitespace, and treat empty input as no-arg.
+    let name = args;
     if name == "" {
         send_client_message(connection_id, "Usage: last <character>");
         return;
