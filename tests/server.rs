@@ -4200,6 +4200,47 @@ fn test_item_and_mobile_area_id_persists() {
 }
 
 #[test]
+fn test_total_seconds_played_persists() {
+    // Verifies the new `CharacterData.total_seconds_played` field round-trips
+    // through save/load with `#[serde(default)]` honoring pre-feature rows.
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        let mut character: ironmud::types::CharacterData = serde_json::from_value(
+            serde_json::json!({
+                "name": "Timekeeper",
+                "password_hash": "",
+                "current_room_id": uuid::Uuid::new_v4().to_string(),
+            }),
+        )
+        .expect("build character");
+
+        assert_eq!(
+            character.total_seconds_played, 0,
+            "fresh character starts with zero play time"
+        );
+
+        character.total_seconds_played = 4_321;
+        db.save_character_data(character).expect("save");
+
+        let loaded = db
+            .get_character_data("Timekeeper")
+            .expect("get")
+            .expect("present");
+        assert_eq!(
+            loaded.total_seconds_played, 4_321,
+            "total_seconds_played survives save/load"
+        );
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_item_note_content_persists() {
     use ironmud::ItemData;
     

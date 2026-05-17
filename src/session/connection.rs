@@ -21,6 +21,18 @@ pub fn set_character_for_connection(
     if let Some(session) = conns.get_mut(&connection_id) {
         // Copy persisted settings from CharacterData to session
         session.show_room_flags = character_data.show_room_flags;
+        // Stamp the play-time anchor when the character first enters the
+        // world for this session. Idempotent — later `set_player_character`
+        // calls during normal gameplay (refreshing the snapshot) keep the
+        // original anchor. Cleared by `flush_play_time` on quit.
+        if session.character.is_none() && session.session_started_at.is_none() {
+            session.session_started_at = Some(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i64,
+            );
+        }
         session.character = Some(character_data);
         Ok(())
     } else {

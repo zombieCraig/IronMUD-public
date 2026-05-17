@@ -170,6 +170,11 @@ pub struct PlayerSession {
     /// Unix timestamp when the connection was lost. If `Some`, the player is
     /// in the Linkdead grace period. `None` means the connection is active.
     pub disconnected_at: Option<i64>,
+    /// Unix timestamp when the player's character entered the world for the
+    /// current session. `Some` while a character is in-play; `None` before
+    /// character select and after `flush_play_time` runs on quit/disconnect.
+    /// Drives the `CharacterData.total_seconds_played` accumulator.
+    pub session_started_at: Option<i64>,
     /// Active modern multi-line editor instance. Present only while the
     /// player is composing inside the new editor; mutually exclusive with
     /// `olc_mode == Some(...)` routing through the legacy line editor
@@ -1953,6 +1958,7 @@ pub async fn handle_connection(
                 account_name: None,
                 slow_move_completing: false,
                 disconnected_at: None,
+                session_started_at: None,
                 modern_editor: None,
             },
         );
@@ -3725,7 +3731,18 @@ pub async fn handle_connection(
                 if let Some(session) = conns.get(&connection_id) {
                     if session.disconnected_at.is_some() {
                         if let Some(ref character) = session.character {
-                            let info = Some((character.clone(), character.current_room_id));
+                            let mut character = character.clone();
+                            if let Some(start) = session.session_started_at {
+                                let now = std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap()
+                                    .as_secs() as i64;
+                                let delta = (now - start).max(0);
+                                character.total_seconds_played =
+                                    character.total_seconds_played.saturating_add(delta);
+                            }
+                            let room_id = character.current_room_id;
+                            let info = Some((character, room_id));
                             conns.remove(&connection_id);
                             info
                         } else {

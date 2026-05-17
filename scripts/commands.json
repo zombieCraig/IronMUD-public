@@ -63,6 +63,10 @@
     "access": "any",
     "description": "List all online players"
   },
+  "last": {
+    "access": "any",
+    "description": "Show when a player was last online"
+  },
   "weather": {
     "access": "user",
     "description": "Check the current time, weather, and temperature"

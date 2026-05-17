@@ -26,6 +26,24 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         }
     });
 
+    // get_account_for_character(character_name) -> Map | ()
+    // Reverse lookup: given a character name, return the owning account row
+    // in the same Map shape as `get_account_by_name`. Used by the player-facing
+    // `last` command. Returns () when no account claims the name.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_account_for_character",
+        move |character_name: String| -> rhai::Dynamic {
+            if character_name.trim().is_empty() {
+                return rhai::Dynamic::UNIT;
+            }
+            match cloned_db.find_account_for_character(&character_name) {
+                Ok(Some(account)) => rhai::Dynamic::from_map(account_to_map(&account)),
+                _ => rhai::Dynamic::UNIT,
+            }
+        },
+    );
+
     // get_account_by_id(account_id_str) -> Map | ()
     let cloned_db = db.clone();
     engine.register_fn("get_account_by_id", move |id: String| -> rhai::Dynamic {

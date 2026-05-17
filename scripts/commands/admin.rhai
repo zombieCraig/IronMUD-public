@@ -507,7 +507,27 @@ fn handle_account(connection_id, args, admin_char) {
         output += "Last Login At:  " + (if account.last_login_at == 0 { "Never" } else { format_unix_time(account.last_login_at) }) + "\n";
         output += "Shared Bank:    " + account.shared_bank_gold + " gold\n";
         output += "Characters:     " + account.character_names.join(", ") + "\n";
-        
+
+        // Per-character play time. Skips silently on characters that fail to
+        // load (renamed, mid-creation, etc.) so the rest of the block still
+        // renders.
+        let any_play_time = false;
+        let play_lines = "";
+        for cname in account.character_names {
+            let c = get_character_data(cname);
+            if c != () {
+                let secs = c.total_seconds_played;
+                let hours = secs / 3600;
+                let mins = (secs % 3600) / 60;
+                let pretty = hours + "h " + mins + "m";
+                play_lines += "  " + pad_right(c.name, 20) + " " + pretty + "\n";
+                any_play_time = true;
+            }
+        }
+        if any_play_time {
+            output += "Play Time:\n" + play_lines;
+        }
+
         let d = account.character_defaults;
         if d.is_set {
             output += "Character Defaults:\n";

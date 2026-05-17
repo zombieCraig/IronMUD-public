@@ -119,6 +119,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
 
     engine
         .register_get("bank_gold", |c: &mut CharacterData| c.bank_gold)
+        .register_get("total_seconds_played", |c: &mut CharacterData| c.total_seconds_played)
         .register_get("current_room_id", |c: &mut CharacterData| c.current_room_id.to_string())
         .register_set("current_room_id", |c: &mut CharacterData, val: String| {
             if let Ok(uuid) = uuid::Uuid::parse_str(&val) {
@@ -220,6 +221,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 traits: Vec::new(),
                 trait_points: 10,
                 creation_complete: false,
+                total_seconds_played: 0,
                 // Thirst system fields
                 thirst: 100,
                 max_thirst: 100,
@@ -1013,6 +1015,57 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     engine.register_fn("clear_player_character", move |connection_id: String| {
         crate::clear_player_character(&conns, connection_id)
     });
+
+    // mark_session_start(connection_id) -> ()
+    // Stamps the session's start time so `flush_play_time` can later credit
+    // elapsed seconds to `CharacterData.total_seconds_played`. Idempotent —
+    // a second call within the same character session does not reset the
+    // anchor (otherwise we'd lose time when scripts re-enter the path).
+    let conns = connections.clone();
+    engine.register_fn("mark_session_start", move |connection_id: String| {
+        if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+            let mut connections = conns.lock().unwrap();
+            if let Some(session) = connections.get_mut(&conn_id) {
+                if session.session_started_at.is_none() {
+                    session.session_started_at = Some(
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs() as i64,
+                    );
+                }
+            }
+        }
+    });
+
+    // flush_play_time(connection_id, character) -> CharacterData
+    // Returns a clone of `character` with `total_seconds_played` advanced by
+    // the elapsed session time, and clears the session anchor. No-op when
+    // `session_started_at` is None. Called from quit.rhai before
+    // `save_character_data`. The disconnect-timeout path in `src/lib.rs` does
+    // the equivalent fold inline (the session is already gone by then).
+    let conns = connections.clone();
+    engine.register_fn(
+        "flush_play_time",
+        move |connection_id: String, character: CharacterData| -> CharacterData {
+            let mut character = character;
+            if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+                let mut connections = conns.lock().unwrap();
+                if let Some(session) = connections.get_mut(&conn_id) {
+                    if let Some(start) = session.session_started_at.take() {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap()
+                            .as_secs() as i64;
+                        let delta = (now - start).max(0);
+                        character.total_seconds_played =
+                            character.total_seconds_played.saturating_add(delta);
+                    }
+                }
+            }
+            character
+        },
+    );
 
     let conns = connections.clone();
     let force_save_state = state.clone();

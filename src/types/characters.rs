@@ -54,6 +54,11 @@ pub struct CharacterData {
     pub trait_points: i32,
     #[serde(default)]
     pub creation_complete: bool,
+    /// Cumulative seconds the character has been played, across all sessions.
+    /// Incremented on quit and disconnect-timeout when a session-start stamp
+    /// is in scope. Not retroactive: pre-feature characters start at 0.
+    #[serde(default)]
+    pub total_seconds_played: i64,
     // Thirst system fields
     #[serde(default = "default_max_thirst")]
     pub thirst: i32,

@@ -30,6 +30,7 @@ fn run_command(args, connection_id) {
 
         // Save character data
         send_client_message(connection_id, "Saving character '" + char_name + "'...");
+        let char = flush_play_time(connection_id, char);
         save_character_data(char);
 
         // Clear character from session
