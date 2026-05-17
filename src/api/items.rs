@@ -120,16 +120,11 @@ pub struct CreateItemRequest {
     // Armor stats
     #[serde(default)]
     pub armor_class: Option<i32>,
-    // Equipment combat bonuses (CircleMUD APPLY_HITROLL/DAMROLL parity)
+    // Equip-time affects (subsumes legacy hit_bonus, damage_bonus, max_hp_bonus,
+    // max_mana_bonus, stat_str..cha — all of which were stamped onto wearer's
+    // active_buffs at wear time). See ItemAffectRequest below.
     #[serde(default)]
-    pub hit_bonus: Option<i32>,
-    #[serde(default)]
-    pub damage_bonus: Option<i32>,
-    // Equipment max HP/mana bonuses (CircleMUD APPLY_MAXHIT/MAXMANA parity)
-    #[serde(default)]
-    pub max_hp_bonus: Option<i32>,
-    #[serde(default)]
-    pub max_mana_bonus: Option<i32>,
+    pub affects: Option<Vec<ItemAffectRequest>>,
     // ITEM_LIGHT capacity hours: 0 = permanent, N>0 = burn time remaining when equipped lit.
     #[serde(default)]
     pub light_hours_remaining: Option<i32>,
@@ -299,6 +294,82 @@ pub struct FoodEffectRequest {
     pub duration: i32,
 }
 
+/// Equip-time affect spec on a create/update item request. `effect_type` is
+/// a snake_case EffectType name. `damage_type` is required iff
+/// `effect_type == "damage_resistance"` (e.g. "acid", "fire"). `vs_effect` is
+/// required iff `effect_type == "status_resistance"` (snake_case EffectType
+/// name being warded, or "*" for "all status effects").
+#[derive(Deserialize)]
+pub struct ItemAffectRequest {
+    pub effect_type: String,
+    #[serde(default)]
+    pub magnitude: i32,
+    #[serde(default)]
+    pub damage_type: Option<String>,
+    #[serde(default)]
+    pub vs_effect: Option<String>,
+}
+
+impl ItemAffectRequest {
+    /// Parse + validate, returning an `ItemAffect` or a builder-friendly error.
+    pub fn into_affect(self) -> Result<crate::types::ItemAffect, String> {
+        use crate::types::{DamageType, EffectType, ItemAffect};
+        let effect = EffectType::from_str(&self.effect_type)
+            .ok_or_else(|| format!("Unknown effect_type '{}'", self.effect_type))?;
+        let (damage_type, vs_effect) = match effect {
+            EffectType::DamageResistance => {
+                let tag = self
+                    .damage_type
+                    .as_deref()
+                    .ok_or_else(|| "damage_resistance requires damage_type".to_string())?;
+                let dt = DamageType::from_str(tag)
+                    .ok_or_else(|| format!("Unknown damage_type '{}'", tag))?;
+                if self.vs_effect.is_some() {
+                    return Err("damage_resistance does not accept vs_effect".to_string());
+                }
+                (Some(dt), None)
+            }
+            EffectType::StatusResistance => {
+                let tag = self
+                    .vs_effect
+                    .as_deref()
+                    .ok_or_else(|| "status_resistance requires vs_effect".to_string())?;
+                if tag != "*" && EffectType::from_str(tag).is_none() {
+                    return Err(format!(
+                        "Unknown vs_effect '{}' (use a snake_case effect name or '*')",
+                        tag
+                    ));
+                }
+                if self.damage_type.is_some() {
+                    return Err("status_resistance does not accept damage_type".to_string());
+                }
+                (None, Some(tag.to_string()))
+            }
+            _ => {
+                if self.damage_type.is_some() || self.vs_effect.is_some() {
+                    return Err(format!(
+                        "Effect '{}' does not accept damage_type or vs_effect tags",
+                        self.effect_type
+                    ));
+                }
+                (None, None)
+            }
+        };
+        Ok(ItemAffect {
+            effect_type: effect,
+            magnitude: self.magnitude,
+            damage_type,
+            vs_effect,
+        })
+    }
+}
+
+/// Convert a `Vec<ItemAffectRequest>` to a `Vec<ItemAffect>`, surfacing the
+/// first validation error to the caller.
+pub fn convert_affects(reqs: Vec<ItemAffectRequest>) -> Result<Vec<crate::types::ItemAffect>, String> {
+    reqs.into_iter().map(|r| r.into_affect()).collect()
+}
+
 #[derive(Deserialize)]
 pub struct UpdateItemRequest {
     pub name: Option<String>,
@@ -355,14 +426,10 @@ pub struct UpdateItemRequest {
     pub damage_type: Option<String>,
     #[serde(default)]
     pub armor_class: Option<i32>,
+    /// Replace the item's `affects` list. Provide `Some(vec![])` to clear.
+    /// See `ItemAffectRequest` for shape.
     #[serde(default)]
-    pub hit_bonus: Option<i32>,
-    #[serde(default)]
-    pub damage_bonus: Option<i32>,
-    #[serde(default)]
-    pub max_hp_bonus: Option<i32>,
-    #[serde(default)]
-    pub max_mana_bonus: Option<i32>,
+    pub affects: Option<Vec<ItemAffectRequest>>,
     #[serde(default)]
     pub light_hours_remaining: Option<i32>,
     #[serde(default)]
@@ -797,10 +864,16 @@ async fn create_item(
         location: ItemLocation::Nowhere,
         wear_locations,
         armor_class: req.armor_class.map(|v| check_stat_bonus("armor_class", v)).transpose()?,
-        hit_bonus: check_stat_bonus("hit_bonus", req.hit_bonus.unwrap_or(0))?,
-        damage_bonus: check_stat_bonus("damage_bonus", req.damage_bonus.unwrap_or(0))?,
-        max_hp_bonus: check_stat_bonus("max_hp_bonus", req.max_hp_bonus.unwrap_or(0))?,
-        max_mana_bonus: check_stat_bonus("max_mana_bonus", req.max_mana_bonus.unwrap_or(0))?,
+        hit_bonus: 0,
+        damage_bonus: 0,
+        max_hp_bonus: 0,
+        max_mana_bonus: 0,
+        affects: req
+            .affects
+            .map(convert_affects)
+            .transpose()
+            .map_err(ApiError::InvalidInput)?
+            .unwrap_or_default(),
         light_hours_remaining: req.light_hours_remaining.unwrap_or(0).max(0),
         cast_on_use: req.cast_on_use.as_ref().and_then(build_cast_on_use_from_req),
         protects: Vec::new(),
@@ -1238,17 +1311,8 @@ async fn update_item(
     if let Some(ac) = req.armor_class {
         item.armor_class = Some(check_stat_bonus("armor_class", ac)?);
     }
-    if let Some(hb) = req.hit_bonus {
-        item.hit_bonus = check_stat_bonus("hit_bonus", hb)?;
-    }
-    if let Some(db) = req.damage_bonus {
-        item.damage_bonus = check_stat_bonus("damage_bonus", db)?;
-    }
-    if let Some(mhb) = req.max_hp_bonus {
-        item.max_hp_bonus = check_stat_bonus("max_hp_bonus", mhb)?;
-    }
-    if let Some(mmb) = req.max_mana_bonus {
-        item.max_mana_bonus = check_stat_bonus("max_mana_bonus", mmb)?;
+    if let Some(affects_req) = req.affects {
+        item.affects = convert_affects(affects_req).map_err(ApiError::InvalidInput)?;
     }
     if let Some(lhr) = req.light_hours_remaining {
         item.light_hours_remaining = lhr.max(0);

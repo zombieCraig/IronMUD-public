@@ -59,10 +59,7 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
-            hit_bonus?: undefined;
-            damage_bonus?: undefined;
-            max_hp_bonus?: undefined;
-            max_mana_bonus?: undefined;
+            affects?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -139,10 +136,7 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
-            hit_bonus?: undefined;
-            damage_bonus?: undefined;
-            max_hp_bonus?: undefined;
-            max_mana_bonus?: undefined;
+            affects?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -222,10 +216,7 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
-            hit_bonus?: undefined;
-            damage_bonus?: undefined;
-            max_hp_bonus?: undefined;
-            max_mana_bonus?: undefined;
+            affects?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -305,10 +296,7 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
-            hit_bonus?: undefined;
-            damage_bonus?: undefined;
-            max_hp_bonus?: undefined;
-            max_mana_bonus?: undefined;
+            affects?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -433,21 +421,31 @@ export declare const itemToolDefinitions: ({
                 type: string;
                 description: string;
             };
-            hit_bonus: {
+            affects: {
                 type: string;
                 description: string;
-            };
-            damage_bonus: {
-                type: string;
-                description: string;
-            };
-            max_hp_bonus: {
-                type: string;
-                description: string;
-            };
-            max_mana_bonus: {
-                type: string;
-                description: string;
+                items: {
+                    type: string;
+                    properties: {
+                        effect_type: {
+                            type: string;
+                            description: string;
+                        };
+                        magnitude: {
+                            type: string;
+                            description: string;
+                        };
+                        damage_type: {
+                            type: string;
+                            description: string;
+                        };
+                        vs_effect: {
+                            type: string;
+                            description: string;
+                        };
+                    };
+                    required: string[];
+                };
             };
             light_hours_remaining: {
                 type: string;
@@ -1032,21 +1030,31 @@ export declare const itemToolDefinitions: ({
                 type: string;
                 description: string;
             };
-            hit_bonus: {
+            affects: {
                 type: string;
                 description: string;
-            };
-            damage_bonus: {
-                type: string;
-                description: string;
-            };
-            max_hp_bonus: {
-                type: string;
-                description: string;
-            };
-            max_mana_bonus: {
-                type: string;
-                description: string;
+                items: {
+                    type: string;
+                    properties: {
+                        effect_type: {
+                            type: string;
+                            description: string;
+                        };
+                        magnitude: {
+                            type: string;
+                            description: string;
+                        };
+                        damage_type: {
+                            type: string;
+                            description: string;
+                        };
+                        vs_effect: {
+                            type: string;
+                            description: string;
+                        };
+                    };
+                    required: string[];
+                };
             };
             light_hours_remaining: {
                 type: string;
@@ -1348,10 +1356,7 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
-            hit_bonus?: undefined;
-            damage_bonus?: undefined;
-            max_hp_bonus?: undefined;
-            max_mana_bonus?: undefined;
+            affects?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -1434,10 +1439,7 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
-            hit_bonus?: undefined;
-            damage_bonus?: undefined;
-            max_hp_bonus?: undefined;
-            max_mana_bonus?: undefined;
+            affects?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -1537,10 +1539,7 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
-            hit_bonus?: undefined;
-            damage_bonus?: undefined;
-            max_hp_bonus?: undefined;
-            max_mana_bonus?: undefined;
+            affects?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -1620,10 +1619,7 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
-            hit_bonus?: undefined;
-            damage_bonus?: undefined;
-            max_hp_bonus?: undefined;
-            max_mana_bonus?: undefined;
+            affects?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -1711,10 +1707,7 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
-            hit_bonus?: undefined;
-            damage_bonus?: undefined;
-            max_hp_bonus?: undefined;
-            max_mana_bonus?: undefined;
+            affects?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;
@@ -1797,10 +1790,7 @@ export declare const itemToolDefinitions: ({
             damage_dice_sides?: undefined;
             damage_type?: undefined;
             armor_class?: undefined;
-            hit_bonus?: undefined;
-            damage_bonus?: undefined;
-            max_hp_bonus?: undefined;
-            max_mana_bonus?: undefined;
+            affects?: undefined;
             light_hours_remaining?: undefined;
             cast_on_use?: undefined;
             flags?: undefined;

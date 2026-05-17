@@ -52,4 +52,9 @@ fn run_command(args, connection_id) {
     move_item_to_equipped(item.id, char.name);
     send_client_message(connection_id, "You wear " + item.name + ".");
     broadcast_to_room(char.current_room_id, char.name + " wears " + item.name + ".", char.name);
+
+    // Ad-hoc script side effects on equip. Buff stamping is handled in Rust by
+    // db::stamp_item_buffs_on_character — this trigger is for emotes,
+    // room messages, custom flavor, etc.
+    fire_item_trigger(item.id, "on_wear", connection_id, "");
 }

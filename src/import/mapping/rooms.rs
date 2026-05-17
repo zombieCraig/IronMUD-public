@@ -77,7 +77,9 @@ pub(super) fn map_room(zone: &IrZone, area_prefix: &str, room: &IrRoom, opts: &M
             | Some(FlagAction::SetHitBonus)
             | Some(FlagAction::SetDamageBonus)
             | Some(FlagAction::SetMaxHpBonus)
-            | Some(FlagAction::SetMaxManaBonus) => {
+            | Some(FlagAction::SetMaxManaBonus)
+            | Some(FlagAction::AddItemAffect { .. })
+            | Some(FlagAction::AddItemAffectMulti { .. }) => {
                 warnings.push(Warning::new(
                     WarningKind::UnsupportedFlag,
                     Severity::Warn,

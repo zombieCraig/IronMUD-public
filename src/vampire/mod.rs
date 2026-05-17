@@ -306,5 +306,7 @@ fn push_or_refresh_buff(
         magnitude,
         remaining_secs: (SUN_TICK_INTERVAL_SECS * 2) as i32,
         source: source.to_string(),
+        damage_type: None,
+        vs_effect: None,
     });
 }

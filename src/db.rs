@@ -1212,6 +1212,38 @@ impl Db {
         Ok(())
     }
 
+    /// Promote legacy per-field bonuses (`hit_bonus`, `damage_bonus`,
+    /// `max_hp_bonus`, `max_mana_bonus`, `stat_str..cha`) on every item into
+    /// the unified `affects` Vec. Idempotent. Guarded by a single setting key
+    /// `item_affects_migration_done` so we don't pay the iteration cost on
+    /// every boot. Wired in `main.rs` after the other migrate_* calls.
+    pub fn migrate_item_legacy_bonuses_to_affects(&self) -> Result<()> {
+        const MIGRATION_KEY: &str = "item_affects_migration_done";
+        if let Ok(Some(_)) = self.get_setting(MIGRATION_KEY) {
+            return Ok(());
+        }
+        let mut migrated_count = 0usize;
+        let mut scanned_count = 0usize;
+        for entry in self.items.iter() {
+            scanned_count += 1;
+            let (_key, value) = entry?;
+            let mut item: ItemData = serde_json::from_slice(&value)?;
+            if item.normalize_legacy_bonuses() {
+                self.save_item_data(item)?;
+                migrated_count += 1;
+            }
+        }
+        let _ = self.set_setting(MIGRATION_KEY, "1");
+        if migrated_count > 0 {
+            tracing::info!(
+                "Migrated legacy bonuses on {migrated_count} of {scanned_count} item(s) into the new affects lane"
+            );
+        } else if scanned_count > 0 {
+            tracing::info!("Item affects migration: nothing to migrate ({scanned_count} item(s) scanned)");
+        }
+        Ok(())
+    }
+
     // ========== Item Functions ==========
 
     /// Get item data by ID
@@ -1244,6 +1276,11 @@ impl Db {
 
     /// Delete an item
     pub fn delete_item(&self, item_id: &Uuid) -> Result<bool> {
+        // If the item is equipped, strip any equip-stamped buffs from the
+        // wearer first so destroyed items don't leak permanent buffs.
+        if let Ok(Some(item)) = self.get_item_data(item_id) {
+            let _ = self.strip_item_buffs_from_holder(&item);
+        }
         let key = item_id.as_bytes();
         let removed = self.items.remove(key)?.is_some();
         if removed {
@@ -1402,6 +1439,8 @@ impl Db {
     /// Move item to a character's inventory
     pub fn move_item_to_inventory(&self, item_id: &Uuid, char_name: &str) -> Result<bool> {
         if let Some(mut item) = self.get_item_data(item_id)? {
+            // If it was equipped on a character or mob, strip equip-stamped buffs first.
+            self.strip_item_buffs_from_holder(&item)?;
             item.location = ItemLocation::Inventory(char_name.to_lowercase());
             self.save_item_data(item)?;
             Ok(true)
@@ -1410,10 +1449,18 @@ impl Db {
         }
     }
 
-    /// Move item to equipped status
+    /// Move item to equipped status. Stamps each `ItemAffect` on the item as a
+    /// permanent `ActiveBuff` on the wearer, sourced as `"item:<uuid>"`.
     pub fn move_item_to_equipped(&self, item_id: &Uuid, char_name: &str) -> Result<bool> {
         if let Some(mut item) = self.get_item_data(item_id)? {
+            // Strip any stale equip-stamped buffs from the previous holder, then stamp on the new one.
+            self.strip_item_buffs_from_holder(&item)?;
+            // Defensive: promote any legacy per-field bonuses still on the item.
+            if item.normalize_legacy_bonuses() {
+                // Field zeroed; will be saved with new location below.
+            }
             item.location = ItemLocation::Equipped(char_name.to_lowercase());
+            self.stamp_item_buffs_on_character(&item, char_name)?;
             self.save_item_data(item)?;
             Ok(true)
         } else {
@@ -1424,12 +1471,91 @@ impl Db {
     /// Move item to nowhere (removes from any inventory/location)
     pub fn move_item_to_nowhere(&self, item_id: &Uuid) -> Result<bool> {
         if let Some(mut item) = self.get_item_data(item_id)? {
+            self.strip_item_buffs_from_holder(&item)?;
             item.location = ItemLocation::Nowhere;
             self.save_item_data(item)?;
             Ok(true)
         } else {
             Ok(false)
         }
+    }
+
+    /// Promote any legacy per-field bonuses then push each `ItemAffect` as a
+    /// permanent `ActiveBuff` on the character, sourced as `"item:<uuid>"`.
+    /// Idempotent: strips any pre-existing buffs with the same source first.
+    pub fn stamp_item_buffs_on_character(&self, item: &ItemData, char_name: &str) -> Result<()> {
+        if item.affects.is_empty() {
+            return Ok(());
+        }
+        let source = format!("item:{}", item.id);
+        let key = char_name.to_lowercase();
+        if let Some(mut character) = self.get_character_data(&key)? {
+            character.active_buffs.retain(|b| b.source != source);
+            for affect in &item.affects {
+                character.active_buffs.push(crate::types::ActiveBuff {
+                    effect_type: affect.effect_type,
+                    magnitude: affect.magnitude,
+                    remaining_secs: -1,
+                    source: source.clone(),
+                    damage_type: affect.damage_type,
+                    vs_effect: affect.vs_effect.clone(),
+                });
+            }
+            self.save_character_data(character)?;
+        }
+        Ok(())
+    }
+
+    /// Mob counterpart of `stamp_item_buffs_on_character`.
+    pub fn stamp_item_buffs_on_mobile(&self, item: &ItemData, mobile_id: &Uuid) -> Result<()> {
+        if item.affects.is_empty() {
+            return Ok(());
+        }
+        let source = format!("item:{}", item.id);
+        if let Some(mut mobile) = self.get_mobile_data(mobile_id)? {
+            mobile.active_buffs.retain(|b| b.source != source);
+            for affect in &item.affects {
+                mobile.active_buffs.push(crate::types::ActiveBuff {
+                    effect_type: affect.effect_type,
+                    magnitude: affect.magnitude,
+                    remaining_secs: -1,
+                    source: source.clone(),
+                    damage_type: affect.damage_type,
+                    vs_effect: affect.vs_effect.clone(),
+                });
+            }
+            self.save_mobile_data(mobile)?;
+        }
+        Ok(())
+    }
+
+    /// Strip all `ActiveBuff` entries with `source == "item:<item.id>"` from
+    /// whoever currently has the item equipped. No-op if the item is not in an
+    /// `Equipped` location.
+    pub fn strip_item_buffs_from_holder(&self, item: &ItemData) -> Result<()> {
+        let source = format!("item:{}", item.id);
+        match &item.location {
+            ItemLocation::Equipped(holder) => {
+                // Heuristic: a mobile holder is a UUID string; a character holder is a name.
+                if let Ok(mob_id) = Uuid::parse_str(holder) {
+                    if let Some(mut mobile) = self.get_mobile_data(&mob_id)? {
+                        let before = mobile.active_buffs.len();
+                        mobile.active_buffs.retain(|b| b.source != source);
+                        if mobile.active_buffs.len() != before {
+                            self.save_mobile_data(mobile)?;
+                        }
+                    }
+                } else if let Some(mut character) = self.get_character_data(&holder.to_lowercase())? {
+                    let before = character.active_buffs.len();
+                    character.active_buffs.retain(|b| b.source != source);
+                    if character.active_buffs.len() != before {
+                        self.save_character_data(character)?;
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
     }
 
     /// Get all items inside a container
@@ -1505,6 +1631,7 @@ impl Db {
     /// Move item to a mobile's inventory (uses mobile UUID as owner string)
     pub fn move_item_to_mobile_inventory(&self, item_id: &Uuid, mobile_id: &Uuid) -> Result<bool> {
         if let Some(mut item) = self.get_item_data(item_id)? {
+            self.strip_item_buffs_from_holder(&item)?;
             // Use mobile UUID as the owner identifier
             item.location = ItemLocation::Inventory(mobile_id.to_string());
             self.save_item_data(item)?;
@@ -1517,8 +1644,13 @@ impl Db {
     /// Move item to equipped on a mobile (uses mobile UUID as owner string)
     pub fn move_item_to_mobile_equipped(&self, item_id: &Uuid, mobile_id: &Uuid) -> Result<bool> {
         if let Some(mut item) = self.get_item_data(item_id)? {
+            self.strip_item_buffs_from_holder(&item)?;
+            if item.normalize_legacy_bonuses() {
+                // Field zeroed; will be saved with new location below.
+            }
             // Use mobile UUID as the owner identifier
             item.location = ItemLocation::Equipped(mobile_id.to_string());
+            self.stamp_item_buffs_on_mobile(&item, mobile_id)?;
             self.save_item_data(item)?;
             Ok(true)
         } else {

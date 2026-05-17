@@ -171,10 +171,20 @@ export const itemToolDefinitions = [
           enum: ["bludgeoning", "slashing", "piercing", "fire", "cold", "lightning", "poison", "acid"],
         },
         armor_class: { type: "number", description: "For armor: AC bonus" },
-        hit_bonus: { type: "number", description: "Bonus to to-hit roll while equipped (CircleMUD APPLY_HITROLL parity); summed across all worn items" },
-        damage_bonus: { type: "number", description: "Bonus to damage roll while equipped (CircleMUD APPLY_DAMROLL parity); summed across all worn items" },
-        max_hp_bonus: { type: "number", description: "Lifts the wearer's max HP ceiling while equipped (CircleMUD APPLY_MAXHIT parity); summed across all worn items" },
-        max_mana_bonus: { type: "number", description: "Lifts the wearer's max mana ceiling while equipped (CircleMUD APPLY_MAXMANA parity); summed across all worn items" },
+        affects: {
+          type: "array",
+          description: "Equip-time affects stamped onto the wearer's active_buffs at wear time and stripped on remove. Replaces the legacy hit_bonus / damage_bonus / max_hp_bonus / max_mana_bonus / stat_str..cha fields. Use `damage_resistance` with `damage_type` for typed resistance (e.g. acid, fire), and `status_resistance` with `vs_effect` for graded saves (e.g. sleep, charmed, or '*' for all status effects). Cursed-item idiom: add `poison` mag=1 to apply a permanent DoT to the wearer.",
+          items: {
+            type: "object",
+            properties: {
+              effect_type: { type: "string", description: "Snake_case EffectType (e.g. 'strength_boost', 'hit_bonus', 'damage_bonus', 'max_hp_bonus', 'max_mana_bonus', 'damage_resistance', 'status_resistance', 'night_vision', 'detect_invisible', 'sanctuary', 'damage_reduction', 'poison')" },
+              magnitude: { type: "number", description: "Effect magnitude (percent for resistances, flat bonus otherwise). Negatives allowed (e.g. cursed -2 strength)." },
+              damage_type: { type: "string", description: "Required iff effect_type='damage_resistance'. One of bludgeoning, slashing, piercing, fire, cold, lightning, poison, acid, bite, ballistic, arcane, sunlight, holy." },
+              vs_effect: { type: "string", description: "Required iff effect_type='status_resistance'. Snake_case EffectType being warded, or '*' for all status effects." },
+            },
+            required: ["effect_type"],
+          },
+        },
         light_hours_remaining: { type: "number", description: "ITEM_LIGHT capacity hours: 0 = permanent, N>0 = remaining hours of light when equipped lit (decrements per game hour, switches off at 0)" },
         cast_on_use: {
           type: "object",
@@ -296,10 +306,20 @@ export const itemToolDefinitions = [
           enum: ["bludgeoning", "slashing", "piercing", "fire", "cold", "lightning", "poison", "acid"],
         },
         armor_class: { type: "number", description: "For armor: AC bonus" },
-        hit_bonus: { type: "number", description: "Bonus to to-hit roll while equipped (CircleMUD APPLY_HITROLL parity); summed across all worn items" },
-        damage_bonus: { type: "number", description: "Bonus to damage roll while equipped (CircleMUD APPLY_DAMROLL parity); summed across all worn items" },
-        max_hp_bonus: { type: "number", description: "Lifts the wearer's max HP ceiling while equipped (CircleMUD APPLY_MAXHIT parity); summed across all worn items" },
-        max_mana_bonus: { type: "number", description: "Lifts the wearer's max mana ceiling while equipped (CircleMUD APPLY_MAXMANA parity); summed across all worn items" },
+        affects: {
+          type: "array",
+          description: "Equip-time affects stamped onto the wearer's active_buffs at wear time and stripped on remove. Replaces the legacy hit_bonus / damage_bonus / max_hp_bonus / max_mana_bonus / stat_str..cha fields. Use `damage_resistance` with `damage_type` for typed resistance (e.g. acid, fire), and `status_resistance` with `vs_effect` for graded saves (e.g. sleep, charmed, or '*' for all status effects). Cursed-item idiom: add `poison` mag=1 to apply a permanent DoT to the wearer.",
+          items: {
+            type: "object",
+            properties: {
+              effect_type: { type: "string", description: "Snake_case EffectType (e.g. 'strength_boost', 'hit_bonus', 'damage_bonus', 'max_hp_bonus', 'max_mana_bonus', 'damage_resistance', 'status_resistance', 'night_vision', 'detect_invisible', 'sanctuary', 'damage_reduction', 'poison')" },
+              magnitude: { type: "number", description: "Effect magnitude (percent for resistances, flat bonus otherwise). Negatives allowed (e.g. cursed -2 strength)." },
+              damage_type: { type: "string", description: "Required iff effect_type='damage_resistance'. One of bludgeoning, slashing, piercing, fire, cold, lightning, poison, acid, bite, ballistic, arcane, sunlight, holy." },
+              vs_effect: { type: "string", description: "Required iff effect_type='status_resistance'. Snake_case EffectType being warded, or '*' for all status effects." },
+            },
+            required: ["effect_type"],
+          },
+        },
         light_hours_remaining: { type: "number", description: "ITEM_LIGHT capacity hours: 0 = permanent, N>0 = remaining hours of light when equipped lit" },
         cast_on_use: {
           type: "object",

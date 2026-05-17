@@ -99,6 +99,11 @@ async fn main() -> Result<()> {
     // Migrate characters with invalid room IDs to starting room
     db.migrate_characters_to_valid_rooms()?;
 
+    // Promote legacy item bonuses (hit_bonus, damage_bonus, max_hp/mana_bonus,
+    // stat_str..cha) into the unified affects lane. One-shot; guarded by a
+    // setting key so it's a no-op after first successful run.
+    db.migrate_item_legacy_bonuses_to_affects()?;
+
     // Rebuild vnum index from existing room data
     db.rebuild_vnum_index()?;
 

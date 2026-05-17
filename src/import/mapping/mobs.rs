@@ -56,7 +56,9 @@ pub(super) fn map_mob(
             | Some(FlagAction::SetHitBonus)
             | Some(FlagAction::SetDamageBonus)
             | Some(FlagAction::SetMaxHpBonus)
-            | Some(FlagAction::SetMaxManaBonus) => {
+            | Some(FlagAction::SetMaxManaBonus)
+            | Some(FlagAction::AddItemAffect { .. })
+            | Some(FlagAction::AddItemAffectMulti { .. }) => {
                 warnings.push(Warning::new(
                     WarningKind::UnsupportedFlag,
                     Severity::Warn,
@@ -76,6 +78,8 @@ pub(super) fn map_mob(
                         magnitude: *magnitude,
                         remaining_secs: *remaining_secs,
                         source: source.clone(),
+                        damage_type: None,
+                        vs_effect: None,
                     });
                 }
                 None => warnings.push(Warning::new(
@@ -140,7 +144,9 @@ pub(super) fn map_mob(
             | Some(FlagAction::SetHitBonus)
             | Some(FlagAction::SetDamageBonus)
             | Some(FlagAction::SetMaxHpBonus)
-            | Some(FlagAction::SetMaxManaBonus) => {
+            | Some(FlagAction::SetMaxManaBonus)
+            | Some(FlagAction::AddItemAffect { .. })
+            | Some(FlagAction::AddItemAffectMulti { .. }) => {
                 warnings.push(Warning::new(
                     WarningKind::UnsupportedFlag,
                     Severity::Warn,
@@ -160,6 +166,8 @@ pub(super) fn map_mob(
                         magnitude: *magnitude,
                         remaining_secs: *remaining_secs,
                         source: source.clone(),
+                        damage_type: None,
+                        vs_effect: None,
                     });
                 }
                 None => warnings.push(Warning::new(

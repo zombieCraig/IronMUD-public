@@ -49,12 +49,16 @@ pub fn apply_mood(mobile: &mut MobileData) -> bool {
                 magnitude: 1,
                 remaining_secs: MOOD_BUFF_DURATION_SECS,
                 source: MOOD_BUFF_SOURCE.to_string(),
+                damage_type: None,
+                vs_effect: None,
             });
             mobile.active_buffs.push(ActiveBuff {
                 effect_type: EffectType::WisdomBoost,
                 magnitude: 1,
                 remaining_secs: MOOD_BUFF_DURATION_SECS,
                 source: MOOD_BUFF_SOURCE.to_string(),
+                damage_type: None,
+                vs_effect: None,
             });
         }
         MoodState::Normal | MoodState::Sad => {}
@@ -64,12 +68,16 @@ pub fn apply_mood(mobile: &mut MobileData) -> bool {
                 magnitude: -1,
                 remaining_secs: MOOD_BUFF_DURATION_SECS,
                 source: MOOD_BUFF_SOURCE.to_string(),
+                damage_type: None,
+                vs_effect: None,
             });
             mobile.active_buffs.push(ActiveBuff {
                 effect_type: EffectType::WisdomBoost,
                 magnitude: -2,
                 remaining_secs: MOOD_BUFF_DURATION_SECS,
                 source: MOOD_BUFF_SOURCE.to_string(),
+                damage_type: None,
+                vs_effect: None,
             });
         }
         MoodState::Breakdown => {
@@ -78,12 +86,16 @@ pub fn apply_mood(mobile: &mut MobileData) -> bool {
                 magnitude: -3,
                 remaining_secs: MOOD_BUFF_DURATION_SECS,
                 source: MOOD_BUFF_SOURCE.to_string(),
+                damage_type: None,
+                vs_effect: None,
             });
             mobile.active_buffs.push(ActiveBuff {
                 effect_type: EffectType::WisdomBoost,
                 magnitude: -4,
                 remaining_secs: MOOD_BUFF_DURATION_SECS,
                 source: MOOD_BUFF_SOURCE.to_string(),
+                damage_type: None,
+                vs_effect: None,
             });
         }
     }

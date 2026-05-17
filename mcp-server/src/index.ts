@@ -479,10 +479,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           damage_dice_sides: args?.damage_dice_sides as number | undefined,
           damage_type: args?.damage_type as string | undefined,
           armor_class: args?.armor_class as number | undefined,
-          hit_bonus: args?.hit_bonus as number | undefined,
-          damage_bonus: args?.damage_bonus as number | undefined,
-          max_hp_bonus: args?.max_hp_bonus as number | undefined,
-          max_mana_bonus: args?.max_mana_bonus as number | undefined,
+          affects: args?.affects as { effect_type: string; magnitude?: number; damage_type?: string; vs_effect?: string }[] | undefined,
           light_hours_remaining: args?.light_hours_remaining as number | undefined,
           cast_on_use: args?.cast_on_use as { spell: string; min_level?: number; charges?: number; max_charges?: number; cooldown_secs?: number } | undefined,
           flags: args?.flags as Record<string, boolean> | undefined,
@@ -531,8 +528,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const updateData: Record<string, unknown> = {};
         const itemFields = [
           "name", "short_desc", "long_desc", "vnum", "area_id", "item_type", "keywords", "weight", "value", "categories", "flags",
-          "damage_dice_count", "damage_dice_sides", "damage_type", "armor_class",
-          "hit_bonus", "damage_bonus", "max_hp_bonus", "max_mana_bonus", "light_hours_remaining", "cast_on_use",
+          "damage_dice_count", "damage_dice_sides", "damage_type", "armor_class", "affects",
+          "light_hours_remaining", "cast_on_use",
           "wear_location", "weapon_skill",
           "caliber", "ranged_type", "magazine_size", "fire_mode", "supported_fire_modes",
           "noise_level", "two_handed", "ammo_count", "ammo_damage_bonus",

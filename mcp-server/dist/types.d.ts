@@ -279,7 +279,7 @@ export interface AddMobileTriggerRequest {
     chance?: number;
     args?: string[];
 }
-export type ItemTriggerType = "on_get" | "on_drop" | "on_use" | "on_examine" | "on_prompt" | "get" | "drop" | "use" | "examine" | "prompt";
+export type ItemTriggerType = "on_get" | "on_drop" | "on_use" | "on_examine" | "on_look" | "on_prompt" | "get" | "drop" | "use" | "examine" | "look" | "prompt";
 export interface AddItemTriggerRequest {
     trigger_type: ItemTriggerType;
     script_name: string;
@@ -289,6 +289,16 @@ export interface AddItemTriggerRequest {
 export interface ExtraDesc {
     keywords: string[];
     description: string;
+}
+export interface ItemAffect {
+    /** Snake_case EffectType name (strength_boost, hit_bonus, damage_resistance, status_resistance, night_vision, poison, ...). */
+    effect_type: string;
+    /** Effect magnitude (default 1). Percent for resistances; flat bonus otherwise. */
+    magnitude?: number;
+    /** Required iff effect_type === 'damage_resistance'. */
+    damage_type?: string;
+    /** Required iff effect_type === 'status_resistance'. Snake_case effect name being warded, or '*' for all status effects. */
+    vs_effect?: string;
 }
 export interface Item {
     id: string;
@@ -305,10 +315,7 @@ export interface Item {
     is_prototype: boolean;
     wear_locations: WearLocation[];
     armor_class?: number;
-    hit_bonus?: number;
-    damage_bonus?: number;
-    max_hp_bonus?: number;
-    max_mana_bonus?: number;
+    affects?: ItemAffect[];
     light_hours_remaining?: number;
     cast_on_use?: CastOnUse;
     damage_dice_count?: number;
@@ -539,10 +546,7 @@ export interface CreateItemRequest {
     damage_dice_sides?: number;
     damage_type?: string;
     armor_class?: number;
-    hit_bonus?: number;
-    damage_bonus?: number;
-    max_hp_bonus?: number;
-    max_mana_bonus?: number;
+    affects?: ItemAffect[];
     light_hours_remaining?: number;
     cast_on_use?: CastOnUse;
     flags?: Partial<ItemFlags>;

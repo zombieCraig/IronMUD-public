@@ -5775,6 +5775,8 @@ fn test_sanctuary_buff_on_prototype_carries_to_spawn() {
             magnitude: 50,
             remaining_secs: -1,
             source: "innate sanctuary".to_string(),
+            damage_type: None,
+            vs_effect: None,
         });
         db.save_mobile_data(proto).expect("save proto");
 
@@ -6025,6 +6027,8 @@ fn test_aff_buffs_carry_from_prototype_to_spawn() {
                 magnitude: 0,
                 remaining_secs: -1,
                 source: "innate".to_string(),
+                damage_type: None,
+                vs_effect: None,
             });
         }
         db.save_mobile_data(proto).expect("save proto");
@@ -6085,6 +6089,8 @@ fn test_mob_with_detect_invisible_buff_sees_invisible_pc() {
         magnitude: 0,
         remaining_secs: 100,
         source: "spell".to_string(),
+        damage_type: None,
+        vs_effect: None,
     });
 
     // Mob without DetectInvisible/AWARE: blind to invisible PC.
@@ -6098,6 +6104,8 @@ fn test_mob_with_detect_invisible_buff_sees_invisible_pc() {
         magnitude: 0,
         remaining_secs: -1,
         source: "innate".to_string(),
+        damage_type: None,
+        vs_effect: None,
     });
     assert!(is_player_visible_to_mob(&char, &detector));
 }
@@ -6142,6 +6150,8 @@ fn test_aff_infravision_imports_as_night_vision_buff() {
             magnitude: 0,
             remaining_secs: -1,
             source: "innate night vision".to_string(),
+            damage_type: None,
+            vs_effect: None,
         });
         db.save_mobile_data(proto).expect("save proto");
 
@@ -6223,6 +6233,8 @@ fn test_sleep_buff_persists_on_mobile() {
             magnitude: 0,
             remaining_secs: 60,
             source: "Sleep".to_string(),
+            damage_type: None,
+            vs_effect: None,
         });
         let id = mob.id;
         db.save_mobile_data(mob).expect("save");
@@ -6502,6 +6514,8 @@ fn test_charmed_buff_persists_with_master_source() {
             magnitude: 0,
             remaining_secs: 300,
             source: "Wizard".to_string(),
+            damage_type: None,
+            vs_effect: None,
         });
         let id = mob.id;
         db.save_mobile_data(mob).expect("save");
@@ -6541,6 +6555,8 @@ fn test_break_all_charms_by_player_clears_only_matching_buffs() {
                 magnitude: 0,
                 remaining_secs: 300,
                 source: master.to_string(),
+                damage_type: None,
+                vs_effect: None,
             });
             m
         };
@@ -6647,6 +6663,8 @@ fn test_break_all_charms_skips_pets_of_quitting_player() {
             magnitude: 0,
             remaining_secs: 300,
             source: "Alice".to_string(),
+            damage_type: None,
+            vs_effect: None,
         });
         let charmed_id = charmed.id;
         db.save_mobile_data(charmed).expect("save charmed");
@@ -6659,6 +6677,8 @@ fn test_break_all_charms_skips_pets_of_quitting_player() {
             magnitude: 0,
             remaining_secs: -1,
             source: "Alice".to_string(),
+            damage_type: None,
+            vs_effect: None,
         });
         pet.pet_owner = Some("Alice".to_string());
         pet.charm_stay = true;
@@ -7063,6 +7083,8 @@ fn test_mob_passive_regen_composes_with_regeneration_buff() {
         magnitude: 3,
         remaining_secs: -1,
         source: "test".to_string(),
+        damage_type: None,
+        vs_effect: None,
     });
 
     // Stance regen runs first (mirrors process_mobile_effects ordering).
@@ -7218,6 +7240,8 @@ fn test_permanent_aff_buffs_persist_on_mobile() {
                 magnitude: mag,
                 remaining_secs: -1,
                 source: "innate".to_string(),
+                damage_type: None,
+                vs_effect: None,
             });
         }
         let id = mob.id;
@@ -7302,6 +7326,8 @@ fn test_break_all_charms_clears_stay_follow_and_dangling_follow_targets() {
             magnitude: 0,
             remaining_secs: 300,
             source: "Wizard".to_string(),
+            damage_type: None,
+            vs_effect: None,
         });
         a.charm_stay = true;
         let a_id = a.id;
@@ -7316,6 +7342,8 @@ fn test_break_all_charms_clears_stay_follow_and_dangling_follow_targets() {
             magnitude: 0,
             remaining_secs: 300,
             source: "Cleric".to_string(),
+            damage_type: None,
+            vs_effect: None,
         });
         b.charm_follow_player = Some("Wizard".to_string());
         let b_id = b.id;
@@ -9697,6 +9725,8 @@ fn test_charm_master_recognizes_dominated_buff() {
         magnitude: 0,
         remaining_secs: 600,
         source: "Vlad".to_string(),
+        damage_type: None,
+        vs_effect: None,
     });
     assert_eq!(
         mob.charm_master().map(|s| s.to_string()),
@@ -9719,12 +9749,16 @@ fn test_charm_master_prefers_charmed_when_both_present() {
         magnitude: 0,
         remaining_secs: 60,
         source: "Player1".to_string(),
+        damage_type: None,
+        vs_effect: None,
     });
     mob.active_buffs.push(ActiveBuff {
         effect_type: EffectType::Dominated,
         magnitude: 0,
         remaining_secs: 600,
         source: "Player2".to_string(),
+        damage_type: None,
+        vs_effect: None,
     });
     assert_eq!(
         mob.charm_master().map(|s| s.to_string()),

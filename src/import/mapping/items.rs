@@ -80,7 +80,9 @@ pub(super) fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &M
             | Some(FlagAction::SetDamageBonus)
             | Some(FlagAction::SetMaxHpBonus)
             | Some(FlagAction::SetMaxManaBonus)
-            | Some(FlagAction::AddBuff { .. }) => {
+            | Some(FlagAction::AddBuff { .. })
+            | Some(FlagAction::AddItemAffect { .. })
+            | Some(FlagAction::AddItemAffectMulti { .. }) => {
                 warnings.push(Warning::new(
                     WarningKind::UnsupportedFlag,
                     Severity::Warn,
@@ -179,7 +181,16 @@ pub(super) fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &M
         let name = crate::import::engines::circle::flags::apply_type_name(*loc);
         match opts.circle.apply_actions.get(&name) {
             Some(FlagAction::SetStat { ironmud_stat }) => {
-                if !apply_named_item_stat(&mut data, ironmud_stat, *modifier) {
+                // Legacy mapping kept as a deprecation shim — promote into the
+                // new affects lane instead of writing a now-zero ItemData field.
+                if let Some(et) = stat_field_to_effect_type(ironmud_stat) {
+                    data.affects.push(crate::types::ItemAffect {
+                        effect_type: et,
+                        magnitude: *modifier,
+                        damage_type: None,
+                        vs_effect: None,
+                    });
+                } else {
                     warnings.push(Warning::new(
                         WarningKind::UnsupportedFlag,
                         Severity::Warn,
@@ -195,16 +206,77 @@ pub(super) fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &M
                 data.armor_class = Some(prior + (-modifier));
             }
             Some(FlagAction::SetHitBonus) => {
-                data.hit_bonus += modifier;
+                data.affects.push(crate::types::ItemAffect {
+                    effect_type: crate::types::EffectType::HitBonus,
+                    magnitude: *modifier,
+                    damage_type: None,
+                    vs_effect: None,
+                });
             }
             Some(FlagAction::SetDamageBonus) => {
-                data.damage_bonus += modifier;
+                data.affects.push(crate::types::ItemAffect {
+                    effect_type: crate::types::EffectType::DamageBonus,
+                    magnitude: *modifier,
+                    damage_type: None,
+                    vs_effect: None,
+                });
             }
             Some(FlagAction::SetMaxHpBonus) => {
-                data.max_hp_bonus += modifier;
+                data.affects.push(crate::types::ItemAffect {
+                    effect_type: crate::types::EffectType::MaxHpBonus,
+                    magnitude: *modifier,
+                    damage_type: None,
+                    vs_effect: None,
+                });
             }
             Some(FlagAction::SetMaxManaBonus) => {
-                data.max_mana_bonus += modifier;
+                data.affects.push(crate::types::ItemAffect {
+                    effect_type: crate::types::EffectType::MaxManaBonus,
+                    magnitude: *modifier,
+                    damage_type: None,
+                    vs_effect: None,
+                });
+            }
+            Some(FlagAction::AddItemAffect {
+                effect_type,
+                magnitude,
+                magnitude_from,
+                magnitude_scale,
+                damage_type,
+                vs_effect,
+            }) => {
+                if let Some(affect) = build_item_affect(
+                    effect_type,
+                    *magnitude,
+                    magnitude_from.as_deref(),
+                    *magnitude_scale,
+                    damage_type.as_deref(),
+                    vs_effect.as_deref(),
+                    *modifier,
+                    &name,
+                    &item.source,
+                    &mut warnings,
+                ) {
+                    data.affects.push(affect);
+                }
+            }
+            Some(FlagAction::AddItemAffectMulti { entries }) => {
+                for entry in entries {
+                    if let Some(affect) = build_item_affect(
+                        &entry.effect_type,
+                        entry.magnitude,
+                        entry.magnitude_from.as_deref(),
+                        entry.magnitude_scale,
+                        entry.damage_type.as_deref(),
+                        entry.vs_effect.as_deref(),
+                        *modifier,
+                        &name,
+                        &item.source,
+                        &mut warnings,
+                    ) {
+                        data.affects.push(affect);
+                    }
+                }
             }
             Some(FlagAction::Warn { message }) => {
                 warnings.push(Warning::new(
@@ -227,7 +299,6 @@ pub(super) fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &M
                     ),
                 ));
             }
-            // SetHitBonus/SetDamageBonus handled above in their own arms.
             None => warnings.push(Warning::new(
                 WarningKind::UnsupportedFlag,
                 Severity::Warn,
@@ -669,6 +740,7 @@ pub(super) fn apply_named_item_flag(flags: &mut ItemFlags, name: &str) -> bool {
 
 /// Set an ItemData stat-bonus field by snake_case name. Returns false if the
 /// name isn't recognised.
+#[allow(dead_code)]
 pub(super) fn apply_named_item_stat(data: &mut ItemData, name: &str, modifier: i32) -> bool {
     match name {
         "stat_str" => data.stat_str += modifier,
@@ -680,4 +752,116 @@ pub(super) fn apply_named_item_stat(data: &mut ItemData, name: &str, modifier: i
         _ => return false,
     }
     true
+}
+
+/// Map a legacy `ironmud_stat` name (e.g. "stat_str") to the corresponding
+/// `EffectType` so the importer can promote SetStat actions into the unified
+/// affects lane.
+pub(super) fn stat_field_to_effect_type(name: &str) -> Option<crate::types::EffectType> {
+    use crate::types::EffectType;
+    Some(match name {
+        "stat_str" => EffectType::StrengthBoost,
+        "stat_dex" => EffectType::DexterityBoost,
+        "stat_con" => EffectType::ConstitutionBoost,
+        "stat_int" => EffectType::IntelligenceBoost,
+        "stat_wis" => EffectType::WisdomBoost,
+        "stat_cha" => EffectType::CharismaBoost,
+        _ => return None,
+    })
+}
+
+/// Build an `ItemAffect` from importer mapping fields. Resolves magnitude
+/// (literal vs `magnitude_from: "value"` vs `magnitude_scale * value`) and
+/// validates that the companion tag matches the effect family. Emits a
+/// `Warning` and returns `None` on validation failure so the importer can
+/// continue.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn build_item_affect(
+    effect_type: &str,
+    magnitude: i32,
+    magnitude_from: Option<&str>,
+    magnitude_scale: Option<i32>,
+    damage_type: Option<&str>,
+    vs_effect: Option<&str>,
+    source_value: i32,
+    apply_name: &str,
+    source: &crate::import::SourceLoc,
+    warnings: &mut Vec<crate::import::Warning>,
+) -> Option<crate::types::ItemAffect> {
+    use crate::import::{Severity, Warning, WarningKind};
+    use crate::types::{DamageType, EffectType, ItemAffect};
+
+    let Some(et) = EffectType::from_str(effect_type) else {
+        warnings.push(Warning::new(
+            WarningKind::UnsupportedFlag,
+            Severity::Warn,
+            source.clone(),
+            format!("APPLY_{apply_name}: mapping uses unknown effect_type '{effect_type}'; dropped"),
+        ));
+        return None;
+    };
+
+    let mag = if let Some(from) = magnitude_from {
+        if from == "value" {
+            source_value
+        } else {
+            warnings.push(Warning::new(
+                WarningKind::UnsupportedFlag,
+                Severity::Warn,
+                source.clone(),
+                format!("APPLY_{apply_name}: unknown magnitude_from '{from}'; using literal magnitude"),
+            ));
+            magnitude
+        }
+    } else if let Some(scale) = magnitude_scale {
+        source_value * scale
+    } else {
+        magnitude
+    };
+
+    let (dt, vs) = match et {
+        EffectType::DamageResistance => {
+            let tag = damage_type.unwrap_or("");
+            if tag.is_empty() {
+                warnings.push(Warning::new(
+                    WarningKind::UnsupportedFlag,
+                    Severity::Warn,
+                    source.clone(),
+                    format!("APPLY_{apply_name}: damage_resistance requires damage_type; dropped"),
+                ));
+                return None;
+            }
+            let Some(dt) = DamageType::from_str(tag) else {
+                warnings.push(Warning::new(
+                    WarningKind::UnsupportedFlag,
+                    Severity::Warn,
+                    source.clone(),
+                    format!("APPLY_{apply_name}: unknown damage_type '{tag}'; dropped"),
+                ));
+                return None;
+            };
+            (Some(dt), None)
+        }
+        EffectType::StatusResistance => {
+            let tag = vs_effect.unwrap_or("");
+            if tag.is_empty() {
+                warnings.push(Warning::new(
+                    WarningKind::UnsupportedFlag,
+                    Severity::Warn,
+                    source.clone(),
+                    format!("APPLY_{apply_name}: status_resistance requires vs_effect; dropped"),
+                ));
+                return None;
+            }
+            (None, Some(tag.to_string()))
+        }
+        _ => (None, None),
+    };
+
+    Some(ItemAffect {
+        effect_type: et,
+        magnitude: mag,
+        damage_type: dt,
+        vs_effect: vs,
+    })
 }

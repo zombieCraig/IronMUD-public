@@ -5,7 +5,7 @@
 //! its default-effects table), gold-pile description helpers, and the
 //! `ItemData` aggregate that ties them together.
 
-use super::{BodyPart, DamageType, EffectType, ExtraDesc, ItemEffect, ItemTrigger, OnHitEffect, WeaponSkill, WearLocation};
+use super::{BodyPart, DamageType, EffectType, ExtraDesc, ItemAffect, ItemEffect, ItemTrigger, OnHitEffect, WeaponSkill, WearLocation};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -758,6 +758,14 @@ pub struct ItemData {
     // Insulation for temperature/weather system
     #[serde(default)]
     pub insulation: i32, // 0-100 scale for warmth
+    /// Equip-time affects stamped onto the wearer's `active_buffs` on wear and
+    /// stripped on remove. See `db::equip_and_stamp_buffs`. Replaces the legacy
+    /// per-field bonuses (`hit_bonus`, `damage_bonus`, `max_hp_bonus`,
+    /// `max_mana_bonus`, `stat_str..cha`) — those are migrated into this list
+    /// at startup by `migration::item_affects` and remain on the struct only
+    /// long enough for the migration to read them.
+    #[serde(default)]
+    pub affects: Vec<ItemAffect>,
     // Prototype fields
     #[serde(default)]
     pub is_prototype: bool,
@@ -983,7 +991,46 @@ impl ItemData {
             fertilizer_duration: 0,
             treats_infestation: String::new(),
             dg_vars: HashMap::new(),
+            affects: Vec::new(),
         }
+    }
+
+    /// Promote legacy per-field bonuses (`hit_bonus`, `damage_bonus`,
+    /// `max_hp_bonus`, `max_mana_bonus`, `stat_str..cha`) into `affects`.
+    /// Idempotent: zeros each legacy field once it's been migrated so subsequent
+    /// calls are no-ops. Called from the startup migration tick and defensively
+    /// from `db::equip_and_stamp_buffs` so old data loaded after migration is
+    /// still promoted on demand.
+    ///
+    /// Returns `true` if any field was migrated (caller may want to save).
+    pub fn normalize_legacy_bonuses(&mut self) -> bool {
+        use crate::types::{EffectType, ItemAffect};
+        let mut changed = false;
+        let push = |field: &mut i32, et: EffectType, affects: &mut Vec<ItemAffect>| {
+            if *field != 0 {
+                affects.push(ItemAffect {
+                    effect_type: et,
+                    magnitude: *field,
+                    damage_type: None,
+                    vs_effect: None,
+                });
+                *field = 0;
+                true
+            } else {
+                false
+            }
+        };
+        changed |= push(&mut self.hit_bonus, EffectType::HitBonus, &mut self.affects);
+        changed |= push(&mut self.damage_bonus, EffectType::DamageBonus, &mut self.affects);
+        changed |= push(&mut self.max_hp_bonus, EffectType::MaxHpBonus, &mut self.affects);
+        changed |= push(&mut self.max_mana_bonus, EffectType::MaxManaBonus, &mut self.affects);
+        changed |= push(&mut self.stat_str, EffectType::StrengthBoost, &mut self.affects);
+        changed |= push(&mut self.stat_dex, EffectType::DexterityBoost, &mut self.affects);
+        changed |= push(&mut self.stat_con, EffectType::ConstitutionBoost, &mut self.affects);
+        changed |= push(&mut self.stat_int, EffectType::IntelligenceBoost, &mut self.affects);
+        changed |= push(&mut self.stat_wis, EffectType::WisdomBoost, &mut self.affects);
+        changed |= push(&mut self.stat_cha, EffectType::CharismaBoost, &mut self.affects);
+        changed
     }
 
     pub fn sync_flag_categories(&mut self) {

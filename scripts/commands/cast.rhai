@@ -214,6 +214,14 @@ fn cast_debuff(connection_id, char, spell, target_arg) {
         return true;
     }
 
+    // Graded resistance — equip-stamped status_resistance buffs (and any
+    // wildcard "*" buffs) subtract from the apply chance. Base 80%.
+    if !roll_status_application(mob_id, effect, 80) {
+        send_client_message(connection_id, "You cast " + spell["name"] + " on " + mob.name + ", but " + mob.name + " shrugs off your magic!");
+        broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + " on " + mob.name + ", but the magic dissipates.", char.name);
+        return true;
+    }
+
     let magnitude = spell["buff_magnitude"];
     let duration = spell["buff_duration_secs"];
     apply_buff_to_mobile(mob_id, effect, magnitude, duration, spell["name"]);
@@ -461,6 +469,14 @@ fn cast_charm(connection_id, char, spell, target_arg) {
     if target.flags.no_charm {
         send_client_message(connection_id, target.short_desc + " resists your charm.");
         broadcast_to_room_except(room_id, connection_id, target.short_desc + " shrugs off " + char.name + "'s charm.");
+        return true;
+    }
+
+    // Graded resistance: equip-stamped status_resistance buffs (and wildcard
+    // "*" buffs) subtract from charm landing chance. Base 70%.
+    if !roll_status_application(mob_id, "charmed", 70) {
+        send_client_message(connection_id, target.short_desc + "'s will resists your charm.");
+        broadcast_to_room_except(room_id, connection_id, target.short_desc + " shakes off " + char.name + "'s magic.");
         return true;
     }
 

@@ -358,7 +358,16 @@ fn parses_items_into_plan() {
     );
     assert!(sword.data.wear_locations.contains(&WearLocation::Wielded));
     assert_eq!(sword.data.value, 600);
-    assert_eq!(sword.data.damage_bonus, 2, "APPLY_DAMROLL +2 lands on damage_bonus");
+    // APPLY_DAMROLL +2 now routes through the unified affects lane (as a
+    // permanent DamageBonus ActiveBuff at wear time) instead of the legacy
+    // damage_bonus field.
+    let dam_affect = sword
+        .data
+        .affects
+        .iter()
+        .find(|a| a.effect_type == ironmud::EffectType::DamageBonus)
+        .expect("APPLY_DAMROLL +2 lands as a DamageBonus affect");
+    assert_eq!(dam_affect.magnitude, 2);
     let damroll_warn = warnings
         .iter()
         .find(|w| w.message.contains("APPLY_DAMROLL"));
@@ -366,14 +375,20 @@ fn parses_items_into_plan() {
 
     // Armor: AC value v0=3 → armor_class +3 (no apply blocks bumping it
     // further), then APPLY_AC -3 sign-flips to +3 (added). APPLY_STR +1 →
-    // stat_str +1.
+    // StrengthBoost affect +1.
     let plate = plan.items.iter().find(|i| i.source_vnum == 9011).expect("plate");
     assert_eq!(plate.data.item_type, ItemType::Armor);
     // v0=3 negated to -3 (no, wait — armor v0=3 directly maps as armor_class
     // = -v0 = -3. Then the A-block APPLY_AC -3 with sign-flip adds +3, net 0.
     assert_eq!(plate.data.armor_class, Some(0));
     assert!(plate.data.wear_locations.contains(&WearLocation::Torso));
-    assert_eq!(plate.data.stat_str, 1);
+    let str_affect = plate
+        .data
+        .affects
+        .iter()
+        .find(|a| a.effect_type == ironmud::EffectType::StrengthBoost)
+        .expect("APPLY_STR +1 lands as a StrengthBoost affect");
+    assert_eq!(str_affect.magnitude, 1);
     assert!(plate.data.flags.glow);
 
     // Container: locked (bits 4|8 = 12), key vnum rewritten to prefixed form.
@@ -453,11 +468,23 @@ fn parses_items_into_plan() {
         "ITEM_FOUNTAIN should no longer warn"
     );
 
-    // Enchanted ring: APPLY_MAXHIT +20 / APPLY_MAXMANA +15 land on the new
-    // ItemData fields (CircleMUD parity). No APPLY_MAXHIT/MAXMANA warnings.
+    // Enchanted ring: APPLY_MAXHIT +20 / APPLY_MAXMANA +15 now route through
+    // the unified affects lane. No APPLY_MAXHIT/MAXMANA warnings.
     let ring = plan.items.iter().find(|i| i.source_vnum == 9020).expect("ring");
-    assert_eq!(ring.data.max_hp_bonus, 20, "APPLY_MAXHIT +20 → max_hp_bonus");
-    assert_eq!(ring.data.max_mana_bonus, 15, "APPLY_MAXMANA +15 → max_mana_bonus");
+    let max_hp_affect = ring
+        .data
+        .affects
+        .iter()
+        .find(|a| a.effect_type == ironmud::EffectType::MaxHpBonus)
+        .expect("APPLY_MAXHIT +20 lands as a MaxHpBonus affect");
+    assert_eq!(max_hp_affect.magnitude, 20);
+    let max_mana_affect = ring
+        .data
+        .affects
+        .iter()
+        .find(|a| a.effect_type == ironmud::EffectType::MaxManaBonus)
+        .expect("APPLY_MAXMANA +15 lands as a MaxManaBonus affect");
+    assert_eq!(max_mana_affect.magnitude, 15);
     assert!(
         !warnings.iter().any(|w| w.message.contains("APPLY_MAXHIT")
             || w.message.contains("APPLY_MAXMANA")),

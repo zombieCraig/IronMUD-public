@@ -29,4 +29,8 @@ fn run_command(args, connection_id) {
     move_item_to_inventory(item.id, char.name);
     send_client_message(connection_id, "You remove " + item.name + ".");
     broadcast_to_room(char.current_room_id, char.name + " removes " + item.name + ".", char.name);
+
+    // Buff stripping is handled in Rust by db::strip_item_buffs_from_holder
+    // — this trigger is for ad-hoc script side effects on unequip.
+    fire_item_trigger(item.id, "on_remove", connection_id, "");
 }

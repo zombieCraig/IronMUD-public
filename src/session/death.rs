@@ -190,6 +190,7 @@ fn build_player_corpse(name: &str, room_id: Uuid, gold: i64) -> ItemData {
         fertilizer_duration: 0,
         treats_infestation: String::new(),
         dg_vars: std::collections::HashMap::new(),
+            affects: Vec::new(),
     }
 }
 

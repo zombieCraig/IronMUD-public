@@ -2810,37 +2810,42 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     });
 
     // get_effective_max_hp(char_name) -> i64
-    // Base max_hp plus sum of `max_hp_bonus` across equipped items (CircleMUD
-    // APPLY_MAXHIT parity). Read-only — does not mutate stored max_hp.
+    // Base max_hp plus sum of `EffectType::MaxHpBonus` buffs (stamped from
+    // equipped items at wear time, plus any spell-cast HP buffs). Read-only.
     let cloned_db = db.clone();
     engine.register_fn("get_effective_max_hp", move |char_name: String| -> i64 {
         let lname = char_name.to_lowercase();
-        let base = match cloned_db.get_character_data(&lname) {
-            Ok(Some(c)) => c.max_hp as i64,
-            _ => return 0,
-        };
-        let bonus: i64 = cloned_db
-            .get_equipped_items(&lname)
-            .map(|items| items.iter().map(|i| i.max_hp_bonus as i64).sum())
-            .unwrap_or(0);
-        base + bonus
+        match cloned_db.get_character_data(&lname) {
+            Ok(Some(c)) => {
+                let bonus: i64 = c
+                    .active_buffs
+                    .iter()
+                    .filter(|b| b.effect_type == EffectType::MaxHpBonus)
+                    .map(|b| b.magnitude as i64)
+                    .sum();
+                c.max_hp as i64 + bonus
+            }
+            _ => 0,
+        }
     });
 
     // get_effective_max_mana(char_name) -> i64
-    // Base max_mana plus sum of `max_mana_bonus` across equipped items
-    // (CircleMUD APPLY_MAXMANA parity). Read-only.
+    // Base max_mana plus sum of `EffectType::MaxManaBonus` buffs.
     let cloned_db = db.clone();
     engine.register_fn("get_effective_max_mana", move |char_name: String| -> i64 {
         let lname = char_name.to_lowercase();
-        let base = match cloned_db.get_character_data(&lname) {
-            Ok(Some(c)) => c.max_mana as i64,
-            _ => return 0,
-        };
-        let bonus: i64 = cloned_db
-            .get_equipped_items(&lname)
-            .map(|items| items.iter().map(|i| i.max_mana_bonus as i64).sum())
-            .unwrap_or(0);
-        base + bonus
+        match cloned_db.get_character_data(&lname) {
+            Ok(Some(c)) => {
+                let bonus: i64 = c
+                    .active_buffs
+                    .iter()
+                    .filter(|b| b.effect_type == EffectType::MaxManaBonus)
+                    .map(|b| b.magnitude as i64)
+                    .sum();
+                c.max_mana as i64 + bonus
+            }
+            _ => 0,
+        }
     });
 
     // get_combat_skill_names() -> Array
@@ -2895,6 +2900,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 magnitude: magnitude as i32,
                 remaining_secs: duration_secs as i32,
                 source,
+                damage_type: None,
+                vs_effect: None,
             };
             let name_lower = char_name.to_lowercase();
             if let Ok(Some(mut character)) = cloned_db.get_character_data(&name_lower) {
@@ -2954,6 +2961,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     magnitude: magnitude as i32,
                     remaining_secs: duration_secs as i32,
                     source,
+                    damage_type: None,
+                    vs_effect: None,
                 });
             }
             cloned_db.save_mobile_data(mobile).is_ok()

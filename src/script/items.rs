@@ -3,8 +3,8 @@
 
 use crate::db::Db;
 use crate::{
-    BodyPart, DamageType, EffectType, ItemData, ItemEffect, ItemFlags, ItemLocation, ItemType, LiquidType, OnHitEffect,
-    WeaponSkill, WearLocation,
+    BodyPart, DamageType, EffectType, ItemAffect, ItemData, ItemEffect, ItemFlags, ItemLocation, ItemType, LiquidType,
+    OnHitEffect, WeaponSkill, WearLocation,
 };
 use rhai::{Dynamic, Engine, Map};
 use std::sync::Arc;
@@ -346,6 +346,153 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             .iter()
             .map(|s| rhai::Dynamic::from(s.to_string()))
             .collect::<Vec<_>>()
+    });
+
+    // ItemAffect type — equip-time effects stamped on the wearer as ActiveBuffs.
+    engine
+        .register_type_with_name::<ItemAffect>("ItemAffect")
+        .register_get("effect_type", |a: &mut ItemAffect| {
+            a.effect_type.to_display_string().to_string()
+        })
+        .register_get("magnitude", |a: &mut ItemAffect| a.magnitude as i64)
+        .register_get("damage_type", |a: &mut ItemAffect| {
+            a.damage_type.map(|d| d.to_display_string().to_string()).unwrap_or_default()
+        })
+        .register_get("has_damage_type", |a: &mut ItemAffect| a.damage_type.is_some())
+        .register_get("vs_effect", |a: &mut ItemAffect| {
+            a.vs_effect.clone().unwrap_or_default()
+        })
+        .register_get("has_vs_effect", |a: &mut ItemAffect| a.vs_effect.is_some());
+
+    // get_item_affects(item_id) -> Array of ItemAffect
+    let cloned_db = db.clone();
+    engine.register_fn("get_item_affects", move |item_id: String| -> rhai::Array {
+        let uuid = match uuid::Uuid::parse_str(&item_id) {
+            Ok(u) => u,
+            Err(_) => return Vec::new(),
+        };
+        match cloned_db.get_item_data(&uuid) {
+            Ok(Some(item)) => item
+                .affects
+                .into_iter()
+                .map(rhai::Dynamic::from)
+                .collect(),
+            _ => Vec::new(),
+        }
+    });
+
+    // item_add_affect(item_id, effect_str, magnitude, tag) -> String
+    // Tag is interpreted by effect_str:
+    //   "damage_resistance" -> tag is the damage_type ("acid", "fire", ...).
+    //   "status_resistance" -> tag is the effect being warded ("sleep", "*", ...).
+    //   anything else: tag must be "" (rejected otherwise).
+    // Returns "" on success, or an error message describing the validation failure.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "item_add_affect",
+        move |item_id: String, effect_str: String, magnitude: i64, tag: String| -> String {
+            let uuid = match uuid::Uuid::parse_str(&item_id) {
+                Ok(u) => u,
+                Err(_) => return "Invalid item id.".to_string(),
+            };
+            let effect = match EffectType::from_str(&effect_str) {
+                Some(e) => e,
+                None => return format!("Unknown effect type '{}'.", effect_str),
+            };
+            let (damage_type, vs_effect) = match effect {
+                EffectType::DamageResistance => {
+                    if tag.is_empty() {
+                        return "damage_resistance requires a damage type (e.g. acid, fire, cold).".to_string();
+                    }
+                    let dt = match DamageType::from_str(&tag) {
+                        Some(d) => d,
+                        None => return format!("Unknown damage type '{}'.", tag),
+                    };
+                    (Some(dt), None)
+                }
+                EffectType::StatusResistance => {
+                    if tag.is_empty() {
+                        return "status_resistance requires an effect to ward (e.g. sleep, charmed, poison, or '*' for all).".to_string();
+                    }
+                    if tag != "*" && EffectType::from_str(&tag).is_none() {
+                        return format!("Unknown effect '{}'. Use a snake_case effect name or '*' for all.", tag);
+                    }
+                    (None, Some(tag))
+                }
+                _ => {
+                    if !tag.is_empty() {
+                        return format!("Effect '{}' does not take a tag.", effect_str);
+                    }
+                    (None, None)
+                }
+            };
+            let mut item = match cloned_db.get_item_data(&uuid) {
+                Ok(Some(i)) => i,
+                _ => return "Item not found.".to_string(),
+            };
+            item.affects.push(ItemAffect {
+                effect_type: effect,
+                magnitude: magnitude as i32,
+                damage_type,
+                vs_effect,
+            });
+            if cloned_db.save_item_data(item).is_err() {
+                return "Failed to save item.".to_string();
+            }
+            String::new()
+        },
+    );
+
+    // item_remove_affect(item_id, index) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "item_remove_affect",
+        move |item_id: String, index: i64| -> bool {
+            let uuid = match uuid::Uuid::parse_str(&item_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let mut item = match cloned_db.get_item_data(&uuid) {
+                Ok(Some(i)) => i,
+                _ => return false,
+            };
+            let idx = index as usize;
+            if idx >= item.affects.len() {
+                return false;
+            }
+            item.affects.remove(idx);
+            cloned_db.save_item_data(item).is_ok()
+        },
+    );
+
+    // item_clear_affects(item_id) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn("item_clear_affects", move |item_id: String| -> bool {
+        let uuid = match uuid::Uuid::parse_str(&item_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let mut item = match cloned_db.get_item_data(&uuid) {
+            Ok(Some(i)) => i,
+            _ => return false,
+        };
+        item.affects.clear();
+        cloned_db.save_item_data(item).is_ok()
+    });
+
+    // format_item_affect(affect) -> String (display form, e.g. "strength_boost +2")
+    engine.register_fn("format_item_affect", |a: ItemAffect| -> String {
+        let mag_str = if a.magnitude >= 0 {
+            format!("+{}", a.magnitude)
+        } else {
+            a.magnitude.to_string()
+        };
+        let base = a.effect_type.to_display_string();
+        match (a.damage_type, a.vs_effect.as_deref()) {
+            (Some(dt), _) => format!("{} {} {}%", base, dt.to_display_string(), mag_str),
+            (_, Some(vs)) => format!("{} vs {} {}%", base, vs, mag_str),
+            _ => format!("{} {}", base, mag_str),
+        }
     });
 
     // get_all_liquid_types() -> Array

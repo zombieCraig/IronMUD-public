@@ -39,6 +39,8 @@ pub(crate) fn parse_item_trigger_type(s: &str) -> Option<ItemTriggerType> {
         "on_prompt" | "prompt" => ItemTriggerType::OnPrompt,
         "on_load" | "load" => ItemTriggerType::OnLoad,
         "on_command" | "command" => ItemTriggerType::OnCommand,
+        "on_wear" | "wear" => ItemTriggerType::OnWear,
+        "on_remove" | "remove" => ItemTriggerType::OnRemove,
         _ => return None,
     })
 }
@@ -1069,6 +1071,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         ItemTriggerType::OnPrompt => "on_prompt".to_string(),
         ItemTriggerType::OnLoad => "on_load".to_string(),
         ItemTriggerType::OnCommand => "on_command".to_string(),
+        ItemTriggerType::OnWear => "on_wear".to_string(),
+        ItemTriggerType::OnRemove => "on_remove".to_string(),
     });
 
     // get_item_triggers(item_id) -> Array of ItemTrigger

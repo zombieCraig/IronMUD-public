@@ -1181,6 +1181,8 @@ end";
             magnitude: 1,
             remaining_secs: 60,
             source: "old_caster".to_string(),
+            damage_type: None,
+            vs_effect: None,
         });
         let target_id = target.id;
         let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "healer");

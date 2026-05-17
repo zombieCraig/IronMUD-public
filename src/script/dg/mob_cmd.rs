@@ -411,6 +411,15 @@ fn do_wear(rest: &str, ctx: &EvalCtx) {
         item.name
     );
     broadcast(ctx, &line);
+    // Fire any OnWear DG triggers on the item itself (buff stamping is
+    // automatic via the db layer).
+    super::fire_item_dg_triggers(
+        &ctx.db,
+        &ctx.connections,
+        &item,
+        crate::types::ItemTriggerType::OnWear,
+        "",
+    );
 }
 
 /// `remove <item>` — move the named item from the mob's equipped set
@@ -439,6 +448,13 @@ fn do_remove(rest: &str, ctx: &EvalCtx) {
         item.name
     );
     broadcast(ctx, &line);
+    super::fire_item_dg_triggers(
+        &ctx.db,
+        &ctx.connections,
+        &item,
+        crate::types::ItemTriggerType::OnRemove,
+        "",
+    );
 }
 
 /// `quaff <potion>` — broadcast and consume the item from inventory. We

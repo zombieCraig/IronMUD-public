@@ -233,7 +233,8 @@ pub const OEDIT_SUBCOMMANDS: &[&str] = &[
     "preservation",
     "spoilage",
     "level",
-    "stat",
+    "affect",
+    "affects",
     "insulation",
     "category",
     "teaches",
@@ -259,7 +260,7 @@ pub const OEDIT_SUBCOMMANDS: &[&str] = &[
 pub const ITEM_TRIGGER_ACTIONS: &[&str] = &["list", "add", "remove", "enable", "disable", "chance", "test", "view"];
 
 /// Item trigger types
-pub const ITEM_TRIGGER_TYPES: &[&str] = &["get", "drop", "use", "examine", "on_prompt"];
+pub const ITEM_TRIGGER_TYPES: &[&str] = &["get", "drop", "use", "examine", "on_prompt", "on_wear", "on_remove"];
 
 /// Item types
 pub const ITEM_TYPES: &[&str] = &[

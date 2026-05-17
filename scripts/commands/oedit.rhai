@@ -465,24 +465,23 @@ fn handle_subcommand(item, item_id, subcommand, parts, char, connection_id) {
         handle_level_subcommand(uuid, parts, connection_id);
         return;
     }
-    if subcommand == "stat" {
-        handle_stat_subcommand(uuid, parts, connection_id);
+    if subcommand == "affect" || subcommand == "affects" {
+        handle_affect_subcommand(uuid, parts, connection_id);
         return;
     }
-    if subcommand == "hit_bonus" || subcommand == "hitroll" || subcommand == "hit" {
-        handle_hit_bonus_subcommand(uuid, parts, connection_id);
-        return;
-    }
-    if subcommand == "max_hp_bonus" || subcommand == "max_hp" || subcommand == "maxhit" {
-        handle_max_hp_bonus_subcommand(uuid, parts, connection_id);
-        return;
-    }
-    if subcommand == "max_mana_bonus" || subcommand == "max_mana" || subcommand == "maxmana" {
-        handle_max_mana_bonus_subcommand(uuid, parts, connection_id);
-        return;
-    }
-    if subcommand == "damage_bonus" || subcommand == "damroll" || subcommand == "dam" {
-        handle_damage_bonus_subcommand(uuid, parts, connection_id);
+    // Legacy bonus subcommands (stat, hit_bonus, damage_bonus, max_hp_bonus,
+    // max_mana_bonus) were superseded by `oedit <id> affect ...`. Point
+    // builders at the new path so muscle memory isn't silently ignored.
+    if subcommand == "stat"
+        || subcommand == "hit_bonus" || subcommand == "hitroll" || subcommand == "hit"
+        || subcommand == "max_hp_bonus" || subcommand == "max_hp" || subcommand == "maxhit"
+        || subcommand == "max_mana_bonus" || subcommand == "max_mana" || subcommand == "maxmana"
+        || subcommand == "damage_bonus" || subcommand == "damroll" || subcommand == "dam" {
+        send_client_message(connection_id,
+            "That subcommand was replaced by `oedit " + parts[0] + " affect add <effect> [magnitude] [tag]`.\n" +
+            "  Example: oedit " + parts[0] + " affect add hit_bonus 2\n" +
+            "  Example: oedit " + parts[0] + " affect add damage_resistance 25 acid\n" +
+            "  See `oedit " + parts[0] + " affect` for the full grammar.");
         return;
     }
     if subcommand == "light_hours" || subcommand == "burn_hours" || subcommand == "burn" {
@@ -2110,6 +2109,14 @@ fn handle_spawn_subcommand(item, char, connection_id) {
         idx += 1;
     }
 
+    // Copy affects (equip-time buffs)
+    for a in get_item_affects(item.id) {
+        let tag = "";
+        if a.has_damage_type { tag = a.damage_type; }
+        if a.has_vs_effect { tag = a.vs_effect; }
+        item_add_affect(new_item.id, a.effect_type, a.magnitude, tag);
+    }
+
     move_item_to_room(new_item.id, char.current_room_id);
     send_client_message(connection_id, "Spawned " + item.name + " in room.");
 }
@@ -2943,21 +2950,23 @@ fn build_effects_display(effects) {
 }
 
 fn build_stats_display(item) {
-    if !item.has_stats {
-        return "Stats: (none)\n";
+    let affects = get_item_affects(item.id);
+    if affects.len() == 0 && item.insulation == 0 {
+        return "Affects: (none)\n";
     }
-    let output = "Stats:";
-    if item.stat_str != 0 { output += " STR " + format_stat(item.stat_str); }
-    if item.stat_dex != 0 { output += " DEX " + format_stat(item.stat_dex); }
-    if item.stat_con != 0 { output += " CON " + format_stat(item.stat_con); }
-    if item.stat_int != 0 { output += " INT " + format_stat(item.stat_int); }
-    if item.stat_wis != 0 { output += " WIS " + format_stat(item.stat_wis); }
-    if item.stat_cha != 0 { output += " CHA " + format_stat(item.stat_cha); }
-    if item.hit_bonus != 0 { output += " HIT " + format_stat(item.hit_bonus); }
-    if item.damage_bonus != 0 { output += " DAM " + format_stat(item.damage_bonus); }
-    if item.max_hp_bonus != 0 { output += " MAXHP " + format_stat(item.max_hp_bonus); }
-    if item.max_mana_bonus != 0 { output += " MAXMANA " + format_stat(item.max_mana_bonus); }
-    if item.insulation != 0 { output += " Insulation: " + item.insulation; }
+    let output = "Affects:";
+    if affects.len() == 0 {
+        output += " (none)";
+    } else {
+        let i = 0;
+        for a in affects {
+            output += "\n  [" + i + "] " + format_item_affect(a);
+            i += 1;
+        }
+    }
+    if item.insulation != 0 {
+        output += "\n  Insulation: " + item.insulation;
+    }
     output += "\n";
     return output;
 }
@@ -3219,115 +3228,103 @@ fn handle_level_subcommand(item_id, parts, connection_id) {
     }
 }
 
-fn handle_stat_subcommand(item_id, parts, connection_id) {
-    if parts.len() < 4 {
-        send_client_message(connection_id, "Usage: oedit " + item_id + " stat <str|dex|con|int|wis|cha> <value>");
-        return;
-    }
-    let stat_name = parts[2].to_lower();
-    let value = try_parse_int(parts[3]);
-    if value == () {
-        send_client_message(connection_id, "Invalid number.");
-        return;
-    }
-    let valid_stats = ["str", "dex", "con", "int", "wis", "cha"];
-    let is_valid = false;
-    for s in valid_stats {
-        if stat_name == s { is_valid = true; }
-    }
-    if !is_valid {
-        send_client_message(connection_id, "Invalid stat. Use: str, dex, con, int, wis, cha");
-        return;
-    }
-    set_item_stat(item_id, stat_name, value);
-    let full_name = get_stat_full_name(stat_name);
-    if value == 0 {
-        send_client_message(connection_id, full_name + " bonus removed.");
-    } else if value > 0 {
-        send_client_message(connection_id, full_name + " bonus set to: +" + value);
-    } else {
-        send_client_message(connection_id, full_name + " bonus set to: " + value);
-    }
-}
+fn handle_affect_subcommand(item_id, parts, connection_id) {
+    // oedit <id> affect [list]                          → show affects
+    // oedit <id> affect add <effect> [magnitude] [tag]  → append affect
+    // oedit <id> affect rm <index>                      → remove by index
+    // oedit <id> affect clear                           → remove all
+    let usage =
+        "Usage:\n" +
+        "  oedit " + item_id + " affect [list]\n" +
+        "  oedit " + item_id + " affect add <effect> [magnitude] [tag]\n" +
+        "  oedit " + item_id + " affect rm <index>\n" +
+        "  oedit " + item_id + " affect clear\n" +
+        "\nEffect groups:\n" +
+        "  boost      strength_boost, dexterity_boost, constitution_boost,\n" +
+        "             intelligence_boost, wisdom_boost, charisma_boost,\n" +
+        "             hit_bonus, damage_bonus, max_hp_bonus, max_mana_bonus,\n" +
+        "             armor_class_boost\n" +
+        "  grants     night_vision, detect_invisible, detect_magic,\n" +
+        "             water_breathing, regeneration\n" +
+        "  protect    damage_resistance <type>   (fire, cold, acid, poison, ...)\n" +
+        "             status_resistance <effect|*>  (sleep, charmed, blind, ...)\n" +
+        "             damage_reduction\n" +
+        "  curse      poison, blind, sleep, curse  (applied permanently to wearer)";
 
-fn handle_hit_bonus_subcommand(item_id, parts, connection_id) {
-    if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: oedit " + item_id + " hit_bonus <value>");
+    if parts.len() < 3 || parts[2].to_lower() == "list" || parts[2].to_lower() == "show" {
+        let affects = get_item_affects(item_id);
+        if affects.len() == 0 {
+            send_client_message(connection_id, "No affects on this item.\n\n" + usage);
+            return;
+        }
+        let out = "Affects:";
+        let i = 0;
+        for a in affects {
+            out += "\n  [" + i + "] " + format_item_affect(a);
+            i += 1;
+        }
+        send_client_message(connection_id, out);
         return;
     }
-    let value = try_parse_int(parts[2]);
-    if value == () {
-        send_client_message(connection_id, "Invalid number.");
-        return;
-    }
-    set_item_hit_bonus(item_id, value);
-    if value == 0 {
-        send_client_message(connection_id, "Hit-roll bonus removed.");
-    } else if value > 0 {
-        send_client_message(connection_id, "Hit-roll bonus set to: +" + value);
-    } else {
-        send_client_message(connection_id, "Hit-roll bonus set to: " + value);
-    }
-}
 
-fn handle_damage_bonus_subcommand(item_id, parts, connection_id) {
-    if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: oedit " + item_id + " damage_bonus <value>");
-        return;
-    }
-    let value = try_parse_int(parts[2]);
-    if value == () {
-        send_client_message(connection_id, "Invalid number.");
-        return;
-    }
-    set_item_damage_bonus(item_id, value);
-    if value == 0 {
-        send_client_message(connection_id, "Damage-roll bonus removed.");
-    } else if value > 0 {
-        send_client_message(connection_id, "Damage-roll bonus set to: +" + value);
-    } else {
-        send_client_message(connection_id, "Damage-roll bonus set to: " + value);
-    }
-}
+    let action = parts[2].to_lower();
 
-fn handle_max_hp_bonus_subcommand(item_id, parts, connection_id) {
-    if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: oedit " + item_id + " max_hp_bonus <value>");
+    if action == "clear" {
+        if item_clear_affects(item_id) {
+            send_client_message(connection_id, "All affects cleared.");
+        } else {
+            send_client_message(connection_id, "Failed to clear affects.");
+        }
         return;
     }
-    let value = try_parse_int(parts[2]);
-    if value == () {
-        send_client_message(connection_id, "Invalid number.");
-        return;
-    }
-    set_item_max_hp_bonus(item_id, value);
-    if value == 0 {
-        send_client_message(connection_id, "Max HP bonus removed.");
-    } else if value > 0 {
-        send_client_message(connection_id, "Max HP bonus set to: +" + value);
-    } else {
-        send_client_message(connection_id, "Max HP bonus set to: " + value);
-    }
-}
 
-fn handle_max_mana_bonus_subcommand(item_id, parts, connection_id) {
-    if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: oedit " + item_id + " max_mana_bonus <value>");
+    if action == "rm" || action == "remove" || action == "del" || action == "delete" {
+        if parts.len() < 4 {
+            send_client_message(connection_id, "Usage: oedit " + item_id + " affect rm <index>");
+            return;
+        }
+        let idx = try_parse_int(parts[3]);
+        if idx == () || idx < 0 {
+            send_client_message(connection_id, "Invalid index.");
+            return;
+        }
+        if item_remove_affect(item_id, idx) {
+            send_client_message(connection_id, "Affect [" + idx + "] removed.");
+        } else {
+            send_client_message(connection_id, "No affect at index " + idx + ".");
+        }
         return;
     }
-    let value = try_parse_int(parts[2]);
-    if value == () {
-        send_client_message(connection_id, "Invalid number.");
+
+    if action == "add" {
+        if parts.len() < 4 {
+            send_client_message(connection_id, usage);
+            return;
+        }
+        let effect = parts[3].to_lower();
+        let magnitude = 1;
+        if parts.len() >= 5 {
+            let m = try_parse_int(parts[4]);
+            if m == () {
+                send_client_message(connection_id, "Invalid magnitude '" + parts[4] + "'.");
+                return;
+            }
+            magnitude = m;
+        }
+        let tag = "";
+        if parts.len() >= 6 {
+            tag = parts[5].to_lower();
+        }
+        let err = item_add_affect(item_id, effect, magnitude, tag);
+        if err != "" {
+            send_client_message(connection_id, err);
+            return;
+        }
+        send_client_message(connection_id, "Affect added.");
         return;
     }
-    set_item_max_mana_bonus(item_id, value);
-    if value == 0 {
-        send_client_message(connection_id, "Max mana bonus removed.");
-    } else if value > 0 {
-        send_client_message(connection_id, "Max mana bonus set to: +" + value);
-    } else {
-        send_client_message(connection_id, "Max mana bonus set to: " + value);
-    }
+
+    send_client_message(connection_id, usage);
 }
 
 fn handle_light_hours_subcommand(item_id, parts, connection_id) {

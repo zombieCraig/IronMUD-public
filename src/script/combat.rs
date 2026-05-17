@@ -63,6 +63,38 @@ pub fn apply_mobile_passive_stance_regen(mobile: &mut MobileData) -> i32 {
     added
 }
 
+/// Sum of `StatusResistance` buff magnitudes on `buffs` that target either the
+/// specific `effect` or the wildcard `"*"`. Used by `roll_status_application`
+/// and exposed for callers that want to inspect resistance without rolling.
+pub fn status_resistance_total(buffs: &[ActiveBuff], effect: EffectType) -> i32 {
+    let effect_key = effect.to_display_string();
+    buffs
+        .iter()
+        .filter(|b| b.effect_type == EffectType::StatusResistance)
+        .filter(|b| {
+            b.vs_effect.as_deref() == Some(effect_key) || b.vs_effect.as_deref() == Some("*")
+        })
+        .map(|b| b.magnitude)
+        .sum()
+}
+
+/// Returns true if the status effect successfully applies to the target.
+/// `base_chance` is 0..=100 (caster's effective chance to land the effect).
+/// Target's `StatusResistance` buffs matching the effect (or `"*"`) subtract
+/// their magnitude from `base_chance`. Final chance is clamped `5..=95` so
+/// resistance is never absolute and even hopeless casters always have a
+/// sliver. Uses the supplied RNG; deterministic for tests.
+pub fn roll_status_application<R: Rng + ?Sized>(
+    target_buffs: &[ActiveBuff],
+    effect: EffectType,
+    base_chance: i32,
+    rng: &mut R,
+) -> bool {
+    let resist = status_resistance_total(target_buffs, effect);
+    let final_chance = (base_chance - resist).clamp(5, 95);
+    rng.gen_range(1..=100) <= final_chance
+}
+
 /// Returns `damage` reduced by the highest-magnitude active `DamageReduction` buff,
 /// or unchanged if none. Floors at 1 to preserve the "you got hit" feedback.
 /// Magnitude is treated as a percentage (0..=95 expected).
@@ -92,6 +124,8 @@ mod damage_reduction_tests {
             magnitude: mag,
             remaining_secs: -1,
             source: "test".to_string(),
+            damage_type: None,
+            vs_effect: None,
         }
     }
 
@@ -107,6 +141,8 @@ mod damage_reduction_tests {
             magnitude: 50,
             remaining_secs: -1,
             source: "test".to_string(),
+            damage_type: None,
+            vs_effect: None,
         };
         assert_eq!(apply_damage_reduction(20, &[b]), 20);
     }
@@ -162,6 +198,68 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 .collect::<Vec<_>>()
         })
         .register_get("reloading", |s: &mut CombatState| s.reloading);
+
+    // ========== Status-Effect Resistance ==========
+
+    // roll_status_application(target_name_or_id, effect_str, base_chance) -> bool
+    // Returns true if the status effect lands. Resolves target as a character
+    // name first, then a mobile UUID. Reads `StatusResistance` buffs on the
+    // target (matching `effect_str` or the `"*"` wildcard) and subtracts them
+    // from `base_chance` before rolling. Use this for `cast_sleep`, `cast_charm`,
+    // `cast_blind`, `bash` stun, and any on-hit status-effect application.
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "roll_status_application",
+            move |target: String, effect_str: String, base_chance: i64| -> bool {
+                let effect = match EffectType::from_str(&effect_str) {
+                    Some(e) => e,
+                    None => return false,
+                };
+                let buffs = if let Ok(uuid) = Uuid::parse_str(&target) {
+                    match cloned_db.get_mobile_data(&uuid) {
+                        Ok(Some(m)) => m.active_buffs,
+                        _ => return false,
+                    }
+                } else {
+                    match cloned_db.get_character_data(&target.to_lowercase()) {
+                        Ok(Some(c)) => c.active_buffs,
+                        _ => return false,
+                    }
+                };
+                let mut rng = rand::thread_rng();
+                roll_status_application(&buffs, effect, base_chance as i32, &mut rng)
+            },
+        );
+    }
+
+    // status_resistance_total(target_name_or_id, effect_str) -> i64
+    // Diagnostic helper: returns the summed resistance magnitude (no roll).
+    // Useful for examine "(would resist sleep)" cues or builder debug.
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "status_resistance_total",
+            move |target: String, effect_str: String| -> i64 {
+                let effect = match EffectType::from_str(&effect_str) {
+                    Some(e) => e,
+                    None => return 0,
+                };
+                let buffs = if let Ok(uuid) = Uuid::parse_str(&target) {
+                    match cloned_db.get_mobile_data(&uuid) {
+                        Ok(Some(m)) => m.active_buffs,
+                        _ => return 0,
+                    }
+                } else {
+                    match cloned_db.get_character_data(&target.to_lowercase()) {
+                        Ok(Some(c)) => c.active_buffs,
+                        _ => return 0,
+                    }
+                };
+                status_resistance_total(&buffs, effect) as i64
+            },
+        );
+    }
 
     // ========== Reloading State Functions ==========
 
@@ -2456,6 +2554,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 fertilizer_duration: 0,
                 treats_infestation: String::new(),
                 dg_vars: std::collections::HashMap::new(),
+            affects: Vec::new(),
             };
 
             let corpse_id = corpse.id.to_string();

@@ -128,12 +128,16 @@ fn run_command(args, connection_id) {
     send_client_message(connection_id, "You slam into " + target_name + " for " + damage + " damage, knocking them senseless!");
     broadcast_to_room_awake(room_id, char.name + " slams into " + target_name + ", leaving them stunned!", char.name);
 
-    // Apply damage + stun.
+    // Apply damage + stun. Graded resistance: status_resistance vs "sleep"
+    // (the closest incapacitation analogue) subtracts from the stun-apply
+    // chance. Base 90% so a typical bash usually lands. Damage still applies.
     let mobile = get_mobile_data(target_id);
     if mobile != () {
         mobile.hp = mobile.hp - damage;
         save_mobile_data(mobile);
-        apply_mobile_stun(target_id, 2);
+        if roll_status_application(target_id, "sleep", 90) {
+            apply_mobile_stun(target_id, 2);
+        }
 
         if mobile.hp <= 0 {
             fire_mobile_trigger(target_id, "on_death", connection_id, #{

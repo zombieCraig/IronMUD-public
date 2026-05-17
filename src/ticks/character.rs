@@ -432,12 +432,14 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
             let has_tough = char.traits.iter().any(|t| t == "tough");
             let has_sickly = char.traits.iter().any(|t| t == "sickly");
             // CircleMUD APPLY_MAXHIT parity: equipment max-HP bonuses lift the
-            // ceiling. Read fresh from the equipped set so unwear takes effect
-            // immediately.
-            let eq_max_hp_bonus: i32 = db
-                .get_equipped_items(&char.name)
-                .map(|items| items.iter().map(|i| i.max_hp_bonus).sum())
-                .unwrap_or(0);
+            // ceiling. Stamped on `active_buffs` at wear time, so unwear takes
+            // effect immediately when the buff is stripped.
+            let eq_max_hp_bonus: i32 = char
+                .active_buffs
+                .iter()
+                .filter(|b| b.effect_type == EffectType::MaxHpBonus)
+                .map(|b| b.magnitude)
+                .sum();
             let mut effective_max_hp = char.max_hp + eq_max_hp_bonus;
             if has_vigorous {
                 effective_max_hp = effective_max_hp * 115 / 100;

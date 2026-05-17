@@ -7,9 +7,9 @@ use tokio::time::{Duration, interval};
 use tracing::{debug, error};
 
 use ironmud::{
-    BodyPart, CharacterData, CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, DamageType, EffectType,
-    ItemLocation, ItemType, MobileData, STARTING_ROOM_ID, SharedConnections, SharedState, SkillProgress, WeaponSkill,
-    WearLocation, WoundLevel, WoundType, break_all_charms_by_player, db,
+    ActiveBuff, BodyPart, CharacterData, CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, DamageType,
+    EffectType, ItemLocation, ItemType, MobileData, STARTING_ROOM_ID, SharedConnections, SharedState, SkillProgress,
+    WeaponSkill, WearLocation, WoundLevel, WoundType, break_all_charms_by_player, db,
 };
 
 use ironmud::corpse::{CorpseBuilder, mobile_gold_with_variance};
@@ -911,8 +911,8 @@ fn process_character_attacks_mobile(
     let skill = get_skill_level_for_character(char, &weapon_skill);
 
     // Calculate base hit chance: 50 + skill*5 + attacker_dex - target_dex - target_ac
-    let (eq_hit_bonus, eq_dam_bonus, eq_dex_bonus) = sum_equipment_combat_bonuses(db, &char.name);
-    let (_, _, mob_eq_dex_bonus) = sum_equipment_combat_bonuses_mobile(db, &mobile.id);
+    let (eq_hit_bonus, eq_dam_bonus, eq_dex_bonus) = sum_combat_buff_bonuses(&char.active_buffs);
+    let (_, _, mob_eq_dex_bonus) = sum_combat_buff_bonuses(&mobile.active_buffs);
     let attacker_dex_mod = (char.stat_dex as i32 + eq_dex_bonus - 10) / 2;
     let target_dex_mod = (mobile.stat_dex as i32 + mob_eq_dex_bonus - 10) / 2;
     let target_ac = mobile.armor_class;
@@ -1983,9 +1983,9 @@ fn process_mobile_attacks_player(
     }
 
     // Calculate hit chance (automatic hit if target was sleeping)
-    let (_, _, char_eq_dex_bonus) = sum_equipment_combat_bonuses(db, &char.name);
+    let (_, _, char_eq_dex_bonus) = sum_combat_buff_bonuses(&char.active_buffs);
     let (mob_eq_hit_bonus, mob_eq_dam_bonus, mob_eq_dex_bonus) =
-        sum_equipment_combat_bonuses_mobile(db, &mobile.id);
+        sum_combat_buff_bonuses(&mobile.active_buffs);
     let attacker_dex_mod = (mobile.stat_dex as i32 + mob_eq_dex_bonus - 10) / 2;
     let target_dex_mod = (char.stat_dex as i32 + char_eq_dex_bonus - 10) / 2;
     // Calculate player AC from armor + ArmorClassBoost buffs
@@ -2220,18 +2220,30 @@ fn process_mobile_attacks_player(
         }
     }
 
-    // Apply racial resistance modifier
+    // Apply combined typed resistance: race + item-stamped buffs.
+    // Race resistance lookup is scoped (drops lock before further work).
     {
         let race_id = char.race.to_lowercase();
         let dmg_type_str = damage_type.to_display_string();
-        let world = state.lock().unwrap();
-        if let Some(race) = world.race_definitions.get(&race_id) {
-            if let Some(&resist_pct) = race.resistances.get(dmg_type_str) {
-                // Positive = resistance (reduces damage), negative = vulnerability (increases damage)
-                damage = (damage * (100 - resist_pct)) / 100;
-                if damage < 1 {
-                    damage = 1;
-                }
+        let race_resist = {
+            let world = state.lock().unwrap();
+            world
+                .race_definitions
+                .get(&race_id)
+                .and_then(|r| r.resistances.get(dmg_type_str).copied())
+                .unwrap_or(0)
+        };
+        let item_resist: i32 = char
+            .active_buffs
+            .iter()
+            .filter(|b| b.effect_type == EffectType::DamageResistance && b.damage_type == Some(damage_type))
+            .map(|b| b.magnitude)
+            .sum();
+        let total = (race_resist + item_resist).clamp(-100, 95);
+        if total != 0 {
+            damage = (damage * (100 - total)) / 100;
+            if damage < 1 {
+                damage = 1;
             }
         }
     }
@@ -2456,17 +2468,32 @@ fn mob_cast_spell_at_player(
             // Map damage_type string onto DamageType for resistance + flavor.
             let damage_type = ironmud::DamageType::from_str(&spell.damage_type).unwrap_or(ironmud::DamageType::Arcane);
 
-            // Apply racial resistance.
+            // Apply combined typed resistance: race + item-stamped buffs.
             {
                 let race_id = char.race.to_lowercase();
                 let dmg_type_str = damage_type.to_display_string();
-                let world = state.lock().unwrap();
-                if let Some(race) = world.race_definitions.get(&race_id) {
-                    if let Some(&resist_pct) = race.resistances.get(dmg_type_str) {
-                        damage = (damage * (100 - resist_pct)) / 100;
-                        if damage < 1 {
-                            damage = 1;
-                        }
+                let race_resist = {
+                    let world = state.lock().unwrap();
+                    world
+                        .race_definitions
+                        .get(&race_id)
+                        .and_then(|r| r.resistances.get(dmg_type_str).copied())
+                        .unwrap_or(0)
+                };
+                let item_resist: i32 = char
+                    .active_buffs
+                    .iter()
+                    .filter(|b| {
+                        b.effect_type == ironmud::EffectType::DamageResistance
+                            && b.damage_type == Some(damage_type)
+                    })
+                    .map(|b| b.magnitude)
+                    .sum();
+                let total = (race_resist + item_resist).clamp(-100, 95);
+                if total != 0 {
+                    damage = (damage * (100 - total)) / 100;
+                    if damage < 1 {
+                        damage = 1;
                     }
                 }
             }
@@ -2572,6 +2599,8 @@ fn mob_cast_spell_at_player(
                 magnitude: spell.buff_magnitude,
                 remaining_secs: duration,
                 source: mobile.name.clone(),
+                damage_type: None,
+                vs_effect: None,
             });
             db.save_character_data(char.clone())?;
             sync_character_to_session(connections, &char, state);
@@ -2646,34 +2675,20 @@ pub fn parse_damage_dice(dice_str: &str) -> (i32, i32, i32) {
     (count, sides, 0)
 }
 
-/// Sum APPLY_HITROLL / APPLY_DAMROLL / APPLY_DEX bonuses across all of a
-/// character's equipped items. CircleMUD parity: bonuses apply while worn
-/// in any slot, not just a wielded weapon. Returns (hit, dam, dex).
-fn sum_equipment_combat_bonuses(db: &db::Db, name: &str) -> (i32, i32, i32) {
+/// Sum APPLY_HITROLL / APPLY_DAMROLL / APPLY_DEX bonuses from the entity's
+/// `active_buffs`. Equipped items stamp these as permanent buffs at wear time
+/// (see `db::stamp_item_buffs_on_character`), so reading from buffs covers
+/// both gear and any spell-cast bonuses uniformly. Returns (hit, dam, dex).
+fn sum_combat_buff_bonuses(buffs: &[ActiveBuff]) -> (i32, i32, i32) {
     let mut hit = 0;
     let mut dam = 0;
     let mut dex = 0;
-    if let Ok(items) = db.get_equipped_items(name) {
-        for item in &items {
-            hit += item.hit_bonus;
-            dam += item.damage_bonus;
-            dex += item.stat_dex;
-        }
-    }
-    (hit, dam, dex)
-}
-
-/// Mob counterpart — sums hit/damage/dex bonuses across all items equipped
-/// on a mobile.
-fn sum_equipment_combat_bonuses_mobile(db: &db::Db, mobile_id: &uuid::Uuid) -> (i32, i32, i32) {
-    let mut hit = 0;
-    let mut dam = 0;
-    let mut dex = 0;
-    if let Ok(items) = db.get_items_equipped_on_mobile(mobile_id) {
-        for item in &items {
-            hit += item.hit_bonus;
-            dam += item.damage_bonus;
-            dex += item.stat_dex;
+    for b in buffs {
+        match b.effect_type {
+            EffectType::HitBonus => hit += b.magnitude,
+            EffectType::DamageBonus => dam += b.magnitude,
+            EffectType::DexterityBoost => dex += b.magnitude,
+            _ => {}
         }
     }
     (hit, dam, dex)

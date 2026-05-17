@@ -151,6 +151,42 @@ pub enum FlagAction {
         #[serde(default)]
         source: String,
     },
+    /// Append a single `ItemAffect` to the imported item's `affects` Vec.
+    /// `magnitude` is the literal default; `magnitude_from: "value"` reads the
+    /// modifier value from the source apply entry; `magnitude_scale` multiplies
+    /// the source value by a fixed coefficient (used for SAVING_* heuristics).
+    /// Item-only.
+    AddItemAffect {
+        effect_type: String,
+        #[serde(default)]
+        magnitude: i32,
+        #[serde(default)]
+        magnitude_from: Option<String>,
+        #[serde(default)]
+        magnitude_scale: Option<i32>,
+        #[serde(default)]
+        damage_type: Option<String>,
+        #[serde(default)]
+        vs_effect: Option<String>,
+    },
+    /// Append multiple `ItemAffect` entries from one source apply (used by
+    /// SAVING_BREATH which splits across fire/cold/lightning/acid). Item-only.
+    AddItemAffectMulti { entries: Vec<ItemAffectEntry> },
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ItemAffectEntry {
+    pub effect_type: String,
+    #[serde(default)]
+    pub magnitude: i32,
+    #[serde(default)]
+    pub magnitude_from: Option<String>,
+    #[serde(default)]
+    pub magnitude_scale: Option<i32>,
+    #[serde(default)]
+    pub damage_type: Option<String>,
+    #[serde(default)]
+    pub vs_effect: Option<String>,
 }
 
 fn default_remaining_secs() -> i32 {

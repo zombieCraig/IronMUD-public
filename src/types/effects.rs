@@ -146,6 +146,31 @@ pub enum EffectType {
     /// Discipline-grade invisibility that holds even in lit rooms (unlike the
     /// regular Invisibility buff which can be defeated by light/perception).
     Obfuscate,
+    /// Typed damage resistance — reduces incoming damage of a specific
+    /// `DamageType` by `magnitude` percent. Companion tag in `ItemAffect.damage_type`
+    /// / `ActiveBuff.damage_type` selects which damage type. Stacks additively
+    /// with racial resistance; clamped `[-100, 95]` in the consumption site.
+    DamageResistance,
+    /// Status-effect application resistance — when a spell/ability tries to
+    /// stamp an `EffectType` on the target, this buff's `magnitude` is
+    /// subtracted from the application chance. Companion tag in
+    /// `ItemAffect.vs_effect` / `ActiveBuff.vs_effect` is the snake_case name
+    /// of the effect being resisted, or `"*"` for "all status effects"
+    /// (CircleMUD APPLY_SAVING_SPELL parity).
+    StatusResistance,
+    /// Flat to-hit bonus while held as an active buff (typically stamped by an
+    /// equipped item with `affects: [hit_bonus mag=N]`). Aggregated in the
+    /// combat tick's hit_chance computation.
+    HitBonus,
+    /// Flat weapon damage bonus while held as an active buff. Combat counterpart
+    /// to `HitBonus`.
+    DamageBonus,
+    /// Flat max-HP bonus while held as an active buff. Read by character HP
+    /// regen + max-HP queries; legacy `ItemData.max_hp_bonus` migrates here.
+    MaxHpBonus,
+    /// Flat max-mana bonus while held as an active buff. Legacy
+    /// `ItemData.max_mana_bonus` migrates here.
+    MaxManaBonus,
 }
 
 impl EffectType {
@@ -202,6 +227,12 @@ impl EffectType {
             "frenzy" | "frenzied" | "berserk" => Some(EffectType::Frenzy),
             "dominated" | "dominate" => Some(EffectType::Dominated),
             "obfuscate" | "obfuscated" => Some(EffectType::Obfuscate),
+            "damage_resistance" | "damageresistance" | "resist" => Some(EffectType::DamageResistance),
+            "status_resistance" | "statusresistance" | "ward" => Some(EffectType::StatusResistance),
+            "hit_bonus" | "hitbonus" | "hitroll" => Some(EffectType::HitBonus),
+            "damage_bonus" | "damagebonus" | "damroll" => Some(EffectType::DamageBonus),
+            "max_hp_bonus" | "maxhpbonus" | "max_hp" | "maxhit" => Some(EffectType::MaxHpBonus),
+            "max_mana_bonus" | "maxmanabonus" | "max_mana" | "maxmana" => Some(EffectType::MaxManaBonus),
             _ => None,
         }
     }
@@ -245,6 +276,12 @@ impl EffectType {
             EffectType::Frenzy => "frenzy",
             EffectType::Dominated => "dominated",
             EffectType::Obfuscate => "obfuscate",
+            EffectType::DamageResistance => "damage_resistance",
+            EffectType::StatusResistance => "status_resistance",
+            EffectType::HitBonus => "hit_bonus",
+            EffectType::DamageBonus => "damage_bonus",
+            EffectType::MaxHpBonus => "max_hp_bonus",
+            EffectType::MaxManaBonus => "max_mana_bonus",
         }
     }
 
@@ -287,6 +324,12 @@ impl EffectType {
             "frenzy",
             "dominated",
             "obfuscate",
+            "damage_resistance",
+            "status_resistance",
+            "hit_bonus",
+            "damage_bonus",
+            "max_hp_bonus",
+            "max_mana_bonus",
         ]
     }
 }
@@ -316,5 +359,45 @@ pub struct ActiveBuff {
     pub effect_type: EffectType,
     pub magnitude: i32,
     pub remaining_secs: i32, // -1 = permanent until dispelled
-    pub source: String,      // e.g. "coffee", "healing potion"
+    pub source: String,      // e.g. "coffee", "healing potion", "item:<uuid>"
+    /// Companion tag for `EffectType::DamageResistance`. Identifies which
+    /// damage type this resistance reduces. Ignored for all other effect types.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub damage_type: Option<DamageType>,
+    /// Companion tag for `EffectType::StatusResistance`. Snake_case name of the
+    /// `EffectType` being resisted, or `"*"` for "all status effects". Ignored
+    /// for all other effect types.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vs_effect: Option<String>,
+}
+
+impl Default for ActiveBuff {
+    fn default() -> Self {
+        ActiveBuff {
+            effect_type: EffectType::None,
+            magnitude: 0,
+            remaining_secs: 0,
+            source: String::new(),
+            damage_type: None,
+            vs_effect: None,
+        }
+    }
+}
+
+/// Equip-time effect configuration on an item prototype. When the item is
+/// worn, each `ItemAffect` is stamped onto the wearer's `active_buffs` as a
+/// permanent `ActiveBuff` sourced as `"item:<item-uuid>"`; on remove, all
+/// buffs with that source are stripped. See `src/db.rs::equip_and_stamp_buffs`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct ItemAffect {
+    pub effect_type: EffectType,
+    #[serde(default)]
+    pub magnitude: i32,
+    /// Required iff `effect_type == DamageResistance`; ignored otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub damage_type: Option<DamageType>,
+    /// Required iff `effect_type == StatusResistance`. Snake_case name of the
+    /// `EffectType` being resisted, or `"*"` for "all status effects".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vs_effect: Option<String>,
 }

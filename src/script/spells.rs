@@ -232,11 +232,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
 
                 let new_max = 50 + (magic_level * 10) + ((effective_int - 10).max(0) * 5);
                 c.max_mana = new_max;
-                // Clamp at effective ceiling (base + APPLY_MAXMANA from equipment).
-                let eq_bonus: i32 = cloned_db
-                    .get_equipped_items(&c.name)
-                    .map(|items| items.iter().map(|i| i.max_mana_bonus).sum())
-                    .unwrap_or(0);
+                // Clamp at effective ceiling (base + MaxManaBonus buffs).
+                let eq_bonus: i32 = c
+                    .active_buffs
+                    .iter()
+                    .filter(|b| b.effect_type == crate::EffectType::MaxManaBonus)
+                    .map(|b| b.magnitude)
+                    .sum();
                 let effective = c.max_mana + eq_bonus;
                 if c.mana > effective {
                     c.mana = effective;

@@ -668,6 +668,8 @@ fn apply_dg_effect(
         magnitude,
         remaining_secs: duration,
         source: ctx.self_name.clone(),
+        damage_type: None,
+        vs_effect: None,
     };
     match actor {
         ActorRef::Mob { mobile_id, .. } => {
