@@ -495,15 +495,17 @@ fn tree_edittext(mobile_id, display_id, parts, connection_id) {
         return;
     }
     let name = parts[3];
+    let existing = get_dialogue_node_text(mobile_id, name);
+    if existing == () {
+        send_client_message(connection_id,
+            "No node `" + name + "`. Create it first with: medit " + display_id + " tree addnode " + name + " <text>");
+        return;
+    }
     // Stage the editor: anchor mobile + node, prefill buffer with existing text,
     // flip mode to collecting_dialogue_node_text.
     set_olc_edit_mobile(connection_id, mobile_id);
     set_olc_dialogue_node(connection_id, name);
-    let json = get_mobile_dialogue_tree_json(mobile_id);
-    // Best-effort: if the tree JSON contains the node, the existing text would
-    // be embedded. We don't parse it here; the engine clears the buffer to
-    // empty if start fresh. Keep it simple — start with an empty buffer.
-    set_olc_buffer_text(connection_id, "");
+    set_olc_buffer_text(connection_id, existing);
     set_olc_mode(connection_id, "collecting_dialogue_node_text");
     if try_enter_modern_editor(connection_id) {
         return;

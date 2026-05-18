@@ -785,8 +785,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // ========== Argument Parsing Functions ==========
 
-    // split_quoted_args(text) -> array - Split string into args, respecting quoted strings
+    // split_quoted_args(text) -> array - Split string into args, respecting quoted strings.
+    // Supports backslash escapes for `\"`, `\'`, and `\\`; any other `\x` is
+    // preserved verbatim (so paths like `C:\foo` aren't mangled).
     // Example: split_quoted_args("add foo \"hello world\" bar") -> ["add", "foo", "hello world", "bar"]
+    // Example: split_quoted_args("say \\\"hi\\\"") -> ["say", "\"hi\""]
     engine.register_fn("split_quoted_args", |text: String| -> Vec<rhai::Dynamic> {
         let mut args = Vec::new();
         let mut current = String::new();
@@ -795,6 +798,19 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let mut chars = text.chars().peekable();
 
         while let Some(ch) = chars.next() {
+            if ch == '\\' {
+                // Backslash escape: consume the next char literally if it's one
+                // we recognize; otherwise emit the backslash and the char as-is.
+                if let Some(&next) = chars.peek() {
+                    if next == '"' || next == '\'' || next == '\\' {
+                        chars.next();
+                        current.push(next);
+                        continue;
+                    }
+                }
+                current.push(ch);
+                continue;
+            }
             if in_quotes {
                 if ch == quote_char {
                     // End of quoted string

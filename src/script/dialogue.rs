@@ -912,6 +912,31 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             },
         );
     }
+
+    // Return a node's text for prefilling the OLC buffer. Returns () when the
+    // mobile, tree, or node is missing so callers can distinguish absent nodes
+    // from intentionally-empty text.
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "get_dialogue_node_text",
+            move |mobile_id: String, node_name: String| -> rhai::Dynamic {
+                let Ok(mob_uuid) = Uuid::parse_str(&mobile_id) else {
+                    return rhai::Dynamic::UNIT;
+                };
+                let Some(mob) = cloned_db.get_mobile_data(&mob_uuid).ok().flatten() else {
+                    return rhai::Dynamic::UNIT;
+                };
+                let Some(tree) = mob.dialogue_tree else {
+                    return rhai::Dynamic::UNIT;
+                };
+                match tree.nodes.get(&node_name) {
+                    Some(node) => rhai::Dynamic::from(node.text.clone()),
+                    None => rhai::Dynamic::UNIT,
+                }
+            },
+        );
+    }
 }
 
 fn parse_target(kind: &str, node: &str) -> Result<DialogueTarget, String> {
