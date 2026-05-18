@@ -68,7 +68,7 @@ fn resolve_mobile_id(args) {
     // If not found by UUID, try resolving by vnum or name
     let mobiles = list_all_mobiles();
     for mob in mobiles {
-        if mob.vnum == args || mob.name.to_lowercase() == args.to_lowercase() {
+        if mob.vnum == args || mob.name.to_lower() == args.to_lower() {
             return mob.id;
         }
     }
