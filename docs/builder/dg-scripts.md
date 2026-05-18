@@ -73,6 +73,9 @@ DG triggers fire on the same events as Rhai triggers. The type names below are w
 | `on_drop` | Player drops | Yes |
 | `on_use` | Player drinks/eats | Yes |
 | `on_examine` | Player examines | No |
+| `on_wear` | Player `wear`s the item (armor/clothing/jewelry) or DG mob `wear` | No |
+| `on_wield` | Player `wield`s the item (weapons, off-hand, fishing rod) or DG mob `wield` | No |
+| `on_remove` | Item is removed from equipped slots | No |
 | `on_load` | Item spawned from prototype | No |
 | `on_command <prefix>` | Player types matching command while item is in inventory or equipped | **Yes** |
 

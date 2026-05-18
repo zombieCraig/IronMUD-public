@@ -260,7 +260,8 @@ pub const OEDIT_SUBCOMMANDS: &[&str] = &[
 pub const ITEM_TRIGGER_ACTIONS: &[&str] = &["list", "add", "remove", "enable", "disable", "chance", "test", "view"];
 
 /// Item trigger types
-pub const ITEM_TRIGGER_TYPES: &[&str] = &["get", "drop", "use", "examine", "on_prompt", "on_wear", "on_remove"];
+pub const ITEM_TRIGGER_TYPES: &[&str] =
+    &["get", "drop", "use", "examine", "on_prompt", "on_wear", "on_remove", "on_wield"];
 
 /// `oedit <vnum> affect` sub-actions.
 pub const AFFECT_ACTIONS: &[&str] = &["list", "add", "rm", "clear"];

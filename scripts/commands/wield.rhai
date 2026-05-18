@@ -116,4 +116,8 @@ fn run_command(args, connection_id) {
 
     send_client_message(connection_id, "You " + verb + " " + item.name + ".");
     broadcast_to_room(char.current_room_id, char.name + " " + verb + "s " + item.name + ".", char.name);
+
+    // Ad-hoc script side effects on wield. Mirrors wear.rhai's on_wear fire;
+    // buff stamping is handled in Rust by db::stamp_item_buffs_on_character.
+    fire_item_trigger(item.id, "on_wield", connection_id, "");
 }

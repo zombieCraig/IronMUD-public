@@ -294,6 +294,8 @@ fn is_known_command(verb: &str) -> bool {
         // Phase 8 — timer / transform
         | "otimer" | "mtimer" | "wtimer" | "timer"
         | "transform" | "mtransform" | "otransform"
+        // achievement award
+        | "award_achievement"
     ) {
         return true;
     }

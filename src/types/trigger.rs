@@ -153,12 +153,19 @@ pub enum ItemTriggerType {
     /// Fires when a player runs any command while this item is in their
     /// inventory or equipped. `Return(0)` cancels the host command. (DG OTRIG_COMMAND)
     OnCommand,
-    /// Fires when an item is equipped (player `wear`/`wield` or DG mob `wear`).
-    /// Buff stamping is automatic via `db::stamp_item_buffs_on_character`; this
-    /// trigger is for ad-hoc script side effects (emotes, room messages, etc.).
+    /// Fires when an item is equipped via `wear` (armor/clothing/jewelry) or
+    /// DG mob `wear`. Buff stamping is automatic via
+    /// `db::stamp_item_buffs_on_character`; this trigger is for ad-hoc
+    /// script side effects (emotes, room messages, etc.). See [`OnWield`]
+    /// for the weapon/held-item counterpart fired by the `wield` command.
     OnWear,
     /// Fires when an item is removed from equipped slots.
     OnRemove,
+    /// Fires when an item is equipped via the `wield` command (weapons,
+    /// off-hand items, fishing rods — anything with a `wielded`/`offhand`
+    /// wear location). Distinct from [`OnWear`] so weapon-specific triggers
+    /// (achievements, bound-weapon awakening, etc.) don't fire on armor.
+    OnWield,
 }
 
 impl Default for ItemTriggerType {

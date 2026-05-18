@@ -41,6 +41,7 @@ pub(crate) fn parse_item_trigger_type(s: &str) -> Option<ItemTriggerType> {
         "on_command" | "command" => ItemTriggerType::OnCommand,
         "on_wear" | "wear" => ItemTriggerType::OnWear,
         "on_remove" | "remove" => ItemTriggerType::OnRemove,
+        "on_wield" | "wield" => ItemTriggerType::OnWield,
         _ => return None,
     })
 }
@@ -1076,6 +1077,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         ItemTriggerType::OnCommand => "on_command".to_string(),
         ItemTriggerType::OnWear => "on_wear".to_string(),
         ItemTriggerType::OnRemove => "on_remove".to_string(),
+        ItemTriggerType::OnWield => "on_wield".to_string(),
     });
 
     // get_item_triggers(item_id) -> Array of ItemTrigger

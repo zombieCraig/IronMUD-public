@@ -115,7 +115,7 @@ pub fn try_dispatch(verb: &str, rest: &str, ctx: &EvalCtx) -> bool {
         // `hold` is wear in Diku terms (offhand light source slot in some
         // muds). We have no slot system on mobs, so treat as wear.
         "hold" => {
-            do_wear(rest, ctx);
+            do_wear(rest, ctx, crate::types::ItemTriggerType::OnWear);
             true
         }
         // Directional movement verbs — mobs taking a step in a direction
@@ -139,8 +139,12 @@ pub fn try_dispatch(verb: &str, rest: &str, ctx: &EvalCtx) -> bool {
         }
         "look" => true, // info-only; mobs see via internal state already
         "consider" => true, // info-only — mob ponders silently
-        "wear" | "wield" => {
-            do_wear(rest, ctx);
+        "wear" => {
+            do_wear(rest, ctx, crate::types::ItemTriggerType::OnWear);
+            true
+        }
+        "wield" => {
+            do_wear(rest, ctx, crate::types::ItemTriggerType::OnWield);
             true
         }
         "remove" => {
@@ -396,7 +400,7 @@ fn do_kill(rest: &str, ctx: &EvalCtx) {
 /// inventory to its equipped set. IronMUD has no slot-discrimination for
 /// mob equipment (it's `Equipped(mob_id)` only), so wear and wield are
 /// functionally identical here.
-fn do_wear(rest: &str, ctx: &EvalCtx) {
+fn do_wear(rest: &str, ctx: &EvalCtx, fire_type: crate::types::ItemTriggerType) {
     let item_tok = rest.trim();
     if item_tok.is_empty() {
         return;
@@ -411,13 +415,14 @@ fn do_wear(rest: &str, ctx: &EvalCtx) {
         item.name
     );
     broadcast(ctx, &line);
-    // Fire any OnWear DG triggers on the item itself (buff stamping is
-    // automatic via the db layer).
+    // Fire any equip-side DG triggers on the item itself (buff stamping is
+    // automatic via the db layer). `fire_type` is OnWear for `wear` and
+    // OnWield for `wield`.
     super::fire_item_dg_triggers(
         &ctx.db,
         &ctx.connections,
         &item,
-        crate::types::ItemTriggerType::OnWear,
+        fire_type,
         "",
     );
 }

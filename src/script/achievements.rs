@@ -116,6 +116,43 @@ pub fn award_core(
         return false;
     }
 
+    unlock_with_def(db, connections, &def, player_name)
+}
+
+/// DG-callable manual award path. Looks the definition up directly from
+/// the sled `achievements` tree (so we don't need `SharedState`, which
+/// `EvalCtx` doesn't carry), enforces the `Manual` criterion gate, and
+/// funnels through the same [`unlock_with_def`] pipeline as `award_core`.
+/// Returns `true` on first-time unlock; `false` on disabled system, missing
+/// def, non-manual criterion, already-unlocked, or unloadable character.
+pub fn award_manual_via_db(db: &Db, connections: &SharedConnections, player_name: &str, key: &str) -> bool {
+    if !enabled(db) {
+        return false;
+    }
+    let key_lc = key.to_lowercase();
+    let def = match db.get_achievement(&key_lc) {
+        Ok(Some(d)) => d,
+        _ => {
+            tracing::warn!("achievements: DG award for unknown key '{}'", key_lc);
+            return false;
+        }
+    };
+    if !matches!(def.criterion, AchievementCriterion::Manual) {
+        tracing::warn!(
+            "achievements: DG award refused for engine-criterion key '{}'",
+            key_lc
+        );
+        return false;
+    }
+    unlock_with_def(db, connections, &def, player_name)
+}
+
+/// Shared unlock pipeline: dedup, insert, title default, gold/item reward,
+/// persist, session sync, banner. Caller is responsible for criterion
+/// gating (manual-vs-engine) before reaching this point.
+fn unlock_with_def(db: &Db, connections: &SharedConnections, def: &AchievementDef, player_name: &str) -> bool {
+    let key_lc = def.key.to_lowercase();
+
     let mut ch = match db.get_character_data(&player_name.to_lowercase()) {
         Ok(Some(c)) => c,
         _ => return false,

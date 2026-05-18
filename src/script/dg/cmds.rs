@@ -89,6 +89,12 @@ pub fn dispatch(line: &str, ctx: &EvalCtx) -> Result<(), String> {
         // prototype to a different vnum while preserving identity.
         "transform" | "mtransform" | "otransform" => cmd_transform(rest, ctx),
 
+        // `award_achievement <player> <key>` — grant a Manual-criterion
+        // achievement to the named player. Engine-criterion keys are
+        // rejected at the achievements layer (mirrors the Rhai-side
+        // `award_achievement` gate).
+        "award_achievement" => cmd_award_achievement(rest, ctx),
+
         _ => {
             // Mob world-command dispatch (Phase 5c): when self is a mob,
             // recognise verbs like say/emote/give/kill that stock tbamud
@@ -141,6 +147,7 @@ pub const COMMANDS: &[&str] = &[
     "mdoor", "odoor", "wdoor", "door",
     "otimer", "mtimer", "wtimer", "timer",
     "transform", "mtransform", "otransform",
+    "award_achievement",
 ];
 
 /// Return `true` when `verb` (already lowercased + `%`-stripped) is a
@@ -169,6 +176,7 @@ pub(super) fn is_known_dg_verb(verb: &str) -> bool {
         | "mdoor" | "odoor" | "wdoor" | "door"
         | "otimer" | "mtimer" | "wtimer" | "timer"
         | "transform" | "mtransform" | "otransform"
+        | "award_achievement"
     )
 }
 
@@ -1247,6 +1255,29 @@ fn cmd_transform(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
         }
         SelfKind::Room => {}
     }
+    Ok(())
+}
+
+/// `award_achievement <player> <key>` — grant the named manual-criterion
+/// achievement to the player. `<player>` accepts the same forms as other
+/// DG target tokens (`actor`, a name, or a UUID). Silently no-ops when:
+/// the player can't be resolved, the key is unknown, the criterion isn't
+/// `Manual`, the player already has it, or the achievement system is
+/// disabled. See `crate::script::achievements::award_manual_via_db`.
+fn cmd_award_achievement(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
+    let (player_tok, key_rest) = split_verb(rest);
+    let key = key_rest.split_whitespace().next().unwrap_or("");
+    if player_tok.is_empty() || key.is_empty() {
+        return Ok(());
+    }
+    let Some(actor) = resolve_target(&player_tok, ctx) else {
+        return Ok(());
+    };
+    let player_name = match actor {
+        ActorRef::Player { name, .. } if !name.is_empty() => name,
+        _ => return Ok(()),
+    };
+    crate::script::achievements::award_manual_via_db(&ctx.db, &ctx.connections, &player_name, key);
     Ok(())
 }
 

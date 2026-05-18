@@ -120,6 +120,9 @@ fn bit_to_item(bit: u32) -> Option<ItemTriggerType> {
         // OTRIG_GIVE in stock; we co-opt it for OnWear so promoted
         // host-local triggers round-trip through `flags_for_item_trigger`.
         9 => Some(ItemTriggerType::OnWear),
+        // 10 — IronMUD-native OnWield. Stock tbamud doesn't define this
+        // bit; we map it for round-trip on promoted host-local triggers.
+        10 => Some(ItemTriggerType::OnWield),
         // 11 OTRIG_REMOVE — IronMUD-native counterpart to WEAR.
         11 => Some(ItemTriggerType::OnRemove),
         // 13 OTRIG_LOAD
@@ -212,6 +215,9 @@ pub fn flags_for_item_trigger(t: ItemTriggerType) -> String {
         ItemTriggerType::OnPrompt => "z",
         ItemTriggerType::OnWear => "j",
         ItemTriggerType::OnRemove => "l",
+        // IronMUD-native — no tbamud bit. Pick an unused letter so a
+        // promoted host-local OnWield round-trips through `bit_to_item`.
+        ItemTriggerType::OnWield => "k",
     }
     .to_string()
 }

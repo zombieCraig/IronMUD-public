@@ -2414,4 +2414,95 @@ if %self.equipped(5500)% == 2
 end";
         assert_eq!(fire_dg(body, &ctx), Outcome::Return(33));
     }
+
+    #[test]
+    fn dg_award_achievement_unlocks_manual_criterion_for_actor() {
+        use crate::types::{
+            AchievementCategory, AchievementCriterion, AchievementDef, AchievementReward, AchievementSource,
+        };
+
+        let cid = Uuid::new_v4();
+        let mut ctx = make_ctx(SelfKind::Obj, Uuid::new_v4(), "sword of heroes");
+        let ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "alex",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ctx.db.save_character_data(ch).expect("save");
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: cid.to_string(),
+            char_id: cid,
+            name: "alex".to_string(),
+        });
+        ctx.db
+            .save_achievement(AchievementDef {
+                key: "first_blood".to_string(),
+                name: "First Blood".to_string(),
+                description: "Wielded the legendary sword.".to_string(),
+                category: AchievementCategory::Combat,
+                criterion: AchievementCriterion::Manual,
+                reward: AchievementReward::default(),
+                hidden: false,
+                source: AchievementSource::default(),
+            })
+            .expect("save def");
+
+        let body = "award_achievement %actor.name% first_blood\nhalt";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Halt);
+
+        let after = ctx.db.get_character_data("alex").unwrap().unwrap();
+        assert!(
+            after.achievements_unlocked.contains_key("first_blood"),
+            "DG award_achievement must unlock the key on the actor"
+        );
+    }
+
+    #[test]
+    fn dg_award_achievement_refuses_engine_criterion() {
+        // Engine-criterion (Counter) achievements must not be shortcut
+        // from DG — they're reserved for the engine's notify path.
+        use crate::types::{
+            AchievementCategory, AchievementCriterion, AchievementDef, AchievementReward, AchievementSource,
+        };
+
+        let cid = Uuid::new_v4();
+        let mut ctx = make_ctx(SelfKind::Obj, Uuid::new_v4(), "sword");
+        let ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "alex",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ctx.db.save_character_data(ch).expect("save");
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: cid.to_string(),
+            char_id: cid,
+            name: "alex".to_string(),
+        });
+        ctx.db
+            .save_achievement(AchievementDef {
+                key: "ten_kills".to_string(),
+                name: "Ten Kills".to_string(),
+                description: "".to_string(),
+                category: AchievementCategory::Combat,
+                criterion: AchievementCriterion::Counter {
+                    counter: "kills.any".to_string(),
+                    threshold: 10,
+                },
+                reward: AchievementReward::default(),
+                hidden: false,
+                source: AchievementSource::default(),
+            })
+            .expect("save def");
+
+        let body = "award_achievement %actor.name% ten_kills\nhalt";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Halt);
+
+        let after = ctx.db.get_character_data("alex").unwrap().unwrap();
+        assert!(
+            !after.achievements_unlocked.contains_key("ten_kills"),
+            "engine-criterion keys must not unlock via DG award"
+        );
+    }
 }
