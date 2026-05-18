@@ -3501,9 +3501,6 @@ pub async fn handle_connection(
                     room_broadcasts,
                     speech,
                 } => {
-                    for line in actor_lines {
-                        let _ = tx_client.send(format!("{}\n", line));
-                    }
                     let actor_name = {
                         let conns = connections.lock().unwrap();
                         conns
@@ -3512,6 +3509,9 @@ pub async fn handle_connection(
                     };
                     if let Some(s) = speech {
                         crate::session::emit_mob_speech(&connections, &state, &s);
+                    }
+                    for line in actor_lines {
+                        let _ = tx_client.send(format!("{}\n", line));
                     }
                     for (room_id, msg) in room_broadcasts {
                         crate::session::broadcast_to_room(
@@ -3530,9 +3530,6 @@ pub async fn handle_connection(
                     room_broadcasts,
                     speech,
                 } => {
-                    for line in actor_lines {
-                        let _ = tx_client.send(format!("{}\n", line));
-                    }
                     let actor_name = {
                         let conns = connections.lock().unwrap();
                         conns
@@ -3541,6 +3538,9 @@ pub async fn handle_connection(
                     };
                     if let Some(s) = speech {
                         crate::session::emit_mob_speech(&connections, &state, &s);
+                    }
+                    for line in actor_lines {
+                        let _ = tx_client.send(format!("{}\n", line));
                     }
                     for (room_id, msg) in room_broadcasts {
                         crate::session::broadcast_to_room(
