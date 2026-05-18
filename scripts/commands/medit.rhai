@@ -1547,6 +1547,24 @@ fn build_commands_help(mobile_id, mobile) {
     output += "  medit " + display_id + " dialogues\n";
     output += "  medit " + display_id + " rmdialogue <keyword>\n";
 
+    output += "\nDialogue Tree Commands (use 'medit " + display_id + " tree' for full help):\n";
+    output += "  medit " + display_id + " tree show [<node>]                            (full JSON, or one node)\n";
+    output += "  medit " + display_id + " tree nodes                                    (list node names)\n";
+    output += "  medit " + display_id + " tree addnode <name> <text>                    (first node becomes root)\n";
+    output += "  medit " + display_id + " tree delnode <name>\n";
+    output += "  medit " + display_id + " tree setroot <name>\n";
+    output += "  medit " + display_id + " tree text <node> <new text>                   (one-line set)\n";
+    output += "  medit " + display_id + " tree edittext <node>                          (multi-line editor)\n";
+    output += "  medit " + display_id + " tree addchoice <node> <kw> | <label> | <goto|exit|repeat> [target]\n";
+    output += "  medit " + display_id + " tree delchoice <node> <index>\n";
+    output += "  medit " + display_id + " tree editchoice <node> <index> <hint|cooldown|once> [value]\n";
+    output += "  medit " + display_id + " tree addcond <node> <choice_idx> <kind> [args...]\n";
+    output += "  medit " + display_id + " tree delcond <node> <choice_idx> <cond_idx>\n";
+    output += "  medit " + display_id + " tree addfx <node> <choice_idx> <kind> [args...]\n";
+    output += "  medit " + display_id + " tree delfx <node> <choice_idx> <fx_idx>\n";
+    output += "  medit " + display_id + " tree set <json>                               (replace whole tree)\n";
+    output += "  medit " + display_id + " tree clear\n";
+
     output += "\nPrototype Commands:\n";
     output += "  medit " + display_id + " prototype [on|off]\n";
     output += "  medit " + display_id + " vnum <name|none>\n";
