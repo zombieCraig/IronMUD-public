@@ -384,9 +384,9 @@ fn tree_help(display_id, connection_id) {
 }
 
 fn tree_show(mobile_id, parts, connection_id) {
-    if parts.len() >= 3 {
+    if parts.len() >= 4 {
         // tree show <node>
-        let out = describe_dialogue_node(mobile_id, parts[2]);
+        let out = describe_dialogue_node(mobile_id, parts[3]);
         send_client_message(connection_id, out);
         return;
     }
@@ -408,13 +408,13 @@ fn tree_nodes(mobile_id, connection_id) {
 }
 
 fn tree_set_json(mobile_id, display_id, parts, connection_id) {
-    if parts.len() < 3 {
+    if parts.len() < 4 {
         send_client_message(connection_id, "Usage: medit " + display_id + " tree set <json>");
         return;
     }
     let payload = "";
-    for i in 2..parts.len() {
-        if i > 2 { payload += " "; }
+    for i in 3..parts.len() {
+        if i > 3 { payload += " "; }
         payload += parts[i];
     }
     let err = set_mobile_dialogue_tree_json(mobile_id, payload);
@@ -426,14 +426,14 @@ fn tree_set_json(mobile_id, display_id, parts, connection_id) {
 }
 
 fn tree_addnode(mobile_id, display_id, parts, connection_id) {
-    if parts.len() < 4 {
+    if parts.len() < 5 {
         send_client_message(connection_id, "Usage: medit " + display_id + " tree addnode <name> <text...>");
         return;
     }
-    let name = parts[2];
+    let name = parts[3];
     let text = "";
-    for i in 3..parts.len() {
-        if i > 3 { text += " "; }
+    for i in 4..parts.len() {
+        if i > 4 { text += " "; }
         text += parts[i];
     }
     let err = olc_add_dialogue_node(mobile_id, name, text);
@@ -445,40 +445,40 @@ fn tree_addnode(mobile_id, display_id, parts, connection_id) {
 }
 
 fn tree_delnode(mobile_id, display_id, parts, connection_id) {
-    if parts.len() < 3 {
+    if parts.len() < 4 {
         send_client_message(connection_id, "Usage: medit " + display_id + " tree delnode <name>");
         return;
     }
-    let err = olc_remove_dialogue_node(mobile_id, parts[2]);
+    let err = olc_remove_dialogue_node(mobile_id, parts[3]);
     if err == "" {
-        send_client_message(connection_id, "Node `" + parts[2] + "` removed.");
+        send_client_message(connection_id, "Node `" + parts[3] + "` removed.");
     } else {
         send_client_message(connection_id, "Error: " + err);
     }
 }
 
 fn tree_setroot(mobile_id, display_id, parts, connection_id) {
-    if parts.len() < 3 {
+    if parts.len() < 4 {
         send_client_message(connection_id, "Usage: medit " + display_id + " tree setroot <name>");
         return;
     }
-    let err = olc_set_dialogue_root(mobile_id, parts[2]);
+    let err = olc_set_dialogue_root(mobile_id, parts[3]);
     if err == "" {
-        send_client_message(connection_id, "Root set to `" + parts[2] + "`.");
+        send_client_message(connection_id, "Root set to `" + parts[3] + "`.");
     } else {
         send_client_message(connection_id, "Error: " + err);
     }
 }
 
 fn tree_text(mobile_id, display_id, parts, connection_id) {
-    if parts.len() < 4 {
+    if parts.len() < 5 {
         send_client_message(connection_id, "Usage: medit " + display_id + " tree text <node> <new text...>");
         return;
     }
-    let name = parts[2];
+    let name = parts[3];
     let text = "";
-    for i in 3..parts.len() {
-        if i > 3 { text += " "; }
+    for i in 4..parts.len() {
+        if i > 4 { text += " "; }
         text += parts[i];
     }
     let err = olc_set_dialogue_node_text(mobile_id, name, text);
@@ -490,11 +490,11 @@ fn tree_text(mobile_id, display_id, parts, connection_id) {
 }
 
 fn tree_edittext(mobile_id, display_id, parts, connection_id) {
-    if parts.len() < 3 {
+    if parts.len() < 4 {
         send_client_message(connection_id, "Usage: medit " + display_id + " tree edittext <node>");
         return;
     }
-    let name = parts[2];
+    let name = parts[3];
     // Stage the editor: anchor mobile + node, prefill buffer with existing text,
     // flip mode to collecting_dialogue_node_text.
     set_olc_edit_mobile(connection_id, mobile_id);
@@ -514,17 +514,17 @@ fn tree_edittext(mobile_id, display_id, parts, connection_id) {
 
 fn tree_addchoice(mobile_id, display_id, parts, connection_id) {
     // Form: tree addchoice <node> <kw> | <label> | <kind> [target]
-    // We re-join from parts[2..] and split on `|`.
-    if parts.len() < 4 {
+    // We re-join from parts[3..] and split on `|`.
+    if parts.len() < 5 {
         send_client_message(connection_id,
             "Usage: medit " + display_id + " tree addchoice <node> <keyword> | <label> | <goto|exit|repeat> [target_node]");
         return;
     }
-    let node = parts[2];
+    let node = parts[3];
     // Re-join everything after the node name.
     let rest = "";
-    for i in 3..parts.len() {
-        if i > 3 { rest += " "; }
+    for i in 4..parts.len() {
+        if i > 4 { rest += " "; }
         rest += parts[i];
     }
     // Split on `|`. Rhai's split returns an array.
@@ -557,18 +557,18 @@ fn tree_addchoice(mobile_id, display_id, parts, connection_id) {
 }
 
 fn tree_delchoice(mobile_id, display_id, parts, connection_id) {
-    if parts.len() < 4 {
+    if parts.len() < 5 {
         send_client_message(connection_id, "Usage: medit " + display_id + " tree delchoice <node> <index>");
         return;
     }
-    let idx = try_parse_int(parts[3]);
+    let idx = try_parse_int(parts[4]);
     if idx == () {
         send_client_message(connection_id, "Index must be a non-negative number.");
         return;
     }
-    let err = olc_remove_dialogue_choice(mobile_id, parts[2], idx);
+    let err = olc_remove_dialogue_choice(mobile_id, parts[3], idx);
     if err == "" {
-        send_client_message(connection_id, "Choice " + idx + " removed from `" + parts[2] + "`.");
+        send_client_message(connection_id, "Choice " + idx + " removed from `" + parts[3] + "`.");
     } else {
         send_client_message(connection_id, "Error: " + err);
     }
@@ -576,22 +576,22 @@ fn tree_delchoice(mobile_id, display_id, parts, connection_id) {
 
 fn tree_editchoice(mobile_id, display_id, parts, connection_id) {
     // Form: tree editchoice <node> <index> <field> [value...]
-    if parts.len() < 5 {
+    if parts.len() < 6 {
         send_client_message(connection_id,
             "Usage: medit " + display_id + " tree editchoice <node> <index> <hint|cooldown|once> [value]");
         return;
     }
-    let node = parts[2];
-    let idx = try_parse_int(parts[3]);
+    let node = parts[3];
+    let idx = try_parse_int(parts[4]);
     if idx == () {
         send_client_message(connection_id, "Index must be a non-negative number.");
         return;
     }
-    let field = parts[4].to_lower();
+    let field = parts[5].to_lower();
     // Re-join the rest as the value (preserving spaces in hint text).
     let value = "";
-    for i in 5..parts.len() {
-        if i > 5 { value += " "; }
+    for i in 6..parts.len() {
+        if i > 6 { value += " "; }
         value += parts[i];
     }
     let err = olc_set_dialogue_choice_field(mobile_id, node, idx, field, value);
@@ -1547,23 +1547,7 @@ fn build_commands_help(mobile_id, mobile) {
     output += "  medit " + display_id + " dialogues\n";
     output += "  medit " + display_id + " rmdialogue <keyword>\n";
 
-    output += "\nDialogue Tree Commands (use 'medit " + display_id + " tree' for full help):\n";
-    output += "  medit " + display_id + " tree show [<node>]                            (full JSON, or one node)\n";
-    output += "  medit " + display_id + " tree nodes                                    (list node names)\n";
-    output += "  medit " + display_id + " tree addnode <name> <text>                    (first node becomes root)\n";
-    output += "  medit " + display_id + " tree delnode <name>\n";
-    output += "  medit " + display_id + " tree setroot <name>\n";
-    output += "  medit " + display_id + " tree text <node> <new text>                   (one-line set)\n";
-    output += "  medit " + display_id + " tree edittext <node>                          (multi-line editor)\n";
-    output += "  medit " + display_id + " tree addchoice <node> <kw> | <label> | <goto|exit|repeat> [target]\n";
-    output += "  medit " + display_id + " tree delchoice <node> <index>\n";
-    output += "  medit " + display_id + " tree editchoice <node> <index> <hint|cooldown|once> [value]\n";
-    output += "  medit " + display_id + " tree addcond <node> <choice_idx> <kind> [args...]\n";
-    output += "  medit " + display_id + " tree delcond <node> <choice_idx> <cond_idx>\n";
-    output += "  medit " + display_id + " tree addfx <node> <choice_idx> <kind> [args...]\n";
-    output += "  medit " + display_id + " tree delfx <node> <choice_idx> <fx_idx>\n";
-    output += "  medit " + display_id + " tree set <json>                               (replace whole tree)\n";
-    output += "  medit " + display_id + " tree clear\n";
+    output += "  medit " + display_id + " tree                  (dialogue tree editor; run for subcommands)\n";
 
     output += "\nPrototype Commands:\n";
     output += "  medit " + display_id + " prototype [on|off]\n";
