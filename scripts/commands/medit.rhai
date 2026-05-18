@@ -536,11 +536,16 @@ fn tree_addchoice(mobile_id, display_id, parts, connection_id) {
             "Usage: medit " + display_id + " tree addchoice <node> <keyword> | <label> | <goto|exit|repeat> [target_node]");
         return;
     }
-    let keyword = segs[0];
-    let label = segs[1];
-    let target_part = segs[2];
-    // target_part is "goto X" or "exit" or "repeat".
-    let tparts = target_part.split(' ');
+    let keyword = trim_str(segs[0]);
+    let label = trim_str(segs[1]);
+    let target_part = trim_str(segs[2]);
+    // target_part is "goto X" or "exit" or "repeat". Filter empties so any
+    // extra whitespace doesn't produce a phantom empty kind.
+    let raw_tparts = target_part.split(' ');
+    let tparts = [];
+    for p in raw_tparts {
+        if p != "" { tparts.push(p); }
+    }
     let kind = if tparts.len() >= 1 { tparts[0].to_lower() } else { "" };
     let target_node = if tparts.len() >= 2 {
         let t = "";

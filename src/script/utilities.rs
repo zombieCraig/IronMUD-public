@@ -560,6 +560,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         },
     );
 
+    // trim_str(text) -> string - strip leading/trailing whitespace.
+    // Rhai 1.17 has no `.trim()` method, so scripts call this as a free fn.
+    engine.register_fn("trim_str", |text: String| -> String {
+        text.trim().to_string()
+    });
+
     // strip_ansi(text) -> string - removes all ANSI escape sequences
     engine.register_fn("strip_ansi", |text: String| -> String {
         let mut result = String::new();
