@@ -54,7 +54,7 @@ pub fn apply_spawn_dependencies(
                                 let _ = db.delete_item(&item_id);
                                 continue;
                             }
-                            db.move_item_to_mobile_equipped(&item_id, entity_id)
+                            db.move_item_to_mobile_equipped_at(&item_id, entity_id, Some(*wear_loc))
                         }
                         SpawnDestination::Container => match db.move_item_to_container(&item_id, entity_id) {
                             Ok(_) => Ok(true),

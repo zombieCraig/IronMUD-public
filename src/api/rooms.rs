@@ -1124,6 +1124,7 @@ async fn add_trigger(
         dg_name: None,
         authored_by: None,
         elevated: false,
+        source_proto_vnum: None,
     };
 
     room.triggers.push(trigger);

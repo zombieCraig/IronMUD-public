@@ -1711,6 +1711,25 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         false
     });
 
+    // set_olc_edit_proto_vnum(connection_id, vnum) -> bind which DG trigger
+    // proto receives the next collecting_dg_proto_body save. Empty string
+    // clears. Set by `trigger dg proto edit/new` before opening the editor.
+    let conns = connections.clone();
+    engine.register_fn(
+        "set_olc_edit_proto_vnum",
+        move |connection_id: String, vnum: String| {
+            if let Ok(conn_uuid) = uuid::Uuid::parse_str(&connection_id) {
+                let mut conns = conns.lock().unwrap();
+                if let Some(session) = conns.get_mut(&conn_uuid) {
+                    session.olc_edit_proto_vnum =
+                        if vnum.is_empty() { None } else { Some(vnum) };
+                    return true;
+                }
+            }
+            false
+        },
+    );
+
     // set_olc_dialogue_node(connection_id, node_name) -> mark which dialogue
     // node receives the next collecting_dialogue_node_text save. Pair with
     // set_olc_edit_mobile for the mobile id. Empty string clears.

@@ -115,6 +115,11 @@ pub struct PlayerSession {
     pub olc_edit_trigger_host: Option<String>,
     /// Index into the host's `triggers` Vec.
     pub olc_edit_trigger_index: Option<usize>,
+    /// DG trigger prototype vnum being edited in `collecting_dg_proto_body`
+    /// mode. When set, `.save` routes the buffered body through
+    /// `dg_proto_save_body` (parse-check, persist, refresh sweep) instead
+    /// of the per-trigger save path.
+    pub olc_edit_proto_vnum: Option<String>,
     /// When `olc_mode == "collecting_dialogue_node_text"`, names the
     /// dialogue tree node whose `text` field receives the buffered content.
     /// `olc_edit_mobile` carries the mobile id.
@@ -872,6 +877,7 @@ pub fn is_text_editor_mode(mode: &str) -> bool {
             | "collecting_note"
             | "collecting_board_post"
             | "collecting_dg_body"
+            | "collecting_dg_proto_body"
             | "collecting_dialogue_node_text"
             | "collecting_extra_desc"
             | "collecting_motd"
@@ -891,6 +897,34 @@ pub fn session_is_writing(session: &PlayerSession) -> bool {
         .unwrap_or(false)
 }
 
+/// Persist `body` onto DG trigger proto `vnum` and refresh all attached
+/// instances. Returns the user-facing message to print after the save
+/// (success report with refresh count + warnings, parse-error abort, or
+/// unknown-vnum). Shared by both the line-mode and modern-editor
+/// `collecting_dg_proto_body` save paths.
+pub fn save_dg_proto_body_msg(db: &crate::db::Db, vnum: &str, body: String) -> String {
+    let mut proto = match db.get_dg_trigger_proto(vnum) {
+        Ok(Some(p)) => p,
+        _ => return format!("Proto save failed: unknown vnum '{}'.\n", vnum),
+    };
+    proto.body = body;
+    match db.save_dg_trigger_proto_with_refresh(&proto) {
+        Ok((refreshed, warnings)) => {
+            let mut msg = format!(
+                "Proto '{}' saved ({} attached instance{} refreshed).\n",
+                if proto.name.is_empty() { proto.vnum.as_str() } else { proto.name.as_str() },
+                refreshed,
+                if refreshed == 1 { "" } else { "s" },
+            );
+            for w in warnings {
+                msg.push_str(&format!("  warning: {}\n", w));
+            }
+            msg
+        }
+        Err(e) => format!("Proto save refused: {}\n(0 instances changed)\n", e),
+    }
+}
+
 /// Clear every editor-related slot on a session.
 fn clear_olc_state(session: &mut PlayerSession) {
     session.olc_mode = None;
@@ -902,6 +936,7 @@ fn clear_olc_state(session: &mut PlayerSession) {
     session.olc_board_subject = None;
     session.olc_edit_trigger_host = None;
     session.olc_edit_trigger_index = None;
+    session.olc_edit_proto_vnum = None;
     session.olc_dialogue_node_name = None;
     session.olc_extra_keywords.clear();
     session.olc_undo_buffer = None;
@@ -938,6 +973,7 @@ pub fn force_save_editor(
         board_subject: Option<String>,
         trigger_host: Option<String>,
         trigger_index: Option<usize>,
+        proto_vnum: Option<String>,
         dialogue_node_name: Option<String>,
         extra_keywords: Vec<String>,
         author: String,
@@ -985,6 +1021,7 @@ pub fn force_save_editor(
             board_subject: session.olc_board_subject.clone(),
             trigger_host: session.olc_edit_trigger_host.clone(),
             trigger_index: session.olc_edit_trigger_index,
+            proto_vnum: session.olc_edit_proto_vnum.clone(),
             dialogue_node_name: session.olc_dialogue_node_name.clone(),
             extra_keywords: session.olc_extra_keywords.clone(),
             author,
@@ -1112,6 +1149,14 @@ pub fn force_save_editor(
                 }
             }
         }
+        "collecting_dg_proto_body" => {
+            if let Some(vnum) = snap.proto_vnum.as_ref() {
+                if let Ok(world) = state.lock() {
+                    let msg = save_dg_proto_body_msg(&world.db, vnum, snap.content.clone());
+                    let _ = snap.sender.send(msg);
+                }
+            }
+        }
         "collecting_dialogue_node_text" => {
             if let (Some(mid), Some(name)) = (snap.edit_mobile, snap.dialogue_node_name) {
                 if let Ok(world) = state.lock() {
@@ -1190,10 +1235,12 @@ pub fn save_modern_editor(
         board_subject: Option<String>,
         trigger_host: Option<String>,
         trigger_index: Option<usize>,
+        proto_vnum: Option<String>,
         dialogue_node_name: Option<String>,
         extra_keywords: Vec<String>,
         author: String,
         author_is_admin: bool,
+        sender: mpsc::UnboundedSender<String>,
     }
 
     let snap = {
@@ -1225,10 +1272,12 @@ pub fn save_modern_editor(
             board_subject: session.olc_board_subject.clone(),
             trigger_host: session.olc_edit_trigger_host.clone(),
             trigger_index: session.olc_edit_trigger_index,
+            proto_vnum: session.olc_edit_proto_vnum.clone(),
             dialogue_node_name: session.olc_dialogue_node_name.clone(),
             extra_keywords: session.olc_extra_keywords.clone(),
             author,
             author_is_admin,
+            sender: session.sender.clone(),
         }
     };
 
@@ -1335,6 +1384,14 @@ pub fn save_modern_editor(
                             _ => {}
                         }
                     }
+                }
+            }
+        }
+        "collecting_dg_proto_body" => {
+            if let Some(vnum) = snap.proto_vnum.as_ref() {
+                if let Ok(world) = state.lock() {
+                    let msg = save_dg_proto_body_msg(&world.db, vnum, snap.content.clone());
+                    let _ = snap.sender.send(msg);
                 }
             }
         }
@@ -1928,6 +1985,7 @@ pub async fn handle_connection(
                 olc_edit_mobile: None,
                 olc_edit_trigger_host: None,
                 olc_edit_trigger_index: None,
+                olc_edit_proto_vnum: None,
                 olc_dialogue_node_name: None,
                 olc_extra_keywords: Vec::new(),
                 olc_undo_buffer: None,
@@ -2438,6 +2496,9 @@ pub async fn handle_connection(
                         }
                     }
                     (Some(_), Some("collecting_dg_body")) => "DG trigger body saved.\n".to_string(),
+                    // Proto save sends its own detailed report (refresh count + warnings)
+                    // from save_modern_editor's "collecting_dg_proto_body" branch.
+                    (Some(_), Some("collecting_dg_proto_body")) => String::new(),
                     (Some(_), Some("collecting_dialogue_node_text")) => {
                         "Dialogue node text saved.\n".to_string()
                     }
@@ -2896,6 +2957,84 @@ pub async fn handle_connection(
                         }
                     }
                     let _ = tx_client.send("DG trigger body editing cancelled.\n".to_string());
+                    let prompt = build_prompt(&connection_id, &connections, &state);
+                    let _ = tx_client.send(prompt);
+                }
+                EditorCommandResult::AppendText(text) => {
+                    let mut conns = connections.lock().unwrap();
+                    if let Some(session) = conns.get_mut(&connection_id) {
+                        session.olc_undo_buffer = Some(session.olc_buffer.clone());
+                        session.olc_buffer.push(text);
+                    }
+                }
+            }
+            continue;
+        }
+
+        // Line-mode editor for a DG trigger prototype body. Mirrors
+        // collecting_dg_body but routes the saved content through
+        // save_dg_trigger_proto_with_refresh: analyzer parse-check,
+        // persist, then sweep refresh across all attached instances.
+        if olc_mode.as_deref() == Some("collecting_dg_proto_body") {
+            let result = {
+                let mut conns = connections.lock().unwrap();
+                if let Some(session) = conns.get_mut(&connection_id) {
+                    handle_editor_command(&input, &mut session.olc_buffer, &mut session.olc_undo_buffer)
+                } else {
+                    EditorCommandResult::Cancel
+                }
+            };
+            match result {
+                EditorCommandResult::Handled(msg) => {
+                    let _ = tx_client.send(msg);
+                }
+                EditorCommandResult::Save(content) => {
+                    const MAX_DG_BODY_BYTES: usize = 32 * 1024;
+                    if content.len() > MAX_DG_BODY_BYTES {
+                        let _ = tx_client.send(format!(
+                            "Proto body too long ({} bytes, max {}). Trim with .d or .r, then .save.\n",
+                            content.len(),
+                            MAX_DG_BODY_BYTES
+                        ));
+                    } else {
+                        let proto_vnum = {
+                            let conns = connections.lock().unwrap();
+                            conns
+                                .get(&connection_id)
+                                .and_then(|s| s.olc_edit_proto_vnum.clone())
+                        };
+                        let msg = if let Some(vnum) = proto_vnum {
+                            let world = state.lock().unwrap();
+                            save_dg_proto_body_msg(&world.db, &vnum, content)
+                        } else {
+                            "Proto save failed: no proto vnum bound to this editor session.\n"
+                                .to_string()
+                        };
+                        let _ = tx_client.send(msg);
+                        {
+                            let mut conns = connections.lock().unwrap();
+                            if let Some(session) = conns.get_mut(&connection_id) {
+                                session.olc_mode = None;
+                                session.olc_buffer.clear();
+                                session.olc_edit_proto_vnum = None;
+                                session.olc_undo_buffer = None;
+                            }
+                        }
+                        let prompt = build_prompt(&connection_id, &connections, &state);
+                        let _ = tx_client.send(prompt);
+                    }
+                }
+                EditorCommandResult::Cancel => {
+                    {
+                        let mut conns = connections.lock().unwrap();
+                        if let Some(session) = conns.get_mut(&connection_id) {
+                            session.olc_mode = None;
+                            session.olc_buffer.clear();
+                            session.olc_edit_proto_vnum = None;
+                            session.olc_undo_buffer = None;
+                        }
+                    }
+                    let _ = tx_client.send("DG proto body editing cancelled.\n".to_string());
                     let prompt = build_prompt(&connection_id, &connections, &state);
                     let _ = tx_client.send(prompt);
                 }

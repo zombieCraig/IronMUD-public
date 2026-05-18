@@ -254,6 +254,223 @@ impl Db {
         Ok(())
     }
 
+    /// Orphan every attached instance of `vnum`: clear `source_proto_vnum`
+    /// on triggers across mobs/items/rooms whose attach_kind matches the
+    /// proto. Bodies are preserved — instances become host-local triggers
+    /// that no longer refresh on proto edits. Returns the number of trigger
+    /// instances orphaned (not entities).
+    ///
+    /// Called by `trigger dg proto delete` to implement the "Orphan" delete
+    /// policy: safer than auto-deleting instances since their behavior is
+    /// preserved until a builder explicitly edits or removes them.
+    pub fn orphan_attached_dg_triggers(&self, proto_vnum: &str) -> Result<usize> {
+        use crate::types::DgAttachKind;
+        let proto = match self.get_dg_trigger_proto(proto_vnum)? {
+            Some(p) => p,
+            None => return Ok(0),
+        };
+        let mut orphaned = 0usize;
+        let target = Some(proto_vnum);
+        match proto.attach_kind {
+            DgAttachKind::Mob => {
+                for mob in self.list_all_mobiles()? {
+                    if !mob.triggers.iter().any(|t| t.source_proto_vnum.as_deref() == target) {
+                        continue;
+                    }
+                    self.update_mobile(&mob.id, |m| {
+                        for t in &mut m.triggers {
+                            if t.source_proto_vnum.as_deref() == target {
+                                t.source_proto_vnum = None;
+                                orphaned += 1;
+                            }
+                        }
+                    })?;
+                }
+            }
+            DgAttachKind::Obj => {
+                for item in self.list_all_items()? {
+                    if !item.triggers.iter().any(|t| t.source_proto_vnum.as_deref() == target) {
+                        continue;
+                    }
+                    self.update_item(&item.id, |i| {
+                        for t in &mut i.triggers {
+                            if t.source_proto_vnum.as_deref() == target {
+                                t.source_proto_vnum = None;
+                                orphaned += 1;
+                            }
+                        }
+                    })?;
+                }
+            }
+            DgAttachKind::Room => {
+                for room in self.list_all_rooms()? {
+                    if !room.triggers.iter().any(|t| t.source_proto_vnum.as_deref() == target) {
+                        continue;
+                    }
+                    self.update_room(&room.id, |r| {
+                        for t in &mut r.triggers {
+                            if t.source_proto_vnum.as_deref() == target {
+                                t.source_proto_vnum = None;
+                                orphaned += 1;
+                            }
+                        }
+                    })?;
+                }
+            }
+        }
+        Ok(orphaned)
+    }
+
+    /// Sweep across all entities of matching `attach_kind` and rebuild any
+    /// triggers whose `source_proto_vnum` matches the proto. Used by the
+    /// proto save path — re-derives trigger types from current proto flags,
+    /// drops every source-tagged trigger for this vnum, and pushes fresh
+    /// per-type clones with the latest body/name/chance/args.
+    ///
+    /// Body, flag, name, chance, or arglist changes all propagate uniformly
+    /// because the rebuild is total. Returns the count of entities updated
+    /// (not triggers).
+    pub fn refresh_attached_dg_triggers(
+        &self,
+        proto: &crate::types::DgTriggerProto,
+    ) -> Result<usize> {
+        use crate::import::engines::tba::trg_map;
+        use crate::types::{DgAttachKind, ItemTrigger, MobileTrigger, RoomTrigger};
+        let target = Some(proto.vnum.as_str());
+        let mut entities_updated = 0usize;
+        let chance = proto.numeric_arg.clamp(1, 100);
+        let args: Vec<String> = if proto.arglist.trim().is_empty() {
+            Vec::new()
+        } else {
+            proto
+                .arglist
+                .split_whitespace()
+                .map(|w| w.to_string())
+                .collect()
+        };
+        match proto.attach_kind {
+            DgAttachKind::Mob => {
+                let new_types = trg_map::mobile_trigger_types(&proto.flags);
+                for mob in self.list_all_mobiles()? {
+                    if !mob.triggers.iter().any(|t| t.source_proto_vnum.as_deref() == target) {
+                        continue;
+                    }
+                    self.update_mobile(&mob.id, |m| {
+                        m.triggers
+                            .retain(|t| t.source_proto_vnum.as_deref() != target);
+                        for ttype in &new_types {
+                            m.triggers.push(MobileTrigger {
+                                trigger_type: *ttype,
+                                script_name: String::new(),
+                                enabled: true,
+                                chance,
+                                args: args.clone(),
+                                interval_secs: 60,
+                                last_fired: 0,
+                                dg_body: Some(proto.body.clone()),
+                                dg_name: Some(proto.name.clone()),
+                                authored_by: None,
+                                elevated: false,
+                                source_proto_vnum: Some(proto.vnum.clone()),
+                            });
+                        }
+                    })?;
+                    entities_updated += 1;
+                }
+            }
+            DgAttachKind::Obj => {
+                let new_types = trg_map::item_trigger_types(&proto.flags);
+                for item in self.list_all_items()? {
+                    if !item.triggers.iter().any(|t| t.source_proto_vnum.as_deref() == target) {
+                        continue;
+                    }
+                    self.update_item(&item.id, |i| {
+                        i.triggers
+                            .retain(|t| t.source_proto_vnum.as_deref() != target);
+                        for ttype in &new_types {
+                            i.triggers.push(ItemTrigger {
+                                trigger_type: *ttype,
+                                script_name: String::new(),
+                                enabled: true,
+                                chance,
+                                args: args.clone(),
+                                dg_body: Some(proto.body.clone()),
+                                dg_name: Some(proto.name.clone()),
+                                authored_by: None,
+                                elevated: false,
+                                source_proto_vnum: Some(proto.vnum.clone()),
+                            });
+                        }
+                    })?;
+                    entities_updated += 1;
+                }
+            }
+            DgAttachKind::Room => {
+                let new_types = trg_map::room_trigger_types(&proto.flags);
+                for room in self.list_all_rooms()? {
+                    if !room.triggers.iter().any(|t| t.source_proto_vnum.as_deref() == target) {
+                        continue;
+                    }
+                    self.update_room(&room.id, |r| {
+                        r.triggers
+                            .retain(|t| t.source_proto_vnum.as_deref() != target);
+                        for ttype in &new_types {
+                            r.triggers.push(RoomTrigger {
+                                trigger_type: *ttype,
+                                script_name: String::new(),
+                                enabled: true,
+                                interval_secs: 60,
+                                last_fired: 0,
+                                chance,
+                                args: args.clone(),
+                                dg_body: Some(proto.body.clone()),
+                                dg_name: Some(proto.name.clone()),
+                                authored_by: None,
+                                elevated: false,
+                                source_proto_vnum: Some(proto.vnum.clone()),
+                            });
+                        }
+                    })?;
+                    entities_updated += 1;
+                }
+            }
+        }
+        Ok(entities_updated)
+    }
+
+    /// Persist a proto and refresh all attached instances. Runs the DG
+    /// analyzer first — any `ParseError` issue aborts the save (the proto
+    /// is not written and attached instances are unchanged). Non-fatal
+    /// issues (unknown commands/vars, etc.) are returned as warnings
+    /// alongside the success report.
+    ///
+    /// Returns `Ok((entities_refreshed, warnings))` on success, or `Err`
+    /// with a formatted parse-error message when the body is malformed.
+    pub fn save_dg_trigger_proto_with_refresh(
+        &self,
+        proto: &crate::types::DgTriggerProto,
+    ) -> Result<(usize, Vec<String>)> {
+        use crate::script::dg::analyze::{analyze, IssueKind};
+        let issues = analyze(&proto.body);
+        let parse_errors: Vec<&_> = issues.iter().filter(|i| i.kind == IssueKind::ParseError).collect();
+        if !parse_errors.is_empty() {
+            let detail = parse_errors
+                .iter()
+                .map(|i| i.detail.as_str())
+                .collect::<Vec<_>>()
+                .join("; ");
+            return Err(anyhow::anyhow!("parse error: {}", detail));
+        }
+        let warnings: Vec<String> = issues
+            .into_iter()
+            .filter(|i| i.kind != IssueKind::ParseError)
+            .map(|i| format!("{:?}: {}", i.kind, i.detail))
+            .collect();
+        self.save_dg_trigger_proto(proto)?;
+        let refreshed = self.refresh_attached_dg_triggers(proto)?;
+        Ok((refreshed, warnings))
+    }
+
     // === Quest prototypes ===
     //
     // Backed by the `quests` sled tree. Stores `QuestData` keyed by vnum. Per-
@@ -1432,6 +1649,7 @@ impl Db {
         // Normal item movement
         let mut item = item;
         item.location = ItemLocation::Room(*room_id);
+        item.currently_worn_at = None;
         self.save_item_data(item)?;
         Ok(true)
     }
@@ -1442,6 +1660,7 @@ impl Db {
             // If it was equipped on a character or mob, strip equip-stamped buffs first.
             self.strip_item_buffs_from_holder(&item)?;
             item.location = ItemLocation::Inventory(char_name.to_lowercase());
+            item.currently_worn_at = None;
             self.save_item_data(item)?;
             Ok(true)
         } else {
@@ -1449,9 +1668,31 @@ impl Db {
         }
     }
 
-    /// Move item to equipped status. Stamps each `ItemAffect` on the item as a
-    /// permanent `ActiveBuff` on the wearer, sourced as `"item:<uuid>"`.
+    /// Move item to equipped status on a player. Auto-picks the first free
+    /// slot in `item.wear_locations` not already occupied by another
+    /// equipped item on this wearer. For deterministic slot selection,
+    /// call [`move_item_to_equipped_at`] with an explicit `WearLocation`.
+    /// Stamps each `ItemAffect` on the item as a permanent `ActiveBuff`
+    /// on the wearer, sourced as `"item:<uuid>"`.
     pub fn move_item_to_equipped(&self, item_id: &Uuid, char_name: &str) -> Result<bool> {
+        let slot = match self.get_item_data(item_id)? {
+            Some(item) => self.pick_free_wear_slot(char_name, &item)?,
+            None => return Ok(false),
+        };
+        self.move_item_to_equipped_at(item_id, char_name, slot)
+    }
+
+    /// Move item to equipped on a player at an explicit slot. Caller is
+    /// responsible for ensuring the slot is valid for this item's
+    /// `wear_locations`. Slot is persisted on `ItemData.currently_worn_at`
+    /// so `%actor.eq(left_hand)%`-style DG accessors can answer
+    /// "what's in slot X" queries.
+    pub fn move_item_to_equipped_at(
+        &self,
+        item_id: &Uuid,
+        char_name: &str,
+        slot: Option<crate::types::WearLocation>,
+    ) -> Result<bool> {
         if let Some(mut item) = self.get_item_data(item_id)? {
             // Strip any stale equip-stamped buffs from the previous holder, then stamp on the new one.
             self.strip_item_buffs_from_holder(&item)?;
@@ -1460,6 +1701,7 @@ impl Db {
                 // Field zeroed; will be saved with new location below.
             }
             item.location = ItemLocation::Equipped(char_name.to_lowercase());
+            item.currently_worn_at = slot;
             self.stamp_item_buffs_on_character(&item, char_name)?;
             self.save_item_data(item)?;
             Ok(true)
@@ -1473,11 +1715,60 @@ impl Db {
         if let Some(mut item) = self.get_item_data(item_id)? {
             self.strip_item_buffs_from_holder(&item)?;
             item.location = ItemLocation::Nowhere;
+            item.currently_worn_at = None;
             self.save_item_data(item)?;
             Ok(true)
         } else {
             Ok(false)
         }
+    }
+
+    /// Pick the first slot in `item.wear_locations` that isn't already
+    /// occupied by another equipped item on the same wearer. Returns
+    /// `None` when no free slot exists or the item has no wear locations.
+    /// Used as the auto-pick default by [`move_item_to_equipped`].
+    pub fn pick_free_wear_slot(
+        &self,
+        char_name: &str,
+        item: &ItemData,
+    ) -> Result<Option<crate::types::WearLocation>> {
+        if item.wear_locations.is_empty() {
+            return Ok(None);
+        }
+        let already_worn: std::collections::HashSet<crate::types::WearLocation> = self
+            .get_equipped_items(char_name)?
+            .into_iter()
+            .filter(|i| i.id != item.id)
+            .filter_map(|i| i.currently_worn_at)
+            .collect();
+        Ok(item
+            .wear_locations
+            .iter()
+            .copied()
+            .find(|slot| !already_worn.contains(slot)))
+    }
+
+    /// Mob counterpart to [`pick_free_wear_slot`]. Iterates the mob's
+    /// currently equipped items for slot conflict checking.
+    pub fn pick_free_wear_slot_for_mobile(
+        &self,
+        mobile_id: &Uuid,
+        item: &ItemData,
+    ) -> Result<Option<crate::types::WearLocation>> {
+        if item.wear_locations.is_empty() {
+            return Ok(None);
+        }
+        let already_worn: std::collections::HashSet<crate::types::WearLocation> = self
+            .get_items_equipped_on_mobile(mobile_id)?
+            .into_iter()
+            .filter(|i| i.id != item.id)
+            .filter_map(|i| i.currently_worn_at)
+            .collect();
+        Ok(item
+            .wear_locations
+            .iter()
+            .copied()
+            .find(|slot| !already_worn.contains(slot)))
     }
 
     /// Promote any legacy per-field bonuses then push each `ItemAffect` as a
@@ -1600,6 +1891,7 @@ impl Db {
             container.container_contents.push(*item_id);
         }
         item.location = ItemLocation::Container(*container_id);
+        item.currently_worn_at = None;
 
         self.save_item_data(container)?;
         self.save_item_data(item)?;
@@ -1634,6 +1926,7 @@ impl Db {
             self.strip_item_buffs_from_holder(&item)?;
             // Use mobile UUID as the owner identifier
             item.location = ItemLocation::Inventory(mobile_id.to_string());
+            item.currently_worn_at = None;
             self.save_item_data(item)?;
             Ok(true)
         } else {
@@ -1641,8 +1934,26 @@ impl Db {
         }
     }
 
-    /// Move item to equipped on a mobile (uses mobile UUID as owner string)
+    /// Move item to equipped on a mobile (auto-picks the first free
+    /// wear slot). For deterministic slot selection (e.g. zone resets
+    /// with explicit `SpawnDestination::Equipped(WearLocation)`), call
+    /// [`move_item_to_mobile_equipped_at`].
     pub fn move_item_to_mobile_equipped(&self, item_id: &Uuid, mobile_id: &Uuid) -> Result<bool> {
+        let slot = match self.get_item_data(item_id)? {
+            Some(item) => self.pick_free_wear_slot_for_mobile(mobile_id, &item)?,
+            None => return Ok(false),
+        };
+        self.move_item_to_mobile_equipped_at(item_id, mobile_id, slot)
+    }
+
+    /// Move item to equipped on a mobile at an explicit slot. Mob
+    /// counterpart of [`move_item_to_equipped_at`].
+    pub fn move_item_to_mobile_equipped_at(
+        &self,
+        item_id: &Uuid,
+        mobile_id: &Uuid,
+        slot: Option<crate::types::WearLocation>,
+    ) -> Result<bool> {
         if let Some(mut item) = self.get_item_data(item_id)? {
             self.strip_item_buffs_from_holder(&item)?;
             if item.normalize_legacy_bonuses() {
@@ -1650,6 +1961,7 @@ impl Db {
             }
             // Use mobile UUID as the owner identifier
             item.location = ItemLocation::Equipped(mobile_id.to_string());
+            item.currently_worn_at = slot;
             self.stamp_item_buffs_on_mobile(&item, mobile_id)?;
             self.save_item_data(item)?;
             Ok(true)

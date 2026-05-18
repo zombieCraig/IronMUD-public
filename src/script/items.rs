@@ -632,6 +632,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     });
 
     // move_item_to_equipped(item_id, char_name) -> bool
+    // Auto-picks the first free slot in `item.wear_locations`.
     let cloned_db = db.clone();
     engine.register_fn("move_item_to_equipped", move |item_id: String, char_name: String| {
         if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
@@ -640,6 +641,54 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             false
         }
     });
+
+    // move_item_to_equipped_at(item_id, char_name, slot) -> bool
+    // Explicit-slot variant for callers (zone resets, admin force-equip)
+    // that already know which slot they want. Empty `slot` clears the
+    // worn-slot marker but still moves the item to Equipped state.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "move_item_to_equipped_at",
+        move |item_id: String, char_name: String, slot: String| {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+                let parsed_slot = if slot.is_empty() {
+                    None
+                } else {
+                    crate::types::WearLocation::from_str(&slot)
+                };
+                cloned_db
+                    .move_item_to_equipped_at(&uuid, &char_name, parsed_slot)
+                    .unwrap_or(false)
+            } else {
+                false
+            }
+        },
+    );
+
+    // pick_wear_slot(char_name, item_id) -> String
+    // Returns the slot name auto-picked for `item_id` on `char_name`
+    // (empty if no free slot). Powers wear.rhai's choose-and-display
+    // flow; the actual equip uses the same logic via the auto-pick path
+    // of move_item_to_equipped.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "pick_wear_slot",
+        move |char_name: String, item_id: String| -> String {
+            let uuid = match uuid::Uuid::parse_str(&item_id) {
+                Ok(u) => u,
+                Err(_) => return String::new(),
+            };
+            let item = match cloned_db.get_item_data(&uuid) {
+                Ok(Some(i)) => i,
+                _ => return String::new(),
+            };
+            cloned_db
+                .pick_free_wear_slot(&char_name, &item)
+                .unwrap_or(None)
+                .map(|slot| slot.to_display_string().to_string())
+                .unwrap_or_default()
+        },
+    );
 
     // move_item_to_nowhere(item_id) -> bool
     // Removes item from any inventory/location (useful for selling, destroying, etc.)

@@ -37,6 +37,8 @@ Triggers enable scripted behaviors that fire when specific events occur. Each tr
 
 ## Managing Triggers
 
+> DG trigger prototypes are reusable templates shared across multiple entities (armor sets, mob packs, etc.). The `attach`, `detach`, `makeproto`, and `proto new/view/edit/delete` subcommands operate on the prototype registry; see [DG Prototypes](dg-scripts.md#prototypes) for the conceptual model and a worked armor-set example.
+
 ### Room Triggers
 
 ```
@@ -85,6 +87,28 @@ Added greet trigger: guard_greet
 > medit guard trigger chance 0 50
 Trigger at index 0 now has 50% chance to fire.
 ```
+
+### DG Trigger Subcommands
+
+For DG-bodied triggers (per the `trigger dg ...` family), additional subcommands wire the proto registry:
+
+| Subcommand | Description |
+|---|---|
+| `trigger dg list` | List DG-bodied triggers on this entity |
+| `trigger dg view <idx>` | Show the trigger body |
+| `trigger dg add <type> [name]` | Append empty body, open editor |
+| `trigger dg edit <idx>` | Edit body (saves to proto if instance is tagged — refreshes all siblings) |
+| `trigger dg attach <vnum>` | Attach a registered prototype to this entity |
+| `trigger dg detach <idx>` | Break the proto link on an instance (allow per-instance divergence) |
+| `trigger dg makeproto <idx> <vnum>` | Promote a host-local trigger to a proto (so siblings can attach) |
+| `trigger dg elevate <idx> [on/off]` | (admin) bypass area gate on dangerous opcodes |
+| `trigger dg protos` | List all registered prototypes |
+| `trigger dg proto new <vnum> <flags> [name]` | Create empty proto, open editor |
+| `trigger dg proto view <vnum>` | Show proto metadata + body |
+| `trigger dg proto edit <vnum>` | Open the body editor; save runs the analyzer and refreshes attached siblings |
+| `trigger dg proto delete <vnum>` | (admin) Remove proto from registry; attached instances are orphaned (bodies preserved) |
+
+See [DG Prototypes](dg-scripts.md#prototypes) for the edit-through model, refresh sweep semantics, and parse-error abort behavior.
 
 ## Trigger Properties
 

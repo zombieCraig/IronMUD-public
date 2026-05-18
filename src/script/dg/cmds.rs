@@ -1016,6 +1016,7 @@ fn apply_attach(proto: &DgTriggerProto, target_tok: &str, ctx: &EvalCtx) {
                         dg_name: Some(proto.name.clone()),
                         authored_by: None,
                         elevated: false,
+                        source_proto_vnum: Some(proto.vnum.clone()),
                     });
                 }
             });
@@ -1037,6 +1038,7 @@ fn apply_attach(proto: &DgTriggerProto, target_tok: &str, ctx: &EvalCtx) {
                         dg_name: Some(proto.name.clone()),
                         authored_by: None,
                         elevated: false,
+                        source_proto_vnum: Some(proto.vnum.clone()),
                     });
                 }
             });
@@ -1060,6 +1062,7 @@ fn apply_attach(proto: &DgTriggerProto, target_tok: &str, ctx: &EvalCtx) {
                         dg_name: Some(proto.name.clone()),
                         authored_by: None,
                         elevated: false,
+                        source_proto_vnum: Some(proto.vnum.clone()),
                     });
                 }
             });
@@ -1075,23 +1078,28 @@ fn apply_attach(proto: &DgTriggerProto, target_tok: &str, ctx: &EvalCtx) {
 
 fn apply_detach(proto: &DgTriggerProto, target_tok: &str, ctx: &EvalCtx) {
     let Some(host) = resolve_host_uuid(target_tok, ctx) else { return };
+    // Match by source_proto_vnum first (set since Part 3); fall back to
+    // dg_name for legacy un-tagged instances from earlier imports.
+    let matches_proto = |source: Option<&str>, name: Option<&str>| -> bool {
+        source == Some(&proto.vnum) || (source.is_none() && name == Some(&proto.name))
+    };
     match (proto.attach_kind, host) {
         (DgAttachKind::Mob, HostRef::Mob(uid)) => {
             let _ = ctx.db.update_mobile(&uid, |mob| {
                 mob.triggers
-                    .retain(|t| t.dg_name.as_deref() != Some(&proto.name));
+                    .retain(|t| !matches_proto(t.source_proto_vnum.as_deref(), t.dg_name.as_deref()));
             });
         }
         (DgAttachKind::Obj, HostRef::Obj(uid)) => {
             let _ = ctx.db.update_item(&uid, |item| {
                 item.triggers
-                    .retain(|t| t.dg_name.as_deref() != Some(&proto.name));
+                    .retain(|t| !matches_proto(t.source_proto_vnum.as_deref(), t.dg_name.as_deref()));
             });
         }
         (DgAttachKind::Room, HostRef::Room(uid)) => {
             let _ = ctx.db.update_room(&uid, |room| {
                 room.triggers
-                    .retain(|t| t.dg_name.as_deref() != Some(&proto.name));
+                    .retain(|t| !matches_proto(t.source_proto_vnum.as_deref(), t.dg_name.as_deref()));
             });
         }
         _ => {}

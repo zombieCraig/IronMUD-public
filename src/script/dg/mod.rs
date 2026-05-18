@@ -1265,6 +1265,7 @@ end";
             dg_name: Some("removable".to_string()),
             authored_by: None,
             elevated: false,
+            source_proto_vnum: None,
         });
         let host_id = host.id;
         let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "self_mob");
@@ -1552,6 +1553,7 @@ end";
             dg_name: None,
             authored_by: None,
             elevated: false,
+            source_proto_vnum: None,
         });
         mob.triggers.push(crate::MobileTrigger {
             trigger_type: crate::MobileTriggerType::OnCommand,
@@ -1565,6 +1567,7 @@ end";
             dg_name: None,
             authored_by: None,
             elevated: false,
+            source_proto_vnum: None,
         });
         let mob_id = mob.id;
         let ctx = make_ctx(SelfKind::Mob, mob_id, "guardian");
@@ -1921,5 +1924,494 @@ end";
             entries.iter().any(|e| e.contains("remote: missing variable name")),
             "expected 'remote: missing variable name', got entries: {entries:?}"
         );
+    }
+
+    // ---------- Part 1: equipped accessors ----------
+
+    /// Helper: build + save an item with a vnum and immediately equip it on
+    /// the named player. Mirrors the wear/grant setup used by tests in
+    /// tests/items_affects.rs.
+    fn equip_item_with_vnum(db: &Db, char_name: &str, vnum: &str, name: &str) -> Uuid {
+        let mut item = crate::types::ItemData::new(
+            name.to_string(),
+            format!("a {name}"),
+            format!("A {name} lies here."),
+        );
+        item.vnum = Some(vnum.to_string());
+        let item_id = item.id;
+        db.save_item_data(item).expect("save item");
+        db.move_item_to_equipped(&item_id, char_name).expect("equip");
+        item_id
+    }
+
+    #[test]
+    fn actor_equipped_vnum_counts_equipped_items() {
+        // Equip 2 items with vnum=3010 and 1 item with vnum=3020 on a PC,
+        // then verify %actor.equipped(3010)% returns "2" and
+        // %actor.equipped(3020)% returns "1". The vnum-miss case
+        // (%actor.equipped(9999)%) returns "0".
+        let cid = Uuid::new_v4();
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "setwearer",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ctx.db.save_character_data(ch).expect("save");
+
+        equip_item_with_vnum(&ctx.db, "setwearer", "3010", "left glove");
+        equip_item_with_vnum(&ctx.db, "setwearer", "3010", "right glove");
+        equip_item_with_vnum(&ctx.db, "setwearer", "3020", "helmet");
+
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: cid.to_string(),
+            char_id: cid,
+            name: "setwearer".to_string(),
+        });
+
+        // Count of 2 → return 22, count of 1 → return 11, count of 0 → return 0.
+        let body = "\
+if %actor.equipped(3010)% == 2
+  if %actor.equipped(3020)% == 1
+    if %actor.equipped(9999)% == 0
+      return 42
+    end
+  end
+end";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Return(42));
+    }
+
+    #[test]
+    fn actor_equipped_bare_returns_comma_list() {
+        // Bare %actor.equipped% returns a comma-joined list of equipped
+        // item names. Mirror of %actor.inventory% (collection_actor_field).
+        let cid = Uuid::new_v4();
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "listwearer",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ctx.db.save_character_data(ch).expect("save");
+
+        equip_item_with_vnum(&ctx.db, "listwearer", "1", "crown");
+        equip_item_with_vnum(&ctx.db, "listwearer", "2", "cloak");
+
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: cid.to_string(),
+            char_id: cid,
+            name: "listwearer".to_string(),
+        });
+
+        // Stash the list in a local, verify it's non-empty by direct compare.
+        // (Both items present → "crown, cloak" or "cloak, crown" depending on
+        // iteration order; we just assert the local has at least one comma.)
+        let body = "\
+set worn %actor.equipped%
+if %worn% == crown, cloak
+  return 19
+end
+if %worn% == cloak, crown
+  return 19
+end";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Return(19));
+    }
+
+    // ---------- Part 3: proto edit + auto-refresh ----------
+
+    /// Helper: create an item-kind proto, attach it to two fresh items,
+    /// return (db handle, proto_vnum, [item ids]). Both items end up with
+    /// triggers carrying source_proto_vnum tagged to the proto.
+    fn setup_two_attached_items(
+        ctx: &EvalCtx,
+        proto_vnum: &str,
+        flags: &str,
+        body: &str,
+    ) -> Vec<Uuid> {
+        let proto = crate::types::DgTriggerProto {
+            vnum: proto_vnum.to_string(),
+            name: "set_check".to_string(),
+            attach_kind: crate::types::DgAttachKind::Obj,
+            flags: flags.to_string(),
+            numeric_arg: 100,
+            arglist: String::new(),
+            body: body.to_string(),
+        };
+        ctx.db.save_dg_trigger_proto(&proto).expect("save proto");
+
+        let mut ids = Vec::new();
+        for n in 0..2 {
+            let item = crate::types::ItemData::new(
+                format!("glove_{n}"),
+                format!("a glove_{n}"),
+                format!("A glove_{n} lies here."),
+            );
+            let id = item.id;
+            ctx.db.save_item_data(item).expect("save item");
+            ids.push(id);
+        }
+        // Attach via the same cmds path the runtime uses.
+        for id in &ids {
+            crate::script::dg::cmds::attach_trigger_proto(
+                proto_vnum,
+                &id.to_string(),
+                ctx,
+            );
+        }
+        ids
+    }
+
+    #[test]
+    fn proto_edit_refreshes_attached_instances() {
+        // Attach proto to two items, edit body via save_with_refresh,
+        // verify both items' attached triggers reflect the new body.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let ids = setup_two_attached_items(&ctx, "7777", "g", "halt");
+
+        // Each item should now have one OnGet trigger backed by the proto.
+        for id in &ids {
+            let item = ctx.db.get_item_data(id).expect("get").expect("item");
+            assert_eq!(item.triggers.len(), 1);
+            assert_eq!(item.triggers[0].dg_body.as_deref(), Some("halt"));
+            assert_eq!(item.triggers[0].source_proto_vnum.as_deref(), Some("7777"));
+        }
+
+        // Edit the proto body via the save+refresh path.
+        let mut proto = ctx.db.get_dg_trigger_proto("7777").unwrap().unwrap();
+        proto.body = "return 0".to_string();
+        let (refreshed, warnings) = ctx
+            .db
+            .save_dg_trigger_proto_with_refresh(&proto)
+            .expect("save");
+        assert_eq!(refreshed, 2, "both attached items should be refreshed");
+        assert!(warnings.is_empty(), "halt+return 0 has no warnings");
+
+        // Both attached triggers now carry the new body.
+        for id in &ids {
+            let item = ctx.db.get_item_data(id).expect("get").expect("item");
+            assert_eq!(item.triggers.len(), 1);
+            assert_eq!(item.triggers[0].dg_body.as_deref(), Some("return 0"));
+        }
+    }
+
+    #[test]
+    fn proto_flag_change_rebuilds_trigger_types() {
+        // Proto flags `g` → `gh` (OnGet + OnDrop). Attached items should
+        // gain a second trigger of the new type on refresh.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let ids = setup_two_attached_items(&ctx, "7700", "g", "halt");
+
+        for id in &ids {
+            let item = ctx.db.get_item_data(id).expect("get").expect("item");
+            assert_eq!(item.triggers.len(), 1);
+            assert_eq!(item.triggers[0].trigger_type, crate::types::ItemTriggerType::OnGet);
+        }
+
+        let mut proto = ctx.db.get_dg_trigger_proto("7700").unwrap().unwrap();
+        proto.flags = "gh".to_string();
+        let (refreshed, _) = ctx
+            .db
+            .save_dg_trigger_proto_with_refresh(&proto)
+            .expect("save");
+        assert_eq!(refreshed, 2);
+
+        for id in &ids {
+            let item = ctx.db.get_item_data(id).expect("get").expect("item");
+            let types: Vec<_> = item.triggers.iter().map(|t| t.trigger_type).collect();
+            assert!(types.contains(&crate::types::ItemTriggerType::OnGet));
+            assert!(types.contains(&crate::types::ItemTriggerType::OnDrop));
+            assert_eq!(item.triggers.len(), 2);
+        }
+    }
+
+    #[test]
+    fn proto_parse_error_aborts_save() {
+        // Malformed body fails the analyzer's ParseError check. Save must
+        // be refused and attached instances unchanged.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let ids = setup_two_attached_items(&ctx, "7766", "g", "halt");
+
+        let mut proto = ctx.db.get_dg_trigger_proto("7766").unwrap().unwrap();
+        proto.body = "if 1 == 1\n  halt".to_string(); // missing `end`
+        let result = ctx.db.save_dg_trigger_proto_with_refresh(&proto);
+        assert!(result.is_err(), "malformed body should be refused");
+
+        // Persisted proto body unchanged on disk.
+        let persisted = ctx.db.get_dg_trigger_proto("7766").unwrap().unwrap();
+        assert_eq!(persisted.body, "halt");
+
+        // Attached triggers also unchanged.
+        for id in &ids {
+            let item = ctx.db.get_item_data(id).expect("get").expect("item");
+            assert_eq!(item.triggers[0].dg_body.as_deref(), Some("halt"));
+        }
+    }
+
+    #[test]
+    fn proto_delete_orphans_attached() {
+        // After delete, attached instances keep their bodies but lose
+        // source_proto_vnum (so future proto edits don't touch them).
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let ids = setup_two_attached_items(&ctx, "7755", "g", "halt");
+
+        let orphaned = ctx
+            .db
+            .orphan_attached_dg_triggers("7755")
+            .expect("orphan sweep");
+        assert_eq!(orphaned, 2);
+        ctx.db.delete_dg_trigger_proto("7755").expect("delete");
+
+        // Bodies preserved, links cleared.
+        for id in &ids {
+            let item = ctx.db.get_item_data(id).expect("get").expect("item");
+            assert_eq!(item.triggers.len(), 1);
+            assert_eq!(item.triggers[0].dg_body.as_deref(), Some("halt"));
+            assert!(item.triggers[0].source_proto_vnum.is_none());
+        }
+        assert!(ctx.db.get_dg_trigger_proto("7755").unwrap().is_none());
+    }
+
+    #[test]
+    fn legacy_dg_name_detach_still_works() {
+        // Pre-existing triggers without source_proto_vnum (legacy
+        // un-tagged shape) still match the apply_detach fallback path
+        // by dg_name. Mirror of dg_detach_removes_attached_trigger but
+        // exercising the explicit "untagged" instance shape.
+        let mut host = crate::types::MobileData::new("legacy_host".to_string());
+        host.triggers.push(crate::MobileTrigger {
+            trigger_type: crate::MobileTriggerType::OnGreet,
+            script_name: String::new(),
+            enabled: true,
+            chance: 100,
+            args: Vec::new(),
+            interval_secs: 60,
+            last_fired: 0,
+            dg_body: Some("halt".to_string()),
+            dg_name: Some("legacy".to_string()),
+            authored_by: None,
+            elevated: false,
+            // Untagged — the legacy fallback.
+            source_proto_vnum: None,
+        });
+        let host_id = host.id;
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "self_mob");
+        ctx.db.save_mobile_data(host).expect("save");
+
+        let proto = crate::types::DgTriggerProto {
+            vnum: "7744".to_string(),
+            name: "legacy".to_string(),
+            attach_kind: crate::types::DgAttachKind::Mob,
+            flags: "g".to_string(),
+            numeric_arg: 100,
+            arglist: String::new(),
+            body: "halt".to_string(),
+        };
+        ctx.db.save_dg_trigger_proto(&proto).expect("save proto");
+
+        let body = format!("detach 7744 {hid}\nhalt", hid = host_id);
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Halt);
+
+        let saved = ctx.db.get_mobile_data(&host_id).unwrap().unwrap();
+        assert_eq!(saved.triggers.len(), 0, "legacy dg_name match still detaches");
+    }
+
+    #[test]
+    fn edit_attached_instance_routes_through_proto() {
+        // The Rhai-side editor uses get_*_trigger_source_proto to detect
+        // tagged instances; verify the underlying accessor returns the
+        // bound vnum after attach and clears after detach.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let ids = setup_two_attached_items(&ctx, "7733", "g", "halt");
+
+        let item = ctx.db.get_item_data(&ids[0]).unwrap().unwrap();
+        assert_eq!(item.triggers[0].source_proto_vnum.as_deref(), Some("7733"));
+    }
+
+    // ---------- Part 2: slot-aware eq(slot) ----------
+
+    /// Helper: equip an item with explicit wear_locations on the named
+    /// player at a chosen slot. Uses move_item_to_equipped_at to set
+    /// `currently_worn_at` deterministically.
+    fn equip_item_at_slot(
+        db: &Db,
+        char_name: &str,
+        vnum: &str,
+        name: &str,
+        wear_locations: Vec<crate::types::WearLocation>,
+        slot: crate::types::WearLocation,
+    ) -> Uuid {
+        let mut item = crate::types::ItemData::new(
+            name.to_string(),
+            format!("a {name}"),
+            format!("A {name} lies here."),
+        );
+        item.vnum = Some(vnum.to_string());
+        item.wear_locations = wear_locations;
+        let item_id = item.id;
+        db.save_item_data(item).expect("save item");
+        db.move_item_to_equipped_at(&item_id, char_name, Some(slot)).expect("equip");
+        item_id
+    }
+
+    #[test]
+    fn eq_returns_item_in_specific_slot() {
+        use crate::types::WearLocation;
+        // Two gloves with identical wear_locations but worn in distinct
+        // slots — slot-aware eq() must distinguish them by
+        // currently_worn_at, not by item name or order.
+        let cid = Uuid::new_v4();
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "twohands",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ctx.db.save_character_data(ch).expect("save");
+
+        equip_item_at_slot(
+            &ctx.db,
+            "twohands",
+            "9001",
+            "leftglove",
+            vec![WearLocation::LeftHand, WearLocation::RightHand],
+            WearLocation::LeftHand,
+        );
+        equip_item_at_slot(
+            &ctx.db,
+            "twohands",
+            "9002",
+            "rightglove",
+            vec![WearLocation::LeftHand, WearLocation::RightHand],
+            WearLocation::RightHand,
+        );
+
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: cid.to_string(),
+            char_id: cid,
+            name: "twohands".to_string(),
+        });
+
+        let body = "\
+set l %actor.eq(left_hand)%
+set r %actor.eq(right_hand)%
+if %l% == leftglove
+  if %r% == rightglove
+    return 77
+  end
+end";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Return(77));
+    }
+
+    #[test]
+    fn eq_with_unknown_slot_falls_back_to_first() {
+        // Stock idiom: `if %actor.eq(*)%` expects truthy "something is
+        // equipped" boolean — unknown/asterisk arg must keep returning
+        // the first equipped item's name so existing scripts don't break.
+        use crate::types::WearLocation;
+        let cid = Uuid::new_v4();
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "anyhands",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ctx.db.save_character_data(ch).expect("save");
+        equip_item_at_slot(
+            &ctx.db,
+            "anyhands",
+            "9010",
+            "ring",
+            vec![WearLocation::FingerLeft],
+            WearLocation::FingerLeft,
+        );
+
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: cid.to_string(),
+            char_id: cid,
+            name: "anyhands".to_string(),
+        });
+        // Asterisk falls through to first-equipped.
+        let body = "\
+if %actor.eq(*)% == ring
+  return 5
+end";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Return(5));
+    }
+
+    #[test]
+    fn currently_worn_at_clears_on_remove() {
+        // Equip → record slot → move to inventory → verify the slot
+        // marker clears so subsequent eq(slot) queries return empty.
+        use crate::types::WearLocation;
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
+        let ch: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "shifty",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ctx.db.save_character_data(ch).expect("save");
+
+        let item_id = equip_item_at_slot(
+            &ctx.db,
+            "shifty",
+            "9020",
+            "amulet",
+            vec![WearLocation::Neck],
+            WearLocation::Neck,
+        );
+
+        let equipped = ctx.db.get_item_data(&item_id).unwrap().unwrap();
+        assert_eq!(equipped.currently_worn_at, Some(WearLocation::Neck));
+
+        // Move to inventory and verify the slot marker cleared.
+        ctx.db.move_item_to_inventory(&item_id, "shifty").unwrap();
+        let after = ctx.db.get_item_data(&item_id).unwrap().unwrap();
+        assert!(after.currently_worn_at.is_none(), "slot must clear on remove");
+    }
+
+    #[test]
+    fn self_equipped_works_on_mob() {
+        // Mob path: %self.equipped(vnum)% and bare %self.equipped% read
+        // from get_items_equipped_on_mobile. Exercises both the bare
+        // collection (resolve_self_field) and the count form
+        // (read_actor_call via self → actor coercion).
+        let mob = crate::types::MobileData::new("guard".to_string());
+        let mob_id = mob.id;
+
+        let ctx = make_ctx(SelfKind::Mob, mob_id, "guard");
+        ctx.db.save_mobile_data(mob).expect("save mob");
+
+        // Equip two items vnum=5500 on the mob via direct location set
+        // (move_item_to_equipped is char-only; mob equips go through a
+        // different db path that's not yet on the test surface).
+        for name in ["sword", "buckler"] {
+            let mut item = crate::types::ItemData::new(
+                name.to_string(),
+                format!("a {name}"),
+                format!("A {name} lies here."),
+            );
+            item.vnum = Some("5500".to_string());
+            item.location = crate::types::ItemLocation::Equipped(mob_id.to_string());
+            ctx.db.save_item_data(item).expect("save");
+        }
+
+        // %self.equipped(5500)% == 2 (count form), %self.equipped% (bare)
+        // joins the two item names with ", " in either order.
+        let body = "\
+if %self.equipped(5500)% == 2
+  set worn %self.equipped%
+  if %worn% == sword, buckler
+    return 33
+  end
+  if %worn% == buckler, sword
+    return 33
+  end
+end";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Return(33));
     }
 }

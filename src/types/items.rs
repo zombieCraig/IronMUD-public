@@ -682,6 +682,13 @@ pub struct ItemData {
     pub value: i32,
     #[serde(default)]
     pub location: ItemLocation,
+    /// Specific slot occupied while equipped. `Some(slot)` only when
+    /// `location` is `Equipped(...)`; cleared on every transition out of
+    /// the Equipped state. Powers slot-aware DG accessors like
+    /// `%actor.eq(left_hand)%`. Old saves load as `None` and return empty
+    /// for slot queries until re-equipped — acceptable cold-start cost.
+    #[serde(default)]
+    pub currently_worn_at: Option<WearLocation>,
     // Weapon fields
     #[serde(default)]
     pub damage_dice_count: i32,
@@ -907,6 +914,7 @@ impl ItemData {
             weight: 0,
             value: 0,
             location: ItemLocation::Nowhere,
+            currently_worn_at: None,
             damage_dice_count: 0,
             damage_dice_sides: 0,
             damage_type: DamageType::default(),

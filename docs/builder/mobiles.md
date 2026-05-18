@@ -84,6 +84,8 @@ Flag shopkeeper set to: ON
 | `flag` | `medit <id> flag <name> [on\|off]` | Toggle mobile flag |
 | `trigger` | `medit <id> trigger` | Manage triggers (see [Triggers](triggers.md)) |
 
+When attaching shared trigger logic across multiple mobs (behavior packs like village guards or shopkeeper greeters), use a DG trigger prototype — editing one attached instance refreshes all siblings. See [DG Prototypes](dg-scripts.md#prototypes).
+
 ### Prototype Management
 
 | Subcommand | Usage | Description |

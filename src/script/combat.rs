@@ -2477,6 +2477,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 weight: 100,
                 value: 0,
                 location: ItemLocation::Room(room_uuid),
+                currently_worn_at: None,
                 damage_dice_count: 0,
                 damage_dice_sides: 0,
                 damage_type: Default::default(),

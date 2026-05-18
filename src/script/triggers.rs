@@ -435,6 +435,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 dg_name: None,
                 authored_by: None,
                 elevated: false,
+                source_proto_vnum: None,
             });
             cloned_db.save_room_data(room).is_ok()
         },
@@ -471,6 +472,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 dg_name: None,
                 authored_by: None,
                 elevated: false,
+                source_proto_vnum: None,
             });
             cloned_db.save_room_data(room).is_ok()
         },
@@ -512,6 +514,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 dg_name: None,
                 authored_by: None,
                 elevated: false,
+                source_proto_vnum: None,
             });
             cloned_db.save_room_data(room).is_ok()
         },
@@ -1116,6 +1119,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 dg_name: None,
                 authored_by: None,
                 elevated: false,
+                source_proto_vnum: None,
             });
             cloned_db.save_item_data(item).is_ok()
         },
@@ -1150,6 +1154,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 dg_name: None,
                 authored_by: None,
                 elevated: false,
+                source_proto_vnum: None,
             });
             cloned_db.save_item_data(item).is_ok()
         },
@@ -1749,6 +1754,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 dg_name: None,
                 authored_by: None,
                 elevated: false,
+                source_proto_vnum: None,
             });
             cloned_db.save_mobile_data(mobile).is_ok()
         },
@@ -1785,6 +1791,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 dg_name: None,
                 authored_by: None,
                 elevated: false,
+                source_proto_vnum: None,
             });
             cloned_db.save_mobile_data(mobile).is_ok()
         },
@@ -2549,6 +2556,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     dg_name: if name.is_empty() { None } else { Some(name.clone()) },
                     authored_by: None,
                     elevated: false,
+                    source_proto_vnum: None,
                 });
                 idx_out = (m.triggers.len() as i64) - 1;
             });
@@ -2579,6 +2587,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     dg_name: if name.is_empty() { None } else { Some(name.clone()) },
                     authored_by: None,
                     elevated: false,
+                    source_proto_vnum: None,
                 });
                 idx_out = (it.triggers.len() as i64) - 1;
             });
@@ -2611,6 +2620,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     dg_name: if name.is_empty() { None } else { Some(name.clone()) },
                     authored_by: None,
                     elevated: false,
+                    source_proto_vnum: None,
                 });
                 idx_out = (r.triggers.len() as i64) - 1;
             });
@@ -2690,6 +2700,437 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         }
         out
     });
+
+    // === DG trigger proto editor surface ===
+    //
+    // Powers the `trigger dg proto new/view/edit/delete` + `makeproto` /
+    // `detach` subcommands in scripts/lib/dg_olc.rhai. Each helper is
+    // intentionally small so the Rhai layer stays declarative.
+
+    // dg_proto_get(vnum) -> Map { vnum, name, kind, flags, body, attached }
+    //   or () if no such proto. `attached` is a count of live instances
+    //   carrying this proto's source_proto_vnum across the matching kind.
+    let cloned_db = db.clone();
+    engine.register_fn("dg_proto_get", move |vnum: String| -> rhai::Dynamic {
+        let proto = match cloned_db.get_dg_trigger_proto(vnum.trim()) {
+            Ok(Some(p)) => p,
+            _ => return rhai::Dynamic::UNIT,
+        };
+        let target = Some(proto.vnum.as_str());
+        let attached: i64 = match proto.attach_kind {
+            crate::types::DgAttachKind::Mob => cloned_db
+                .list_all_mobiles()
+                .unwrap_or_default()
+                .iter()
+                .flat_map(|m| m.triggers.iter())
+                .filter(|t| t.source_proto_vnum.as_deref() == target)
+                .count() as i64,
+            crate::types::DgAttachKind::Obj => cloned_db
+                .list_all_items()
+                .unwrap_or_default()
+                .iter()
+                .flat_map(|i| i.triggers.iter())
+                .filter(|t| t.source_proto_vnum.as_deref() == target)
+                .count() as i64,
+            crate::types::DgAttachKind::Room => cloned_db
+                .list_all_rooms()
+                .unwrap_or_default()
+                .iter()
+                .flat_map(|r| r.triggers.iter())
+                .filter(|t| t.source_proto_vnum.as_deref() == target)
+                .count() as i64,
+        };
+        let mut m = rhai::Map::new();
+        m.insert("vnum".into(), proto.vnum.into());
+        m.insert("name".into(), proto.name.into());
+        m.insert(
+            "kind".into(),
+            match proto.attach_kind {
+                crate::types::DgAttachKind::Mob => "mob",
+                crate::types::DgAttachKind::Obj => "obj",
+                crate::types::DgAttachKind::Room => "room",
+            }
+            .to_string()
+            .into(),
+        );
+        m.insert("flags".into(), proto.flags.into());
+        m.insert("body".into(), proto.body.into());
+        m.insert("attached".into(), attached.into());
+        rhai::Dynamic::from(m)
+    });
+
+    // dg_proto_new(vnum, kind, flags, name) -> bool
+    //   Creates an empty-bodied proto in the registry. Refuses if the vnum
+    //   already exists (use dg_proto_save_body to overwrite an existing
+    //   proto). `kind` is "mob"|"obj"|"room"; `flags` is a letter string
+    //   (e.g. "cw" for OnCommand+OnWear on an item).
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "dg_proto_new",
+        move |vnum: String, kind: String, flags: String, name: String| -> bool {
+            let v = vnum.trim();
+            if v.is_empty() {
+                return false;
+            }
+            if matches!(cloned_db.get_dg_trigger_proto(v), Ok(Some(_))) {
+                return false;
+            }
+            let attach_kind = match kind.to_lowercase().as_str() {
+                "mob" | "mobile" => crate::types::DgAttachKind::Mob,
+                "obj" | "item" => crate::types::DgAttachKind::Obj,
+                "room" => crate::types::DgAttachKind::Room,
+                _ => return false,
+            };
+            let proto = crate::types::DgTriggerProto {
+                vnum: v.to_string(),
+                name: name.trim().to_string(),
+                attach_kind,
+                flags: flags.trim().to_string(),
+                numeric_arg: 100,
+                arglist: String::new(),
+                body: String::new(),
+            };
+            cloned_db.save_dg_trigger_proto(&proto).is_ok()
+        },
+    );
+
+    // dg_proto_save_body(vnum, body) -> Map { ok, refreshed, error, warnings }
+    //   Run-the-analyzer + persist + refresh path. On ParseError, save is
+    //   refused and attached instances are unchanged (ok=false, error set).
+    //   Non-fatal issues come back as warnings. Used by the
+    //   collecting_dg_proto_body OLC mode on .save.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "dg_proto_save_body",
+        move |vnum: String, body: String| -> rhai::Map {
+            let mut result = rhai::Map::new();
+            let mut proto = match cloned_db.get_dg_trigger_proto(vnum.trim()) {
+                Ok(Some(p)) => p,
+                _ => {
+                    result.insert("ok".into(), false.into());
+                    result.insert("error".into(), "unknown proto vnum".to_string().into());
+                    result.insert("refreshed".into(), 0i64.into());
+                    result.insert("warnings".into(), rhai::Array::new().into());
+                    return result;
+                }
+            };
+            proto.body = body;
+            match cloned_db.save_dg_trigger_proto_with_refresh(&proto) {
+                Ok((refreshed, warnings)) => {
+                    let warn_arr: rhai::Array =
+                        warnings.into_iter().map(rhai::Dynamic::from).collect();
+                    result.insert("ok".into(), true.into());
+                    result.insert("error".into(), "".to_string().into());
+                    result.insert("refreshed".into(), (refreshed as i64).into());
+                    result.insert("warnings".into(), warn_arr.into());
+                }
+                Err(e) => {
+                    result.insert("ok".into(), false.into());
+                    result.insert("error".into(), e.to_string().into());
+                    result.insert("refreshed".into(), 0i64.into());
+                    result.insert("warnings".into(), rhai::Array::new().into());
+                }
+            }
+            result
+        },
+    );
+
+    // dg_proto_set_meta(vnum, name, flags) -> bool
+    //   Update proto name and/or flags without touching the body. Flag
+    //   changes still trigger a refresh sweep (structural — adds/removes
+    //   trigger types on attached instances). Pass "" to leave a field as-is.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "dg_proto_set_meta",
+        move |vnum: String, name: String, flags: String| -> bool {
+            let mut proto = match cloned_db.get_dg_trigger_proto(vnum.trim()) {
+                Ok(Some(p)) => p,
+                _ => return false,
+            };
+            let mut changed = false;
+            if !name.is_empty() {
+                proto.name = name.trim().to_string();
+                changed = true;
+            }
+            if !flags.is_empty() {
+                proto.flags = flags.trim().to_string();
+                changed = true;
+            }
+            if !changed {
+                return true;
+            }
+            if cloned_db.save_dg_trigger_proto(&proto).is_err() {
+                return false;
+            }
+            let _ = cloned_db.refresh_attached_dg_triggers(&proto);
+            true
+        },
+    );
+
+    // dg_proto_delete(vnum) -> int (count of orphaned trigger instances)
+    //   Removes the proto from the registry and orphans every attached
+    //   instance (clears source_proto_vnum, preserves body). Returns -1
+    //   if the vnum is unknown.
+    let cloned_db = db.clone();
+    engine.register_fn("dg_proto_delete", move |vnum: String| -> i64 {
+        if matches!(cloned_db.get_dg_trigger_proto(vnum.trim()), Ok(None)) {
+            return -1;
+        }
+        let orphaned = cloned_db
+            .orphan_attached_dg_triggers(vnum.trim())
+            .unwrap_or(0);
+        let _ = cloned_db.delete_dg_trigger_proto(vnum.trim());
+        orphaned as i64
+    });
+
+    // dg_makeproto_from_mobile_trigger(mob_id, idx, vnum) -> bool
+    // dg_makeproto_from_item_trigger(item_id, idx, vnum) -> bool
+    // dg_makeproto_from_room_trigger(room_id, idx, vnum) -> bool
+    //   Promote a host-local DG-bodied trigger to a registry proto with
+    //   the given vnum. Sets source_proto_vnum on the original so future
+    //   edits route through the proto's save+refresh path. Refuses if
+    //   the trigger has no dg_body, or if the vnum already exists.
+
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "dg_makeproto_from_mobile_trigger",
+        move |mob_id: String, idx: i64, vnum: String| -> bool {
+            let uid = match uuid::Uuid::parse_str(&mob_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let v = vnum.trim();
+            if v.is_empty() || matches!(cloned_db.get_dg_trigger_proto(v), Ok(Some(_))) {
+                return false;
+            }
+            let mob = match cloned_db.get_mobile_data(&uid) {
+                Ok(Some(m)) => m,
+                _ => return false,
+            };
+            let i = idx as usize;
+            let Some(t) = mob.triggers.get(i) else { return false; };
+            let Some(body) = t.dg_body.clone() else { return false; };
+            let flags = crate::import::engines::tba::trg_map::flags_for_mobile_trigger(t.trigger_type);
+            let proto = crate::types::DgTriggerProto {
+                vnum: v.to_string(),
+                name: t.dg_name.clone().unwrap_or_default(),
+                attach_kind: crate::types::DgAttachKind::Mob,
+                flags,
+                numeric_arg: t.chance,
+                arglist: t.args.join(" "),
+                body,
+            };
+            if cloned_db.save_dg_trigger_proto(&proto).is_err() {
+                return false;
+            }
+            cloned_db
+                .update_mobile(&uid, |m| {
+                    if let Some(t) = m.triggers.get_mut(i) {
+                        t.source_proto_vnum = Some(v.to_string());
+                    }
+                })
+                .is_ok()
+        },
+    );
+
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "dg_makeproto_from_item_trigger",
+        move |item_id: String, idx: i64, vnum: String| -> bool {
+            let uid = match uuid::Uuid::parse_str(&item_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let v = vnum.trim();
+            if v.is_empty() || matches!(cloned_db.get_dg_trigger_proto(v), Ok(Some(_))) {
+                return false;
+            }
+            let item = match cloned_db.get_item_data(&uid) {
+                Ok(Some(it)) => it,
+                _ => return false,
+            };
+            let i = idx as usize;
+            let Some(t) = item.triggers.get(i) else { return false; };
+            let Some(body) = t.dg_body.clone() else { return false; };
+            let flags = crate::import::engines::tba::trg_map::flags_for_item_trigger(t.trigger_type);
+            let proto = crate::types::DgTriggerProto {
+                vnum: v.to_string(),
+                name: t.dg_name.clone().unwrap_or_default(),
+                attach_kind: crate::types::DgAttachKind::Obj,
+                flags,
+                numeric_arg: t.chance,
+                arglist: t.args.join(" "),
+                body,
+            };
+            if cloned_db.save_dg_trigger_proto(&proto).is_err() {
+                return false;
+            }
+            cloned_db
+                .update_item(&uid, |it| {
+                    if let Some(t) = it.triggers.get_mut(i) {
+                        t.source_proto_vnum = Some(v.to_string());
+                    }
+                })
+                .is_ok()
+        },
+    );
+
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "dg_makeproto_from_room_trigger",
+        move |room_id: String, idx: i64, vnum: String| -> bool {
+            let uid = match uuid::Uuid::parse_str(&room_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let v = vnum.trim();
+            if v.is_empty() || matches!(cloned_db.get_dg_trigger_proto(v), Ok(Some(_))) {
+                return false;
+            }
+            let room = match cloned_db.get_room_data(&uid) {
+                Ok(Some(r)) => r,
+                _ => return false,
+            };
+            let i = idx as usize;
+            let Some(t) = room.triggers.get(i) else { return false; };
+            let Some(body) = t.dg_body.clone() else { return false; };
+            let flags = crate::import::engines::tba::trg_map::flags_for_room_trigger(t.trigger_type);
+            let proto = crate::types::DgTriggerProto {
+                vnum: v.to_string(),
+                name: t.dg_name.clone().unwrap_or_default(),
+                attach_kind: crate::types::DgAttachKind::Room,
+                flags,
+                numeric_arg: t.chance,
+                arglist: t.args.join(" "),
+                body,
+            };
+            if cloned_db.save_dg_trigger_proto(&proto).is_err() {
+                return false;
+            }
+            cloned_db
+                .update_room(&uid, |r| {
+                    if let Some(t) = r.triggers.get_mut(i) {
+                        t.source_proto_vnum = Some(v.to_string());
+                    }
+                })
+                .is_ok()
+        },
+    );
+
+    // dg_detach_<kind>_trigger(host_id, idx) -> bool
+    //   Clear source_proto_vnum on a single attached trigger so future
+    //   edits stay local (and refresh sweeps skip this instance). Body
+    //   preserved.
+
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "dg_detach_mobile_trigger",
+        move |mob_id: String, idx: i64| -> bool {
+            let uid = match uuid::Uuid::parse_str(&mob_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            cloned_db
+                .update_mobile(&uid, |m| {
+                    if let Some(t) = m.triggers.get_mut(idx as usize) {
+                        t.source_proto_vnum = None;
+                    }
+                })
+                .is_ok()
+        },
+    );
+
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "dg_detach_item_trigger",
+        move |item_id: String, idx: i64| -> bool {
+            let uid = match uuid::Uuid::parse_str(&item_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            cloned_db
+                .update_item(&uid, |i| {
+                    if let Some(t) = i.triggers.get_mut(idx as usize) {
+                        t.source_proto_vnum = None;
+                    }
+                })
+                .is_ok()
+        },
+    );
+
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "dg_detach_room_trigger",
+        move |room_id: String, idx: i64| -> bool {
+            let uid = match uuid::Uuid::parse_str(&room_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            cloned_db
+                .update_room(&uid, |r| {
+                    if let Some(t) = r.triggers.get_mut(idx as usize) {
+                        t.source_proto_vnum = None;
+                    }
+                })
+                .is_ok()
+        },
+    );
+
+    // get_<kind>_trigger_source_proto(host_id, idx) -> String
+    //   Returns the source_proto_vnum on an attached trigger (empty when
+    //   the trigger is host-local). Used by the editor flow to detect
+    //   edit-through cases on `trigger dg edit <idx>`.
+
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_mobile_trigger_source_proto",
+        move |mob_id: String, idx: i64| -> String {
+            let uid = match uuid::Uuid::parse_str(&mob_id) {
+                Ok(u) => u,
+                Err(_) => return String::new(),
+            };
+            cloned_db
+                .get_mobile_data(&uid)
+                .ok()
+                .flatten()
+                .and_then(|m| m.triggers.get(idx as usize).and_then(|t| t.source_proto_vnum.clone()))
+                .unwrap_or_default()
+        },
+    );
+
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_item_trigger_source_proto",
+        move |item_id: String, idx: i64| -> String {
+            let uid = match uuid::Uuid::parse_str(&item_id) {
+                Ok(u) => u,
+                Err(_) => return String::new(),
+            };
+            cloned_db
+                .get_item_data(&uid)
+                .ok()
+                .flatten()
+                .and_then(|i| i.triggers.get(idx as usize).and_then(|t| t.source_proto_vnum.clone()))
+                .unwrap_or_default()
+        },
+    );
+
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_room_trigger_source_proto",
+        move |room_id: String, idx: i64| -> String {
+            let uid = match uuid::Uuid::parse_str(&room_id) {
+                Ok(u) => u,
+                Err(_) => return String::new(),
+            };
+            cloned_db
+                .get_room_data(&uid)
+                .ok()
+                .flatten()
+                .and_then(|r| r.triggers.get(idx as usize).and_then(|t| t.source_proto_vnum.clone()))
+                .unwrap_or_default()
+        },
+    );
 }
 
 /// Fire mobile triggers from Rust code (e.g., combat tick).

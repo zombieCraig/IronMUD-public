@@ -95,6 +95,15 @@ fn bit_to_room(bit: u32) -> Option<TriggerType> {
         16 => Some(TriggerType::OnExit),
         // 19 WTRIG_TIME
         19 => Some(TriggerType::OnTimeChange),
+        // IronMUD-native (bits stock tbamud doesn't define for rooms):
+        // OnLook (y=24), WeatherChange (w=22), MonthChange (m=12 unused
+        // for rooms in stock), SeasonChange (z=25 — moved off 18=LOGIN).
+        // These only fire on the proto round-trip path from
+        // `flags_for_room_trigger`; stock imports never produce them.
+        24 => Some(TriggerType::OnLook),
+        22 => Some(TriggerType::OnWeatherChange),
+        12 => Some(TriggerType::OnMonthChange),
+        25 => Some(TriggerType::OnSeasonChange),
         _ => None,
     }
 }
@@ -107,10 +116,22 @@ fn bit_to_item(bit: u32) -> Option<ItemTriggerType> {
         6 => Some(ItemTriggerType::OnGet),
         // 7 OTRIG_DROP
         7 => Some(ItemTriggerType::OnDrop),
+        // 9 OTRIG_WEAR — IronMUD-native OnWear. tbamud bit name is
+        // OTRIG_GIVE in stock; we co-opt it for OnWear so promoted
+        // host-local triggers round-trip through `flags_for_item_trigger`.
+        9 => Some(ItemTriggerType::OnWear),
+        // 11 OTRIG_REMOVE — IronMUD-native counterpart to WEAR.
+        11 => Some(ItemTriggerType::OnRemove),
         // 13 OTRIG_LOAD
         13 => Some(ItemTriggerType::OnLoad),
         // 18 OTRIG_CONSUME — closest IronMUD analog is OnUse (drink/eat).
         18 => Some(ItemTriggerType::OnUse),
+        // IronMUD-native: OnExamine (x=23), OnLook (y=24), OnPrompt (z=25).
+        // No tbamud analog; only matter when a builder promotes a
+        // host-local trigger to a proto.
+        23 => Some(ItemTriggerType::OnExamine),
+        24 => Some(ItemTriggerType::OnLook),
+        25 => Some(ItemTriggerType::OnPrompt),
         _ => None,
     }
 }
@@ -137,8 +158,79 @@ fn bit_to_mobile(bit: u32) -> Option<MobileTriggerType> {
         12 => Some(MobileTriggerType::OnBribe),
         // 13 MTRIG_LOAD
         13 => Some(MobileTriggerType::OnLoad),
+        // IronMUD-native (no stock tbamud bit). Use bits that stock
+        // tbamud doesn't define (s=18 onward) so importing real .trg
+        // content never accidentally promotes to one of these types.
+        // Mirrors `flags_for_mobile_trigger` for round-trip on
+        // promoted host-local triggers.
+        21 => Some(MobileTriggerType::OnAttack),
+        22 => Some(MobileTriggerType::OnAlways),
+        23 => Some(MobileTriggerType::OnFlee),
         _ => None,
     }
+}
+
+/// Reverse mapping for `MobileTriggerType` → single letter flag. Used by
+/// `dg_makeproto_from_mobile_trigger` to round-trip a host-local trigger
+/// into a proto whose flags will re-derive the same trigger type on attach.
+pub fn flags_for_mobile_trigger(t: MobileTriggerType) -> String {
+    match t {
+        MobileTriggerType::OnIdle => "b",
+        MobileTriggerType::OnCommand => "c",
+        MobileTriggerType::OnSay => "d",
+        MobileTriggerType::OnDeath => "f",
+        MobileTriggerType::OnGreet => "g",
+        MobileTriggerType::OnReceive => "j",
+        MobileTriggerType::OnFight => "k",
+        MobileTriggerType::OnHitPercent => "l",
+        MobileTriggerType::OnBribe => "m",
+        MobileTriggerType::OnLoad => "n",
+        // No clean tbamud analog. We pick bits that stock tbamud
+        // never uses (s=18 onward) so importing stock `.trg` files
+        // with one of these letters still drops silently as Info
+        // warnings rather than promoting to an IronMUD-native type.
+        MobileTriggerType::OnAttack => "v",   // bit 21 (unused in stock)
+        MobileTriggerType::OnAlways => "w",   // bit 22 (unused in stock)
+        MobileTriggerType::OnFlee => "x",     // bit 23 (unused in stock)
+    }
+    .to_string()
+}
+
+/// Reverse mapping for `ItemTriggerType` → single letter flag.
+pub fn flags_for_item_trigger(t: ItemTriggerType) -> String {
+    match t {
+        ItemTriggerType::OnCommand => "c",
+        ItemTriggerType::OnGet => "g",
+        ItemTriggerType::OnDrop => "h",
+        ItemTriggerType::OnLoad => "n",
+        ItemTriggerType::OnUse => "s",
+        // IronMUD-native types with no tbamud bit — use unused letters
+        // so the round-trip stays distinct. These never appear in stock
+        // imports, only in host-local triggers being promoted to protos.
+        ItemTriggerType::OnExamine => "x",
+        ItemTriggerType::OnLook => "y",
+        ItemTriggerType::OnPrompt => "z",
+        ItemTriggerType::OnWear => "j",
+        ItemTriggerType::OnRemove => "l",
+    }
+    .to_string()
+}
+
+/// Reverse mapping for `TriggerType` → single letter flag.
+pub fn flags_for_room_trigger(t: TriggerType) -> String {
+    match t {
+        TriggerType::Periodic => "b",
+        TriggerType::OnCommand => "c",
+        TriggerType::OnEnter => "g",
+        TriggerType::OnExit => "q",
+        TriggerType::OnTimeChange => "t",
+        // IronMUD-native — bits stock tbamud doesn't define for rooms.
+        TriggerType::OnLook => "y",            // 24
+        TriggerType::OnWeatherChange => "w",   // 22
+        TriggerType::OnSeasonChange => "z",    // 25 (s=18 is stock LOGIN)
+        TriggerType::OnMonthChange => "m",     // 12 (unused for rooms in stock)
+    }
+    .to_string()
 }
 
 #[cfg(test)]
@@ -178,11 +270,48 @@ mod tests {
 
     #[test]
     fn unsupported_letters_drop_silently() {
-        // `e` (ACT, mob) and `f` (RESET, room) currently have no IronMUD analog.
-        assert_eq!(mobile_trigger_types("e").len(), 0);
+        // `a` (GLOBAL across all 3 kinds) has no IronMUD analog and is a
+        // safe "nothing maps" probe for all three forward maps.
+        assert_eq!(mobile_trigger_types("a").len(), 0);
+        assert_eq!(room_trigger_types("a").len(), 0);
+        assert_eq!(item_trigger_types("a").len(), 0);
+        // `f` (RESET, room) likewise unmapped.
         assert_eq!(room_trigger_types("f").len(), 0);
-        // Truly unmapped letter for items.
+        // `p` (CAST) unmapped for items.
         assert_eq!(item_trigger_types("p").len(), 0);
+    }
+
+    #[test]
+    fn ironmud_native_letters_round_trip() {
+        // Letters claimed for IronMUD-native trigger types (no stock
+        // tbamud analog) must round-trip cleanly through
+        // `flags_for_*` → `*_trigger_types` so promoted host-local
+        // triggers stay structurally intact across a proto refresh sweep.
+        // Item OnWear (j=9) / OnRemove (l=11).
+        assert_eq!(item_trigger_types("j"), vec![ItemTriggerType::OnWear]);
+        assert_eq!(item_trigger_types("l"), vec![ItemTriggerType::OnRemove]);
+        assert_eq!(
+            item_trigger_types(&flags_for_item_trigger(ItemTriggerType::OnWear)),
+            vec![ItemTriggerType::OnWear]
+        );
+        // Mob OnAttack (e=4) / OnAlways (o=14) / OnFlee (q=16).
+        assert_eq!(
+            mobile_trigger_types(&flags_for_mobile_trigger(MobileTriggerType::OnAttack)),
+            vec![MobileTriggerType::OnAttack]
+        );
+        assert_eq!(
+            mobile_trigger_types(&flags_for_mobile_trigger(MobileTriggerType::OnAlways)),
+            vec![MobileTriggerType::OnAlways]
+        );
+        // Room WeatherChange (w=22) / MonthChange (m=12).
+        assert_eq!(
+            room_trigger_types(&flags_for_room_trigger(TriggerType::OnWeatherChange)),
+            vec![TriggerType::OnWeatherChange]
+        );
+        assert_eq!(
+            room_trigger_types(&flags_for_room_trigger(TriggerType::OnMonthChange)),
+            vec![TriggerType::OnMonthChange]
+        );
     }
 
     #[test]

@@ -95,6 +95,8 @@ oedit pirate_cutlass on_hit add bleeding 70 2 0
 | `flag` | `oedit <id> flag <name> [on\|off]` | Toggle item flag |
 | `trigger` | `oedit <id> trigger` | Manage triggers (see [Triggers](triggers.md)) |
 
+When attaching shared trigger logic across multiple items (armor-set bonuses, on-use behavior packs), use a DG trigger prototype — editing one attached instance refreshes all siblings. See [DG Prototypes](dg-scripts.md#prototypes).
+
 ### Prototype Management
 
 | Subcommand | Usage | Description |

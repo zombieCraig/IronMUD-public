@@ -38,6 +38,7 @@ fn item(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str, ite
         weight: 0,
         value: 0,
         location: ItemLocation::Nowhere,
+        currently_worn_at: None,
         // Weapon fields
         damage_dice_count: 0,
         damage_dice_sides: 0,

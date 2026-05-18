@@ -105,6 +105,7 @@ fn seed_oakvale(db: &Db) -> Result<usize> {
                 dg_name: None,
                 authored_by: None,
                 elevated: false,
+                source_proto_vnum: None,
             },
             RoomTrigger {
                 trigger_type: TriggerType::Periodic,
@@ -118,6 +119,7 @@ fn seed_oakvale(db: &Db) -> Result<usize> {
                 dg_name: None,
                 authored_by: None,
                 elevated: false,
+                source_proto_vnum: None,
             },
         ],
         doors: HashMap::new(),
@@ -454,6 +456,7 @@ fn seed_whisperwood(db: &Db) -> Result<usize> {
         dg_name: None,
         authored_by: None,
         elevated: false,
+        source_proto_vnum: None,
     });
 
     let mut wolf_den = room(
@@ -750,6 +753,7 @@ fn seed_shadowfang(db: &Db) -> Result<usize> {
         dg_name: None,
         authored_by: None,
         elevated: false,
+        source_proto_vnum: None,
     });
 
     let mut goblin_camp = room(

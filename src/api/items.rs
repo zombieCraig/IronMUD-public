@@ -862,6 +862,7 @@ async fn create_item(
         is_prototype: true,
         world_max_count: req.world_max_count,
         location: ItemLocation::Nowhere,
+        currently_worn_at: None,
         wear_locations,
         armor_class: req.armor_class.map(|v| check_stat_bonus("armor_class", v)).transpose()?,
         hit_bonus: 0,
@@ -1523,6 +1524,7 @@ async fn add_trigger(
         dg_name: None,
         authored_by: None,
         elevated: false,
+        source_proto_vnum: None,
     });
 
     state

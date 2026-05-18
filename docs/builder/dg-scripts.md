@@ -151,9 +151,11 @@ These work on any character or mob head (`actor`, `victim`, `self`-when-mob).
 | `align` / `alignment` | Always `"0"` — IronMUD has no alignment system |
 | `canbeseen` | Always `"1"` |
 | `inventory` | Comma-joined inventory item names |
-| `inventory(<vnum>)` | Count of items with that vnum |
-| `has_item(<vnum>)` | `"1"` if held/worn, else `"0"` |
-| `eq(<slot>)` | Name of first equipped item (slot ignored — no slot semantics) |
+| `inventory(<vnum>)` | Count of items in inventory with that vnum |
+| `equipped` | Comma-joined names of currently-equipped items |
+| `equipped(<vnum>)` | Count of equipped items with that vnum (use for armor-set detection) |
+| `has_item(<vnum>)` | `"1"` if held *or* worn, else `"0"` |
+| `eq(<slot>)` | Name of the equipped item in `<slot>`, or first-equipped fallback when `<slot>` is empty / unrecognized. Slots accept `WearLocation` names: `head`, `neck`, `shoulders`, `torso`, `waist`, `left_hand`, `right_hand`, `wielded`, `offhand`, `left_finger`, `right_finger`, `left_foot`, `right_foot`, etc. |
 | `varexists(<name>)` | `"1"` if `<name>` is a local or `dg_var` on the entity |
 | `affect(<spell>)` | `"1"` if matching `EffectType` is in `active_buffs` |
 
@@ -437,7 +439,7 @@ attach 5201 %self.id%       * attach trigger prototype 5201 to self
 detach 5201 %actor.id%      * remove trigger named '5201' from actor
 ```
 
-Trigger prototypes are imported from `.trg` files and stored in the `dg_trigger_protos` sled tree. List them with `medit ... trigger dg protos`.
+Trigger prototypes are imported from `.trg` files and stored in the `dg_trigger_protos` sled tree. List them with `medit ... trigger dg protos`. See [Prototypes](#prototypes) below for the conceptual model — when to promote, when to detach, and how the refresh sweep interacts with edits.
 
 ### Timer / transform
 
@@ -466,6 +468,113 @@ When `self` is a **mob**, these verbs work directly without `force`:
 | Info | `consider`, `look` |
 | Socials | `smile`, `nod`, `bow`, `grin`, `wave`, `cry`, `laugh`, `wink`, `frown`, `shake`, `clap`, `dance`, `sigh`, `poke`, `hug`, `chuckle`, `yawn`, `whisper`, `sing`, `kiss`, `peer`, `glare`, `slap`, `growl`, `cackle`, `pet`, `caress`, ~30 others — see `src/script/dg/mob_cmd.rs::known_verbs()` |
 | Silent stubs | `sell`, `buy`, `time`, `date`, `oset`, `adjust`, `pat`, `snd` |
+
+## Prototypes
+
+A DG **trigger prototype** is a reusable template stored in the `dg_trigger_protos` sled tree by vnum. Distinct from a per-entity trigger:
+
+- A **proto** is the source-of-truth template (body, name, flag letters, attach kind).
+- An **attached instance** is a derived copy living on a specific mob/item/room's `triggers` list, carrying `source_proto_vnum` as a backreference to its parent.
+
+### Why use prototypes
+
+Use a proto when **two or more entities should share behavior**:
+
+- Armor-set bonus: same trigger on every set piece (`set_glove_check` script on left + right glove).
+- Mob behavior pack: same `OnGreet` on every village guard.
+- Room ambience pack: same `Periodic` on every forest room in an area.
+
+Single source of truth: edit once, every attached instance updates. Versus host-local triggers, which diverge over time as builders edit copies individually.
+
+### Authoring flow
+
+```
+oedit 3010 trigger dg proto new 8100 cw set_glove_check   * create empty proto, opens editor
+                                                          * cw = OnCommand+OnWear (item kind)
+oedit 3010 trigger dg attach 8100                         * attach proto 8100 to item 3010
+oedit 3011 trigger dg attach 8100                         * also attach to item 3011
+oedit 3010 trigger dg edit 0                              * edit attached instance — saves to proto,
+                                                          *   refreshes all attached siblings
+```
+
+Other entry points:
+
+- `trigger dg makeproto <idx> <vnum>` — promote an existing host-local trigger to a proto so siblings can attach.
+- `trigger dg detach <idx>` — break the proto link on a single instance (allows per-instance divergence; instance body unchanged).
+- `trigger dg proto view <vnum>` — show proto metadata + body + attached-instance count.
+- `trigger dg proto delete <vnum>` — (admin only) remove proto from registry. Attached instances are **orphaned** (source_proto_vnum cleared, bodies preserved). Behavior unchanged in-game until a builder edits the instance.
+
+### Edit-through semantics
+
+Editing any attached instance via `trigger dg edit <idx>` saves to the proto and runs a refresh sweep across all siblings. Builder sees:
+
+```
+Proto 'set_glove_check' saved (3 attached instances refreshed).
+  warning: trigger uses unknown command 'foo'
+```
+
+No silent divergence: stealth differences between proto and instances are the footgun this design eliminates. If you want a one-off variant, run `trigger dg detach <idx>` first.
+
+### Refresh sweep
+
+- Sweep runs only on proto save (not on every fire).
+- Single O(entities of matching kind) pass — typically tens of ms for ~10k entities.
+- Rebuilds attached triggers totally from current proto state: body, flag-derived trigger types, name, chance, and arglist. Flag changes are structural (add/remove trigger types) and re-derive on the sweep.
+
+### Parse-error abort
+
+Save runs the DG analyzer first. If the body has any `ParseError`, save is refused and attached instances stay on the previous body:
+
+```
+Proto save refused: parse error at line 7: unexpected 'end'
+(0 instances changed)
+```
+
+Non-fatal issues (unknown commands, unknown variables, etc.) come back as warnings, but the save proceeds — matches existing import warning semantics.
+
+### Worked example: matching gloves armor set
+
+Two glove items at vnum 3010, both with `wear_locations: [LeftHand, RightHand]`. Set bonus: +2 STR when both are worn.
+
+```
+oedit 3010 trigger dg proto new 8100 cw set_glove_check
+```
+
+In the editor:
+
+```
+* fires on OnCommand+OnWear; only the satisfying wear triggers application.
+if %actor.equipped(3010)% >= 2
+  dg_affect %actor% strength 2 -1
+else
+  dg_affect %actor% strength 0 0
+end
+```
+
+Then on each glove:
+
+```
+oedit 3010 trigger dg attach 8100
+oedit 3011 trigger dg attach 8100
+```
+
+In-game:
+
+- Wear left glove → `OnWear` fires, `equipped(3010) == 1`, no buff.
+- Wear right glove → `OnWear` fires, `equipped(3010) == 2`, STR +2 applied.
+- Remove either → `OnRemove` fires, count drops below 2, buff stripped.
+
+For "is the wielded weapon a sword?" style checks, use slot-aware `eq`:
+
+```
+if %actor.eq(wielded)% == longsword
+  ...
+end
+```
+
+### Importer interaction
+
+The `ironmud-import tba` importer seeds every parsed `.trg` record into `dg_trigger_protos`, regardless of whether it was attached in the source zone. Attached instances get `source_proto_vnum` set automatically, so importing the same bundle twice is idempotent (re-attach finds the existing proto). Deleting an imported proto **does not** delete its imported instances — they orphan cleanly and continue firing.
 
 ## IronMUD-specific notes
 

@@ -97,6 +97,14 @@ pub struct RoomTrigger {
     /// this on (via `redit/medit/oedit trigger dg elevate`).
     #[serde(default)]
     pub elevated: bool,
+    /// Backreference to the [`DgTriggerProto`] this trigger was attached
+    /// from. Set by `attach <vnum>` (and the builder `trigger dg attach`
+    /// subcommand); empty for host-local triggers authored directly.
+    /// When present, editing this instance saves through to the proto and
+    /// refreshes all sibling instances. `trigger dg detach <idx>` clears
+    /// the link to allow per-instance divergence.
+    #[serde(default)]
+    pub source_proto_vnum: Option<String>,
 }
 
 fn default_trigger_interval() -> i64 {
@@ -121,6 +129,7 @@ impl Default for RoomTrigger {
             dg_name: None,
             authored_by: None,
             elevated: false,
+            source_proto_vnum: None,
         }
     }
 }
@@ -177,6 +186,9 @@ pub struct ItemTrigger {
     /// See [`RoomTrigger::elevated`].
     #[serde(default)]
     pub elevated: bool,
+    /// See [`RoomTrigger::source_proto_vnum`].
+    #[serde(default)]
+    pub source_proto_vnum: Option<String>,
 }
 
 impl Default for ItemTrigger {
@@ -191,6 +203,7 @@ impl Default for ItemTrigger {
             dg_name: None,
             authored_by: None,
             elevated: false,
+            source_proto_vnum: None,
         }
     }
 }
@@ -253,6 +266,9 @@ pub struct MobileTrigger {
     /// See [`RoomTrigger::elevated`].
     #[serde(default)]
     pub elevated: bool,
+    /// See [`RoomTrigger::source_proto_vnum`].
+    #[serde(default)]
+    pub source_proto_vnum: Option<String>,
 }
 
 impl Default for MobileTrigger {
@@ -269,6 +285,7 @@ impl Default for MobileTrigger {
             dg_name: None,
             authored_by: None,
             elevated: false,
+            source_proto_vnum: None,
         }
     }
 }

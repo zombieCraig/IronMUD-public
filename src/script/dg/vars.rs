@@ -508,6 +508,25 @@ fn collection_actor_field(actor: &ActorRef, field: &str, ctx: &EvalCtx) -> Optio
             };
             Some(names.join(", "))
         }
+        "equipped" => {
+            let names: Vec<String> = match actor {
+                ActorRef::Player { name, .. } => ctx
+                    .db
+                    .get_equipped_items(name)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|i| i.name)
+                    .collect(),
+                ActorRef::Mob { mobile_id, .. } => ctx
+                    .db
+                    .get_items_equipped_on_mobile(mobile_id)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|i| i.name)
+                    .collect(),
+            };
+            Some(names.join(", "))
+        }
         _ => None,
     }
 }
@@ -522,6 +541,14 @@ fn resolve_self_field(ctx: &EvalCtx, field: Option<&str>) -> String {
         (SelfKind::Mob, Some("inventory")) => ctx
             .db
             .get_items_in_mobile_inventory(&ctx.self_id)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|i| i.name)
+            .collect::<Vec<_>>()
+            .join(", "),
+        (SelfKind::Mob, Some("equipped")) => ctx
+            .db
+            .get_items_equipped_on_mobile(&ctx.self_id)
             .unwrap_or_default()
             .into_iter()
             .map(|i| i.name)
@@ -1148,7 +1175,7 @@ fn parse_field_call(field: &str) -> Option<(&str, &str)> {
 fn is_reader_call(fn_name: &str) -> bool {
     matches!(
         fn_name,
-        "varexists" | "has_item" | "eq" | "inventory" | "affect" | "affects"
+        "varexists" | "has_item" | "eq" | "inventory" | "equipped" | "affect" | "affects"
     )
 }
 
@@ -1262,10 +1289,21 @@ fn read_actor_call(
                     ctx.db.get_items_equipped_on_mobile(mobile_id).unwrap_or_default()
                 }
             };
-            // Slot semantics: ignored. Return first equipped item's name,
-            // or empty if nothing equipped. Stock callers typically `if`-
-            // check for non-empty, so this preserves the boolean shape.
-            equipped.first().map(|i| i.name.clone()).unwrap_or_default()
+            // Slot semantics: parse arg via WearLocation::from_str. If the
+            // slot is recognised, return the equipped item whose
+            // `currently_worn_at` matches. Empty / unrecognised arg falls
+            // back to first-equipped (preserves Phase 7c `if %actor.eq(*)%`
+            // boolean-shape callers). Old saves with no currently_worn_at
+            // set return empty for slot queries until re-equipped.
+            let slot = crate::types::WearLocation::from_str(arg);
+            match slot {
+                Some(s) => equipped
+                    .iter()
+                    .find(|i| i.currently_worn_at == Some(s))
+                    .map(|i| i.name.clone())
+                    .unwrap_or_default(),
+                None => equipped.first().map(|i| i.name.clone()).unwrap_or_default(),
+            }
         }
         // `%actor.inventory(vnum)%` — count items in actor's inventory
         // with the given vnum. Stock pattern: `if %actor.inventory(82)%`
@@ -1282,6 +1320,30 @@ fn read_actor_call(
                     .unwrap_or_default(),
             };
             inv.iter()
+                .filter(|i| {
+                    i.vnum
+                        .as_deref()
+                        .map(|v| v.eq_ignore_ascii_case(arg))
+                        .unwrap_or(false)
+                })
+                .count()
+                .to_string()
+        }
+        // `%actor.equipped(vnum)%` — count items currently equipped on the
+        // actor with the given vnum. Mirror of `inventory(vnum)` but for
+        // worn/wielded items. Used for armor-set detection patterns like
+        // `if %actor.equipped(3010)% >= 2` (matching gloves bonus).
+        "equipped" => {
+            let eq = match actor {
+                ActorRef::Player { name, .. } => {
+                    ctx.db.get_equipped_items(name).unwrap_or_default()
+                }
+                ActorRef::Mob { mobile_id, .. } => ctx
+                    .db
+                    .get_items_equipped_on_mobile(mobile_id)
+                    .unwrap_or_default(),
+            };
+            eq.iter()
                 .filter(|i| {
                     i.vnum
                         .as_deref()
@@ -1378,13 +1440,39 @@ fn read_self_call(fn_name: &str, args: &str, ctx: &EvalCtx, state: &State) -> St
                 "0".to_string()
             }
         }
-        (SelfKind::Mob, "eq") => ctx
+        (SelfKind::Mob, "eq") => {
+            let equipped = ctx
+                .db
+                .get_items_equipped_on_mobile(&ctx.self_id)
+                .unwrap_or_default();
+            // Mirror of actor-side eq(slot): slot-aware when arg parses
+            // as a WearLocation; otherwise first-equipped fallback.
+            match crate::types::WearLocation::from_str(arg) {
+                Some(s) => equipped
+                    .iter()
+                    .find(|i| i.currently_worn_at == Some(s))
+                    .map(|i| i.name.clone())
+                    .unwrap_or_default(),
+                None => equipped.first().map(|i| i.name.clone()).unwrap_or_default(),
+            }
+        }
+        // `%self.equipped(vnum)%` on a mob — count of equipped items
+        // matching that vnum. Mirror of the actor-side accessor in
+        // `read_actor_call`. Used by armor-set-style triggers attached
+        // to mobs.
+        (SelfKind::Mob, "equipped") => ctx
             .db
             .get_items_equipped_on_mobile(&ctx.self_id)
             .unwrap_or_default()
-            .first()
-            .map(|i| i.name.clone())
-            .unwrap_or_default(),
+            .iter()
+            .filter(|i| {
+                i.vnum
+                    .as_deref()
+                    .map(|v| v.eq_ignore_ascii_case(arg))
+                    .unwrap_or(false)
+            })
+            .count()
+            .to_string(),
         _ => String::new(),
     }
 }

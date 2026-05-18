@@ -74,6 +74,7 @@ pub(super) fn map_dg_triggers(
                             dg_name: Some(t.name.clone()),
                             authored_by: None,
                             elevated: false,
+                            source_proto_vnum: Some(t.vnum.to_string()),
                         }),
                         source: t.source.clone(),
                     });
@@ -110,6 +111,7 @@ pub(super) fn map_dg_triggers(
                             dg_name: Some(t.name.clone()),
                             authored_by: None,
                             elevated: false,
+                            source_proto_vnum: Some(t.vnum.to_string()),
                         }),
                         source: t.source.clone(),
                     });
@@ -144,6 +146,7 @@ pub(super) fn map_dg_triggers(
                             dg_name: Some(t.name.clone()),
                             authored_by: None,
                             elevated: false,
+                            source_proto_vnum: Some(t.vnum.to_string()),
                         }),
                         source: t.source.clone(),
                     });
