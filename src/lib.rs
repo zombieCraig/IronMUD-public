@@ -3591,27 +3591,37 @@ pub async fn handle_connection(
             input
         };
 
-        // Parse initial input
-        let parts: Vec<&str> = input.splitn(2, ' ').collect();
-        let raw_command = parts[0];
-        let raw_args = parts.get(1).map_or("", |s| *s);
+        // Split by ';' first so each piece is alias-expanded on its own —
+        // otherwise "west;north" is looked up as one alias, fails, then gets
+        // split into raw "west"/"north" tokens that aren't commands.
+        let pieces: Vec<&str> = input.split(';').map(|s| s.trim()).collect();
 
         // Empty input - just redisplay prompt (useful for checking stats while resting)
-        if raw_command.is_empty() {
+        if pieces.iter().all(|p| p.is_empty()) {
             let prompt = build_prompt(&connection_id, &connections, &state);
             let _ = tx_client.send(prompt);
             continue;
         }
 
-        // Expand alias (may return semicolon-separated commands)
-        let expanded = expand_alias(&connections, connection_id, raw_command, raw_args);
-
-        // Split by semicolon and execute each command
-        for single_cmd in expanded.split(';') {
-            let single_cmd = single_cmd.trim();
-            if single_cmd.is_empty() {
+        let mut expanded_commands: Vec<String> = Vec::new();
+        for piece in &pieces {
+            if piece.is_empty() {
                 continue;
             }
+            let parts: Vec<&str> = piece.splitn(2, ' ').collect();
+            let raw_command = parts[0];
+            let raw_args = parts.get(1).map_or("", |s| *s);
+            let expanded = expand_alias(&connections, connection_id, raw_command, raw_args);
+            for cmd in expanded.split(';') {
+                let cmd = cmd.trim();
+                if !cmd.is_empty() {
+                    expanded_commands.push(cmd.to_string());
+                }
+            }
+        }
+
+        for single_cmd in &expanded_commands {
+            let single_cmd = single_cmd.as_str();
 
             let cmd_parts: Vec<&str> = single_cmd.splitn(2, ' ').collect();
             let command_name = cmd_parts[0];
