@@ -1,4 +1,4 @@
-import type { Area, Room, Item, Mobile, SpawnPoint, Transport, PlantPrototype, Recipe, CreateRecipeRequest, UpdateRecipeRequest, Quest, CreateQuestRequest, UpdateQuestRequest, ForageTables, AddForageEntryRequest, ForageType, ItemSummary, RoomSummary, MobileSummary, AreaOverview, CreateAreaRequest, UpdateAreaRequest, CreateRoomRequest, CreateItemRequest, CreateMobileRequest, CreateSpawnPointRequest, CreateTransportRequest, CreatePlantPrototypeRequest, AddTransportStopRequest, SetExitRequest, AddDoorRequest, AddTriggerRequest, AddExtraDescRequest, AddDialogueRequest, AddDialogueNodeRequest, UpdateDialogueNodeRequest, DialogueChoiceRequest, AddMobileTriggerRequest, AddItemTriggerRequest, AddSpawnDependencyRequest, SpawnEntityRequest, BugReport, UpdateBugReportRequest, AddBugNoteRequest, Achievement, AchievementSummary, CreateAchievementRequest, UpdateAchievementRequest } from "./types.js";
+import type { Area, Room, Item, Mobile, SpawnPoint, Transport, PlantPrototype, Recipe, CreateRecipeRequest, UpdateRecipeRequest, Quest, CreateQuestRequest, UpdateQuestRequest, ForageTables, AddForageEntryRequest, ForageType, ItemSummary, RoomSummary, MobileSummary, AreaOverview, CreateAreaRequest, UpdateAreaRequest, CreateRoomRequest, CreateItemRequest, CreateMobileRequest, CreateSpawnPointRequest, CreateTransportRequest, CreatePlantPrototypeRequest, AddTransportStopRequest, SetExitRequest, AddDoorRequest, AddTriggerRequest, AddExtraDescRequest, AddDialogueRequest, AddDialogueNodeRequest, UpdateDialogueNodeRequest, DialogueChoiceRequest, AddMobileTriggerRequest, AddItemTriggerRequest, AddSpawnDependencyRequest, SpawnEntityRequest, BugReport, UpdateBugReportRequest, AddBugNoteRequest, Achievement, AchievementSummary, CreateAchievementRequest, UpdateAchievementRequest, DgProto, DgProtoSummary, CreateDgProtoRequest, UpdateDgProtoRequest } from "./types.js";
 export declare class IronMUDApiClient {
     private client;
     constructor(baseUrl: string, apiKey: string);
@@ -191,6 +191,19 @@ export declare class IronMUDApiClient {
     createAchievement(data: CreateAchievementRequest): Promise<Achievement>;
     updateAchievement(key: string, data: UpdateAchievementRequest): Promise<Achievement>;
     deleteAchievement(key: string): Promise<void>;
+    listDgProtos(): Promise<DgProtoSummary[]>;
+    getDgProto(vnum: string): Promise<DgProto>;
+    createDgProto(data: CreateDgProtoRequest): Promise<{
+        data: DgProto;
+        warnings?: string[];
+        refreshed_instances?: number;
+    }>;
+    updateDgProto(vnum: string, data: UpdateDgProtoRequest): Promise<{
+        data: DgProto;
+        warnings?: string[];
+        refreshed_instances?: number;
+    }>;
+    deleteDgProto(vnum: string): Promise<void>;
     getBuilderDebug(limit?: number): Promise<string[]>;
     /**
      * Get all rooms connected to a room via exits

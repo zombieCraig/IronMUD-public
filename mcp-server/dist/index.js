@@ -15,6 +15,7 @@ import { recipeToolDefinitions } from "./tools/recipes.js";
 import { questToolDefinitions } from "./tools/quests.js";
 import { achievementToolDefinitions } from "./tools/achievements.js";
 import { bugToolDefinitions } from "./tools/bugs.js";
+import { dgProtoToolDefinitions } from "./tools/dg-protos.js";
 import { logToolDefinitions } from "./tools/logs.js";
 import { buildRoomContext, buildItemContext, buildMobileContext, getDescriptionExamples, } from "./description-context.js";
 // Helper to format auto-refresh info for MCP output
@@ -87,6 +88,7 @@ const allTools = [
     ...questToolDefinitions,
     ...achievementToolDefinitions,
     ...bugToolDefinitions,
+    ...dgProtoToolDefinitions,
     ...logToolDefinitions,
 ];
 // Handle list tools request
@@ -1558,6 +1560,80 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 await api.deleteAchievement(key);
                 return {
                     content: [{ type: "text", text: `Achievement '${key}' deleted successfully` }],
+                };
+            }
+            // DG Scripts trigger prototypes
+            case "list_dg_protos": {
+                const protos = await api.listDgProtos();
+                return {
+                    content: [{ type: "text", text: JSON.stringify(protos, null, 2) }],
+                };
+            }
+            case "get_dg_proto": {
+                const vnum = args?.vnum;
+                if (!vnum)
+                    throw new Error("vnum is required");
+                const proto = await api.getDgProto(vnum);
+                return {
+                    content: [{ type: "text", text: JSON.stringify(proto, null, 2) }],
+                };
+            }
+            case "create_dg_proto": {
+                const result = await api.createDgProto({
+                    vnum: args?.vnum,
+                    name: args?.name,
+                    kind: args?.kind,
+                    flags: args?.flags,
+                    body: args?.body,
+                    numeric_arg: args?.numeric_arg,
+                    arglist: args?.arglist,
+                });
+                const warnLines = result.warnings && result.warnings.length > 0
+                    ? `\n\nAnalyzer warnings:\n  - ${result.warnings.join("\n  - ")}`
+                    : "";
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Created DG proto '${result.data.vnum}'.${warnLines}\n\n${JSON.stringify(result.data, null, 2)}`,
+                        },
+                    ],
+                };
+            }
+            case "update_dg_proto": {
+                const vnum = args?.vnum;
+                if (!vnum)
+                    throw new Error("vnum is required");
+                const result = await api.updateDgProto(vnum, {
+                    name: args?.name,
+                    kind: args?.kind,
+                    flags: args?.flags,
+                    body: args?.body,
+                    numeric_arg: args?.numeric_arg,
+                    arglist: args?.arglist,
+                });
+                const warnLines = result.warnings && result.warnings.length > 0
+                    ? `\n\nAnalyzer warnings:\n  - ${result.warnings.join("\n  - ")}`
+                    : "";
+                const refreshLine = result.refreshed_instances && result.refreshed_instances > 0
+                    ? `\n(${result.refreshed_instances} attached instance(s) refreshed)`
+                    : "";
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Updated DG proto '${vnum}'.${refreshLine}${warnLines}\n\n${JSON.stringify(result.data, null, 2)}`,
+                        },
+                    ],
+                };
+            }
+            case "delete_dg_proto": {
+                const vnum = args?.vnum;
+                if (!vnum)
+                    throw new Error("vnum is required");
+                await api.deleteDgProto(vnum);
+                return {
+                    content: [{ type: "text", text: `DG proto '${vnum}' deleted (attached instances orphaned, bodies preserved).` }],
                 };
             }
             case "get_builder_debug_log": {

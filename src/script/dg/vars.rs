@@ -1175,8 +1175,76 @@ fn parse_field_call(field: &str) -> Option<(&str, &str)> {
 fn is_reader_call(fn_name: &str) -> bool {
     matches!(
         fn_name,
-        "varexists" | "has_item" | "eq" | "inventory" | "equipped" | "affect" | "affects"
+        "varexists"
+            | "has_item"
+            | "eq"
+            | "inventory"
+            | "equipped"
+            | "affect"
+            | "affects"
+            | "door"
     )
+}
+
+/// Normalize a DG direction token. Accepts the canonical full names plus the
+/// one-letter shortcuts builders commonly type. Returns `""` for anything
+/// else so callers can short-circuit.
+fn normalize_dg_direction(dir: &str) -> &'static str {
+    match dir.trim().to_ascii_lowercase().as_str() {
+        "n" | "north" => "north",
+        "s" | "south" => "south",
+        "e" | "east" => "east",
+        "w" | "west" => "west",
+        "u" | "up" => "up",
+        "d" | "down" => "down",
+        _ => "",
+    }
+}
+
+/// Read a single field off the door on `room`'s `<dir>` exit. The arg
+/// is `<dir>,<field>` (whitespace tolerated). Fields:
+///
+/// - `exists` → "1"/"0" — is there a door at all in that direction?
+/// - `locked` / `unlocked` → "1"/"0" — current lock state.
+/// - `closed` / `open` → "1"/"0" — current closure state.
+/// - `pickproof` → "1"/"0".
+/// - `name` → door name string (e.g. "gate").
+/// - `key` / `key_vnum` → key vnum string, empty when no key set.
+///
+/// Missing-door cases return "0" for the boolean-shaped fields and the
+/// empty string for the string-shaped ones, so `if` checks compose
+/// naturally without needing a separate `exists` guard.
+fn read_door_field(
+    doors: &std::collections::HashMap<String, crate::types::DoorState>,
+    args: &str,
+) -> String {
+    let mut it = args.splitn(2, ',');
+    let dir_tok = it.next().unwrap_or("").trim();
+    let field = it.next().unwrap_or("").trim().to_ascii_lowercase();
+    let dir = normalize_dg_direction(dir_tok);
+    if dir.is_empty() || field.is_empty() {
+        return String::new();
+    }
+    let Some(door) = doors.get(dir) else {
+        return match field.as_str() {
+            "exists" | "locked" | "unlocked" | "closed" | "open" | "pickproof" => {
+                "0".to_string()
+            }
+            _ => String::new(),
+        };
+    };
+    let bool01 = |b: bool| if b { "1" } else { "0" }.to_string();
+    match field.as_str() {
+        "exists" => "1".to_string(),
+        "locked" => bool01(door.is_locked),
+        "unlocked" => bool01(!door.is_locked),
+        "closed" => bool01(door.is_closed),
+        "open" => bool01(!door.is_closed),
+        "pickproof" => bool01(door.pickproof),
+        "name" => door.name.clone(),
+        "key" | "key_vnum" => door.key_vnum.clone().unwrap_or_default(),
+        _ => String::new(),
+    }
 }
 
 /// Mutating accessors that IronMUD doesn't model (positions, wait state,
@@ -1473,6 +1541,26 @@ fn read_self_call(fn_name: &str, args: &str, ctx: &EvalCtx, state: &State) -> St
             })
             .count()
             .to_string(),
+        // `%self.door(<dir>, <field>)%` — inspect the door on self's room
+        // exit. For a mob, "self's room" is the mob's current room; for a
+        // room-self, it's the room itself. See `read_door_field` for the
+        // field vocabulary.
+        (SelfKind::Mob, "door") => ctx
+            .db
+            .get_mobile_data(&ctx.self_id)
+            .ok()
+            .flatten()
+            .and_then(|m| m.current_room_id)
+            .and_then(|rid| ctx.db.get_room_data(&rid).ok().flatten())
+            .map(|room| read_door_field(&room.doors, arg))
+            .unwrap_or_default(),
+        (SelfKind::Room, "door") => ctx
+            .db
+            .get_room_data(&ctx.self_id)
+            .ok()
+            .flatten()
+            .map(|room| read_door_field(&room.doors, arg))
+            .unwrap_or_default(),
         _ => String::new(),
     }
 }
@@ -1647,5 +1735,102 @@ mod tests {
         assert_eq!(parse_field_call("plain"), None);
         // Mismatched parens.
         assert_eq!(parse_field_call("gold("), None);
+    }
+
+    #[test]
+    fn normalize_dg_direction_accepts_short_and_long() {
+        for (input, want) in [
+            ("n", "north"),
+            ("N", "north"),
+            ("north", "north"),
+            (" North ", "north"),
+            ("e", "east"),
+            ("EAST", "east"),
+            ("u", "up"),
+            ("down", "down"),
+            ("", ""),
+            ("northwest", ""),
+            ("bogus", ""),
+        ] {
+            assert_eq!(normalize_dg_direction(input), want, "input={input:?}");
+        }
+    }
+
+    fn doors_with_east(d: crate::types::DoorState)
+        -> std::collections::HashMap<String, crate::types::DoorState>
+    {
+        let mut m = std::collections::HashMap::new();
+        m.insert("east".into(), d);
+        m
+    }
+
+    #[test]
+    fn read_door_field_returns_state_fields() {
+        let door = crate::types::DoorState {
+            name: "gate".into(),
+            is_closed: false,
+            is_locked: false,
+            key_vnum: Some("3001".into()),
+            description: None,
+            keywords: vec![],
+            pickproof: false,
+        };
+        let doors = doors_with_east(door);
+        assert_eq!(read_door_field(&doors, "east, exists"), "1");
+        assert_eq!(read_door_field(&doors, "east, open"), "1");
+        assert_eq!(read_door_field(&doors, "east, closed"), "0");
+        assert_eq!(read_door_field(&doors, "east, locked"), "0");
+        assert_eq!(read_door_field(&doors, "east, unlocked"), "1");
+        assert_eq!(read_door_field(&doors, "east, name"), "gate");
+        assert_eq!(read_door_field(&doors, "east, key"), "3001");
+        assert_eq!(read_door_field(&doors, "east, key_vnum"), "3001");
+        // Short-form direction also works.
+        assert_eq!(read_door_field(&doors, "e, locked"), "0");
+    }
+
+    #[test]
+    fn read_door_field_locked_closed_reflect_state() {
+        let door = crate::types::DoorState {
+            name: "door".into(),
+            is_closed: true,
+            is_locked: true,
+            key_vnum: None,
+            description: None,
+            keywords: vec![],
+            pickproof: true,
+        };
+        let doors = doors_with_east(door);
+        assert_eq!(read_door_field(&doors, "east, closed"), "1");
+        assert_eq!(read_door_field(&doors, "east, open"), "0");
+        assert_eq!(read_door_field(&doors, "east, locked"), "1");
+        assert_eq!(read_door_field(&doors, "east, unlocked"), "0");
+        assert_eq!(read_door_field(&doors, "east, pickproof"), "1");
+        assert_eq!(read_door_field(&doors, "east, key"), "");
+    }
+
+    #[test]
+    fn read_door_field_missing_door_returns_zero_for_bools() {
+        let doors: std::collections::HashMap<String, crate::types::DoorState> =
+            std::collections::HashMap::new();
+        assert_eq!(read_door_field(&doors, "east, exists"), "0");
+        assert_eq!(read_door_field(&doors, "east, locked"), "0");
+        assert_eq!(read_door_field(&doors, "east, closed"), "0");
+        // String-shaped fields return empty when no door exists.
+        assert_eq!(read_door_field(&doors, "east, name"), "");
+        assert_eq!(read_door_field(&doors, "east, key"), "");
+    }
+
+    #[test]
+    fn read_door_field_bad_input_returns_empty() {
+        let mut doors: std::collections::HashMap<String, crate::types::DoorState> =
+            std::collections::HashMap::new();
+        // Missing field.
+        assert_eq!(read_door_field(&doors, "east"), "");
+        assert_eq!(read_door_field(&doors, "east,"), "");
+        // Bad direction.
+        assert_eq!(read_door_field(&doors, "northwest, locked"), "");
+        // Unknown field on an existing door returns empty (not "0").
+        doors.insert("east".into(), crate::types::DoorState::default());
+        assert_eq!(read_door_field(&doors, "east, sploded"), "");
     }
 }

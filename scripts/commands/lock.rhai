@@ -56,6 +56,15 @@ fn sync_door_lock(room_id, direction) {
 }
 
 fn check_key_and_lock_door(char, room_id, direction, door, connection_id) {
+    // God mode and build mode bypass key requirement
+    if char.god_mode || is_in_build_mode(char.name, room_id) {
+        set_door_locked(room_id, direction, true);
+        send_client_message(connection_id, "You magically lock the " + door.name + ".");
+        broadcast_to_room_except(room_id, connection_id, char.name + " waves a hand and the " + door.name + " locks.");
+        sync_door_lock(room_id, direction);
+        return true;
+    }
+
     let key_vnum = door.key_vnum;
     if key_vnum != "" {
         let player_key = find_inventory_item_by_vnum(char.name, key_vnum);
@@ -142,6 +151,14 @@ fn run_command(args, connection_id) {
 
     if !item.container_closed {
         send_client_message(connection_id, "You need to close it first.");
+        return;
+    }
+
+    // God mode and build mode bypass key requirement for containers
+    if char.god_mode || is_in_build_mode(char.name, room_id) {
+        set_container_locked(item.id, true);
+        send_client_message(connection_id, "You magically lock " + item.name + ".");
+        broadcast_to_room_except(room_id, connection_id, char.name + " waves a hand and " + item.name + " locks.");
         return;
     }
 

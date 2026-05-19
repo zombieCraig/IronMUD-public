@@ -1240,4 +1240,46 @@ export interface UpdateAchievementRequest {
     reward?: AchievementReward;
     hidden?: boolean;
 }
+export type DgAttachKind = "mob" | "obj" | "room";
+export interface DgProtoSummary {
+    vnum: string;
+    name: string;
+    kind: DgAttachKind;
+    flags: string;
+}
+export interface DgProto {
+    vnum: string;
+    name: string;
+    kind: DgAttachKind;
+    flags: string;
+    numeric_arg: number;
+    arglist: string;
+    body: string;
+}
+export interface CreateDgProtoRequest {
+    vnum: string;
+    name: string;
+    kind: DgAttachKind;
+    flags: string;
+    body?: string;
+    numeric_arg?: number;
+    arglist?: string;
+}
+export interface UpdateDgProtoRequest {
+    name?: string;
+    kind?: DgAttachKind;
+    flags?: string;
+    body?: string;
+    numeric_arg?: number;
+    arglist?: string;
+}
+/** Wrapped response shape returned by the proto save/get endpoints. */
+export interface DgProtoResponse {
+    success: boolean;
+    data: DgProto;
+    /** Non-fatal analyzer warnings — present on create/update; absent on read. */
+    warnings?: string[];
+    /** Live instances refreshed after a body save. */
+    refreshed_instances?: number;
+}
 //# sourceMappingURL=types.d.ts.map

@@ -33,6 +33,11 @@ impl EditorKind {
             "collecting_note" => Some(Self::ItemNote),
             "collecting_board_post" => Some(Self::BoardPost),
             "collecting_dg_body" => Some(Self::DgTriggerBody),
+            // Proto bodies share the DG editor surface (same syntax, same
+            // colouring). The save dispatcher distinguishes the two modes by
+            // the session's `olc_mode` string, routing instance saves vs the
+            // proto save-through + sibling refresh.
+            "collecting_dg_proto_body" => Some(Self::DgTriggerBody),
             "collecting_dialogue_node_text" => Some(Self::DialogueNodeText),
             "collecting_extra_desc" => Some(Self::ExtraDesc),
             "collecting_motd" => Some(Self::Motd),
@@ -1797,6 +1802,7 @@ mod tests {
             "collecting_note",
             "collecting_board_post",
             "collecting_dg_body",
+            "collecting_dg_proto_body",
             "collecting_dialogue_node_text",
             "collecting_extra_desc",
             "collecting_motd",

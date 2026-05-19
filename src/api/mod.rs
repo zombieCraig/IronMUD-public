@@ -7,6 +7,7 @@ pub mod areas;
 pub mod auth;
 pub mod achievements;
 pub mod bugs;
+pub mod dg_protos;
 pub mod error;
 pub mod items;
 pub mod mobiles;
@@ -48,6 +49,7 @@ pub fn create_router(state: Arc<ApiState>) -> Router {
         .nest("/quests", quests::routes())
         .nest("/achievements", achievements::routes())
         .nest("/bugs", bugs::routes())
+        .nest("/dg-protos", dg_protos::routes())
         .nest("/logs", logs::routes())
         .route("/health", get(health_check))
         .layer(middleware::from_fn_with_state(state.clone(), auth::auth_middleware));

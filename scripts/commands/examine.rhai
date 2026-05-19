@@ -1,6 +1,73 @@
 // scripts/commands/examine.rhai
 // examine <item> - Look at an item in detail
 
+fn examine_normalize_direction(arg) {
+    let d = arg.to_lower();
+    if d == "n" || d == "north" { return "north"; }
+    if d == "s" || d == "south" { return "south"; }
+    if d == "e" || d == "east" { return "east"; }
+    if d == "w" || d == "west" { return "west"; }
+    if d == "u" || d == "up" { return "up"; }
+    if d == "d" || d == "down" { return "down"; }
+    return "";
+}
+
+fn examine_door_keyword_matches(door, keyword) {
+    if keyword == "" { return true; }
+    if door.name.to_lower() == keyword { return true; }
+    for kw in door.keywords {
+        if kw.to_lower() == keyword { return true; }
+    }
+    return false;
+}
+
+fn examine_find_door(room_id, args) {
+    let lower = args.to_lower();
+    let space_idx = lower.index_of(" ");
+    if space_idx >= 0 {
+        let first = lower.sub_string(0, space_idx);
+        let rest = lower.sub_string(space_idx + 1);
+        let dir = examine_normalize_direction(first);
+        if dir != "" {
+            let door = get_door(room_id, dir);
+            if door != () && examine_door_keyword_matches(door, rest) {
+                return dir;
+            }
+            return "";
+        }
+    }
+    let only_dir = examine_normalize_direction(lower);
+    if only_dir != "" {
+        let door = get_door(room_id, only_dir);
+        if door != () { return only_dir; }
+        return "";
+    }
+    let directions = ["north", "south", "east", "west", "up", "down"];
+    for direction in directions {
+        let door = get_door(room_id, direction);
+        if door == () { continue; }
+        if examine_door_keyword_matches(door, lower) { return direction; }
+    }
+    return "";
+}
+
+fn examine_show_door(door, direction, connection_id) {
+    let term_width = get_terminal_width(connection_id);
+    let output = door.name + " (" + direction + ")\n";
+    output += "--------------------\n";
+    if door.description != "" {
+        output += door.description + "\n";
+    }
+    if door.is_locked {
+        output += "It is closed and locked.";
+    } else if door.is_closed {
+        output += "It is closed.";
+    } else {
+        output += "It is open.";
+    }
+    send_client_message(connection_id, wrap_text(output, term_width));
+}
+
 fn run_command(args, connection_id) {
     let char = get_player_character(connection_id);
     if char == () {
@@ -84,6 +151,16 @@ fn run_command(args, connection_id) {
                 send_client_message(connection_id, output);
                 return;
             }
+        }
+    }
+
+    // Then doors by direction, keyword, or "<dir> <keyword>" combo
+    if item == () {
+        let door_dir = examine_find_door(char.current_room_id, args);
+        if door_dir != "" {
+            let door = get_door(char.current_room_id, door_dir);
+            examine_show_door(door, door_dir, connection_id);
+            return;
         }
     }
 

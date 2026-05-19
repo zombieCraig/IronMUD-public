@@ -43,6 +43,7 @@ export class IronMUDApiClient {
             return {
                 data: response.data.data,
                 refreshed_instances: response.data.refreshed_instances,
+                warnings: response.data.warnings,
             };
         }
         catch (error) {
@@ -456,6 +457,22 @@ export class IronMUDApiClient {
     }
     async deleteAchievement(key) {
         await this.request("delete", `/achievements/${encodeURIComponent(key)}`);
+    }
+    // DG Scripts trigger prototypes
+    async listDgProtos() {
+        return this.listRequest("/dg-protos");
+    }
+    async getDgProto(vnum) {
+        return this.request("get", `/dg-protos/${encodeURIComponent(vnum)}`);
+    }
+    async createDgProto(data) {
+        return this.requestWithMeta("post", "/dg-protos", data);
+    }
+    async updateDgProto(vnum, data) {
+        return this.requestWithMeta("put", `/dg-protos/${encodeURIComponent(vnum)}`, data);
+    }
+    async deleteDgProto(vnum) {
+        await this.request("delete", `/dg-protos/${encodeURIComponent(vnum)}`);
     }
     // Logs
     async getBuilderDebug(limit) {

@@ -52,6 +52,11 @@ import type {
   AchievementSummary,
   CreateAchievementRequest,
   UpdateAchievementRequest,
+  DgProto,
+  DgProtoSummary,
+  DgProtoResponse,
+  CreateDgProtoRequest,
+  UpdateDgProtoRequest,
 } from "./types.js";
 
 export class IronMUDApiClient {
@@ -99,9 +104,11 @@ export class IronMUDApiClient {
     method: "get" | "post" | "put" | "delete",
     path: string,
     data?: unknown
-  ): Promise<{ data: T; refreshed_instances?: number }> {
+  ): Promise<{ data: T; refreshed_instances?: number; warnings?: string[] }> {
     try {
-      const response = await this.client.request<ApiResponse<T>>({
+      const response = await this.client.request<
+        ApiResponse<T> & { warnings?: string[] }
+      >({
         method,
         url: path,
         data,
@@ -114,6 +121,7 @@ export class IronMUDApiClient {
       return {
         data: response.data.data as T,
         refreshed_instances: response.data.refreshed_instances,
+        warnings: response.data.warnings,
       };
     } catch (error) {
       if (error instanceof AxiosError) {
@@ -906,6 +914,40 @@ export class IronMUDApiClient {
 
   async deleteAchievement(key: string): Promise<void> {
     await this.request("delete", `/achievements/${encodeURIComponent(key)}`);
+  }
+
+  // DG Scripts trigger prototypes
+
+  async listDgProtos(): Promise<DgProtoSummary[]> {
+    return this.listRequest<DgProtoSummary>("/dg-protos");
+  }
+
+  async getDgProto(vnum: string): Promise<DgProto> {
+    return this.request<DgProto>(
+      "get",
+      `/dg-protos/${encodeURIComponent(vnum)}`
+    );
+  }
+
+  async createDgProto(
+    data: CreateDgProtoRequest
+  ): Promise<{ data: DgProto; warnings?: string[]; refreshed_instances?: number }> {
+    return this.requestWithMeta<DgProto>("post", "/dg-protos", data);
+  }
+
+  async updateDgProto(
+    vnum: string,
+    data: UpdateDgProtoRequest
+  ): Promise<{ data: DgProto; warnings?: string[]; refreshed_instances?: number }> {
+    return this.requestWithMeta<DgProto>(
+      "put",
+      `/dg-protos/${encodeURIComponent(vnum)}`,
+      data
+    );
+  }
+
+  async deleteDgProto(vnum: string): Promise<void> {
+    await this.request("delete", `/dg-protos/${encodeURIComponent(vnum)}`);
   }
 
   // Logs
