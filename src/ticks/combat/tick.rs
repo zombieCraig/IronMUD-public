@@ -1890,6 +1890,7 @@ fn fire_combat_dg_triggers(db: &db::Db, connections: &SharedConnections, mobile:
                     connections.clone(),
                     t.authored_by.clone(),
                     t.elevated,
+                    std::collections::HashMap::new(),
                 );
             }
         }

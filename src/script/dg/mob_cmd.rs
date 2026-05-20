@@ -786,6 +786,7 @@ fn do_order(rest: &str, ctx: &EvalCtx) {
         arg: ctx.arg.clone(),
         cmd: ctx.cmd.clone(),
         cmd_canonical: ctx.cmd_canonical.clone(),
+        context_vars: ctx.context_vars.clone(),
         authored_by: ctx.authored_by.clone(),
         elevated: ctx.elevated,
         #[cfg(test)]
@@ -999,6 +1000,7 @@ mod tests {
             arg: String::new(),
             cmd: String::new(),
             cmd_canonical: String::new(),
+            context_vars: HashMap::new(),
             authored_by: None,
             elevated: false,
             test_temp_dir: Some(Arc::new(temp)),

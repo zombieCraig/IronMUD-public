@@ -188,6 +188,14 @@ pub fn resolve(expr: &str, ctx: &EvalCtx, state: &State) -> String {
         "actor" => resolve_actor_field(ctx.actor.as_ref(), field, ctx),
         "victim" => resolve_actor_field(ctx.victim.as_ref(), field, ctx),
         "self" => resolve_self_field(ctx, field),
+        // Fire-site object binding. Resolves the item referenced by
+        // `context_vars["item_id"]` (set by give.rhai on OnReceive, and
+        // any future fire site that hands the trigger an item context).
+        // `%object%` → item name; `%object.field%` routes through
+        // try_item_field (name/vnum/cost/type/shortdesc/...). Falls
+        // through to the item's `dg_vars` when the field is unknown,
+        // matching the actor/self per-entity fallback in Phase 8a.
+        "object" => resolve_object_field(ctx, field),
         "arg" | "speech" => {
             // Phase 8c: arg-as-actor. Try entity coercion when the field
             // isn't a known text-field accessor; fall back to text-field.
@@ -350,6 +358,12 @@ fn resolve_bare_name(name: &str, ctx: &EvalCtx, state: &State) -> String {
         }
     }
     if let Some(v) = state.locals.get(name) {
+        return v.clone();
+    }
+    // Fire-site event bindings (`amount` on OnBribe, `item_name`/`giver`
+    // on OnReceive, `killer` on OnDeath, etc.). Sits between locals and
+    // durable lookup so a stale dg_var can't shadow the fire-time value.
+    if let Some(v) = ctx.context_vars.get(name) {
         return v.clone();
     }
     if let Some(v) = lookup_durable(ctx, state, name) {
@@ -1116,6 +1130,32 @@ fn possessive_pronoun(g: &str) -> &'static str {
         GenderKind::Nonbinary => "their",
         GenderKind::Neuter => "its",
     }
+}
+
+/// Resolve `%object%` / `%object.field%` against the fire-site item bound
+/// in `ctx.context_vars["item_id"]`. Returns empty when the binding is
+/// missing, fails to parse, or the item no longer exists.
+fn resolve_object_field(ctx: &EvalCtx, field: Option<&str>) -> String {
+    let Some(id_str) = ctx.context_vars.get("item_id") else {
+        return String::new();
+    };
+    let Ok(uid) = uuid::Uuid::parse_str(id_str) else {
+        return String::new();
+    };
+    let Ok(Some(item)) = ctx.db.get_item_data(&uid) else {
+        return String::new();
+    };
+    let Some(f) = field else {
+        // Bare `%object%` → item name (stock tbamud convention).
+        return item.name.clone();
+    };
+    if f == "id" {
+        return item.id.to_string();
+    }
+    if let Some(v) = try_item_field(&item, f) {
+        return v;
+    }
+    item.dg_vars.get(f).cloned().unwrap_or_default()
 }
 
 fn try_item_field(item: &crate::types::ItemData, field: &str) -> Option<String> {

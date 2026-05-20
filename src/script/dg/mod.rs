@@ -150,6 +150,13 @@ pub struct EvalCtx {
     /// canonical form when they used an abbreviation (e.g. `cmd="dr"` →
     /// `cmd_canonical="drop"`).
     pub cmd_canonical: String,
+    /// Event-specific bindings supplied by the fire site (e.g. `amount`
+    /// for OnBribe, `item_id`/`item_name`/`giver` for OnReceive, `killer`
+    /// for OnDeath). Resolved as bare `%name%` lookups after locals but
+    /// before durable dg_vars / world globals — so a stale entity var
+    /// can't shadow the fire-time value. When `item_id` is present and
+    /// parses as a UUID, `%object.field%` also routes through it.
+    pub context_vars: std::collections::HashMap<String, String>,
     /// Character name of the trigger's author (set on `dg_body` save).
     /// `None` for importer-seeded / system-authored triggers — these get
     /// the legacy "trusted" pass on dangerous opcodes.
@@ -359,6 +366,7 @@ pub fn fire_room_dg(
     connections: SharedConnections,
     authored_by: Option<String>,
     elevated: bool,
+    context_vars: std::collections::HashMap<String, String>,
 ) -> Outcome {
     let actor = actor_from_connection(connection_id, &connections);
     let ctx = EvalCtx {
@@ -374,6 +382,7 @@ pub fn fire_room_dg(
         arg: String::new(),
         cmd: String::new(),
         cmd_canonical: String::new(),
+        context_vars,
         authored_by,
         elevated,
         #[cfg(test)]
@@ -392,6 +401,7 @@ pub fn fire_item_dg(
     connections: SharedConnections,
     authored_by: Option<String>,
     elevated: bool,
+    context_vars: std::collections::HashMap<String, String>,
 ) -> Outcome {
     let actor = actor_from_connection(connection_id, &connections);
     let self_room = match &item.location {
@@ -411,6 +421,7 @@ pub fn fire_item_dg(
         arg: String::new(),
         cmd: String::new(),
         cmd_canonical: String::new(),
+        context_vars,
         authored_by,
         elevated,
         #[cfg(test)]
@@ -429,6 +440,7 @@ pub fn fire_mobile_dg(
     connections: SharedConnections,
     authored_by: Option<String>,
     elevated: bool,
+    context_vars: std::collections::HashMap<String, String>,
 ) -> Outcome {
     let actor = actor_from_connection(connection_id, &connections);
     let ctx = EvalCtx {
@@ -444,6 +456,7 @@ pub fn fire_mobile_dg(
         arg: String::new(),
         cmd: String::new(),
         cmd_canonical: String::new(),
+        context_vars,
         authored_by,
         elevated,
         #[cfg(test)]
@@ -479,6 +492,7 @@ pub fn fire_item_dg_triggers(
             connections.clone(),
             t.authored_by.clone(),
             t.elevated,
+            std::collections::HashMap::new(),
         );
         if matches!(outcome, Outcome::Return(0)) {
             cancelled = true;
@@ -534,6 +548,7 @@ pub fn fire_room_dg_triggers(
             } else {
                 cmd_canonical.to_string()
             },
+            context_vars: std::collections::HashMap::new(),
             authored_by: t.authored_by.clone(),
             elevated: t.elevated,
             #[cfg(test)]
@@ -592,6 +607,7 @@ pub fn fire_mobile_dg_triggers(
             } else {
                 cmd_canonical.to_string()
             },
+            context_vars: std::collections::HashMap::new(),
             authored_by: t.authored_by.clone(),
             elevated: t.elevated,
             #[cfg(test)]
@@ -728,6 +744,7 @@ fn fire_item_dg_oncommand(
             } else {
                 cmd_canonical.to_string()
             },
+            context_vars: std::collections::HashMap::new(),
             authored_by: t.authored_by.clone(),
             elevated: t.elevated,
             #[cfg(test)]
@@ -811,6 +828,7 @@ mod tests {
             arg: String::new(),
             cmd: String::new(),
             cmd_canonical: String::new(),
+            context_vars: HashMap::new(),
             authored_by: None,
             elevated: false,
             test_temp_dir: Some(Arc::new(temp)),
@@ -2504,5 +2522,169 @@ end";
             !after.achievements_unlocked.contains_key("ten_kills"),
             "engine-criterion keys must not unlock via DG award"
         );
+    }
+
+    // ---------- context_vars (fire-site event bindings) ----------
+
+    #[test]
+    fn context_var_resolves_as_bare_name() {
+        // OnBribe shape: give.rhai passes `amount` in the context map.
+        // `%amount%` must resolve to that fire-time value.
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "well");
+        ctx.context_vars.insert("amount".into(), "75".into());
+        // Use `eval` to force the var into a local so we can assert via
+        // the existing if-shape — but the bare-name read is the primary
+        // assertion. Pipe %amount% to mecho through a simple branch.
+        let body = "\
+if %amount% >= 50
+  return 1
+end
+return 2";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Return(1));
+    }
+
+    #[test]
+    fn context_var_missing_resolves_empty() {
+        // No `amount` binding → `%amount%` is empty → string compare
+        // against an integer falls through.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "well");
+        let body = "\
+if %amount% >= 50
+  return 1
+end
+return 2";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Return(2));
+    }
+
+    #[test]
+    fn local_shadows_context_var() {
+        // Locals take precedence over context_vars, matching the
+        // documented resolution order in resolve_bare_name.
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "well");
+        ctx.context_vars.insert("amount".into(), "10".into());
+        let body = "\
+set amount 999
+if %amount% >= 500
+  return 1
+end
+return 2";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Return(1));
+    }
+
+    #[test]
+    fn object_field_resolves_from_context_item_id() {
+        // OnReceive shape: give.rhai passes `item_id`. `%object.cost%`
+        // and `%object.vnum%` must route through that item.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "well");
+        let mut item = crate::types::ItemData::new(
+            "coin".to_string(),
+            "a coin".to_string(),
+            "A coin lies here.".to_string(),
+        );
+        item.vnum = Some("testgold".to_string());
+        item.value = 250;
+        ctx.db.save_item_data(item.clone()).expect("save item");
+
+        let mut ctx2 = ctx.clone();
+        ctx2.context_vars.insert("item_id".into(), item.id.to_string());
+
+        // `%object.cost%` → item value (numeric comparison).
+        let body_cost = "if %object.cost% >= 100\n  return 8\nend\nreturn 0";
+        assert_eq!(fire_dg(body_cost, &ctx2), Outcome::Return(8));
+
+        // `%object.vnum%` → item vnum (string comparison, bare).
+        let body_vnum = "set s %object.vnum%\nif %s% == testgold\n  return 9\nend\nreturn 0";
+        assert_eq!(fire_dg(body_vnum, &ctx2), Outcome::Return(9));
+
+        // Bare `%object%` → item name.
+        let body_name = "set s %object%\nif %s% == coin\n  return 7\nend\nreturn 0";
+        assert_eq!(fire_dg(body_name, &ctx2), Outcome::Return(7));
+    }
+
+    #[test]
+    fn object_field_missing_item_id_returns_empty() {
+        // Without `item_id` in context, `%object.cost%` resolves empty
+        // → numeric compare against 100 falls through to else branch.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "well");
+        let body = "if %object.cost% >= 100\n  return 1\nend\nreturn 7";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Return(7));
+    }
+
+    #[test]
+    fn purge_deletes_item_by_uuid() {
+        // Direct `purge <uuid>` for an item — verifies the item branch
+        // added to cmd_purge.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "well");
+        let mut item = crate::types::ItemData::new(
+            "scroll".to_string(),
+            "a scroll".to_string(),
+            "A scroll lies here.".to_string(),
+        );
+        item.vnum = Some("test:scroll".to_string());
+        ctx.db.save_item_data(item.clone()).expect("save item");
+        assert!(
+            ctx.db.get_item_data(&item.id).unwrap().is_some(),
+            "precondition: item exists"
+        );
+
+        let body = format!("purge {}\nhalt", item.id);
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Halt);
+
+        assert!(
+            ctx.db.get_item_data(&item.id).unwrap().is_none(),
+            "purge should have deleted the item"
+        );
+    }
+
+    #[test]
+    fn purge_object_id_consumes_received_item() {
+        // End-to-end OnReceive shape: context_vars[item_id] is set, the
+        // body resolves %object.id% to that UUID and purges it. Closes
+        // the wishing-well "items accumulate in mob inventory" gap.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "well");
+        let mut item = crate::types::ItemData::new(
+            "coin".to_string(),
+            "a coin".to_string(),
+            "A coin lies here.".to_string(),
+        );
+        item.vnum = Some("test:coin".to_string());
+        item.value = 50;
+        ctx.db.save_item_data(item.clone()).expect("save item");
+
+        let mut ctx2 = ctx.clone();
+        ctx2.context_vars
+            .insert("item_id".into(), item.id.to_string());
+
+        let body = "purge %object.id%\nhalt";
+        assert_eq!(fire_dg(body, &ctx2), Outcome::Halt);
+
+        assert!(
+            ctx2.db.get_item_data(&item.id).unwrap().is_none(),
+            "purge %object.id% should have deleted the item"
+        );
+    }
+
+    #[test]
+    fn purge_stale_uuid_is_noop() {
+        // Defensive: purging a UUID that doesn't resolve to any entity
+        // must not crash and must not delete anything.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "well");
+        let stale = Uuid::new_v4();
+        let body = format!("purge {}\nhalt", stale);
+        assert_eq!(fire_dg(&body, &ctx), Outcome::Halt);
+        // Nothing to assert about "no deletion" since nothing existed,
+        // but reaching Halt without panic is the contract.
+    }
+
+    #[test]
+    fn object_field_stale_uuid_returns_empty() {
+        // `item_id` present but no such item in db → resolves empty,
+        // not a crash and not a stale lookup.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "well");
+        let mut ctx2 = ctx.clone();
+        ctx2.context_vars
+            .insert("item_id".into(), Uuid::new_v4().to_string());
+        let body = "if %object.cost% >= 100\n  return 1\nend\nreturn 7";
+        assert_eq!(fire_dg(body, &ctx2), Outcome::Return(7));
     }
 }

@@ -359,6 +359,22 @@ fn cmd_purge(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
             return Ok(());
         }
         let _ = ctx.db.delete_mobile(&mobile_id);
+        return Ok(());
+    }
+    // Item branch — resolve target as an item UUID. Used by `%purge%
+    // %object.id%` from OnReceive triggers (wishing well, quest turn-in)
+    // and any `purge <uuid>` opcode whose target is an item rather than
+    // a mob. Keyword-based item lookup isn't supported here — `%object.id%`
+    // is the intended idiom.
+    if let Ok(uid) = Uuid::parse_str(target_tok.trim()) {
+        if let Ok(Some(item)) = ctx.db.get_item_data(&uid) {
+            let target_area = item.area_id;
+            if !ctx.opcode_authorized("purge", target_area) {
+                super::warn_builder(ctx, "purge blocked: author lacks permission for item's area");
+                return Ok(());
+            }
+            let _ = ctx.db.delete_item(&uid);
+        }
     }
     Ok(())
 }

@@ -67,6 +67,31 @@ pub(crate) fn parse_mobile_trigger_type(s: &str) -> Option<MobileTriggerType> {
     })
 }
 
+/// Convert a Rhai `context` map (the 4th arg to `fire_*_trigger`) into the
+/// `HashMap<String, String>` shape consumed by both the template branch
+/// and the DG `EvalCtx.context_vars`. Strings, integers, floats, and bools
+/// are stringified; other types (maps, arrays) are dropped — callers
+/// should pass primitives only.
+fn rhai_context_to_strmap(context: &rhai::Map) -> std::collections::HashMap<String, String> {
+    let mut out: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for (k, v) in context.iter() {
+        let key = k.to_string();
+        let val = if let Some(s) = v.clone().try_cast::<rhai::ImmutableString>() {
+            s.to_string()
+        } else if let Some(i) = v.clone().try_cast::<i64>() {
+            i.to_string()
+        } else if let Some(f) = v.clone().try_cast::<f64>() {
+            f.to_string()
+        } else if let Some(b) = v.clone().try_cast::<bool>() {
+            b.to_string()
+        } else {
+            continue;
+        };
+        out.insert(key, val);
+    }
+    out
+}
+
 /// Validate a trigger script name to prevent path traversal.
 /// Only allows alphanumeric characters, underscores, and hyphens.
 /// Template names (starting with @) are validated the same way for the part after @.
@@ -809,6 +834,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 None => return "continue".to_string(),
             };
 
+            // Convert the rhai context map once — shared between DG bodies
+            // (passed into EvalCtx.context_vars) and the legacy @template
+            // branch.
+            let ctx_strmap = rhai_context_to_strmap(&context);
+
             // Find all matching triggers
             for trigger in &room.triggers {
                 if trigger.trigger_type != target_type || !trigger.enabled {
@@ -836,6 +866,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         cloned_conns.clone(),
                         trigger.authored_by.clone(),
                         trigger.elevated,
+                        ctx_strmap.clone(),
                     );
                     if matches!(outcome, super::dg::Outcome::Return(0)) {
                         return "cancel".to_string();
@@ -846,16 +877,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 // Handle built-in templates (script_name starts with @)
                 if trigger.script_name.starts_with('@') {
                     let template_name = &trigger.script_name[1..];
-                    // Convert Rhai context map to HashMap for template function
-                    let mut ctx_map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
-                    for (k, v) in context.iter() {
-                        let key = k.to_string();
-                        if let Some(val) = v.clone().try_cast::<rhai::ImmutableString>() {
-                            ctx_map.insert(key, val.to_string());
-                        }
-                    }
                     let result =
-                        execute_room_template(template_name, &trigger.args, &room_uuid, &cloned_conns, &ctx_map);
+                        execute_room_template(template_name, &trigger.args, &room_uuid, &cloned_conns, &ctx_strmap);
                     if result == "cancel" {
                         return "cancel".to_string();
                     }
@@ -1417,6 +1440,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 return "continue".to_string();
             }
 
+            // Convert the rhai context map once — used to seed
+            // EvalCtx.context_vars on the DG branch.
+            let ctx_strmap = rhai_context_to_strmap(&context);
+
             // Execute each matching trigger
             for trigger in matching_triggers {
                 // Check chance
@@ -1438,6 +1465,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         cloned_conns.clone(),
                         trigger.authored_by.clone(),
                         trigger.elevated,
+                        ctx_strmap.clone(),
                     );
                     if matches!(outcome, super::dg::Outcome::Return(0)) {
                         return "cancel".to_string();
@@ -2211,6 +2239,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 return "continue".to_string();
             }
 
+            // Convert the rhai context map once — shared between DG bodies
+            // (passed into EvalCtx.context_vars) and the legacy @template
+            // branch.
+            let ctx_strmap = rhai_context_to_strmap(&context);
+
             // Execute each matching trigger
             for trigger in matching_triggers {
                 // Check chance
@@ -2232,6 +2265,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         cloned_conns.clone(),
                         trigger.authored_by.clone(),
                         trigger.elevated,
+                        ctx_strmap.clone(),
                     );
                     if matches!(outcome, super::dg::Outcome::Return(0)) {
                         return "cancel".to_string();
@@ -2666,6 +2700,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 arg: String::new(),
                 cmd: String::new(),
                 cmd_canonical: String::new(),
+                context_vars: std::collections::HashMap::new(),
                 authored_by: None,
                 elevated: false,
                 #[cfg(test)]
