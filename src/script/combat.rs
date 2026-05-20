@@ -78,12 +78,35 @@ pub fn status_resistance_total(buffs: &[ActiveBuff], effect: EffectType) -> i32 
         .sum()
 }
 
+/// Net `Luck` buff magnitude on a target. Engine convention is that `apply_buff`
+/// collapses same-`EffectType` rows via `max()` (characters.rs:2910), so in
+/// practice there's at most one Luck row per entity. We still sum the
+/// strongest-positive + strongest-negative so a future negative-only source
+/// (e.g. a curse item) and a positive buff coexist without clobbering.
+pub fn luck_total(buffs: &[ActiveBuff]) -> i32 {
+    let pos = buffs
+        .iter()
+        .filter(|b| b.effect_type == EffectType::Luck && b.magnitude > 0)
+        .map(|b| b.magnitude)
+        .max()
+        .unwrap_or(0);
+    let neg = buffs
+        .iter()
+        .filter(|b| b.effect_type == EffectType::Luck && b.magnitude < 0)
+        .map(|b| b.magnitude)
+        .min()
+        .unwrap_or(0);
+    pos + neg
+}
+
 /// Returns true if the status effect successfully applies to the target.
 /// `base_chance` is 0..=100 (caster's effective chance to land the effect).
 /// Target's `StatusResistance` buffs matching the effect (or `"*"`) subtract
-/// their magnitude from `base_chance`. Final chance is clamped `5..=95` so
-/// resistance is never absolute and even hopeless casters always have a
-/// sliver. Uses the supplied RNG; deterministic for tests.
+/// their magnitude from `base_chance`; target's net `Luck` magnitude is also
+/// subtracted (positive Luck saves them, negative Luck makes them easier to
+/// debuff). Final chance is clamped `5..=95` so resistance is never absolute
+/// and even hopeless casters always have a sliver. Uses the supplied RNG;
+/// deterministic for tests.
 pub fn roll_status_application<R: Rng + ?Sized>(
     target_buffs: &[ActiveBuff],
     effect: EffectType,
@@ -91,7 +114,8 @@ pub fn roll_status_application<R: Rng + ?Sized>(
     rng: &mut R,
 ) -> bool {
     let resist = status_resistance_total(target_buffs, effect);
-    let final_chance = (base_chance - resist).clamp(5, 95);
+    let luck = luck_total(target_buffs);
+    let final_chance = (base_chance - resist - luck).clamp(5, 95);
     rng.gen_range(1..=100) <= final_chance
 }
 
@@ -166,6 +190,64 @@ mod damage_reduction_tests {
     fn magnitude_above_95_clamps() {
         // magnitude clamped to 95, so 100 dmg * 5% = 5
         assert_eq!(apply_damage_reduction(100, &[buff(120)]), 5);
+    }
+}
+
+#[cfg(test)]
+mod luck_tests {
+    use super::*;
+
+    fn lbuff(mag: i32) -> ActiveBuff {
+        ActiveBuff {
+            effect_type: EffectType::Luck,
+            magnitude: mag,
+            remaining_secs: -1,
+            source: "test".to_string(),
+            damage_type: None,
+            vs_effect: None,
+        }
+    }
+
+    #[test]
+    fn empty_returns_zero() {
+        assert_eq!(luck_total(&[]), 0);
+    }
+
+    #[test]
+    fn single_positive_returns_magnitude() {
+        assert_eq!(luck_total(&[lbuff(5)]), 5);
+    }
+
+    #[test]
+    fn single_negative_returns_magnitude() {
+        assert_eq!(luck_total(&[lbuff(-7)]), -7);
+    }
+
+    #[test]
+    fn multiple_positives_take_strongest() {
+        assert_eq!(luck_total(&[lbuff(3), lbuff(10), lbuff(5)]), 10);
+    }
+
+    #[test]
+    fn mixed_signs_sum_strongest_each() {
+        assert_eq!(luck_total(&[lbuff(5), lbuff(-3)]), 2);
+        assert_eq!(luck_total(&[lbuff(8), lbuff(-10), lbuff(3), lbuff(-2)]), -2);
+    }
+
+    #[test]
+    fn ignores_other_effect_types() {
+        let mixed = vec![
+            lbuff(5),
+            ActiveBuff {
+                effect_type: EffectType::Bless,
+                magnitude: 100,
+                remaining_secs: -1,
+                source: "x".to_string(),
+                damage_type: None,
+                vs_effect: None,
+            },
+        ];
+        assert_eq!(luck_total(&mixed), 5);
     }
 }
 
@@ -259,6 +341,29 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 status_resistance_total(&buffs, effect) as i64
             },
         );
+    }
+
+    // get_luck_modifier(target_name_or_id) -> i64
+    // Returns net Luck buff magnitude (signed). Used by skill .rhai files
+    // (backstab/bash/pick/forage) to shift success chance and by
+    // roll_status_application to let target Luck save them from incoming
+    // status effects. 1 magnitude = 1 percentage point.
+    {
+        let cloned_db = db.clone();
+        engine.register_fn("get_luck_modifier", move |target: String| -> i64 {
+            let buffs = if let Ok(uuid) = Uuid::parse_str(&target) {
+                match cloned_db.get_mobile_data(&uuid) {
+                    Ok(Some(m)) => m.active_buffs,
+                    _ => return 0,
+                }
+            } else {
+                match cloned_db.get_character_data(&target.to_lowercase()) {
+                    Ok(Some(c)) => c.active_buffs,
+                    _ => return 0,
+                }
+            };
+            luck_total(&buffs) as i64
+        });
     }
 
     // ========== Reloading State Functions ==========

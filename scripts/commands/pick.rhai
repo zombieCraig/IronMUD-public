@@ -83,6 +83,7 @@ fn run_command(args, connection_id) {
     // Success check: 30 + (thievery * 7) + (dex_mod * 2) vs difficulty
     let dex_mod = (char.stat_dex - 10) / 2;
     let pick_skill = 30 + (thievery_skill * 7) + (dex_mod * 2);
+    pick_skill += get_luck_modifier(char.name);
     let roll = random_int(1, 100);
 
     if roll <= pick_skill {

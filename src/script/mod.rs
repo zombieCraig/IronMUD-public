@@ -55,8 +55,8 @@ pub mod vampire;
 pub use ai::{set_chat_sender, set_claude_sender, set_gemini_sender};
 pub use areas::check_build_mode;
 pub use combat::{
-    apply_damage_reduction, apply_mobile_on_hit_dots, apply_mobile_passive_stance_regen, roll_status_application,
-    status_resistance_total,
+    apply_damage_reduction, apply_mobile_on_hit_dots, apply_mobile_passive_stance_regen, luck_total,
+    roll_status_application, status_resistance_total,
 };
 pub use crafting::build_crafted_item_from_prototype;
 pub use macros::parse_uuid_or_none;

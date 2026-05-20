@@ -112,6 +112,7 @@ fn run_command(args, connection_id) {
 
     // +30% hit bonus from stealth
     let hit_chance = 50 + (attacker_skill * 5) + (attacker_dex_mod * 3) + 30;
+    hit_chance += get_luck_modifier(char.name);
     if hit_chance > 98 { hit_chance = 98; }
     if hit_chance < 20 { hit_chance = 20; }
 

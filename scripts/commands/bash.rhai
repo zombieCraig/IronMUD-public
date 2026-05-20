@@ -102,6 +102,7 @@ fn run_command(args, connection_id) {
 
     // To-hit: 50 base + 5/skill_level + 2/strength_mod, clamped 20..95.
     let hit_chance = 50 + (bash_skill * 5) + (attacker_str_mod * 2);
+    hit_chance += get_luck_modifier(char.name);
     if hit_chance > 95 { hit_chance = 95; }
     if hit_chance < 20 { hit_chance = 20; }
 

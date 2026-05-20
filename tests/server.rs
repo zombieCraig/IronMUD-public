@@ -6256,6 +6256,40 @@ fn test_sleep_buff_persists_on_mobile() {
 }
 
 #[test]
+fn test_luck_spells_definition_load() {
+    use std::fs;
+
+    let json = fs::read_to_string("scripts/data/spells_fantasy.json").expect("read spells_fantasy");
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+
+    let fortune = parsed
+        .get("fortune")
+        .expect("fortune entry present")
+        .as_object()
+        .expect("fortune is an object");
+    assert_eq!(fortune.get("spell_type").and_then(|v| v.as_str()), Some("buff"));
+    assert_eq!(fortune.get("buff_effect").and_then(|v| v.as_str()), Some("luck"));
+    assert_eq!(fortune.get("buff_magnitude").and_then(|v| v.as_i64()), Some(5));
+    assert_eq!(
+        fortune.get("target_type").and_then(|v| v.as_str()),
+        Some("self_or_friendly")
+    );
+
+    let misfortune = parsed
+        .get("misfortune")
+        .expect("misfortune entry present")
+        .as_object()
+        .expect("misfortune is an object");
+    assert_eq!(misfortune.get("spell_type").and_then(|v| v.as_str()), Some("debuff"));
+    assert_eq!(misfortune.get("buff_effect").and_then(|v| v.as_str()), Some("luck"));
+    assert_eq!(misfortune.get("buff_magnitude").and_then(|v| v.as_i64()), Some(-5));
+    assert_eq!(
+        misfortune.get("target_type").and_then(|v| v.as_str()),
+        Some("in_room_npc")
+    );
+}
+
+#[test]
 fn test_summon_spell_definition_loads() {
     use std::fs;
 

@@ -333,5 +333,35 @@
     "target_type": "self",
     "requires_combat": false,
     "xp_award": 15
+  },
+  "fortune": {
+    "id": "fortune",
+    "name": "Fortune",
+    "description": "Bends fate in the caster's favor, sharpening reflexes and timing for risky maneuvers.",
+    "skill_required": 2,
+    "scroll_only": false,
+    "mana_cost": 25,
+    "cooldown_secs": 120,
+    "spell_type": "buff",
+    "buff_effect": "luck",
+    "buff_magnitude": 5,
+    "buff_duration_secs": 300,
+    "target_type": "self_or_friendly",
+    "xp_award": 8
+  },
+  "misfortune": {
+    "id": "misfortune",
+    "name": "Misfortune",
+    "description": "Twists fate against your foe, fouling their aim and their footing.",
+    "skill_required": 3,
+    "scroll_only": false,
+    "mana_cost": 30,
+    "cooldown_secs": 90,
+    "spell_type": "debuff",
+    "buff_effect": "luck",
+    "buff_magnitude": -5,
+    "buff_duration_secs": 180,
+    "target_type": "in_room_npc",
+    "xp_award": 10
   }
 }

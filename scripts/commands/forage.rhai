@@ -157,6 +157,7 @@ fn run_command(args, connection_id) {
     // base = 35% + skill_level * 5% + tool_quality / 2 + tracking_bonus
     let tracking_bonus = get_skill_level(char.name, "tracking") * 2;
     let find_chance = 35 + (skill_level * 5) + (tool_quality / 2) + tracking_bonus;
+    find_chance += get_luck_modifier(char.name);
     if find_chance < 10 { find_chance = 10; }
     if find_chance > 95 { find_chance = 95; }
 

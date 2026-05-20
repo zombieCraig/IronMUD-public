@@ -126,6 +126,12 @@ pub enum EffectType {
     /// Combat blessing — adds `magnitude*3` to hit chance and `(magnitude+1)/2`
     /// to weapon damage. Default magnitude=1 yields +3 hit, +1 damage.
     Bless,
+    /// Signed luck modifier — adds `magnitude` (1:1, percentage points) to
+    /// player skill rolls (backstab/bash/pick/forage) and subtracts from
+    /// incoming `roll_status_application` chance on the target. Negative
+    /// magnitude flips both directions. Sourceable from items, spells, or
+    /// scripts.
+    Luck,
     /// Silence — caster cannot cast spells while active. Hard gate in cast.rhai.
     Silence,
     /// Damage-over-time from direct sunlight exposure. Stacks/refreshes from
@@ -219,6 +225,7 @@ impl EffectType {
             "charm" | "charmed" => Some(EffectType::Charmed),
             "curse" | "cursed" => Some(EffectType::Curse),
             "bless" | "blessed" | "blessing" => Some(EffectType::Bless),
+            "luck" | "lucky" | "fortune" | "misfortune" => Some(EffectType::Luck),
             "silence" | "silenced" => Some(EffectType::Silence),
             "sunlight_burn" | "sunlightburn" | "sunburn" => Some(EffectType::SunlightBurn),
             "sunlight_burning" | "sunlightburning" | "sun_burning" => {
@@ -270,6 +277,7 @@ impl EffectType {
             EffectType::Charmed => "charmed",
             EffectType::Curse => "curse",
             EffectType::Bless => "bless",
+            EffectType::Luck => "luck",
             EffectType::Silence => "silence",
             EffectType::SunlightBurn => "sunlight_burn",
             EffectType::SunlightBurning => "sunlight_burning",
@@ -318,6 +326,7 @@ impl EffectType {
             "charmed",
             "curse",
             "bless",
+            "luck",
             "silence",
             "sunlight_burn",
             "sunlight_burning",
