@@ -87,6 +87,7 @@ Exits: south
 | `tedit` | Edit transports | [Transport Editing](builder/transports.md) |
 | `recedit` | Edit recipes | [Recipe Editing](builder/recipes.md) |
 | `spedit` | Edit spawn points | [Area Management](builder/areas.md#spawn-points) |
+| `cedit` | Edit class starting kits | [Class Starting Kits](builder/classes.md) |
 
 ## Key Concepts
 

@@ -204,6 +204,38 @@ When `self` is a **room**, or with chained `%head.room.field%`:
 
 Chained example: `%self.room.vnum%` reads the vnum of the room the mob is currently in. `%actor.room.people%` lists everyone with the actor.
 
+#### Door state — `%self.door(<dir>, <field>)%`
+
+Call-form accessor for inspecting the door on self's room (Mob self resolves to the mob's current room; Room self is the room). Direction accepts long names (`east`) or one-letter shortcuts (`e`, `n`, `s`, `w`, `u`, `d`).
+
+| Field | Returns |
+|---|---|
+| `exists` | `"1"` if there's a door in that direction, else `"0"` |
+| `open` / `closed` | `"1"`/`"0"` (mutually exclusive) |
+| `locked` / `unlocked` | `"1"`/`"0"` |
+| `pickproof` | `"1"`/`"0"` |
+| `name` | Door name (e.g. `gate`); empty if no door |
+| `key` / `key_vnum` | Key vnum string; empty if no door or no key |
+
+Missing-door cases return `"0"` for boolean-shaped fields, so `if %self.door(east, locked)%` composes cleanly without a separate `exists` check.
+
+Canonical guard-relock pattern — close + relock without per-tick spam:
+
+```
+if %self.has_item(3001)%
+  if %self.door(east, open)%
+    mdoor %self.room% east flags closed
+    mecho %self.name% pushes the east door shut.
+  end
+  if %self.door(east, unlocked)%
+    mdoor %self.room% east flags lock
+    mecho %self.name% turns the heavy key in the lock.
+  end
+end
+```
+
+> The `%self.<dir>%` style (e.g. `%self.east%`) returns the *destination room id* on rooms, not door state — use `%self.door(<dir>, <field>)%` when you need to branch on lock/open status.
+
 ### Time, weather, season, sunlight
 
 ```
@@ -357,6 +389,15 @@ DG commands are dispatched on the verb (case-insensitive). The `m`/`o`/`w` prefi
 zoneecho The sun rises.                       * broadcast to every room in self's area
 ```
 
+### Logging
+
+```
+log Greet fired for %actor.name% at %time.hour%   * write to server tracing log
+mlog state=%zn118_state% gold=%actor.gold%
+```
+
+Lines land in the server's `tracing` output at INFO level, tagged with the trigger's `self` name. Players never see them. Use for builder-side debug breadcrumbs — variable values, branch hits, anything you'd otherwise reach for `%send%` to debug. The `m`/`o`/`w` prefixes are aliases.
+
 ### Damage / heal
 
 ```
@@ -450,6 +491,23 @@ Trigger prototypes are imported from `.trg` files and stored in the `dg_trigger_
 otimer 30                   * decay this item in 30 ticks (stored on self.dg_vars["timer"])
 transform 1234              * replace self's appearance with prototype 1234's name/desc/flags
 ```
+
+### Achievements
+
+```
+award_achievement %actor% first_blood        * grant a Manual-criterion achievement
+award_achievement Galen quest_complete       * by name also works
+```
+
+`award_achievement <player> <key>` grants the named achievement to the player. IronMUD-specific — no stock tbamud equivalent. Silently no-ops when:
+
+- the player token can't be resolved (UUID, name, or `actor`/`victim`);
+- the key isn't a registered achievement;
+- the achievement's criterion isn't `Manual` (engine-criterion keys like kill counts are rejected — those unlock through their own listeners);
+- the player already has it;
+- the achievement system is disabled.
+
+Use this for narrative milestones the engine can't detect on its own — finishing a story beat, witnessing a scripted event, surviving a one-off encounter.
 
 ### Mob world-commands
 
@@ -592,6 +650,7 @@ Things that differ from stock tbamud:
 - **PC ids are names.** `%actor.id%` returns the player's name (PCs have no UUID); mob ids are real UUIDs.
 - **`wait` forfeits cancellation.** Use `return 0` *before* any `wait` if you need to block the host action.
 - **`fly` and `waterwalk`** are dg_cast-allowed but the underlying movement effects aren't wired. Buffs land but don't gate flying-required exits or water rooms (yet).
+- **`award_achievement`** is an IronMUD-specific command (see [Achievements](#achievements)). Only `Manual`-criterion keys are accepted; engine-criterion achievements (kills, gold thresholds, etc.) unlock through their own listeners.
 
 ## Importing tbamud `.trg` files
 
