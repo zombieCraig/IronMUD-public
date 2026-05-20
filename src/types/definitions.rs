@@ -109,6 +109,22 @@ pub struct SkillProgress {
     pub experience: i32, // XP toward next level
 }
 
+// Per-spell mastery: every learned spell tracks its own level + XP
+// independently of the unified `magic` skill. Same 0-10 cap and XP curve as
+// SkillProgress. Higher levels boost damage/heal/buff scaling and can trigger
+// evolution into a stronger spell ID (see SpellEvolution).
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SpellProgress {
+    pub level: i32,
+    pub experience: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpellEvolution {
+    pub level_required: i32,
+    pub spell_id: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RaceSuggestion {
     pub name: String,
@@ -239,4 +255,21 @@ pub struct SpellDefinition {
     /// Empty = any clan / any kindred can cast.
     #[serde(default)]
     pub requires_clan: Vec<String>,
+    /// Per-spell-level scaling added to the magic-skill scaling. The cast
+    /// formulas in cast.rhai add `per_spell_level * spell_level` to their
+    /// damage/heal/magnitude/duration outputs. Default 0 = no per-spell
+    /// scaling (current behavior).
+    #[serde(default)]
+    pub damage_per_spell_level: i32,
+    #[serde(default)]
+    pub heal_per_spell_level: i32,
+    #[serde(default)]
+    pub buff_magnitude_per_spell_level: i32,
+    #[serde(default)]
+    pub buff_duration_per_spell_level: i32,
+    /// When set, hitting `level_required` swaps this spell's ID in the
+    /// caster's `learned_spells` for `spell_id` (fresh SpellProgress at
+    /// level 1).
+    #[serde(default)]
+    pub evolves_to: Option<SpellEvolution>,
 }

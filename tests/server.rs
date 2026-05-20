@@ -6402,6 +6402,92 @@ fn test_morality_field_defaults_zero_and_persists() {
 }
 
 #[test]
+fn test_spell_progress_field_defaults_empty_and_persists() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        // Pre-feature character JSON (no `spell_progress` field) loads with
+        // an empty map via serde default.
+        let mut char: ironmud::types::CharacterData =
+            serde_json::from_value(serde_json::json!({
+                "name": "TestSpellProgress",
+                "password_hash": "",
+                "current_room_id": uuid::Uuid::nil(),
+            }))
+            .expect("build character");
+        assert!(char.spell_progress.is_empty(), "spell_progress defaults to empty map");
+
+        char.spell_progress.insert(
+            "magic_missile".to_string(),
+            ironmud::types::SpellProgress { level: 4, experience: 250 },
+        );
+        db.save_character_data(char.clone()).expect("save");
+
+        let loaded = db
+            .get_character_data(&char.name)
+            .expect("read")
+            .expect("present");
+        let entry = loaded
+            .spell_progress
+            .get("magic_missile")
+            .expect("entry present");
+        assert_eq!(entry.level, 4);
+        assert_eq!(entry.experience, 250);
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_spell_definition_evolves_to_and_new_scaling_fields() {
+    // SpellDefinition without the new fields deserializes (all #[serde(default)])
+    // and with them round-trips.
+    let bare: ironmud::types::SpellDefinition = serde_json::from_value(serde_json::json!({
+        "id": "bare",
+        "name": "Bare",
+        "description": "no new fields",
+    }))
+    .expect("bare SpellDefinition parses");
+    assert_eq!(bare.damage_per_spell_level, 0);
+    assert_eq!(bare.heal_per_spell_level, 0);
+    assert_eq!(bare.buff_magnitude_per_spell_level, 0);
+    assert_eq!(bare.buff_duration_per_spell_level, 0);
+    assert!(bare.evolves_to.is_none());
+
+    let evolved: ironmud::types::SpellDefinition = serde_json::from_value(serde_json::json!({
+        "id": "lesser_fireball",
+        "name": "Lesser Fireball",
+        "description": "evolves",
+        "damage_per_spell_level": 3,
+        "evolves_to": { "level_required": 7, "spell_id": "fireball" },
+    }))
+    .expect("evolved SpellDefinition parses");
+    assert_eq!(evolved.damage_per_spell_level, 3);
+    let ev = evolved.evolves_to.expect("evolves_to present");
+    assert_eq!(ev.level_required, 7);
+    assert_eq!(ev.spell_id, "fireball");
+}
+
+#[test]
+fn test_magic_missile_evolves_to_arcane_lance_in_stock_json() {
+    // Anchor the stock evolution chain so renames/regressions surface in CI.
+    let raw = std::fs::read_to_string("scripts/data/spells_fantasy.json")
+        .expect("read spells_fantasy.json");
+    let parsed: std::collections::HashMap<String, ironmud::types::SpellDefinition> =
+        serde_json::from_str(&raw).expect("parse spells_fantasy.json");
+
+    let mm = parsed.get("magic_missile").expect("magic_missile present");
+    let ev = mm.evolves_to.as_ref().expect("magic_missile has evolves_to");
+    assert_eq!(ev.spell_id, "arcane_lance");
+    assert!(parsed.contains_key(&ev.spell_id), "evolution target exists");
+    assert!(mm.damage_per_spell_level > 0, "per-spell scaling populated");
+}
+
+#[test]
 fn test_morality_tier_thresholds_exhaustive() {
     use ironmud::morality::MoralityTier;
     let cases = [

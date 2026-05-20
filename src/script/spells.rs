@@ -88,6 +88,28 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
                 .map(|c| rhai::Dynamic::from(c.clone()))
                 .collect();
             map.insert("requires_clan".into(), rhai::Dynamic::from(clans));
+            map.insert(
+                "damage_per_spell_level".into(),
+                rhai::Dynamic::from(spell.damage_per_spell_level as i64),
+            );
+            map.insert(
+                "heal_per_spell_level".into(),
+                rhai::Dynamic::from(spell.heal_per_spell_level as i64),
+            );
+            map.insert(
+                "buff_magnitude_per_spell_level".into(),
+                rhai::Dynamic::from(spell.buff_magnitude_per_spell_level as i64),
+            );
+            map.insert(
+                "buff_duration_per_spell_level".into(),
+                rhai::Dynamic::from(spell.buff_duration_per_spell_level as i64),
+            );
+            let (ev_id, ev_lvl) = match &spell.evolves_to {
+                Some(ev) => (ev.spell_id.clone(), ev.level_required as i64),
+                None => (String::new(), 0),
+            };
+            map.insert("evolves_to_id".into(), rhai::Dynamic::from(ev_id));
+            map.insert("evolves_at_level".into(), rhai::Dynamic::from(ev_lvl));
         }
         map
     });
@@ -317,6 +339,198 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
             } else {
                 false
             }
+        },
+    );
+
+    // ========== Per-Spell Mastery ==========
+    // Each learned spell tracks its own level + XP (0-10 cap, same curve as
+    // skills). The unified `magic` skill XP is awarded separately by cast.rhai
+    // and is unaffected by these fns.
+
+    // get_spell_level(char_name, spell_id) -> i64
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_spell_level",
+        move |char_name: String, spell_id: String| -> i64 {
+            match cloned_db.get_character_data(&char_name.to_lowercase()) {
+                Ok(Some(c)) => c
+                    .spell_progress
+                    .get(&spell_id)
+                    .map(|p| p.level as i64)
+                    .unwrap_or(0),
+                _ => 0,
+            }
+        },
+    );
+
+    // get_spell_experience(char_name, spell_id) -> i64
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_spell_experience",
+        move |char_name: String, spell_id: String| -> i64 {
+            match cloned_db.get_character_data(&char_name.to_lowercase()) {
+                Ok(Some(c)) => c
+                    .spell_progress
+                    .get(&spell_id)
+                    .map(|p| p.experience as i64)
+                    .unwrap_or(0),
+                _ => 0,
+            }
+        },
+    );
+
+    // get_all_spell_progress(char_name) -> Map of spell_id -> {level, experience, xp_to_level}
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_all_spell_progress",
+        move |char_name: String| -> rhai::Map {
+            let mut result = rhai::Map::new();
+            if let Ok(Some(c)) = cloned_db.get_character_data(&char_name.to_lowercase()) {
+                for (id, progress) in &c.spell_progress {
+                    let mut entry = rhai::Map::new();
+                    entry.insert("level".into(), rhai::Dynamic::from(progress.level as i64));
+                    entry.insert(
+                        "experience".into(),
+                        rhai::Dynamic::from(progress.experience as i64),
+                    );
+                    entry.insert(
+                        "xp_to_level".into(),
+                        rhai::Dynamic::from(crate::script::characters::xp_for_level(progress.level) as i64),
+                    );
+                    result.insert(id.clone().into(), rhai::Dynamic::from(entry));
+                }
+            }
+            result
+        },
+    );
+
+    // add_spell_experience(char_name, spell_id, amount) -> Map
+    //   { leveled_up: bool, evolved: bool, new_spell_id: String, new_level: i64 }
+    // Handles in-place leveling AND atomic evolution: if the spell defines
+    // `evolves_to` and the new level reaches the threshold, swap the spell ID
+    // in `learned_spells`, drop the old cooldown + progress entries, and seed
+    // a fresh SpellProgress for the evolved spell. The evolved spell does NOT
+    // chain-evolve in the same call.
+    let cloned_db = db.clone();
+    let state_clone = state.clone();
+    engine.register_fn(
+        "add_spell_experience",
+        move |char_name: String, spell_id: String, amount: i64| -> rhai::Map {
+            let mut out = rhai::Map::new();
+            out.insert("leveled_up".into(), rhai::Dynamic::from(false));
+            out.insert("evolved".into(), rhai::Dynamic::from(false));
+            out.insert("new_spell_id".into(), rhai::Dynamic::from(String::new()));
+            out.insert("new_level".into(), rhai::Dynamic::from(0i64));
+
+            let mut char = match cloned_db.get_character_data(&char_name.to_lowercase()) {
+                Ok(Some(c)) => c,
+                _ => return out,
+            };
+
+            let entry = char
+                .spell_progress
+                .entry(spell_id.clone())
+                .or_insert_with(crate::SpellProgress::default);
+
+            // Track whether we did anything that needs persisting.
+            let already_at_cap_no_evolve = entry.level >= 10;
+
+            let mut leveled_up = false;
+            if !already_at_cap_no_evolve {
+                // Apply learning-rate trait modifiers (mirror skill XP path).
+                let has_prodigy = char.traits.iter().any(|t| t == "prodigy");
+                let has_quick_study = char.traits.iter().any(|t| t == "quick_study");
+                let has_slow_learner = char.traits.iter().any(|t| t == "slow_learner");
+                let mut xp = amount as i32;
+                if has_prodigy {
+                    xp = xp * 150 / 100;
+                } else if has_quick_study {
+                    xp = xp * 125 / 100;
+                }
+                if has_slow_learner {
+                    xp = xp * 65 / 100;
+                }
+                xp = xp.max(1);
+
+                let entry = char
+                    .spell_progress
+                    .entry(spell_id.clone())
+                    .or_insert_with(crate::SpellProgress::default);
+                entry.experience += xp;
+
+                loop {
+                    let xp_needed = crate::script::characters::xp_for_level(entry.level);
+                    if xp_needed == 0 || entry.experience < xp_needed || entry.level >= 10 {
+                        break;
+                    }
+                    entry.experience -= xp_needed;
+                    entry.level += 1;
+                    leveled_up = true;
+                    if entry.level >= 10 {
+                        entry.experience = 0;
+                        break;
+                    }
+                }
+            }
+
+            let final_level = char
+                .spell_progress
+                .get(&spell_id)
+                .map(|p| p.level)
+                .unwrap_or(0);
+
+            // Check evolution. Re-lookup the SpellDefinition each call so JSON
+            // hot-reloads pick up new chains.
+            let evolve_target: Option<(i32, String)> = {
+                let world = state_clone.lock().unwrap();
+                world
+                    .spell_definitions
+                    .get(&spell_id)
+                    .and_then(|s| s.evolves_to.as_ref())
+                    .map(|ev| (ev.level_required, ev.spell_id.clone()))
+            };
+
+            let mut evolved_to: Option<String> = None;
+            if let Some((req, new_id)) = evolve_target {
+                if final_level >= req {
+                    // Verify the evolved target exists and is not already learned.
+                    let target_exists = state_clone
+                        .lock()
+                        .ok()
+                        .map(|w| w.spell_definitions.contains_key(&new_id))
+                        .unwrap_or(false);
+                    let already_has_new = char.learned_spells.iter().any(|s| s == &new_id);
+                    let has_old = char.learned_spells.iter().any(|s| s == &spell_id);
+                    if target_exists && has_old && !already_has_new {
+                        // Swap ID in learned_spells (preserve order).
+                        for slot in char.learned_spells.iter_mut() {
+                            if slot == &spell_id {
+                                *slot = new_id.clone();
+                                break;
+                            }
+                        }
+                        char.spell_cooldowns.remove(&spell_id);
+                        char.spell_progress.remove(&spell_id);
+                        char.spell_progress.insert(
+                            new_id.clone(),
+                            crate::SpellProgress { level: 1, experience: 0 },
+                        );
+                        evolved_to = Some(new_id);
+                    }
+                }
+            }
+
+            let _ = cloned_db.save_character_data(char);
+
+            if let Some(new_id) = &evolved_to {
+                out.insert("evolved".into(), rhai::Dynamic::from(true));
+                out.insert("new_spell_id".into(), rhai::Dynamic::from(new_id.clone()));
+                out.insert("new_level".into(), rhai::Dynamic::from(1i64));
+            } else {
+                out.insert("leveled_up".into(), rhai::Dynamic::from(leveled_up));
+                out.insert("new_level".into(), rhai::Dynamic::from(final_level as i64));
+            }
+            out
         },
     );
 }

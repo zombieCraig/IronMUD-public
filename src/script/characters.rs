@@ -66,6 +66,25 @@ pub(crate) fn build_game_time_map(
 }
 
 /// Register character-related functions
+/// Cumulative XP required to advance from `level` to `level + 1`. Returns 0
+/// at max level (10). Shared between the skill leveler and the per-spell
+/// leveler in `src/script/spells.rs` so both follow the same curve.
+pub(crate) fn xp_for_level(level: i32) -> i32 {
+    match level {
+        0 => 100,  // 0->1
+        1 => 200,  // 1->2
+        2 => 350,  // 2->3
+        3 => 550,  // 3->4
+        4 => 800,  // 4->5
+        5 => 1100, // 5->6
+        6 => 1500, // 6->7
+        7 => 2000, // 7->8
+        8 => 2600, // 8->9
+        9 => 3300, // 9->10
+        _ => 0,    // Max level
+    }
+}
+
 pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, state: SharedState) {
     // ========== Character Creation Wizard Functions ==========
 
@@ -2077,23 +2096,6 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     });
 
     // ========== Skill System Functions ==========
-
-    // Helper function to get XP required for a level
-    fn xp_for_level(level: i32) -> i32 {
-        match level {
-            0 => 100,  // 0->1
-            1 => 200,  // 1->2
-            2 => 350,  // 2->3
-            3 => 550,  // 3->4
-            4 => 800,  // 4->5
-            5 => 1100, // 5->6
-            6 => 1500, // 6->7
-            7 => 2000, // 7->8
-            8 => 2600, // 8->9
-            9 => 3300, // 9->10
-            _ => 0,    // Max level
-        }
-    }
 
     // get_xp_for_level(level) -> i64
     engine.register_fn("get_xp_for_level", move |level: i64| -> i64 {

@@ -104,6 +104,30 @@ fn find_player_target(char, target_arg, room_id) {
     return "";
 }
 
+// Award per-spell XP. `full` = true on a landed cast, false on a resisted /
+// no-op cast (25% of base xp_award). Surfaces level-up and evolution messages
+// to the caster. The unified `magic` skill XP is still awarded separately by
+// run_command after dispatch.
+fn award_per_spell_xp(connection_id, char_name, spell_id, full) {
+    let info = get_spell_info(spell_id);
+    if info.len() == 0 { return; }
+    let base = info["xp_award"];
+    let xp = if full { base } else { base / 4 };
+    if xp < 1 { xp = 1; }
+    let result = add_spell_experience(char_name, spell_id, xp);
+    if result["evolved"] {
+        let new_info = get_spell_info(result["new_spell_id"]);
+        let new_name = if new_info.len() > 0 { new_info["name"] } else { result["new_spell_id"] };
+        send_client_message(connection_id,
+            "\x1b[1;35mYour mastery of " + info["name"] +
+            " has transcended — it has evolved into " + new_name + "!\x1b[0m");
+    } else if result["leveled_up"] {
+        send_client_message(connection_id,
+            "\x1b[1;36mYour mastery of " + info["name"] +
+            " has reached level " + result["new_level"] + "!\x1b[0m");
+    }
+}
+
 fn cast_damage(connection_id, char, spell, target_arg) {
     let room_id = char.current_room_id;
     let mob_id = find_mob_target(char, target_arg, room_id);
@@ -133,10 +157,14 @@ fn cast_damage(connection_id, char, spell, target_arg) {
 
     // Calculate damage
     let magic_level = get_skill_level(char.name, "magic");
+    let spell_level = get_spell_level(char.name, spell["id"]);
     let effective_int = get_effective_stat(char.name, "int");
     let int_bonus = if effective_int > 10 { effective_int - 10 } else { 0 };
 
-    let damage = spell["damage_base"] + (spell["damage_per_skill"] * magic_level) + (spell["damage_int_scaling"] * int_bonus);
+    let damage = spell["damage_base"]
+        + (spell["damage_per_skill"] * magic_level)
+        + (spell["damage_per_spell_level"] * spell_level)
+        + (spell["damage_int_scaling"] * int_bonus);
 
     // Apply spell damage trait modifier
     let spell_dmg_mod = get_trait_effect_sum(char.name, "spell_damage_bonus");
@@ -165,6 +193,7 @@ fn cast_damage(connection_id, char, spell, target_arg) {
     send_client_message(connection_id, "You cast " + spell["name"] + "! Your " + dtype + " energy " + verb + " " + mob.name + " for " + damage + " damage!");
     broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + "! " + dtype.to_upper() + " energy " + verb + " " + mob.name + "!", char.name);
 
+    award_per_spell_xp(connection_id, char.name, spell["id"], true);
     return true;
 }
 
@@ -211,6 +240,7 @@ fn cast_debuff(connection_id, char, spell, target_arg) {
     if resisted {
         send_client_message(connection_id, "You cast " + spell["name"] + " on " + mob.name + ", but " + mob.name + " resists your magic!");
         broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + " on " + mob.name + ", but it has no effect.", char.name);
+        award_per_spell_xp(connection_id, char.name, spell["id"], false);
         return true;
     }
 
@@ -219,11 +249,13 @@ fn cast_debuff(connection_id, char, spell, target_arg) {
     if !roll_status_application(mob_id, effect, 80) {
         send_client_message(connection_id, "You cast " + spell["name"] + " on " + mob.name + ", but " + mob.name + " shrugs off your magic!");
         broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + " on " + mob.name + ", but the magic dissipates.", char.name);
+        award_per_spell_xp(connection_id, char.name, spell["id"], false);
         return true;
     }
 
-    let magnitude = spell["buff_magnitude"];
-    let duration = spell["buff_duration_secs"];
+    let spell_level = get_spell_level(char.name, spell["id"]);
+    let magnitude = spell["buff_magnitude"] + (spell["buff_magnitude_per_spell_level"] * spell_level);
+    let duration = spell["buff_duration_secs"] + (spell["buff_duration_per_spell_level"] * spell_level);
     apply_buff_to_mobile(mob_id, effect, magnitude, duration, spell["name"]);
 
     let verb = if effect == "sleep" { "drops " + mob.name + " into a deep slumber!" }
@@ -233,6 +265,7 @@ fn cast_debuff(connection_id, char, spell, target_arg) {
     send_client_message(connection_id, "You cast " + spell["name"] + " — your magic " + verb);
     broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + " — the magic " + verb, char.name);
 
+    award_per_spell_xp(connection_id, char.name, spell["id"], true);
     return true;
 }
 
@@ -258,8 +291,9 @@ fn cast_buff(connection_id, char, spell, target_arg) {
     }
 
     let effect = spell["buff_effect"];
-    let magnitude = spell["buff_magnitude"];
-    let duration = spell["buff_duration_secs"];
+    let spell_level = get_spell_level(char.name, spell["id"]);
+    let magnitude = spell["buff_magnitude"] + (spell["buff_magnitude_per_spell_level"] * spell_level);
+    let duration = spell["buff_duration_secs"] + (spell["buff_duration_per_spell_level"] * spell_level);
 
     apply_buff(target_name, effect, magnitude, duration, spell["name"]);
 
@@ -276,6 +310,7 @@ fn cast_buff(connection_id, char, spell, target_arg) {
         broadcast_to_room_except(char.current_room_id, char.name + " casts " + spell["name"] + " on " + target_name + ".", char.name);
     }
 
+    award_per_spell_xp(connection_id, char.name, spell["id"], true);
     return true;
 }
 
@@ -288,10 +323,14 @@ fn cast_heal(connection_id, char, spell, target_arg) {
 
     // Calculate heal amount
     let magic_level = get_skill_level(char.name, "magic");
+    let spell_level = get_spell_level(char.name, spell["id"]);
     let effective_int = get_effective_stat(char.name, "int");
     let int_bonus = if effective_int > 10 { effective_int - 10 } else { 0 };
 
-    let heal_amount = spell["heal_base"] + (spell["heal_per_skill"] * magic_level) + (spell["heal_int_scaling"] * int_bonus);
+    let heal_amount = spell["heal_base"]
+        + (spell["heal_per_skill"] * magic_level)
+        + (spell["heal_per_spell_level"] * spell_level)
+        + (spell["heal_int_scaling"] * int_bonus);
     if heal_amount < 1 { heal_amount = 1; }
 
     // Load target character and heal
@@ -330,6 +369,7 @@ fn cast_heal(connection_id, char, spell, target_arg) {
         broadcast_to_room_except(char.current_room_id, char.name + " casts " + spell["name"] + " on " + target_name + ".", char.name);
     }
 
+    award_per_spell_xp(connection_id, char.name, spell["id"], true);
     return true;
 }
 
@@ -348,9 +388,12 @@ fn cast_utility(connection_id, char, spell, target_arg) {
 }
 
 fn cast_light(connection_id, char, spell) {
-    apply_buff(char.name, "magic_light", 1, spell["buff_duration_secs"], "Light");
+    let spell_level = get_spell_level(char.name, spell["id"]);
+    let duration = spell["buff_duration_secs"] + (spell["buff_duration_per_spell_level"] * spell_level);
+    apply_buff(char.name, "magic_light", 1, duration, "Light");
     send_client_message(connection_id, "You cast Light! A warm glow surrounds you, illuminating your path.");
     broadcast_to_room_except(char.current_room_id, char.name + " casts Light, and a warm glow surrounds them.", char.name);
+    award_per_spell_xp(connection_id, char.name, spell["id"], true);
     return true;
 }
 
@@ -380,6 +423,7 @@ fn cast_summon(connection_id, char, spell, target_arg) {
         }
         if !target_char.summonable {
             send_client_message(connection_id, target_char.name + " is protected from summons.");
+            award_per_spell_xp(connection_id, char.name, spell["id"], false);
             return true;
         }
 
@@ -406,6 +450,7 @@ fn cast_summon(connection_id, char, spell, target_arg) {
         display_room(caster_room, target_conn, target_char.name);
 
         send_client_message(connection_id, "You wrench " + target_char.name + " to your side!");
+        award_per_spell_xp(connection_id, char.name, spell["id"], true);
         return true;
     }
 
@@ -421,6 +466,7 @@ fn cast_summon(connection_id, char, spell, target_arg) {
     }
     if target.flags.no_summon {
         send_client_message(connection_id, target.name + " resists your summons.");
+        award_per_spell_xp(connection_id, char.name, spell["id"], false);
         return true;
     }
 
@@ -437,6 +483,7 @@ fn cast_summon(connection_id, char, spell, target_arg) {
 
     broadcast_to_room_except(caster_room, connection_id, target.short_desc + " arrives, wrenched from elsewhere!");
     send_client_message(connection_id, "You wrench " + target.short_desc + " into the room!");
+    award_per_spell_xp(connection_id, char.name, spell["id"], true);
     return true;
 }
 
@@ -469,6 +516,7 @@ fn cast_charm(connection_id, char, spell, target_arg) {
     if target.flags.no_charm {
         send_client_message(connection_id, target.short_desc + " resists your charm.");
         broadcast_to_room_except(room_id, connection_id, target.short_desc + " shrugs off " + char.name + "'s charm.");
+        award_per_spell_xp(connection_id, char.name, spell["id"], false);
         return true;
     }
 
@@ -477,6 +525,7 @@ fn cast_charm(connection_id, char, spell, target_arg) {
     if !roll_status_application(mob_id, "charmed", 70) {
         send_client_message(connection_id, target.short_desc + "'s will resists your charm.");
         broadcast_to_room_except(room_id, connection_id, target.short_desc + " shakes off " + char.name + "'s magic.");
+        award_per_spell_xp(connection_id, char.name, spell["id"], false);
         return true;
     }
 
@@ -489,7 +538,9 @@ fn cast_charm(connection_id, char, spell, target_arg) {
     // Tameable mobs become permanent pets: indefinite buff + pet_owner stamp.
     // Other mobs get the temporary spell-duration charm.
     let is_pet_bond = target.flags.tameable;
-    let duration = if is_pet_bond { -1 } else { spell["buff_duration_secs"] };
+    let spell_level = get_spell_level(char.name, spell["id"]);
+    let base_duration = spell["buff_duration_secs"] + (spell["buff_duration_per_spell_level"] * spell_level);
+    let duration = if is_pet_bond { -1 } else { base_duration };
 
     apply_buff_to_mobile(mob_id, "charmed", 0, duration, char.name);
     forget_player(mob_id, char.name);
@@ -505,6 +556,7 @@ fn cast_charm(connection_id, char, spell, target_arg) {
         send_client_message(connection_id, target.short_desc + "'s eyes glaze over and fall on you.");
         broadcast_to_room_except(room_id, connection_id, target.short_desc + "'s eyes glaze over.");
     }
+    award_per_spell_xp(connection_id, char.name, spell["id"], true);
     return true;
 }
 
@@ -546,7 +598,8 @@ fn cast_dominate(connection_id, char, spell, target_arg) {
 
     let buff_effect = spell["buff_effect"];
     if buff_effect == "" { buff_effect = "dominated"; }
-    let duration = spell["buff_duration_secs"];
+    let spell_level = get_spell_level(char.name, spell["id"]);
+    let duration = spell["buff_duration_secs"] + (spell["buff_duration_per_spell_level"] * spell_level);
 
     apply_buff_to_mobile(mob_id, buff_effect, 0, duration, char.name);
     forget_player(mob_id, char.name);
@@ -556,6 +609,7 @@ fn cast_dominate(connection_id, char, spell, target_arg) {
 
     send_client_message(connection_id, target.short_desc + "'s gaze locks onto yours, will collapsing into yours.");
     broadcast_to_room_except(room_id, connection_id, target.short_desc + "'s eyes go glassy as " + char.name + " takes hold of their mind.");
+    award_per_spell_xp(connection_id, char.name, spell["id"], true);
     return true;
 }
 
@@ -576,6 +630,7 @@ fn cast_dispel(connection_id, char, spell, target_arg) {
 
     send_client_message(connection_id, "You cast Dispel Magic on " + mob.name + "! A wave of anti-magic washes over them.");
     broadcast_to_room_except(room_id, char.name + " casts Dispel Magic on " + mob.name + "!", char.name);
+    award_per_spell_xp(connection_id, char.name, spell["id"], true);
     return true;
 }
 
@@ -621,6 +676,7 @@ fn cast_animate_dead(connection_id, char, spell, target_arg) {
     let undead = spawn_mobile_from_prototype(source_vnum);
     if type_of(undead) == "()" {
         send_client_message(connection_id, "The dark magic fizzles — the body refuses to rise.");
+        award_per_spell_xp(connection_id, char.name, spell["id"], false);
         return true;
     }
 
@@ -642,6 +698,7 @@ fn cast_animate_dead(connection_id, char, spell, target_arg) {
     let risen_desc = if type_of(risen) != "()" { risen.short_desc } else { "the zombie" };
     send_client_message(connection_id, risen_desc + " rises jerkily, its eyes fixed on you.");
     broadcast_to_room_except(room_id, connection_id, risen_desc + " rises jerkily, its eyes fixed on " + char.name + ".");
+    award_per_spell_xp(connection_id, char.name, spell["id"], true);
     return true;
 }
 
@@ -657,7 +714,9 @@ fn cast_control_weather(connection_id, char, spell, target_arg) {
     send_client_message(connection_id, "You gesture skyward and weave the spell into the air...");
 
     let result = shift_global_weather(arg);
+    let landed = false;
     if result["changed"] {
+        landed = true;
         if arg == "better" {
             send_client_message(connection_id, "The skies obey: the weather grows calmer.");
         } else {
@@ -673,6 +732,7 @@ fn cast_control_weather(connection_id, char, spell, target_arg) {
             send_client_message(connection_id, "The spell stirs the air, but nothing changes.");
         }
     }
+    award_per_spell_xp(connection_id, char.name, spell["id"], landed);
     return true;
 }
 

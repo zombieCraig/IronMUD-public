@@ -10,11 +10,31 @@
     "spell_type": "damage",
     "damage_base": 8,
     "damage_per_skill": 3,
+    "damage_per_spell_level": 2,
     "damage_int_scaling": 2,
     "damage_type": "arcane",
     "target_type": "enemy",
     "requires_combat": false,
-    "xp_award": 5
+    "xp_award": 5,
+    "evolves_to": { "level_required": 7, "spell_id": "arcane_lance" }
+  },
+  "arcane_lance": {
+    "id": "arcane_lance",
+    "name": "Arcane Lance",
+    "description": "A focused spear of pure arcane force, evolved from Magic Missile.",
+    "skill_required": 1,
+    "scroll_only": true,
+    "mana_cost": 20,
+    "cooldown_secs": 3,
+    "spell_type": "damage",
+    "damage_base": 16,
+    "damage_per_skill": 4,
+    "damage_per_spell_level": 3,
+    "damage_int_scaling": 3,
+    "damage_type": "arcane",
+    "target_type": "enemy",
+    "requires_combat": false,
+    "xp_award": 8
   },
   "firebolt": {
     "id": "firebolt",
@@ -27,6 +47,7 @@
     "spell_type": "damage",
     "damage_base": 12,
     "damage_per_skill": 4,
+    "damage_per_spell_level": 2,
     "damage_int_scaling": 3,
     "damage_type": "fire",
     "target_type": "enemy",
@@ -96,7 +117,9 @@
     "spell_type": "buff",
     "buff_effect": "armor_class_boost",
     "buff_magnitude": 3,
+    "buff_magnitude_per_spell_level": 1,
     "buff_duration_secs": 300,
+    "buff_duration_per_spell_level": 30,
     "target_type": "self",
     "xp_award": 8
   },
@@ -156,6 +179,7 @@
     "spell_type": "heal",
     "heal_base": 15,
     "heal_per_skill": 5,
+    "heal_per_spell_level": 3,
     "heal_int_scaling": 3,
     "target_type": "self_or_friendly",
     "xp_award": 8

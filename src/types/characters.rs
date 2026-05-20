@@ -227,6 +227,10 @@ pub struct CharacterData {
     pub learned_spells: Vec<String>,
     #[serde(default)]
     pub spell_cooldowns: HashMap<String, i64>,
+    // Per-spell mastery (level + XP keyed by spell ID). Independent of the
+    // unified `magic` skill — see SpellProgress.
+    #[serde(default)]
+    pub spell_progress: HashMap<String, super::definitions::SpellProgress>,
     // Breath/drowning system
     #[serde(default = "default_max_breath")]
     pub breath: i32,

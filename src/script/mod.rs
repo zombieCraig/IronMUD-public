@@ -317,6 +317,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 racial_cooldowns: std::collections::HashMap::new(),
                 learned_spells: Vec::new(),
                 spell_cooldowns: std::collections::HashMap::new(),
+                spell_progress: std::collections::HashMap::new(),
                 // Breath/drowning system
                 breath: 100,
                 max_breath: 100,

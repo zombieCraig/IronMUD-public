@@ -17,6 +17,20 @@ fn get_type_color(stype) {
     return "\x1b[0m";
 }
 
+// 10-char mastery bar: [###-------]
+fn build_spell_bar(level) {
+    let bar = "[";
+    for i in 0..10 {
+        if i < level {
+            bar += "#";
+        } else {
+            bar += "-";
+        }
+    }
+    bar += "]";
+    return bar;
+}
+
 fn run_command(args, connection_id) {
     let char = get_player_character(connection_id);
     if type_of(char) == "()" { return; }
@@ -29,6 +43,7 @@ fn run_command(args, connection_id) {
 
     let available = get_available_spells(char.name);
     let all_spells = get_spell_list();
+    let spell_progress = get_all_spell_progress(char.name);
 
     send_client_message(connection_id, "\x1b[1;35m=== Your Spellbook ===\x1b[0m");
     send_client_message(connection_id, "Magic Skill: " + magic_level + "  |  Mana: " + char.mana + "/" + char.max_mana);
@@ -91,6 +106,27 @@ fn run_command(args, connection_id) {
 
             // Show description on next line
             send_client_message(connection_id, "    " + info["description"]);
+
+            // Per-spell mastery + evolution hint (only when learned/available).
+            if is_available && spell_progress.contains(spell_id) {
+                let prog = spell_progress[spell_id];
+                let lvl = prog.level;
+                let xp_line = if lvl < 10 {
+                    "(" + prog.experience + "/" + prog.xp_to_level + " XP)"
+                } else {
+                    "(MASTERED)"
+                };
+                let lvl_str = "" + lvl;
+                if lvl < 10 { lvl_str = " " + lvl_str; }
+                send_client_message(connection_id, "    \x1b[0;36mMastery " + build_spell_bar(lvl) + " " + lvl_str + "  " + xp_line + "\x1b[0m");
+
+                let evolves_id = info["evolves_to_id"];
+                if evolves_id != "" {
+                    let ev_info = get_spell_info(evolves_id);
+                    let ev_name = if ev_info.len() > 0 { ev_info["name"] } else { evolves_id };
+                    send_client_message(connection_id, "    \x1b[0;35m-> Evolves into " + ev_name + " at level " + info["evolves_at_level"] + "\x1b[0m");
+                }
+            }
         }
         send_client_message(connection_id, "");
     }
