@@ -82,6 +82,15 @@ impl Direction {
             Direction::W => '<',
         }
     }
+
+    fn opposite(self) -> Direction {
+        match self {
+            Direction::N => Direction::S,
+            Direction::S => Direction::N,
+            Direction::E => Direction::W,
+            Direction::W => Direction::E,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -98,6 +107,10 @@ pub struct MapCell {
     pub closed_door_dirs: HashSet<Direction>,
     /// Directions where the exit leaves the current area entirely.
     pub cross_area_dirs: HashSet<Direction>,
+    /// Cardinal directions in which this cell's room has an exit leading to
+    /// the cell placed at the adjacent grid coord. Used at render time to
+    /// suppress phantom connectors between coincidentally-adjacent rooms.
+    pub linked_dirs: HashSet<Direction>,
     /// True when another room also tried to claim this coord. Renders `?`.
     pub collision: bool,
 }
@@ -177,6 +190,12 @@ pub fn compute_map_layout(db: &Db, origin: Uuid, radius: i32, visited: &HashSet<
                 continue;
             }
 
+            // Record the real exit on the source side so the renderer can
+            // distinguish a true connection from coincidental grid adjacency.
+            if let Some(src) = cells.get_mut(&coord) {
+                src.linked_dirs.insert(dir);
+            }
+
             let neighbor_visited_or_origin = visited.contains(&neighbor_id) || neighbor_id == origin_room.id;
 
             // Closed-door annotation: only marked when both source and target
@@ -194,6 +213,10 @@ pub fn compute_map_layout(db: &Db, origin: Uuid, radius: i32, visited: &HashSet<
             if let Some(existing) = cells.get_mut(&new_coord) {
                 if existing.room_id != neighbor_id {
                     existing.collision = true;
+                } else {
+                    // Same room re-reached via a different path: still a real
+                    // connection from this side.
+                    existing.linked_dirs.insert(dir.opposite());
                 }
                 continue;
             }
@@ -204,7 +227,9 @@ pub fn compute_map_layout(db: &Db, origin: Uuid, radius: i32, visited: &HashSet<
                 Visibility::Glimpsed
             };
 
-            cells.insert(new_coord, build_cell(&neighbor_room, target_visibility, false, &shop_rooms));
+            let mut new_cell = build_cell(&neighbor_room, target_visibility, false, &shop_rooms);
+            new_cell.linked_dirs.insert(dir.opposite());
+            cells.insert(new_coord, new_cell);
 
             // Only Visited cells expand further; Glimpsed cells are leaves.
             if target_visibility == Visibility::Visited {
@@ -258,6 +283,7 @@ fn build_cell(
         has_shop,
         closed_door_dirs: HashSet::new(),
         cross_area_dirs: HashSet::new(),
+        linked_dirs: HashSet::new(),
         collision: false,
     }
 }
@@ -314,11 +340,16 @@ pub fn render_map(
 
             grid[row][col] = render_cell_glyph(cell);
 
-            // Connectors between adjacent cells.
+            // Connectors between adjacent cells. Only render when a real exit
+            // actually joins the two rooms — coincidental grid adjacency (e.g.
+            // two rooms reached via different BFS paths) must not be drawn.
             if let Some(c) = cell {
                 if let Some(east) = layout.cells.get(&(cx + 1, cy)) {
                     let conn_col = col + 1;
-                    if conn_col < total_w {
+                    if conn_col < total_w
+                        && (c.linked_dirs.contains(&Direction::E)
+                            || east.linked_dirs.contains(&Direction::W))
+                    {
                         let ch = if c.closed_door_dirs.contains(&Direction::E)
                             || east.closed_door_dirs.contains(&Direction::W)
                         {
@@ -331,7 +362,10 @@ pub fn render_map(
                 }
                 if let Some(south) = layout.cells.get(&(cx, cy + 1)) {
                     let conn_row = row + 1;
-                    if conn_row < total_h {
+                    if conn_row < total_h
+                        && (c.linked_dirs.contains(&Direction::S)
+                            || south.linked_dirs.contains(&Direction::N))
+                    {
                         let ch = if c.closed_door_dirs.contains(&Direction::S)
                             || south.closed_door_dirs.contains(&Direction::N)
                         {

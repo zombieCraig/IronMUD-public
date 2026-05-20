@@ -758,6 +758,87 @@ fn colored_legend_includes_color_codes() {
 }
 
 #[test]
+fn phantom_connector_not_drawn_between_unlinked_adjacent_rooms() {
+    // Regression: BFS lays out coincidentally-adjacent rooms next to each
+    // other in the grid even when they share no exit. The renderer must not
+    // paint a connector between them.
+    //
+    //   [ 1001 ]    [ 1004 ]
+    //      |            |
+    //   [ 1002 ] -- [ 1003 ]
+    //
+    // Origin is 1002. 1001 lands at (0,-1) (via north), 1003 at (1,0) (via
+    // east), 1004 at (1,-1) (via 1003's north). 1001 and 1004 are then
+    // horizontally adjacent in the grid but unconnected in the room graph.
+    run("phantom_connector", |db| {
+        let area = make_area(db, "Test");
+        let r1001 = make_room(db, area, "1001");
+        let r1002 = make_room(db, area, "1002");
+        let r1003 = make_room(db, area, "1003");
+        let r1004 = make_room(db, area, "1004");
+        link_pair(db, r1001, "s", r1002);
+        link_pair(db, r1002, "e", r1003);
+        link_pair(db, r1003, "n", r1004);
+
+        let visited: HashSet<Uuid> = [r1001, r1002, r1003, r1004].into_iter().collect();
+        let layout = compute_map_layout(db, r1002, 5, &visited);
+
+        // Sanity: linked_dirs records only real exits.
+        let c1001 = &layout.cells[&(0, -1)];
+        let c1004 = &layout.cells[&(1, -1)];
+        assert!(
+            !c1001.linked_dirs.contains(&Direction::E),
+            "1001 has no east exit; linked_dirs={:?}",
+            c1001.linked_dirs
+        );
+        assert!(
+            !c1004.linked_dirs.contains(&Direction::W),
+            "1004 has no west exit; linked_dirs={:?}",
+            c1004.linked_dirs
+        );
+
+        let rendered = ironmud::script::map::render_map(&layout, false, false, true);
+        let lines: Vec<&str> = rendered.lines().collect();
+
+        // Find the row that contains both 1001 and 1004 (both glimpse-visited
+        // so render as 'o'/'@'). The origin row contains 1002 at col=(0+r)*2
+        // and 1003 at col=(1+r)*2.
+        let origin_row_idx = lines
+            .iter()
+            .position(|l| l.contains('@'))
+            .expect("origin row");
+        // 1001/1004 row sits two rows above the origin row (cells are stacked
+        // with one connector row between them, so visited 1001 is 2 lines up).
+        assert!(origin_row_idx >= 2, "origin row should not be at top");
+        let upper_row = lines[origin_row_idx - 2];
+
+        // Column for x=0 with radius=5 is (0+5)*2=10; for x=1 it is 12; the
+        // connector slot between them is col 11.
+        let upper_chars: Vec<char> = upper_row.chars().collect();
+        assert_eq!(upper_chars.get(10), Some(&'o'), "1001 cell at col 10");
+        assert_eq!(upper_chars.get(12), Some(&'o'), "1004 cell at col 12");
+        assert_eq!(
+            upper_chars.get(11),
+            Some(&' '),
+            "no connector should be drawn between unlinked 1001 and 1004; row was {:?}",
+            upper_row
+        );
+
+        // The real 1002↔1003 connector on the origin row must still render.
+        let origin_row = lines[origin_row_idx];
+        let origin_chars: Vec<char> = origin_row.chars().collect();
+        assert_eq!(origin_chars.get(10), Some(&'@'), "1002 at origin");
+        assert_eq!(origin_chars.get(12), Some(&'o'), "1003 east of origin");
+        assert_eq!(
+            origin_chars.get(11),
+            Some(&'-'),
+            "real east exit must render a connector: {:?}",
+            origin_row
+        );
+    });
+}
+
+#[test]
 fn no_color_path_is_byte_clean() {
     run("byte_clean", |db| {
         let area = make_area(db, "Test");
