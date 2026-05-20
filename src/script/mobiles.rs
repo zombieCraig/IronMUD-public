@@ -180,7 +180,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         tameable,
         undead,
         vampire,
-        holy_vulnerable
+        holy_vulnerable,
+        aggro_good,
+        aggro_evil,
+        aggro_neutral
     );
 
     // Register MobileData type
@@ -947,6 +950,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "undead" => mobile.flags.undead = value,
                         "vampire" => mobile.flags.vampire = value,
                         "holy_vulnerable" | "holyvulnerable" => mobile.flags.holy_vulnerable = value,
+                        "aggro_good" | "aggrgood" => mobile.flags.aggro_good = value,
+                        "aggro_evil" | "aggrevil" => mobile.flags.aggro_evil = value,
+                        "aggro_neutral" | "aggrneutral" => mobile.flags.aggro_neutral = value,
                         _ => return false,
                     }
                     return cloned_db.save_mobile_data(mobile).is_ok();

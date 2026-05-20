@@ -156,7 +156,66 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "morality" {
+        handle_morality(connection_id, args, char);
+        return;
+    }
+
     send_client_message(connection_id, "Unknown subcommand. Type 'admin help' for commands.");
+}
+
+// `admin morality <player> <delta-or-set>` — adjust a player's morality slider.
+// Usage:
+//   admin morality <player> +25      (delta)
+//   admin morality <player> -50      (delta)
+//   admin morality <player> set 100  (absolute)
+//   admin morality <player>          (show current value + tier)
+// Clamps to [-200, 200].
+fn handle_morality(connection_id, args, admin_char) {
+    let parts = args.split(" ");
+    if parts.len() < 2 || parts[1] == "" {
+        send_client_message(connection_id, "Usage: admin morality <player> [+/-<delta> | set <value>]");
+        return;
+    }
+    let target_name = parts[1];
+    let target_data = get_character_data(target_name);
+    if target_data == () {
+        send_client_message(connection_id, "No character named '" + target_name + "' found.");
+        return;
+    }
+
+    if parts.len() < 3 || parts[2] == "" {
+        let tier = get_morality_tier(target_data.name);
+        send_client_message(connection_id, target_data.name + " morality: " + target_data.morality + " (" + tier + ")");
+        return;
+    }
+
+    let action = parts[2].to_lower();
+    if action == "set" {
+        if parts.len() < 4 {
+            send_client_message(connection_id, "Usage: admin morality " + target_name + " set <value>");
+            return;
+        }
+        let v = try_parse_int(parts[3]);
+        if v == () {
+            send_client_message(connection_id, "Value must be an integer.");
+            return;
+        }
+        set_morality(target_data.name, v);
+        let tier = get_morality_tier(target_data.name);
+        send_client_message(connection_id, "Set " + target_data.name + " morality to " + v + " (" + tier + ").");
+        return;
+    }
+
+    // Treat third token as a signed delta.
+    let delta = try_parse_int(action);
+    if delta == () {
+        send_client_message(connection_id, "Delta must be an integer (e.g. +25, -50) or 'set <value>'.");
+        return;
+    }
+    let new_val = adjust_morality(target_data.name, delta);
+    let tier = get_morality_tier(target_data.name);
+    send_client_message(connection_id, "Adjusted " + target_data.name + " morality by " + delta + " -> " + new_val + " (" + tier + ").");
 }
 
 // `admin ticks` — show liveness for every background tick. Healthy
@@ -402,6 +461,7 @@ fn show_help(connection_id) {
     help += "  admin masquerade_reset <player>   - Clear masquerade_broken on a vampire PC\n";
     help += "  admin config [<key>] [<value>]    - Read, write, or list runtime settings\n";
     help += "  admin ticks                       - Show liveness of every background tick task\n";
+    help += "  admin morality <player> [<delta>|set <v>] - Show or adjust a player's morality slider (-200..+200)\n";
     help += "  admin account ...                 - Account management (type 'admin account' for help)\n";
     help += "  admin world ...                   - World statistics and management (type 'admin world' for help)\n";
     help += "  admin help                        - Show this help\n";

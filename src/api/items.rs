@@ -283,6 +283,12 @@ pub struct ItemFlagsRequest {
     pub can_dig: Option<bool>,
     #[serde(default)]
     pub detect_buried: Option<bool>,
+    #[serde(default)]
+    pub anti_good: Option<bool>,
+    #[serde(default)]
+    pub anti_evil: Option<bool>,
+    #[serde(default)]
+    pub anti_neutral: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -911,6 +917,9 @@ async fn create_item(
             buried: req.flags.buried.unwrap_or(false),
             can_dig: req.flags.can_dig.unwrap_or(false),
             detect_buried: req.flags.detect_buried.unwrap_or(false),
+            anti_good: req.flags.anti_good.unwrap_or(false),
+            anti_evil: req.flags.anti_evil.unwrap_or(false),
+            anti_neutral: req.flags.anti_neutral.unwrap_or(false),
             ..Default::default()
         },
         damage_dice_count: check_dice_dim("damage_dice_count", req.damage_dice_count.unwrap_or(1))?,
@@ -1245,6 +1254,15 @@ async fn update_item(
         }
         if let Some(v) = flags.detect_buried {
             item.flags.detect_buried = v;
+        }
+        if let Some(v) = flags.anti_good {
+            item.flags.anti_good = v;
+        }
+        if let Some(v) = flags.anti_evil {
+            item.flags.anti_evil = v;
+        }
+        if let Some(v) = flags.anti_neutral {
+            item.flags.anti_neutral = v;
         }
     }
     // Gardening fields

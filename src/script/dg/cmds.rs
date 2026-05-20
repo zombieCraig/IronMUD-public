@@ -63,6 +63,7 @@ pub fn dispatch(line: &str, ctx: &EvalCtx) -> Result<(), String> {
         // ---- Phase 3 ----
         "dg_cast" => cmd_dg_cast(rest, ctx),
         "dg_affect" => cmd_dg_affect(rest, ctx),
+        "morality" | "dg_morality" => cmd_dg_morality(rest, ctx),
         "force" | "mforce" | "oforce" | "wforce" => cmd_force(rest, ctx),
 
         // ---- Phase 4 ----
@@ -141,6 +142,7 @@ pub const COMMANDS: &[&str] = &[
     "load", "mload", "oload", "wload",
     "log", "mlog", "olog", "wlog",
     "dg_cast", "dg_affect",
+    "morality", "dg_morality",
     "force", "mforce", "oforce", "wforce",
     "mremember", "mforget", "mhunt",
     "at", "mat", "oat", "wat",
@@ -170,6 +172,7 @@ pub(super) fn is_known_dg_verb(verb: &str) -> bool {
         | "load" | "mload" | "oload" | "wload"
         | "log" | "mlog" | "olog" | "wlog"
         | "dg_cast" | "dg_affect"
+        | "morality" | "dg_morality"
         | "force" | "mforce" | "oforce" | "wforce"
         | "mremember" | "mforget" | "mhunt"
         | "at" | "mat" | "oat" | "wat"
@@ -647,6 +650,47 @@ fn cmd_dg_affect(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
 
 fn default_dg_cast_duration() -> i32 {
     300
+}
+
+/// `morality <target> <delta>` — adjust a player's morality slider. Mob targets
+/// are silently ignored (mobiles have no morality field). Clamps to
+/// [MORALITY_MIN, MORALITY_MAX]; result is read back via `%actor.morality%`.
+fn cmd_dg_morality(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
+    let mut tok = rest.split_whitespace();
+    let target_tok = tok.next().unwrap_or("").to_string();
+    let delta: i32 = match tok.next().and_then(|s| s.parse().ok()) {
+        Some(d) => d,
+        None => {
+            super::warn_builder(ctx, "morality: needs target and integer delta");
+            return Ok(());
+        }
+    };
+    if target_tok.is_empty() {
+        super::warn_builder(ctx, "morality: needs target and integer delta");
+        return Ok(());
+    }
+    let Some(actor) = resolve_target(&target_tok, ctx) else {
+        return Ok(());
+    };
+    match actor {
+        ActorRef::Player { name, .. } => {
+            if let Ok(Some(mut ch)) = ctx.db.get_character_data(&name) {
+                let new_val = (ch.morality as i64)
+                    .saturating_add(delta as i64)
+                    .clamp(
+                        crate::morality::MORALITY_MIN as i64,
+                        crate::morality::MORALITY_MAX as i64,
+                    ) as i32;
+                ch.morality = new_val;
+                let _ = ctx.db.save_character_data(ch);
+            }
+        }
+        ActorRef::Mob { .. } => {
+            // Mobs don't carry morality in this slice.
+            tracing::debug!("DG morality: mob target ignored (no morality field on mobs)");
+        }
+    }
+    Ok(())
 }
 
 /// Apply an effect-name buff to a target token. Used by dg_cast / dg_affect.

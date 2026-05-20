@@ -2969,6 +2969,107 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         },
     );
 
+    // ========== Morality System Functions ==========
+
+    // adjust_morality(char_name, delta) -> i64
+    // Clamps to [MORALITY_MIN, MORALITY_MAX] (-200..=+200). Returns the new value (or 0 if char missing).
+    let cloned_db = db.clone();
+    let conns = connections.clone();
+    engine.register_fn(
+        "adjust_morality",
+        move |char_name: String, delta: i64| -> i64 {
+            let name_lower = char_name.to_lowercase();
+            if let Ok(Some(mut character)) = cloned_db.get_character_data(&name_lower) {
+                let new_val = crate::morality::clamp(
+                    (character.morality as i64).saturating_add(delta).clamp(
+                        crate::morality::MORALITY_MIN as i64,
+                        crate::morality::MORALITY_MAX as i64,
+                    ) as i32,
+                );
+                character.morality = new_val;
+                if cloned_db.save_character_data(character.clone()).is_err() {
+                    return 0;
+                }
+                let mut conns_guard = conns.lock().unwrap();
+                for (_id, session) in conns_guard.iter_mut() {
+                    if let Some(ref mut sc) = session.character {
+                        if sc.name.eq_ignore_ascii_case(&char_name) {
+                            sc.morality = new_val;
+                            break;
+                        }
+                    }
+                }
+                new_val as i64
+            } else {
+                0
+            }
+        },
+    );
+
+    // set_morality(char_name, value) -> bool — admin/quest direct set with clamp.
+    let cloned_db = db.clone();
+    let conns = connections.clone();
+    engine.register_fn(
+        "set_morality",
+        move |char_name: String, value: i64| -> bool {
+            let name_lower = char_name.to_lowercase();
+            if let Ok(Some(mut character)) = cloned_db.get_character_data(&name_lower) {
+                let new_val = crate::morality::clamp(value.clamp(
+                    crate::morality::MORALITY_MIN as i64,
+                    crate::morality::MORALITY_MAX as i64,
+                ) as i32);
+                character.morality = new_val;
+                if cloned_db.save_character_data(character.clone()).is_err() {
+                    return false;
+                }
+                let mut conns_guard = conns.lock().unwrap();
+                for (_id, session) in conns_guard.iter_mut() {
+                    if let Some(ref mut sc) = session.character {
+                        if sc.name.eq_ignore_ascii_case(&char_name) {
+                            sc.morality = new_val;
+                            break;
+                        }
+                    }
+                }
+                true
+            } else {
+                false
+            }
+        },
+    );
+
+    // get_morality_tier(char_name) -> String — returns tier key (e.g. "evil_2", "neutral", "good_pure").
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_morality_tier",
+        move |char_name: String| -> String {
+            let name_lower = char_name.to_lowercase();
+            if let Ok(Some(ch)) = cloned_db.get_character_data(&name_lower) {
+                crate::morality::MoralityTier::from_value(ch.morality)
+                    .key()
+                    .to_string()
+            } else {
+                String::new()
+            }
+        },
+    );
+
+    // get_morality_feel(char_name) -> String — status-line "feel" sentence, "" for Neutral.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_morality_feel",
+        move |char_name: String| -> String {
+            let name_lower = char_name.to_lowercase();
+            if let Ok(Some(ch)) = cloned_db.get_character_data(&name_lower) {
+                crate::morality::feel_message(ch.morality)
+                    .unwrap_or("")
+                    .to_string()
+            } else {
+                String::new()
+            }
+        },
+    );
+
     // remove_buff_from_mobile(mobile_id, effect_type_str) -> bool
     let cloned_db = db.clone();
     engine.register_fn(

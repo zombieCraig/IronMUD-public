@@ -942,10 +942,14 @@ fn try_character_field(ch: &crate::types::CharacterData, field: &str) -> Option<
         "gold" => ch.gold.to_string(),
         "vnum" => "-1".to_string(), // PCs have no vnum (matches tbamud).
         "is_pc" => "1".to_string(),
-        // IronMUD has no alignment system; stock tbamud uses align as a
-        // -1000..1000 int. Return 0 (neutral) so `if %actor.align% < -350`
-        // and similar conditions evaluate predictably.
-        "align" | "alignment" => "0".to_string(),
+        // Morality slider, -200..=+200; tier thresholds at +/-100. `align`/`alignment`
+        // returns the same value for Circle-script compatibility — note the scale is
+        // narrower than tbamud's -1000..1000, so imported thresholds need rescaling.
+        // Prefer `%actor.morality%` / `%actor.morality_tier%` in new scripts.
+        "align" | "alignment" | "morality" => ch.morality.to_string(),
+        "morality_tier" => crate::morality::MoralityTier::from_value(ch.morality)
+            .key()
+            .to_string(),
         "maxhitp" => ch.max_hp.to_string(),
         "str" | "strength" => ch.stat_str.to_string(),
         "dex" | "dexterity" => ch.stat_dex.to_string(),

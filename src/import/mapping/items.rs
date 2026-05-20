@@ -733,6 +733,9 @@ pub(super) fn apply_named_item_flag(flags: &mut ItemFlags, name: &str) -> bool {
         "provides_light" => flags.provides_light = true,
         "boat" => flags.boat = true,
         "waterproof" => flags.waterproof = true,
+        "anti_good" => flags.anti_good = true,
+        "anti_evil" => flags.anti_evil = true,
+        "anti_neutral" => flags.anti_neutral = true,
         _ => return false,
     }
     true

@@ -308,6 +308,12 @@ pub struct MobileFlagsRequest {
     pub vampire: Option<bool>,
     #[serde(default)]
     pub holy_vulnerable: Option<bool>,
+    #[serde(default)]
+    pub aggro_good: Option<bool>,
+    #[serde(default)]
+    pub aggro_evil: Option<bool>,
+    #[serde(default)]
+    pub aggro_neutral: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -890,6 +896,9 @@ async fn create_mobile(
             undead: req.flags.undead.unwrap_or(false),
             vampire: req.flags.vampire.unwrap_or(false),
             holy_vulnerable: req.flags.holy_vulnerable.unwrap_or(false),
+            aggro_good: req.flags.aggro_good.unwrap_or(false),
+            aggro_evil: req.flags.aggro_evil.unwrap_or(false),
+            aggro_neutral: req.flags.aggro_neutral.unwrap_or(false),
         },
         dialogue: HashMap::new(),
         dialogue_tree: None,
@@ -1148,6 +1157,15 @@ async fn update_mobile(
         }
         if let Some(v) = flags.tameable {
             mobile.flags.tameable = v;
+        }
+        if let Some(v) = flags.aggro_good {
+            mobile.flags.aggro_good = v;
+        }
+        if let Some(v) = flags.aggro_evil {
+            mobile.flags.aggro_evil = v;
+        }
+        if let Some(v) = flags.aggro_neutral {
+            mobile.flags.aggro_neutral = v;
         }
     }
     if let Some(ref pos_str) = req.position {

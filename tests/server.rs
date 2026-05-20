@@ -6335,6 +6335,148 @@ fn test_summonable_field_defaults_off_and_persists() {
 }
 
 #[test]
+fn test_morality_field_defaults_zero_and_persists() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        // Build a CharacterData via serde so missing fields take serde
+        // defaults — proves `morality` defaults to 0.
+        let mut char: ironmud::types::CharacterData =
+            serde_json::from_value(serde_json::json!({
+                "name": "TestMorality",
+                "password_hash": "",
+                "current_room_id": uuid::Uuid::nil(),
+            }))
+            .expect("build character");
+        assert_eq!(char.morality, 0, "morality defaults to 0");
+
+        char.morality = -75;
+        db.save_character_data(char.clone()).expect("save");
+
+        let loaded = db
+            .get_character_data(&char.name)
+            .expect("read")
+            .expect("present");
+        assert_eq!(loaded.morality, -75, "morality persists across roundtrip");
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_morality_tier_thresholds_exhaustive() {
+    use ironmud::morality::MoralityTier;
+    let cases = [
+        (-200, MoralityTier::EvilPure),
+        (-150, MoralityTier::EvilPure),
+        (-100, MoralityTier::EvilPure),
+        (-99, MoralityTier::Evil3),
+        (-75, MoralityTier::Evil3),
+        (-74, MoralityTier::Evil2),
+        (-50, MoralityTier::Evil2),
+        (-49, MoralityTier::Evil1),
+        (-25, MoralityTier::Evil1),
+        (-24, MoralityTier::Neutral),
+        (0, MoralityTier::Neutral),
+        (24, MoralityTier::Neutral),
+        (25, MoralityTier::Good1),
+        (49, MoralityTier::Good1),
+        (50, MoralityTier::Good2),
+        (74, MoralityTier::Good2),
+        (75, MoralityTier::Good3),
+        (99, MoralityTier::Good3),
+        (100, MoralityTier::GoodPure),
+        (200, MoralityTier::GoodPure),
+    ];
+    for (v, expected) in cases {
+        assert_eq!(
+            MoralityTier::from_value(v),
+            expected,
+            "morality {v} -> wrong tier"
+        );
+    }
+}
+
+#[test]
+fn test_morality_feel_message_neutral_band() {
+    use ironmud::morality::feel_message;
+    // Neutral band returns None.
+    assert!(feel_message(0).is_none());
+    assert!(feel_message(-24).is_none());
+    assert!(feel_message(24).is_none());
+    // Both wings give some flavor text.
+    assert!(feel_message(-25).is_some());
+    assert!(feel_message(25).is_some());
+    assert!(feel_message(-200).unwrap().contains("pure evil"));
+    assert!(feel_message(100).unwrap().contains("pure"));
+}
+
+#[test]
+fn test_morality_clamp_is_minus200_to_200_not_minus100_to_100() {
+    use ironmud::morality::clamp;
+    // The slider extends beyond the tier thresholds — sticky reputation.
+    assert_eq!(clamp(500), 200);
+    assert_eq!(clamp(-500), -200);
+    assert_eq!(clamp(150), 150, "150 is a legal stored value");
+    assert_eq!(clamp(-150), -150);
+}
+
+#[test]
+fn test_anti_evil_item_flag_persists() {
+    use ironmud::types::ItemData;
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        let mut item = ItemData::new(
+            "a glowing holy sword".to_string(),
+            "A blade of pure light hovers here.".to_string(),
+            "The sword pulses with righteous fire.".to_string(),
+        );
+        item.flags.anti_evil = true;
+        item.flags.anti_neutral = true;
+        let id = item.id;
+        db.save_item_data(item).expect("save");
+
+        let loaded = db.get_item_data(&id).expect("read").expect("present");
+        assert!(loaded.flags.anti_evil);
+        assert!(loaded.flags.anti_neutral);
+        assert!(!loaded.flags.anti_good);
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_aggro_mobile_flags_persist() {
+    use ironmud::types::MobileData;
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        let mut mob = MobileData::new("a paladin patrolling".to_string());
+        mob.flags.aggro_evil = true;
+        let id = mob.id;
+        db.save_mobile_data(mob).expect("save");
+
+        let loaded = db.get_mobile_data(&id).expect("read").expect("present");
+        assert!(loaded.flags.aggro_evil);
+        assert!(!loaded.flags.aggro_good);
+        assert!(!loaded.flags.aggro_neutral);
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_character_gender_persists_and_accepts_free_strings() {
     
 

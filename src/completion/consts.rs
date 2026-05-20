@@ -57,6 +57,9 @@ pub const MOBILE_TRANSPORT_ACTIONS: &[&str] = &["set", "fixed", "random", "perma
 /// Mobile flags
 pub const MOBILE_FLAGS: &[&str] = &[
     "aggressive",
+    "aggro_evil",
+    "aggro_good",
+    "aggro_neutral",
     "aware",
     "can_open_doors",
     "cant_swim",
@@ -156,6 +159,9 @@ pub const ITEM_FLAGS: &[&str] = &[
     "plant_pot",
     "lockpick",
     "is_skinned",
+    "anti_good",
+    "anti_evil",
+    "anti_neutral",
 ];
 
 /// Vending subcommands

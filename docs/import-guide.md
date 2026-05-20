@@ -196,7 +196,7 @@ warn-only (see the [Zone reset commands](#zone-reset-commands) section).
 | `ISNPC` | silently dropped (implicit on every imported mob) |
 | `AWARE` | sets `aware` (mob sees through hidden/sneak/invisibility) |
 | `STAY_ZONE` | sets `stay_zone` (wander/pursuit clamps to home area; stamped at first room placement) |
-| `AGGR_EVIL`, `AGGR_GOOD`, `AGGR_NEUTRAL` | **Warn**: blocked on alignment system |
+| `AGGR_EVIL`, `AGGR_GOOD`, `AGGR_NEUTRAL` | sets matching `MobileFlags.aggro_*`; triggers in-room aggression keyed off player morality (-24 / +24 thresholds) |
 | `MEMORY` | sets `memory` (remembers PC attackers for 30 min, FIFO cap 10; resets on respawn) |
 | `HELPER` | sets `helper` (faction left empty → Circle-stock semantics: any NPC defends any other NPC against PCs) |
 | `NOSLEEP`, `NOBASH`, `NOBLIND`, `NOSUMMON`, `NOCHARM` | sets matching `MobileFlags.no_*` (hard-immunity gate over the paired spell/skill) |
@@ -322,7 +322,7 @@ code change needed — the mapping is loaded lazily on first import.
 | `NOINVIS` | **Warn**: cannot-be-made-invis not modeled |
 | `MAGIC` | sets `magical`; auto-tags `categories: ["magical"]` |
 | `BLESS` | **Warn**: no blessing system |
-| `ANTI_GOOD`, `ANTI_EVIL`, `ANTI_NEUTRAL` | **Warn**: alignment-restricted use not modeled |
+| `ANTI_GOOD`, `ANTI_EVIL`, `ANTI_NEUTRAL` | sets matching `ItemFlags.anti_*`; wear/wield refuses based on player morality |
 | `ANTI_MAGE`, `ANTI_CLERIC`, `ANTI_THIEF`, `ANTI_WARRIOR` | **Warn**: class-restricted use not modeled |
 | Bits ≥ 17 | **Warn** (`unrecognised extra-flag bit`): patched flag — surface for review |
 
@@ -1161,11 +1161,9 @@ warn-only. Gaps ranked below.
 
 ### Mobile flags — Medium priority
 
-- **`MOB_AGGR_EVIL` / `AGGR_GOOD` / `AGGR_NEUTRAL`** — alignment-conditional
-  aggression. Blocked on the alignment system below; degrades gracefully
-  to non-aggressive in the meantime.
-- **`AFF_DETECT_ALIGN`** — paired with an alignment system that doesn't
-  exist yet.
+- **`AFF_DETECT_ALIGN`** — paired with an alignment-detection spell we
+  don't ship yet. Stand-alone follow-up: once the spell exists, importer
+  flips it from warn to `add_buff` (permanent).
 
 ### Mobile flags — Low priority
 

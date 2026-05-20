@@ -387,6 +387,9 @@ export interface ItemFlags {
   buried?: boolean;
   can_dig?: boolean;
   detect_buried?: boolean;
+  anti_good?: boolean;
+  anti_evil?: boolean;
+  anti_neutral?: boolean;
 }
 
 export interface Mobile {
@@ -473,6 +476,9 @@ export interface MobileFlags {
   no_charm?: boolean;
   hostile_on_steal?: boolean;
   tameable?: boolean;
+  aggro_good?: boolean;
+  aggro_evil?: boolean;
+  aggro_neutral?: boolean;
 }
 
 export interface SpawnPoint {

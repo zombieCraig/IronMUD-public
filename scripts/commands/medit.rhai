@@ -1243,7 +1243,7 @@ fn handle_flag_subcommand(mobile_id, parts, connection_id) {
     // Validate all names before changing anything.
     for name in flag_names {
         if get_mobile_flag_value(mobile, name) == () {
-            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, helper, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim, poisonous, fiery, chilling, corrosive, shocking, unique, stay_zone, aware, memory, no_sleep, no_blind, no_bash, no_summon, no_charm, hostile_on_steal, tameable, undead, vampire, holy_vulnerable");
+            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, helper, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim, poisonous, fiery, chilling, corrosive, shocking, unique, stay_zone, aware, memory, no_sleep, no_blind, no_bash, no_summon, no_charm, hostile_on_steal, tameable, undead, vampire, holy_vulnerable, aggro_good, aggro_evil, aggro_neutral");
             return;
         }
     }
@@ -1297,6 +1297,9 @@ fn get_mobile_flag_value(mobile, flag_name) {
     if flag_name == "undead" { return flags.undead; }
     if flag_name == "vampire" { return flags.vampire; }
     if flag_name == "holy_vulnerable" || flag_name == "holyvulnerable" { return flags.holy_vulnerable; }
+    if flag_name == "aggro_good" || flag_name == "aggrgood" { return flags.aggro_good; }
+    if flag_name == "aggro_evil" || flag_name == "aggrevil" { return flags.aggro_evil; }
+    if flag_name == "aggro_neutral" || flag_name == "aggrneutral" { return flags.aggro_neutral; }
     return ();
 }
 
@@ -1513,6 +1516,9 @@ fn build_flags_display(mobile) {
     if flags.undead { flag_str += "undead "; }
     if flags.vampire { flag_str += "vampire "; }
     if flags.holy_vulnerable { flag_str += "holy_vulnerable "; }
+    if flags.aggro_good { flag_str += "aggro_good "; }
+    if flags.aggro_evil { flag_str += "aggro_evil "; }
+    if flags.aggro_neutral { flag_str += "aggro_neutral "; }
     if flag_str == "" { flag_str = "(none)"; }
     output += flag_str + "\n";
     return output;
@@ -1675,6 +1681,9 @@ fn show_mobile_flags(mobile, mobile_id, connection_id) {
     output += build_flag_line("undead", flags.undead, "Generic undead marker (zombies, skeletons, vampires, ghouls)", display_id, connection_id);
     output += build_flag_line("vampire", flags.vampire, "Sun-burn tick eligibility, on-hit blood drain, gates vampire subcommand", display_id, connection_id);
     output += build_flag_line("holy_vulnerable", flags.holy_vulnerable, "Doubled incoming Holy damage", display_id, connection_id);
+    output += build_flag_line("aggro_good", flags.aggro_good, "Attacks any player in the Good morality range (above +24)", display_id, connection_id);
+    output += build_flag_line("aggro_evil", flags.aggro_evil, "Attacks any player in the Evil morality range (below -24)", display_id, connection_id);
+    output += build_flag_line("aggro_neutral", flags.aggro_neutral, "Attacks any player in the Neutral morality band (-24..+24)", display_id, connection_id);
 
     send_mxp_message(connection_id, output);
 }

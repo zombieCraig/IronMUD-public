@@ -151,7 +151,8 @@ These work on any character or mob head (`actor`, `victim`, `self`-when-mob).
 | `master` | Charm master (mobs) / following target (PCs) |
 | `hunger` / `thirst` / `drunk` | PC-only meaningful values; mobs return `0` (sim mobs return real `hunger`) |
 | `pos` / `position` | `"standing"` (no posture system on PCs yet) |
-| `align` / `alignment` | Always `"0"` — IronMUD has no alignment system |
+| `align` / `alignment` / `morality` | Morality slider (-200..=+200; tier thresholds at +/-100). All three names return the same value. Note: scale is narrower than tbamud's -1000..1000, so imported numeric thresholds need rescaling. |
+| `morality_tier` | Tier key: `evil_pure`, `evil_3`, `evil_2`, `evil_1`, `neutral`, `good_1`, `good_2`, `good_3`, `good_pure`. Prefer this over numeric `align` comparisons. |
 | `canbeseen` | Always `"1"` |
 | `inventory` | Comma-joined inventory item names |
 | `inventory(<vnum>)` | Count of items in inventory with that vnum |
@@ -430,7 +431,11 @@ dg_cast 'fireball' %actor%                    * damage spells use a curated tabl
 dg_cast 'cure_blind' %actor%                  * cure_*/remove_* strip the matching buff
 dg_cast 'bless' %actor%                       * unmodeled spells become a generic buff
 dg_affect %actor% poison 1 60                 * apply poison, magnitude 1, 60 sec
+morality %actor% -10                            * shift player morality by delta (clamped -200..200)
+morality %actor% 25                             * positive deltas push toward Good
 ```
+
+Use `morality` (or its alias `dg_morality`) from kill/quest/dialogue triggers to react to player choices. Mob targets are silently ignored. Pair with `%actor.morality_tier%` to branch on the resulting tier rather than raw numbers.
 
 Damage table covers `fireball`, `magic_missile`, `lightning_bolt`, `harm`, `cause_*`, `chill_touch`, `colour_spray`, `dispel_evil/good`, `energy_drain`, `shocking_grasp`, etc. Heal table covers `heal`, `cure_critic/serious/light`. Removal table covers `cure_blind`/`cure_poison`/`remove_curse`/`remove_sleep`. Anything else falls through to `apply_dg_effect`, which silently no-ops on unknown effect names.
 
@@ -642,7 +647,7 @@ The `ironmud-import tba` importer seeds every parsed `.trg` record into `dg_trig
 Things that differ from stock tbamud:
 
 - **Weather is area-aware.** `%weather.*%` projects through `AreaData.climate`. Set with `aedit climate <preset>` (Temperate / Tropical / Arid / Tundra / Subarctic).
-- **No alignment system.** `%actor.align%` returns `"0"`. Triggers gated on alignment will all enter the same branch.
+- **Morality slider.** `%actor.morality%` (alias `%actor.align%`) is an integer in `[-200, 200]`, with tier thresholds at `+/-100`. Use `%actor.morality_tier%` for the named tier (`evil_pure`/`evil_3`/…/`good_pure`/`neutral`). Adjust from a trigger with `morality <target> <delta>` — clamps to the legal range, ignores mob targets (mobs carry no morality field).
 - **No XP / progression mutators.** `%actor.exp(N)%` is a silent no-op pending PC progression.
 - **No equipment slots on mobs.** `wear`/`wield`/`hold` move items from inventory → equipped without slot semantics. `remove` reverses.
 - **No posture state.** `stand`/`sit`/`rest`/`sleep`/`wake` broadcast flavor only.

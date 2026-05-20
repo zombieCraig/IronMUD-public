@@ -336,6 +336,12 @@ fn show_basic_status(char, connection_id) {
         output += color_or(ansi_red(cond_str), cond_str, connection_id) + "\n";
     }
 
+    // Morality "feel" line (empty for the Neutral band).
+    let feel = get_morality_feel(char.name);
+    if feel != "" {
+        output += feel + "\n";
+    }
+
     // Gold
     let gold_str = "Gold: " + char.gold;
     output += color_or(ansi_yellow(gold_str), gold_str, connection_id) + "\n\n";

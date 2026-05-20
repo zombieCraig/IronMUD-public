@@ -37,6 +37,9 @@ const itemFlagsSchema = {
     buried: { type: "boolean", description: "Hidden in a dirt_floor room until dug up" },
     can_dig: { type: "boolean", description: "Held/equipped item lets the player dig in dirt_floor rooms" },
     detect_buried: { type: "boolean", description: "Surfaces a hint when buried items are in the room" },
+    anti_good: { type: "boolean", description: "Refuses wear by anyone with morality > 24 (CircleMUD ITEM_ANTI_GOOD)" },
+    anti_evil: { type: "boolean", description: "Refuses wear by anyone with morality < -24 (CircleMUD ITEM_ANTI_EVIL)" },
+    anti_neutral: { type: "boolean", description: "Refuses wear by anyone with -24 <= morality <= 24 (CircleMUD ITEM_ANTI_NEUTRAL)" },
   },
 } as const;
 

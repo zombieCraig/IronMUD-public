@@ -1228,7 +1228,8 @@ pub fn find_aggression_target_for_mob(
 ) -> Option<(String, bool)> {
     let aggressive = mob.flags.aggressive;
     let memory_active = mob.flags.memory && !mob.remembered_enemies.is_empty();
-    if !aggressive && !memory_active {
+    let alignment_aggro = mob.flags.aggro_good || mob.flags.aggro_evil || mob.flags.aggro_neutral;
+    if !aggressive && !memory_active && !alignment_aggro {
         return None;
     }
     let now = std::time::SystemTime::now()
@@ -1258,7 +1259,10 @@ pub fn find_aggression_target_for_mob(
             continue;
         }
         let is_remembered = remembered.contains(&key);
-        if aggressive || is_remembered {
+        let alignment_match = (mob.flags.aggro_evil && ch.morality < -24)
+            || (mob.flags.aggro_good && ch.morality > 24)
+            || (mob.flags.aggro_neutral && ch.morality >= -24 && ch.morality <= 24);
+        if aggressive || is_remembered || alignment_match {
             return Some((name, is_remembered));
         }
     }

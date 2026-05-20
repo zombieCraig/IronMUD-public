@@ -103,7 +103,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         stamina, max_stamina, mana, max_mana, breath, max_breath,
         stat_str, stat_dex, stat_con, stat_int, stat_wis, stat_cha,
         wet_level, cold_exposure, heat_exposure, illness_progress,
-        bleedout_rounds_remaining);
+        bleedout_rounds_remaining, morality);
 
     // Read-only i32 as i64
     register_i32_ro!(engine, CharacterData, gold_high_water);
@@ -269,6 +269,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 stat_int: 10,
                 stat_wis: 10,
                 stat_cha: 10,
+                // Morality (clamp -200..=200; starts neutral)
+                morality: 0,
                 // Combat system fields
                 spawn_room_id: None,
                 combat: crate::CombatState::default(),

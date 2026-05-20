@@ -589,6 +589,14 @@ pub struct ItemFlags {
     pub can_dig: bool, // Held/equipped item allows player to dig
     #[serde(default)]
     pub detect_buried: bool, // Surfaces a hint when buried items are nearby
+    // Alignment-restricted wear flags. ANTI_EVIL refuses any morality < -24,
+    // ANTI_GOOD any morality > 24, ANTI_NEUTRAL the -24..=24 band.
+    #[serde(default)]
+    pub anti_good: bool,
+    #[serde(default)]
+    pub anti_evil: bool,
+    #[serde(default)]
+    pub anti_neutral: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

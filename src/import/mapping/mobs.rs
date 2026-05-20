@@ -305,6 +305,9 @@ pub(super) fn apply_named_mob_flag(flags: &mut MobileFlags, name: &str) -> bool 
         "no_bash" => flags.no_bash = true,
         "no_summon" => flags.no_summon = true,
         "no_charm" => flags.no_charm = true,
+        "aggro_good" => flags.aggro_good = true,
+        "aggro_evil" => flags.aggro_evil = true,
+        "aggro_neutral" => flags.aggro_neutral = true,
         _ => return false,
     }
     true

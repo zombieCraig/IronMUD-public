@@ -28,6 +28,7 @@ pub mod import;
 pub mod init;
 pub mod matrix;
 pub mod migration;
+pub mod morality;
 pub mod quest;
 pub mod ratelimit;
 pub mod readline;

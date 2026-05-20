@@ -512,15 +512,16 @@ fn parses_items_into_plan() {
         "NODONATE should not surface as a warning"
     );
 
-    // Cursed amulet: NODROP set, ANTI_GOOD warns.
+    // Cursed amulet: NODROP set, ANTI_GOOD now maps to flags.anti_good and
+    // refuses wear by anyone with morality > 24 (no longer a warn).
     let amulet = plan.items.iter().find(|i| i.source_vnum == 9017).expect("amulet");
     assert!(amulet.data.flags.no_drop);
+    assert!(amulet.data.flags.anti_good, "ANTI_GOOD → flags.anti_good");
     assert!(amulet.data.wear_locations.contains(&WearLocation::Neck));
-    let anti_warn = warnings
-        .iter()
-        .find(|w| w.message.contains("ITEM_ANTI_GOOD"))
-        .expect("ANTI_GOOD warn surfaced");
-    assert_eq!(anti_warn.severity, Severity::Warn);
+    assert!(
+        !warnings.iter().any(|w| w.message.contains("ITEM_ANTI_GOOD") || w.message.contains("ANTI_GOOD")),
+        "ANTI_GOOD should no longer surface as a warning"
+    );
 
     // ITEM_BOARD (type 24) — non-stock vnum 9024 imports as Board with
     // public defaults + an Info warning steering the builder to oedit.

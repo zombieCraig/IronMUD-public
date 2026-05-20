@@ -134,6 +134,10 @@ pub struct CharacterData {
     pub stat_wis: i32, // Wisdom
     #[serde(default = "default_stat")]
     pub stat_cha: i32, // Charisma
+    // Morality slider (clamp -200..=+200; tier thresholds at +/-100; everyone starts at 0).
+    // No class sets this; only explicit Rhai/DG script calls (kills, quests, dialogue) shift it.
+    #[serde(default)]
+    pub morality: i32,
     // Combat system fields
     #[serde(default)]
     pub spawn_room_id: Option<Uuid>, // Respawn location on death

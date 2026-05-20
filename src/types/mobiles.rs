@@ -108,6 +108,15 @@ pub struct MobileFlags {
     pub vampire: bool, // Sun-burn tick eligibility, on-hit blood drain, gates `medit vampire` subcommand
     #[serde(default)]
     pub holy_vulnerable: bool, // Doubled incoming Holy damage; covers vampires, demons, holy_vulnerable undead
+    // Alignment-conditional aggression. Mirrors the ANTI_* item gates: aggro_evil
+    // attacks players with morality < -24, aggro_good morality > 24,
+    // aggro_neutral the -24..=24 band. CircleMUD MOB_AGGR_* parity.
+    #[serde(default)]
+    pub aggro_good: bool,
+    #[serde(default)]
+    pub aggro_evil: bool,
+    #[serde(default)]
+    pub aggro_neutral: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

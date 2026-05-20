@@ -1387,7 +1387,8 @@ fn is_valid_item_flag(name) {
         "preserves_contents", "preservescontents", "preserves",
         "death_only", "deathonly", "atm", "lockpick",
         "is_skinned", "skinned", "boat",
-        "buried", "can_dig", "candig", "detect_buried", "detectburied"];
+        "buried", "can_dig", "candig", "detect_buried", "detectburied",
+        "anti_good", "antigood", "anti_evil", "antievil", "anti_neutral", "antineutral"];
     for f in valid { if f == name { return true; } }
     return false;
 }
@@ -1416,7 +1417,7 @@ fn handle_flag_subcommand(item_id, parts, connection_id) {
     // Validate all names before changing anything.
     for name in flag_names {
         if !is_valid_item_flag(name) {
-            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: no_drop, no_get, no_remove, invisible, glow, hum, magical, holy, no_sell, no_donate, unique, quest_item, vending, provides_light, night_vision, fishing_rod, bait, foraging_tool, waterproof, provides_warmth, reduces_glare, medical_tool, preserves_contents, death_only, atm, broken, plant_pot, lockpick, is_skinned, boat, buried, can_dig, detect_buried");
+            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: no_drop, no_get, no_remove, invisible, glow, hum, magical, holy, no_sell, no_donate, unique, quest_item, vending, provides_light, night_vision, fishing_rod, bait, foraging_tool, waterproof, provides_warmth, reduces_glare, medical_tool, preserves_contents, death_only, atm, broken, plant_pot, lockpick, is_skinned, boat, buried, can_dig, detect_buried, anti_good, anti_evil, anti_neutral");
             return;
         }
     }
@@ -2158,6 +2159,9 @@ fn copy_item_flags(item, new_item_id) {
     if item.flags.buried { set_item_flag(new_item_id, "buried", true); }
     if item.flags.can_dig { set_item_flag(new_item_id, "can_dig", true); }
     if item.flags.detect_buried { set_item_flag(new_item_id, "detect_buried", true); }
+    if item.flags.anti_good { set_item_flag(new_item_id, "anti_good", true); }
+    if item.flags.anti_evil { set_item_flag(new_item_id, "anti_evil", true); }
+    if item.flags.anti_neutral { set_item_flag(new_item_id, "anti_neutral", true); }
 }
 
 // === Container Subcommands ===
@@ -2819,6 +2823,9 @@ fn build_flags_display(item) {
     if flags.buried { flag_str += "buried "; }
     if flags.can_dig { flag_str += "can_dig "; }
     if flags.detect_buried { flag_str += "detect_buried "; }
+    if flags.anti_good { flag_str += "anti_good "; }
+    if flags.anti_evil { flag_str += "anti_evil "; }
+    if flags.anti_neutral { flag_str += "anti_neutral "; }
     if flag_str == "" { flag_str = "(none)"; }
     output += flag_str + "\n";
     return output;
@@ -3190,6 +3197,9 @@ fn show_item_flags(item, item_id, connection_id) {
     output += build_flag_line("buried", flags.buried, "Hidden in a dirt_floor room until dug up", display_id, connection_id);
     output += build_flag_line("can_dig", flags.can_dig, "Held/equipped, lets the player dig", display_id, connection_id);
     output += build_flag_line("detect_buried", flags.detect_buried, "Hints at buried items in the room when held", display_id, connection_id);
+    output += build_flag_line("anti_good", flags.anti_good, "Refuses wear by anyone in the Good morality range (above +24)", display_id, connection_id);
+    output += build_flag_line("anti_evil", flags.anti_evil, "Refuses wear by anyone in the Evil morality range (below -24)", display_id, connection_id);
+    output += build_flag_line("anti_neutral", flags.anti_neutral, "Refuses wear by anyone in the Neutral morality band (-24..+24)", display_id, connection_id);
 
     send_mxp_message(connection_id, output);
 }

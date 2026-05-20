@@ -93,6 +93,20 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Alignment gates (ANTI_EVIL/GOOD/NEUTRAL); mirror wear.rhai.
+    if item.flags.anti_evil && char.morality < -24 {
+        send_client_message(connection_id, "The " + item.name + " burns your hand and refuses your grasp.");
+        return;
+    }
+    if item.flags.anti_good && char.morality > 24 {
+        send_client_message(connection_id, "The " + item.name + " feels cold and lifeless in your hand; it rejects you.");
+        return;
+    }
+    if item.flags.anti_neutral && char.morality >= -24 && char.morality <= 24 {
+        send_client_message(connection_id, "The " + item.name + " demands conviction you do not yet possess.");
+        return;
+    }
+
     // Check for conflicts
     let conflict_msg = "";
     if item.is_fishing_rod && item.wear_locations.len() == 0 {
