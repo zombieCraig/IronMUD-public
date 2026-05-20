@@ -106,6 +106,23 @@ fn run_command(args, connection_id) {
         }
     }
 
+    // Then other players in the room (skip self; honor invisibility)
+    if item == () {
+        let target_lower = args.to_lower();
+        let characters_in_room = get_characters_in_room(char.current_room_id);
+        let viewer_sees_invis = has_buff(char.name, "detect_invisible") || char.is_admin;
+        for other_name in characters_in_room {
+            let name_lower = other_name.to_lower();
+            if name_lower == char.name.to_lower() { continue; }
+            if name_lower != target_lower && !name_lower.starts_with(target_lower) { continue; }
+            if !viewer_sees_invis && has_buff(other_name, "invisibility") { continue; }
+            let other_char = get_character_data(other_name);
+            if other_char == () { continue; }
+            examine_show_player(other_char, connection_id);
+            return;
+        }
+    }
+
     // Then plants in room
     if item == () {
         let room_plants = get_plants_in_room(char.current_room_id);
@@ -727,4 +744,146 @@ fn examine_mobile_equipment(mobile) {
         output += "\n  <" + loc_str + "> " + item.name;
     }
     return output;
+}
+
+fn examine_player_identity(other_char) {
+    let descriptor = "";
+    let g = other_char.gender;
+    let r = other_char.race;
+    let c = other_char.class_name;
+    if g != "" { descriptor += g; }
+    if r != "" {
+        if descriptor != "" { descriptor += " "; }
+        descriptor += r;
+    }
+    if c != "" && c != "unemployed" {
+        if descriptor != "" { descriptor += " "; }
+        descriptor += c;
+    }
+    let line = "";
+    if descriptor != "" {
+        line = "\n\n" + other_char.name + ", a " + descriptor;
+        if other_char.level > 0 {
+            line += ", level " + other_char.level;
+        }
+        line += ".";
+    } else if other_char.level > 0 {
+        line = "\n\n" + other_char.name + " is level " + other_char.level + ".";
+    }
+    let title = other_char.active_title;
+    if title != "" {
+        if line == "" { line = "\n"; }
+        line += "\n" + other_char.name + " bears the title '" + title + "'.";
+    }
+    return line;
+}
+
+fn examine_player_health(other_char) {
+    if other_char.max_hp <= 0 { return ""; }
+    let percent = (other_char.hp * 100) / other_char.max_hp;
+    if percent >= 100 { return "\n\n" + other_char.name + " is in perfect health."; }
+    if percent >= 75 { return "\n\n" + other_char.name + " has a few scratches."; }
+    if percent >= 50 { return "\n\n" + other_char.name + " has some wounds."; }
+    if percent >= 25 { return "\n\n" + other_char.name + " is badly wounded."; }
+    if percent > 0 { return "\n\n" + other_char.name + " is barely holding on."; }
+    return "\n\n" + other_char.name + " appears to be dead.";
+}
+
+fn examine_player_wounds(other_char) {
+    let wounds = get_character_wounds(other_char.name);
+    if wounds.len() == 0 { return ""; }
+    let texts = [];
+    for wound in wounds {
+        if wound.level == "bruise" || wound.level == "light" { continue; }
+        let text = "a " + wound.level + " " + wound.wound_type + " on the " + wound.body_part;
+        if wound.bleeding_severity > 0 { text += " (bleeding)"; }
+        texts.push(text);
+    }
+    if texts.len() == 0 { return ""; }
+    return "\n" + examine_join_wound_texts(texts, other_char.name);
+}
+
+fn examine_player_scars(other_char) {
+    let scars_map = get_character_scars(other_char.name);
+    let keys = scars_map.keys();
+    if keys.len() == 0 { return ""; }
+    let texts = [];
+    for key in keys {
+        let count = scars_map[key];
+        if count <= 0 { continue; }
+        let desc = examine_scar_desc(count);
+        texts.push(desc + " on their " + key);
+    }
+    if texts.len() == 0 { return ""; }
+    return "\n" + examine_join_wound_texts(texts, other_char.name);
+}
+
+fn examine_player_equipment(other_char) {
+    let all_items = get_equipped_items(other_char.name);
+    if all_items.len() == 0 { return ""; }
+    let visible = [];
+    for item in all_items {
+        if item.flags.invisible { continue; }
+        visible.push(item);
+    }
+    if visible.len() == 0 { return ""; }
+    let output = "\n\n" + other_char.name + " is using:";
+    for item in visible {
+        let locs = item.wear_locations;
+        let loc_str = "";
+        if locs.len() > 0 { loc_str = locs[0]; }
+        output += "\n  <" + loc_str + "> " + item.name;
+    }
+    return output;
+}
+
+fn examine_show_player(other_char, connection_id) {
+    let term_width = get_terminal_width(connection_id);
+    let output = other_char.name + "\n";
+    output += "--------------------\n";
+
+    if other_char.god_mode {
+        output += other_char.name + " is surrounded by a divine glow.\n";
+    }
+
+    let desc = other_char.short_description;
+    if desc == "" {
+        desc = "You see nothing special about " + other_char.name + ".";
+    }
+    output += wrap_text(desc, term_width);
+
+    output += examine_player_identity(other_char);
+    output += examine_player_health(other_char);
+    output += examine_player_wounds(other_char);
+    output += examine_player_scars(other_char);
+    output += examine_player_equipment(other_char);
+
+    // Position cue
+    let p = other_char.position;
+    if p == "sleeping" {
+        output += "\n" + other_char.name + " is fast asleep.";
+    } else if p == "sitting" {
+        output += "\n" + other_char.name + " is sitting on the ground.";
+    } else if p == "swimming" {
+        output += "\n" + other_char.name + " is treading water.";
+    }
+
+    // Status buffs visible at a glance (mirrors examine_show_mobile cues).
+    if has_buff(other_char.name, "sleep") {
+        output += "\n" + other_char.name + " is in a magical slumber.";
+    }
+    if has_buff(other_char.name, "blind") {
+        output += "\n" + other_char.name + "'s eyes are clouded and unseeing.";
+    }
+    if has_buff(other_char.name, "curse") {
+        output += "\n" + other_char.name + " is wreathed in a faint shadow of ill fortune.";
+    }
+    if has_buff(other_char.name, "damage_reduction") {
+        output += "\n" + other_char.name + " is surrounded by a faint white aura.";
+    }
+    if has_buff(other_char.name, "invisibility") {
+        output += "\n" + other_char.name + " flickers, barely visible to the eye.";
+    }
+
+    send_client_message(connection_id, output);
 }

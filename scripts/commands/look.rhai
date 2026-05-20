@@ -526,6 +526,70 @@ fn is_item_visible(item, visible_slots) {
     return false;
 }
 
+// Build "<Name>, a male human warrior, level 5." identity line for a player.
+// Omits any piece that's empty / unset so partially-built characters still read cleanly.
+fn build_player_identity_line(other_char) {
+    let descriptor = "";
+    let g = other_char.gender;
+    let r = other_char.race;
+    let c = other_char.class_name;
+    if g != "" { descriptor += g; }
+    if r != "" {
+        if descriptor != "" { descriptor += " "; }
+        descriptor += r;
+    }
+    if c != "" && c != "unemployed" {
+        if descriptor != "" { descriptor += " "; }
+        descriptor += c;
+    }
+    let line = "";
+    if descriptor != "" {
+        line = other_char.name + ", a " + descriptor;
+        if other_char.level > 0 {
+            line += ", level " + other_char.level;
+        }
+        line += ".";
+    } else if other_char.level > 0 {
+        line = other_char.name + " is level " + other_char.level + ".";
+    }
+    let title = other_char.active_title;
+    if title != "" {
+        if line != "" { line += "\n"; }
+        line += other_char.name + " bears the title '" + title + "'.";
+    }
+    return line;
+}
+
+fn build_player_position_text(other_char) {
+    let p = other_char.position;
+    if p == "sleeping" { return other_char.name + " is here, sleeping soundly."; }
+    if p == "sitting" { return other_char.name + " is sitting on the ground."; }
+    if p == "swimming" { return other_char.name + " is treading water nearby."; }
+    return "";
+}
+
+// Player-side counterpart to format_visible_wounds — same shape as get_mobile_wounds,
+// so we reuse the moderate+ filter and grammar.
+fn format_player_wounds(name) {
+    let wounds = get_character_wounds(name);
+    if wounds.len() == 0 { return ""; }
+    let texts = [];
+    for wound in wounds {
+        if wound.level == "bruise" || wound.level == "light" { continue; }
+        let text = "a " + wound.level + " " + wound.wound_type + " on the " + wound.body_part;
+        if wound.bleeding_severity > 0 { text += " (bleeding)"; }
+        texts.push(text);
+    }
+    if texts.len() == 0 { return ""; }
+    let result = name + " has " + texts[0];
+    for i in 1..texts.len() {
+        if i == texts.len() - 1 { result += " and "; }
+        else { result += ", "; }
+        result += texts[i];
+    }
+    return result + ".";
+}
+
 // Show a player's description with their visible equipment
 fn show_player_description(other_char, char_name, term_width, connection_id) {
     let output = "";
@@ -541,6 +605,30 @@ fn show_player_description(other_char, char_name, term_width, connection_id) {
         desc = "You see nothing special about " + other_char.name + ".";
     }
     output += wrap_text(desc, term_width);
+
+    // Identity line: race / gender / class / level / title
+    let identity = build_player_identity_line(other_char);
+    if identity != "" {
+        output += "\n\n" + identity;
+    }
+
+    // Position cue
+    let pos_text = build_player_position_text(other_char);
+    if pos_text != "" {
+        output += "\n" + pos_text;
+    }
+
+    // Health status
+    let health = get_health_status(other_char.hp, other_char.max_hp, other_char.name);
+    if health != "" {
+        output += "\n" + health;
+    }
+
+    // Visible wounds
+    let wounds_text = format_player_wounds(other_char.name);
+    if wounds_text != "" {
+        output += "\n" + wounds_text;
+    }
 
     // Show scars
     let scars_map = get_character_scars(other_char.name);
