@@ -2664,6 +2664,113 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         },
     );
 
+    // set_*_dg_trigger_type(id, index, new_type) -> String
+    // Change the trigger type without touching the body. Returns "" on
+    // success, an error message on failure (bad UUID, out-of-range index,
+    // unknown type, proto-attached instance, or non-DG trigger).
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_mobile_dg_trigger_type",
+        move |mobile_id: String, index: i64, new_type: String| -> String {
+            let uid = match uuid::Uuid::parse_str(&mobile_id) {
+                Ok(u) => u,
+                Err(_) => return "invalid mobile id".to_string(),
+            };
+            let ttype = match parse_mobile_trigger_type(&new_type) {
+                Some(t) => t,
+                None => return format!("unknown trigger type '{}'", new_type),
+            };
+            let mut err = String::new();
+            let _ = cloned_db.update_mobile(&uid, |m| {
+                let Some(t) = m.triggers.get_mut(index as usize) else {
+                    err = format!("no trigger at index {}", index);
+                    return;
+                };
+                if t.dg_body.is_none() {
+                    err = "trigger at that index has no DG body (use trigger remove + re-add for template triggers)".to_string();
+                    return;
+                }
+                if let Some(proto) = &t.source_proto_vnum {
+                    err = format!(
+                        "trigger is attached from proto '{}'; detach first or edit the proto",
+                        proto
+                    );
+                    return;
+                }
+                t.trigger_type = ttype;
+            });
+            err
+        },
+    );
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_item_dg_trigger_type",
+        move |item_id: String, index: i64, new_type: String| -> String {
+            let uid = match uuid::Uuid::parse_str(&item_id) {
+                Ok(u) => u,
+                Err(_) => return "invalid item id".to_string(),
+            };
+            let ttype = match parse_item_trigger_type(&new_type) {
+                Some(t) => t,
+                None => return format!("unknown trigger type '{}'", new_type),
+            };
+            let mut err = String::new();
+            let _ = cloned_db.update_item(&uid, |it| {
+                let Some(t) = it.triggers.get_mut(index as usize) else {
+                    err = format!("no trigger at index {}", index);
+                    return;
+                };
+                if t.dg_body.is_none() {
+                    err = "trigger at that index has no DG body (use trigger remove + re-add for template triggers)".to_string();
+                    return;
+                }
+                if let Some(proto) = &t.source_proto_vnum {
+                    err = format!(
+                        "trigger is attached from proto '{}'; detach first or edit the proto",
+                        proto
+                    );
+                    return;
+                }
+                t.trigger_type = ttype;
+            });
+            err
+        },
+    );
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_room_dg_trigger_type",
+        move |room_id: String, index: i64, new_type: String| -> String {
+            let uid = match uuid::Uuid::parse_str(&room_id) {
+                Ok(u) => u,
+                Err(_) => return "invalid room id".to_string(),
+            };
+            let ttype = match parse_room_trigger_type(&new_type) {
+                Some(t) => t,
+                None => return format!("unknown trigger type '{}'", new_type),
+            };
+            let mut err = String::new();
+            let _ = cloned_db.update_room(&uid, |r| {
+                let Some(t) = r.triggers.get_mut(index as usize) else {
+                    err = format!("no trigger at index {}", index);
+                    return;
+                };
+                if t.dg_body.is_none() {
+                    err = "trigger at that index has no DG body (use trigger remove + re-add for template triggers)".to_string();
+                    return;
+                }
+                if let Some(proto) = &t.source_proto_vnum {
+                    err = format!(
+                        "trigger is attached from proto '{}'; detach first or edit the proto",
+                        proto
+                    );
+                    return;
+                }
+                t.trigger_type = ttype;
+            });
+            err
+        },
+    );
+
     // attach_dg_trigger_proto_to_<kind>(target_id, vnum) -> bool.
     // Resolves the prototype from the dg_trigger_protos sled tree and
     // pushes a fully-bodied trigger onto the target's triggers list.

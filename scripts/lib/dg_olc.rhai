@@ -17,6 +17,7 @@ fn handle(host_kind, host_id, display_id, action, rest, connection_id) {
     if act == "view" { view_trigger(host_kind, host_id, rest, connection_id); return; }
     if act == "add"  { add_trigger(host_kind, host_id, rest, connection_id); return; }
     if act == "edit" { edit_trigger(host_kind, host_id, rest, connection_id); return; }
+    if act == "retype" { retype_trigger(host_kind, host_id, rest, connection_id); return; }
     if act == "attach" { attach_proto(host_kind, host_id, rest, connection_id); return; }
     if act == "protos" { protos_list(connection_id); return; }
     if act == "elevate" { elevate_trigger(host_kind, host_id, rest, connection_id); return; }
@@ -55,6 +56,7 @@ fn show_help(host_kind, display_id, connection_id) {
         + "  " + cmd + " " + id_part + "trigger dg view <idx>     - Show body\n"
         + "  " + cmd + " " + id_part + "trigger dg add <type> [name]  - Append empty body, open editor\n"
         + "  " + cmd + " " + id_part + "trigger dg edit <idx>     - Edit body (saves to proto if attached)\n"
+        + "  " + cmd + " " + id_part + "trigger dg retype <idx> <type>  - Change trigger type, keep body\n"
         + "  " + cmd + " " + id_part + "trigger dg attach <vnum>  - Attach an imported prototype by vnum\n"
         + "  " + cmd + " " + id_part + "trigger dg detach <idx>   - Break the proto link on instance (allow divergence)\n"
         + "  " + cmd + " " + id_part + "trigger dg makeproto <idx> <vnum>  - Promote host-local trigger to a proto\n"
@@ -209,6 +211,28 @@ fn add_trigger(host_kind, host_id, rest, connection_id) {
         return;
     }
     open_editor(host_kind, host_id, new_idx, connection_id);
+}
+
+fn retype_trigger(host_kind, host_id, rest, connection_id) {
+    if rest.len() < 2 {
+        send_client_message(connection_id,
+            "Usage: trigger dg retype <index> <new_type>\n"
+            + "Valid types for " + host_kind + ": " + valid_types_for(host_kind));
+        return;
+    }
+    let idx = try_parse_int(rest[0]);
+    if idx == () { send_client_message(connection_id, "Index must be a number."); return; }
+    let new_type = rest[1];
+    let err = "";
+    if host_kind == "mobile" { err = set_mobile_dg_trigger_type(host_id, idx, new_type); }
+    else if host_kind == "item" { err = set_item_dg_trigger_type(host_id, idx, new_type); }
+    else { err = set_room_dg_trigger_type(host_id, idx, new_type); }
+    if err != "" {
+        send_client_message(connection_id, "Could not retype: " + err);
+        return;
+    }
+    send_client_message(connection_id,
+        "Trigger #" + idx + " retyped to '" + new_type + "'.");
 }
 
 fn edit_trigger(host_kind, host_id, rest, connection_id) {
