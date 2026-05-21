@@ -41,9 +41,10 @@ fn proto_dispatch(host_kind, host_id, rest, connection_id) {
     if sub == "new"    { proto_new(host_kind, tail, connection_id); return; }
     if sub == "view"   { proto_view(tail, connection_id); return; }
     if sub == "edit"   { proto_edit(tail, connection_id); return; }
+    if sub == "retype" { proto_retype(tail, connection_id); return; }
     if sub == "delete" { proto_delete(tail, connection_id); return; }
     send_client_message(connection_id,
-        "Unknown 'trigger dg proto' subcommand. Use: new, view, edit, delete.");
+        "Unknown 'trigger dg proto' subcommand. Use: new, view, edit, retype, delete.");
 }
 
 fn show_help(host_kind, display_id, connection_id) {
@@ -65,6 +66,7 @@ fn show_help(host_kind, display_id, connection_id) {
         + "  " + cmd + " " + id_part + "trigger dg proto new <vnum> <flags> [name]  - Create empty proto, open editor\n"
         + "  " + cmd + " " + id_part + "trigger dg proto view <vnum>   - Show proto metadata + body\n"
         + "  " + cmd + " " + id_part + "trigger dg proto edit <vnum>   - Open proto body editor (refreshes siblings on save)\n"
+        + "  " + cmd + " " + id_part + "trigger dg proto retype <vnum> <flags>  - Change proto's trigger-type flag letters, refresh siblings\n"
         + "  " + cmd + " " + id_part + "trigger dg proto delete <vnum> - (admin) Orphan attached instances and delete proto\n"
         + "\nValid types for " + host_kind + ": " + valid_types_for(host_kind)
         + "\nSee docs/builder/dg-scripts.md#prototypes for the shared-script model.";
@@ -350,6 +352,26 @@ fn proto_view(rest, connection_id) {
         + "  Attached: " + proto["attached"] + " live instance(s)\n"
         + "--- body ---\n" + proto["body"];
     send_client_message(connection_id, output);
+}
+
+fn proto_retype(rest, connection_id) {
+    if rest.len() < 2 {
+        send_client_message(connection_id,
+            "Usage: trigger dg proto retype <vnum> <flags>\n"
+            + "Flags: letter string (e.g. 'r' = OnReceive on a mob proto).");
+        return;
+    }
+    let vnum = rest[0];
+    let flags = rest[1];
+    let result = dg_proto_set_flags(vnum, flags);
+    if result["ok"] {
+        let n = result["refreshed"];
+        send_client_message(connection_id,
+            "Proto '" + vnum + "' flags set to '" + flags + "'. Refreshed " + n + " instance(s).");
+    } else {
+        send_client_message(connection_id,
+            "Could not retype proto '" + vnum + "': " + result["error"]);
+    }
 }
 
 fn proto_edit(rest, connection_id) {

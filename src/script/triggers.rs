@@ -3011,6 +3011,68 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         },
     );
 
+    // dg_proto_set_flags(vnum, new_flags) -> Map { ok, error, refreshed }
+    //   Mutate a proto's letter-flag string and re-derive trigger types on
+    //   all attached instances via the refresh sweep. Validates that the
+    //   new flag string parses to at least one type for the proto's kind
+    //   (rejects e.g. `proto_set_flags mob_proto "xyz"`). Returns `ok=true`
+    //   with `refreshed` count on success; `ok=false` with `error` set on
+    //   unknown vnum, empty/invalid flags, or save failure.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "dg_proto_set_flags",
+        move |vnum: String, new_flags: String| -> rhai::Map {
+            let mut result = rhai::Map::new();
+            let new_flags = new_flags.trim().to_string();
+            if new_flags.is_empty() {
+                result.insert("ok".into(), false.into());
+                result.insert("error".into(), "flags cannot be empty".to_string().into());
+                return result;
+            }
+            let mut proto = match cloned_db.get_dg_trigger_proto(vnum.trim()) {
+                Ok(Some(p)) => p,
+                _ => {
+                    result.insert("ok".into(), false.into());
+                    result.insert("error".into(), "unknown proto vnum".to_string().into());
+                    return result;
+                }
+            };
+            // Validate flags parse to at least one trigger type for this kind.
+            use crate::import::engines::tba::trg_map;
+            let valid = match proto.attach_kind {
+                crate::types::DgAttachKind::Mob => {
+                    !trg_map::mobile_trigger_types(&new_flags).is_empty()
+                }
+                crate::types::DgAttachKind::Obj => {
+                    !trg_map::item_trigger_types(&new_flags).is_empty()
+                }
+                crate::types::DgAttachKind::Room => {
+                    !trg_map::room_trigger_types(&new_flags).is_empty()
+                }
+            };
+            if !valid {
+                result.insert("ok".into(), false.into());
+                result.insert(
+                    "error".into(),
+                    format!("flags '{}' don't map to any valid trigger type for this kind", new_flags).into(),
+                );
+                return result;
+            }
+            proto.flags = new_flags;
+            if cloned_db.save_dg_trigger_proto(&proto).is_err() {
+                result.insert("ok".into(), false.into());
+                result.insert("error".into(), "save failed".to_string().into());
+                return result;
+            }
+            let refreshed = cloned_db
+                .refresh_attached_dg_triggers(&proto)
+                .unwrap_or(0);
+            result.insert("ok".into(), true.into());
+            result.insert("refreshed".into(), (refreshed as i64).into());
+            result
+        },
+    );
+
     // dg_proto_delete(vnum) -> int (count of orphaned trigger instances)
     //   Removes the proto from the registry and orphans every attached
     //   instance (clears source_proto_vnum, preserves body). Returns -1
