@@ -13,6 +13,7 @@
 //   achedit <key> reward title <text>      # Set rewarded title
 //   achedit <key> reward gold <amount>     # Set gold reward (0 clears)
 //   achedit <key> reward item <vnum>       # Set item reward (empty clears)
+//   achedit <key> reward morality <delta>  # Shift player morality at unlock (+good/-evil, 0 clears)
 //   achedit <key> criterion manual         # Set manual award criterion
 //   achedit <key> criterion counter <k> <n> # Set counter criterion (key + threshold)
 //   achedit <key> criterion skill <k> <n>  # Set skill criterion (skill + level)
@@ -165,6 +166,14 @@ fn handle_reward(key, parts, connection_id) {
         let vnum = if parts.len() < 4 { "" } else { parts[3] };
         let err = set_achievement_reward_item(key, vnum);
         report(err, "Reward item updated.", connection_id);
+    } else if kind == "morality" {
+        if parts.len() < 4 {
+            send_client_message(connection_id, "Usage: achedit <key> reward morality <delta>");
+            return;
+        }
+        let delta = try_parse_int(parts[3]);
+        let err = set_achievement_reward_morality(key, delta);
+        report(err, "Reward morality delta updated.", connection_id);
     } else {
         send_client_message(connection_id, "Unknown reward kind: " + kind);
     }
@@ -263,6 +272,9 @@ fn show_achievement(key, connection_id) {
     if rew["item_vnum"] != "" {
         out += olc::c_label("  Item:      ", connection_id) + rew["item_vnum"] + "\n";
     }
+    if rew["morality_delta"] != 0 {
+        out += olc::c_label("  Morality:  ", connection_id) + rew["morality_delta"] + "\n";
+    }
 
     send_client_message(connection_id, out);
 }
@@ -280,6 +292,7 @@ fn send_help(connection_id) {
         "  achedit <key> reward title <text>      # Set rewarded title",
         "  achedit <key> reward gold <amount>     # Set gold reward",
         "  achedit <key> reward item <vnum>       # Set item reward",
+        "  achedit <key> reward morality <delta>  # Shift morality at unlock (+good/-evil, 0 clears)",
         "  achedit <key> criterion manual         # Set manual award criterion",
         "  achedit <key> criterion counter <k> <n> # Set counter criterion",
         "  achedit <key> criterion skill <k> <n>  # Set skill criterion",

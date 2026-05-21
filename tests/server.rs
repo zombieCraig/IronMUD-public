@@ -6443,6 +6443,153 @@ fn test_spell_progress_field_defaults_empty_and_persists() {
 }
 
 #[test]
+fn test_achievement_morality_delta_default_is_zero_and_round_trips() {
+    // AchievementReward without the new field deserializes (#[serde(default)])
+    // and with it round-trips.
+    let bare: ironmud::types::AchievementReward =
+        serde_json::from_value(serde_json::json!({ "title": "the Brave" })).expect("bare parses");
+    assert_eq!(bare.morality_delta, 0);
+
+    let evil: ironmud::types::AchievementReward = serde_json::from_value(
+        serde_json::json!({ "title": "the Cruel", "morality_delta": -50 }),
+    )
+    .expect("evil parses");
+    assert_eq!(evil.morality_delta, -50);
+
+    // Zero is skipped from serialization to keep JSON files clean.
+    let serialized = serde_json::to_value(&bare).expect("serialize");
+    assert!(
+        serialized.get("morality_delta").is_none(),
+        "zero morality_delta should not serialize"
+    );
+}
+
+#[test]
+fn test_achievement_unlock_applies_morality_delta_clamped() {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+        // achievements default to enabled — no setting needed.
+
+        // Manual-criterion achievement with a strong evil shift.
+        let def = ironmud::types::AchievementDef {
+            key: "dark_deed".to_string(),
+            name: "Dark Deed".to_string(),
+            description: "You did something cruel.".to_string(),
+            category: ironmud::types::AchievementCategory::Social,
+            criterion: ironmud::types::AchievementCriterion::Manual,
+            reward: ironmud::types::AchievementReward {
+                title: "the Cruel".to_string(),
+                item_vnum: None,
+                gold: None,
+                morality_delta: -50,
+            },
+            hidden: false,
+            source: ironmud::types::AchievementSource::Db { author: String::new() },
+        };
+        db.save_achievement(def).expect("save def");
+
+        // Character starts at morality 10.
+        let mut ch: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "TestEvil",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ch.morality = 10;
+        db.save_character_data(ch.clone()).expect("save char");
+
+        // No live session — sync/send become no-ops. That's fine here.
+        let conns: ironmud::SharedConnections = Arc::new(Mutex::new(HashMap::new()));
+
+        let unlocked = ironmud::script::achievements::award_manual_via_db(
+            &db,
+            &conns,
+            "TestEvil",
+            "dark_deed",
+        );
+        assert!(unlocked, "first manual award returns true");
+
+        let after = db.get_character_data("testevil").expect("read").expect("present");
+        assert_eq!(after.morality, -40, "morality shifted by -50, clamped");
+        assert!(after.achievements_unlocked.contains_key("dark_deed"));
+
+        // Second award is a no-op (already unlocked); morality unchanged.
+        let again = ironmud::script::achievements::award_manual_via_db(
+            &db,
+            &conns,
+            "TestEvil",
+            "dark_deed",
+        );
+        assert!(!again, "second award returns false (already unlocked)");
+        let after2 = db.get_character_data("testevil").expect("read").expect("present");
+        assert_eq!(after2.morality, -40, "second award does not re-apply delta");
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_achievement_morality_delta_clamps_at_floor() {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        let def = ironmud::types::AchievementDef {
+            key: "the_abyss".to_string(),
+            name: "Into the Abyss".to_string(),
+            description: "".to_string(),
+            category: ironmud::types::AchievementCategory::Social,
+            criterion: ironmud::types::AchievementCriterion::Manual,
+            reward: ironmud::types::AchievementReward {
+                title: "of the Abyss".to_string(),
+                item_vnum: None,
+                gold: None,
+                morality_delta: -200, // huge swing
+            },
+            hidden: false,
+            source: ironmud::types::AchievementSource::Db { author: String::new() },
+        };
+        db.save_achievement(def).expect("save def");
+
+        let mut ch: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "TestFloor",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        ch.morality = -180;
+        db.save_character_data(ch.clone()).expect("save char");
+
+        let conns: ironmud::SharedConnections = Arc::new(Mutex::new(HashMap::new()));
+
+        assert!(ironmud::script::achievements::award_manual_via_db(
+            &db,
+            &conns,
+            "TestFloor",
+            "the_abyss",
+        ));
+
+        let after = db.get_character_data("testfloor").expect("read").expect("present");
+        assert_eq!(after.morality, -200, "clamped at MORALITY_MIN");
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_spell_definition_evolves_to_and_new_scaling_fields() {
     // SpellDefinition without the new fields deserializes (all #[serde(default)])
     // and with them round-trips.

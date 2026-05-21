@@ -96,6 +96,26 @@ pub fn clamp(v: i32) -> i32 {
     v.clamp(MORALITY_MIN, MORALITY_MAX)
 }
 
+/// Add `delta` to `current` morality, clamped into the legal range.
+/// Returns the new value. Pure — caller is responsible for writing it
+/// back onto the character and persisting.
+pub fn adjust(current: i32, delta: i32) -> i32 {
+    clamp(current.saturating_add(delta))
+}
+
+/// Returns the tier-shift announcement line for a morality move from
+/// `before` to `after`, or `None` if the move didn't cross a tier
+/// boundary. Used to surface dramatic shifts (e.g. crossing into Good3
+/// after a virtuous achievement) without spamming on small nudges.
+pub fn tier_shift_message(before: i32, after: i32) -> Option<&'static str> {
+    let from = MoralityTier::from_value(before);
+    let to = MoralityTier::from_value(after);
+    if from == to {
+        return None;
+    }
+    feel_message(after)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

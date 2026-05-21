@@ -1312,6 +1312,8 @@ export interface AchievementReward {
   title: string;
   item_vnum?: string | null;
   gold?: number | null;
+  /** Morality shift applied at unlock. +good / -evil. Clamped into [-200, 200]. */
+  morality_delta?: number;
 }
 
 export type AchievementSource =

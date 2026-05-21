@@ -31,6 +31,7 @@ fn make_def_counter(key: &str, name: &str, counter: &str, threshold: u32, title:
             title: title.to_string(),
             item_vnum: None,
             gold: None,
+            morality_delta: 0,
         },
         hidden: false,
         source: AchievementSource::Json {
@@ -53,6 +54,7 @@ fn make_def_skill(key: &str, name: &str, skill: &str, level: i32, title: &str) -
             title: title.to_string(),
             item_vnum: None,
             gold: None,
+            morality_delta: 0,
         },
         hidden: false,
         source: AchievementSource::Json {
@@ -72,6 +74,7 @@ fn make_def_manual(key: &str, name: &str, title: &str) -> AchievementDef {
             title: title.to_string(),
             item_vnum: None,
             gold: None,
+            morality_delta: 0,
         },
         hidden: false,
         source: AchievementSource::Db {

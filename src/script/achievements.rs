@@ -188,6 +188,14 @@ fn unlock_with_def(db: &Db, connections: &SharedConnections, def: &AchievementDe
         );
     }
 
+    let morality_shift = if def.reward.morality_delta != 0 {
+        let before = ch.morality;
+        ch.morality = crate::morality::adjust(before, def.reward.morality_delta);
+        Some((before, ch.morality))
+    } else {
+        None
+    };
+
     if db.save_character_data(ch.clone()).is_err() {
         return false;
     }
@@ -201,6 +209,11 @@ fn unlock_with_def(db: &Db, connections: &SharedConnections, def: &AchievementDe
     if let Some(gold) = def.reward.gold {
         if gold > 0 {
             send_to_player(connections, player_name, &format!("You receive {} gold.", gold));
+        }
+    }
+    if let Some((before, after)) = morality_shift {
+        if let Some(line) = crate::morality::tier_shift_message(before, after) {
+            send_to_player(connections, player_name, line);
         }
     }
 
@@ -653,6 +666,18 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         });
     }
 
+    // set_achievement_reward_morality(key, delta) -> String
+    // Positive pushes toward Good, negative toward Evil; clamped at unlock.
+    {
+        let db = db.clone();
+        let state = state.clone();
+        engine.register_fn("set_achievement_reward_morality", move |key: String, delta: i64| -> String {
+            update_def(&db, &state, &key, |d| {
+                d.reward.morality_delta = (delta as i32).clamp(crate::morality::MORALITY_MIN, crate::morality::MORALITY_MAX);
+            })
+        });
+    }
+
     // set_achievement_criterion_manual(key) -> String
     {
         let db = db.clone();
@@ -786,6 +811,7 @@ fn achievement_to_map(def: &AchievementDef) -> Map {
     r.insert("title".into(), Dynamic::from(def.reward.title.clone()));
     r.insert("gold".into(), Dynamic::from(def.reward.gold.unwrap_or(0) as i64));
     r.insert("item_vnum".into(), Dynamic::from(def.reward.item_vnum.clone().unwrap_or_default()));
+    r.insert("morality_delta".into(), Dynamic::from(def.reward.morality_delta as i64));
     m.insert("reward".into(), Dynamic::from(r));
     m.insert("title".into(), Dynamic::from(def.reward.title.clone())); // Legacy compat for achievements.rhai
 

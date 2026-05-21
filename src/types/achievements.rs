@@ -46,6 +46,15 @@ pub struct AchievementReward {
     /// Optional gold lump-sum.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gold: Option<i32>,
+    /// Optional morality shift applied at unlock. Positive pushes toward
+    /// Good, negative toward Evil. Clamped into `[-200, 200]` by the
+    /// unlock pipeline. Defaults to 0 (no shift).
+    #[serde(default, skip_serializing_if = "is_zero_i32")]
+    pub morality_delta: i32,
+}
+
+fn is_zero_i32(v: &i32) -> bool {
+    *v == 0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

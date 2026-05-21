@@ -60,6 +60,11 @@ const rewardSchema = {
     title: { type: "string", description: "Granted title" },
     item_vnum: { type: "string", description: "Optional item reward" },
     gold: { type: "number", description: "Optional gold reward" },
+    morality_delta: {
+      type: "number",
+      description:
+        "Morality shift applied at unlock. Positive pushes toward Good, negative toward Evil. Clamped into [-200, 200]. Defaults to 0.",
+    },
   },
   required: ["title"],
 };
