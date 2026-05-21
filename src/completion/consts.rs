@@ -169,7 +169,35 @@ pub const VENDING_SUBCOMMANDS: &[&str] = &["stock", "sellrate"];
 
 /// Trigger actions
 pub const TRIGGER_ACTIONS: &[&str] = &[
-    "list", "add", "remove", "enable", "disable", "chance", "interval", "test", "view",
+    "list", "add", "remove", "enable", "disable", "chance", "interval", "test", "view", "dg",
+];
+
+/// `trigger dg <subcmd>` family
+pub const TRIGGER_DG_SUBCOMMANDS: &[&str] = &[
+    "list", "view", "add", "edit", "retype", "attach", "detach", "makeproto",
+    "elevate", "protos", "proto",
+];
+
+/// `trigger dg proto <subcmd>` family
+pub const TRIGGER_DG_PROTO_SUBCOMMANDS: &[&str] = &["new", "view", "edit", "retype", "delete"];
+
+/// DG trigger types accepted by `trigger dg add <type>` and `trigger dg retype <idx> <type>`
+/// on mobile hosts. Friendly names; mirrors `valid_types_for("mobile")` in dg_olc.rhai.
+pub const DG_MOBILE_TRIGGER_TYPES: &[&str] = &[
+    "greet", "attack", "death", "say", "idle", "always", "flee", "fight",
+    "hitprcnt", "receive", "bribe", "load", "command",
+];
+
+/// DG trigger types accepted on item hosts.
+pub const DG_ITEM_TRIGGER_TYPES: &[&str] = &[
+    "get", "drop", "use", "examine", "prompt", "load", "command",
+    "wear", "wield", "remove",
+];
+
+/// DG trigger types accepted on room hosts.
+pub const DG_ROOM_TRIGGER_TYPES: &[&str] = &[
+    "enter", "exit", "look", "periodic", "time_change", "weather_change",
+    "season_change", "month_change", "command",
 ];
 
 /// Combat spells subcommand actions (medit <id> combat_spells <action>)
@@ -263,7 +291,7 @@ pub const OEDIT_SUBCOMMANDS: &[&str] = &[
 ];
 
 /// Item trigger actions
-pub const ITEM_TRIGGER_ACTIONS: &[&str] = &["list", "add", "remove", "enable", "disable", "chance", "test", "view"];
+pub const ITEM_TRIGGER_ACTIONS: &[&str] = &["list", "add", "remove", "enable", "disable", "chance", "test", "view", "dg"];
 
 /// Item trigger types
 pub const ITEM_TRIGGER_TYPES: &[&str] =
@@ -361,7 +389,7 @@ pub const REDIT_SUBCOMMANDS: &[&str] = &[
 
 /// Room trigger actions
 pub const ROOM_TRIGGER_ACTIONS: &[&str] = &[
-    "list", "add", "remove", "enable", "disable", "interval", "chance", "test", "view",
+    "list", "add", "remove", "enable", "disable", "interval", "chance", "test", "view", "dg",
 ];
 
 /// Room trigger types
@@ -762,7 +790,7 @@ pub const ACHIEVEMENT_CATEGORIES: &[&str] = &[
 ];
 
 /// Achievement reward subcommands
-pub const ACHIEVEMENT_REWARD_ACTIONS: &[&str] = &["title", "gold", "item"];
+pub const ACHIEVEMENT_REWARD_ACTIONS: &[&str] = &["title", "gold", "item", "morality"];
 
 /// Achievement criterion subcommands
 pub const ACHIEVEMENT_CRITERION_ACTIONS: &[&str] = &["manual", "counter", "skill", "recipe", "lease", "gold"];

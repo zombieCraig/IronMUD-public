@@ -39,11 +39,46 @@ Subcommands:
 | `add <type> [name]` | Create a new empty DG trigger of `<type>`, open the editor |
 | `view <idx>` | Paginated read-only view of the body |
 | `edit <idx>` | Re-open the editor on an existing DG trigger |
+| `retype <idx> <type>` | Change the trigger's type without touching the body (see [Retyping triggers](#retyping-triggers)) |
 | `attach <vnum>` | Attach an imported DG trigger prototype (from `.trg` import) |
+| `detach <idx>` | Break the proto link on a single instance (allows per-instance divergence) |
+| `makeproto <idx> <vnum>` | Promote a host-local trigger to a proto so siblings can attach |
 | `protos` | List the imported DG trigger prototypes by vnum |
+| `proto new <vnum> <flags> [name]` | Create empty proto, open editor |
+| `proto view <vnum>` | Show proto metadata + body |
+| `proto edit <vnum>` | Edit proto body; refresh sweep updates all attached instances on save |
+| `proto retype <vnum> <type-or-flags>` | Change a proto's trigger-type and refresh attached siblings (see [Retyping triggers](#retyping-triggers)) |
+| `proto delete <vnum>` | (admin) Orphan attached instances and delete the proto |
 | `list` | Show all DG triggers on this entity |
 
 The editor uses the same OLC mode as `oedit note` — type lines, then `@` on a line by itself to save, or `~` to cancel. 32 KB cap.
+
+### Retyping triggers
+
+Choosing the wrong trigger type is a common bug — a body authored for "item given to mob" needs `on_receive`, but typing it as `on_bribe` (which fires on gold gifts) makes the script silently never run. `retype` swaps the type in place, no re-paste required.
+
+**For a host-local trigger:**
+
+```
+> medit guard trigger dg retype 1 receive
+Trigger #1 retyped to 'receive'.
+```
+
+Accepts the same friendly type names as `add` (see the [Trigger types](#trigger-types) tables). Refuses if the trigger has no DG body (template/Rhai triggers) or is attached from a prototype (use proto retype below).
+
+**For a proto-attached instance:**
+
+```
+> medit guard trigger dg proto retype mob_greet_pack receive
+Proto 'mob_greet_pack' retyped (input: 'receive'). Refreshed 3 instance(s).
+```
+
+Mutates the proto's flag letters and runs the refresh sweep, so every attached sibling re-derives its type from the new flags. Accepts either:
+
+- **Friendly type names** (recommended): `receive`, `bribe`, `greet say` (multi-type, space-separated)
+- **CircleMUD letter-flag string**: `j` = OnReceive, `m` = OnBribe (bit positions, not mnemonics — `b` is OnIdle, not bribe). Use this only for parity with imported `.trg` content.
+
+If you don't intend to change *all* attached siblings, run `trigger dg detach <idx>` on the instance you want to diverge first, then `trigger dg retype` on the now-host-local copy.
 
 ## Trigger types
 

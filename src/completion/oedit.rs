@@ -59,6 +59,68 @@ pub(super) fn complete_oedit(
         6 if completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => {
             filter_static(ITEM_TRIGGER_TEMPLATES, &partial, CompletionType::TriggerScript)
         }
+        // oedit <vnum> trigger dg - show dg subcommands
+        4 if !completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "dg" => {
+            all_static(TRIGGER_DG_SUBCOMMANDS, CompletionType::TriggerDgSubcommand)
+        }
+        // oedit <vnum> trigger dg <partial_subcmd>
+        5 if completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "dg" => {
+            filter_static(TRIGGER_DG_SUBCOMMANDS, &partial, CompletionType::TriggerDgSubcommand)
+        }
+        // oedit <vnum> trigger dg add - dg item trigger types
+        5 if !completing_word
+            && words[2].to_lowercase() == "trigger"
+            && words[3].to_lowercase() == "dg"
+            && words[4].to_lowercase() == "add" =>
+        {
+            all_static(DG_ITEM_TRIGGER_TYPES, CompletionType::DgItemTriggerType)
+        }
+        6 if completing_word
+            && words[2].to_lowercase() == "trigger"
+            && words[3].to_lowercase() == "dg"
+            && words[4].to_lowercase() == "add" =>
+        {
+            filter_static(DG_ITEM_TRIGGER_TYPES, &partial, CompletionType::DgItemTriggerType)
+        }
+        // oedit <vnum> trigger dg retype <idx> <partial_type>
+        6 if !completing_word
+            && words[2].to_lowercase() == "trigger"
+            && words[3].to_lowercase() == "dg"
+            && words[4].to_lowercase() == "retype" =>
+        {
+            all_static(DG_ITEM_TRIGGER_TYPES, CompletionType::DgItemTriggerType)
+        }
+        7 if completing_word
+            && words[2].to_lowercase() == "trigger"
+            && words[3].to_lowercase() == "dg"
+            && words[4].to_lowercase() == "retype" =>
+        {
+            filter_static(DG_ITEM_TRIGGER_TYPES, &partial, CompletionType::DgItemTriggerType)
+        }
+        // oedit <vnum> trigger dg proto - proto subcommands
+        5 if !completing_word
+            && words[2].to_lowercase() == "trigger"
+            && words[3].to_lowercase() == "dg"
+            && words[4].to_lowercase() == "proto" =>
+        {
+            all_static(TRIGGER_DG_PROTO_SUBCOMMANDS, CompletionType::TriggerDgProtoSubcommand)
+        }
+        6 if completing_word
+            && words[2].to_lowercase() == "trigger"
+            && words[3].to_lowercase() == "dg"
+            && words[4].to_lowercase() == "proto" =>
+        {
+            filter_static(TRIGGER_DG_PROTO_SUBCOMMANDS, &partial, CompletionType::TriggerDgProtoSubcommand)
+        }
+        // oedit <vnum> trigger dg proto retype <vnum> <partial_type>
+        8 if completing_word
+            && words[2].to_lowercase() == "trigger"
+            && words[3].to_lowercase() == "dg"
+            && words[4].to_lowercase() == "proto"
+            && words[5].to_lowercase() == "retype" =>
+        {
+            filter_static(DG_ITEM_TRIGGER_TYPES, &partial, CompletionType::DgItemTriggerType)
+        }
         // oedit <vnum> transport - show all transport vnums + clear
         3 if !completing_word && words[2].to_lowercase() == "transport" => {
             let mut matches: Vec<String> = transport_vnums.to_vec();

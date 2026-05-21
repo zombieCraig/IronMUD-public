@@ -49,6 +49,72 @@ pub(super) fn complete_medit(
         6 if completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "add" => {
             filter_static(MOBILE_TRIGGER_TEMPLATES, &partial, CompletionType::TriggerScript)
         }
+        // medit <vnum> trigger dg - show dg subcommands
+        4 if !completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "dg" => {
+            all_static(TRIGGER_DG_SUBCOMMANDS, CompletionType::TriggerDgSubcommand)
+        }
+        // medit <vnum> trigger dg <partial_subcmd>
+        5 if completing_word && words[2].to_lowercase() == "trigger" && words[3].to_lowercase() == "dg" => {
+            filter_static(TRIGGER_DG_SUBCOMMANDS, &partial, CompletionType::TriggerDgSubcommand)
+        }
+        // medit <vnum> trigger dg add - show dg mobile trigger types
+        5 if !completing_word
+            && words[2].to_lowercase() == "trigger"
+            && words[3].to_lowercase() == "dg"
+            && words[4].to_lowercase() == "add" =>
+        {
+            all_static(DG_MOBILE_TRIGGER_TYPES, CompletionType::DgMobileTriggerType)
+        }
+        // medit <vnum> trigger dg add <partial_type>
+        6 if completing_word
+            && words[2].to_lowercase() == "trigger"
+            && words[3].to_lowercase() == "dg"
+            && words[4].to_lowercase() == "add" =>
+        {
+            filter_static(DG_MOBILE_TRIGGER_TYPES, &partial, CompletionType::DgMobileTriggerType)
+        }
+        // medit <vnum> trigger dg retype <idx> - show types (one past idx)
+        6 if !completing_word
+            && words[2].to_lowercase() == "trigger"
+            && words[3].to_lowercase() == "dg"
+            && words[4].to_lowercase() == "retype" =>
+        {
+            all_static(DG_MOBILE_TRIGGER_TYPES, CompletionType::DgMobileTriggerType)
+        }
+        // medit <vnum> trigger dg retype <idx> <partial_type>
+        7 if completing_word
+            && words[2].to_lowercase() == "trigger"
+            && words[3].to_lowercase() == "dg"
+            && words[4].to_lowercase() == "retype" =>
+        {
+            filter_static(DG_MOBILE_TRIGGER_TYPES, &partial, CompletionType::DgMobileTriggerType)
+        }
+        // medit <vnum> trigger dg proto - show proto subcommands
+        5 if !completing_word
+            && words[2].to_lowercase() == "trigger"
+            && words[3].to_lowercase() == "dg"
+            && words[4].to_lowercase() == "proto" =>
+        {
+            all_static(TRIGGER_DG_PROTO_SUBCOMMANDS, CompletionType::TriggerDgProtoSubcommand)
+        }
+        // medit <vnum> trigger dg proto <partial_subcmd>
+        6 if completing_word
+            && words[2].to_lowercase() == "trigger"
+            && words[3].to_lowercase() == "dg"
+            && words[4].to_lowercase() == "proto" =>
+        {
+            filter_static(TRIGGER_DG_PROTO_SUBCOMMANDS, &partial, CompletionType::TriggerDgProtoSubcommand)
+        }
+        // medit <vnum> trigger dg proto retype <vnum> <partial_type>
+        // (one past the proto vnum slot; vnums aren't statically enumerable)
+        8 if completing_word
+            && words[2].to_lowercase() == "trigger"
+            && words[3].to_lowercase() == "dg"
+            && words[4].to_lowercase() == "proto"
+            && words[5].to_lowercase() == "retype" =>
+        {
+            filter_static(DG_MOBILE_TRIGGER_TYPES, &partial, CompletionType::DgMobileTriggerType)
+        }
         // medit <vnum> transport - show all transport actions
         3 if !completing_word && words[2].to_lowercase() == "transport" => {
             all_static(MOBILE_TRANSPORT_ACTIONS, CompletionType::MobileTransportAction)
