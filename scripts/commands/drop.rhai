@@ -94,6 +94,7 @@ fn run_command(args, connection_id) {
     move_item_to_room(item.id, char.current_room_id);
     send_client_message(connection_id, "You drop " + item.name + ".");
     broadcast_to_room(char.current_room_id, char.name + " drops " + item.name + ".", char.name);
+    return;
 }
 
 fn drop_all_items(char, filter_keyword, connection_id) {

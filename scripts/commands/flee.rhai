@@ -140,6 +140,7 @@ fn run_command(args, connection_id) {
         send_client_message(connection_id, "You try to flee but " + target_name + " blocks your escape!");
         broadcast_to_room_awake(char.current_room_id, char.name + " tries to flee but fails!", char.name);
     }
+    return;
 }
 
 // Get display name for target

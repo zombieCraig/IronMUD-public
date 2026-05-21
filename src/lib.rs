@@ -2842,6 +2842,34 @@ pub async fn handle_connection(
                             MAX_DG_BODY_BYTES
                         ));
                     } else {
+                        // Run the analyzer up front. ParseError refuses the
+                        // save (mirrors proto path); other issues become
+                        // post-save warnings shown to the editor.
+                        let issues = crate::script::dg::analyze::analyze(&content);
+                        let parse_errors: Vec<&_> = issues
+                            .iter()
+                            .filter(|i| i.kind == crate::script::dg::analyze::IssueKind::ParseError)
+                            .collect();
+                        if !parse_errors.is_empty() {
+                            let detail = parse_errors
+                                .iter()
+                                .map(|i| i.detail.as_str())
+                                .collect::<Vec<_>>()
+                                .join("; ");
+                            let _ = tx_client.send(format!(
+                                "Save refused: parse error: {}\nUse .r to keep editing or .a to abort.\n",
+                                detail
+                            ));
+                            continue;
+                        }
+                        let warnings: Vec<String> = issues
+                            .into_iter()
+                            .filter(|i| {
+                                i.kind != crate::script::dg::analyze::IssueKind::ParseError
+                            })
+                            .map(|i| format!("  warning: {:?}: {}", i.kind, i.detail))
+                            .collect();
+
                         let (host_kind, host_id, idx, author, author_is_admin) = {
                             let conns = connections.lock().unwrap();
                             conns
@@ -2920,11 +2948,16 @@ pub async fn handle_connection(
                             false
                         };
 
-                        let _ = tx_client.send(if saved {
+                        let mut save_msg = if saved {
                             "DG trigger body saved.\n".to_string()
                         } else {
                             "Error: could not save DG trigger body.\n".to_string()
-                        });
+                        };
+                        if saved && !warnings.is_empty() {
+                            save_msg.push_str(&warnings.join("\n"));
+                            save_msg.push('\n');
+                        }
+                        let _ = tx_client.send(save_msg);
 
                         {
                             let mut conns = connections.lock().unwrap();

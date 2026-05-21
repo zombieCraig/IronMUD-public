@@ -171,4 +171,5 @@ fn run_command(args, connection_id) {
     if leveled {
         send_client_message(connection_id, "Your bash skill has improved!");
     }
+    return;
 }

@@ -70,6 +70,7 @@ fn run_command(args, connection_id) {
     delete_item(item.id);
     send_client_message(connection_id, "You junk " + item_name + ".");
     broadcast_to_room(char.current_room_id, char.name + " junks " + item_name + ".", char.name);
+    return;
 }
 
 fn junk_all_items(char, filter_keyword, connection_id) {

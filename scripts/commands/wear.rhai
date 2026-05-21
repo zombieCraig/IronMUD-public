@@ -72,4 +72,5 @@ fn run_command(args, connection_id) {
     // db::stamp_item_buffs_on_character — this trigger is for emotes,
     // room messages, custom flavor, etc.
     fire_item_trigger(item.id, "on_wear", connection_id, "");
+    return;
 }

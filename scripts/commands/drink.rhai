@@ -76,6 +76,7 @@ fn run_command(args, connection_id) {
     if updated != () && updated.liquid_max != -1 && updated.liquid_current <= 0 {
         send_client_message(connection_id, item.name + " is now empty.");
     }
+    return;
 }
 
 fn apply_effect(char, effect, connection_id, source) {

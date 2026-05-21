@@ -134,4 +134,5 @@ fn run_command(args, connection_id) {
     // Ad-hoc script side effects on wield. Mirrors wear.rhai's on_wear fire;
     // buff stamping is handled in Rust by db::stamp_item_buffs_on_character.
     fire_item_trigger(item.id, "on_wield", connection_id, "");
+    return;
 }

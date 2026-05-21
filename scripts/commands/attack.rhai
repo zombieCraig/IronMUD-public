@@ -158,6 +158,7 @@ fn run_command(args, connection_id) {
     } else if target_info.target_type == "player" {
         execute_attack_vs_player(char, target_info, connection_id);
     }
+    return;
 }
 
 // Find a valid attack target in the room

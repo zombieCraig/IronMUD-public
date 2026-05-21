@@ -33,4 +33,5 @@ fn run_command(args, connection_id) {
     // Buff stripping is handled in Rust by db::strip_item_buffs_from_holder
     // — this trigger is for ad-hoc script side effects on unequip.
     fire_item_trigger(item.id, "on_remove", connection_id, "");
+    return;
 }

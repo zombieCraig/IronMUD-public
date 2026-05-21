@@ -18,6 +18,7 @@ fn run_command(args, connection_id) {
     if check.target_info.target_type == "mobile" {
         execute_shoot_vs_mobile(check.char, check.target_info, check.weapon_info, connection_id);
     }
+    return;
 }
 
 fn validate_shoot(args, connection_id) {

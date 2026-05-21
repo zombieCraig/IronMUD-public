@@ -103,6 +103,10 @@ fn run_command(args, connection_id) {
     } else {
         give_item_to_mobile(char, target_mobile, parsed.item, connection_id);
     }
+    // fire_*_trigger returns "continue"/"cancel" strings; an explicit
+    // return prevents helper-fn returns from bubbling out of run_command
+    // (the host dispatcher echoes any string return to the client).
+    return;
 }
 
 // ========== Gold ==========

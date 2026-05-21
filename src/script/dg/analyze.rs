@@ -34,6 +34,12 @@ pub enum IssueKind {
     /// `eval <var> <expr>` whose `<expr>` uses parens or multiple operators
     /// — the current evaluator only handles single-binary-op expressions.
     ComplexEvalExpression,
+    /// `if`/`elseif`/`while` condition contains a bare `=` that isn't part
+    /// of `==`/`!=`/`<=`/`>=`/`/=`/`=~`. The eval treats the whole string
+    /// as a bare value (truthy if non-empty/non-zero), which usually means
+    /// the branch always fires regardless of the operands. Almost always a
+    /// typo for `==`.
+    SuspiciousAssignInCondition,
 }
 
 #[derive(Debug, Clone)]
@@ -96,9 +102,11 @@ fn walk_stmt(stmt: &Stmt, out: &mut Vec<Issue>) {
 
         Stmt::If { cond, then_body, elif_branches, else_body } => {
             check_interps(cond, out);
+            check_cond_for_bare_eq(cond, out);
             walk_block(then_body, out);
             for (c, b) in elif_branches {
                 check_interps(c, out);
+                check_cond_for_bare_eq(c, out);
                 walk_block(b, out);
             }
             if let Some(b) = else_body {
@@ -108,6 +116,7 @@ fn walk_stmt(stmt: &Stmt, out: &mut Vec<Issue>) {
 
         Stmt::While { cond, body } => {
             check_interps(cond, out);
+            check_cond_for_bare_eq(cond, out);
             walk_block(body, out);
         }
 
@@ -304,6 +313,48 @@ fn is_known_command(verb: &str) -> bool {
     // these across the board — they no-op in obj/room context, which is
     // tbamud's behavior anyway.
     super::mob_cmd::known_verbs().contains(&verb)
+}
+
+// ---------- Condition checks ----------
+
+/// Flag a bare `=` in an if/elseif/while condition that isn't part of a
+/// recognised operator. The eval would otherwise treat the whole condition
+/// as a bare value (truthy if non-empty/non-zero), making the branch fire
+/// for every input — almost always a typo for `==`.
+///
+/// Skips `=` chars inside `%...%` interpolations so a variable name
+/// containing `=` (rare but possible via context vars) doesn't false-fire.
+fn check_cond_for_bare_eq(cond: &str, out: &mut Vec<Issue>) {
+    let bytes = cond.as_bytes();
+    let mut i = 0;
+    let mut in_interp = false;
+    while i < bytes.len() {
+        let b = bytes[i];
+        if b == b'%' {
+            in_interp = !in_interp;
+            i += 1;
+            continue;
+        }
+        if in_interp || b != b'=' {
+            i += 1;
+            continue;
+        }
+        // b == b'='. Check neighbours to see if it's part of a known op.
+        let prev = if i > 0 { bytes[i - 1] } else { 0 };
+        let next = if i + 1 < bytes.len() { bytes[i + 1] } else { 0 };
+        // Part of `==` / `!=` / `<=` / `>=` / `/=` ?
+        let prev_is_op_start = matches!(prev, b'!' | b'<' | b'>' | b'/' | b'=');
+        // Part of `==` (from the right side) or `=~` ?
+        let next_is_op_cont = matches!(next, b'=' | b'~');
+        if !prev_is_op_start && !next_is_op_cont {
+            out.push(Issue {
+                kind: IssueKind::SuspiciousAssignInCondition,
+                detail: cond.trim().to_string(),
+            });
+            return;
+        }
+        i += 1;
+    }
 }
 
 // ---------- Variable interpolation checks ----------
@@ -548,6 +599,7 @@ pub fn summarize(issues: &[Issue]) -> String {
             IssueKind::UnknownVariable => "unknown vars",
             IssueKind::UnknownDgCastSpell => "unknown dg_cast spells",
             IssueKind::ComplexEvalExpression => "complex eval",
+            IssueKind::SuspiciousAssignInCondition => "suspicious `=` (likely typo for `==`)",
         };
         groups.entry(label).or_default().push(i.detail.clone());
     }
@@ -579,6 +631,63 @@ mod tests {
             issues.iter().any(|i| i.kind == IssueKind::UnknownCommand && i.detail == "nonexistent_cmd"),
             "expected UnknownCommand for 'nonexistent_cmd', got {:?}", issues
         );
+    }
+
+    #[test]
+    fn flags_bare_equals_in_if_condition() {
+        // The wishing-well bug: single `=` is not an operator; the eval
+        // treats the whole condition as a bare value (truthy non-empty),
+        // so the branch always fires. Almost always a typo for `==`.
+        let issues = analyze("if %object.vnum% = human_baby\n  halt\nend");
+        assert!(
+            issues.iter().any(|i| i.kind == IssueKind::SuspiciousAssignInCondition),
+            "expected SuspiciousAssignInCondition, got {:?}",
+            issues
+        );
+    }
+
+    #[test]
+    fn flags_bare_equals_in_elseif_and_while() {
+        let issues = analyze(
+            "if %actor.level% == 1\n  halt\nelseif %actor.class% = mage\n  halt\nend",
+        );
+        assert!(
+            issues.iter().any(|i| i.kind == IssueKind::SuspiciousAssignInCondition),
+            "expected SuspiciousAssignInCondition for elseif, got {:?}",
+            issues
+        );
+
+        let issues2 = analyze("while %self.gold% = 0\n  wait 1\ndone");
+        assert!(
+            issues2
+                .iter()
+                .any(|i| i.kind == IssueKind::SuspiciousAssignInCondition),
+            "expected SuspiciousAssignInCondition for while, got {:?}",
+            issues2
+        );
+    }
+
+    #[test]
+    fn does_not_flag_legitimate_eq_operators() {
+        // All recognised operators that contain `=`. None should trigger
+        // the bare-eq warning.
+        for cond in [
+            "if %actor.level% == 1\n  halt\nend",
+            "if %actor.name% != Galen\n  halt\nend",
+            "if %actor.class% /= warrior\n  halt\nend",
+            "if %actor.level% <= 5\n  halt\nend",
+            "if %actor.level% >= 10\n  halt\nend",
+            "if %arg% =~ quest\n  halt\nend",
+            "if %arg% !~ quest\n  halt\nend",
+        ] {
+            let issues = analyze(cond);
+            assert!(
+                !issues
+                    .iter()
+                    .any(|i| i.kind == IssueKind::SuspiciousAssignInCondition),
+                "false positive for `{cond}`: {issues:?}"
+            );
+        }
     }
 
     #[test]

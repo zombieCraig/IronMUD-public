@@ -52,6 +52,7 @@ fn run_command(args, connection_id) {
 
     // Normal room-based get
     get_from_room(char, args, connection_id);
+    return;
 }
 
 fn get_from_room(char, keyword, connection_id) {

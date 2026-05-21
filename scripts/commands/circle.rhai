@@ -154,6 +154,7 @@ fn run_command(args, connection_id) {
     if leveled {
         send_client_message(connection_id, "Your stealth skill has improved!");
     }
+    return;
 }
 
 fn get_circle_weapon(char_name) {

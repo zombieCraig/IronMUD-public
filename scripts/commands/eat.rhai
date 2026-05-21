@@ -86,6 +86,7 @@ fn run_command(args, connection_id) {
 
     // Remove the food item
     consume_food(item.id);
+    return;
 }
 
 fn apply_effect(char, effect, connection_id, source) {

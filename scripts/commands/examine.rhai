@@ -362,6 +362,7 @@ fn run_command(args, connection_id) {
     }
 
     send_client_message(connection_id, output);
+    return;
 }
 
 fn build_magazine_display(item) {

@@ -14,6 +14,7 @@ fn run_command(args, connection_id) {
     }
 
     execute_snipe(check, connection_id);
+    return;
 }
 
 fn validate_snipe(args, connection_id) {

@@ -119,6 +119,7 @@ fn run_command(args, connection_id) {
             "mobile_name": mobile.name
         });
     }
+    return;
 }
 
 // Determine the best spawn point for the character
