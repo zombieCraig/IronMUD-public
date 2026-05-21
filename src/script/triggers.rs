@@ -3013,11 +3013,21 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // dg_proto_set_flags(vnum, new_flags) -> Map { ok, error, refreshed }
     //   Mutate a proto's letter-flag string and re-derive trigger types on
-    //   all attached instances via the refresh sweep. Validates that the
-    //   new flag string parses to at least one type for the proto's kind
-    //   (rejects e.g. `proto_set_flags mob_proto "xyz"`). Returns `ok=true`
-    //   with `refreshed` count on success; `ok=false` with `error` set on
-    //   unknown vnum, empty/invalid flags, or save failure.
+    //   all attached instances via the refresh sweep.
+    //
+    //   Accepts EITHER format for `new_flags`:
+    //     - Letter-string (CircleMUD bit positions): `"j"`, `"gs"`, etc.
+    //     - Friendly type name(s) separated by whitespace or comma:
+    //       `"receive"`, `"greet say"`, `"on_receive,on_bribe"`.
+    //
+    //   Detection: if any token is longer than 1 char, treat the whole
+    //   input as friendly names. Friendly names are translated to
+    //   canonical letters per the import map's reverse table.
+    //
+    //   Validates that the resulting flag string parses to at least one
+    //   type for the proto's kind. Returns `ok=true` with `refreshed`
+    //   count on success; `ok=false` with `error` set on unknown vnum,
+    //   empty/invalid flags, unknown type name, or save failure.
     let cloned_db = db.clone();
     engine.register_fn(
         "dg_proto_set_flags",
@@ -3037,28 +3047,61 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     return result;
                 }
             };
-            // Validate flags parse to at least one trigger type for this kind.
+            // Translate friendly type names to letters if any token > 1 char.
             use crate::import::engines::tba::trg_map;
+            let tokens: Vec<&str> = new_flags
+                .split(|c: char| c.is_whitespace() || c == ',')
+                .filter(|t| !t.is_empty())
+                .collect();
+            let needs_translation = tokens.iter().any(|t| t.chars().count() > 1);
+            let canonical_flags = if needs_translation {
+                let mut buf = String::new();
+                for tok in &tokens {
+                    let letter = match proto.attach_kind {
+                        crate::types::DgAttachKind::Mob => parse_mobile_trigger_type(tok)
+                            .map(trg_map::flags_for_mobile_trigger),
+                        crate::types::DgAttachKind::Obj => parse_item_trigger_type(tok)
+                            .map(trg_map::flags_for_item_trigger),
+                        crate::types::DgAttachKind::Room => parse_room_trigger_type(tok)
+                            .map(trg_map::flags_for_room_trigger),
+                    };
+                    match letter {
+                        Some(l) => buf.push_str(&l),
+                        None => {
+                            result.insert("ok".into(), false.into());
+                            result.insert(
+                                "error".into(),
+                                format!("unknown trigger type name '{}'", tok).into(),
+                            );
+                            return result;
+                        }
+                    }
+                }
+                buf
+            } else {
+                new_flags
+            };
+            // Validate the resulting flag string maps to at least one type.
             let valid = match proto.attach_kind {
                 crate::types::DgAttachKind::Mob => {
-                    !trg_map::mobile_trigger_types(&new_flags).is_empty()
+                    !trg_map::mobile_trigger_types(&canonical_flags).is_empty()
                 }
                 crate::types::DgAttachKind::Obj => {
-                    !trg_map::item_trigger_types(&new_flags).is_empty()
+                    !trg_map::item_trigger_types(&canonical_flags).is_empty()
                 }
                 crate::types::DgAttachKind::Room => {
-                    !trg_map::room_trigger_types(&new_flags).is_empty()
+                    !trg_map::room_trigger_types(&canonical_flags).is_empty()
                 }
             };
             if !valid {
                 result.insert("ok".into(), false.into());
                 result.insert(
                     "error".into(),
-                    format!("flags '{}' don't map to any valid trigger type for this kind", new_flags).into(),
+                    format!("flags '{}' don't map to any valid trigger type for this kind", canonical_flags).into(),
                 );
                 return result;
             }
-            proto.flags = new_flags;
+            proto.flags = canonical_flags;
             if cloned_db.save_dg_trigger_proto(&proto).is_err() {
                 result.insert("ok".into(), false.into());
                 result.insert("error".into(), "save failed".to_string().into());

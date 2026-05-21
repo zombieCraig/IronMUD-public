@@ -357,17 +357,27 @@ fn proto_view(rest, connection_id) {
 fn proto_retype(rest, connection_id) {
     if rest.len() < 2 {
         send_client_message(connection_id,
-            "Usage: trigger dg proto retype <vnum> <flags>\n"
-            + "Flags: letter string (e.g. 'r' = OnReceive on a mob proto).");
+            "Usage: trigger dg proto retype <vnum> <type-or-flags>\n"
+            + "  Type name (recommended): receive, bribe, greet, say, ...\n"
+            + "  Multiple types: 'greet say' (space-separated)\n"
+            + "  Letter-flag string (CircleMUD bits): 'j' = receive, 'm' = bribe");
         return;
     }
     let vnum = rest[0];
-    let flags = rest[1];
+    // Join remaining tokens so multi-word friendly names work:
+    //   trigger dg proto retype foo greet say
+    let flags = "";
+    let i = 1;
+    while i < rest.len() {
+        if flags != "" { flags += " "; }
+        flags += rest[i];
+        i += 1;
+    }
     let result = dg_proto_set_flags(vnum, flags);
     if result["ok"] {
         let n = result["refreshed"];
         send_client_message(connection_id,
-            "Proto '" + vnum + "' flags set to '" + flags + "'. Refreshed " + n + " instance(s).");
+            "Proto '" + vnum + "' retyped (input: '" + flags + "'). Refreshed " + n + " instance(s).");
     } else {
         send_client_message(connection_id,
             "Could not retype proto '" + vnum + "': " + result["error"]);
