@@ -20,7 +20,7 @@ use ironmud::{
     discord::{DiscordConfig, run_discord_bot},
     game::Entity,
     gemini::{GeminiConfig, GeminiRequest, run_gemini_task},
-    load_command_metadata, load_game_data, load_scripts,
+    load_command_metadata, load_game_data, load_scripts, register_socials_in_command_metadata,
     matrix::{MatrixConfig, run_matrix_bot},
     run_server, save_all_players, watch_scripts,
 };
@@ -139,7 +139,12 @@ async fn main() -> Result<()> {
     let api_db = db.clone(); // Clone db for REST API
 
     let connections = Arc::new(Mutex::new(HashMap::new()));
-    let command_metadata = load_command_metadata()?;
+    let mut command_metadata = load_command_metadata()?;
+    let socials = ironmud::social::actions::SocialRegistry::load_path("scripts/data/socials.json");
+    register_socials_in_command_metadata(&socials, &mut command_metadata);
+    // Make the same registry visible to background ticks (NPC ambient
+    // emotes) without requiring them to grab the World lock.
+    let _ = ironmud::social::actions::init_global(socials.clone());
 
     let state = Arc::new(Mutex::new(World {
         engine,
@@ -147,6 +152,7 @@ async fn main() -> Result<()> {
         connections: connections.clone(),
         scripts: HashMap::new(),
         command_metadata,
+        socials,
         class_definitions: HashMap::new(),
         trait_definitions: HashMap::new(),
         race_suggestions: Vec::new(),

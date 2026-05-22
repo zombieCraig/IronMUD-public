@@ -46,7 +46,10 @@ pub mod vampire;
 pub use types::*;
 
 // Re-export session and init functions for backward compatibility
-pub use init::{load_command_metadata, load_game_data, load_scripts, watch_scripts};
+pub use init::{
+    load_command_metadata, load_game_data, load_scripts, register_socials_in_command_metadata,
+    watch_scripts,
+};
 use readline::*;
 pub use script::check_build_mode;
 pub use session::{
@@ -213,6 +216,12 @@ pub struct World {
     pub connections: SharedConnections,
     pub scripts: HashMap<String, AST>,
     pub command_metadata: HashMap<String, CommandMeta>,
+    /// CircleMUD-style social commands (`wave`, `bow`, `smile`, …). Loaded
+    /// once at startup from `scripts/data/socials.json`; populated as
+    /// virtual entries in `command_metadata` so prefix matching, access
+    /// control, and tab completion all treat socials like normal commands.
+    /// See `src/social/actions.rs`.
+    pub socials: crate::social::actions::SocialRegistry,
     // Character creation data (loaded from scripts/data/*.json)
     pub class_definitions: HashMap<String, ClassDefinition>,
     pub trait_definitions: HashMap<String, TraitDefinition>,
@@ -3778,6 +3787,27 @@ pub async fn handle_connection(
                 ) {
                     // Suppressed: skip rhai dispatch and the prompt redraw
                     // path picks up cleanly on the next iteration.
+                    let prompt = build_prompt(&connection_id, &connections, &state);
+                    let _ = tx_client.send(prompt);
+                    continue;
+                }
+            }
+
+            // CircleMUD-style socials (smile/wave/bow/…) are handled in
+            // Rust — there's no per-verb .rhai for them. The registry was
+            // populated at startup from `scripts/data/socials.json`; if
+            // the resolved verb is in it we render and broadcast here,
+            // then short-circuit past the rhai dispatch.
+            if is_logged_in {
+                if let crate::social::actions::DispatchOutcome::Handled =
+                    crate::social::actions::dispatch_player_social(
+                        &state,
+                        &connections,
+                        connection_id,
+                        &resolved_command,
+                        args,
+                    )
+                {
                     let prompt = build_prompt(&connection_id, &connections, &state);
                     let _ = tx_client.send(prompt);
                     continue;

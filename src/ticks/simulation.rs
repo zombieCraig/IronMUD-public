@@ -1345,12 +1345,81 @@ fn emit_ambient_emotes(
         .and_then(|s| s.bereaved_until_day)
         .map(|d| d > current_game_day)
         .unwrap_or(false);
-    let emote = pick_emote(&mobile.name, needs, mood, is_bereaved, &mut rng);
+    let gender = mobile
+        .characteristics
+        .as_ref()
+        .map(|c| c.gender.as_str())
+        .unwrap_or("");
+    let emote = pick_emote_from_socials(
+        &mobile.short_desc,
+        gender,
+        needs,
+        mood,
+        is_bereaved,
+        &mut rng,
+    )
+    .or_else(|| pick_emote(&mobile.name, needs, mood, is_bereaved, &mut rng));
 
     if let Some(msg) = emote {
         broadcast_to_room_awake(connections, &room_id, &msg);
         needs.last_emote_tick = now;
     }
+}
+
+/// Try to draw an ambient emote from the loaded [`SocialRegistry`]. The
+/// candidate set is the union of socials tagged for the mobile's current
+/// mood / bereavement / needs bucket. Returns `None` when the table has
+/// no tagged matches — the caller falls back to the hand-rolled pool in
+/// `pick_emote`.
+fn pick_emote_from_socials(
+    short_desc: &str,
+    gender: &str,
+    needs: &NeedsState,
+    mood: Option<ironmud::MoodState>,
+    is_bereaved: bool,
+    rng: &mut impl Rng,
+) -> Option<String> {
+    use ironmud::social::actions::registry;
+    use ironmud::social::render::{self, RenderParty};
+    use ironmud::types::SocialTag;
+
+    let mut want: Vec<SocialTag> = Vec::new();
+    match mood {
+        Some(ironmud::MoodState::Breakdown) => want.push(SocialTag::Breakdown),
+        Some(ironmud::MoodState::Depressed) => want.push(SocialTag::Depressed),
+        Some(ironmud::MoodState::Sad) => want.push(SocialTag::Sad),
+        _ => {}
+    }
+    if is_bereaved {
+        want.push(SocialTag::Grief);
+    }
+    if needs.hunger <= 50 {
+        want.push(SocialTag::Hungry);
+    }
+    if needs.energy <= 50 {
+        want.push(SocialTag::Tired);
+    }
+    if needs.comfort <= 40 {
+        want.push(SocialTag::Uncomfortable);
+    }
+    if needs.hunger > 80 && needs.energy > 80 && needs.comfort > 80 {
+        want.push(SocialTag::Content);
+    }
+    if want.is_empty() {
+        return None;
+    }
+    let reg = registry();
+    let candidates = reg.tagged_any(&want);
+    if candidates.is_empty() {
+        return None;
+    }
+    let pick = &candidates[rng.gen_range(0..candidates.len())];
+    let template = pick.others_no_arg.as_deref()?;
+    let actor = RenderParty {
+        visible_name: short_desc,
+        gender: render::parse_gender(gender),
+    };
+    Some(render::render(template, &actor, None, None, None))
 }
 
 fn pick_emote(

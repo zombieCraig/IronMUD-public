@@ -69,6 +69,11 @@ pub struct ImportIR {
     /// tbaMUD quest definitions (one entry per `.qst` record). IronMUD has
     /// no quest system; surfaced as warnings.
     pub quests: Vec<IrQuest>,
+    /// CircleMUD-style social actions (`smile`, `wave`, `bow`, …) parsed
+    /// from `lib/misc/socials.new`. World-wide, not per-zone. Written by
+    /// the importer to `scripts/data/socials.json` after the per-zone
+    /// passes complete.
+    pub socials: Vec<crate::types::SocialAction>,
 }
 
 #[derive(Debug, Clone)]

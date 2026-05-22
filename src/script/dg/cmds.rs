@@ -96,6 +96,10 @@ pub fn dispatch(line: &str, ctx: &EvalCtx) -> Result<(), String> {
         // `award_achievement` gate).
         "award_achievement" => cmd_award_achievement(rest, ctx),
 
+        // `social <name> [target]` — fire a CircleMUD-style social as
+        // the script's self. Only meaningful when self is a mob.
+        "social" | "msocial" | "osocial" | "wsocial" => cmd_social(rest, ctx),
+
         _ => {
             // Mob world-command dispatch (Phase 5c): when self is a mob,
             // recognise verbs like say/emote/give/kill that stock tbamud
@@ -150,6 +154,7 @@ pub const COMMANDS: &[&str] = &[
     "otimer", "mtimer", "wtimer", "timer",
     "transform", "mtransform", "otransform",
     "award_achievement",
+    "social", "msocial", "osocial", "wsocial",
 ];
 
 /// Return `true` when `verb` (already lowercased + `%`-stripped) is a
@@ -180,6 +185,7 @@ pub(super) fn is_known_dg_verb(verb: &str) -> bool {
         | "otimer" | "mtimer" | "wtimer" | "timer"
         | "transform" | "mtransform" | "otransform"
         | "award_achievement"
+        | "social" | "msocial" | "osocial" | "wsocial"
     )
 }
 
@@ -1339,6 +1345,154 @@ fn cmd_award_achievement(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     };
     crate::script::achievements::award_manual_via_db(&ctx.db, &ctx.connections, &player_name, key);
     Ok(())
+}
+
+/// `social <name> [target]` — render and broadcast a CircleMUD-style
+/// social action as if `self` (the trigger's mob) had typed it. Only
+/// fires when `self_kind == Mob` — there's no actor to render for room
+/// or item triggers. Target is optional; when present it's resolved via
+/// the existing DG resolver and the `found` variants are used.
+///
+/// Missing socials, missing rooms, and self-target-not-in-room cases
+/// silently no-op, matching tbamud's behavior on misconfigured trigger
+/// commands.
+fn cmd_social(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
+    if ctx.self_kind != SelfKind::Mob {
+        super::warn_builder(ctx, "social: only mob triggers can fire socials");
+        return Ok(());
+    }
+    let (name_tok, target_rest) = split_verb(rest);
+    if name_tok.is_empty() {
+        return Ok(());
+    }
+    let target_tok = target_rest.split_whitespace().next().unwrap_or("");
+
+    let reg = crate::social::actions::registry();
+    let Some(social) = reg.get(&name_tok).cloned() else {
+        super::warn_builder(ctx, &format!("social: unknown name '{name_tok}'"));
+        return Ok(());
+    };
+
+    let Some(room_id) = ctx.self_room else {
+        return Ok(());
+    };
+    let Ok(Some(mob)) = ctx.db.get_mobile_data(&ctx.self_id) else {
+        return Ok(());
+    };
+    let gender = mob
+        .characteristics
+        .as_ref()
+        .map(|c| c.gender.as_str())
+        .unwrap_or("");
+
+    use crate::social::render::{self, RenderParty};
+    let actor = RenderParty {
+        visible_name: &mob.short_desc,
+        gender: render::parse_gender(gender),
+    };
+
+    // Resolve optional target. Mob targets render with their short_desc
+    // + characteristics gender; player targets render with their name +
+    // gender field.
+    let victim: Option<(String, render::GenderKind, Option<String>)> = if !target_tok.is_empty() {
+        match resolve_target(target_tok, ctx) {
+            Some(ActorRef::Player { name, .. }) => {
+                let g = ctx
+                    .db
+                    .get_character_data(&name)
+                    .ok()
+                    .flatten()
+                    .map(|c| c.gender)
+                    .unwrap_or_default();
+                Some((name.clone(), render::parse_gender(&g), Some(name)))
+            }
+            Some(ActorRef::Mob { mobile_id, name: _ }) => {
+                if let Ok(Some(target_mob)) = ctx.db.get_mobile_data(&mobile_id) {
+                    let g = target_mob
+                        .characteristics
+                        .as_ref()
+                        .map(|c| c.gender.as_str())
+                        .unwrap_or("");
+                    Some((target_mob.short_desc, render::parse_gender(g), None))
+                } else {
+                    None
+                }
+            }
+            None => None,
+        }
+    } else {
+        None
+    };
+
+    match victim {
+        None => {
+            // No-arg branch — broadcast to the room. Skip the actor
+            // (mobs don't read their own output) by using the mob's name
+            // as exclude.
+            if let (false, Some(t)) = (social.hide, &social.others_no_arg) {
+                let line = render::render(t, &actor, None, None, None);
+                let mut msg = line;
+                if !msg.ends_with('\n') {
+                    msg.push('\n');
+                }
+                crate::broadcast_to_room(&ctx.connections, room_id, msg, Some(&mob.short_desc));
+            }
+        }
+        Some((vict_name, vict_gender, victim_player_name)) => {
+            let vict = RenderParty {
+                visible_name: &vict_name,
+                gender: vict_gender,
+            };
+            // Victim line: deliver directly to the named player, if any.
+            if let (Some(pname), Some(t)) = (&victim_player_name, &social.vict_found) {
+                let line = render::render(t, &actor, Some(&vict), None, None);
+                deliver_to_player(ctx, pname, line);
+            }
+            // Room broadcast — others_found, excluding actor + victim.
+            if !social.hide {
+                if let Some(t) = &social.others_found {
+                    let line = render::render(t, &actor, Some(&vict), None, None);
+                    let mut msg = line;
+                    if !msg.ends_with('\n') {
+                        msg.push('\n');
+                    }
+                    crate::broadcast_to_room(
+                        &ctx.connections,
+                        room_id,
+                        msg,
+                        Some(&mob.short_desc),
+                    );
+                    // broadcast_to_room only excludes one name. The
+                    // victim_player_name (if present) will see the
+                    // others_found line in addition to vict_found.
+                    // Acceptable here because DG-driven socials are
+                    // infrequent and the duplicate-line cost is small
+                    // compared to threading a two-exclude helper just
+                    // for this path.
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn deliver_to_player(ctx: &EvalCtx, player_name: &str, line: String) {
+    let Ok(conns) = ctx.connections.lock() else {
+        return;
+    };
+    for (_, sess) in conns.iter() {
+        if let Some(ch) = &sess.character {
+            if ch.name.eq_ignore_ascii_case(player_name) {
+                let mut msg = line;
+                if !msg.ends_with('\n') {
+                    msg.push('\n');
+                }
+                let _ = sess.sender.send(msg);
+                return;
+            }
+        }
+    }
 }
 
 /// Resolve a DG target token (a name, keyword, or UUID string) to an

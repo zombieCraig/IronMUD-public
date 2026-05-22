@@ -310,12 +310,56 @@ impl MudEngine for TbaEngine {
             "tbaMUD uses DG Scripts; CircleMUD spec_assign.c parsing skipped".to_string(),
         ));
 
+        // Socials: tbaMUD ships the same `lib/misc/socials.new` format
+        // as CircleMUD (extended to 13 messages per record). Reuse the
+        // shared parser.
+        let mut all_socials = Vec::new();
+        if let Some(misc_root) = world_root.parent() {
+            let candidates = [
+                misc_root.join("misc").join("socials.new"),
+                misc_root.join("misc").join("socials"),
+            ];
+            for c in &candidates {
+                if !c.is_file() {
+                    continue;
+                }
+                match super::circle::socials::parse_file(c) {
+                    Ok((parsed, parser_warnings)) => {
+                        let count = parsed.len();
+                        all_socials.extend(parsed);
+                        for w in parser_warnings {
+                            warnings.push(Warning::new(
+                                WarningKind::Parse,
+                                Severity::Warn,
+                                SourceLoc::file(c.clone()),
+                                w,
+                            ));
+                        }
+                        warnings.push(Warning::new(
+                            WarningKind::Info,
+                            Severity::Info,
+                            SourceLoc::file(c.clone()),
+                            format!("parsed {} social action(s) from {}", count, c.display()),
+                        ));
+                        break;
+                    }
+                    Err(e) => warnings.push(Warning::new(
+                        WarningKind::Parse,
+                        Severity::Warn,
+                        SourceLoc::file(c.clone()),
+                        format!("skipped {}: {}", c.display(), e),
+                    )),
+                }
+            }
+        }
+
         Ok((
             ImportIR {
                 zones,
                 triggers: Vec::new(),
                 dg_triggers,
                 quests,
+                socials: all_socials,
             },
             warnings,
         ))

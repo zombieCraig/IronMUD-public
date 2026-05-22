@@ -374,6 +374,13 @@ fn run_engine<E: MudEngine>(
                 writer::write_report_file(&p, &plan, &all_warnings, &summary)?;
                 println!("report: {}", p.display());
             }
+            // Socials are world-wide data, not per-zone — they live in a
+            // static JSON consumed at server startup, not in sled. Write
+            // them out here so a fresh `ironmud-import` populates the
+            // table as a side effect of any apply pass.
+            if !ir.socials.is_empty() {
+                write_socials_json(&ir.socials, &source)?;
+            }
             Ok(ExitCode::from(0))
         }
         Err(e) => {
@@ -381,6 +388,32 @@ fn run_engine<E: MudEngine>(
             Ok(ExitCode::from(3))
         }
     }
+}
+
+/// Serialize `ir.socials` to `scripts/data/socials.json`. The path is
+/// resolved relative to the current working directory — same convention
+/// as the rest of the script-data loaders. Existing files are
+/// overwritten; the importer is the source of truth.
+fn write_socials_json(
+    socials: &[ironmud::types::SocialAction],
+    source: &std::path::Path,
+) -> Result<()> {
+    let out_path = std::path::Path::new("scripts/data/socials.json");
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let file = ironmud::social::actions::SocialsFile {
+        source: Some(source.display().to_string()),
+        socials: socials.to_vec(),
+    };
+    let json = serde_json::to_string_pretty(&file)?;
+    std::fs::write(out_path, json)?;
+    println!(
+        "socials: wrote {} entries to {}",
+        socials.len(),
+        out_path.display()
+    );
+    Ok(())
 }
 
 fn open_db(path: &str) -> Result<Db> {

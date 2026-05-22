@@ -1559,6 +1559,7 @@ fn maps_high_priority_room_flag_bits() {
         triggers: Vec::new(),
         dg_triggers: Vec::new(),
         quests: Vec::new(),
+        socials: Vec::new(),
     };
 
     let opts = MappingOptions {
@@ -1632,6 +1633,7 @@ fn maps_medium_priority_room_flag_bits() {
         triggers: Vec::new(),
         dg_triggers: Vec::new(),
         quests: Vec::new(),
+        socials: Vec::new(),
     };
 
     let opts = MappingOptions {
@@ -1721,6 +1723,7 @@ fn imports_pickproof_doors() {
         triggers: Vec::new(),
         dg_triggers: Vec::new(),
         quests: Vec::new(),
+        socials: Vec::new(),
     };
 
     let opts = MappingOptions {

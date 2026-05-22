@@ -9,6 +9,7 @@ pub mod mob;
 pub mod obj;
 pub mod parser;
 pub mod shp;
+pub mod socials;
 pub mod spec;
 pub mod wear;
 pub mod wld;
@@ -311,12 +312,56 @@ impl MudEngine for CircleEngine {
             )),
         }
 
+        // Socials. Look for `<world_root>/../misc/socials.new` first
+        // (the canonical CircleMUD/tbamud layout, since misc/ is a
+        // sibling of world/), falling back to legacy `socials`.
+        let mut all_socials = Vec::new();
+        if let Some(misc_root) = world_root.parent() {
+            let candidates = [
+                misc_root.join("misc").join("socials.new"),
+                misc_root.join("misc").join("socials"),
+            ];
+            for c in &candidates {
+                if !c.is_file() {
+                    continue;
+                }
+                match socials::parse_file(c) {
+                    Ok((parsed, parser_warnings)) => {
+                        let count = parsed.len();
+                        all_socials.extend(parsed);
+                        for w in parser_warnings {
+                            warnings.push(Warning::new(
+                                WarningKind::Parse,
+                                Severity::Warn,
+                                SourceLoc::file(c.clone()),
+                                w,
+                            ));
+                        }
+                        warnings.push(Warning::new(
+                            WarningKind::Info,
+                            Severity::Info,
+                            SourceLoc::file(c.clone()),
+                            format!("parsed {} social action(s) from {}", count, c.display()),
+                        ));
+                        break;
+                    }
+                    Err(e) => warnings.push(Warning::new(
+                        WarningKind::Parse,
+                        Severity::Warn,
+                        SourceLoc::file(c.clone()),
+                        format!("skipped {}: {}", c.display(), e),
+                    )),
+                }
+            }
+        }
+
         Ok((
             ImportIR {
                 zones,
                 triggers,
                 dg_triggers: Vec::new(),
                 quests: Vec::new(),
+                socials: all_socials,
             },
             warnings,
         ))

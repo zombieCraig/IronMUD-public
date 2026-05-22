@@ -33,6 +33,7 @@ fn make_state(db: &Db, connections: &SharedConnections) -> ironmud::SharedState 
         connections: connections.clone(),
         scripts: HashMap::new(),
         command_metadata: HashMap::new(),
+        socials: ironmud::social::actions::SocialRegistry::default(),
         class_definitions: HashMap::new(),
         trait_definitions: HashMap::new(),
         race_suggestions: Vec::new(),

@@ -16,6 +16,37 @@ pub fn load_command_metadata() -> Result<HashMap<String, CommandMeta>> {
     Ok(metadata)
 }
 
+/// Stitch socials into the command metadata table so prefix matching,
+/// access control, and tab completion treat them like normal commands.
+/// Socials get `access = "user"` (login required) and a synthesized
+/// description like "social: wave (sm: smile)". Skipped if a real
+/// command of the same name already exists — the JSON wins.
+pub fn register_socials_in_command_metadata(
+    socials: &crate::social::actions::SocialRegistry,
+    metadata: &mut HashMap<String, CommandMeta>,
+) {
+    for action in socials.iter() {
+        let name = action.lookup_key();
+        if metadata.contains_key(&name) {
+            continue;
+        }
+        let desc = match &action.abbrev {
+            Some(a) if !a.eq_ignore_ascii_case(&action.name) => {
+                format!("social: {} ({})", action.name, a)
+            }
+            _ => format!("social: {}", action.name),
+        };
+        metadata.insert(
+            name,
+            CommandMeta {
+                access: "user".to_string(),
+                description: desc,
+                requires: None,
+            },
+        );
+    }
+}
+
 /// Parse a JSON object into `HashMap<String, T>`, skipping keys that start with `_`
 /// so files may carry sibling documentation fields like `"_doc": "..."`.
 fn parse_doc_tolerant_map<T: serde::de::DeserializeOwned>(

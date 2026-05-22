@@ -104,6 +104,7 @@ fn build_state(db: Db, defs: Vec<AchievementDef>) -> (SharedState, SharedConnect
         connections: connections.clone(),
         scripts: HashMap::new(),
         command_metadata: HashMap::new(),
+        socials: ironmud::social::actions::SocialRegistry::default(),
         class_definitions: HashMap::new(),
         trait_definitions: HashMap::new(),
         race_suggestions: Vec::new(),

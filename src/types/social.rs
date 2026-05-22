@@ -1,6 +1,9 @@
 //! Social and demographic types for mobiles: visual characteristics,
-//! relationships, mood, life stage, and per-mobile social preferences.
+//! relationships, mood, life stage, per-mobile social preferences, and
+//! the player-facing [`SocialAction`] table (CircleMUD-style `wave`,
+//! `bow`, `smile` commands).
 
+use super::{CharacterPosition, MobilePosition};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -245,4 +248,195 @@ impl Default for SocialState {
 
 fn default_happiness() -> i32 {
     50
+}
+
+// ---------------------------------------------------------------------------
+// SocialAction — CircleMUD/tbaMUD style social commands
+// ---------------------------------------------------------------------------
+
+/// Position floor for social-command gating. Three ranks matching the
+/// distinct positions actually represented in IronMUD (Sleeping/Sitting/
+/// Standing). Circle's nine-rank ladder collapses onto these via
+/// [`SocialPosition::from_circle`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum SocialPosition {
+    Sleeping,
+    Sitting,
+    #[default]
+    Standing,
+}
+
+impl SocialPosition {
+    pub fn rank(self) -> u8 {
+        match self {
+            SocialPosition::Sleeping => 0,
+            SocialPosition::Sitting => 1,
+            SocialPosition::Standing => 2,
+        }
+    }
+
+    /// Map a Circle position integer (0=DEAD…8=STANDING) onto our 3-bucket
+    /// ladder. Everything below SLEEPING (DEAD/MORT/INCAP/STUN) collapses
+    /// down to Sleeping (most permissive), and RESTING/FIGHTING fold into
+    /// the closest IronMUD-real position.
+    pub fn from_circle(n: u8) -> SocialPosition {
+        match n {
+            0..=5 => SocialPosition::Sleeping, // DEAD/MORT/INCAP/STUN/SLEEPING/RESTING
+            6 => SocialPosition::Sitting,      // SITTING
+            _ => SocialPosition::Standing,     // FIGHTING(7) and STANDING(8)
+        }
+    }
+
+    pub fn from_character(p: CharacterPosition) -> SocialPosition {
+        match p {
+            CharacterPosition::Sleeping => SocialPosition::Sleeping,
+            CharacterPosition::Sitting => SocialPosition::Sitting,
+            CharacterPosition::Standing | CharacterPosition::Swimming => SocialPosition::Standing,
+        }
+    }
+
+    pub fn from_mobile(p: MobilePosition) -> SocialPosition {
+        match p {
+            MobilePosition::Sleeping => SocialPosition::Sleeping,
+            MobilePosition::Sitting => SocialPosition::Sitting,
+            MobilePosition::Standing => SocialPosition::Standing,
+        }
+    }
+
+    pub fn permits(min: SocialPosition, actor: SocialPosition) -> bool {
+        actor.rank() >= min.rank()
+    }
+
+    pub fn from_str(s: &str) -> Option<SocialPosition> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "sleeping" | "sleep" | "asleep" => Some(SocialPosition::Sleeping),
+            "sitting" | "sit" | "resting" | "rest" => Some(SocialPosition::Sitting),
+            "standing" | "stand" | "fighting" | "fight" => Some(SocialPosition::Standing),
+            _ => None,
+        }
+    }
+
+    pub fn to_display_string(self) -> &'static str {
+        match self {
+            SocialPosition::Sleeping => "sleeping",
+            SocialPosition::Sitting => "sitting",
+            SocialPosition::Standing => "standing",
+        }
+    }
+}
+
+/// Tag for steering NPC ambient-emote selection toward situationally
+/// appropriate socials. Untagged socials are still available to players
+/// but get zero weight in the simulation tick — random `dance` mid-grief
+/// would shatter immersion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SocialTag {
+    /// Generic upbeat / well-fed cue.
+    Content,
+    /// Sad-spectrum mood (sad, depressed, breakdown).
+    Sad,
+    /// Heavy mood, more visible than Sad.
+    Depressed,
+    /// Total emotional collapse cue.
+    Breakdown,
+    /// Bereavement-specific cue.
+    Grief,
+    /// Hunger cue.
+    Hungry,
+    /// Fatigue cue.
+    Tired,
+    /// Discomfort / homesickness cue.
+    Uncomfortable,
+    /// Idle / fidgety cue with no strong valence.
+    Idle,
+    /// Greeting/farewell flavour.
+    Greeting,
+    Farewell,
+    /// Affectionate gesture (hug, kiss, pat).
+    Affection,
+    /// Hostile/threatening gesture.
+    Aggression,
+    /// Comforting another bereaved/sad mobile.
+    Comfort,
+}
+
+/// A single CircleMUD-style social command (`wave`, `bow`, `smile`, …)
+/// loaded from `scripts/data/socials.json`. Templates carry pronoun
+/// tokens (`$n`/`$N` name, `$e`/`$E` subject, `$m`/`$M` object,
+/// `$s`/`$S` possessive, `$p`/`$P` object short-desc, `$t`/`$T`
+/// arbitrary text — currently body parts, `$$` literal `$`). Lowercase
+/// tokens resolve to the actor; uppercase to the victim/object.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SocialAction {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub abbrev: Option<String>,
+    /// If true, only actor and victim see the social. Imported from
+    /// Circle's `hide` flag; not yet honoured by every code path
+    /// (player dispatcher implements it; NPC sim path doesn't fire it).
+    #[serde(default)]
+    pub hide: bool,
+    #[serde(default)]
+    pub min_victim_position: SocialPosition,
+    #[serde(default)]
+    pub min_char_position: SocialPosition,
+    /// Minimum admin/skill level required to use the social. 0 = anyone.
+    /// Currently informational; gating logic ignores this field but the
+    /// importer preserves it so admin-only socials can be filtered later.
+    #[serde(default)]
+    pub min_level: u8,
+    /// Shown to the actor when they invoke the social with no target.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub char_no_arg: Option<String>,
+    /// Broadcast to the room when the actor invokes the social with no
+    /// target.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub others_no_arg: Option<String>,
+    /// Shown to the actor when they target another character/mobile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub char_found: Option<String>,
+    /// Broadcast to bystanders when the actor targets another character.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub others_found: Option<String>,
+    /// Shown to the victim when targeted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vict_found: Option<String>,
+    /// Shown to the actor when the target keyword resolves to nobody.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub not_found: Option<String>,
+    /// Shown to the actor when they target themselves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub char_auto: Option<String>,
+    /// Broadcast to the room when the actor targets themselves.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub others_auto: Option<String>,
+    /// Body-part variant: actor targets a victim's body part (uses `$t`).
+    /// Trio of (char, others, vict). Stored but not yet driven by syntax.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body_char_found: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body_others_found: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub body_vict_found: Option<String>,
+    /// Object variant: actor targets an item in the room or inventory.
+    /// Pair of (char, others). Stored but not yet driven by syntax.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_char_found: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub object_others_found: Option<String>,
+    /// Tags used by NPC sim weighting. Hand-curated post-import; empty
+    /// means "player-only" from the sim's perspective.
+    #[serde(default)]
+    pub tags: Vec<SocialTag>,
+}
+
+impl SocialAction {
+    /// Lowercase comparison key — what the input dispatcher matches verbs
+    /// against. Returned as a fresh `String` since `name` may carry odd
+    /// casing from legacy imports.
+    pub fn lookup_key(&self) -> String {
+        self.name.to_ascii_lowercase()
+    }
 }

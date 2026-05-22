@@ -2663,6 +2663,7 @@ mod tests {
             connections: conns.clone(),
             scripts: HashMap::new(),
             command_metadata: HashMap::new(),
+            socials: crate::social::actions::SocialRegistry::default(),
             class_definitions: HashMap::new(),
             trait_definitions: HashMap::new(),
             race_suggestions: Vec::new(),

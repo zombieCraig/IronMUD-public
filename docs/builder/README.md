@@ -7,6 +7,7 @@ Detailed OLC editor documentation. Start with [Builder Guide](../builder-guide.m
 | `rooms.md` | Room editor (redit), doors, seasonal descriptions, liveable rooms |
 | `items.md` | Item editor (oedit), types, containers, food, liquids |
 | `mobiles.md` | Mobile editor (medit), shops, dialogue, daily routines, simulation, social/family, pregnancy |
+| `socials.md` | CircleMUD-style social commands (`wave`, `bow`, …): format, tokens, tags, DG verb |
 | `areas.md` | Area editor (aedit), permissions, spawn points, migrant immigration |
 | `triggers.md` | All trigger types, Rhai scripting, examples |
 | `dg-scripts.md` | DG Scripts (tbamud trigger language) — variables, commands, control flow, IronMUD specifics |

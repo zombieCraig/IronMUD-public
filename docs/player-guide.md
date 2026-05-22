@@ -314,6 +314,31 @@ MyName waves hello
 MyName laughs
 ```
 
+### Socials
+
+In addition to the free-form `emote` command, IronMUD ships ~490
+predefined social commands you can use directly — `smile`, `wave`,
+`bow`, `dance`, `hug`, `nod`, `grin`, `kiss`, `laugh`, `pout`, and
+many more. Each renders three flavoured variants: you see one line,
+the room sees another, and the target (if any) sees a third.
+
+```
+> wave alice
+You wave at Alice.
+(Alice sees:) MyName waves at you.
+(Others see:) MyName waves at Alice.
+
+> bow
+You bow deeply.
+
+> smile self
+You smile at yourself.
+```
+
+Tab-completion lists socials alongside built-in commands. Most socials
+require you to be standing — `groan` works while sitting; almost
+nothing works while sleeping.
+
 ## Items and Inventory
 
 ### Picking Up Items

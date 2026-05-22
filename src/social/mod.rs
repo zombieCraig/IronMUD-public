@@ -8,6 +8,13 @@
 //! Mood buffs are tagged with `source = MOOD_BUFF_SOURCE` so each call can
 //! cleanly retire prior mood effects without touching other active buffs
 //! (combat buffs, consumables, etc.).
+//!
+//! Submodules:
+//! - [`actions`] — CircleMUD-style player social commands (`wave`, `bow`, …)
+//! - [`render`] — pronoun/name/object token substitution for social templates
+
+pub mod actions;
+pub mod render;
 
 use rand::Rng;
 

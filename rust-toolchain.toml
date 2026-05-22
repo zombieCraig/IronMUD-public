@@ -1,0 +1,14 @@
+[toolchain]
+# Pinned to 1.92.0 because matrix-sdk 0.16 trips the rustc query-depth
+# overflow on 1.95+ ("queries overflow the depth limit!" inside
+# matrix-sdk's `Client::sync` async body). The `#![recursion_limit]`
+# attribute on `src/lib.rs` only affects ironmud's crate; the limit
+# inside matrix-sdk itself is what's blowing up, and we can't raise it
+# from here.
+#
+# Bump this back to a current stable once matrix-sdk releases a fix or
+# we migrate off it. Keep `cargo fmt`'s rustfmt aligned by always
+# running through this toolchain — the formatting style differs
+# subtly between rustfmt versions.
+channel = "1.92.0"
+components = ["rustfmt", "clippy"]

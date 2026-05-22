@@ -21,12 +21,12 @@ The importer:
 
 ## Supported engines
 
-| Engine | Rooms | Mobiles | Objects | Zone resets | Shops | Triggers |
-|---|---|---|---|---|---|---|
-| **CircleMUD 3.x** | ✅ | ✅ (prototypes) | ✅ (prototypes) | ✅ (M/O/G/E/P/D; R warn-only) | ✅ (overlaid onto keeper mob) | ✅ (specproc bindings from `spec_assign.c` + `castle.c`) |
-| **tbaMUD** | ✅ | ✅ (prototypes; 10-token action line) | ✅ (prototypes; 13-token type/flags line + 5-token weight line) | ✅ (M/O/G/E/P/D; R warn-only; T / V warn-only) | ✅ (overlaid onto keeper mob) | ⚠ (DG Scripts: header parsed, body warn-only — re-author in Rhai) |
-| **Ranviermud** | ✅ | ✅ (prototypes from YAML) | ✅ (prototypes from YAML) | ✅ (spawns from `npcs:`/`items:` blocks) | n/a | ⚠ (JS scripts warn-only — re-author in Rhai) |
-| Diku / ROM / Smaug | (planned) | (planned) | (planned) | (planned) | (planned) | (planned) |
+| Engine | Rooms | Mobiles | Objects | Zone resets | Shops | Triggers | Socials |
+|---|---|---|---|---|---|---|---|
+| **CircleMUD 3.x** | ✅ | ✅ (prototypes) | ✅ (prototypes) | ✅ (M/O/G/E/P/D; R warn-only) | ✅ (overlaid onto keeper mob) | ✅ (specproc bindings from `spec_assign.c` + `castle.c`) | ✅ (`lib/misc/socials.new` → `scripts/data/socials.json`) |
+| **tbaMUD** | ✅ | ✅ (prototypes; 10-token action line) | ✅ (prototypes; 13-token type/flags line + 5-token weight line) | ✅ (M/O/G/E/P/D; R warn-only; T / V warn-only) | ✅ (overlaid onto keeper mob) | ⚠ (DG Scripts: header parsed, body warn-only — re-author in Rhai) | ✅ (extended 13-message format; ~490 in stock) |
+| **Ranviermud** | ✅ | ✅ (prototypes from YAML) | ✅ (prototypes from YAML) | ✅ (spawns from `npcs:`/`items:` blocks) | n/a | ⚠ (JS scripts warn-only — re-author in Rhai) | n/a |
+| Diku / ROM / Smaug | (planned) | (planned) | (planned) | (planned) | (planned) | (planned) | (planned) |
 
 A **(planned)** entry means the framework can hold the data but no parser
 is wired up yet. Adding one is mostly a matter of writing the per-engine
@@ -561,6 +561,34 @@ Authoritative source: `circle-3.1/src/structs.h` (`WEAR_LIGHT`..`WEAR_HOLD`).
 Hard-coded in `src/import/engines/circle/wear.rs` — not configurable via JSON
 (IronMUD's `WearLocation` is a Rust enum, not a flag bit, so the mapping
 table format can't represent it).
+
+## CircleMUD social actions (`socials.new`)
+
+The CircleMUD and tbaMUD engines also pick up `<source>/lib/misc/socials.new`
+(or the older `socials` filename) and write the parsed entries to
+`scripts/data/socials.json`. Stock tbaMUD ships ~490 socials; stock
+CircleMUD 3.x ships ~155. Format reference: see
+[`docs/builder/socials.md`](builder/socials.md).
+
+Per-record translation:
+
+| `socials.new` field | IronMUD field | Notes |
+|---|---|---|
+| `name` | `name` | Lowercased, used as the command verb. |
+| `abbrev` | `abbrev` | Optional alias; resolved by the same dispatcher as the primary name. |
+| `hide` (`0`/`1`) | `hide: bool` | Hidden socials skip the room broadcast — only actor + victim see the message. |
+| `min_victim_position` (0-8) | `min_victim_position` | Circle's 9-rank ladder collapses to IronMUD's 3 buckets via `SocialPosition::from_circle`. |
+| `min_char_position` (0-8) | `min_char_position` | Same collapse. |
+| `min_level` | `min_level` | Stored verbatim; not yet enforced by the dispatcher. |
+| 8 standard messages | `char_no_arg`, `others_no_arg`, `char_found`, `others_found`, `vict_found`, `not_found`, `char_auto`, `others_auto` | Single `#` line → `None`. |
+| 3 body-part messages (`$t`) | `body_*` | Stored but not yet driven by syntax; reserved for future `wave on the arm` style targeting. |
+| 2 object messages (`$p`) | `object_*` | Same — stored, not yet wired. |
+| `$` EOF marker | end of file | A single `$` on its own line; `$n`/`$N`/etc. inside message bodies are NOT EOF markers (this caught the importer on its first pass — they're pronoun tokens). |
+
+Output is `scripts/data/socials.json`, overwritten on every `--apply`
+run. Restart the server to pick up changes — the table is loaded once at
+startup. No sled writes; this is engine-neutral world data, not per-zone
+content.
 
 ## tbaMUD coverage matrix
 
