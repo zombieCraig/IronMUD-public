@@ -1781,12 +1781,19 @@ impl Db {
     /// Promote any legacy per-field bonuses then push each `ItemAffect` as a
     /// permanent `ActiveBuff` on the character, sourced as `"item:<uuid>"`.
     /// Idempotent: strips any pre-existing buffs with the same source first.
+    /// If the item carries `EffectType::Loud`, also clears `is_sneaking`,
+    /// `is_hidden`, and any `Invisibility` buff — equipping a noisy item
+    /// must immediately blow your cover, not just block future attempts.
     pub fn stamp_item_buffs_on_character(&self, item: &ItemData, char_name: &str) -> Result<()> {
         if item.affects.is_empty() {
             return Ok(());
         }
         let source = format!("item:{}", item.id);
         let key = char_name.to_lowercase();
+        let item_is_loud = item
+            .affects
+            .iter()
+            .any(|a| a.effect_type == crate::types::EffectType::Loud);
         if let Some(mut character) = self.get_character_data(&key)? {
             character.active_buffs.retain(|b| b.source != source);
             for affect in &item.affects {
@@ -1800,17 +1807,29 @@ impl Db {
                     skill_key: affect.skill_key.clone(),
                 });
             }
+            if item_is_loud {
+                character.is_sneaking = false;
+                character.is_hidden = false;
+                character
+                    .active_buffs
+                    .retain(|b| b.effect_type != crate::types::EffectType::Invisibility);
+            }
             self.save_character_data(character)?;
         }
         Ok(())
     }
 
-    /// Mob counterpart of `stamp_item_buffs_on_character`.
+    /// Mob counterpart of `stamp_item_buffs_on_character`. Same `Loud`
+    /// semantics — strips Invisibility (mobs don't have an is_sneaking flag).
     pub fn stamp_item_buffs_on_mobile(&self, item: &ItemData, mobile_id: &Uuid) -> Result<()> {
         if item.affects.is_empty() {
             return Ok(());
         }
         let source = format!("item:{}", item.id);
+        let item_is_loud = item
+            .affects
+            .iter()
+            .any(|a| a.effect_type == crate::types::EffectType::Loud);
         if let Some(mut mobile) = self.get_mobile_data(mobile_id)? {
             mobile.active_buffs.retain(|b| b.source != source);
             for affect in &item.affects {
@@ -1823,6 +1842,11 @@ impl Db {
                     vs_effect: affect.vs_effect.clone(),
                     skill_key: affect.skill_key.clone(),
                 });
+            }
+            if item_is_loud {
+                mobile
+                    .active_buffs
+                    .retain(|b| b.effect_type != crate::types::EffectType::Invisibility);
             }
             self.save_mobile_data(mobile)?;
         }

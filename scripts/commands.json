@@ -83,6 +83,10 @@
     "access": "user",
     "description": "Perform an action visible to others in the room"
   },
+  "socials": {
+    "access": "user",
+    "description": "List available social commands (wave, bow, smile, ...)"
+  },
   "tell": {
     "access": "user",
     "description": "Send a private message to another player"

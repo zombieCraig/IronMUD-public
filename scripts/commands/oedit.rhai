@@ -3316,18 +3316,35 @@ fn handle_affect_subcommand(item_id, parts, connection_id) {
             return;
         }
         let effect = parts[3].to_lower();
+
+        // For two-token tail effects we accept either order: `<mag> <tag>`
+        // (consistent with damage_resistance) OR `<tag> <mag>` (intuitive
+        // for custom_skill_boost where the key reads as a name first). The
+        // tag is always non-numeric, so try_parse_int disambiguates.
+        let mag_tok = if parts.len() >= 5 { parts[4] } else { "" };
+        let tag_tok = if parts.len() >= 6 { parts[5] } else { "" };
+        let parsed_first = if mag_tok != "" { try_parse_int(mag_tok) } else { () };
+        if parsed_first == () && tag_tok != "" {
+            let parsed_second = try_parse_int(tag_tok);
+            if parsed_second != () {
+                let tmp = mag_tok;
+                mag_tok = tag_tok;
+                tag_tok = tmp;
+            }
+        }
+
         let magnitude = 1;
-        if parts.len() >= 5 {
-            let m = try_parse_int(parts[4]);
+        if mag_tok != "" {
+            let m = try_parse_int(mag_tok);
             if m == () {
-                send_client_message(connection_id, "Invalid magnitude '" + parts[4] + "'.");
+                send_client_message(connection_id, "Invalid magnitude '" + mag_tok + "'.");
                 return;
             }
             magnitude = m;
         }
         let tag = "";
-        if parts.len() >= 6 {
-            tag = parts[5].to_lower();
+        if tag_tok != "" {
+            tag = tag_tok.to_lower();
         }
         let err = item_add_affect(item_id, effect, magnitude, tag);
         if err != "" {

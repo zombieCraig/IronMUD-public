@@ -182,6 +182,13 @@ pub enum EffectType {
     /// registered custom skill key (see `CustomSkillDefinition`) this bonus
     /// applies to. Aggregated by `get_effective_custom_skill`.
     CustomSkillBoost,
+    /// Conspicuous-presence marker — anything that should prevent its bearer
+    /// from sneaking, hiding, or going invisible (bells, glowing runes, an
+    /// aura of dread, a tracker spell). Equipping an item with this affect
+    /// breaks any existing `is_sneaking`/`is_hidden`/`Invisibility` state
+    /// and refuses new applications until the source is removed. Magnitude
+    /// is unused.
+    Loud,
 }
 
 impl EffectType {
@@ -248,6 +255,7 @@ impl EffectType {
             "custom_skill_boost" | "customskillboost" | "custom_skill" | "customskill" => {
                 Some(EffectType::CustomSkillBoost)
             }
+            "loud" | "noisy" | "conspicuous" => Some(EffectType::Loud),
             _ => None,
         }
     }
@@ -299,6 +307,7 @@ impl EffectType {
             EffectType::MaxHpBonus => "max_hp_bonus",
             EffectType::MaxManaBonus => "max_mana_bonus",
             EffectType::CustomSkillBoost => "custom_skill_boost",
+            EffectType::Loud => "loud",
         }
     }
 
@@ -349,6 +358,7 @@ impl EffectType {
             "max_hp_bonus",
             "max_mana_bonus",
             "custom_skill_boost",
+            "loud",
         ]
     }
 }

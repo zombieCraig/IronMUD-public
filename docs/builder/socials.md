@@ -28,7 +28,11 @@ Bob waves at himself.
 You don't see them here.
 ```
 
-- Tab completion lists all loaded socials alongside built-in commands.
+- Type `socials` to see the full list of loaded social verbs. The main
+  `help` listing intentionally omits them so it stays scannable; only the
+  `socials` entry shows up there.
+- Tab completion still resolves social prefixes (e.g. `wa<TAB>` → `wave`)
+  alongside built-in commands.
 - Each social has a position requirement (most need standing; some like
   `groan` work while sitting). Sleeping blocks almost every social.
 - A handful of socials are flagged `hide=true` and only render to the

@@ -409,7 +409,7 @@ fn show_skill_detail(query, conn_id) {
         out += c_dim("  DG read:   %actor.skill(" + info["key"] + ")%\n", conn_id);
         out += c_dim("  DG write:  skill_set <target> " + info["key"] + " <value>\n", conn_id);
         out += c_dim("             skill_add <target> " + info["key"] + " <delta>\n", conn_id);
-        out += c_dim("  Item:      oedit <vnum> affect add custom_skill_boost <magnitude> " + info["key"] + "\n", conn_id);
+        out += c_dim("  Item:      oedit <vnum> affect add custom_skill_boost " + info["key"] + " <magnitude>\n", conn_id);
         send_client_message(conn_id, out);
         return;
     }

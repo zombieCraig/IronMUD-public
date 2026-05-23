@@ -222,6 +222,66 @@ fn peek_word(chars: &mut std::iter::Peekable<std::str::Chars<'_>>, want: &str) -
     true
 }
 
+/// Translate tbaMUD-style `@<letter>` color codes embedded in legacy
+/// social text. Stock tbamud `socials.new` includes color codes inline
+/// (e.g. `@YYou wave@n`); IronMUD's wire protocol uses raw ANSI, so we
+/// either translate the codes to ANSI (when the recipient has colors
+/// enabled) or strip them entirely.
+///
+/// Code map (matches stock CircleMUD/tbaMUD):
+/// `@n`/`@x` reset, `@d/@D` black/bright black, `@r/@R` red, `@g/@G` green,
+/// `@y/@Y` yellow, `@b/@B` blue, `@m/@M` magenta, `@c/@C` cyan,
+/// `@w/@W` white. `@@` emits a literal `@`. Unknown codes are dropped.
+pub fn apply_tba_color_codes(text: &str, colors_enabled: bool) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '@' {
+            out.push(c);
+            continue;
+        }
+        let Some(&next) = chars.peek() else {
+            // Trailing '@' — pass through.
+            out.push('@');
+            break;
+        };
+        chars.next();
+        if next == '@' {
+            out.push('@');
+            continue;
+        }
+        if !colors_enabled {
+            // Strip both the code and its single-letter argument.
+            continue;
+        }
+        let ansi = match next {
+            'n' | 'x' => Some("\x1b[0m"),
+            'd' => Some("\x1b[30m"),
+            'D' => Some("\x1b[90m"),
+            'r' => Some("\x1b[31m"),
+            'R' => Some("\x1b[1;31m"),
+            'g' => Some("\x1b[32m"),
+            'G' => Some("\x1b[1;32m"),
+            'y' => Some("\x1b[33m"),
+            'Y' => Some("\x1b[1;33m"),
+            'b' => Some("\x1b[34m"),
+            'B' => Some("\x1b[1;34m"),
+            'm' | 'p' => Some("\x1b[35m"),
+            'M' | 'P' => Some("\x1b[1;35m"),
+            'c' => Some("\x1b[36m"),
+            'C' => Some("\x1b[1;36m"),
+            'w' => Some("\x1b[37m"),
+            'W' => Some("\x1b[1;37m"),
+            _ => None,
+        };
+        if let Some(a) = ansi {
+            out.push_str(a);
+        }
+        // Unknown letters fall through (consumed silently).
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -322,5 +382,28 @@ mod tests {
         let a = male();
         let r = render("$n $z $e", &a, None, None, None);
         assert_eq!(r, "Alice $z he");
+    }
+
+    #[test]
+    fn tba_codes_strip_when_disabled() {
+        let s = apply_tba_color_codes("@YYou @Dw@Ci@Dnk @n", false);
+        assert_eq!(s, "You wink ");
+    }
+
+    #[test]
+    fn tba_codes_translate_when_enabled() {
+        let s = apply_tba_color_codes("@Yhi@n", true);
+        assert_eq!(s, "\x1b[1;33mhi\x1b[0m");
+    }
+
+    #[test]
+    fn tba_double_at_emits_literal() {
+        assert_eq!(apply_tba_color_codes("a@@b", false), "a@b");
+        assert_eq!(apply_tba_color_codes("a@@b", true), "a@b");
+    }
+
+    #[test]
+    fn tba_trailing_at_passes_through() {
+        assert_eq!(apply_tba_color_codes("foo@", false), "foo@");
     }
 }

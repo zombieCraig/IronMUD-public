@@ -30,6 +30,14 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Refuse if a noisy/glowing item gives the wearer away — same gate that
+    // refuses sneak. Checked before stamina spend so the cost of a doomed
+    // attempt is zero.
+    if is_loud(char.name) {
+        send_client_message(connection_id, "Something you're wearing makes you too conspicuous to hide.");
+        return;
+    }
+
     // Check stamina
     if char.stamina < 5 && !char.god_mode {
         send_client_message(connection_id, "You are too exhausted to hide. (Need 5 stamina)");

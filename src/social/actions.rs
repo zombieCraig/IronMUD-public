@@ -17,7 +17,6 @@ use std::sync::{Arc, OnceLock};
 use tracing::warn;
 use uuid::Uuid;
 
-use crate::session::broadcast::{broadcast_to_room, broadcast_to_room_awake};
 use crate::types::{CharacterData, SocialAction, SocialPosition};
 use crate::{SharedConnections, SharedState};
 
@@ -467,12 +466,7 @@ fn emit_no_arg(
     }
     if let (false, Some(t)) = (social.hide, &social.others_no_arg) {
         let line = render::render(t, actor_party, None, None, None);
-        broadcast_to_room_awake(
-            connections,
-            actor.current_room_id,
-            line,
-            Some(&actor.name),
-        );
+        broadcast_awake_with_color(connections, actor.current_room_id, &line, &actor.name);
     }
 }
 
@@ -488,12 +482,7 @@ fn emit_self(
     }
     if let (false, Some(t)) = (social.hide, &social.others_auto) {
         let line = render::render(t, actor_party, None, None, None);
-        broadcast_to_room_awake(
-            connections,
-            actor.current_room_id,
-            line,
-            Some(&actor.name),
-        );
+        broadcast_awake_with_color(connections, actor.current_room_id, &line, &actor.name);
     }
 }
 
@@ -535,11 +524,13 @@ fn emit_found(
     }
 }
 
-/// Send to a specific connection by id.
+/// Send to a specific connection by id. Translates inline tba color
+/// codes to ANSI (or strips them) based on the recipient's setting.
 fn send_to(connections: &SharedConnections, connection_id: Uuid, msg: &str) {
     let conns = connections.lock().unwrap();
     if let Some(s) = conns.get(&connection_id) {
-        let _ = s.sender.send(msg.to_string());
+        let rendered = render::apply_tba_color_codes(msg, s.colors_enabled);
+        let _ = s.sender.send(rendered);
     }
 }
 
@@ -549,7 +540,8 @@ fn send_to_actor(connections: &SharedConnections, actor: &CharacterData, msg: &s
     for (_, sess) in conns.iter() {
         if let Some(ch) = &sess.character {
             if ch.name == actor.name {
-                let _ = sess.sender.send(format!("{}\n", msg));
+                let rendered = render::apply_tba_color_codes(msg, sess.colors_enabled);
+                let _ = sess.sender.send(format!("{}\n", rendered));
                 return;
             }
         }
@@ -561,7 +553,8 @@ fn send_to_player_named(connections: &SharedConnections, name: &str, msg: &str) 
     for (_, sess) in conns.iter() {
         if let Some(ch) = &sess.character {
             if ch.name.eq_ignore_ascii_case(name) {
-                let _ = sess.sender.send(format!("{}\n", msg));
+                let rendered = render::apply_tba_color_codes(msg, sess.colors_enabled);
+                let _ = sess.sender.send(format!("{}\n", rendered));
                 return;
             }
         }
@@ -576,7 +569,8 @@ fn broadcast_excluding_two(
     victim_name: Option<&str>,
 ) {
     // broadcast_to_room_awake already excludes a single name; layer the
-    // victim exclusion here.
+    // victim exclusion here. We also iterate per-recipient so each player
+    // gets tba color codes translated (or stripped) to match their setting.
     let conns = connections.lock().unwrap();
     for (_, sess) in conns.iter() {
         if let Some(ch) = &sess.character {
@@ -597,13 +591,42 @@ fn broadcast_excluding_two(
             ) {
                 continue;
             }
-            let _ = sess.sender.send(format!("{}\n", msg));
+            let rendered = render::apply_tba_color_codes(msg, sess.colors_enabled);
+            let _ = sess.sender.send(format!("{}\n", rendered));
         }
     }
-    // Touch broadcast_to_room helpers to silence unused-import warnings
-    // when no caller in this file needs them yet. (Kept for symmetry
-    // with future hide-mode extensions that may route through it.)
-    let _ = broadcast_to_room as fn(&SharedConnections, Uuid, String, Option<&str>);
+}
+
+/// Per-recipient awake-only room broadcast that translates tba color
+/// codes for each listener. Used by `emit_no_arg` and `emit_self`.
+fn broadcast_awake_with_color(
+    connections: &SharedConnections,
+    room_id: Uuid,
+    msg: &str,
+    exclude_name: &str,
+) {
+    let conns = connections.lock().unwrap();
+    for (_, sess) in conns.iter() {
+        if let Some(ch) = &sess.character {
+            if ch.current_room_id != room_id {
+                continue;
+            }
+            if ch.name == exclude_name {
+                continue;
+            }
+            if matches!(
+                ch.position,
+                crate::types::CharacterPosition::Sleeping
+            ) {
+                continue;
+            }
+            if ch.ignored.iter().any(|i| i == exclude_name) {
+                continue;
+            }
+            let rendered = render::apply_tba_color_codes(msg, sess.colors_enabled);
+            let _ = sess.sender.send(format!("{}\n", rendered));
+        }
+    }
 }
 
 #[cfg(test)]

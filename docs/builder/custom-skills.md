@@ -78,11 +78,15 @@ Unknown keys log a builder warning and no-op — they won't crash the trigger.
 ## Item affects (`oedit ... affect`)
 
 To stamp a passive bonus from equipment, use the standard `affect add`
-grammar with `custom_skill_boost` plus the published key as the tag:
+grammar with `custom_skill_boost` plus the published key:
 
 ```
-oedit 8472 affect add custom_skill_boost 1 dancing_queen
+oedit 8472 affect add custom_skill_boost dancing_queen 1
+oedit 8472 affect add custom_skill_boost 1 dancing_queen   # also accepted
 ```
+
+Either order works — the key is always non-numeric, so the parser sorts
+out which token is which.
 
 On equip, an `ActiveBuff` is stamped on the wearer with
 `source: "item:<uuid>"`. On unequip it's stripped, just like
@@ -112,7 +116,8 @@ oedit 8472 set name dancing boots
 oedit 8472 set type armor
 oedit 8472 affect add dexterity_boost 2
 oedit 8472 affect add charisma_boost 1
-oedit 8472 affect add custom_skill_boost 1 dancing_queen
+oedit 8472 affect add custom_skill_boost dancing_queen 1
+oedit 8472 affect add loud                   # bells! no sneaking in these.
 ```
 
 Then a dance-contest mob trigger can branch on it:

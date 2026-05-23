@@ -1502,7 +1502,10 @@ fn cmd_social(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
             // as exclude.
             if let (false, Some(t)) = (social.hide, &social.others_no_arg) {
                 let line = render::render(t, &actor, None, None, None);
-                let mut msg = line;
+                // DG broadcasts go to many recipients with mixed color
+                // settings; strip tba @-codes to plain text rather than
+                // emit raw codes to color-off clients.
+                let mut msg = render::apply_tba_color_codes(&line, false);
                 if !msg.ends_with('\n') {
                     msg.push('\n');
                 }
@@ -1523,7 +1526,7 @@ fn cmd_social(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
             if !social.hide {
                 if let Some(t) = &social.others_found {
                     let line = render::render(t, &actor, Some(&vict), None, None);
-                    let mut msg = line;
+                    let mut msg = render::apply_tba_color_codes(&line, false);
                     if !msg.ends_with('\n') {
                         msg.push('\n');
                     }
@@ -1555,7 +1558,8 @@ fn deliver_to_player(ctx: &EvalCtx, player_name: &str, line: String) {
     for (_, sess) in conns.iter() {
         if let Some(ch) = &sess.character {
             if ch.name.eq_ignore_ascii_case(player_name) {
-                let mut msg = line;
+                let rendered = crate::social::render::apply_tba_color_codes(&line, sess.colors_enabled);
+                let mut msg = rendered;
                 if !msg.ends_with('\n') {
                     msg.push('\n');
                 }

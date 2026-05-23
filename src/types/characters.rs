@@ -375,6 +375,11 @@ pub struct CommandMeta {
     pub description: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub requires: Option<CommandRequirements>,
+    /// Optional category tag. `Some("social")` marks a virtual social-command
+    /// entry so `help` can hide it behind the unified `socials` listing while
+    /// the prefix-matching dispatcher still resolves it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kind: Option<String>,
 }
 
 /// Optional gating beyond `access`. A command with skill requirements is

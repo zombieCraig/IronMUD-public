@@ -346,12 +346,21 @@ oedit dancing_boots affect add dexterity_boost 2
 oedit dancing_boots affect add charisma_boost 1
 oedit fire_cloak    affect add damage_resistance 25 fire
 oedit ward_pendant  affect add status_resistance 20 sleep
-oedit dancing_boots affect add custom_skill_boost 1 dancing_queen
+oedit dancing_boots affect add custom_skill_boost dancing_queen 1
+oedit dancing_boots affect add loud
 ```
 
 The `custom_skill_boost` variant adds `magnitude` to a builder-published
 custom skill (see [custom-skills.md](custom-skills.md)). The third token is
 the registered skill key — the call is rejected if the key isn't published.
+
+The `loud` variant marks the wearer as conspicuous: equipping the item
+breaks any current sneak/hide/invisibility state and refuses new
+`sneak`/`hide` attempts plus Invisibility-buff applications while worn.
+Magnitude is unused; multiple sources stack noiselessly (one Loud buff is
+as loud as five). Use it for bells, glowing runes, an aura of dread —
+anything that should make stealth impossible.
+
 Use `oedit <id> affect [list]` to inspect, `affect rm <index>` to remove,
 `affect clear` to wipe.
 

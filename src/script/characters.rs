@@ -3070,8 +3070,23 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // ========== Buff System Functions ==========
 
+    // is_loud(char_name) -> bool
+    // True iff the character carries any `EffectType::Loud` buff (typically
+    // stamped from a noisy equipped item). Drives the sneak/hide refusal in
+    // sneak.rhai / hide.rhai and the Invisibility refusal in apply_buff.
+    let cloned_db = db.clone();
+    engine.register_fn("is_loud", move |char_name: String| -> bool {
+        let lname = char_name.to_lowercase();
+        match cloned_db.get_character_data(&lname) {
+            Ok(Some(c)) => c.active_buffs.iter().any(|b| b.effect_type == EffectType::Loud),
+            _ => false,
+        }
+    });
+
     // apply_buff(char_name, effect_type_str, magnitude, duration_secs, source) -> bool
     // Adds or replaces an ActiveBuff on a character. If same effect_type exists, replaces it.
+    // Refuses Invisibility on a target carrying `EffectType::Loud` — bells and
+    // bright runes give you away.
     let cloned_db = db.clone();
     let conns = connections.clone();
     engine.register_fn(
@@ -3092,6 +3107,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             };
             let name_lower = char_name.to_lowercase();
             if let Ok(Some(mut character)) = cloned_db.get_character_data(&name_lower) {
+                if effect_type == EffectType::Invisibility
+                    && character.active_buffs.iter().any(|b| b.effect_type == EffectType::Loud)
+                {
+                    return false;
+                }
                 // Replace existing buff of same type, or add new
                 if let Some(existing) = character.active_buffs.iter_mut().find(|b| b.effect_type == effect_type) {
                     existing.magnitude = existing.magnitude.max(buff.magnitude);
@@ -3138,6 +3158,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(Some(m)) => m,
                 _ => return false,
             };
+            if effect_type == EffectType::Invisibility
+                && mobile.active_buffs.iter().any(|b| b.effect_type == EffectType::Loud)
+            {
+                return false;
+            }
             if let Some(existing) = mobile.active_buffs.iter_mut().find(|b| b.effect_type == effect_type) {
                 existing.magnitude = existing.magnitude.max(magnitude as i32);
                 existing.remaining_secs = duration_secs as i32;

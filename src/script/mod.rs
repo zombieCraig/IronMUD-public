@@ -1411,6 +1411,11 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         let mut commands: Vec<rhai::Dynamic> = Vec::new();
 
         for (name, meta) in &world.command_metadata {
+            // Socials are listed via the dedicated `socials` command, not in
+            // the main help table.
+            if meta.kind.as_deref() == Some("social") {
+                continue;
+            }
             let accessible = match meta.access.as_str() {
                 "guest" => !is_logged_in,
                 "any" => true,
@@ -1456,6 +1461,20 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         });
 
         commands
+    });
+
+    // get_social_command_names() -> sorted Array of canonical social names.
+    // Used by the `socials` command to render the listing. Returns primary
+    // names only (no abbrev duplicates).
+    let cloned_state2 = state.clone();
+    engine.register_fn("get_social_command_names", move || {
+        let world = cloned_state2.lock().unwrap();
+        let mut names: Vec<String> = world.socials.iter().map(|a| a.lookup_key()).collect();
+        names.sort();
+        names
+            .into_iter()
+            .map(rhai::Dynamic::from)
+            .collect::<rhai::Array>()
     });
 
     // get_default_aliases() -> Map of default aliases

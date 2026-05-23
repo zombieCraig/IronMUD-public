@@ -42,6 +42,7 @@ pub fn register_socials_in_command_metadata(
                 access: "user".to_string(),
                 description: desc,
                 requires: None,
+                kind: Some("social".to_string()),
             },
         );
     }

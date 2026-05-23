@@ -323,6 +323,7 @@ pub const AFFECT_EFFECT_TYPES: &[&str] = &[
     "damage_resistance",
     "status_resistance",
     "custom_skill_boost",
+    "loud",
     "damage_reduction",
     "poison",
     "blind",
