@@ -1029,6 +1029,7 @@ impl ItemData {
                     magnitude: *field,
                     damage_type: None,
                     vs_effect: None,
+                    skill_key: None,
                 });
                 *field = 0;
                 true

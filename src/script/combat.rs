@@ -150,6 +150,7 @@ mod damage_reduction_tests {
             source: "test".to_string(),
             damage_type: None,
             vs_effect: None,
+            skill_key: None,
         }
     }
 
@@ -167,6 +168,7 @@ mod damage_reduction_tests {
             source: "test".to_string(),
             damage_type: None,
             vs_effect: None,
+            skill_key: None,
         };
         assert_eq!(apply_damage_reduction(20, &[b]), 20);
     }
@@ -205,6 +207,7 @@ mod luck_tests {
             source: "test".to_string(),
             damage_type: None,
             vs_effect: None,
+            skill_key: None,
         }
     }
 
@@ -245,6 +248,7 @@ mod luck_tests {
                 source: "x".to_string(),
                 damage_type: None,
                 vs_effect: None,
+                skill_key: None,
             },
         ];
         assert_eq!(luck_total(&mixed), 5);

@@ -5,9 +5,9 @@ use std::path::Path;
 use std::sync::Arc; // Import Arc
 
 use crate::{
-    AchievementDef, ApiKey, AreaData, BoardPost, CharacterData, EscrowData, ItemData, ItemLocation, ItemType,
-    LeaseData, MailMessage, MobileData, PlantInstance, PlantPrototype, PropertyTemplate, Recipe, RoomData,
-    STARTING_ROOM_ID, ShopPreset, SpawnEntityType, SpawnPointData, TransportData,
+    AchievementDef, ApiKey, AreaData, BoardPost, CharacterData, CustomSkillDefinition, EscrowData, ItemData,
+    ItemLocation, ItemType, LeaseData, MailMessage, MobileData, PlantInstance, PlantPrototype, PropertyTemplate,
+    Recipe, RoomData, STARTING_ROOM_ID, ShopPreset, SpawnEntityType, SpawnPointData, TransportData,
 };
 use uuid::Uuid;
 
@@ -64,6 +64,11 @@ pub struct Db {
     // Canonical engine-detected achievements live in JSON; this tree
     // stores builder-created Manual ones and admin overrides.
     achievements: Arc<Tree>,
+    // Builder-published custom skill registry. Key = canonical skill key
+    // (lowercase, e.g. "dancing_queen"), value = JSON `CustomSkillDefinition`.
+    // Authored via `lookup skill publish`. Per-entity values live on
+    // CharacterData.custom_skills / MobileData.custom_skills, not here.
+    custom_skills: Arc<Tree>,
     // Quest prototypes (key = vnum bytes, value = JSON QuestData). Per-player
     // progress lives on CharacterData; this tree only holds prototypes.
     quests: Arc<Tree>,
@@ -148,6 +153,7 @@ impl Db {
         let dg_globals = db.open_tree("dg_globals")?;
         let dg_trigger_protos = db.open_tree("dg_trigger_protos")?;
         let achievements = db.open_tree("achievements")?;
+        let custom_skills = db.open_tree("custom_skills")?;
         let quests = db.open_tree("quests")?;
         let bans = db.open_tree("bans")?;
         let ip_account_history = db.open_tree("ip_account_history")?;
@@ -180,6 +186,7 @@ impl Db {
             dg_globals: Arc::new(dg_globals),
             dg_trigger_protos: Arc::new(dg_trigger_protos),
             achievements: Arc::new(achievements),
+            custom_skills: Arc::new(custom_skills),
             quests: Arc::new(quests),
             bans: Arc::new(bans),
             ip_account_history: Arc::new(ip_account_history),
@@ -1790,6 +1797,7 @@ impl Db {
                     source: source.clone(),
                     damage_type: affect.damage_type,
                     vs_effect: affect.vs_effect.clone(),
+                    skill_key: affect.skill_key.clone(),
                 });
             }
             self.save_character_data(character)?;
@@ -1813,6 +1821,7 @@ impl Db {
                     source: source.clone(),
                     damage_type: affect.damage_type,
                     vs_effect: affect.vs_effect.clone(),
+                    skill_key: affect.skill_key.clone(),
                 });
             }
             self.save_mobile_data(mobile)?;
@@ -3005,6 +3014,45 @@ impl Db {
         for entry in self.achievements.iter() {
             let (_key, value) = entry?;
             let def: AchievementDef = serde_json::from_slice(&value)?;
+            out.push(def);
+        }
+        Ok(out)
+    }
+
+    // ========== Custom Skill Registry ==========
+
+    /// Get a published custom-skill definition by key.
+    pub fn get_custom_skill(&self, key: &str) -> Result<Option<CustomSkillDefinition>> {
+        let key = key.to_lowercase();
+        match self.custom_skills.get(key.as_bytes())? {
+            Some(ivec) => {
+                let def: CustomSkillDefinition = serde_json::from_slice(&ivec)?;
+                Ok(Some(def))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Persist a custom-skill definition (insert or update).
+    pub fn save_custom_skill(&self, def: &CustomSkillDefinition) -> Result<()> {
+        let key = def.key.to_lowercase();
+        let value = serde_json::to_vec(def)?;
+        self.custom_skills.insert(key.as_bytes(), value)?;
+        Ok(())
+    }
+
+    /// Delete a custom-skill definition by key. Returns true if removed.
+    pub fn delete_custom_skill(&self, key: &str) -> Result<bool> {
+        let key = key.to_lowercase();
+        Ok(self.custom_skills.remove(key.as_bytes())?.is_some())
+    }
+
+    /// List every published custom-skill definition.
+    pub fn list_all_custom_skills(&self) -> Result<Vec<CustomSkillDefinition>> {
+        let mut out = Vec::new();
+        for entry in self.custom_skills.iter() {
+            let (_key, value) = entry?;
+            let def: CustomSkillDefinition = serde_json::from_slice(&value)?;
             out.push(def);
         }
         Ok(out)

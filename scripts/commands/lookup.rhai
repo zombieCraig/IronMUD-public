@@ -54,9 +54,13 @@ fn run_command(args, connection_id) {
 
 fn send_lookup_usage(conn_id) {
     send_client_message(conn_id, "Usage: lookup <spell|trait|effect|skill> [<name> | search <text>]");
-    send_client_message(conn_id, "  lookup spell                  — list all spells");
-    send_client_message(conn_id, "  lookup spell heal             — detail card");
-    send_client_message(conn_id, "  lookup spell search fire      — substring match");
+    send_client_message(conn_id, "  lookup spell                                       — list all spells");
+    send_client_message(conn_id, "  lookup spell heal                                  — detail card");
+    send_client_message(conn_id, "  lookup spell search fire                           — substring match");
+    send_client_message(conn_id, "  lookup skill                                       — list core + custom skills");
+    send_client_message(conn_id, "  lookup skill dancing_queen                         — detail (core or custom)");
+    send_client_message(conn_id, "  lookup skill publish <key> <description>           — register a custom skill");
+    send_client_message(conn_id, "  lookup skill unpublish <key>                       — remove a custom skill");
 }
 
 // ===== spells =====
@@ -351,30 +355,70 @@ fn dispatch_skill(rest, conn_id) {
         list_skills(conn_id);
         return;
     }
+    let parts = rest.split(" ");
+    let head = parts[0].to_lower();
+    if head == "publish" {
+        if parts.len() < 3 {
+            send_client_message(conn_id, "Usage: lookup skill publish <key> <description>");
+            return;
+        }
+        let key = parts[1].to_lower();
+        let desc = parts[2];
+        for i in 3..parts.len() { desc += " " + parts[i]; }
+        publish_skill(key, desc, conn_id);
+        return;
+    }
+    if head == "unpublish" {
+        if parts.len() < 2 {
+            send_client_message(conn_id, "Usage: lookup skill unpublish <key>");
+            return;
+        }
+        unpublish_skill(parts[1].to_lower(), conn_id);
+        return;
+    }
     show_skill_detail(rest, conn_id);
 }
 
 fn list_skills(conn_id) {
-    let names = get_skill_list();
-    if names.len() == 0 {
-        send_client_message(conn_id, "No skills defined.");
-        return;
-    }
-    names.sort();
+    let core = get_skill_list();
+    core.sort();
+    let custom = list_custom_skills();
+    custom.sort();
     let term_width = get_terminal_width(conn_id);
-    let output = c_header("=== Skills (" + names.len() + ") ===\n", conn_id);
-    output += format_columns(names, term_width, 2);
-    output += "\n" + c_dim("`lookup skill <name>` for cross-references. No catalog yet — names only.", conn_id);
+    let output = c_header("=== Skills ===\n", conn_id);
+    output += c_label("--- Core (" + core.len() + ") ---\n", conn_id);
+    output += format_columns(core, term_width, 2);
+    if custom.len() > 0 {
+        output += "\n" + c_label("--- Custom (Builder, " + custom.len() + ") ---\n", conn_id);
+        output += format_columns(custom, term_width, 2);
+    }
+    output += "\n" + c_dim("`lookup skill <name>` for details. `lookup skill publish <key> <desc>` to add a custom skill.", conn_id);
     send_client_message(conn_id, output);
 }
 
 fn show_skill_detail(query, conn_id) {
     let lower = query.to_lower();
+    // Custom skill takes precedence — same key cannot be registered if it
+    // collides with a core skill, so this is non-ambiguous.
+    let info = get_custom_skill_info(lower);
+    if info.len() > 0 {
+        let out = c_header("=== Custom Skill: " + info["key"] + " ===\n", conn_id);
+        out += c_label("  description: ", conn_id) + c_value(info["description"], conn_id) + "\n";
+        out += c_label("  author:      ", conn_id) + c_value(info["author"], conn_id) + "\n";
+        out += "\n" + c_label("Integration:\n", conn_id);
+        out += c_dim("  DG read:   %actor.skill(" + info["key"] + ")%\n", conn_id);
+        out += c_dim("  DG write:  skill_set <target> " + info["key"] + " <value>\n", conn_id);
+        out += c_dim("             skill_add <target> " + info["key"] + " <delta>\n", conn_id);
+        out += c_dim("  Item:      oedit <vnum> affect add custom_skill_boost <magnitude> " + info["key"] + "\n", conn_id);
+        send_client_message(conn_id, out);
+        return;
+    }
+    // Fall through to the core-skill cross-reference view.
     let info = get_skill_references(lower);
     let spells = info["spells"];
     let recipes = info["recipes"];
     if spells.len() == 0 && recipes.len() == 0 {
-        send_client_message(conn_id, "No spells or recipes reference skill '" + lower + "'.");
+        send_client_message(conn_id, "No spells or recipes reference skill '" + lower + "'. (Not a custom skill either.)");
         return;
     }
     let out = c_header("=== Skill: " + lower + " ===\n", conn_id);
@@ -391,4 +435,39 @@ fn show_skill_detail(query, conn_id) {
         }
     }
     send_client_message(conn_id, out);
+}
+
+fn publish_skill(key, desc, conn_id) {
+    let char = get_player_character(conn_id);
+    if char == () { return; }
+    // Don't overwrite an existing entry the caller doesn't own.
+    let existing = get_custom_skill_info(key);
+    if existing.len() > 0 && existing["author"] != char.name && !char.is_admin {
+        send_client_message(conn_id, "Custom skill '" + key + "' is already published by " + existing["author"] + ".");
+        return;
+    }
+    if publish_custom_skill(key, desc, char.name) {
+        send_client_message(conn_id, "Published custom skill '" + key + "'.");
+    } else {
+        send_client_message(conn_id, "Failed to publish '" + key + "' — keys must match [a-z][a-z0-9_]{1,31} and not collide with a core skill.");
+    }
+}
+
+fn unpublish_skill(key, conn_id) {
+    let char = get_player_character(conn_id);
+    if char == () { return; }
+    let existing = get_custom_skill_info(key);
+    if existing.len() == 0 {
+        send_client_message(conn_id, "No custom skill '" + key + "' is published.");
+        return;
+    }
+    if existing["author"] != char.name && !char.is_admin {
+        send_client_message(conn_id, "Only the author (" + existing["author"] + ") or an admin can unpublish this skill.");
+        return;
+    }
+    if unpublish_custom_skill(key) {
+        send_client_message(conn_id, "Unpublished custom skill '" + key + "'.");
+    } else {
+        send_client_message(conn_id, "Failed to remove '" + key + "'.");
+    }
 }

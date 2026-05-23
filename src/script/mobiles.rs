@@ -1,6 +1,7 @@
 // src/script/mobiles.rs
 // Mobile/NPC system functions
 
+use crate::SharedState;
 use crate::db::Db;
 use crate::{
     ActivityState, DamageType, EffectType, MobileData, MobileFlags, RememberedEnemy, RoutineEntry,
@@ -141,7 +142,7 @@ mod memory_tests {
 }
 
 /// Register mobile-related functions
-pub fn register(engine: &mut Engine, db: Arc<Db>) {
+pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // ========== Mobile/NPC System ==========
 
     // Register MobileFlags type with getters/setters
@@ -1985,6 +1986,99 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             mobile.daily_routine.sort_by_key(|e| e.start_hour);
 
             cloned_db.save_mobile_data(mobile).is_ok()
+        },
+    );
+
+    // ===== Mob custom skill values =====
+    // Mirror the per-character custom-skill API in `script/characters.rs`.
+    // Used by DG triggers via the `%self.skill(<key>)%` accessor and
+    // `skill_set/skill_add` commands, plus builder tooling.
+
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_mobile_custom_skill",
+        move |mob_id: String, key: String| -> i64 {
+            let Ok(uuid) = uuid::Uuid::parse_str(&mob_id) else { return 0; };
+            let key_lc = key.to_lowercase();
+            match cloned_db.get_mobile_data(&uuid) {
+                Ok(Some(m)) => m.custom_skills.get(&key_lc).copied().unwrap_or(0) as i64,
+                _ => 0,
+            }
+        },
+    );
+
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_effective_mobile_custom_skill",
+        move |mob_id: String, key: String| -> i64 {
+            let Ok(uuid) = uuid::Uuid::parse_str(&mob_id) else { return 0; };
+            let key_lc = key.to_lowercase();
+            match cloned_db.get_mobile_data(&uuid) {
+                Ok(Some(m)) => {
+                    let base = m.custom_skills.get(&key_lc).copied().unwrap_or(0) as i64;
+                    let bonus: i64 = m
+                        .active_buffs
+                        .iter()
+                        .filter(|b| {
+                            b.effect_type == EffectType::CustomSkillBoost
+                                && b.skill_key.as_deref().map(|s| s.eq_ignore_ascii_case(&key_lc))
+                                    == Some(true)
+                        })
+                        .map(|b| b.magnitude as i64)
+                        .sum();
+                    base + bonus
+                }
+                _ => 0,
+            }
+        },
+    );
+
+    let cloned_db = db.clone();
+    let state_clone = state.clone();
+    engine.register_fn(
+        "set_mobile_custom_skill",
+        move |mob_id: String, key: String, value: i64| -> bool {
+            let Ok(uuid) = uuid::Uuid::parse_str(&mob_id) else { return false; };
+            let key_lc = key.to_lowercase();
+            {
+                let world = state_clone.lock().unwrap();
+                if !world.custom_skill_definitions.contains_key(&key_lc) {
+                    return false;
+                }
+            }
+            match cloned_db.get_mobile_data(&uuid) {
+                Ok(Some(mut m)) => {
+                    m.custom_skills.insert(key_lc, value as i32);
+                    cloned_db.save_mobile_data(m).is_ok()
+                }
+                _ => false,
+            }
+        },
+    );
+
+    let cloned_db = db.clone();
+    let state_clone = state.clone();
+    engine.register_fn(
+        "modify_mobile_custom_skill",
+        move |mob_id: String, key: String, delta: i64| -> i64 {
+            let Ok(uuid) = uuid::Uuid::parse_str(&mob_id) else { return 0; };
+            let key_lc = key.to_lowercase();
+            {
+                let world = state_clone.lock().unwrap();
+                if !world.custom_skill_definitions.contains_key(&key_lc) {
+                    return 0;
+                }
+            }
+            match cloned_db.get_mobile_data(&uuid) {
+                Ok(Some(mut m)) => {
+                    let current = m.custom_skills.get(&key_lc).copied().unwrap_or(0);
+                    let next = current.saturating_add(delta as i32);
+                    m.custom_skills.insert(key_lc, next);
+                    let _ = cloned_db.save_mobile_data(m);
+                    next as i64
+                }
+                _ => 0,
+            }
         },
     );
 }

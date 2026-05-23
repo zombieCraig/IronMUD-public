@@ -136,6 +136,7 @@ fn upsert_buff(buffs: &mut Vec<ActiveBuff>, effect_type: EffectType, magnitude: 
             source: source.to_string(),
             damage_type: None,
             vs_effect: None,
+            skill_key: None,
         });
     }
 }

@@ -177,6 +177,11 @@ pub enum EffectType {
     /// Flat max-mana bonus while held as an active buff. Legacy
     /// `ItemData.max_mana_bonus` migrates here.
     MaxManaBonus,
+    /// Builder-defined custom skill bonus. Companion tag
+    /// `ItemAffect.skill_key` / `ActiveBuff.skill_key` identifies which
+    /// registered custom skill key (see `CustomSkillDefinition`) this bonus
+    /// applies to. Aggregated by `get_effective_custom_skill`.
+    CustomSkillBoost,
 }
 
 impl EffectType {
@@ -240,6 +245,9 @@ impl EffectType {
             "damage_bonus" | "damagebonus" | "damroll" => Some(EffectType::DamageBonus),
             "max_hp_bonus" | "maxhpbonus" | "max_hp" | "maxhit" => Some(EffectType::MaxHpBonus),
             "max_mana_bonus" | "maxmanabonus" | "max_mana" | "maxmana" => Some(EffectType::MaxManaBonus),
+            "custom_skill_boost" | "customskillboost" | "custom_skill" | "customskill" => {
+                Some(EffectType::CustomSkillBoost)
+            }
             _ => None,
         }
     }
@@ -290,6 +298,7 @@ impl EffectType {
             EffectType::DamageBonus => "damage_bonus",
             EffectType::MaxHpBonus => "max_hp_bonus",
             EffectType::MaxManaBonus => "max_mana_bonus",
+            EffectType::CustomSkillBoost => "custom_skill_boost",
         }
     }
 
@@ -339,6 +348,7 @@ impl EffectType {
             "damage_bonus",
             "max_hp_bonus",
             "max_mana_bonus",
+            "custom_skill_boost",
         ]
     }
 }
@@ -378,6 +388,10 @@ pub struct ActiveBuff {
     /// for all other effect types.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vs_effect: Option<String>,
+    /// Companion tag for `EffectType::CustomSkillBoost`. Registered custom
+    /// skill key (see `CustomSkillDefinition`). Ignored for all other types.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_key: Option<String>,
 }
 
 impl Default for ActiveBuff {
@@ -389,6 +403,7 @@ impl Default for ActiveBuff {
             source: String::new(),
             damage_type: None,
             vs_effect: None,
+            skill_key: None,
         }
     }
 }
@@ -409,4 +424,8 @@ pub struct ItemAffect {
     /// `EffectType` being resisted, or `"*"` for "all status effects".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vs_effect: Option<String>,
+    /// Required iff `effect_type == CustomSkillBoost`. Registered custom skill
+    /// key (see `CustomSkillDefinition`). Ignored otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_key: Option<String>,
 }

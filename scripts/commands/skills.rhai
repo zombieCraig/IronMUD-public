@@ -65,7 +65,40 @@ fn run_command(args, connection_id) {
     let utility_skills = ["medical", "swimming"];
     output += render_category("Utility", utility_skills, all_skills);
 
+    // Category: Custom (builder-defined) — surfaces only the keys this
+    // character has a non-zero base value for or is buffed in. Empty for
+    // worlds that don't use the custom-skill registry.
+    let custom_rows = collect_custom_skill_rows(char.name);
+    if custom_rows.len() > 0 {
+        output += render_custom_category(custom_rows);
+    }
+
     send_client_message(connection_id, output);
+}
+
+fn collect_custom_skill_rows(char_name) {
+    let rows = [];
+    for key in list_character_custom_skills(char_name) {
+        let base = get_custom_skill(char_name, key);
+        let eff = get_effective_custom_skill(char_name, key);
+        rows.push(#{ key: key, base: base, eff: eff });
+    }
+    return rows;
+}
+
+fn render_custom_category(rows) {
+    let out = "\n  -- Custom (Builder-Defined) --\n";
+    for row in rows {
+        let display = format_skill_name(row.key);
+        let padded = display;
+        while padded.len() < 15 { padded += " "; }
+        let diff = row.eff - row.base;
+        let value = "" + row.base;
+        if diff > 0 { value += " (+" + diff + ")"; }
+        else if diff < 0 { value += " (" + diff + ")"; }
+        out += "  " + padded + ": " + value + "\n";
+    }
+    return out;
 }
 
 fn render_category(category_name, skill_list, all_skills) {

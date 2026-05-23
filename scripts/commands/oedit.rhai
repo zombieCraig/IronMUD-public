@@ -2115,6 +2115,7 @@ fn handle_spawn_subcommand(item, char, connection_id) {
         let tag = "";
         if a.has_damage_type { tag = a.damage_type; }
         if a.has_vs_effect { tag = a.vs_effect; }
+        if a.has_skill_key { tag = a.skill_key; }
         item_add_affect(new_item.id, a.effect_type, a.magnitude, tag);
     }
 
@@ -3261,6 +3262,7 @@ fn handle_affect_subcommand(item_id, parts, connection_id) {
         "  protect    damage_resistance <type>   (fire, cold, acid, poison, ...)\n" +
         "             status_resistance <effect|*>  (sleep, charmed, blind, ...)\n" +
         "             damage_reduction\n" +
+        "  custom     custom_skill_boost <published_key>  (see `lookup skill`)\n" +
         "  curse      poison, blind, sleep, curse  (applied permanently to wearer)";
 
     if parts.len() < 3 || parts[2].to_lower() == "list" || parts[2].to_lower() == "show" {

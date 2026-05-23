@@ -16,6 +16,7 @@ Detailed OLC editor documentation. Start with [Builder Guide](../builder-guide.m
 | `vampire-progression.md` | Sire-NPC + clan-embrace quest plumbing for thinblood progression |
 | `languages.md` | Language definitions, garbling, NPC `spoken_language` |
 | `achievements.md` | Achievement editor (achedit), criteria and rewards |
+| `custom-skills.md` | Builder-published "fake" skills (e.g. `dancing_queen`): registry + DG read/write + item affects |
 | `classes.md` | Class starting-kit editor (cedit), per-class gold + item kit at character creation |
 | `recipes.md` | Recipe editor (recedit), crafting system |
 | `gardening.md` | Plant prototype editor (plantedit), gardening system |

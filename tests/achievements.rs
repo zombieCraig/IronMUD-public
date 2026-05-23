@@ -114,6 +114,7 @@ fn build_state(db: Db, defs: Vec<AchievementDef>) -> (SharedState, SharedConnect
         spell_definitions: HashMap::new(),
         achievement_definitions,
         achievement_index_by_counter,
+        custom_skill_definitions: HashMap::new(),
         transports: HashMap::new(),
         chat_sender: None,
         shutdown_sender: None,

@@ -241,6 +241,10 @@ pub struct World {
     // if/when reload is wired. Used to make `notify_achievement_counter`
     // O(matching) instead of O(all defs).
     pub achievement_index_by_counter: HashMap<String, Vec<String>>,
+    // Builder-published custom skill metadata (loaded from sled tree on
+    // boot, mutated by `lookup skill publish/unpublish`). Per-entity values
+    // live on CharacterData/MobileData, not here.
+    pub custom_skill_definitions: HashMap<String, CustomSkillDefinition>,
     // Transportation system (elevators, buses, trains, etc.)
     pub transports: HashMap<Uuid, TransportData>,
     // Chat integration sender (for disconnect notifications to Matrix/Discord)
@@ -2123,6 +2127,7 @@ pub async fn handle_connection(
                 mobs_in_room,
                 class_ids,
                 achievement_keys,
+                custom_skill_keys,
                 has_builder_access,
             ) = {
                 let world = state.lock().unwrap();
@@ -2295,6 +2300,8 @@ pub async fn handle_connection(
 
                 let class_ids: Vec<String> = world.class_definitions.keys().cloned().collect();
                 let achievement_keys: Vec<String> = world.achievement_definitions.keys().cloned().collect();
+                let custom_skill_keys: Vec<String> =
+                    world.custom_skill_definitions.keys().cloned().collect();
 
                 (
                     available_commands,
@@ -2313,6 +2320,7 @@ pub async fn handle_connection(
                     mobs_in_room,
                     class_ids,
                     achievement_keys,
+                    custom_skill_keys,
                     has_builder_access,
                 )
             };
@@ -2337,6 +2345,7 @@ pub async fn handle_connection(
                 &mobs_in_room,
                 &class_ids,
                 &achievement_keys,
+                &custom_skill_keys,
                 has_builder_access,
             );
 

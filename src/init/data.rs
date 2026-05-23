@@ -365,6 +365,9 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
     // `notify_achievement_counter`.
     load_achievements(&mut world);
 
+    // Load builder-published custom skill metadata from the sled tree.
+    load_custom_skills(&mut world);
+
     Ok(())
 }
 
@@ -457,4 +460,22 @@ fn load_achievements(world: &mut crate::World) {
     );
     world.achievement_definitions = defs;
     world.achievement_index_by_counter = index;
+}
+
+/// Load published custom-skill definitions from the sled `custom_skills`
+/// tree into the in-memory cache. Called at boot; idempotent.
+pub fn load_custom_skills(world: &mut crate::World) {
+    match world.db.list_all_custom_skills() {
+        Ok(defs) => {
+            let mut map = std::collections::HashMap::with_capacity(defs.len());
+            for def in defs {
+                map.insert(def.key.to_lowercase(), def);
+            }
+            info!("Loaded {} custom skill definitions", map.len());
+            world.custom_skill_definitions = map;
+        }
+        Err(e) => {
+            error!("Failed to load custom skills from database: {}", e);
+        }
+    }
 }

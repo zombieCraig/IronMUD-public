@@ -1227,6 +1227,7 @@ fn is_reader_call(fn_name: &str) -> bool {
             | "affect"
             | "affects"
             | "door"
+            | "skill"
     )
 }
 
@@ -1465,6 +1466,49 @@ fn read_actor_call(
                 .count()
                 .to_string()
         }
+        // `%actor.skill(<key>)%` — effective value of a builder-published
+        // custom skill: actor's base `custom_skills[key]` plus the sum of
+        // matching `EffectType::CustomSkillBoost` buffs. Returns "0" for
+        // unknown actors or absent keys — graceful, mirrors other readers.
+        "skill" => {
+            let key = arg.to_ascii_lowercase();
+            let (base, buffs) = match actor {
+                ActorRef::Player { name, .. } => ctx
+                    .db
+                    .get_character_data(name)
+                    .ok()
+                    .flatten()
+                    .map(|c| {
+                        (
+                            c.custom_skills.get(&key).copied().unwrap_or(0),
+                            c.active_buffs.clone(),
+                        )
+                    })
+                    .unwrap_or((0, Vec::new())),
+                ActorRef::Mob { mobile_id, .. } => ctx
+                    .db
+                    .get_mobile_data(mobile_id)
+                    .ok()
+                    .flatten()
+                    .map(|m| {
+                        (
+                            m.custom_skills.get(&key).copied().unwrap_or(0),
+                            m.active_buffs.clone(),
+                        )
+                    })
+                    .unwrap_or((0, Vec::new())),
+            };
+            let bonus: i32 = buffs
+                .iter()
+                .filter(|b| {
+                    b.effect_type == crate::types::EffectType::CustomSkillBoost
+                        && b.skill_key.as_deref().map(|s| s.eq_ignore_ascii_case(&key))
+                            == Some(true)
+                })
+                .map(|b| b.magnitude)
+                .sum();
+            (base + bonus).to_string()
+        }
         // `%actor.affect(spell)%` — predicate for "is the actor affected
         // by an effect named `spell`?". Checks active_buffs for a matching
         // EffectType. Returns "1"/"0".
@@ -1605,6 +1649,33 @@ fn read_self_call(fn_name: &str, args: &str, ctx: &EvalCtx, state: &State) -> St
             .flatten()
             .map(|room| read_door_field(&room.doors, arg))
             .unwrap_or_default(),
+        // `%self.skill(<key>)%` on a mob — effective custom skill value.
+        // Mirror of actor-side `skill(key)`.
+        (SelfKind::Mob, "skill") => {
+            let key = arg.to_ascii_lowercase();
+            let (base, buffs) = ctx
+                .db
+                .get_mobile_data(&ctx.self_id)
+                .ok()
+                .flatten()
+                .map(|m| {
+                    (
+                        m.custom_skills.get(&key).copied().unwrap_or(0),
+                        m.active_buffs.clone(),
+                    )
+                })
+                .unwrap_or((0, Vec::new()));
+            let bonus: i32 = buffs
+                .iter()
+                .filter(|b| {
+                    b.effect_type == crate::types::EffectType::CustomSkillBoost
+                        && b.skill_key.as_deref().map(|s| s.eq_ignore_ascii_case(&key))
+                            == Some(true)
+                })
+                .map(|b| b.magnitude)
+                .sum();
+            (base + bonus).to_string()
+        }
         _ => String::new(),
     }
 }

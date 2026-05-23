@@ -1201,6 +1201,7 @@ end";
             source: "old_caster".to_string(),
             damage_type: None,
             vs_effect: None,
+            skill_key: None,
         });
         let target_id = target.id;
         let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "healer");

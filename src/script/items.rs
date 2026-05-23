@@ -365,7 +365,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_get("vs_effect", |a: &mut ItemAffect| {
             a.vs_effect.clone().unwrap_or_default()
         })
-        .register_get("has_vs_effect", |a: &mut ItemAffect| a.vs_effect.is_some());
+        .register_get("has_vs_effect", |a: &mut ItemAffect| a.vs_effect.is_some())
+        .register_get("skill_key", |a: &mut ItemAffect| {
+            a.skill_key.clone().unwrap_or_default()
+        })
+        .register_get("has_skill_key", |a: &mut ItemAffect| a.skill_key.is_some());
 
     // get_item_affects(item_id) -> Array of ItemAffect
     let cloned_db = db.clone();
@@ -386,8 +390,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
 
     // item_add_affect(item_id, effect_str, magnitude, tag) -> String
     // Tag is interpreted by effect_str:
-    //   "damage_resistance" -> tag is the damage_type ("acid", "fire", ...).
-    //   "status_resistance" -> tag is the effect being warded ("sleep", "*", ...).
+    //   "damage_resistance"   -> tag is the damage_type ("acid", "fire", ...).
+    //   "status_resistance"   -> tag is the effect being warded ("sleep", "*", ...).
+    //   "custom_skill_boost"  -> tag is the registered custom skill key
+    //                            (must be published via `lookup skill publish`).
     //   anything else: tag must be "" (rejected otherwise).
     // Returns "" on success, or an error message describing the validation failure.
     let cloned_db = db.clone();
@@ -402,7 +408,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 Some(e) => e,
                 None => return format!("Unknown effect type '{}'.", effect_str),
             };
-            let (damage_type, vs_effect) = match effect {
+            let (damage_type, vs_effect, skill_key) = match effect {
                 EffectType::DamageResistance => {
                     if tag.is_empty() {
                         return "damage_resistance requires a damage type (e.g. acid, fire, cold).".to_string();
@@ -411,7 +417,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         Some(d) => d,
                         None => return format!("Unknown damage type '{}'.", tag),
                     };
-                    (Some(dt), None)
+                    (Some(dt), None, None)
                 }
                 EffectType::StatusResistance => {
                     if tag.is_empty() {
@@ -420,13 +426,29 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                     if tag != "*" && EffectType::from_str(&tag).is_none() {
                         return format!("Unknown effect '{}'. Use a snake_case effect name or '*' for all.", tag);
                     }
-                    (None, Some(tag))
+                    (None, Some(tag), None)
+                }
+                EffectType::CustomSkillBoost => {
+                    if tag.is_empty() {
+                        return "custom_skill_boost requires a published skill key (use `lookup skill publish <key>` first).".to_string();
+                    }
+                    let key_lc = tag.to_lowercase();
+                    match cloned_db.get_custom_skill(&key_lc) {
+                        Ok(Some(_)) => {}
+                        _ => {
+                            return format!(
+                                "Custom skill '{}' is not published. Use `lookup skill publish {} <description>` first.",
+                                key_lc, key_lc
+                            );
+                        }
+                    }
+                    (None, None, Some(key_lc))
                 }
                 _ => {
                     if !tag.is_empty() {
                         return format!("Effect '{}' does not take a tag.", effect_str);
                     }
-                    (None, None)
+                    (None, None, None)
                 }
             };
             let mut item = match cloned_db.get_item_data(&uuid) {
@@ -438,6 +460,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 magnitude: magnitude as i32,
                 damage_type,
                 vs_effect,
+                skill_key,
             });
             if cloned_db.save_item_data(item).is_err() {
                 return "Failed to save item.".to_string();
@@ -491,6 +514,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             a.magnitude.to_string()
         };
         let base = a.effect_type.to_display_string();
+        if let Some(sk) = a.skill_key.as_deref() {
+            return format!("{} {} {}", base, sk, mag_str);
+        }
         match (a.damage_type, a.vs_effect.as_deref()) {
             (Some(dt), _) => format!("{} {} {}%", base, dt.to_display_string(), mag_str),
             (_, Some(vs)) => format!("{} vs {} {}%", base, vs, mag_str),

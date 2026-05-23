@@ -215,6 +215,15 @@ Health: 100/100
 Gold: 0
 ```
 
+The `status` line shows your six attribute scores (Str/Dex/Con/Int/Wis/Cha)
+with a `(+N)` parenthetical when equipment or magical buffs are modifying
+them — e.g. `Dex: 7 (+2)` while wearing boots that grant Dexterity.
+
+The `skills` command lists your core skill levels by category (Combat,
+Crafting, Magic, Stealth, Utility). If a builder has granted you points in
+any world-specific custom skills (e.g. `Dancing Queen`), they appear under
+a `Custom (Builder-Defined)` section at the bottom.
+
 ## Exploring
 
 ### Movement

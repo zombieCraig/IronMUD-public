@@ -335,6 +335,26 @@ Both `liqeffect` and `foodeffect` use the same effect type system. Effects are a
 
 Timed effects (duration > 0) apply as **buffs** that tick down and expire. Same-type buffs are refreshed (higher magnitude wins). Players see a message when buffs expire.
 
+### Equip-time affects (`oedit ... affect`)
+
+`oedit <id> affect add <effect> [magnitude] [tag]` configures a passive
+bonus that's stamped onto the wearer as an `ActiveBuff` while the item is
+equipped, and stripped on remove. Examples:
+
+```
+oedit dancing_boots affect add dexterity_boost 2
+oedit dancing_boots affect add charisma_boost 1
+oedit fire_cloak    affect add damage_resistance 25 fire
+oedit ward_pendant  affect add status_resistance 20 sleep
+oedit dancing_boots affect add custom_skill_boost 1 dancing_queen
+```
+
+The `custom_skill_boost` variant adds `magnitude` to a builder-published
+custom skill (see [custom-skills.md](custom-skills.md)). The third token is
+the registered skill key — the call is rejected if the key isn't published.
+Use `oedit <id> affect [list]` to inspect, `affect rm <index>` to remove,
+`affect clear` to wipe.
+
 ### Examples
 
 ```

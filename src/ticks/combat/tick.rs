@@ -2602,6 +2602,7 @@ fn mob_cast_spell_at_player(
                 source: mobile.name.clone(),
                 damage_type: None,
                 vs_effect: None,
+                skill_key: None,
             });
             db.save_character_data(char.clone())?;
             sync_character_to_session(connections, &char, state);

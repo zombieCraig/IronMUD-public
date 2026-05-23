@@ -80,6 +80,7 @@ pub(super) fn map_mob(
                         source: source.clone(),
                         damage_type: None,
                         vs_effect: None,
+                        skill_key: None,
                     });
                 }
                 None => warnings.push(Warning::new(
@@ -168,6 +169,7 @@ pub(super) fn map_mob(
                         source: source.clone(),
                         damage_type: None,
                         vs_effect: None,
+                        skill_key: None,
                     });
                 }
                 None => warnings.push(Warning::new(

@@ -2673,6 +2673,7 @@ mod tests {
             spell_definitions: HashMap::new(),
             achievement_definitions: HashMap::new(),
             achievement_index_by_counter: HashMap::new(),
+            custom_skill_definitions: HashMap::new(),
             transports: HashMap::new(),
             chat_sender: None,
             shutdown_sender: None,

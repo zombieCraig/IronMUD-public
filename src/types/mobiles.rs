@@ -353,6 +353,10 @@ pub struct MobileData {
     /// Time-limited buffs/debuffs applied to this mobile (mood, etc).
     #[serde(default)]
     pub active_buffs: Vec<ActiveBuff>,
+    /// Builder-defined custom skill values (key → integer). Keys must be
+    /// registered via `lookup skill publish`. Missing key reads as 0.
+    #[serde(default)]
+    pub custom_skills: std::collections::HashMap<String, i32>,
     /// True when this (juvenile) mobile has lost its last living parent and
     /// is awaiting adoption. Set by `db::delete_mobile`; cleared by the
     /// adoption pass in the aging tick. Non-juveniles are never flagged.
@@ -522,6 +526,7 @@ impl MobileData {
             resident_of: None,
             social: None,
             active_buffs: Vec::new(),
+            custom_skills: HashMap::new(),
             adoption_pending: false,
             home_area_id: None,
             remembered_enemies: Vec::new(),

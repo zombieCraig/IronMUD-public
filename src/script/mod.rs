@@ -332,6 +332,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 // Achievement system fields
                 achievement_counters: std::collections::HashMap::new(),
                 achievements_unlocked: std::collections::HashMap::new(),
+                // Builder-defined custom skill values
+                custom_skills: std::collections::HashMap::new(),
                 active_title: None,
                 gold_high_water: 0,
                 // Dialogue system fields
@@ -2045,7 +2047,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     areas::register(engine, db.clone());
     combat::register(engine, db.clone());
     items::register(engine, db.clone());
-    mobiles::register(engine, db.clone());
+    mobiles::register(engine, db.clone(), state.clone());
     mobile_presets::register(engine, db.clone());
     rooms::register(engine, db.clone(), connections.clone());
     shops::register(engine, db.clone());

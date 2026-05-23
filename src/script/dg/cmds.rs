@@ -96,6 +96,13 @@ pub fn dispatch(line: &str, ctx: &EvalCtx) -> Result<(), String> {
         // `award_achievement` gate).
         "award_achievement" => cmd_award_achievement(rest, ctx),
 
+        // `skill_set <target> <key> <value>` / `skill_add <target> <key> <delta>`
+        // — write to a builder-published custom skill on the resolved
+        // target (player by name or mob by uuid). Refuses keys that
+        // aren't registered with `lookup skill publish`.
+        "skill_set" => cmd_skill_set(rest, ctx),
+        "skill_add" => cmd_skill_add(rest, ctx),
+
         // `social <name> [target]` — fire a CircleMUD-style social as
         // the script's self. Only meaningful when self is a mob.
         "social" | "msocial" | "osocial" | "wsocial" => cmd_social(rest, ctx),
@@ -155,6 +162,7 @@ pub const COMMANDS: &[&str] = &[
     "transform", "mtransform", "otransform",
     "award_achievement",
     "social", "msocial", "osocial", "wsocial",
+    "skill_set", "skill_add",
 ];
 
 /// Return `true` when `verb` (already lowercased + `%`-stripped) is a
@@ -744,6 +752,7 @@ fn apply_dg_effect(
         source: ctx.self_name.clone(),
         damage_type: None,
         vs_effect: None,
+        skill_key: None,
     };
     match actor {
         ActorRef::Mob { mobile_id, .. } => {
@@ -1330,6 +1339,68 @@ fn cmd_transform(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
 /// the player can't be resolved, the key is unknown, the criterion isn't
 /// `Manual`, the player already has it, or the achievement system is
 /// disabled. See `crate::script::achievements::award_manual_via_db`.
+/// Shared helper for `skill_set` and `skill_add`. Resolves target, validates
+/// the key against the published registry, and applies a write via the
+/// supplied closure (`old -> new`). Refuses unregistered keys with a builder
+/// warning (mirrors `award_achievement`'s unknown-key path).
+fn write_custom_skill_via(
+    rest: &str,
+    ctx: &EvalCtx,
+    verb_for_diag: &str,
+    compute: impl Fn(i32, i32) -> i32,
+) -> Result<(), String> {
+    let mut it = rest.split_whitespace();
+    let target_tok = it.next().unwrap_or("");
+    let key = it.next().unwrap_or("").to_ascii_lowercase();
+    let value_tok = it.next().unwrap_or("");
+    if target_tok.is_empty() || key.is_empty() || value_tok.is_empty() {
+        super::warn_builder(
+            ctx,
+            &format!("{verb_for_diag}: usage `{verb_for_diag} <target> <key> <value>`"),
+        );
+        return Ok(());
+    }
+    let value: i32 = value_tok.parse().unwrap_or(0);
+    if ctx.db.get_custom_skill(&key).ok().flatten().is_none() {
+        super::warn_builder(ctx, &format!("{verb_for_diag}: unknown custom skill key '{key}'"));
+        return Ok(());
+    }
+    let Some(actor) = resolve_target(target_tok, ctx) else {
+        super::warn_builder(
+            ctx,
+            &format!("{verb_for_diag}: target '{target_tok}' not found"),
+        );
+        return Ok(());
+    };
+    match actor {
+        ActorRef::Player { name, .. } => {
+            if let Ok(Some(mut ch)) = ctx.db.get_character_data(&name) {
+                let current = ch.custom_skills.get(&key).copied().unwrap_or(0);
+                let next = compute(current, value);
+                ch.custom_skills.insert(key, next);
+                let _ = ctx.db.save_character_data(ch);
+            }
+        }
+        ActorRef::Mob { mobile_id, .. } => {
+            if let Ok(Some(mut m)) = ctx.db.get_mobile_data(&mobile_id) {
+                let current = m.custom_skills.get(&key).copied().unwrap_or(0);
+                let next = compute(current, value);
+                m.custom_skills.insert(key, next);
+                let _ = ctx.db.save_mobile_data(m);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn cmd_skill_set(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
+    write_custom_skill_via(rest, ctx, "skill_set", |_old, value| value)
+}
+
+fn cmd_skill_add(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
+    write_custom_skill_via(rest, ctx, "skill_add", |old, delta| old.saturating_add(delta))
+}
+
 fn cmd_award_achievement(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     let (player_tok, key_rest) = split_verb(rest);
     let key = key_rest.split_whitespace().next().unwrap_or("");

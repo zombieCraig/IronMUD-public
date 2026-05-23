@@ -4,7 +4,7 @@
 
 use crate::SharedState;
 use crate::db::Db;
-use crate::types::EffectType;
+use crate::types::{CustomSkillDefinition, EffectType, is_valid_custom_skill_key};
 use rhai::Engine;
 use std::sync::Arc;
 
@@ -138,4 +138,94 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
             map
         },
     );
+
+    // ========== Custom skill registry ==========
+
+    // list_custom_skills() -> Array<String>
+    // Returns every published custom-skill key, sorted ascending.
+    let state_clone = state.clone();
+    engine.register_fn("list_custom_skills", move || -> rhai::Array {
+        let world = state_clone.lock().unwrap();
+        let mut keys: Vec<String> = world.custom_skill_definitions.keys().cloned().collect();
+        keys.sort();
+        keys.into_iter().map(rhai::Dynamic::from).collect()
+    });
+
+    // is_custom_skill(key) -> bool
+    // True iff the key is published in the registry. Used by writers to
+    // refuse ghost keys.
+    let state_clone = state.clone();
+    engine.register_fn("is_custom_skill", move |key: String| -> bool {
+        let world = state_clone.lock().unwrap();
+        world.custom_skill_definitions.contains_key(&key.to_lowercase())
+    });
+
+    // get_custom_skill_info(key) -> Map
+    // Returns `#{key, description, author, created_at}` for a published key
+    // or an empty map if not found.
+    let state_clone = state.clone();
+    engine.register_fn("get_custom_skill_info", move |key: String| -> rhai::Map {
+        let mut map = rhai::Map::new();
+        let world = state_clone.lock().unwrap();
+        if let Some(def) = world.custom_skill_definitions.get(&key.to_lowercase()) {
+            map.insert("key".into(), rhai::Dynamic::from(def.key.clone()));
+            map.insert("description".into(), rhai::Dynamic::from(def.description.clone()));
+            map.insert("author".into(), rhai::Dynamic::from(def.author.clone()));
+            map.insert("created_at".into(), rhai::Dynamic::from(def.created_at));
+        }
+        map
+    });
+
+    // publish_custom_skill(key, description, author) -> bool
+    // Validates key (syntax + no collision with KNOWN_SKILLS), upserts into
+    // sled + cache, and returns true on success. Returns false on invalid
+    // key or collision; callers can fall back to `is_custom_skill` /
+    // `get_custom_skill_info` for diagnostics.
+    let state_clone = state.clone();
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "publish_custom_skill",
+        move |key: String, description: String, author: String| -> bool {
+            let key_lc = key.to_lowercase();
+            if !is_valid_custom_skill_key(&key_lc) {
+                return false;
+            }
+            if KNOWN_SKILLS.iter().any(|s| *s == key_lc.as_str()) {
+                return false;
+            }
+            let def = CustomSkillDefinition {
+                key: key_lc.clone(),
+                description,
+                author,
+                created_at: std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0),
+            };
+            if cloned_db.save_custom_skill(&def).is_err() {
+                return false;
+            }
+            let mut world = state_clone.lock().unwrap();
+            world.custom_skill_definitions.insert(key_lc, def);
+            true
+        },
+    );
+
+    // unpublish_custom_skill(key) -> bool
+    // Removes the key from sled + cache. Returns true if removed, false if
+    // it wasn't present or the DB op failed. Gating (author-only,
+    // admin-override) is enforced by the Rhai script caller.
+    let state_clone = state.clone();
+    let cloned_db = db.clone();
+    engine.register_fn("unpublish_custom_skill", move |key: String| -> bool {
+        let key_lc = key.to_lowercase();
+        match cloned_db.delete_custom_skill(&key_lc) {
+            Ok(true) => {
+                let mut world = state_clone.lock().unwrap();
+                world.custom_skill_definitions.remove(&key_lc);
+                true
+            }
+            _ => false,
+        }
+    });
 }

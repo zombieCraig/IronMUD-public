@@ -950,6 +950,7 @@ async fn create_mobile(
         resident_of: None,
         social: None,
         active_buffs: Vec::new(),
+        custom_skills: std::collections::HashMap::new(),
         adoption_pending: false,
         home_area_id: None,
         remembered_enemies: Vec::new(),

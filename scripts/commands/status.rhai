@@ -116,6 +116,23 @@ fn capitalize_word(s) {
     return first.to_upper() + rest;
 }
 
+// Format "Str: 6 (+2)" — shows raw base, with parenthetical only when
+// equipment/buffs are modifying it. Negatives carry their own sign.
+fn fmt_stat(label, base, eff) {
+    let diff = eff - base;
+    if diff == 0 { return label + ": " + base; }
+    if diff > 0 { return label + ": " + base + " (+" + diff + ")"; }
+    return label + ": " + base + " (" + diff + ")";
+}
+
+// Right-pad to width with spaces, for column alignment in the detailed
+// Attributes block.
+fn pad_attr(s, width) {
+    let out = s;
+    while out.len() < width { out += " "; }
+    return out;
+}
+
 // Get spawn point display text
 fn get_spawn_point_display(char, connection_id) {
     // First check for rental property in current area
@@ -323,6 +340,16 @@ fn show_basic_status(char, connection_id) {
     let pos_str = "Position: " + char.position;
     output += pos_str + "\n";
 
+    // Attribute scores — base with `(+N)` parenthetical when buffed.
+    let attr_line =
+        fmt_stat("Str", char.stat_str, get_effective_strength(char.name)) + "  " +
+        fmt_stat("Dex", char.stat_dex, get_effective_dexterity(char.name)) + "  " +
+        fmt_stat("Con", char.stat_con, get_effective_constitution(char.name)) + "  " +
+        fmt_stat("Int", char.stat_int, get_effective_intelligence(char.name)) + "  " +
+        fmt_stat("Wis", char.stat_wis, get_effective_wisdom(char.name)) + "  " +
+        fmt_stat("Cha", char.stat_cha, get_effective_charisma(char.name));
+    output += attr_line + "\n";
+
     // Conditions warning
     let conditions = [];
     if char.has_hypothermia { conditions.push("Hypothermia"); }
@@ -500,6 +527,19 @@ fn show_detailed_status(char, connection_id) {
 
     let gold_str = "Gold: " + char.gold;
     output += color_or(ansi_yellow(gold_str), gold_str, connection_id) + "\n\n";
+
+    // Attributes section — two rows of three, raw base with `(+N)` when
+    // equipment or buffs are modifying it.
+    output += color_or(ansi_green("--- Attributes ---"), "--- Attributes ---", connection_id) + "\n";
+    let row1 =
+        pad_attr(fmt_stat("Str", char.stat_str, get_effective_strength(char.name)), 14) +
+        pad_attr(fmt_stat("Dex", char.stat_dex, get_effective_dexterity(char.name)), 14) +
+        fmt_stat("Con", char.stat_con, get_effective_constitution(char.name));
+    let row2 =
+        pad_attr(fmt_stat("Int", char.stat_int, get_effective_intelligence(char.name)), 14) +
+        pad_attr(fmt_stat("Wis", char.stat_wis, get_effective_wisdom(char.name)), 14) +
+        fmt_stat("Cha", char.stat_cha, get_effective_charisma(char.name));
+    output += row1 + "\n" + row2 + "\n\n";
 
     // Character section
     output += color_or(ansi_green("--- Character ---"), "--- Character ---", connection_id) + "\n";

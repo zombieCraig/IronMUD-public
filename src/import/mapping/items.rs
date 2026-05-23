@@ -189,6 +189,7 @@ pub(super) fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &M
                         magnitude: *modifier,
                         damage_type: None,
                         vs_effect: None,
+                        skill_key: None,
                     });
                 } else {
                     warnings.push(Warning::new(
@@ -211,6 +212,7 @@ pub(super) fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &M
                     magnitude: *modifier,
                     damage_type: None,
                     vs_effect: None,
+                    skill_key: None,
                 });
             }
             Some(FlagAction::SetDamageBonus) => {
@@ -219,6 +221,7 @@ pub(super) fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &M
                     magnitude: *modifier,
                     damage_type: None,
                     vs_effect: None,
+                    skill_key: None,
                 });
             }
             Some(FlagAction::SetMaxHpBonus) => {
@@ -227,6 +230,7 @@ pub(super) fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &M
                     magnitude: *modifier,
                     damage_type: None,
                     vs_effect: None,
+                    skill_key: None,
                 });
             }
             Some(FlagAction::SetMaxManaBonus) => {
@@ -235,6 +239,7 @@ pub(super) fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &M
                     magnitude: *modifier,
                     damage_type: None,
                     vs_effect: None,
+                    skill_key: None,
                 });
             }
             Some(FlagAction::AddItemAffect {
@@ -866,5 +871,6 @@ pub(super) fn build_item_affect(
         magnitude: mag,
         damage_type: dt,
         vs_effect: vs,
+        skill_key: None,
     })
 }

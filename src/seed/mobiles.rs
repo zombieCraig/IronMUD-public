@@ -95,6 +95,7 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
         resident_of: None,
         social: None,
         active_buffs: Vec::new(),
+        custom_skills: HashMap::new(),
         adoption_pending: false,
         home_area_id: None,
         remembered_enemies: Vec::new(),

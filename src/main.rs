@@ -162,6 +162,7 @@ async fn main() -> Result<()> {
         spell_definitions: HashMap::new(),
         achievement_definitions: HashMap::new(),
         achievement_index_by_counter: HashMap::new(),
+        custom_skill_definitions: HashMap::new(),
         transports: HashMap::new(),
         chat_sender: None,            // Set after chat bridge channel is created
         shutdown_sender: None,        // Set after shutdown channel is created

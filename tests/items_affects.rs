@@ -54,6 +54,7 @@ fn wear_grants_buff() {
         magnitude: 2,
         damage_type: None,
         vs_effect: None,
+        skill_key: None,
     }]);
     let item_id = item.id;
     db.save_item_data(item).unwrap();
@@ -83,6 +84,7 @@ fn remove_strips_buff() {
         magnitude: 3,
         damage_type: None,
         vs_effect: None,
+        skill_key: None,
     }]);
     let item_id = item.id;
     db.save_item_data(item).unwrap();
@@ -111,6 +113,7 @@ fn acid_resistance_buff_subtracts_from_damage() {
             source: "item:test".to_string(),
             damage_type: Some(DamageType::Acid),
             vs_effect: None,
+            skill_key: None,
         },
         ActiveBuff {
             effect_type: EffectType::DamageResistance,
@@ -119,6 +122,7 @@ fn acid_resistance_buff_subtracts_from_damage() {
             source: "item:other".to_string(),
             damage_type: Some(DamageType::Fire),
             vs_effect: None,
+            skill_key: None,
         },
     ];
 
@@ -155,6 +159,7 @@ fn idempotent_reequip() {
         magnitude: 2,
         damage_type: None,
         vs_effect: None,
+        skill_key: None,
     }]);
     let item_id = item.id;
     db.save_item_data(item).unwrap();
@@ -233,6 +238,7 @@ fn status_resistance_reduces_application_chance() {
         source: "item:test".to_string(),
         damage_type: None,
         vs_effect: Some("sleep".to_string()),
+        skill_key: None,
     }];
 
     assert_eq!(status_resistance_total(&buffs, EffectType::Sleep), 30);
@@ -267,6 +273,7 @@ fn status_resistance_wildcard_matches_any_effect() {
         source: "item:amulet".to_string(),
         damage_type: None,
         vs_effect: Some("*".to_string()),
+        skill_key: None,
     }];
 
     // Wildcard matches Sleep, Charmed, Blind, Curse, ...
@@ -286,6 +293,7 @@ fn status_resistance_clamps_to_window() {
         source: "item:ring".to_string(),
         damage_type: None,
         vs_effect: Some("sleep".to_string()),
+        skill_key: None,
     }];
 
     let mut rng = StdRng::seed_from_u64(7);
@@ -313,6 +321,7 @@ fn cursed_item_poisons_wearer() {
         magnitude: 1,
         damage_type: None,
         vs_effect: None,
+        skill_key: None,
     }]);
     let item_id = item.id;
     db.save_item_data(item).unwrap();
@@ -349,6 +358,7 @@ fn delete_item_strips_equipped_buffs() {
         magnitude: 4,
         damage_type: None,
         vs_effect: None,
+        skill_key: None,
     }]);
     let item_id = item.id;
     db.save_item_data(item).unwrap();
@@ -375,6 +385,7 @@ fn mob_equip_stamps_buffs() {
         magnitude: 5,
         damage_type: None,
         vs_effect: None,
+        skill_key: None,
     }]);
     let item_id = item.id;
     db.save_item_data(item).unwrap();
@@ -410,6 +421,7 @@ fn hard_immunity_bypasses_resistance_in_buff_lane() {
         source: "item:ring".to_string(),
         damage_type: None,
         vs_effect: Some("*".to_string()),
+        skill_key: None,
     }];
     assert_eq!(status_resistance_total(&only_wildcard, EffectType::Sleep), 50);
 }

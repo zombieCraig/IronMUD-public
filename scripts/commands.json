@@ -587,7 +587,7 @@
   },
   "lookup": {
     "access": "builder",
-    "description": "Browse spells/traits/effects/skills knowledge base"
+    "description": "Browse spells/traits/effects/skills knowledge base; publish/unpublish custom skills (builder)"
   },
   "assist": {
     "access": "user",

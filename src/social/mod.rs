@@ -58,6 +58,7 @@ pub fn apply_mood(mobile: &mut MobileData) -> bool {
                 source: MOOD_BUFF_SOURCE.to_string(),
                 damage_type: None,
                 vs_effect: None,
+                skill_key: None,
             });
             mobile.active_buffs.push(ActiveBuff {
                 effect_type: EffectType::WisdomBoost,
@@ -66,6 +67,7 @@ pub fn apply_mood(mobile: &mut MobileData) -> bool {
                 source: MOOD_BUFF_SOURCE.to_string(),
                 damage_type: None,
                 vs_effect: None,
+                skill_key: None,
             });
         }
         MoodState::Normal | MoodState::Sad => {}
@@ -77,6 +79,7 @@ pub fn apply_mood(mobile: &mut MobileData) -> bool {
                 source: MOOD_BUFF_SOURCE.to_string(),
                 damage_type: None,
                 vs_effect: None,
+                skill_key: None,
             });
             mobile.active_buffs.push(ActiveBuff {
                 effect_type: EffectType::WisdomBoost,
@@ -85,6 +88,7 @@ pub fn apply_mood(mobile: &mut MobileData) -> bool {
                 source: MOOD_BUFF_SOURCE.to_string(),
                 damage_type: None,
                 vs_effect: None,
+                skill_key: None,
             });
         }
         MoodState::Breakdown => {
@@ -95,6 +99,7 @@ pub fn apply_mood(mobile: &mut MobileData) -> bool {
                 source: MOOD_BUFF_SOURCE.to_string(),
                 damage_type: None,
                 vs_effect: None,
+                skill_key: None,
             });
             mobile.active_buffs.push(ActiveBuff {
                 effect_type: EffectType::WisdomBoost,
@@ -103,6 +108,7 @@ pub fn apply_mood(mobile: &mut MobileData) -> bool {
                 source: MOOD_BUFF_SOURCE.to_string(),
                 damage_type: None,
                 vs_effect: None,
+                skill_key: None,
             });
         }
     }

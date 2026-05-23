@@ -118,6 +118,7 @@ mod visibility_tests {
             source: "test".to_string(),
             damage_type: None,
             vs_effect: None,
+            skill_key: None,
         });
         let m = base_mob();
         assert!(!is_player_visible_to_mob(&c, &m));
@@ -133,6 +134,7 @@ mod visibility_tests {
             source: "test".to_string(),
             damage_type: None,
             vs_effect: None,
+            skill_key: None,
         });
         let mut m = base_mob();
         m.flags = MobileFlags {
@@ -152,6 +154,7 @@ mod visibility_tests {
             source: "test".to_string(),
             damage_type: None,
             vs_effect: None,
+            skill_key: None,
         });
         let mut m = base_mob();
         m.active_buffs.push(ActiveBuff {
@@ -161,6 +164,7 @@ mod visibility_tests {
             source: "test".to_string(),
             damage_type: None,
             vs_effect: None,
+            skill_key: None,
         });
         assert!(is_player_visible_to_mob(&c, &m));
     }
@@ -175,6 +179,7 @@ mod visibility_tests {
             source: "test".to_string(),
             damage_type: None,
             vs_effect: None,
+            skill_key: None,
         });
         let mut m = base_mob();
         m.perception = 10;

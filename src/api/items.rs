@@ -314,6 +314,10 @@ pub struct ItemAffectRequest {
     pub damage_type: Option<String>,
     #[serde(default)]
     pub vs_effect: Option<String>,
+    /// Required iff `effect_type == "custom_skill_boost"`. Must match a key
+    /// published via `lookup skill publish`.
+    #[serde(default)]
+    pub skill_key: Option<String>,
 }
 
 impl ItemAffectRequest {
@@ -322,7 +326,7 @@ impl ItemAffectRequest {
         use crate::types::{DamageType, EffectType, ItemAffect};
         let effect = EffectType::from_str(&self.effect_type)
             .ok_or_else(|| format!("Unknown effect_type '{}'", self.effect_type))?;
-        let (damage_type, vs_effect) = match effect {
+        let (damage_type, vs_effect, skill_key) = match effect {
             EffectType::DamageResistance => {
                 let tag = self
                     .damage_type
@@ -333,7 +337,10 @@ impl ItemAffectRequest {
                 if self.vs_effect.is_some() {
                     return Err("damage_resistance does not accept vs_effect".to_string());
                 }
-                (Some(dt), None)
+                if self.skill_key.is_some() {
+                    return Err("damage_resistance does not accept skill_key".to_string());
+                }
+                (Some(dt), None, None)
             }
             EffectType::StatusResistance => {
                 let tag = self
@@ -349,16 +356,35 @@ impl ItemAffectRequest {
                 if self.damage_type.is_some() {
                     return Err("status_resistance does not accept damage_type".to_string());
                 }
-                (None, Some(tag.to_string()))
+                if self.skill_key.is_some() {
+                    return Err("status_resistance does not accept skill_key".to_string());
+                }
+                (None, Some(tag.to_string()), None)
+            }
+            EffectType::CustomSkillBoost => {
+                let tag = self
+                    .skill_key
+                    .as_deref()
+                    .ok_or_else(|| "custom_skill_boost requires skill_key".to_string())?;
+                if !crate::types::is_valid_custom_skill_key(tag) {
+                    return Err(format!(
+                        "Invalid skill_key '{}' (must match ^[a-z][a-z0-9_]{{1,31}}$)",
+                        tag
+                    ));
+                }
+                if self.damage_type.is_some() || self.vs_effect.is_some() {
+                    return Err("custom_skill_boost does not accept damage_type or vs_effect".to_string());
+                }
+                (None, None, Some(tag.to_lowercase()))
             }
             _ => {
-                if self.damage_type.is_some() || self.vs_effect.is_some() {
+                if self.damage_type.is_some() || self.vs_effect.is_some() || self.skill_key.is_some() {
                     return Err(format!(
-                        "Effect '{}' does not accept damage_type or vs_effect tags",
+                        "Effect '{}' does not accept damage_type, vs_effect, or skill_key tags",
                         self.effect_type
                     ));
                 }
-                (None, None)
+                (None, None, None)
             }
         };
         Ok(ItemAffect {
@@ -366,6 +392,7 @@ impl ItemAffectRequest {
             magnitude: self.magnitude,
             damage_type,
             vs_effect,
+            skill_key,
         })
     }
 }

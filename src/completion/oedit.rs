@@ -9,6 +9,7 @@ pub(super) fn complete_oedit(
     item_vnums: &[String],
     transport_vnums: &[String],
     spell_names: &[String],
+    custom_skill_keys: &[String],
 ) -> CompletionResult {
     let partial = get_partial(words, completing_word);
 
@@ -311,6 +312,21 @@ pub(super) fn complete_oedit(
             && words[4].to_lowercase() == "status_resistance" =>
         {
             filter_static(STATUS_RESISTANCE_VS_EFFECTS, &partial, CompletionType::EffectType)
+        }
+        // oedit <vnum> affect add custom_skill_boost <mag> - show registered skill keys
+        6 if !completing_word
+            && (words[2].to_lowercase() == "affect" || words[2].to_lowercase() == "affects")
+            && words[3].to_lowercase() == "add"
+            && words[4].to_lowercase() == "custom_skill_boost" =>
+        {
+            all_dynamic(custom_skill_keys, CompletionType::EffectType)
+        }
+        7 if completing_word
+            && (words[2].to_lowercase() == "affect" || words[2].to_lowercase() == "affects")
+            && words[3].to_lowercase() == "add"
+            && words[4].to_lowercase() == "custom_skill_boost" =>
+        {
+            filter_dynamic(custom_skill_keys, &partial, CompletionType::EffectType)
         }
         _ => CompletionResult::empty(),
     }

@@ -91,6 +91,13 @@ Exits: south
 
 ## Key Concepts
 
+### Custom Skills
+
+Builders can publish named integer attributes (e.g. `dancing_queen`) via
+`lookup skill publish` that DG triggers and item APPLY bonuses can read and
+write. The registry is the shared discoverability layer; storage is per-entity.
+See [Custom Skills](builder/custom-skills.md).
+
 ### Vnums
 
 Vnums are human-readable identifiers for prototypes:

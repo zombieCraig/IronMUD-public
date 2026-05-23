@@ -257,6 +257,10 @@ pub struct CharacterData {
     pub achievement_counters: HashMap<String, u32>,
     #[serde(default)]
     pub achievements_unlocked: HashMap<String, AchievementUnlock>,
+    /// Builder-defined custom skill values (key → integer). Keys must be
+    /// registered via `lookup skill publish`. Missing key reads as 0.
+    #[serde(default)]
+    pub custom_skills: HashMap<String, i32>,
     // Dialogue tree state: per-mob-vnum conversation cursor
     #[serde(default)]
     pub dialogue_pair_state: HashMap<String, DialoguePairState>,

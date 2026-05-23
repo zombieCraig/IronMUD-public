@@ -13,6 +13,30 @@ use crate::{
 use rhai::Engine;
 use std::sync::Arc;
 
+/// Shared helper for `get_effective_<stat>`: load the character and sum
+/// `magnitude` over the matching boost variant. Pulled out of the per-stat
+/// registrations so we don't repeat the body six times.
+fn sum_stat_with_boost(
+    db: &Db,
+    char_name: &str,
+    boost: crate::EffectType,
+    base: impl Fn(&crate::CharacterData) -> i32,
+) -> i64 {
+    let lname = char_name.to_lowercase();
+    match db.get_character_data(&lname) {
+        Ok(Some(c)) => {
+            let bonus: i64 = c
+                .active_buffs
+                .iter()
+                .filter(|b| b.effect_type == boost)
+                .map(|b| b.magnitude as i64)
+                .sum();
+            base(&c) as i64 + bonus
+        }
+        _ => 0,
+    }
+}
+
 /// Build the rhai::Map shape that `get_game_time()` returns, projecting
 /// weather and effective temperature through the supplied climate. Pass
 /// `ClimateProfile::Temperate` for the unprojected (global) view.
@@ -2850,6 +2874,166 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         }
     });
 
+    // ===== Effective attribute scores =====
+    //
+    // Each `get_effective_<stat>` sums the matching `EffectType::*Boost`
+    // buffs (stamped from equipment / spells) into the base `stat_*`. Used by
+    // status.rhai to render `Str: 6 (+2)` style readouts. The repetition is
+    // intentional — the analyzer in `tests/server.rs::test_scripts_call_registered_functions`
+    // walks `register_fn("...", ...)` literals via regex, so each binding
+    // must have its name spelled out at the call site (no macro indirection).
+    let cloned_db = db.clone();
+    engine.register_fn("get_effective_strength", move |char_name: String| -> i64 {
+        sum_stat_with_boost(&cloned_db, &char_name, EffectType::StrengthBoost, |c| c.stat_str)
+    });
+    let cloned_db = db.clone();
+    engine.register_fn("get_effective_dexterity", move |char_name: String| -> i64 {
+        sum_stat_with_boost(&cloned_db, &char_name, EffectType::DexterityBoost, |c| c.stat_dex)
+    });
+    let cloned_db = db.clone();
+    engine.register_fn("get_effective_constitution", move |char_name: String| -> i64 {
+        sum_stat_with_boost(&cloned_db, &char_name, EffectType::ConstitutionBoost, |c| c.stat_con)
+    });
+    let cloned_db = db.clone();
+    engine.register_fn("get_effective_intelligence", move |char_name: String| -> i64 {
+        sum_stat_with_boost(&cloned_db, &char_name, EffectType::IntelligenceBoost, |c| c.stat_int)
+    });
+    let cloned_db = db.clone();
+    engine.register_fn("get_effective_wisdom", move |char_name: String| -> i64 {
+        sum_stat_with_boost(&cloned_db, &char_name, EffectType::WisdomBoost, |c| c.stat_wis)
+    });
+    let cloned_db = db.clone();
+    engine.register_fn("get_effective_charisma", move |char_name: String| -> i64 {
+        sum_stat_with_boost(&cloned_db, &char_name, EffectType::CharismaBoost, |c| c.stat_cha)
+    });
+
+    // ===== Custom skill values (per-character) =====
+
+    // get_custom_skill(char_name, key) -> i64
+    // Raw base value (0 if not set). Unaware of buffs.
+    let cloned_db = db.clone();
+    engine.register_fn("get_custom_skill", move |char_name: String, key: String| -> i64 {
+        let lname = char_name.to_lowercase();
+        let key_lc = key.to_lowercase();
+        match cloned_db.get_character_data(&lname) {
+            Ok(Some(c)) => c.custom_skills.get(&key_lc).copied().unwrap_or(0) as i64,
+            _ => 0,
+        }
+    });
+
+    // get_effective_custom_skill(char_name, key) -> i64
+    // Base value plus sum of `EffectType::CustomSkillBoost` buffs whose
+    // `skill_key` matches. Drives `lookup skill <key>` value display and
+    // the `skills` command's Custom (Builder-Defined) section.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_effective_custom_skill",
+        move |char_name: String, key: String| -> i64 {
+            let lname = char_name.to_lowercase();
+            let key_lc = key.to_lowercase();
+            match cloned_db.get_character_data(&lname) {
+                Ok(Some(c)) => {
+                    let base = c.custom_skills.get(&key_lc).copied().unwrap_or(0) as i64;
+                    let bonus: i64 = c
+                        .active_buffs
+                        .iter()
+                        .filter(|b| {
+                            b.effect_type == EffectType::CustomSkillBoost
+                                && b.skill_key.as_deref().map(|s| s.eq_ignore_ascii_case(&key_lc))
+                                    == Some(true)
+                        })
+                        .map(|b| b.magnitude as i64)
+                        .sum();
+                    base + bonus
+                }
+                _ => 0,
+            }
+        },
+    );
+
+    // set_custom_skill(char_name, key, value) -> bool
+    // Writes the base. Refuses (returns false) if the key isn't registered
+    // in the world's `custom_skill_definitions` cache — this prevents typos
+    // from creating ghost entries that no one can find via `lookup`.
+    let cloned_db = db.clone();
+    let state_clone = state.clone();
+    engine.register_fn(
+        "set_custom_skill",
+        move |char_name: String, key: String, value: i64| -> bool {
+            let key_lc = key.to_lowercase();
+            {
+                let world = state_clone.lock().unwrap();
+                if !world.custom_skill_definitions.contains_key(&key_lc) {
+                    return false;
+                }
+            }
+            let lname = char_name.to_lowercase();
+            match cloned_db.get_character_data(&lname) {
+                Ok(Some(mut c)) => {
+                    c.custom_skills.insert(key_lc, value as i32);
+                    cloned_db.save_character_data(c).is_ok()
+                }
+                _ => false,
+            }
+        },
+    );
+
+    // modify_custom_skill(char_name, key, delta) -> i64
+    // Atomic add. Returns the new base value. Returns 0 and no-ops if the
+    // key isn't registered.
+    let cloned_db = db.clone();
+    let state_clone = state.clone();
+    engine.register_fn(
+        "modify_custom_skill",
+        move |char_name: String, key: String, delta: i64| -> i64 {
+            let key_lc = key.to_lowercase();
+            {
+                let world = state_clone.lock().unwrap();
+                if !world.custom_skill_definitions.contains_key(&key_lc) {
+                    return 0;
+                }
+            }
+            let lname = char_name.to_lowercase();
+            match cloned_db.get_character_data(&lname) {
+                Ok(Some(mut c)) => {
+                    let current = c.custom_skills.get(&key_lc).copied().unwrap_or(0);
+                    let next = current.saturating_add(delta as i32);
+                    c.custom_skills.insert(key_lc, next);
+                    let _ = cloned_db.save_character_data(c);
+                    next as i64
+                }
+                _ => 0,
+            }
+        },
+    );
+
+    // list_character_custom_skills(char_name) -> Array<String>
+    // Keys with non-zero base OR non-zero buff contribution. Sorted. Used by
+    // `skills` to render only the rows the player actually has.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "list_character_custom_skills",
+        move |char_name: String| -> rhai::Array {
+            let lname = char_name.to_lowercase();
+            let mut keys: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            if let Ok(Some(c)) = cloned_db.get_character_data(&lname) {
+                for (k, v) in &c.custom_skills {
+                    if *v != 0 {
+                        keys.insert(k.clone());
+                    }
+                }
+                for b in &c.active_buffs {
+                    if b.effect_type == EffectType::CustomSkillBoost && b.magnitude != 0 {
+                        if let Some(k) = &b.skill_key {
+                            keys.insert(k.to_lowercase());
+                        }
+                    }
+                }
+            }
+            keys.into_iter().map(rhai::Dynamic::from).collect()
+        },
+    );
+
     // get_combat_skill_names() -> Array
     // Returns the list of combat skill name strings
     engine.register_fn("get_combat_skill_names", || -> rhai::Array {
@@ -2904,6 +3088,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 source,
                 damage_type: None,
                 vs_effect: None,
+                skill_key: None,
             };
             let name_lower = char_name.to_lowercase();
             if let Ok(Some(mut character)) = cloned_db.get_character_data(&name_lower) {
@@ -2965,6 +3150,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     source,
                     damage_type: None,
                     vs_effect: None,
+                    skill_key: None,
                 });
             }
             cloned_db.save_mobile_data(mobile).is_ok()

@@ -549,6 +549,18 @@ award_achievement Galen quest_complete       * by name also works
 
 Use this for narrative milestones the engine can't detect on its own — finishing a story beat, witnessing a scripted event, surviving a one-off encounter.
 
+### Custom skills
+
+```
+%actor.skill(dancing_queen)%               * read effective value (base + buffs), as a string
+skill_set %actor% dancing_queen 0          * set base
+skill_add %actor% dancing_queen 1          * relative add (saturating)
+```
+
+Custom skills are builder-published integer attributes — see [custom-skills.md](custom-skills.md) for the full registry + item-affect flow. The key must exist (`lookup skill publish ...`) before any of these will write; unknown keys log a builder warning and no-op.
+
+Read accessor returns `"0"` for absent keys or unresolvable actors, so `if %actor.skill(dancing_queen)% > 5` composes naturally without an existence guard.
+
 ### Mob world-commands
 
 When `self` is a **mob**, these verbs work directly without `force`:
