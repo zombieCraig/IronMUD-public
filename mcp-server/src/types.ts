@@ -349,7 +349,8 @@ export type ItemType =
   | "staff"
   | "note"
   | "pen"
-  | "tool";
+  | "tool"
+  | "tattoo";
 
 export type WearLocation =
   | "head" | "neck" | "shoulders" | "back" | "torso" | "waist" | "ears"

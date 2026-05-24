@@ -633,6 +633,7 @@ fn parse_item_type(s: &str) -> Option<ItemType> {
         "gold" | "money" => Some(ItemType::Gold),
         "misc" | "other" => Some(ItemType::Misc),
         "tool" | "kit" => Some(ItemType::Tool),
+        "tattoo" | "ink" | "mark" => Some(ItemType::Tattoo),
         _ => None,
     }
 }

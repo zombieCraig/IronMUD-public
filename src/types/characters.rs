@@ -4,11 +4,32 @@
 use super::serde_defaults::default_stat;
 use super::{
     AchievementUnlock, ActiveBuff, ActiveQuest, BodyPart, CombatState, DialoguePairState,
-    OngoingEffect, SkillProgress, Wound,
+    ItemAffect, OngoingEffect, SkillProgress, WearLocation, Wound,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
+
+/// A permanent body mark applied via `apply <tattoo_item>`. The source item
+/// is consumed on apply; this record persists on the character and its
+/// `affects` are re-stamped as `ActiveBuff`s with source
+/// `"tattoo:<vnum>:<location>"` (where `<vnum>` is `"-"` if unknown).
+/// Visible to others via examine (short_desc grouped by location); the
+/// wearer can `examine <keyword>` to see long_desc.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct CharacterTattoo {
+    pub location: WearLocation,
+    #[serde(default)]
+    pub keywords: Vec<String>,
+    #[serde(default)]
+    pub short_desc: String,
+    #[serde(default)]
+    pub long_desc: String,
+    #[serde(default)]
+    pub source_vnum: Option<String>,
+    #[serde(default)]
+    pub affects: Vec<ItemAffect>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CharacterData {
@@ -149,6 +170,8 @@ pub struct CharacterData {
     pub ongoing_effects: Vec<OngoingEffect>,
     #[serde(default)]
     pub scars: HashMap<String, i32>, // body_part display name -> scar count
+    #[serde(default)]
+    pub tattoos: Vec<CharacterTattoo>,
     // Death/unconscious state (persisted, cleared on login)
     #[serde(default)]
     pub is_unconscious: bool,

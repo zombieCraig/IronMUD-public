@@ -47,6 +47,7 @@ mod quests;
 mod spawn;
 mod spells;
 mod stealth;
+mod tattoos;
 mod transport;
 mod triggers;
 mod utilities;
@@ -277,6 +278,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 wounds: Vec::new(),
                 ongoing_effects: Vec::new(),
                 scars: std::collections::HashMap::new(),
+                tattoos: Vec::new(),
                 // Death/unconscious state (not persisted)
                 is_unconscious: false,
                 bleedout_rounds_remaining: 0,
@@ -2076,6 +2078,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     triggers::register(engine, db.clone(), connections.clone());
     fishing::register(engine, connections.clone());
     medical::register(engine, db.clone(), connections.clone());
+    tattoos::register(engine, db.clone(), connections.clone());
     healers::register(engine, db.clone(), connections.clone());
     crafting::register(engine, db.clone(), state.clone());
     characters::register(engine, db.clone(), connections.clone(), state.clone());

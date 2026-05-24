@@ -1882,6 +1882,87 @@ impl Db {
         Ok(())
     }
 
+    /// Apply a `Tattoo`-type item to a character: consume the item, push a
+    /// `CharacterTattoo` record, and stamp each `ItemAffect` as a permanent
+    /// `ActiveBuff` sourced as `"tattoo:<vnum>:<location>"`. Returns the
+    /// `(short_desc, location_display)` so the caller can broadcast a flavor
+    /// line. Errors if the item isn't a tattoo, has no wear_locations, or
+    /// the character can't be loaded.
+    pub fn apply_tattoo_to_character(
+        &self,
+        char_name: &str,
+        item_id: &Uuid,
+    ) -> Result<(String, String)> {
+        let item = match self.get_item_data(item_id)? {
+            Some(i) => i,
+            None => return Err(anyhow::anyhow!("item not found")),
+        };
+        if item.item_type != crate::types::ItemType::Tattoo {
+            return Err(anyhow::anyhow!("not a tattoo"));
+        }
+        if item.wear_locations.is_empty() {
+            return Err(anyhow::anyhow!("tattoo has no wear_location"));
+        }
+        let location = item.wear_locations[0];
+        let location_display = location.to_display_string().to_string();
+        let vnum_tag = item.vnum.as_deref().unwrap_or("-").to_string();
+        let buff_source = format!("tattoo:{}:{}", vnum_tag, location_display);
+
+        let key = char_name.to_lowercase();
+        let mut character = match self.get_character_data(&key)? {
+            Some(c) => c,
+            None => return Err(anyhow::anyhow!("character not found")),
+        };
+
+        character.tattoos.push(crate::types::CharacterTattoo {
+            location,
+            keywords: item.keywords.clone(),
+            short_desc: item.short_desc.clone(),
+            long_desc: item.long_desc.clone(),
+            source_vnum: item.vnum.clone(),
+            affects: item.affects.clone(),
+        });
+        for affect in &item.affects {
+            character.active_buffs.push(crate::types::ActiveBuff {
+                effect_type: affect.effect_type,
+                magnitude: affect.magnitude,
+                remaining_secs: -1,
+                source: buff_source.clone(),
+                damage_type: affect.damage_type,
+                vs_effect: affect.vs_effect.clone(),
+                skill_key: affect.skill_key.clone(),
+            });
+        }
+        let short_desc = item.short_desc.clone();
+        self.save_character_data(character)?;
+        self.delete_item(item_id)?;
+        Ok((short_desc, location_display))
+    }
+
+    /// Remove the tattoo at `index` from the character and strip every
+    /// `ActiveBuff` sourced as `tattoo:<vnum>:<location>` for that mark.
+    /// Returns true if a tattoo was removed.
+    pub fn remove_tattoo_from_character(&self, char_name: &str, index: usize) -> Result<bool> {
+        let key = char_name.to_lowercase();
+        let mut character = match self.get_character_data(&key)? {
+            Some(c) => c,
+            None => return Ok(false),
+        };
+        if index >= character.tattoos.len() {
+            return Ok(false);
+        }
+        let removed = character.tattoos.remove(index);
+        let vnum_tag = removed.source_vnum.as_deref().unwrap_or("-").to_string();
+        let buff_source = format!(
+            "tattoo:{}:{}",
+            vnum_tag,
+            removed.location.to_display_string()
+        );
+        character.active_buffs.retain(|b| b.source != buff_source);
+        self.save_character_data(character)?;
+        Ok(true)
+    }
+
     /// Get all items inside a container
     pub fn get_items_in_container(&self, container_id: &Uuid) -> Result<Vec<ItemData>> {
         let mut items = Vec::new();

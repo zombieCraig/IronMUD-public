@@ -90,6 +90,18 @@ fn run_command(args, connection_id) {
         item = find_item_by_keyword(args, eq_items);
     }
 
+    // Then own tattoos (only the wearer sees the long description).
+    if item == () {
+        let mine = find_self_tattoo_by_keyword(char.name, args);
+        if mine != () {
+            let body = mine.long_desc;
+            if body == "" { body = mine.short_desc; }
+            send_client_message(connection_id,
+                mine.short_desc + " (on your " + mine.location + ")\n--------------------\n" + body);
+            return;
+        }
+    }
+
     // Then room
     if item == () {
         let room_items = get_items_in_room(char.current_room_id);
@@ -205,6 +217,10 @@ fn run_command(args, connection_id) {
 
     if item.item_type == "tool" {
         output += "(You could apply this.)\n";
+    }
+
+    if item.item_type == "tattoo" {
+        output += "(You could apply this tattoo to yourself — it is permanent.)\n";
     }
 
     if item.item_type == "board" {
@@ -808,6 +824,16 @@ fn examine_player_wounds(other_char) {
     return "\n" + examine_join_wound_texts(texts, other_char.name);
 }
 
+fn examine_player_tattoos(other_char) {
+    let tattoos = get_character_tattoos(other_char.name);
+    if tattoos.len() == 0 { return ""; }
+    let texts = [];
+    for t in tattoos {
+        texts.push(t.short_desc + " on their " + t.location);
+    }
+    return "\n" + examine_join_wound_texts(texts, other_char.name);
+}
+
 fn examine_player_scars(other_char) {
     let scars_map = get_character_scars(other_char.name);
     let keys = scars_map.keys();
@@ -861,6 +887,7 @@ fn examine_show_player(other_char, connection_id) {
     output += examine_player_health(other_char);
     output += examine_player_wounds(other_char);
     output += examine_player_scars(other_char);
+    output += examine_player_tattoos(other_char);
     output += examine_player_equipment(other_char);
 
     // Position cue

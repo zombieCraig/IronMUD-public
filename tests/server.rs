@@ -11187,3 +11187,321 @@ fn test_apply_clan_acknowledgment_empty_clan_noop() {
     assert!(!changed);
     assert!(!ch.traits.iter().any(|t| t.starts_with("clan_")));
 }
+
+// ============================================================================
+// Tattoo system
+// ============================================================================
+
+fn make_blank_character(name: &str) -> ironmud::types::CharacterData {
+    serde_json::from_value(serde_json::json!({
+        "name": name,
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+    }))
+    .expect("build character")
+}
+
+#[test]
+fn test_tattoo_item_type_roundtrip() {
+    use ironmud::ItemData;
+    use ironmud::types::{ItemType, WearLocation};
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        let mut item = ItemData::new(
+            "marauders mark".to_string(),
+            "a marauder's mark".to_string(),
+            "A roaring boar's head inked in soot.".to_string(),
+        );
+        item.item_type = ItemType::Tattoo;
+        item.wear_locations = vec![WearLocation::RightArm];
+        let id = item.id;
+        db.save_item_data(item).expect("save");
+
+        let loaded = db.get_item_data(&id).expect("get").expect("present");
+        assert_eq!(loaded.item_type, ItemType::Tattoo);
+        assert_eq!(loaded.wear_locations, vec![WearLocation::RightArm]);
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_character_tattoos_field_defaults_empty_and_persists() {
+    use ironmud::types::{CharacterTattoo, ItemAffect, WearLocation};
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        let mut ch = make_blank_character("TattooDefault");
+        assert!(ch.tattoos.is_empty(), "tattoos defaults to empty vec");
+
+        ch.tattoos.push(CharacterTattoo {
+            location: WearLocation::Back,
+            keywords: vec!["rose".to_string()],
+            short_desc: "a small rose".to_string(),
+            long_desc: "A delicate rose etched in red.".to_string(),
+            source_vnum: Some("ink:rose".to_string()),
+            affects: vec![ItemAffect::default()],
+        });
+        db.save_character_data(ch.clone()).expect("save");
+
+        let loaded = db
+            .get_character_data(&ch.name)
+            .expect("read")
+            .expect("present");
+        assert_eq!(loaded.tattoos.len(), 1);
+        assert_eq!(loaded.tattoos[0].location, WearLocation::Back);
+        assert_eq!(loaded.tattoos[0].short_desc, "a small rose");
+        assert_eq!(loaded.tattoos[0].source_vnum.as_deref(), Some("ink:rose"));
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_apply_tattoo_consumes_item_and_stamps_permanent_buffs() {
+    use ironmud::ItemData;
+    use ironmud::types::{EffectType, ItemAffect, ItemType, WearLocation};
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        // Seed a blank character.
+        let ch = make_blank_character("Inked");
+        db.save_character_data(ch.clone()).expect("save char");
+
+        // Author + spawn a tattoo item carrying a CustomSkillBoost affect.
+        let mut proto = ItemData::new(
+            "marauders mark".to_string(),
+            "a marauder's mark".to_string(),
+            "A roaring boar's head inked in soot.".to_string(),
+        );
+        proto.is_prototype = true;
+        proto.vnum = Some("ink:marauder".to_string());
+        proto.item_type = ItemType::Tattoo;
+        proto.wear_locations = vec![WearLocation::RightArm];
+        proto.keywords = vec!["marauders".to_string(), "mark".to_string()];
+        proto.affects = vec![
+            ItemAffect {
+                effect_type: EffectType::CustomSkillBoost,
+                magnitude: 1,
+                damage_type: None,
+                vs_effect: None,
+                skill_key: Some("marauders_mark".to_string()),
+            },
+            ItemAffect {
+                effect_type: EffectType::CustomSkillBoost,
+                magnitude: 5,
+                damage_type: None,
+                vs_effect: None,
+                skill_key: Some("orc_bless".to_string()),
+            },
+        ];
+        db.save_item_data(proto).expect("save proto");
+
+        let inst = db
+            .spawn_item_from_prototype("ink:marauder")
+            .expect("spawn")
+            .expect("instance");
+        let inst_id = inst.id;
+        db.move_item_to_inventory(&inst_id, &ch.name).expect("inv");
+
+        // Apply.
+        let (short, location) = db
+            .apply_tattoo_to_character(&ch.name, &inst_id)
+            .expect("apply tattoo");
+        assert_eq!(short, "a marauder's mark");
+        assert_eq!(location, "right arm");
+
+        // Item is consumed.
+        let gone = db.get_item_data(&inst_id).expect("get");
+        assert!(gone.is_none(), "tattoo item is consumed on apply");
+
+        // Tattoo recorded on character.
+        let after = db
+            .get_character_data(&ch.name)
+            .expect("get")
+            .expect("present");
+        assert_eq!(after.tattoos.len(), 1);
+        assert_eq!(after.tattoos[0].location, WearLocation::RightArm);
+        assert_eq!(after.tattoos[0].short_desc, "a marauder's mark");
+        assert_eq!(after.tattoos[0].source_vnum.as_deref(), Some("ink:marauder"));
+
+        // Two permanent buffs stamped with the right source tag.
+        let want_source = "tattoo:ink:marauder:right arm";
+        let tattoo_buffs: Vec<_> = after
+            .active_buffs
+            .iter()
+            .filter(|b| b.source == want_source)
+            .collect();
+        assert_eq!(tattoo_buffs.len(), 2);
+        assert!(tattoo_buffs.iter().all(|b| b.remaining_secs == -1));
+        assert!(
+            tattoo_buffs
+                .iter()
+                .any(|b| b.skill_key.as_deref() == Some("marauders_mark") && b.magnitude == 1)
+        );
+        assert!(
+            tattoo_buffs
+                .iter()
+                .any(|b| b.skill_key.as_deref() == Some("orc_bless") && b.magnitude == 5)
+        );
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_apply_tattoo_rejects_non_tattoo_item() {
+    use ironmud::ItemData;
+    use ironmud::types::ItemType;
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        let ch = make_blank_character("WrongTool");
+        db.save_character_data(ch.clone()).expect("save char");
+
+        let mut item = ItemData::new(
+            "kit".to_string(),
+            "a transfusion kit".to_string(),
+            "A field medic kit.".to_string(),
+        );
+        item.item_type = ItemType::Tool;
+        let id = item.id;
+        db.save_item_data(item).expect("save");
+
+        let err = db.apply_tattoo_to_character(&ch.name, &id);
+        assert!(err.is_err(), "non-tattoo items are rejected");
+
+        let after = db
+            .get_character_data(&ch.name)
+            .expect("get")
+            .expect("present");
+        assert!(after.tattoos.is_empty(), "no tattoo recorded on reject");
+        assert!(
+            db.get_item_data(&id).expect("get").is_some(),
+            "item not consumed on reject"
+        );
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_apply_tattoo_rejects_when_no_wear_location() {
+    use ironmud::ItemData;
+    use ironmud::types::ItemType;
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        let ch = make_blank_character("NoSlot");
+        db.save_character_data(ch.clone()).expect("save char");
+
+        let mut item = ItemData::new(
+            "blank".to_string(),
+            "a blank tattoo".to_string(),
+            "Unfinished ink.".to_string(),
+        );
+        item.item_type = ItemType::Tattoo;
+        // wear_locations intentionally empty
+        let id = item.id;
+        db.save_item_data(item).expect("save");
+
+        let err = db.apply_tattoo_to_character(&ch.name, &id);
+        assert!(err.is_err(), "tattoo without slot is rejected");
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_remove_tattoo_strips_matching_buffs() {
+    use ironmud::ItemData;
+    use ironmud::types::{EffectType, ItemAffect, ItemType, WearLocation};
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        let ch = make_blank_character("Removable");
+        db.save_character_data(ch.clone()).expect("save char");
+
+        let mut proto = ItemData::new(
+            "wisp tattoo".to_string(),
+            "a faint wisp".to_string(),
+            "A drifting wisp.".to_string(),
+        );
+        proto.is_prototype = true;
+        proto.vnum = Some("ink:wisp".to_string());
+        proto.item_type = ItemType::Tattoo;
+        proto.wear_locations = vec![WearLocation::LeftArm];
+        proto.affects = vec![ItemAffect {
+            effect_type: EffectType::CustomSkillBoost,
+            magnitude: 1,
+            damage_type: None,
+            vs_effect: None,
+            skill_key: Some("wisp_call".to_string()),
+        }];
+        db.save_item_data(proto).expect("save proto");
+
+        let inst = db
+            .spawn_item_from_prototype("ink:wisp")
+            .expect("spawn")
+            .expect("instance");
+        let inst_id = inst.id;
+        db.move_item_to_inventory(&inst_id, &ch.name).expect("inv");
+        db.apply_tattoo_to_character(&ch.name, &inst_id)
+            .expect("apply");
+
+        // Confirm the buff is present pre-removal.
+        let want_source = "tattoo:ink:wisp:left arm";
+        let before = db.get_character_data(&ch.name).unwrap().unwrap();
+        assert_eq!(
+            before
+                .active_buffs
+                .iter()
+                .filter(|b| b.source == want_source)
+                .count(),
+            1
+        );
+        assert_eq!(before.tattoos.len(), 1);
+
+        let removed = db
+            .remove_tattoo_from_character(&ch.name, 0)
+            .expect("remove");
+        assert!(removed);
+
+        let after = db.get_character_data(&ch.name).unwrap().unwrap();
+        assert!(after.tattoos.is_empty(), "tattoo removed from list");
+        assert_eq!(
+            after
+                .active_buffs
+                .iter()
+                .filter(|b| b.source == want_source)
+                .count(),
+            0,
+            "matching buffs stripped"
+        );
+
+        // Out-of-range index is a no-op (returns false).
+        let none = db.remove_tattoo_from_character(&ch.name, 5).expect("remove");
+        assert!(!none);
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}

@@ -35,6 +35,11 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if item.item_type == "tattoo" {
+        apply_tattoo_self(connection_id, char, item, target_keyword);
+        return;
+    }
+
     if item.item_type != "tool" {
         send_client_message(connection_id, type_specific_reject(item.item_type));
         return;
@@ -116,6 +121,34 @@ fn parse_apply_args(args) {
     let target = parts[parts.len() - 1];
     let item_parts = parts.extract(0, parts.len() - 1);
     return #{ item: item_parts.join(" "), target: target };
+}
+
+// Apply a Tattoo item to oneself. Self-only — non-self targets are rejected.
+// On success the source item is consumed and a permanent CharacterTattoo is
+// stamped on the actor; magical affects ride into active_buffs as permanent
+// buffs sourced as `tattoo:<vnum>:<location>`.
+fn apply_tattoo_self(connection_id, char, item, target_keyword) {
+    let t = target_keyword.to_lower();
+    let is_self = t == "" || t == "self" || t == "me" || t == char.name.to_lower();
+    if !is_self {
+        send_client_message(connection_id, "You can only apply a tattoo to yourself.");
+        return;
+    }
+
+    let result = apply_tattoo_to_self(connection_id, item.id);
+    if !result.ok {
+        let msg = result.message;
+        if msg == "" { msg = "You can't apply that here."; }
+        send_client_message(connection_id, msg);
+        return;
+    }
+
+    let short = result.short_desc;
+    let loc = result.location;
+    send_client_message(connection_id,
+        "You press the " + short + " to your " + loc + ". The ink burns, then settles into your skin.");
+    broadcast_to_room_except(char.current_room_id, connection_id,
+        char.name + " presses " + short + " to their " + loc + ".");
 }
 
 // Type-specific rejection so players get a hint toward the right verb.

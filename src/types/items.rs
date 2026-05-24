@@ -103,6 +103,14 @@ pub enum ItemType {
     /// DG body or Rhai trigger script for the actual behavior — e.g.
     /// transfusion kits, adrenaline shots, splints, antidotes.
     Tool,
+    /// Permanent body mark applied via the `apply` verb (self only). On
+    /// apply, the source item is consumed and a `CharacterTattoo` is pushed
+    /// onto the wearer carrying the item's `wear_locations[0]`, `short_desc`,
+    /// `long_desc`, `keywords`, and `affects`. Each `ItemAffect` is stamped
+    /// as a permanent `ActiveBuff` sourced as `"tattoo:<vnum>:<location>"`.
+    /// Cosmetic if `affects` is empty; magical if it carries any effects.
+    /// Does not occupy or block the matching armor slot.
+    Tattoo,
 }
 
 impl ItemType {
@@ -124,6 +132,7 @@ impl ItemType {
             "pen" => Some(ItemType::Pen),
             "board" | "bulletin" | "bulletin_board" => Some(ItemType::Board),
             "tool" | "kit" => Some(ItemType::Tool),
+            "tattoo" | "ink" | "mark" => Some(ItemType::Tattoo),
             _ => None,
         }
     }
@@ -146,6 +155,7 @@ impl ItemType {
             ItemType::Pen => "pen",
             ItemType::Board => "board",
             ItemType::Tool => "tool",
+            ItemType::Tattoo => "tattoo",
         }
     }
 }
