@@ -303,6 +303,10 @@
     "access": "user",
     "description": "Quaff a magical potion to fire its bound spell"
   },
+  "apply": {
+    "access": "user",
+    "description": "Apply a Tool item (e.g. medical kit) — optionally on a target"
+  },
   "zap": {
     "access": "user",
     "description": "Zap a target with a magical wand (consumes one charge)"

@@ -203,6 +203,10 @@ fn run_command(args, connection_id) {
         output += "(You could read this.)\n";
     }
 
+    if item.item_type == "tool" {
+        output += "(You could apply this.)\n";
+    }
+
     if item.item_type == "board" {
         let n = count_board_posts_for(item.vnum);
         if n == 0 {

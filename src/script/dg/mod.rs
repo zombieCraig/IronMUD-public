@@ -408,6 +408,7 @@ pub fn fire_item_dg(
         crate::types::ItemLocation::Room(r) => Some(*r),
         _ => actor_room(actor.as_ref(), &db),
     };
+    let victim = victim_from_context_vars(&context_vars, actor.as_ref(), &connections, &db);
     let ctx = EvalCtx {
         db,
         connections,
@@ -417,7 +418,7 @@ pub fn fire_item_dg(
         self_vnum: item.vnum.clone().unwrap_or_default(),
         self_room,
         actor,
-        victim: None,
+        victim,
         arg: String::new(),
         cmd: String::new(),
         cmd_canonical: String::new(),
@@ -775,6 +776,62 @@ fn dg_keyword_match(want: &str, got: &str) -> bool {
 /// Resolve a connection_id string to a fully-bound [`ActorRef::Player`]
 /// by looking up the active session. Returns None when the id is empty,
 /// unparseable, or stale (no matching session).
+/// Build an `%victim%` binding from fire-time context vars set by callers
+/// like the `apply`/`use` verb. Recognized keys:
+///
+/// - `target_kind = "self"`   → clones the actor
+/// - `target_kind = "player"` → looks up the player by `target_name`
+///   (or `target_id` as a uuid char id) and grabs their live connection
+/// - `target_kind = "mob"`    → reads `target_id` as a mobile uuid
+///
+/// Returns `None` when no target context is set or resolution fails — in
+/// that case existing call paths (drink/eat/OnLoad/...) keep their
+/// historical `victim = None` behavior.
+fn victim_from_context_vars(
+    context_vars: &std::collections::HashMap<String, String>,
+    actor: Option<&ActorRef>,
+    connections: &SharedConnections,
+    db: &Db,
+) -> Option<ActorRef> {
+    let kind = context_vars.get("target_kind").map(String::as_str)?;
+    match kind {
+        "self" => actor.cloned(),
+        "player" => {
+            let name = context_vars.get("target_name").map(String::as_str).unwrap_or("");
+            if name.is_empty() {
+                return None;
+            }
+            // Prefer a live session so mutation messages can route back.
+            let conns = connections.lock().ok()?;
+            for (cid, session) in conns.iter() {
+                if let Some(ch) = session.character.as_ref() {
+                    if ch.name.eq_ignore_ascii_case(name) {
+                        return Some(ActorRef::Player {
+                            connection_id: cid.to_string(),
+                            char_id: *cid,
+                            name: ch.name.clone(),
+                        });
+                    }
+                }
+            }
+            // Offline player — synthesize a name-only ref so DB-backed
+            // mutations (hp, gold, etc.) still resolve via name lookup.
+            db.get_character_data(name).ok().flatten().map(|c| ActorRef::Player {
+                connection_id: String::new(),
+                char_id: Uuid::nil(),
+                name: c.name,
+            })
+        }
+        "mob" => {
+            let id_str = context_vars.get("target_id").map(String::as_str).unwrap_or("");
+            let mob_id = Uuid::parse_str(id_str).ok()?;
+            let mob = db.get_mobile_data(&mob_id).ok().flatten()?;
+            Some(ActorRef::Mob { mobile_id: mob_id, name: mob.name })
+        }
+        _ => None,
+    }
+}
+
 fn actor_from_connection(connection_id: &str, connections: &SharedConnections) -> Option<ActorRef> {
     if connection_id.is_empty() {
         return None;
@@ -935,6 +992,70 @@ halt";
             ctx.db.get_dg_global("greeting").expect("get").as_deref(),
             Some("hello")
         );
+    }
+
+    #[test]
+    fn time_epoch_returns_unix_seconds() {
+        // %time.epoch% should expose a real-world Unix timestamp well above
+        // 1_500_000_000 (year 2017). Used by tool/kit cooldown bookkeeping.
+        // Threshold deliberately conservative so the test stays valid for
+        // any plausible build date.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "test_mob");
+        let body = "\
+if %time.epoch% > 1500000000
+  halt
+end";
+        assert_eq!(fire_dg(body, &ctx), Outcome::Halt);
+    }
+
+    #[test]
+    fn victim_resolves_self_kind_from_context_vars() {
+        // target_kind=self with no actor → no victim (nothing to clone).
+        let mut ctx = make_ctx(SelfKind::Obj, Uuid::new_v4(), "kit");
+        ctx.context_vars.insert("target_kind".to_string(), "self".to_string());
+
+        let resolved = victim_from_context_vars(
+            &ctx.context_vars,
+            ctx.actor.as_ref(),
+            &ctx.connections,
+            &ctx.db,
+        );
+        assert!(resolved.is_none(), "no actor → no self-victim");
+
+        // With an actor present, target_kind=self clones it.
+        ctx.actor = Some(ActorRef::Mob {
+            mobile_id: Uuid::new_v4(),
+            name: "merchant".to_string(),
+        });
+        let resolved = victim_from_context_vars(
+            &ctx.context_vars,
+            ctx.actor.as_ref(),
+            &ctx.connections,
+            &ctx.db,
+        );
+        assert!(matches!(resolved, Some(ActorRef::Mob { ref name, .. }) if name == "merchant"));
+    }
+
+    #[test]
+    fn victim_resolves_mob_kind_from_db() {
+        let mob = crate::types::MobileData::new("kobold".to_string());
+        let mob_id = mob.id;
+        let ctx = make_ctx(SelfKind::Obj, Uuid::new_v4(), "kit");
+        ctx.db.save_mobile_data(mob).expect("save");
+
+        let mut context_vars = HashMap::new();
+        context_vars.insert("target_kind".to_string(), "mob".to_string());
+        context_vars.insert("target_id".to_string(), mob_id.to_string());
+
+        let resolved =
+            victim_from_context_vars(&context_vars, None, &ctx.connections, &ctx.db);
+        match resolved {
+            Some(ActorRef::Mob { mobile_id, name }) => {
+                assert_eq!(mobile_id, mob_id);
+                assert_eq!(name, "kobold");
+            }
+            other => panic!("expected ActorRef::Mob, got {:?}", other),
+        }
     }
 
     #[test]

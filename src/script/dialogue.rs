@@ -2192,6 +2192,39 @@ fn evaluate_condition(cond: &DialogueCondition, ch: &CharacterData, mob: &Mobile
     }
 }
 
+/// Award skill XP to a character, leveling up at the 100-XP threshold and
+/// capping at level 10. Returns a player-facing level-up announcement on
+/// level gain, else `None`. Shared by the `award_skill_xp` dialogue effect
+/// and the DG Scripts command of the same name — both must route through
+/// here rather than mutate `ch.skills` directly so the level-up cadence
+/// stays consistent across content paths.
+pub(crate) fn award_skill_xp(
+    ch: &mut CharacterData,
+    skill: &str,
+    amount: i32,
+) -> Option<String> {
+    let key = skill.to_lowercase();
+    let entry = ch
+        .skills
+        .entry(key.clone())
+        .or_insert(crate::SkillProgress::default());
+    if entry.level >= 10 {
+        return None;
+    }
+    entry.experience += amount;
+    let mut leveled = false;
+    while entry.experience >= 100 && entry.level < 10 {
+        entry.experience -= 100;
+        entry.level += 1;
+        leveled = true;
+    }
+    if leveled {
+        Some(format!("[ Your {} skill increases. ]", key))
+    } else {
+        None
+    }
+}
+
 fn apply_effects_collect_messages(
     db: &Db,
     connections: &SharedConnections,
@@ -2287,29 +2320,7 @@ fn apply_effect(
                 ))
             }
         }
-        DialogueEffect::AwardSkillXp { skill, amount } => {
-            let key = skill.to_lowercase();
-            let entry = ch
-                .skills
-                .entry(key.clone())
-                .or_insert(crate::SkillProgress::default());
-            if entry.level >= 10 {
-                return None;
-            }
-            entry.experience += *amount;
-            // Threshold = 100 per level (matches existing add_skill_experience pattern minus traits).
-            let mut leveled = false;
-            while entry.experience >= 100 && entry.level < 10 {
-                entry.experience -= 100;
-                entry.level += 1;
-                leveled = true;
-            }
-            if leveled {
-                Some(format!("[ Your {} skill increases. ]", key))
-            } else {
-                None
-            }
-        }
+        DialogueEffect::AwardSkillXp { skill, amount } => award_skill_xp(ch, skill, *amount),
         DialogueEffect::SetCounter { key, value } => {
             ch.achievement_counters
                 .insert(key.clone(), (*value).max(0) as u32);
@@ -2633,6 +2644,44 @@ mod tests {
     fn flag_key_local_includes_vnum() {
         assert_eq!(flag_key("asked", FlagScope::Local, "3001"), "3001:asked");
         assert_eq!(flag_key("asked", FlagScope::Global, "3001"), "asked");
+    }
+
+    #[test]
+    fn award_skill_xp_partial_gain_returns_none() {
+        let mut ch = make_character("test");
+        let msg = award_skill_xp(&mut ch, "medical", 50);
+        assert!(msg.is_none(), "partial XP should not announce");
+        let entry = ch.skills.get("medical").expect("skill row created");
+        assert_eq!(entry.experience, 50);
+        assert_eq!(entry.level, 0);
+    }
+
+    #[test]
+    fn award_skill_xp_levels_at_100() {
+        let mut ch = make_character("test");
+        let msg = award_skill_xp(&mut ch, "Medical", 100);
+        assert_eq!(
+            msg.as_deref(),
+            Some("[ Your medical skill increases. ]"),
+            "level-up message uses lower-cased key"
+        );
+        let entry = ch.skills.get("medical").expect("skill row created");
+        assert_eq!(entry.experience, 0);
+        assert_eq!(entry.level, 1);
+    }
+
+    #[test]
+    fn award_skill_xp_capped_at_level_10() {
+        let mut ch = make_character("test");
+        ch.skills.insert(
+            "medical".to_string(),
+            crate::SkillProgress { level: 10, experience: 0 },
+        );
+        let msg = award_skill_xp(&mut ch, "medical", 500);
+        assert!(msg.is_none(), "no announce at level cap");
+        let entry = ch.skills.get("medical").expect("skill row preserved");
+        assert_eq!(entry.level, 10, "level stays at cap");
+        assert_eq!(entry.experience, 0, "XP not accumulated past cap");
     }
 
     fn make_character(name: &str) -> CharacterData {

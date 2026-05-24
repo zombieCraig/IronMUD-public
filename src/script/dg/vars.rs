@@ -819,7 +819,17 @@ fn resolve_random(field: Option<&str>, ctx: &EvalCtx) -> String {
 /// - `hour` (0-23), `day` (1-30), `month` (1-12), `year`
 /// - `season` ("spring" / "summer" / "autumn" / "winter")
 /// - `period` (dawn/morning/noon/afternoon/dusk/evening/night)
+/// - `epoch` — real-world Unix seconds (NOT game time). Intended for
+///   short-cooldown bookkeeping where in-game `hour` granularity is too
+///   coarse: `set cooldown_until %time.epoch% + 300` / `if %actor.foo% >
+///   %time.epoch%`. Monotonic across server restarts.
 fn resolve_time(field: Option<&str>, ctx: &EvalCtx) -> String {
+    if matches!(field, Some("epoch")) {
+        return std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs().to_string())
+            .unwrap_or_default();
+    }
     let Ok(gt) = ctx.db.get_game_time() else {
         return String::new();
     };

@@ -97,6 +97,12 @@ pub enum ItemType {
     /// Bulletin board. Players use the `board` command to list/read/write
     /// posts; access gating lives on `ItemData.board_*` fields.
     Board,
+    /// Generic single-use (or scripted) consumable. The `use`/`apply` verb
+    /// fires the item's `OnUse` trigger, which owns all gameplay effects
+    /// (cooldown, HP changes, broadcasts, self-purge). Builders attach a
+    /// DG body or Rhai trigger script for the actual behavior — e.g.
+    /// transfusion kits, adrenaline shots, splints, antidotes.
+    Tool,
 }
 
 impl ItemType {
@@ -117,6 +123,7 @@ impl ItemType {
             "note" | "paper" => Some(ItemType::Note),
             "pen" => Some(ItemType::Pen),
             "board" | "bulletin" | "bulletin_board" => Some(ItemType::Board),
+            "tool" | "kit" => Some(ItemType::Tool),
             _ => None,
         }
     }
@@ -138,6 +145,7 @@ impl ItemType {
             ItemType::Note => "note",
             ItemType::Pen => "pen",
             ItemType::Board => "board",
+            ItemType::Tool => "tool",
         }
     }
 }

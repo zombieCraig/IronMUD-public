@@ -348,7 +348,8 @@ export type ItemType =
   | "wand"
   | "staff"
   | "note"
-  | "pen";
+  | "pen"
+  | "tool";
 
 export type WearLocation =
   | "head" | "neck" | "shoulders" | "back" | "torso" | "waist" | "ears"

@@ -49,6 +49,8 @@ pub fn dispatch(line: &str, ctx: &EvalCtx) -> Result<(), String> {
 
         "damage" | "mdamage" | "odamage" | "wdamage" => cmd_damage(rest, ctx),
 
+        "award_skill_xp" => cmd_award_skill_xp(rest, ctx),
+
         "teleport" | "mteleport" | "oteleport" | "wteleport" => cmd_teleport(rest, ctx),
 
         "purge" | "mpurge" | "opurge" | "wpurge" => cmd_purge(rest, ctx),
@@ -148,6 +150,7 @@ pub const COMMANDS: &[&str] = &[
     "echoaround", "mechoaround", "oechoaround", "wechoaround",
     "zoneecho", "zecho",
     "damage", "mdamage", "odamage", "wdamage",
+    "award_skill_xp",
     "teleport", "mteleport", "oteleport", "wteleport",
     "purge", "mpurge", "opurge", "wpurge",
     "load", "mload", "oload", "wload",
@@ -180,6 +183,7 @@ pub(super) fn is_known_dg_verb(verb: &str) -> bool {
         | "echaround" | "echoround" | "echround"
         | "zoneecho" | "zecho" | "wzoneecho" | "mzoneecho" | "ozoneecho"
         | "damage" | "mdamage" | "odamage" | "wdamage"
+        | "award_skill_xp"
         | "teleport" | "mteleport" | "oteleport" | "wteleport"
         | "purge" | "mpurge" | "opurge" | "wpurge"
         | "load" | "mload" | "oload" | "wload"
@@ -291,6 +295,54 @@ fn cmd_damage(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
                 mob.current_hp = (mob.current_hp - amount).max(0);
                 let _ = ctx.db.save_mobile_data(mob);
             }
+        }
+    }
+    Ok(())
+}
+
+/// `award_skill_xp <target> <skill_key> <amount>` — grant XP on a custom
+/// skill to a player, leveling up at the 100-XP threshold (cap level 10).
+/// Routes through [`crate::script::dialogue::award_skill_xp`] so the
+/// cadence matches the `award_skill_xp` dialogue effect. Players only —
+/// mob targets silently no-op (mobs have no skill table). The level-up
+/// announcement (`[ Your <skill> skill increases. ]`) is sent to the
+/// player on level gain.
+///
+/// This is the canonical XP-grant path for scripts. Future content
+/// (tool/kit OnUse triggers, hand-authored quest hooks) should call here
+/// rather than mutate `ch.skills` directly.
+fn cmd_award_skill_xp(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
+    let (target_tok, after_target) = split_verb(rest);
+    let (skill_tok, amount_tok) = split_verb(after_target);
+    let amount: i32 = match amount_tok.trim().parse() {
+        Ok(n) => n,
+        Err(_) => {
+            super::warn_builder(ctx, "award_skill_xp: amount must be an integer");
+            return Ok(());
+        }
+    };
+    if target_tok.is_empty() || skill_tok.is_empty() {
+        super::warn_builder(ctx, "award_skill_xp: usage is `award_skill_xp <target> <skill_key> <amount>`");
+        return Ok(());
+    }
+    let Some(actor) = resolve_target(&target_tok, ctx) else {
+        return Ok(());
+    };
+    let (connection_id, player_name) = match actor {
+        ActorRef::Player { connection_id, name, .. } if !name.is_empty() => (connection_id, name),
+        _ => return Ok(()),
+    };
+    let Ok(Some(mut ch)) = ctx.db.get_character_data(&player_name) else {
+        return Ok(());
+    };
+    let msg = crate::script::dialogue::award_skill_xp(&mut ch, &skill_tok, amount);
+    let _ = ctx.db.save_character_data(ch);
+    if let Some(mut text) = msg {
+        if !connection_id.is_empty() {
+            if !text.ends_with('\n') {
+                text.push('\n');
+            }
+            crate::send_client_message(&ctx.connections, connection_id, text);
         }
     }
     Ok(())

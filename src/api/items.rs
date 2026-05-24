@@ -632,6 +632,7 @@ fn parse_item_type(s: &str) -> Option<ItemType> {
         "key" => Some(ItemType::Key),
         "gold" | "money" => Some(ItemType::Gold),
         "misc" | "other" => Some(ItemType::Misc),
+        "tool" | "kit" => Some(ItemType::Tool),
         _ => None,
     }
 }
@@ -843,7 +844,7 @@ async fn create_item(
     // Parse item type
     let item_type = parse_item_type(&req.item_type).ok_or_else(|| {
         ApiError::InvalidInput(format!(
-            "Invalid item type '{}'. Use: weapon, armor, container, liquid_container, food, key, gold, misc",
+            "Invalid item type '{}'. Use: weapon, armor, container, liquid_container, food, key, gold, misc, tool",
             req.item_type
         ))
     })?;
@@ -1168,7 +1169,7 @@ async fn update_item(
             item.item_type = new_type;
         } else {
             return Err(ApiError::InvalidInput(format!(
-                "Invalid item type '{}'. Use: weapon, armor, container, liquid_container, food, key, gold, misc",
+                "Invalid item type '{}'. Use: weapon, armor, container, liquid_container, food, key, gold, misc, tool",
                 item_type_str
             )));
         }
