@@ -160,6 +160,12 @@ pub struct EditorSession {
     /// Cleared by any non-shift navigation; set on the first Shift+Move
     /// from the prior cursor position.
     selection_anchor: Option<(usize, usize)>,
+
+    /// X10 mouse tracking state. True (the default) means left-clicks
+    /// reposition the cursor; false releases the terminal's mouse so
+    /// right-click paste from another window works again. Toggled via
+    /// Ctrl-T.
+    mouse_enabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -189,7 +195,7 @@ impl EditorSession {
             height: h,
             dirty: false,
             status: String::from(
-                "[BETA] ^O save  ^X exit  ^G help  ^W search  ^\\ replace  ^_ goto  ^Z undo",
+                "[BETA] ^O save  ^X exit  ^G help  ^T mouse  ^W search  ^\\ replace  ^_ goto  ^Z undo",
             ),
             mode: EditorMode::Editing,
             pending_output: Vec::new(),
@@ -202,6 +208,7 @@ impl EditorSession {
             dg_tab_state: None,
             dg_error: None,
             selection_anchor: None,
+            mouse_enabled: true,
         };
         s.refresh_dg_error();
         s.render();
@@ -262,6 +269,30 @@ impl EditorSession {
             if byte_count == 1 { "" } else { "s" }
         );
         self.render();
+    }
+
+    /// Flip X10 mouse tracking. When on (default), left-clicks reposition
+    /// the cursor. When off, the terminal owns the mouse again so the
+    /// player can right-click paste from another window into the editor.
+    /// The DECSET/DECRST byte is prepended to `pending_output` so the
+    /// next `take_output()` drain (the dispatcher calls it after every
+    /// keystroke) flips the terminal mode along with the redraw.
+    fn toggle_mouse_tracking(&mut self) {
+        self.mouse_enabled = !self.mouse_enabled;
+        self.status = if self.mouse_enabled {
+            String::from("Mouse tracking ON — left-click positions the cursor.")
+        } else {
+            String::from("Mouse tracking OFF — right-click paste available. ^T to re-enable.")
+        };
+        self.render();
+        let escape: &[u8] = if self.mouse_enabled {
+            b"\x1b[?1000h"
+        } else {
+            b"\x1b[?1000l"
+        };
+        let mut prefixed = escape.to_vec();
+        prefixed.extend_from_slice(&self.pending_output);
+        self.pending_output = prefixed;
     }
 
     pub fn handle_key(&mut self, key: &KeyEvent) -> EditorAction {
@@ -525,7 +556,11 @@ impl EditorSession {
                 }
                 EditorAction::None
             }
-            KeyEvent::CtrlD | KeyEvent::CtrlT | KeyEvent::Unknown => EditorAction::None,
+            KeyEvent::CtrlT => {
+                self.toggle_mouse_tracking();
+                EditorAction::None
+            }
+            KeyEvent::CtrlD | KeyEvent::Unknown => EditorAction::None,
         }
     }
 
@@ -1636,6 +1671,7 @@ impl EditorSession {
             "  Ctrl-C cancel (prompts on a dirty buffer)",
             "",
             "  Ctrl-L redraw screen     Ctrl-G this help",
+            "  Ctrl-T toggle mouse tracking (turn off to paste from clipboard)",
         ];
         for l in lines.iter() {
             out.extend_from_slice(pad_to_width(l, w).as_bytes());
@@ -2052,6 +2088,31 @@ mod tests {
         let action = s.handle_key(&KeyEvent::MouseClick { row: 4, col: 3 });
         assert_eq!(action, EditorAction::None);
         assert_eq!((s.cursor_row, s.cursor_col), (2, 2));
+    }
+
+    #[test]
+    fn ctrl_t_toggles_mouse_tracking_and_emits_decset_decrst() {
+        let mut s = EditorSession::new(EditorKind::ItemNote, "alpha", 80, 24);
+        assert!(s.mouse_enabled, "mouse tracking should default on");
+        let _ = s.take_output();
+
+        s.handle_key(&KeyEvent::CtrlT);
+        assert!(!s.mouse_enabled, "first ^T should disable tracking");
+        let out = s.take_output();
+        assert!(
+            out.windows(8).any(|w| w == b"\x1b[?1000l"),
+            "expected DECRST 1000 in output after toggle-off"
+        );
+        assert!(s.status.contains("OFF"));
+
+        s.handle_key(&KeyEvent::CtrlT);
+        assert!(s.mouse_enabled, "second ^T should re-enable tracking");
+        let out = s.take_output();
+        assert!(
+            out.windows(8).any(|w| w == b"\x1b[?1000h"),
+            "expected DECSET 1000 in output after toggle-on"
+        );
+        assert!(s.status.contains("ON"));
     }
 
     #[test]
