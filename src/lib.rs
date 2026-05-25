@@ -3600,6 +3600,10 @@ pub async fn handle_connection(
                 // verification originates); login.rhai's gate also routes
                 // through create.rhai for consistent handling.
                 Some("scripts/commands/create.rhai".to_string())
+            } else if mode == "mail_compose" {
+                // mail compose stays in mail.rhai so @attach/@detach/@@/@
+                // and free-form lines all reach handle_compose_mode.
+                Some("scripts/commands/mail.rhai".to_string())
             } else {
                 None
             };
