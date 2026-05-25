@@ -12,10 +12,25 @@ pub struct MailMessage {
     pub body: String,
     pub sent_at: i64, // Unix timestamp
     pub read: bool,
+    /// Item instance ids attached to this message. Each lives in the
+    /// `items` tree with `location = Nowhere` while in transit and is
+    /// returned to circulation on `mail claim` (or destroyed if the
+    /// message is deleted/auto-purged).
+    #[serde(default)]
+    pub attached_items: Vec<Uuid>,
 }
 
 impl MailMessage {
     pub fn new(sender: String, recipient: String, body: String) -> Self {
+        Self::with_attachments(sender, recipient, body, Vec::new())
+    }
+
+    pub fn with_attachments(
+        sender: String,
+        recipient: String,
+        body: String,
+        attached_items: Vec<Uuid>,
+    ) -> Self {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
@@ -27,6 +42,7 @@ impl MailMessage {
             body,
             sent_at: now,
             read: false,
+            attached_items,
         }
     }
 }

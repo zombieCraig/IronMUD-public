@@ -3658,9 +3658,20 @@ impl Db {
         Ok(false)
     }
 
-    /// Delete a mail message by ID
+    /// Delete a mail message by ID. Any items still attached to the message
+    /// are destroyed (`delete_item_recursive`) — the player who deletes mail
+    /// with unclaimed attachments forfeits them. Centralizing the sweep here
+    /// means every deletion path (`delete_oldest_read_mail`, the per-recipient
+    /// purge on character deletion, the explicit `mail delete <#>` flow) gets
+    /// attachment cleanup for free.
     pub fn delete_mail(&self, id: &Uuid) -> Result<bool> {
         let key = id.as_bytes();
+        if let Some(ivec) = self.mail.get(key)? {
+            let msg: MailMessage = serde_json::from_slice(&ivec)?;
+            for item_id in &msg.attached_items {
+                let _ = self.delete_item_recursive(item_id);
+            }
+        }
         Ok(self.mail.remove(key)?.is_some())
     }
 

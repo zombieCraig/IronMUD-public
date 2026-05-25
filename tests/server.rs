@@ -7273,6 +7273,221 @@ fn test_mailbox_purged_on_character_delete() {
     }
 }
 
+#[test]
+fn test_mail_attachment_serde_default() {
+    use ironmud::types::MailMessage;
+
+    // Mail JSON written before attachments existed must still deserialize.
+    let legacy = serde_json::json!({
+        "id": uuid::Uuid::new_v4(),
+        "sender": "alice",
+        "recipient": "bob",
+        "body": "hi",
+        "sent_at": 0i64,
+        "read": false
+    });
+    let msg: MailMessage =
+        serde_json::from_value(legacy).expect("legacy mail row should deserialize");
+    assert!(msg.attached_items.is_empty());
+}
+
+#[test]
+fn test_mail_attachment_round_trip() {
+    use ironmud::types::{ItemData, ItemLocation, MailMessage};
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        // Park an item in Alice's inventory.
+        let mut item = ItemData::new(
+            "a brass key".to_string(),
+            "a brass key".to_string(),
+            "A small brass key lies here.".to_string(),
+        );
+        item.location = ItemLocation::Inventory("alice".to_string());
+        item.is_prototype = false;
+        let item_id = item.id;
+        db.save_item_data(item).expect("save item");
+
+        // Send mail with the attachment.
+        let msg = MailMessage::with_attachments(
+            "alice".to_string(),
+            "bob".to_string(),
+            "package incoming".to_string(),
+            vec![item_id],
+        );
+        let msg_id = msg.id;
+        // Park the item to simulate the send_mail_with_attachments path.
+        db.move_item_to_nowhere(&item_id).expect("park");
+        db.store_mail(msg).expect("store mail");
+
+        // Item should be Nowhere while in transit.
+        let parked = db.get_item_data(&item_id).expect("get").expect("present");
+        assert!(matches!(parked.location, ItemLocation::Nowhere));
+
+        // Claim path: move item to recipient's inventory and clear attachments.
+        let stored = db
+            .get_mail_by_id(&msg_id)
+            .expect("get mail")
+            .expect("present");
+        assert_eq!(stored.attached_items, vec![item_id]);
+        db.move_item_to_inventory(&item_id, "bob")
+            .expect("claim move");
+        let mut cleared = stored.clone();
+        cleared.attached_items.clear();
+        db.store_mail(cleared).expect("re-store");
+
+        let after = db
+            .get_mail_by_id(&msg_id)
+            .expect("get mail")
+            .expect("present");
+        assert!(after.attached_items.is_empty());
+        let delivered = db.get_item_data(&item_id).expect("get").expect("present");
+        match delivered.location {
+            ItemLocation::Inventory(ref name) => assert_eq!(name, "bob"),
+            other => panic!("expected Bob's inventory, got {:?}", other),
+        }
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_mail_delete_destroys_unclaimed_attachments() {
+    use ironmud::types::{ItemData, ItemLocation, MailMessage};
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        let mut item = ItemData::new(
+            "a glass vial".to_string(),
+            "a glass vial".to_string(),
+            "A vial lies here.".to_string(),
+        );
+        item.location = ItemLocation::Nowhere;
+        item.is_prototype = false;
+        let item_id = item.id;
+        db.save_item_data(item).expect("save");
+
+        let msg = MailMessage::with_attachments(
+            "alice".to_string(),
+            "bob".to_string(),
+            "vial inside".to_string(),
+            vec![item_id],
+        );
+        let mail_id = msg.id;
+        db.store_mail(msg).expect("store");
+
+        // Deleting the mail row must reap the attached item.
+        assert!(db.delete_mail(&mail_id).expect("delete"));
+        assert!(
+            db.get_item_data(&item_id).expect("get").is_none(),
+            "attached item should be destroyed when mail is deleted"
+        );
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_mail_oldest_purge_destroys_attachments() {
+    use ironmud::types::{ItemData, ItemLocation, MailMessage};
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        // One read mail with an attachment — this is the eviction target.
+        let mut item = ItemData::new(
+            "an old coin".to_string(),
+            "an old coin".to_string(),
+            "An old coin lies here.".to_string(),
+        );
+        item.location = ItemLocation::Nowhere;
+        item.is_prototype = false;
+        let item_id = item.id;
+        db.save_item_data(item).expect("save");
+
+        let mut old =
+            MailMessage::with_attachments(
+                "alice".to_string(),
+                "bob".to_string(),
+                "old".to_string(),
+                vec![item_id],
+            );
+        old.read = true;
+        old.sent_at = 1; // ensure oldest
+        db.store_mail(old).expect("store");
+
+        // A newer unread mail without attachments.
+        let mut newer = MailMessage::new("alice".to_string(), "bob".to_string(), "newer".to_string());
+        newer.sent_at = 1000;
+        db.store_mail(newer).expect("store");
+
+        assert!(
+            db.delete_oldest_read_mail("bob")
+                .expect("evict"),
+            "expected the older read message to be evicted"
+        );
+        assert!(
+            db.get_item_data(&item_id).expect("get").is_none(),
+            "evicted mail's attachment should be destroyed"
+        );
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_character_delete_destroys_mail_attachments() {
+    use ironmud::types::{ItemData, ItemLocation, MailMessage};
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        let mut item = ItemData::new(
+            "a silver ring".to_string(),
+            "a silver ring".to_string(),
+            "A ring lies here.".to_string(),
+        );
+        item.location = ItemLocation::Nowhere;
+        item.is_prototype = false;
+        let item_id = item.id;
+        db.save_item_data(item).expect("save");
+
+        let msg = MailMessage::with_attachments(
+            "alice".to_string(),
+            "carol".to_string(),
+            "ring inside".to_string(),
+            vec![item_id],
+        );
+        db.store_mail(msg).expect("store");
+
+        // Purging Carol's mailbox (called from delete_character_data) must
+        // also destroy attached items, since the message rows are about to
+        // become unreachable.
+        let removed = db
+            .delete_mail_for_recipient("Carol")
+            .expect("purge");
+        assert_eq!(removed, 1);
+        assert!(
+            db.get_item_data(&item_id).expect("get").is_none(),
+            "deleted recipient's mail attachments should be destroyed"
+        );
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
 // === Bulletin board (gen_board) tests ===
 
 #[test]
