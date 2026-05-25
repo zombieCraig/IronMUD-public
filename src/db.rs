@@ -48,6 +48,10 @@ pub struct Db {
     // Bulletin boards (gen_board parity). One flat tree keyed by
     // `BoardPost.id`; per-board lookup scans + filters by `board_vnum`.
     boards: Arc<Tree>,
+    // Player-organization clans. Keyed by uppercased tag (e.g. b"IRON").
+    // ClanData.members is the authoritative roster; CharacterData.clan_tag
+    // mirrors membership for fast `who`/gate lookups.
+    clans: Arc<Tree>,
     // Gardening system
     plants: Arc<Tree>,
     plant_prototypes: Arc<Tree>,
@@ -147,6 +151,7 @@ impl Db {
         let shop_presets = db.open_tree("shop_presets")?;
         let mail = db.open_tree("mail")?;
         let boards = db.open_tree("boards")?;
+        let clans = db.open_tree("clans")?;
         let plants = db.open_tree("plants")?;
         let plant_prototypes = db.open_tree("plant_prototypes")?;
         let bug_reports = db.open_tree("bug_reports")?;
@@ -180,6 +185,7 @@ impl Db {
             shop_presets: Arc::new(shop_presets),
             mail: Arc::new(mail),
             boards: Arc::new(boards),
+            clans: Arc::new(clans),
             plants: Arc::new(plants),
             plant_prototypes: Arc::new(plant_prototypes),
             bug_reports: Arc::new(bug_reports),
@@ -568,6 +574,8 @@ impl Db {
         // the character key — otherwise the messages orphan in the mail tree.
         let _ = self.delete_mail_for_recipient(name)?;
         let _ = self.delete_board_posts_by_author(name)?;
+        // Pull from any clan roster so the clan doesn't dangle a dead name.
+        let _ = self.remove_character_from_any_clan(name);
         // Remove this character's name from any owning account's roster so the
         // account's roster doesn't dangle past the character's lifetime.
         let _ = self.remove_character_name_from_any_account(name);
@@ -3833,6 +3841,66 @@ impl Db {
             }
         }
         Ok(removed)
+    }
+
+    // ========== Clan Functions ==========
+
+    /// Fetch a clan by tag (case-insensitive). Returns `None` if missing.
+    pub fn get_clan(&self, tag: &str) -> Result<Option<crate::ClanData>> {
+        let key = tag.to_ascii_uppercase();
+        match self.clans.get(key.as_bytes())? {
+            Some(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Upsert a clan. Tag is uppercased before write so lookups stay
+    /// case-insensitive on the read side.
+    pub fn save_clan(&self, clan: &crate::ClanData) -> Result<()> {
+        let key = clan.tag.to_ascii_uppercase();
+        let value = serde_json::to_vec(clan)?;
+        self.clans.insert(key.as_bytes(), value)?;
+        Ok(())
+    }
+
+    /// Remove a clan. Returns true if a row was deleted. Callers are
+    /// responsible for clearing `CharacterData.clan_tag` on members.
+    pub fn delete_clan(&self, tag: &str) -> Result<bool> {
+        let key = tag.to_ascii_uppercase();
+        Ok(self.clans.remove(key.as_bytes())?.is_some())
+    }
+
+    /// All clans, unordered.
+    pub fn list_clans(&self) -> Result<Vec<crate::ClanData>> {
+        let mut out = Vec::new();
+        for entry in self.clans.iter() {
+            let (_key, value) = entry?;
+            out.push(serde_json::from_slice(&value)?);
+        }
+        Ok(out)
+    }
+
+    /// Scan-find which clan, if any, lists `name` as a member. Linear in
+    /// clan count; fine because the world holds tens-to-hundreds at most.
+    pub fn find_clan_for_character(&self, name: &str) -> Result<Option<crate::ClanData>> {
+        for clan in self.list_clans()? {
+            if clan.member(name).is_some() {
+                return Ok(Some(clan));
+            }
+        }
+        Ok(None)
+    }
+
+    /// Cascade-cleanup for character deletion: drop `name` from any clan's
+    /// roster. Returns the tag of the affected clan, if any.
+    pub fn remove_character_from_any_clan(&self, name: &str) -> Result<Option<String>> {
+        let Some(mut clan) = self.find_clan_for_character(name)? else {
+            return Ok(None);
+        };
+        clan.members.retain(|m| !m.name.eq_ignore_ascii_case(name));
+        let tag = clan.tag.clone();
+        self.save_clan(&clan)?;
+        Ok(Some(tag))
     }
 
     // ========== Bug Reporting System Functions ==========

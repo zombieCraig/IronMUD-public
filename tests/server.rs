@@ -12197,3 +12197,141 @@ fn test_room_entry_gate_persists_through_db_roundtrip() {
         std::panic::resume_unwind(e);
     }
 }
+
+#[test]
+fn test_clan_create_and_membership_persists() {
+    use ironmud::types::{ClanData, ClanMember, ClanRank};
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        let mut clan = ClanData::new("IRON", "The Iron Legion", 1);
+        clan.founder = "Founder".into();
+        clan.members.push(ClanMember {
+            name: "Founder".into(),
+            rank: ClanRank::Leader,
+            joined_day: 1,
+        });
+        clan.members.push(ClanMember {
+            name: "Sidekick".into(),
+            rank: ClanRank::Member,
+            joined_day: 1,
+        });
+        db.save_clan(&clan).expect("save");
+
+        let loaded = db.get_clan("iron").expect("read").expect("present");
+        assert_eq!(loaded.tag, "IRON");
+        assert_eq!(loaded.members.len(), 2);
+        assert_eq!(loaded.rank_of("Founder"), Some(ClanRank::Leader));
+        assert_eq!(loaded.rank_of("sidekick"), Some(ClanRank::Member));
+        assert_eq!(loaded.leader_count(), 1);
+
+        let all = db.list_clans().expect("list");
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].tag, "IRON");
+
+        assert!(db.delete_clan("IRON").expect("delete"));
+        assert!(!db.delete_clan("IRON").expect("delete again"));
+        assert!(db.get_clan("IRON").expect("read").is_none());
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_clan_tag_validation_rules() {
+    use ironmud::types::ClanData;
+    assert!(ClanData::valid_tag("IR"));
+    assert!(ClanData::valid_tag("IRON"));
+    assert!(ClanData::valid_tag("RAVEN1"));
+    assert!(!ClanData::valid_tag("I"), "too short");
+    assert!(!ClanData::valid_tag("TOOLONG"), "too long");
+    assert!(!ClanData::valid_tag("IR-N"), "non-alphanumeric");
+    assert!(!ClanData::valid_tag(""), "empty");
+}
+
+#[test]
+fn test_clan_room_gate_blocks_non_member_allows_member() {
+    use ironmud::script::rooms::evaluate_entry_gate;
+    use ironmud::types::{RoomEntryCondition, RoomEntryGate};
+
+    let temp = tempfile::tempdir().unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).unwrap();
+
+        let gate = RoomEntryGate {
+            conditions: vec![RoomEntryCondition::IsClanMember {
+                tag: "IRON".into(),
+            }],
+            block_message: "Clan only.".into(),
+        };
+        let room_id = make_test_room_with_gate(&db, Some(gate));
+        let room = db.get_room_data(&room_id).unwrap().unwrap();
+
+        let outsider = make_blank_character("Outsider");
+        assert_eq!(
+            evaluate_entry_gate(&db, &outsider, &room).as_deref(),
+            Some("Clan only."),
+            "no clan tag -> blocked"
+        );
+
+        let mut wrong_clan = make_blank_character("Wrong");
+        wrong_clan.clan_tag = Some("RAVEN".into());
+        assert!(
+            evaluate_entry_gate(&db, &wrong_clan, &room).is_some(),
+            "different clan -> blocked"
+        );
+
+        let mut member = make_blank_character("Member");
+        member.clan_tag = Some("IRON".into());
+        assert!(
+            evaluate_entry_gate(&db, &member, &room).is_none(),
+            "member -> allowed"
+        );
+
+        let mut shouty = make_blank_character("Shouty");
+        shouty.clan_tag = Some("iron".into());
+        assert!(evaluate_entry_gate(&db, &shouty, &room).is_none());
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_character_deletion_pulls_from_clan_roster() {
+    use ironmud::types::{ClanData, ClanMember, ClanRank};
+
+    let temp = tempfile::tempdir().unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).unwrap();
+
+        let mut ch = make_blank_character("Doomed");
+        ch.clan_tag = Some("IRON".into());
+        db.save_character_data(ch).expect("save char");
+
+        let mut clan = ClanData::new("IRON", "The Iron Legion", 1);
+        clan.members.push(ClanMember {
+            name: "Founder".into(),
+            rank: ClanRank::Leader,
+            joined_day: 1,
+        });
+        clan.members.push(ClanMember {
+            name: "Doomed".into(),
+            rank: ClanRank::Member,
+            joined_day: 1,
+        });
+        db.save_clan(&clan).expect("save clan");
+
+        db.delete_character_data("Doomed").expect("delete");
+
+        let reloaded = db.get_clan("IRON").expect("read").expect("present");
+        assert_eq!(reloaded.members.len(), 1);
+        assert_eq!(reloaded.members[0].name, "Founder");
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}

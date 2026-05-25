@@ -597,6 +597,7 @@ pub fn get_default_aliases() -> HashMap<String, String> {
     defaults.insert("kill".to_string(), "attack".to_string());
     defaults.insert("con".to_string(), "consider".to_string());
     defaults.insert("score".to_string(), "status".to_string());
+    defaults.insert("ct".to_string(), "clanchat".to_string());
     defaults
 }
 

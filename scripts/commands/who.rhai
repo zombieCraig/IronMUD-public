@@ -33,7 +33,14 @@ fn format_player_line(player) {
             title_tag = " " + title_text;
         }
     }
-    return "  " + player.name + title_tag + level_tag + glow_tag + afk_tag + status_tag + " - " + room_name + " [" + player.addr + "]\n";
+    let clan_str = "";
+    let clan_tag = get_character_clan_tag(player.name);
+    if clan_tag != "" {
+        let color = get_clan_color(clan_tag);
+        if color == "" { color = "\x1b[1;33m"; }
+        clan_str = " " + color + "[" + clan_tag + "]\x1b[0m";
+    }
+    return "  " + player.name + clan_str + title_tag + level_tag + glow_tag + afk_tag + status_tag + " - " + room_name + " [" + player.addr + "]\n";
 }
 
 fn run_command(args, connection_id) {

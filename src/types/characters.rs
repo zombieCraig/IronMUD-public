@@ -139,6 +139,11 @@ pub struct CharacterData {
     pub following_mobile_id: Option<Uuid>, // Mobile instance being followed (mutually exclusive with `following`)
     #[serde(default)]
     pub is_grouped: bool, // Whether actively grouped (not just following)
+    // Clan membership mirror. None = no clan. Authoritative roster lives on
+    // ClanData.members; this field exists so `who` and gate checks don't have
+    // to scan every clan.
+    #[serde(default)]
+    pub clan_tag: Option<String>,
     // Active language for say/tell/whisper/shout. Defaults to "common".
     #[serde(default = "default_language")]
     pub current_language: String,

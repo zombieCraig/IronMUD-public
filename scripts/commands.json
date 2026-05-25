@@ -271,6 +271,14 @@
     "access": "user",
     "description": "Direct a charmed mobile (e.g. order <mob> attack <target>)"
   },
+  "clan": {
+    "access": "user",
+    "description": "Clan organization: info, list, who, promote/demote/kick, leave (immortal: create/destroy/addmember)"
+  },
+  "clanchat": {
+    "access": "user",
+    "description": "Send a message to all online clanmates (alias: ct)"
+  },
   "pet": {
     "access": "user",
     "description": "Manage your pets (pet list, pet dismiss <name>)"

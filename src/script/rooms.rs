@@ -58,6 +58,11 @@ fn condition_passes(db: &Db, ch: &CharacterData, cond: &RoomEntryCondition) -> b
         RoomEntryCondition::DgVarEquals { key, value } => {
             ch.dg_vars.get(key).map(|v| v == value).unwrap_or(false)
         }
+        RoomEntryCondition::IsClanMember { tag } => ch
+            .clan_tag
+            .as_deref()
+            .map(|t| t.eq_ignore_ascii_case(tag))
+            .unwrap_or(false),
     }
 }
 
@@ -73,6 +78,7 @@ fn summarize_condition(cond: &RoomEntryCondition) -> String {
         RoomEntryCondition::DgVarEquals { key, value } => {
             format!("dg_var {} = {}", key, value)
         }
+        RoomEntryCondition::IsClanMember { tag } => format!("clan={}", tag),
     }
 }
 
@@ -84,6 +90,7 @@ fn condition_kind(cond: &RoomEntryCondition) -> &'static str {
         RoomEntryCondition::HasTattoo { .. } => "tattoo",
         RoomEntryCondition::DgVarSet { .. } => "dgvar",
         RoomEntryCondition::DgVarEquals { .. } => "dgvar",
+        RoomEntryCondition::IsClanMember { .. } => "clan",
     }
 }
 
@@ -2245,6 +2252,24 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     .get_or_insert_with(RoomEntryGate::default)
                     .conditions
                     .push(cond);
+            })
+        },
+    );
+
+    // add_room_entry_condition_clan(room_id, tag) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "add_room_entry_condition_clan",
+        move |room_id: String, tag: String| -> bool {
+            let tag_up = tag.trim().to_ascii_uppercase();
+            if !crate::ClanData::valid_tag(&tag_up) {
+                return false;
+            }
+            with_room_mut(&cloned_db, &room_id, |room| {
+                room.entry_gate
+                    .get_or_insert_with(RoomEntryGate::default)
+                    .conditions
+                    .push(RoomEntryCondition::IsClanMember { tag: tag_up.clone() });
             })
         },
     );

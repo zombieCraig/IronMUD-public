@@ -12,6 +12,7 @@ pub mod account_prefs;
 pub mod achievements;
 pub mod accounts;
 pub mod bans;
+pub mod clan;
 pub mod email;
 mod ai;
 mod api_keys;
@@ -262,6 +263,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 following: None,
                 following_mobile_id: None,
                 is_grouped: false,
+                clan_tag: None,
                 current_language: "common".to_string(),
                 // Character stats (default 10)
                 stat_str: 10,
@@ -2095,6 +2097,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     bugs::register(engine, db.clone(), connections.clone());
     simulation::register(engine, db.clone());
     social::register(engine, db.clone());
+    clan::register(engine, db.clone(), connections.clone());
     achievements::register(engine, db.clone(), connections.clone(), state.clone());
     map::register(engine, db.clone(), connections.clone());
     lang::register(engine, db.clone(), state.clone());

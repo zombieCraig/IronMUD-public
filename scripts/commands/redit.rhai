@@ -1624,6 +1624,7 @@ fn show_entry_gate_help(connection_id, room) {
     output += "  redit entry add skill <name> <minlevel>   - Require skill at level\n";
     output += "  redit entry add item <vnum>               - Require item (inventory OR equipped)\n";
     output += "  redit entry add tattoo <keyword>          - Require tattoo by keyword\n";
+    output += "  redit entry add clan <TAG>                - Require clan membership\n";
     output += "  redit entry add dgvar <key> [<value>]     - Require DG var set (or equal to value)\n";
     output += "  redit entry remove <index>                - Remove the Nth condition (1-based)\n";
     output += "\ngod_mode and build_mode bypass the gate.";
@@ -1638,6 +1639,7 @@ fn handle_entry_add(connection_id, room, parts) {
             "  redit entry add skill <name> <minlevel>\n" +
             "  redit entry add item <vnum>\n" +
             "  redit entry add tattoo <keyword>\n" +
+            "  redit entry add clan <TAG>\n" +
             "  redit entry add dgvar <key> [<value>]");
         return;
     }
@@ -1684,6 +1686,15 @@ fn handle_entry_add(connection_id, room, parts) {
             return;
         }
         send_client_message(connection_id, "Added: has tattoo " + kw);
+        return;
+    }
+    if kind == "clan" {
+        let tag = parts[3];
+        if !add_room_entry_condition_clan(room.id, tag) {
+            send_client_message(connection_id, "Failed to add clan condition. Tag must be 2-6 letters/digits.");
+            return;
+        }
+        send_client_message(connection_id, "Added: clan=" + tag.to_upper());
         return;
     }
     if kind == "dgvar" {

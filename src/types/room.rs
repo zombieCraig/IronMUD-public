@@ -157,6 +157,7 @@ pub enum RoomEntryCondition {
     HasTattoo { keyword: String },
     DgVarSet { key: String },
     DgVarEquals { key: String, value: String },
+    IsClanMember { tag: String },
 }
 
 // === Fishing System - Water Types ===

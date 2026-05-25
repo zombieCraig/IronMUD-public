@@ -917,5 +917,15 @@ fn examine_show_player(other_char, connection_id) {
         output += "\n" + other_char.name + " flickers, barely visible to the eye.";
     }
 
+    // Clan affiliation cue.
+    let clan_tag = get_character_clan_tag(other_char.name);
+    if clan_tag != "" {
+        let clan_name = get_clan_name(clan_tag);
+        let color = get_clan_color(clan_tag);
+        if color == "" { color = "\x1b[1;33m"; }
+        let display = if clan_name != "" { clan_name } else { "an unknown clan" };
+        output += "\n" + other_char.name + " wears the colors of " + color + display + " [" + clan_tag + "]\x1b[0m.";
+    }
+
     send_client_message(connection_id, output);
 }
