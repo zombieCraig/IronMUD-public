@@ -3228,7 +3228,7 @@ fn show_item_flags(item, item_id, connection_id) {
     output += build_flag_line("anti_good", flags.anti_good, "Refuses wear by anyone in the Good morality range (above +24)", display_id, connection_id);
     output += build_flag_line("anti_evil", flags.anti_evil, "Refuses wear by anyone in the Evil morality range (below -24)", display_id, connection_id);
     output += build_flag_line("anti_neutral", flags.anti_neutral, "Refuses wear by anyone in the Neutral morality band (-24..+24)", display_id, connection_id);
-    output += build_flag_line("cursed", flags.cursed, "Cursed; cannot be mailed", display_id, connection_id);
+    output += build_flag_line("cursed", flags.cursed, "Cursed; bound to the owner", display_id, connection_id);
 
     send_mxp_message(connection_id, output);
 }
