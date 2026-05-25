@@ -419,9 +419,12 @@ fn handle_config(connection_id, args, admin_char) {
         return;
     }
 
-    let value = if value_in.to_lower() == "on" || value_in.to_lower() == "true" || value_in == "1" || value_in.to_lower() == "enable" {
+    // Only coerce explicit boolean words. `0` / `1` pass through as-is so
+    // numeric settings (mail_level_requirement, regen rates, caps, ...) can
+    // be set to a literal integer without being clobbered to false/true.
+    let value = if value_in.to_lower() == "on" || value_in.to_lower() == "true" || value_in.to_lower() == "enable" {
         "true"
-    } else if value_in.to_lower() == "off" || value_in.to_lower() == "false" || value_in == "0" || value_in.to_lower() == "disable" {
+    } else if value_in.to_lower() == "off" || value_in.to_lower() == "false" || value_in.to_lower() == "disable" {
         "false"
     } else {
         value_in

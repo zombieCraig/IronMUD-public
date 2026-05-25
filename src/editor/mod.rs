@@ -18,6 +18,7 @@ const MAX_UNDO: usize = 128;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditorKind {
     RoomDesc,
+    ItemLong,
     ItemNote,
     BoardPost,
     DgTriggerBody,
@@ -30,6 +31,7 @@ impl EditorKind {
     pub fn from_olc_mode(mode: &str) -> Option<Self> {
         match mode {
             "collecting_desc" => Some(Self::RoomDesc),
+            "collecting_long" => Some(Self::ItemLong),
             "collecting_note" => Some(Self::ItemNote),
             "collecting_board_post" => Some(Self::BoardPost),
             "collecting_dg_body" => Some(Self::DgTriggerBody),
@@ -48,6 +50,7 @@ impl EditorKind {
     pub fn label(&self) -> &'static str {
         match self {
             Self::RoomDesc => "Room description",
+            Self::ItemLong => "Item long description",
             Self::ItemNote => "Item note",
             Self::BoardPost => "Board post",
             Self::DgTriggerBody => "DG trigger body",
@@ -1835,6 +1838,7 @@ mod tests {
     fn editor_kind_round_trips() {
         for mode in [
             "collecting_desc",
+            "collecting_long",
             "collecting_note",
             "collecting_board_post",
             "collecting_dg_body",
