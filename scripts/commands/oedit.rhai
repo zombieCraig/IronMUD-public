@@ -257,7 +257,32 @@ fn handle_subcommand(item, item_id, subcommand, parts, char, connection_id) {
             if subcmd == "rephrase" { handle_ai_item_long_rephrase(item, uuid, connection_id); return; }
         }
         if parts.len() < 3 {
-            send_client_message(connection_id, "Usage: oedit " + item_id + " long <text>\nAI: long help <prompt> | long rephrase");
+            // No inline text — open the multi-line editor populated with
+            // the existing long_desc. Lets builders author ASCII art and
+            // other multi-line content (preserved verbatim on save).
+            let existing = item.long_desc;
+            let lines = if existing != "" { existing.split("\n") } else { [] };
+
+            set_olc_edit_item(connection_id, uuid);
+            set_olc_buffer(connection_id, lines);
+            set_olc_mode(connection_id, "collecting_long");
+
+            if try_enter_modern_editor(connection_id) {
+                return;
+            }
+
+            let output = "Editing long description for: " + item.short_desc + "\n";
+            if lines.len() == 0 {
+                output += "(empty)\n";
+            } else {
+                for i in 0..lines.len() {
+                    output += "  " + (i + 1) + ": " + lines[i] + "\n";
+                }
+            }
+            output += "\nCommands: .h help | .l list | .c clear | .d N | .r N <text> | . save | @ cancel\n";
+            output += "Type lines to append. Blank lines, ANSI, and whitespace are preserved.\n";
+            output += "Inline form: oedit " + item_id + " long <text>";
+            send_client_message(connection_id, output);
             return;
         }
         let desc = build_string_from_parts(parts, 2);

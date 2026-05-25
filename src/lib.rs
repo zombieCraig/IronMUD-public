@@ -888,6 +888,7 @@ pub fn is_text_editor_mode(mode: &str) -> bool {
     matches!(
         mode,
         "collecting_desc"
+            | "collecting_long"
             | "collecting_note"
             | "collecting_board_post"
             | "collecting_dg_body"
@@ -1078,6 +1079,16 @@ pub fn force_save_editor(
                         } else {
                             Some(snap.content)
                         };
+                        let _ = world.db.save_item_data(item);
+                    }
+                }
+            }
+        }
+        "collecting_long" => {
+            if let Some(item_id) = snap.edit_item {
+                if let Ok(world) = state.lock() {
+                    if let Ok(Some(mut item)) = world.db.get_item_data(&item_id) {
+                        item.long_desc = snap.content;
                         let _ = world.db.save_item_data(item);
                     }
                 }
@@ -1317,6 +1328,16 @@ pub fn save_modern_editor(
                         } else {
                             Some(snap.content)
                         };
+                        let _ = world.db.save_item_data(item);
+                    }
+                }
+            }
+        }
+        "collecting_long" => {
+            if let Some(item_id) = snap.edit_item {
+                if let Ok(world) = state.lock() {
+                    if let Ok(Some(mut item)) = world.db.get_item_data(&item_id) {
+                        item.long_desc = snap.content;
                         let _ = world.db.save_item_data(item);
                     }
                 }
@@ -2500,6 +2521,7 @@ pub async fn handle_connection(
                 }
                 let msg = match (result, mode.as_deref()) {
                     (Some(_), Some("collecting_desc")) => "Description saved.\n".to_string(),
+                    (Some(_), Some("collecting_long")) => "Long description saved.\n".to_string(),
                     (Some(_), Some("collecting_note")) => {
                         if bytes == 0 {
                             "Note cleared.\n".to_string()
@@ -2721,6 +2743,92 @@ pub async fn handle_connection(
                         }
                     }
                     let _ = tx_client.send("Note editing cancelled.\n".to_string());
+                    let prompt = build_prompt(&connection_id, &connections, &state);
+                    let _ = tx_client.send(prompt);
+                }
+                EditorCommandResult::AppendText(text) => {
+                    let mut conns = connections.lock().unwrap();
+                    if let Some(session) = conns.get_mut(&connection_id) {
+                        session.olc_undo_buffer = Some(session.olc_buffer.clone());
+                        session.olc_buffer.push(text);
+                    }
+                }
+            }
+            continue;
+        }
+
+        // Check for OLC long-description collection mode (item.long_desc)
+        if olc_mode.as_deref() == Some("collecting_long") {
+            let result = {
+                let mut conns = connections.lock().unwrap();
+                if let Some(session) = conns.get_mut(&connection_id) {
+                    handle_editor_command(&input, &mut session.olc_buffer, &mut session.olc_undo_buffer)
+                } else {
+                    EditorCommandResult::Cancel
+                }
+            };
+
+            match result {
+                EditorCommandResult::Handled(msg) => {
+                    let _ = tx_client.send(msg);
+                }
+                EditorCommandResult::Save(content) => {
+                    const MAX_LONG_BYTES: usize = 32 * 1024;
+                    if content.len() > MAX_LONG_BYTES {
+                        let _ = tx_client.send(format!(
+                            "Long description too long ({} bytes, max {}). Trim with .d or .r, then .save.\n",
+                            content.len(),
+                            MAX_LONG_BYTES
+                        ));
+                    } else {
+                        let edit_item_id = {
+                            let conns = connections.lock().unwrap();
+                            conns.get(&connection_id).and_then(|s| s.olc_edit_item)
+                        };
+
+                        let saved = if let Some(item_id) = edit_item_id {
+                            let world = state.lock().unwrap();
+                            match world.db.get_item_data(&item_id) {
+                                Ok(Some(mut item)) => {
+                                    item.long_desc = content;
+                                    world.db.save_item_data(item).is_ok()
+                                }
+                                _ => false,
+                            }
+                        } else {
+                            false
+                        };
+
+                        if saved {
+                            let _ = tx_client.send("Long description saved.\n".to_string());
+                        } else {
+                            let _ = tx_client.send("Error: could not save long description.\n".to_string());
+                        }
+
+                        {
+                            let mut conns = connections.lock().unwrap();
+                            if let Some(session) = conns.get_mut(&connection_id) {
+                                session.olc_mode = None;
+                                session.olc_buffer.clear();
+                                session.olc_edit_item = None;
+                                session.olc_undo_buffer = None;
+                            }
+                        }
+                        let prompt = build_prompt(&connection_id, &connections, &state);
+                        let _ = tx_client.send(prompt);
+                    }
+                }
+                EditorCommandResult::Cancel => {
+                    {
+                        let mut conns = connections.lock().unwrap();
+                        if let Some(session) = conns.get_mut(&connection_id) {
+                            session.olc_mode = None;
+                            session.olc_buffer.clear();
+                            session.olc_edit_item = None;
+                            session.olc_undo_buffer = None;
+                        }
+                    }
+                    let _ = tx_client.send("Long description editing cancelled.\n".to_string());
                     let prompt = build_prompt(&connection_id, &connections, &state);
                     let _ = tx_client.send(prompt);
                 }
