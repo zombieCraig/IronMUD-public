@@ -162,6 +162,7 @@ pub const ITEM_FLAGS: &[&str] = &[
     "anti_good",
     "anti_evil",
     "anti_neutral",
+    "cursed",
 ];
 
 /// Vending subcommands

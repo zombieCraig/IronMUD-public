@@ -66,6 +66,11 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if item.flags.cursed && !char.god_mode {
+        send_client_message(connection_id, item.short_desc + " clings to your hand — it is cursed.");
+        return;
+    }
+
     if item.flags.no_drop && !char.god_mode {
         send_client_message(connection_id, "You can't drop that!");
         return;
@@ -121,6 +126,12 @@ fn drop_all_items(char, filter_keyword, connection_id) {
     let skipped = 0;
 
     for item in items_to_drop {
+        // Cursed items refuse to leave the wielder.
+        if item.flags.cursed && !char.god_mode {
+            skipped += 1;
+            continue;
+        }
+
         // Skip no_drop items
         if item.flags.no_drop && !char.god_mode {
             skipped += 1;

@@ -171,6 +171,11 @@ fn resolve_giveable_item(char, item_keyword, connection_id) {
         return ();
     }
 
+    if item.flags.cursed && !char.god_mode {
+        send_client_message(connection_id, item.short_desc + " clings to your hand — it is cursed.");
+        return ();
+    }
+
     if item.flags.no_drop && !char.god_mode {
         send_client_message(connection_id, "You can't give that away!");
         return ();
@@ -255,6 +260,7 @@ fn give_all_items_to_player(char, target_char, filter_keyword, connection_id, ta
     let given = 0;
     let skipped = 0;
     for item in items_to_give {
+        if item.flags.cursed && !char.god_mode { skipped += 1; continue; }
         if item.flags.no_drop && !char.god_mode { skipped += 1; continue; }
         if item.flags.quest_item && !char.god_mode { skipped += 1; continue; }
         move_item_to_inventory(item.id, target_char.name);
@@ -282,6 +288,7 @@ fn give_all_items_to_mobile(char, target_mobile, filter_keyword, connection_id) 
     let given = 0;
     let skipped = 0;
     for item in items_to_give {
+        if item.flags.cursed && !char.god_mode { skipped += 1; continue; }
         if item.flags.no_drop && !char.god_mode { skipped += 1; continue; }
         if item.flags.quest_item && !char.god_mode { skipped += 1; continue; }
         let consumed_by_quest = quest_handle_item_to_mob(char.name, target_mobile.id.to_string(), item.id.to_string());

@@ -1388,7 +1388,8 @@ fn is_valid_item_flag(name) {
         "death_only", "deathonly", "atm", "lockpick",
         "is_skinned", "skinned", "boat",
         "buried", "can_dig", "candig", "detect_buried", "detectburied",
-        "anti_good", "antigood", "anti_evil", "antievil", "anti_neutral", "antineutral"];
+        "anti_good", "antigood", "anti_evil", "antievil", "anti_neutral", "antineutral",
+        "cursed", "curse"];
     for f in valid { if f == name { return true; } }
     return false;
 }
@@ -1417,7 +1418,7 @@ fn handle_flag_subcommand(item_id, parts, connection_id) {
     // Validate all names before changing anything.
     for name in flag_names {
         if !is_valid_item_flag(name) {
-            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: no_drop, no_get, no_remove, invisible, glow, hum, magical, holy, no_sell, no_donate, unique, quest_item, vending, provides_light, night_vision, fishing_rod, bait, foraging_tool, waterproof, provides_warmth, reduces_glare, medical_tool, preserves_contents, death_only, atm, broken, plant_pot, lockpick, is_skinned, boat, buried, can_dig, detect_buried, anti_good, anti_evil, anti_neutral");
+            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: no_drop, no_get, no_remove, invisible, glow, hum, magical, holy, no_sell, no_donate, unique, quest_item, vending, provides_light, night_vision, fishing_rod, bait, foraging_tool, waterproof, provides_warmth, reduces_glare, medical_tool, preserves_contents, death_only, atm, broken, plant_pot, lockpick, is_skinned, boat, buried, can_dig, detect_buried, anti_good, anti_evil, anti_neutral, cursed");
             return;
         }
     }
@@ -2827,6 +2828,7 @@ fn build_flags_display(item) {
     if flags.anti_good { flag_str += "anti_good "; }
     if flags.anti_evil { flag_str += "anti_evil "; }
     if flags.anti_neutral { flag_str += "anti_neutral "; }
+    if flags.cursed { flag_str += "cursed "; }
     if flag_str == "" { flag_str = "(none)"; }
     output += flag_str + "\n";
     return output;
@@ -3201,6 +3203,7 @@ fn show_item_flags(item, item_id, connection_id) {
     output += build_flag_line("anti_good", flags.anti_good, "Refuses wear by anyone in the Good morality range (above +24)", display_id, connection_id);
     output += build_flag_line("anti_evil", flags.anti_evil, "Refuses wear by anyone in the Evil morality range (below -24)", display_id, connection_id);
     output += build_flag_line("anti_neutral", flags.anti_neutral, "Refuses wear by anyone in the Neutral morality band (-24..+24)", display_id, connection_id);
+    output += build_flag_line("cursed", flags.cursed, "Cursed; cannot be mailed", display_id, connection_id);
 
     send_mxp_message(connection_id, output);
 }

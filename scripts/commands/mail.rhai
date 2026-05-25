@@ -420,6 +420,10 @@ fn handle_attach(args, connection_id, char) {
         return;
     }
 
+    if item.flags.cursed && !char.god_mode {
+        send_client_message(connection_id, "The postmaster recoils. " + item.short_desc + " is cursed and cannot be sent.");
+        return;
+    }
     if item.flags.no_drop && !char.god_mode {
         send_client_message(connection_id, "You can't part with " + item.short_desc + ".");
         return;

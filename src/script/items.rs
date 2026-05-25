@@ -83,7 +83,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         detect_buried,
         anti_good,
         anti_evil,
-        anti_neutral
+        anti_neutral,
+        cursed
     );
 
     // Non-bool ItemFlags fields exposed to Rhai. Option<String> serializes as
@@ -3354,6 +3355,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "anti_good" | "antigood" => item.flags.anti_good = value,
                         "anti_evil" | "antievil" => item.flags.anti_evil = value,
                         "anti_neutral" | "antineutral" => item.flags.anti_neutral = value,
+                        "cursed" | "curse" => item.flags.cursed = value,
                         _ => return false,
                     }
                     item.sync_flag_categories();
@@ -3403,6 +3405,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                     "anti_good" | "antigood" => item.flags.anti_good,
                     "anti_evil" | "antievil" => item.flags.anti_evil,
                     "anti_neutral" | "antineutral" => item.flags.anti_neutral,
+                    "cursed" | "curse" => item.flags.cursed,
                     _ => false,
                 };
             }

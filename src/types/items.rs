@@ -615,6 +615,11 @@ pub struct ItemFlags {
     pub anti_evil: bool,
     #[serde(default)]
     pub anti_neutral: bool,
+    // Cursed: item carries a malign enchantment. Blocks mailing (the post
+    // office refuses cursed parcels) and is a hook for future curse-aware
+    // commands.
+    #[serde(default)]
+    pub cursed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
