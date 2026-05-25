@@ -2580,6 +2580,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                             container.liquid_current += transfer;
                             container.liquid_type = source.liquid_type;
                             container.liquid_poisoned = source.liquid_poisoned;
+                            container.liquid_effects = source.liquid_effects.clone();
                             if !source_infinite {
                                 source.liquid_current -= transfer;
                                 let _ = cloned_db.save_item_data(source);

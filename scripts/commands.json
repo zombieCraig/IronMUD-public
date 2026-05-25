@@ -329,7 +329,7 @@
   },
   "pour": {
     "access": "user",
-    "description": "Pour out a liquid container"
+    "description": "Pour liquid between containers or empty one"
   },
   "password": {
     "access": "user",
