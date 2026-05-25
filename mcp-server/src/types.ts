@@ -72,7 +72,24 @@ export interface Room {
   residents?: string[];
   /** Builder-declared verbs the room exposes (TAB completion + look hints). */
   contextual_commands?: ContextualCommand[];
+  /** Conditional entry gate. Absent = no gate (anyone may enter). */
+  entry_gate?: RoomEntryGate;
 }
+
+/** All conditions in `conditions` must pass for a character to enter. */
+export interface RoomEntryGate {
+  conditions: RoomEntryCondition[];
+  /** Shown to a blocked entrant. Empty -> "You cannot pass that way." */
+  block_message?: string;
+}
+
+export type RoomEntryCondition =
+  | { kind: "class_is"; name: string }
+  | { kind: "has_skill"; name: string; min_level: number }
+  | { kind: "has_item"; vnum: string }
+  | { kind: "has_tattoo"; keyword: string }
+  | { kind: "dg_var_set"; key: string }
+  | { kind: "dg_var_equals"; key: string; value: string };
 
 export interface ContextualCommand {
   /** Single keyword, lowercased. Pair with a DG OnCommand trigger to wire behavior. */
@@ -577,6 +594,9 @@ export interface CreateRoomRequest {
   vnum?: string;
   flags?: RoomFlags;
   contextual_commands?: ContextualCommand[];
+  entry_gate?: RoomEntryGate;
+  /** Update-only: when true, removes the room's entry gate entirely. */
+  clear_entry_gate?: boolean;
 }
 
 export interface CreateItemRequest {

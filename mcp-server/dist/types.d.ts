@@ -57,7 +57,36 @@ export interface Room {
     residents?: string[];
     /** Builder-declared verbs the room exposes (TAB completion + look hints). */
     contextual_commands?: ContextualCommand[];
+    /** Conditional entry gate. Absent = no gate (anyone may enter). */
+    entry_gate?: RoomEntryGate;
 }
+/** All conditions in `conditions` must pass for a character to enter. */
+export interface RoomEntryGate {
+    conditions: RoomEntryCondition[];
+    /** Shown to a blocked entrant. Empty -> "You cannot pass that way." */
+    block_message?: string;
+}
+export type RoomEntryCondition = {
+    kind: "class_is";
+    name: string;
+} | {
+    kind: "has_skill";
+    name: string;
+    min_level: number;
+} | {
+    kind: "has_item";
+    vnum: string;
+} | {
+    kind: "has_tattoo";
+    keyword: string;
+} | {
+    kind: "dg_var_set";
+    key: string;
+} | {
+    kind: "dg_var_equals";
+    key: string;
+    value: string;
+};
 export interface ContextualCommand {
     /** Single keyword, lowercased. Pair with a DG OnCommand trigger to wire behavior. */
     verb: string;
@@ -338,7 +367,7 @@ export interface CastOnUse {
     max_charges?: number;
     cooldown_secs?: number;
 }
-export type ItemType = "misc" | "armor" | "weapon" | "container" | "liquid_container" | "food" | "key" | "gold" | "ammunition" | "potion" | "wand" | "staff" | "note" | "pen";
+export type ItemType = "misc" | "armor" | "weapon" | "container" | "liquid_container" | "food" | "key" | "gold" | "ammunition" | "potion" | "wand" | "staff" | "note" | "pen" | "tool" | "tattoo";
 export type WearLocation = "head" | "neck" | "shoulders" | "back" | "torso" | "waist" | "ears" | "wielded" | "offhand" | "ready" | "leftarm" | "rightarm" | "leftwrist" | "rightwrist" | "lefthand" | "righthand" | "leftfinger" | "rightfinger" | "leftleg" | "rightleg" | "leftankle" | "rightankle" | "leftfoot" | "rightfoot";
 export type DamageType = "bludgeoning" | "slashing" | "piercing" | "fire" | "cold" | "lightning" | "poison" | "acid";
 export interface ItemFlags {
@@ -360,6 +389,9 @@ export interface ItemFlags {
     buried?: boolean;
     can_dig?: boolean;
     detect_buried?: boolean;
+    anti_good?: boolean;
+    anti_evil?: boolean;
+    anti_neutral?: boolean;
 }
 export interface Mobile {
     id: string;
@@ -442,6 +474,9 @@ export interface MobileFlags {
     no_charm?: boolean;
     hostile_on_steal?: boolean;
     tameable?: boolean;
+    aggro_good?: boolean;
+    aggro_evil?: boolean;
+    aggro_neutral?: boolean;
 }
 export interface SpawnPoint {
     id: string;
@@ -528,6 +563,9 @@ export interface CreateRoomRequest {
     vnum?: string;
     flags?: RoomFlags;
     contextual_commands?: ContextualCommand[];
+    entry_gate?: RoomEntryGate;
+    /** Update-only: when true, removes the room's entry gate entirely. */
+    clear_entry_gate?: boolean;
 }
 export interface CreateItemRequest {
     name: string;
@@ -1202,6 +1240,8 @@ export interface AchievementReward {
     title: string;
     item_vnum?: string | null;
     gold?: number | null;
+    /** Morality shift applied at unlock. +good / -evil. Clamped into [-200, 200]. */
+    morality_delta?: number;
 }
 export type AchievementSource = {
     kind: "json";

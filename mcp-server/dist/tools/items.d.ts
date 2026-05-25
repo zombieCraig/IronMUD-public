@@ -597,6 +597,18 @@ export declare const itemToolDefinitions: ({
                         readonly type: "boolean";
                         readonly description: "Surfaces a hint when buried items are in the room";
                     };
+                    readonly anti_good: {
+                        readonly type: "boolean";
+                        readonly description: "Refuses wear by anyone with morality > 24 (CircleMUD ITEM_ANTI_GOOD)";
+                    };
+                    readonly anti_evil: {
+                        readonly type: "boolean";
+                        readonly description: "Refuses wear by anyone with morality < -24 (CircleMUD ITEM_ANTI_EVIL)";
+                    };
+                    readonly anti_neutral: {
+                        readonly type: "boolean";
+                        readonly description: "Refuses wear by anyone with -24 <= morality <= 24 (CircleMUD ITEM_ANTI_NEUTRAL)";
+                    };
                 };
             };
             caliber: {
@@ -1011,6 +1023,18 @@ export declare const itemToolDefinitions: ({
                     readonly detect_buried: {
                         readonly type: "boolean";
                         readonly description: "Surfaces a hint when buried items are in the room";
+                    };
+                    readonly anti_good: {
+                        readonly type: "boolean";
+                        readonly description: "Refuses wear by anyone with morality > 24 (CircleMUD ITEM_ANTI_GOOD)";
+                    };
+                    readonly anti_evil: {
+                        readonly type: "boolean";
+                        readonly description: "Refuses wear by anyone with morality < -24 (CircleMUD ITEM_ANTI_EVIL)";
+                    };
+                    readonly anti_neutral: {
+                        readonly type: "boolean";
+                        readonly description: "Refuses wear by anyone with -24 <= morality <= 24 (CircleMUD ITEM_ANTI_NEUTRAL)";
                     };
                 };
             };

@@ -91,6 +91,11 @@ pub struct RoomData {
     /// ("north", "east", ..., "out") or a custom-exit name.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub exit_delays: HashMap<String, i64>,
+    /// Conditional entry gate (class / skill / item / tattoo / dg_var).
+    /// `None` = no gate. Bypassed by `god_mode` and `is_in_build_mode` in
+    /// `go.rhai`; evaluated by `evaluate_entry_gate` in `src/script/rooms.rs`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry_gate: Option<RoomEntryGate>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -129,6 +134,29 @@ pub struct DoorState {
     pub keywords: Vec<String>, // Additional keywords like "wooden", "iron"
     #[serde(default)]
     pub pickproof: bool, // Locks that lockpick skill cannot defeat (Circle EX_PICKPROOF)
+}
+
+/// Per-room entry gate: a list of conditions that must ALL hold for a
+/// character to enter the room. god_mode and build_mode bypass the gate
+/// in `go.rhai`. Evaluated by `evaluate_entry_gate` in `src/script/rooms.rs`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+pub struct RoomEntryGate {
+    #[serde(default)]
+    pub conditions: Vec<RoomEntryCondition>,
+    /// Shown to the blocked player. Empty -> generic "You cannot pass that way."
+    #[serde(default)]
+    pub block_message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RoomEntryCondition {
+    ClassIs { name: String },
+    HasSkill { name: String, min_level: i64 },
+    HasItem { vnum: String },
+    HasTattoo { keyword: String },
+    DgVarSet { key: String },
+    DgVarEquals { key: String, value: String },
 }
 
 // === Fishing System - Water Types ===

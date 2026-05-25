@@ -275,6 +275,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           contextual_commands: args?.contextual_commands as
             | { verb: string; hint?: string }[]
             | undefined,
+          entry_gate: args?.entry_gate as
+            | import("./types.js").RoomEntryGate
+            | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(room, null, 2) }],
@@ -291,6 +294,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           contextual_commands: args?.contextual_commands as
             | { verb: string; hint?: string }[]
             | undefined,
+          entry_gate: args?.entry_gate as
+            | import("./types.js").RoomEntryGate
+            | undefined,
+          clear_entry_gate: args?.clear_entry_gate as boolean | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(room, null, 2) }],

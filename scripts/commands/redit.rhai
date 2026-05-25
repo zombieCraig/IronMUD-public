@@ -168,6 +168,7 @@ fn handle_zone_subcommand(room_id, parts, connection_id) {
 //   door add <dir> <name>   - Add door to exit
 //   door remove <dir>       - Remove door from exit
 //   door name/desc/key/keywords/open/close/lock/unlock/sync <dir> ...
+//   entry [show|clear|msg|add|remove] - Conditional entry gate (class/skill/item/tattoo/dgvar)
 //   seasonal <season> <text|clear|help|rephrase> - Seasonal descriptions
 //   dynamic <text|clear>    - Set temporary dynamic description
 //   water <none|freshwater|saltwater|magical> - Water type for fishing
@@ -953,6 +954,13 @@ fn run_command(args, connection_id) {
             output += "\n" + olc::c_label("Extras: ", connection_id) + olc::c_value("" + count + suffix + " [" + kw_summary + "] (redit extra to edit)", connection_id) + "\n";
         }
 
+        // Entry gate (class / skill / item / tattoo / dg_var)
+        let gate_conds = list_room_entry_conditions(room.id);
+        if gate_conds.len() > 0 {
+            let gsuffix = if gate_conds.len() == 1 { " condition" } else { " conditions" };
+            output += olc::c_label("Entry gate: ", connection_id) + olc::c_value("" + gate_conds.len() + gsuffix + " (redit entry to edit)", connection_id) + "\n";
+        }
+
         // Display area
         let area_id = room.area_id;
         if area_id != "" {
@@ -1014,7 +1022,9 @@ fn run_command(args, connection_id) {
         let cmd_capacity = mxp_or(mxp_send("redit capacity", "redit capacity"), "redit capacity", connection_id);
         output += "  " + cmd_capacity + " <n> - Set living capacity (migrant slots; requires liveable flag)\n";
         let cmd_delay = mxp_or(mxp_send("redit delay", "redit delay"), "redit delay", connection_id);
-        output += "  " + cmd_delay + " <dir> <s> - Slow-exit travel delay in seconds (0 clears)";
+        output += "  " + cmd_delay + " <dir> <s> - Slow-exit travel delay in seconds (0 clears)\n";
+        let cmd_entry = mxp_or(mxp_send("redit entry", "redit entry"), "redit entry", connection_id);
+        output += "  " + cmd_entry + " [show|clear|msg|add|remove] - Manage room entry gate (class/skill/item/tattoo/dg_var)";
 
         send_mxp_message(connection_id, output);
         return;
@@ -1523,6 +1533,11 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "entry" {
+        handle_entry_subcommand(connection_id, room, parts);
+        return;
+    }
+
     // Unknown subcommand
     send_client_message(connection_id, "Unknown subcommand: " + subcommand + "\nUse 'redit' to see available commands.");
 }
@@ -1578,6 +1593,188 @@ fn handle_delay_subcommand(connection_id, room, parts) {
     } else {
         send_client_message(connection_id, "Set delay for " + dir + " to " + secs + "s.");
     }
+}
+
+// Show the collapsed entry-gate help screen plus current gate summary.
+// Pure helper kept out of the dispatcher to keep that fn under Rhai's
+// expression-complexity ceiling.
+fn show_entry_gate_help(connection_id, room) {
+    let output = olc::c_header("=== Room Entry Gate ===", connection_id) + "\n";
+    let conds = list_room_entry_conditions(room.id);
+    if conds.len() == 0 {
+        output += "  (no gate — anyone may enter)\n";
+    } else {
+        let idx = 1;
+        for c in conds {
+            output += "  " + idx + ". " + c.summary + "\n";
+            idx += 1;
+        }
+        let msg = get_room_entry_gate_message(room.id);
+        if msg == "" {
+            output += "  Block message: (default) You cannot pass that way.\n";
+        } else {
+            output += "  Block message: " + msg + "\n";
+        }
+    }
+    output += "\nCommands:\n";
+    output += "  redit entry show                          - List conditions + block message\n";
+    output += "  redit entry clear                         - Remove the whole gate\n";
+    output += "  redit entry msg <text>                    - Set block message (blank clears message)\n";
+    output += "  redit entry add class <name>              - Require class\n";
+    output += "  redit entry add skill <name> <minlevel>   - Require skill at level\n";
+    output += "  redit entry add item <vnum>               - Require item (inventory OR equipped)\n";
+    output += "  redit entry add tattoo <keyword>          - Require tattoo by keyword\n";
+    output += "  redit entry add dgvar <key> [<value>]     - Require DG var set (or equal to value)\n";
+    output += "  redit entry remove <index>                - Remove the Nth condition (1-based)\n";
+    output += "\ngod_mode and build_mode bypass the gate.";
+    send_client_message(connection_id, output);
+}
+
+fn handle_entry_add(connection_id, room, parts) {
+    if parts.len() < 4 {
+        send_client_message(connection_id,
+            "Usage:\n" +
+            "  redit entry add class <name>\n" +
+            "  redit entry add skill <name> <minlevel>\n" +
+            "  redit entry add item <vnum>\n" +
+            "  redit entry add tattoo <keyword>\n" +
+            "  redit entry add dgvar <key> [<value>]");
+        return;
+    }
+    let kind = parts[2].to_lower();
+    if kind == "class" {
+        let name = parts[3];
+        if !add_room_entry_condition_class(room.id, name) {
+            send_client_message(connection_id, "Failed to add class condition.");
+            return;
+        }
+        send_client_message(connection_id, "Added: class=" + name);
+        return;
+    }
+    if kind == "skill" {
+        if parts.len() < 5 {
+            send_client_message(connection_id, "Usage: redit entry add skill <name> <minlevel>");
+            return;
+        }
+        let lvl = try_parse_int(parts[4]);
+        if lvl == () {
+            send_client_message(connection_id, "Invalid minlevel: " + parts[4]);
+            return;
+        }
+        if !add_room_entry_condition_skill(room.id, parts[3], lvl) {
+            send_client_message(connection_id, "Failed to add skill condition.");
+            return;
+        }
+        send_client_message(connection_id, "Added: skill " + parts[3] + " >= " + lvl);
+        return;
+    }
+    if kind == "item" {
+        let vnum = parts[3];
+        if !add_room_entry_condition_item(room.id, vnum) {
+            send_client_message(connection_id, "Failed to add item condition.");
+            return;
+        }
+        send_client_message(connection_id, "Added: has item " + vnum);
+        return;
+    }
+    if kind == "tattoo" {
+        let kw = parts[3];
+        if !add_room_entry_condition_tattoo(room.id, kw) {
+            send_client_message(connection_id, "Failed to add tattoo condition.");
+            return;
+        }
+        send_client_message(connection_id, "Added: has tattoo " + kw);
+        return;
+    }
+    if kind == "dgvar" {
+        let key = parts[3];
+        let val = if parts.len() > 4 {
+            let v = "";
+            let i = 4;
+            while i < parts.len() {
+                if v != "" { v += " "; }
+                v += parts[i];
+                i += 1;
+            }
+            v
+        } else {
+            ""
+        };
+        if !add_room_entry_condition_dgvar(room.id, key, val) {
+            send_client_message(connection_id, "Failed to add dgvar condition.");
+            return;
+        }
+        if val == "" {
+            send_client_message(connection_id, "Added: dg_var " + key + " set");
+        } else {
+            send_client_message(connection_id, "Added: dg_var " + key + " = " + val);
+        }
+        return;
+    }
+    send_client_message(connection_id, "Unknown entry condition kind: " + kind +
+        "\nUse 'redit entry' for help.");
+}
+
+fn handle_entry_subcommand(connection_id, room, parts) {
+    if parts.len() < 2 {
+        show_entry_gate_help(connection_id, room);
+        return;
+    }
+    let sub = parts[1].to_lower();
+    if sub == "show" {
+        show_entry_gate_help(connection_id, room);
+        return;
+    }
+    if sub == "clear" {
+        if !clear_room_entry_gate(room.id) {
+            send_client_message(connection_id, "Failed to clear entry gate.");
+            return;
+        }
+        send_client_message(connection_id, "Entry gate removed.");
+        return;
+    }
+    if sub == "msg" {
+        let msg = "";
+        let i = 2;
+        while i < parts.len() {
+            if msg != "" { msg += " "; }
+            msg += parts[i];
+            i += 1;
+        }
+        if !set_room_entry_gate_message(room.id, msg) {
+            send_client_message(connection_id, "Failed to set entry gate message.");
+            return;
+        }
+        if msg == "" {
+            send_client_message(connection_id, "Block message cleared (defaults to 'You cannot pass that way.').");
+        } else {
+            send_client_message(connection_id, "Block message set.");
+        }
+        return;
+    }
+    if sub == "add" {
+        handle_entry_add(connection_id, room, parts);
+        return;
+    }
+    if sub == "remove" || sub == "rm" {
+        if parts.len() < 3 {
+            send_client_message(connection_id, "Usage: redit entry remove <index>");
+            return;
+        }
+        let idx = try_parse_int(parts[2]);
+        if idx == () || idx < 1 {
+            send_client_message(connection_id, "Invalid index: " + parts[2]);
+            return;
+        }
+        if !remove_room_entry_condition(room.id, idx) {
+            send_client_message(connection_id, "Failed to remove condition (out of range?).");
+            return;
+        }
+        send_client_message(connection_id, "Removed condition " + idx + ".");
+        return;
+    }
+    send_client_message(connection_id, "Unknown entry subcommand: " + sub +
+        "\nUse 'redit entry' for help.");
 }
 
 // Helper function to get opposite direction

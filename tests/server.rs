@@ -1608,6 +1608,7 @@ mod migration_tests {
             coordinates: None,
             contextual_commands: Vec::new(),
             exit_delays: std::collections::HashMap::new(),
+            entry_gate: None,
         }
     }
 
@@ -4779,6 +4780,7 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
             coordinates: None,
             contextual_commands: Vec::new(),
             exit_delays: std::collections::HashMap::new(),
+            entry_gate: None,
         };
         let room_id = room.id;
         db.save_room_data(room).expect("save room");
@@ -5874,6 +5876,7 @@ fn stay_zone_test_room(area_id: Option<uuid::Uuid>) -> ironmud::types::RoomData 
         coordinates: None,
         contextual_commands: Vec::new(),
         exit_delays: std::collections::HashMap::new(),
+        entry_gate: None,
     }
 }
 
@@ -8548,6 +8551,7 @@ fn test_contextual_commands_round_trip() {
                 },
             ],
             exit_delays: std::collections::HashMap::new(),
+            entry_gate: None,
         };
         let room_id = room.id;
         db.save_room_data(room).expect("save");
@@ -10080,6 +10084,7 @@ fn vampire_test_room(title: &str, indoors: bool) -> ironmud::types::RoomData {
         coordinates: None,
         contextual_commands: Vec::new(),
         exit_delays: HashMap::new(),
+        entry_gate: None,
     }
 }
 
@@ -11715,6 +11720,478 @@ fn test_remove_tattoo_strips_matching_buffs() {
         // Out-of-range index is a no-op (returns false).
         let none = db.remove_tattoo_from_character(&ch.name, 5).expect("remove");
         assert!(!none);
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+// ===== Entry-gate tests =====
+
+fn make_test_room_with_gate(
+    db: &ironmud::db::Db,
+    gate: Option<ironmud::types::RoomEntryGate>,
+) -> uuid::Uuid {
+    use ironmud::types::{RoomData, RoomExits, RoomFlags, WaterType};
+    use std::collections::HashMap as StdHashMap;
+    let room = RoomData {
+        id: uuid::Uuid::new_v4(),
+        title: "Gated Room".into(),
+        description: String::new(),
+        exits: RoomExits::default(),
+        flags: RoomFlags::default(),
+        extra_descs: Vec::new(),
+        vnum: None,
+        area_id: None,
+        triggers: Vec::new(),
+        doors: StdHashMap::new(),
+        spring_desc: None,
+        summer_desc: None,
+        autumn_desc: None,
+        winter_desc: None,
+        dynamic_desc: None,
+        water_type: WaterType::None,
+        catch_table: Vec::new(),
+        is_property_template: false,
+        property_template_id: None,
+        is_template_entrance: false,
+        property_lease_id: None,
+        property_entrance: false,
+        recent_departures: Vec::new(),
+        blood_trails: Vec::new(),
+        traps: Vec::new(),
+        living_capacity: 0,
+        residents: Vec::new(),
+        dg_vars: StdHashMap::new(),
+        coordinates: None,
+        contextual_commands: Vec::new(),
+        exit_delays: StdHashMap::new(),
+        entry_gate: gate,
+    };
+    let id = room.id;
+    db.save_room_data(room).expect("save");
+    id
+}
+
+#[test]
+fn test_room_entry_gate_class_blocks_wrong_class_allows_right_class() {
+    use ironmud::script::rooms::evaluate_entry_gate;
+    use ironmud::types::{RoomEntryCondition, RoomEntryGate};
+
+    let temp = tempfile::tempdir().unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).unwrap();
+
+        let gate = RoomEntryGate {
+            conditions: vec![RoomEntryCondition::ClassIs { name: "thief".into() }],
+            block_message: String::new(),
+        };
+        let room_id = make_test_room_with_gate(&db, Some(gate));
+        let room = db.get_room_data(&room_id).unwrap().unwrap();
+
+        let mut wizard = make_blank_character("Wiz");
+        wizard.class_name = "wizard".into();
+        assert!(
+            evaluate_entry_gate(&db, &wizard, &room).is_some(),
+            "wizard blocked from thieves-only room"
+        );
+
+        let mut thief = make_blank_character("Stab");
+        thief.class_name = "thief".into();
+        assert!(
+            evaluate_entry_gate(&db, &thief, &room).is_none(),
+            "thief allowed in"
+        );
+
+        // Case-insensitive
+        let mut shout = make_blank_character("Shout");
+        shout.class_name = "ThIeF".into();
+        assert!(evaluate_entry_gate(&db, &shout, &room).is_none());
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_room_entry_gate_skill_threshold() {
+    use ironmud::script::rooms::evaluate_entry_gate;
+    use ironmud::types::SkillProgress;
+    use ironmud::types::{RoomEntryCondition, RoomEntryGate};
+
+    let temp = tempfile::tempdir().unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).unwrap();
+        let gate = RoomEntryGate {
+            conditions: vec![RoomEntryCondition::HasSkill {
+                name: "sneak".into(),
+                min_level: 5,
+            }],
+            block_message: String::new(),
+        };
+        let room_id = make_test_room_with_gate(&db, Some(gate));
+        let room = db.get_room_data(&room_id).unwrap().unwrap();
+
+        let unskilled = make_blank_character("Lummox");
+        assert!(
+            evaluate_entry_gate(&db, &unskilled, &room).is_some(),
+            "no skill -> blocked"
+        );
+
+        let mut almost = make_blank_character("Almost");
+        almost.skills.insert(
+            "sneak".into(),
+            SkillProgress {
+                level: 4,
+                experience: 0,
+            },
+        );
+        assert!(evaluate_entry_gate(&db, &almost, &room).is_some(), "level 4 blocked");
+
+        let mut just_enough = make_blank_character("Just");
+        just_enough.skills.insert(
+            "sneak".into(),
+            SkillProgress {
+                level: 5,
+                experience: 0,
+            },
+        );
+        assert!(
+            evaluate_entry_gate(&db, &just_enough, &room).is_none(),
+            "level 5 allowed"
+        );
+
+        // Case-insensitive lookup
+        let mut mixed = make_blank_character("Mixed");
+        mixed.skills.insert(
+            "sneak".into(),
+            SkillProgress {
+                level: 10,
+                experience: 0,
+            },
+        );
+        let upper_gate = RoomEntryGate {
+            conditions: vec![RoomEntryCondition::HasSkill {
+                name: "SNEAK".into(),
+                min_level: 1,
+            }],
+            block_message: String::new(),
+        };
+        let upper_room_id = make_test_room_with_gate(&db, Some(upper_gate));
+        let upper_room = db.get_room_data(&upper_room_id).unwrap().unwrap();
+        assert!(evaluate_entry_gate(&db, &mixed, &upper_room).is_none());
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_room_entry_gate_item_inventory_and_equipped() {
+    use ironmud::script::rooms::evaluate_entry_gate;
+    use ironmud::types::{ItemLocation, RoomEntryCondition, RoomEntryGate};
+    use ironmud::ItemData;
+
+    let temp = tempfile::tempdir().unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).unwrap();
+
+        let gate = RoomEntryGate {
+            conditions: vec![RoomEntryCondition::HasItem {
+                vnum: "keep:keycard".into(),
+            }],
+            block_message: String::new(),
+        };
+        let room_id = make_test_room_with_gate(&db, Some(gate));
+        let room = db.get_room_data(&room_id).unwrap().unwrap();
+
+        // No item -> blocked
+        let empty_handed = make_blank_character("Empty");
+        db.save_character_data(empty_handed.clone()).unwrap();
+        assert!(evaluate_entry_gate(&db, &empty_handed, &room).is_some());
+
+        // Item in inventory -> allowed
+        let inv_owner = make_blank_character("InvOwner");
+        db.save_character_data(inv_owner.clone()).unwrap();
+        let mut inv_item = ItemData::new(
+            "keycard".into(),
+            "a keycard".into(),
+            "A plastic keycard.".into(),
+        );
+        inv_item.vnum = Some("keep:keycard".into());
+        inv_item.location = ItemLocation::Inventory(inv_owner.name.to_lowercase());
+        db.save_item_data(inv_item).unwrap();
+        assert!(evaluate_entry_gate(&db, &inv_owner, &room).is_none(), "inv ok");
+
+        // Item equipped -> allowed
+        let eq_owner = make_blank_character("EqOwner");
+        db.save_character_data(eq_owner.clone()).unwrap();
+        let mut eq_item = ItemData::new(
+            "keycard".into(),
+            "a keycard".into(),
+            "Worn on a lanyard.".into(),
+        );
+        eq_item.vnum = Some("keep:keycard".into());
+        eq_item.location = ItemLocation::Equipped(eq_owner.name.to_lowercase());
+        db.save_item_data(eq_item).unwrap();
+        assert!(evaluate_entry_gate(&db, &eq_owner, &room).is_none(), "eq ok");
+
+        // Wrong vnum -> blocked
+        let wrong_owner = make_blank_character("Wrong");
+        db.save_character_data(wrong_owner.clone()).unwrap();
+        let mut wrong_item = ItemData::new(
+            "wallet".into(),
+            "a wallet".into(),
+            "Not a keycard.".into(),
+        );
+        wrong_item.vnum = Some("street:wallet".into());
+        wrong_item.location = ItemLocation::Inventory(wrong_owner.name.to_lowercase());
+        db.save_item_data(wrong_item).unwrap();
+        assert!(evaluate_entry_gate(&db, &wrong_owner, &room).is_some());
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_room_entry_gate_tattoo_keyword() {
+    use ironmud::script::rooms::evaluate_entry_gate;
+    use ironmud::types::{CharacterTattoo, RoomEntryCondition, RoomEntryGate, WearLocation};
+
+    let temp = tempfile::tempdir().unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).unwrap();
+
+        let gate = RoomEntryGate {
+            conditions: vec![RoomEntryCondition::HasTattoo { keyword: "mark".into() }],
+            block_message: String::new(),
+        };
+        let room_id = make_test_room_with_gate(&db, Some(gate));
+        let room = db.get_room_data(&room_id).unwrap().unwrap();
+
+        let bare = make_blank_character("Bare");
+        assert!(evaluate_entry_gate(&db, &bare, &room).is_some(), "no tattoo blocked");
+
+        let mut marked = make_blank_character("Marked");
+        marked.tattoos.push(CharacterTattoo {
+            location: WearLocation::RightArm,
+            keywords: vec!["roaring".into(), "MARK".into()],
+            short_desc: "the Mark".into(),
+            long_desc: "A roaring boar's head.".into(),
+            source_vnum: None,
+            affects: Vec::new(),
+        });
+        assert!(
+            evaluate_entry_gate(&db, &marked, &room).is_none(),
+            "tattoo keyword matches case-insensitively"
+        );
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_room_entry_gate_dgvar_set_and_equals() {
+    use ironmud::script::rooms::evaluate_entry_gate;
+    use ironmud::types::{RoomEntryCondition, RoomEntryGate};
+
+    let temp = tempfile::tempdir().unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).unwrap();
+
+        // DgVarSet: presence only.
+        let set_gate = RoomEntryGate {
+            conditions: vec![RoomEntryCondition::DgVarSet {
+                key: "duke_quest".into(),
+            }],
+            block_message: String::new(),
+        };
+        let set_room_id = make_test_room_with_gate(&db, Some(set_gate));
+        let set_room = db.get_room_data(&set_room_id).unwrap().unwrap();
+
+        let bare = make_blank_character("Bare");
+        assert!(evaluate_entry_gate(&db, &bare, &set_room).is_some());
+
+        let mut tagged = make_blank_character("Tagged");
+        tagged.dg_vars.insert("duke_quest".into(), "in_progress".into());
+        assert!(evaluate_entry_gate(&db, &tagged, &set_room).is_none());
+
+        // DgVarEquals: must match value.
+        let eq_gate = RoomEntryGate {
+            conditions: vec![RoomEntryCondition::DgVarEquals {
+                key: "duke_quest".into(),
+                value: "done".into(),
+            }],
+            block_message: String::new(),
+        };
+        let eq_room_id = make_test_room_with_gate(&db, Some(eq_gate));
+        let eq_room = db.get_room_data(&eq_room_id).unwrap().unwrap();
+
+        assert!(
+            evaluate_entry_gate(&db, &tagged, &eq_room).is_some(),
+            "value mismatch -> blocked"
+        );
+
+        let mut finished = make_blank_character("Finished");
+        finished.dg_vars.insert("duke_quest".into(), "done".into());
+        assert!(evaluate_entry_gate(&db, &finished, &eq_room).is_none());
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_room_entry_gate_custom_message_falls_back() {
+    use ironmud::script::rooms::evaluate_entry_gate;
+    use ironmud::types::{RoomEntryCondition, RoomEntryGate};
+
+    let temp = tempfile::tempdir().unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).unwrap();
+        let wizard = {
+            let mut c = make_blank_character("Wiz");
+            c.class_name = "wizard".into();
+            c
+        };
+
+        // Empty message -> generic fallback.
+        let blank_gate = RoomEntryGate {
+            conditions: vec![RoomEntryCondition::ClassIs { name: "thief".into() }],
+            block_message: String::new(),
+        };
+        let blank_id = make_test_room_with_gate(&db, Some(blank_gate));
+        let blank_room = db.get_room_data(&blank_id).unwrap().unwrap();
+        assert_eq!(
+            evaluate_entry_gate(&db, &wizard, &blank_room).as_deref(),
+            Some("You cannot pass that way.")
+        );
+
+        // Custom message -> verbatim.
+        let custom_gate = RoomEntryGate {
+            conditions: vec![RoomEntryCondition::ClassIs { name: "thief".into() }],
+            block_message: "The runes flare red - you lack the mark.".into(),
+        };
+        let custom_id = make_test_room_with_gate(&db, Some(custom_gate));
+        let custom_room = db.get_room_data(&custom_id).unwrap().unwrap();
+        assert_eq!(
+            evaluate_entry_gate(&db, &wizard, &custom_room).as_deref(),
+            Some("The runes flare red - you lack the mark.")
+        );
+
+        // Whitespace-only message also falls back.
+        let ws_gate = RoomEntryGate {
+            conditions: vec![RoomEntryCondition::ClassIs { name: "thief".into() }],
+            block_message: "   \n  ".into(),
+        };
+        let ws_id = make_test_room_with_gate(&db, Some(ws_gate));
+        let ws_room = db.get_room_data(&ws_id).unwrap().unwrap();
+        assert_eq!(
+            evaluate_entry_gate(&db, &wizard, &ws_room).as_deref(),
+            Some("You cannot pass that way.")
+        );
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_room_entry_gate_all_conditions_must_pass() {
+    use ironmud::script::rooms::evaluate_entry_gate;
+    use ironmud::types::SkillProgress;
+    use ironmud::types::{RoomEntryCondition, RoomEntryGate};
+
+    let temp = tempfile::tempdir().unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).unwrap();
+        let gate = RoomEntryGate {
+            conditions: vec![
+                RoomEntryCondition::ClassIs { name: "thief".into() },
+                RoomEntryCondition::HasSkill {
+                    name: "sneak".into(),
+                    min_level: 5,
+                },
+            ],
+            block_message: String::new(),
+        };
+        let room_id = make_test_room_with_gate(&db, Some(gate));
+        let room = db.get_room_data(&room_id).unwrap().unwrap();
+
+        // Right class, wrong skill -> blocked.
+        let mut a = make_blank_character("ClassOnly");
+        a.class_name = "thief".into();
+        assert!(evaluate_entry_gate(&db, &a, &room).is_some());
+
+        // Wrong class, right skill -> blocked.
+        let mut b = make_blank_character("SkillOnly");
+        b.class_name = "wizard".into();
+        b.skills.insert(
+            "sneak".into(),
+            SkillProgress {
+                level: 9,
+                experience: 0,
+            },
+        );
+        assert!(evaluate_entry_gate(&db, &b, &room).is_some());
+
+        // Both -> allowed.
+        let mut c = make_blank_character("Both");
+        c.class_name = "thief".into();
+        c.skills.insert(
+            "sneak".into(),
+            SkillProgress {
+                level: 7,
+                experience: 0,
+            },
+        );
+        assert!(evaluate_entry_gate(&db, &c, &room).is_none());
+
+        // Empty conditions list -> allowed (vacuous true).
+        let open_gate = RoomEntryGate {
+            conditions: Vec::new(),
+            block_message: "should not see this".into(),
+        };
+        let open_id = make_test_room_with_gate(&db, Some(open_gate));
+        let open_room = db.get_room_data(&open_id).unwrap().unwrap();
+        let nobody = make_blank_character("Nobody");
+        assert!(evaluate_entry_gate(&db, &nobody, &open_room).is_none());
+    }));
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_room_entry_gate_persists_through_db_roundtrip() {
+    use ironmud::types::{RoomEntryCondition, RoomEntryGate};
+
+    let temp = tempfile::tempdir().unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).unwrap();
+        let gate = RoomEntryGate {
+            conditions: vec![
+                RoomEntryCondition::ClassIs { name: "thief".into() },
+                RoomEntryCondition::HasItem {
+                    vnum: "keep:keycard".into(),
+                },
+                RoomEntryCondition::DgVarEquals {
+                    key: "duke_quest".into(),
+                    value: "done".into(),
+                },
+            ],
+            block_message: "Stay out.".into(),
+        };
+        let room_id = make_test_room_with_gate(&db, Some(gate.clone()));
+        let loaded = db.get_room_data(&room_id).unwrap().unwrap();
+        assert_eq!(loaded.entry_gate, Some(gate));
+
+        // Absence persists too.
+        let no_gate_id = make_test_room_with_gate(&db, None);
+        let no_gate = db.get_room_data(&no_gate_id).unwrap().unwrap();
+        assert!(no_gate.entry_gate.is_none());
     }));
     if let Err(e) = result {
         std::panic::resume_unwind(e);

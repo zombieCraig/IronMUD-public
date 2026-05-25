@@ -18,8 +18,10 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
+            clear_entry_gate?: undefined;
             room_id?: undefined;
             direction?: undefined;
             target_room_id?: undefined;
@@ -57,8 +59,10 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
+            clear_entry_gate?: undefined;
             room_id?: undefined;
             direction?: undefined;
             target_room_id?: undefined;
@@ -170,10 +174,59 @@ export declare const roomToolDefinitions: ({
                     required: string[];
                 };
             };
+            entry_gate: {
+                type: string;
+                description: string;
+                properties: {
+                    block_message: {
+                        type: string;
+                        description: string;
+                    };
+                    conditions: {
+                        type: string;
+                        description: string;
+                        items: {
+                            type: string;
+                            properties: {
+                                kind: {
+                                    type: string;
+                                    enum: string[];
+                                };
+                                name: {
+                                    type: string;
+                                    description: string;
+                                };
+                                min_level: {
+                                    type: string;
+                                    description: string;
+                                };
+                                vnum: {
+                                    type: string;
+                                    description: string;
+                                };
+                                keyword: {
+                                    type: string;
+                                    description: string;
+                                };
+                                key: {
+                                    type: string;
+                                    description: string;
+                                };
+                                value: {
+                                    type: string;
+                                    description: string;
+                                };
+                            };
+                            required: string[];
+                        };
+                    };
+                };
+            };
             vnum_prefix?: undefined;
             identifier?: undefined;
             id?: undefined;
             living_capacity?: undefined;
+            clear_entry_gate?: undefined;
             room_id?: undefined;
             direction?: undefined;
             target_room_id?: undefined;
@@ -238,6 +291,58 @@ export declare const roomToolDefinitions: ({
                     required: string[];
                 };
             };
+            entry_gate: {
+                type: string;
+                description: string;
+                properties: {
+                    block_message: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    conditions: {
+                        type: string;
+                        items: {
+                            type: string;
+                            properties: {
+                                kind: {
+                                    type: string;
+                                    enum: string[];
+                                };
+                                name: {
+                                    type: string;
+                                    description?: undefined;
+                                };
+                                min_level: {
+                                    type: string;
+                                    description?: undefined;
+                                };
+                                vnum: {
+                                    type: string;
+                                    description?: undefined;
+                                };
+                                keyword: {
+                                    type: string;
+                                    description?: undefined;
+                                };
+                                key: {
+                                    type: string;
+                                    description?: undefined;
+                                };
+                                value: {
+                                    type: string;
+                                    description?: undefined;
+                                };
+                            };
+                            required: string[];
+                        };
+                        description?: undefined;
+                    };
+                };
+            };
+            clear_entry_gate: {
+                type: string;
+                description: string;
+            };
             area_id?: undefined;
             vnum_prefix?: undefined;
             identifier?: undefined;
@@ -280,7 +385,9 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            entry_gate?: undefined;
             living_capacity?: undefined;
+            clear_entry_gate?: undefined;
             room_id?: undefined;
             direction?: undefined;
             target_room_id?: undefined;
@@ -328,8 +435,10 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
+            clear_entry_gate?: undefined;
             name?: undefined;
             is_closed?: undefined;
             is_locked?: undefined;
@@ -370,8 +479,10 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
+            clear_entry_gate?: undefined;
             target_room_id?: undefined;
             name?: undefined;
             is_closed?: undefined;
@@ -444,8 +555,10 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
+            clear_entry_gate?: undefined;
             target_room_id?: undefined;
             trigger_type?: undefined;
             script_name?: undefined;
@@ -481,8 +594,10 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
+            clear_entry_gate?: undefined;
             target_room_id?: undefined;
             name?: undefined;
             is_closed?: undefined;
@@ -545,8 +660,10 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
+            clear_entry_gate?: undefined;
             direction?: undefined;
             target_room_id?: undefined;
             name?: undefined;
@@ -582,8 +699,10 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
+            clear_entry_gate?: undefined;
             direction?: undefined;
             target_room_id?: undefined;
             name?: undefined;
@@ -630,8 +749,10 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
+            clear_entry_gate?: undefined;
             direction?: undefined;
             target_room_id?: undefined;
             name?: undefined;
@@ -672,8 +793,10 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
+            clear_entry_gate?: undefined;
             direction?: undefined;
             target_room_id?: undefined;
             name?: undefined;

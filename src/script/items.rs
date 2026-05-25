@@ -23,6 +23,29 @@ pub(crate) fn parse_nth_keyword(input: &str) -> (usize, &str) {
     (1, input)
 }
 
+/// Does the character own a non-prototype item with this vnum, either in
+/// their inventory or equipped to any slot? Used by `evaluate_entry_gate`.
+pub fn character_has_item_vnum(db: &Db, char_name: &str, vnum: &str) -> bool {
+    if vnum.is_empty() {
+        return false;
+    }
+    if let Ok(inv) = db.get_items_in_inventory(char_name) {
+        for item in &inv {
+            if !item.is_prototype && item.vnum.as_deref() == Some(vnum) {
+                return true;
+            }
+        }
+    }
+    if let Ok(eq) = db.get_equipped_items(char_name) {
+        for item in &eq {
+            if !item.is_prototype && item.vnum.as_deref() == Some(vnum) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// Check if an item matches a keyword by name or keywords list.
 pub(crate) fn item_matches_keyword(name: &str, keywords: &[String], kw_lower: &str) -> bool {
     if name.to_lowercase().contains(kw_lower) {

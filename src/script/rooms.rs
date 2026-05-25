@@ -4,9 +4,88 @@
 use super::utilities;
 use crate::SharedConnections;
 use crate::db::Db;
-use crate::{CombatZoneType, DoorState, RoomData, RoomExits, RoomFlags};
+use crate::script::items::character_has_item_vnum;
+use crate::{
+    CharacterData, CombatZoneType, DoorState, RoomData, RoomEntryCondition, RoomEntryGate,
+    RoomExits, RoomFlags,
+};
 use rhai::Engine;
 use std::sync::Arc;
+
+const DEFAULT_BLOCK_MESSAGE: &str = "You cannot pass that way.";
+
+/// Pure evaluator: returns `None` if the character may enter the room,
+/// or `Some(block_message)` if any condition fails. Empty `conditions`
+/// list = allowed (vacuous true). god_mode / build_mode bypass lives
+/// in `go.rhai`, not here — this function is also called from tests.
+pub fn evaluate_entry_gate(db: &Db, character: &CharacterData, room: &RoomData) -> Option<String> {
+    let gate = room.entry_gate.as_ref()?;
+    if gate.conditions.is_empty() {
+        return None;
+    }
+    let all_pass = gate
+        .conditions
+        .iter()
+        .all(|cond| condition_passes(db, character, cond));
+    if all_pass {
+        None
+    } else {
+        let msg = if gate.block_message.trim().is_empty() {
+            DEFAULT_BLOCK_MESSAGE.to_string()
+        } else {
+            gate.block_message.clone()
+        };
+        Some(msg)
+    }
+}
+
+fn condition_passes(db: &Db, ch: &CharacterData, cond: &RoomEntryCondition) -> bool {
+    match cond {
+        RoomEntryCondition::ClassIs { name } => ch.class_name.eq_ignore_ascii_case(name),
+        RoomEntryCondition::HasSkill { name, min_level } => ch
+            .skills
+            .get(&name.to_lowercase())
+            .map(|p| (p.level as i64) >= *min_level)
+            .unwrap_or(false),
+        RoomEntryCondition::HasItem { vnum } => character_has_item_vnum(db, &ch.name, vnum),
+        RoomEntryCondition::HasTattoo { keyword } => {
+            let kw = keyword.to_lowercase();
+            ch.tattoos
+                .iter()
+                .any(|t| t.keywords.iter().any(|k| k.to_lowercase() == kw))
+        }
+        RoomEntryCondition::DgVarSet { key } => ch.dg_vars.contains_key(key),
+        RoomEntryCondition::DgVarEquals { key, value } => {
+            ch.dg_vars.get(key).map(|v| v == value).unwrap_or(false)
+        }
+    }
+}
+
+fn summarize_condition(cond: &RoomEntryCondition) -> String {
+    match cond {
+        RoomEntryCondition::ClassIs { name } => format!("class={}", name),
+        RoomEntryCondition::HasSkill { name, min_level } => {
+            format!("skill {} >= {}", name, min_level)
+        }
+        RoomEntryCondition::HasItem { vnum } => format!("has item {}", vnum),
+        RoomEntryCondition::HasTattoo { keyword } => format!("has tattoo {}", keyword),
+        RoomEntryCondition::DgVarSet { key } => format!("dg_var {} set", key),
+        RoomEntryCondition::DgVarEquals { key, value } => {
+            format!("dg_var {} = {}", key, value)
+        }
+    }
+}
+
+fn condition_kind(cond: &RoomEntryCondition) -> &'static str {
+    match cond {
+        RoomEntryCondition::ClassIs { .. } => "class",
+        RoomEntryCondition::HasSkill { .. } => "skill",
+        RoomEntryCondition::HasItem { .. } => "item",
+        RoomEntryCondition::HasTattoo { .. } => "tattoo",
+        RoomEntryCondition::DgVarSet { .. } => "dgvar",
+        RoomEntryCondition::DgVarEquals { .. } => "dgvar",
+    }
+}
 
 /// Register room-related functions
 pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections) {
@@ -47,6 +126,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             coordinates: None,
             contextual_commands: Vec::new(),
             exit_delays: std::collections::HashMap::new(),
+            entry_gate: None,
         };
         if let Err(e) = cloned_db.save_room_data(room.clone()) {
             tracing::error!("Failed to save new room: {}", e);
@@ -2001,4 +2081,237 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         }
         out
     });
+
+    // ========== Entry-gate functions (conditional room entry) ==========
+
+    // check_room_entry_gate(room_id, char_name) -> "" if allowed, block message if blocked.
+    // Fails open (returns "") if either room or character can't be loaded.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "check_room_entry_gate",
+        move |room_id: String, char_name: String| -> String {
+            let room_uuid = match uuid::Uuid::parse_str(&room_id) {
+                Ok(u) => u,
+                Err(_) => return String::new(),
+            };
+            let room = match cloned_db.get_room_data(&room_uuid) {
+                Ok(Some(r)) => r,
+                _ => return String::new(),
+            };
+            if room.entry_gate.is_none() {
+                return String::new();
+            }
+            let character = match cloned_db.get_character_data(&char_name) {
+                Ok(Some(c)) => c,
+                _ => return String::new(),
+            };
+            evaluate_entry_gate(&cloned_db, &character, &room).unwrap_or_default()
+        },
+    );
+
+    // clear_room_entry_gate(room_id) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn("clear_room_entry_gate", move |room_id: String| -> bool {
+        with_room_mut(&cloned_db, &room_id, |room| {
+            room.entry_gate = None;
+        })
+    });
+
+    // set_room_entry_gate_message(room_id, msg) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_room_entry_gate_message",
+        move |room_id: String, msg: String| -> bool {
+            with_room_mut(&cloned_db, &room_id, |room| {
+                let gate = room.entry_gate.get_or_insert_with(RoomEntryGate::default);
+                gate.block_message = msg;
+            })
+        },
+    );
+
+    // get_room_entry_gate_message(room_id) -> String
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "get_room_entry_gate_message",
+        move |room_id: String| -> String {
+            let room_uuid = match uuid::Uuid::parse_str(&room_id) {
+                Ok(u) => u,
+                Err(_) => return String::new(),
+            };
+            match cloned_db.get_room_data(&room_uuid) {
+                Ok(Some(r)) => r
+                    .entry_gate
+                    .map(|g| g.block_message)
+                    .unwrap_or_default(),
+                _ => String::new(),
+            }
+        },
+    );
+
+    // add_room_entry_condition_class(room_id, name) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "add_room_entry_condition_class",
+        move |room_id: String, name: String| -> bool {
+            if name.trim().is_empty() {
+                return false;
+            }
+            with_room_mut(&cloned_db, &room_id, |room| {
+                room.entry_gate
+                    .get_or_insert_with(RoomEntryGate::default)
+                    .conditions
+                    .push(RoomEntryCondition::ClassIs {
+                        name: name.trim().to_lowercase(),
+                    });
+            })
+        },
+    );
+
+    // add_room_entry_condition_skill(room_id, name, min_level) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "add_room_entry_condition_skill",
+        move |room_id: String, name: String, min_level: i64| -> bool {
+            if name.trim().is_empty() {
+                return false;
+            }
+            with_room_mut(&cloned_db, &room_id, |room| {
+                room.entry_gate
+                    .get_or_insert_with(RoomEntryGate::default)
+                    .conditions
+                    .push(RoomEntryCondition::HasSkill {
+                        name: name.trim().to_lowercase(),
+                        min_level,
+                    });
+            })
+        },
+    );
+
+    // add_room_entry_condition_item(room_id, vnum) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "add_room_entry_condition_item",
+        move |room_id: String, vnum: String| -> bool {
+            if vnum.trim().is_empty() {
+                return false;
+            }
+            with_room_mut(&cloned_db, &room_id, |room| {
+                room.entry_gate
+                    .get_or_insert_with(RoomEntryGate::default)
+                    .conditions
+                    .push(RoomEntryCondition::HasItem {
+                        vnum: vnum.trim().to_string(),
+                    });
+            })
+        },
+    );
+
+    // add_room_entry_condition_tattoo(room_id, keyword) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "add_room_entry_condition_tattoo",
+        move |room_id: String, keyword: String| -> bool {
+            if keyword.trim().is_empty() {
+                return false;
+            }
+            with_room_mut(&cloned_db, &room_id, |room| {
+                room.entry_gate
+                    .get_or_insert_with(RoomEntryGate::default)
+                    .conditions
+                    .push(RoomEntryCondition::HasTattoo {
+                        keyword: keyword.trim().to_lowercase(),
+                    });
+            })
+        },
+    );
+
+    // add_room_entry_condition_dgvar(room_id, key, value) -> bool
+    // Empty `value` => DgVarSet (presence-only); non-empty => DgVarEquals.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "add_room_entry_condition_dgvar",
+        move |room_id: String, key: String, value: String| -> bool {
+            if key.trim().is_empty() {
+                return false;
+            }
+            with_room_mut(&cloned_db, &room_id, |room| {
+                let key = key.trim().to_string();
+                let cond = if value.is_empty() {
+                    RoomEntryCondition::DgVarSet { key }
+                } else {
+                    RoomEntryCondition::DgVarEquals { key, value }
+                };
+                room.entry_gate
+                    .get_or_insert_with(RoomEntryGate::default)
+                    .conditions
+                    .push(cond);
+            })
+        },
+    );
+
+    // remove_room_entry_condition(room_id, index) -> bool
+    // 1-based index, matching the display order in `list_room_entry_conditions`.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "remove_room_entry_condition",
+        move |room_id: String, index: i64| -> bool {
+            let room_uuid = match uuid::Uuid::parse_str(&room_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let mut room = match cloned_db.get_room_data(&room_uuid) {
+                Ok(Some(r)) => r,
+                _ => return false,
+            };
+            let gate = match room.entry_gate.as_mut() {
+                Some(g) => g,
+                None => return false,
+            };
+            if index < 1 || (index as usize) > gate.conditions.len() {
+                return false;
+            }
+            gate.conditions.remove((index as usize) - 1);
+            cloned_db.save_room_data(room).is_ok()
+        },
+    );
+
+    // list_room_entry_conditions(room_id) -> Array of #{kind, summary}
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "list_room_entry_conditions",
+        move |room_id: String| -> rhai::Array {
+            let mut out = rhai::Array::new();
+            let room_uuid = match uuid::Uuid::parse_str(&room_id) {
+                Ok(u) => u,
+                Err(_) => return out,
+            };
+            let room = match cloned_db.get_room_data(&room_uuid) {
+                Ok(Some(r)) => r,
+                _ => return out,
+            };
+            if let Some(gate) = room.entry_gate {
+                for cond in &gate.conditions {
+                    let mut m = rhai::Map::new();
+                    m.insert("kind".into(), condition_kind(cond).to_string().into());
+                    m.insert("summary".into(), summarize_condition(cond).into());
+                    out.push(rhai::Dynamic::from(m));
+                }
+            }
+            out
+        },
+    );
+}
+
+/// Load → mutate → save helper for the entry-gate mutators.
+fn with_room_mut<F: FnOnce(&mut RoomData)>(db: &Db, room_id: &str, f: F) -> bool {
+    let uuid = match uuid::Uuid::parse_str(room_id) {
+        Ok(u) => u,
+        Err(_) => return false,
+    };
+    let mut room = match db.get_room_data(&uuid) {
+        Ok(Some(r)) => r,
+        _ => return false,
+    };
+    f(&mut room);
+    db.save_room_data(room).is_ok()
 }

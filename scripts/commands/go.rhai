@@ -197,6 +197,17 @@ fn run_command(args, connection_id) {
         }
     }
 
+    // Conditional entry gate (class, skill, item, tattoo, dg_var).
+    // god_mode + build_mode bypass; bypass keys off the destination room to
+    // match the property-access check above.
+    if !char.god_mode && !is_in_build_mode(char.name, target_room_id) {
+        let gate_msg = check_room_entry_gate(target_room_id, char.name);
+        if gate_msg != "" {
+            send_client_message(connection_id, gate_msg);
+            return;
+        }
+    }
+
     // Single-occupant (tunnel) and 2-occupant (private) caps. Players only
     // — mobs in private inn rooms keep working. god_mode + build_mode bypass.
     if !char.god_mode && !is_in_build_mode(char.name, target_room_id) {

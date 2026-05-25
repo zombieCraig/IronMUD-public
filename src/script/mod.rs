@@ -28,7 +28,7 @@ mod fishing;
 mod garden;
 mod groups;
 mod healers;
-mod items;
+pub mod items;
 mod boards;
 mod mail;
 pub mod lang;
@@ -37,7 +37,7 @@ mod medical;
 pub mod mobile_presets;
 mod mobiles;
 mod property;
-mod rooms;
+pub mod rooms;
 mod shop_presets;
 mod shops;
 mod lookup;
@@ -676,6 +676,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         coordinates: None,
         contextual_commands: Vec::new(),
         exit_delays: std::collections::HashMap::new(),
+        entry_gate: None,
     });
 
     // Register get_available_exits helper

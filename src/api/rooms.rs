@@ -18,7 +18,7 @@ use super::{
     validate::{check_text_len, DESCRIPTION_MAX, TITLE_MAX},
 };
 use crate::{
-    CombatZoneType, ContextualCommand, DoorState, ExtraDesc, RoomData, RoomExits, RoomFlags, RoomTrigger, TriggerType, WaterType,
+    CombatZoneType, ContextualCommand, DoorState, ExtraDesc, RoomData, RoomEntryGate, RoomExits, RoomFlags, RoomTrigger, TriggerType, WaterType,
 };
 
 pub fn routes() -> Router<Arc<ApiState>> {
@@ -52,6 +52,10 @@ pub struct CreateRoomRequest {
     pub flags: RoomFlagsRequest,
     #[serde(default)]
     pub contextual_commands: Option<Vec<ContextualCommandRequest>>,
+    /// Conditional entry gate. Omit or send `null` to leave the room
+    /// open to all entrants.
+    #[serde(default)]
+    pub entry_gate: Option<RoomEntryGate>,
 }
 
 #[derive(Deserialize)]
@@ -130,6 +134,14 @@ pub struct UpdateRoomRequest {
     pub living_capacity: Option<i32>,
     #[serde(default)]
     pub contextual_commands: Option<Vec<ContextualCommandRequest>>,
+    /// `Some(gate)` replaces the room's entry gate (full replacement —
+    /// the conditions array is taken as authoritative). Leave the field
+    /// out (or send `null`) to keep the existing gate untouched. To
+    /// remove the gate entirely, send `clear_entry_gate: true`.
+    #[serde(default)]
+    pub entry_gate: Option<RoomEntryGate>,
+    #[serde(default)]
+    pub clear_entry_gate: bool,
 }
 
 #[derive(Deserialize)]
@@ -544,6 +556,7 @@ async fn create_room(
             })
             .unwrap_or_default(),
         exit_delays: std::collections::HashMap::new(),
+        entry_gate: req.entry_gate.clone(),
     };
 
     if room.flags.liveable && room.living_capacity <= 0 {
@@ -725,6 +738,12 @@ async fn update_room(
                 Some(ContextualCommand { verb, hint })
             })
             .collect();
+    }
+
+    if req.clear_entry_gate {
+        room.entry_gate = None;
+    } else if let Some(gate) = req.entry_gate {
+        room.entry_gate = Some(gate);
     }
 
     state

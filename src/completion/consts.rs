@@ -387,7 +387,7 @@ pub const NOISE_LEVELS: &[&str] = &["silent", "quiet", "normal", "loud", "clear"
 /// Redit subcommands
 pub const REDIT_SUBCOMMANDS: &[&str] = &[
     "show", "title", "desc", "flags", "flag", "zone", "extra", "vnum", "area", "trigger", "door", "seasonal",
-    "dynamic", "water", "catch", "capacity", "create",
+    "dynamic", "water", "catch", "capacity", "create", "entry",
 ];
 
 /// Room trigger actions

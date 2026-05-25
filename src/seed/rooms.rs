@@ -43,6 +43,7 @@ fn room(id: Uuid, area_id: Uuid, vnum: &str, title: &str, description: &str) -> 
         coordinates: None,
         contextual_commands: Vec::new(),
         exit_delays: HashMap::new(),
+        entry_gate: None,
     }
 }
 
@@ -144,6 +145,7 @@ fn seed_oakvale(db: &Db) -> Result<usize> {
         coordinates: None,
         contextual_commands: Vec::new(),
         exit_delays: HashMap::new(),
+        entry_gate: None,
     };
 
     // --- Tavern ---

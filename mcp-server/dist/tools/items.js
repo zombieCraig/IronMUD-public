@@ -36,6 +36,9 @@ const itemFlagsSchema = {
         buried: { type: "boolean", description: "Hidden in a dirt_floor room until dug up" },
         can_dig: { type: "boolean", description: "Held/equipped item lets the player dig in dirt_floor rooms" },
         detect_buried: { type: "boolean", description: "Surfaces a hint when buried items are in the room" },
+        anti_good: { type: "boolean", description: "Refuses wear by anyone with morality > 24 (CircleMUD ITEM_ANTI_GOOD)" },
+        anti_evil: { type: "boolean", description: "Refuses wear by anyone with morality < -24 (CircleMUD ITEM_ANTI_EVIL)" },
+        anti_neutral: { type: "boolean", description: "Refuses wear by anyone with -24 <= morality <= 24 (CircleMUD ITEM_ANTI_NEUTRAL)" },
     },
 };
 // Per-hit effects rolled when a wielded weapon (or mob's natural attack) lands a hit.
@@ -88,7 +91,7 @@ export const itemToolDefinitions = [
                 offset: { type: "number", default: 0 },
                 item_type: {
                     type: "string",
-                    enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold", "ammunition", "potion", "wand", "staff", "note", "pen"],
+                    enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold", "ammunition", "potion", "wand", "staff", "note", "pen", "tool", "tattoo"],
                 },
             },
         },
@@ -139,7 +142,7 @@ export const itemToolDefinitions = [
                 keywords: { type: "array", items: { type: "string" } },
                 item_type: {
                     type: "string",
-                    enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold", "ammunition", "potion", "wand", "staff", "note", "pen"],
+                    enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold", "ammunition", "potion", "wand", "staff", "note", "pen", "tool", "tattoo"],
                 },
                 weight: { type: "number", default: 1 },
                 value: { type: "number", default: 0 },
@@ -282,7 +285,7 @@ export const itemToolDefinitions = [
                 long_desc: { type: "string" },
                 vnum: { type: "string", description: "New vnum (must be unique)" },
                 area_id: { type: "string", description: "Reassign owning area. Empty string clears the assignment back to orphan. Caller must have edit rights on both current and target areas." },
-                item_type: { type: "string", enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold", "ammunition", "potion", "wand", "staff", "note", "pen"], description: "Change item type" },
+                item_type: { type: "string", enum: ["misc", "armor", "weapon", "container", "liquid_container", "food", "key", "gold", "ammunition", "potion", "wand", "staff", "note", "pen", "tool", "tattoo"], description: "Change item type" },
                 keywords: { type: "array", items: { type: "string" } },
                 weight: { type: "number" },
                 value: { type: "number" },

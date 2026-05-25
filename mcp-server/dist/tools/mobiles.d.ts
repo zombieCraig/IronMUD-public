@@ -521,6 +521,18 @@ export declare const mobileToolDefinitions: ({
                         type: string;
                         description: string;
                     };
+                    aggro_good: {
+                        type: string;
+                        description: string;
+                    };
+                    aggro_evil: {
+                        type: string;
+                        description: string;
+                    };
+                    aggro_neutral: {
+                        type: string;
+                        description: string;
+                    };
                 };
             };
             position: {
@@ -962,6 +974,18 @@ export declare const mobileToolDefinitions: ({
                         description?: undefined;
                     };
                     tameable: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    aggro_good: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    aggro_evil: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    aggro_neutral: {
                         type: string;
                         description?: undefined;
                     };

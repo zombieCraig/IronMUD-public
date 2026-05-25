@@ -82,6 +82,36 @@ export const roomToolDefinitions = [
             required: ["verb"],
           },
         },
+        entry_gate: {
+          type: "object",
+          description: "Conditional entry gate. ALL conditions must pass for a character to enter the room. god_mode + build_mode bypass.",
+          properties: {
+            block_message: {
+              type: "string",
+              description: "Shown to the blocked player. Empty -> generic 'You cannot pass that way.'",
+            },
+            conditions: {
+              type: "array",
+              description: "List of tagged conditions. Discriminator field is 'kind'.",
+              items: {
+                type: "object",
+                properties: {
+                  kind: {
+                    type: "string",
+                    enum: ["class_is", "has_skill", "has_item", "has_tattoo", "dg_var_set", "dg_var_equals"],
+                  },
+                  name: { type: "string", description: "For class_is + has_skill" },
+                  min_level: { type: "number", description: "For has_skill (0-10)" },
+                  vnum: { type: "string", description: "For has_item" },
+                  keyword: { type: "string", description: "For has_tattoo" },
+                  key: { type: "string", description: "For dg_var_set + dg_var_equals" },
+                  value: { type: "string", description: "For dg_var_equals" },
+                },
+                required: ["kind"],
+              },
+            },
+          },
+        },
       },
       required: ["title", "description"],
     },
@@ -111,6 +141,36 @@ export const roomToolDefinitions = [
             },
             required: ["verb"],
           },
+        },
+        entry_gate: {
+          type: "object",
+          description: "Replace the room's entry gate (full replacement of conditions + block_message). Omit to leave the existing gate untouched; set clear_entry_gate=true to remove the gate entirely.",
+          properties: {
+            block_message: { type: "string" },
+            conditions: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  kind: {
+                    type: "string",
+                    enum: ["class_is", "has_skill", "has_item", "has_tattoo", "dg_var_set", "dg_var_equals"],
+                  },
+                  name: { type: "string" },
+                  min_level: { type: "number" },
+                  vnum: { type: "string" },
+                  keyword: { type: "string" },
+                  key: { type: "string" },
+                  value: { type: "string" },
+                },
+                required: ["kind"],
+              },
+            },
+          },
+        },
+        clear_entry_gate: {
+          type: "boolean",
+          description: "If true, removes the entry gate from the room (overrides entry_gate field).",
         },
       },
       required: ["id"],

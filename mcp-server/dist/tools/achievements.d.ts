@@ -208,6 +208,10 @@ export declare const achievementToolDefinitions: ({
                         type: string;
                         description: string;
                     };
+                    morality_delta: {
+                        type: string;
+                        description: string;
+                    };
                 };
                 required: string[];
             };
