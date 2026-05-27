@@ -189,6 +189,11 @@ pub enum EffectType {
     /// and refuses new applications until the source is removed. Magnitude
     /// is unused.
     Loud,
+    /// Combat stun — target loses their next N combat rounds. Not applied as
+    /// a timed buff; routes through `CombatState.stun_rounds_remaining`.
+    /// Exists as an `EffectType` variant so `StatusResistance` buffs with
+    /// `vs_effect = "stun"` can gate application via `roll_status_application`.
+    Stun,
 }
 
 impl EffectType {
@@ -256,6 +261,7 @@ impl EffectType {
                 Some(EffectType::CustomSkillBoost)
             }
             "loud" | "noisy" | "conspicuous" => Some(EffectType::Loud),
+            "stun" | "stunned" => Some(EffectType::Stun),
             _ => None,
         }
     }
@@ -308,6 +314,7 @@ impl EffectType {
             EffectType::MaxManaBonus => "max_mana_bonus",
             EffectType::CustomSkillBoost => "custom_skill_boost",
             EffectType::Loud => "loud",
+            EffectType::Stun => "stun",
         }
     }
 
@@ -359,6 +366,7 @@ impl EffectType {
             "max_mana_bonus",
             "custom_skill_boost",
             "loud",
+            "stun",
         ]
     }
 }

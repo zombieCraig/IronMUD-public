@@ -783,6 +783,14 @@ fn apply_dg_effect(
     duration: i32,
     ctx: &EvalCtx,
 ) -> Result<(), String> {
+    // Stun routes through the combat stun_rounds_remaining mechanic
+    // rather than the buff system. Magnitude = rounds, duration = base
+    // chance (default 75%). StatusResistance + Luck gate application.
+    if effect_name.eq_ignore_ascii_case("stun") {
+        let base_chance = if duration > 0 { duration } else { 75 };
+        return apply_dg_stun(target_tok, magnitude, base_chance, ctx);
+    }
+
     let effect = match crate::EffectType::from_str(effect_name) {
         Some(e) => e,
         None => {
@@ -828,6 +836,40 @@ fn apply_dg_effect(
                 } else {
                     ch.active_buffs.push(buff);
                 }
+                let _ = ctx.db.save_character_data(ch);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Apply combat stun to a target. Magnitude = number of rounds (capped at 5).
+/// `base_chance` (0-100) is passed through `roll_status_application` so
+/// `StatusResistance` buffs targeting "stun" (or "*") and `Luck` can resist.
+fn apply_dg_stun(target_tok: &str, rounds: i32, base_chance: i32, ctx: &EvalCtx) -> Result<(), String> {
+    let rounds = rounds.max(1).min(5);
+    let Some(actor) = resolve_target(target_tok, ctx) else {
+        return Ok(());
+    };
+    let mut rng = rand::thread_rng();
+    match actor {
+        ActorRef::Mob { mobile_id, .. } => {
+            if let Ok(Some(mut mob)) = ctx.db.get_mobile_data(&mobile_id) {
+                if !crate::script::combat::roll_status_application(&mob.active_buffs, crate::EffectType::Stun, base_chance, &mut rng) {
+                    return Ok(());
+                }
+                mob.combat.stun_rounds_remaining =
+                    (mob.combat.stun_rounds_remaining + rounds).min(5);
+                let _ = ctx.db.save_mobile_data(mob);
+            }
+        }
+        ActorRef::Player { name, .. } => {
+            if let Ok(Some(mut ch)) = ctx.db.get_character_data(&name) {
+                if !crate::script::combat::roll_status_application(&ch.active_buffs, crate::EffectType::Stun, base_chance, &mut rng) {
+                    return Ok(());
+                }
+                ch.combat.stun_rounds_remaining =
+                    (ch.combat.stun_rounds_remaining + rounds).min(5);
                 let _ = ctx.db.save_character_data(ch);
             }
         }
