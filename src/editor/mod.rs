@@ -81,10 +81,8 @@ pub enum EditorAction {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum EditorMode {
     Editing,
-    /// Ctrl-X with dirty buffer — Y=save, N=discard, ^C=keep editing.
+    /// Ctrl-Q with dirty buffer — Y=save, N=discard, ^Q=keep editing.
     ConfirmExitSaveOrDiscard,
-    /// Ctrl-C with dirty buffer — Y=discard, N/^C=keep editing.
-    ConfirmDiscard,
     /// Ctrl-G help screen — any key dismisses.
     Help,
     /// Ctrl-W incremental search prompt.
@@ -169,6 +167,11 @@ pub struct EditorSession {
     /// right-click paste from another window works again. Toggled via
     /// Ctrl-T.
     mouse_enabled: bool,
+
+    /// True while processing text between bracketed-paste delimiters
+    /// (ESC[200~ ... ESC[201~). Suppresses auto-indent on Enter so
+    /// pasted multi-line text isn't stairstepped.
+    in_paste: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -198,7 +201,7 @@ impl EditorSession {
             height: h,
             dirty: false,
             status: String::from(
-                "[BETA] ^O save  ^X exit  ^G help  ^T mouse  ^W search  ^\\ replace  ^_ goto  ^Z undo",
+                "[BETA] ^O save  ^Q exit  ^G help  ^V paste  ^W search  ^\\ replace  ^_ goto  ^Z undo",
             ),
             mode: EditorMode::Editing,
             pending_output: Vec::new(),
@@ -212,6 +215,7 @@ impl EditorSession {
             dg_error: None,
             selection_anchor: None,
             mouse_enabled: true,
+            in_paste: false,
         };
         s.refresh_dg_error();
         s.render();
@@ -306,7 +310,6 @@ impl EditorSession {
 
         let action = match self.mode.clone() {
             EditorMode::ConfirmExitSaveOrDiscard => self.key_confirm_save_or_discard(key),
-            EditorMode::ConfirmDiscard => self.key_confirm_discard(key),
             EditorMode::Help => self.key_help_overlay(key),
             EditorMode::Search { query } => self.key_search(key, query),
             EditorMode::ReplaceQuery { query } => self.key_replace_query(key, query),
@@ -326,15 +329,36 @@ impl EditorSession {
     // ============================================================
 
     fn key_editing(&mut self, key: &KeyEvent) -> EditorAction {
+        // Fast path for bracketed paste: suppress auto-indent, skip
+        // per-key renders, treat the whole paste as one undo batch.
+        if self.in_paste {
+            match key {
+                KeyEvent::BracketedPasteEnd => {
+                    self.in_paste = false;
+                    self.dirty = true;
+                    self.refresh_dg_error();
+                    self.render();
+                }
+                KeyEvent::Enter => {
+                    self.insert_newline();
+                }
+                KeyEvent::Char(c) if !c.is_control() => {
+                    self.insert_char(*c);
+                }
+                _ => {}
+            }
+            return EditorAction::None;
+        }
+
         // Tab-completion cycle state survives only across consecutive Tabs.
         if !matches!(key, KeyEvent::Tab) {
             self.dg_tab_state = None;
         }
         match key {
-            KeyEvent::CtrlX => {
+            KeyEvent::CtrlQ => {
                 if self.dirty {
                     self.mode = EditorMode::ConfirmExitSaveOrDiscard;
-                    self.status = String::from("Save modified buffer? (Y)es  (N)o  ^C cancel");
+                    self.status = String::from("Save modified buffer? (Y)es  (N)o  ^Q cancel");
                     self.render();
                     EditorAction::None
                 } else {
@@ -342,14 +366,8 @@ impl EditorSession {
                 }
             }
             KeyEvent::CtrlC => {
-                if self.dirty {
-                    self.mode = EditorMode::ConfirmDiscard;
-                    self.status = String::from("Discard unsaved changes? (Y)es  (N)o");
-                    self.render();
-                    EditorAction::None
-                } else {
-                    EditorAction::Cancel
-                }
+                self.copy_selection();
+                EditorAction::None
             }
             KeyEvent::CtrlO => {
                 if self.take_text().len() > self.kind.max_bytes() {
@@ -381,34 +399,43 @@ impl EditorSession {
                 EditorAction::None
             }
             KeyEvent::CtrlK => {
+                self.cut_line();
+                EditorAction::None
+            }
+            KeyEvent::CtrlX => {
                 if self.selection_anchor.is_some() {
                     self.cut_selection();
                 } else {
-                    self.cut_line();
+                    self.status = String::from("No selection to cut. Use Shift+arrows to select.");
+                    self.render();
                 }
                 EditorAction::None
             }
             KeyEvent::CtrlU => {
+                self.kill_to_line_start();
+                EditorAction::None
+            }
+            KeyEvent::CtrlV => {
                 self.paste_kill_ring();
                 EditorAction::None
             }
             KeyEvent::CtrlW => {
                 self.mode = EditorMode::Search { query: String::new() };
-                self.status = String::from("Search: (type query, Enter jumps, ^C cancel)");
+                self.status = String::from("Search: (type query, Enter jumps, ^Q cancel)");
                 self.close_batch();
                 self.render();
                 EditorAction::None
             }
             KeyEvent::CtrlBackslash => {
                 self.mode = EditorMode::ReplaceQuery { query: String::new() };
-                self.status = String::from("Replace — find: (Enter to continue, ^C cancel)");
+                self.status = String::from("Replace — find: (Enter to continue, ^Q cancel)");
                 self.close_batch();
                 self.render();
                 EditorAction::None
             }
             KeyEvent::CtrlUnderscore => {
                 self.mode = EditorMode::GotoLine { input: String::new() };
-                self.status = String::from("Go to line #: (Enter to jump, ^C cancel)");
+                self.status = String::from("Go to line #: (Enter to jump, ^Q cancel)");
                 self.close_batch();
                 self.render();
                 EditorAction::None
@@ -563,6 +590,14 @@ impl EditorSession {
                 self.toggle_mouse_tracking();
                 EditorAction::None
             }
+            KeyEvent::BracketedPasteStart => {
+                self.consume_selection_if_any();
+                self.push_undo(BatchKind::Paste);
+                self.close_batch();
+                self.in_paste = true;
+                EditorAction::None
+            }
+            KeyEvent::BracketedPasteEnd => EditorAction::None,
             KeyEvent::CtrlD | KeyEvent::Unknown => EditorAction::None,
         }
     }
@@ -590,30 +625,9 @@ impl EditorSession {
                 self.mode = EditorMode::Editing;
                 EditorAction::Cancel
             }
-            KeyEvent::CtrlC | KeyEvent::Char('c') | KeyEvent::Char('C') => {
+            KeyEvent::CtrlQ | KeyEvent::Char('c') | KeyEvent::Char('C') => {
                 self.mode = EditorMode::Editing;
                 self.status = String::from("Cancelled — back to editing.");
-                self.render();
-                EditorAction::None
-            }
-            _ => {
-                self.render();
-                EditorAction::None
-            }
-        }
-    }
-
-    fn key_confirm_discard(&mut self, key: &KeyEvent) -> EditorAction {
-        match key {
-            KeyEvent::Char('y') | KeyEvent::Char('Y') => {
-                self.mode = EditorMode::Editing;
-                EditorAction::Cancel
-            }
-            KeyEvent::Char('n')
-            | KeyEvent::Char('N')
-            | KeyEvent::CtrlC => {
-                self.mode = EditorMode::Editing;
-                self.status = String::from("Continuing — your changes are still here.");
                 self.render();
                 EditorAction::None
             }
@@ -633,7 +647,7 @@ impl EditorSession {
 
     fn key_search(&mut self, key: &KeyEvent, mut query: String) -> EditorAction {
         match key {
-            KeyEvent::CtrlC => {
+            KeyEvent::CtrlQ => {
                 self.mode = EditorMode::Editing;
                 self.status = String::from("Search cancelled.");
                 self.render();
@@ -679,7 +693,7 @@ impl EditorSession {
 
     fn key_replace_query(&mut self, key: &KeyEvent, mut query: String) -> EditorAction {
         match key {
-            KeyEvent::CtrlC => {
+            KeyEvent::CtrlQ => {
                 self.mode = EditorMode::Editing;
                 self.status = String::from("Replace cancelled.");
                 self.render();
@@ -696,7 +710,7 @@ impl EditorSession {
                     query,
                     replacement: String::new(),
                 };
-                self.status = String::from("Replace with: (Enter to apply, ^C cancel)");
+                self.status = String::from("Replace with: (Enter to apply, ^Q cancel)");
                 self.render();
                 EditorAction::None
             }
@@ -727,7 +741,7 @@ impl EditorSession {
         mut replacement: String,
     ) -> EditorAction {
         match key {
-            KeyEvent::CtrlC => {
+            KeyEvent::CtrlQ => {
                 self.mode = EditorMode::Editing;
                 self.status = String::from("Replace cancelled.");
                 self.render();
@@ -771,7 +785,7 @@ impl EditorSession {
 
     fn key_goto_line(&mut self, key: &KeyEvent, mut input: String) -> EditorAction {
         match key {
-            KeyEvent::CtrlC => {
+            KeyEvent::CtrlQ => {
                 self.mode = EditorMode::Editing;
                 self.status = String::from("Goto cancelled.");
                 self.render();
@@ -1019,8 +1033,7 @@ impl EditorSession {
     }
 
     /// Capture the selected text and remove it, populating the kill
-    /// ring so Ctrl-U pastes it back. Used by Ctrl-K when a selection
-    /// is active.
+    /// ring so Ctrl-V pastes it back. Used by Ctrl-X.
     fn cut_selection(&mut self) {
         let Some((start, end)) = self.normalized_selection() else {
             return;
@@ -1031,7 +1044,21 @@ impl EditorSession {
         // consume_selection_if_any performs the actual removal + undo
         // bookkeeping.
         self.consume_selection_if_any();
-        self.status = String::from("Cut selection into kill ring. ^U to paste.");
+        self.status = String::from("Cut selection into kill ring. ^V to paste.");
+        self.render();
+    }
+
+    fn copy_selection(&mut self) {
+        let Some((start, end)) = self.normalized_selection() else {
+            self.status = String::from("No selection to copy. Use Shift+arrows to select.");
+            self.render();
+            return;
+        };
+        let text = self.text_in_range(start, end);
+        self.kill_ring.clear();
+        self.kill_ring.push(text);
+        self.selection_anchor = None;
+        self.status = String::from("Copied selection to kill ring. ^V to paste.");
         self.render();
     }
 
@@ -1239,7 +1266,7 @@ impl EditorSession {
 
         self.dirty = true;
         self.status = format!(
-            "Cut into kill ring ({} chunk{}). ^U to paste.",
+            "Cut into kill ring ({} chunk{}). ^V to paste.",
             self.kill_ring.len(),
             if self.kill_ring.len() == 1 { "" } else { "s" }
         );
@@ -1265,6 +1292,26 @@ impl EditorSession {
         }
         self.dirty = true;
         self.status = String::from("Pasted from kill ring.");
+        self.render();
+    }
+
+    fn kill_to_line_start(&mut self) {
+        if self.cursor_col == 0 {
+            self.status = String::from("Nothing to kill.");
+            self.render();
+            return;
+        }
+        self.push_undo(BatchKind::Delete);
+        self.close_batch();
+        let line = &self.lines[self.cursor_row];
+        let byte_pos = char_index_to_byte(line, self.cursor_col);
+        let killed: String = line[..byte_pos].to_string();
+        self.lines[self.cursor_row] = line[byte_pos..].to_string();
+        self.kill_ring.clear();
+        self.kill_ring.push(killed);
+        self.cursor_col = 0;
+        self.dirty = true;
+        self.status = String::from("Killed to start of line. ^V to paste.");
         self.render();
     }
 
@@ -1580,14 +1627,13 @@ impl EditorSession {
         // Key-hint row, varies by mode.
         let hints = match self.mode {
             EditorMode::ConfirmExitSaveOrDiscard => {
-                "Y Yes (save)   N No (discard)   ^C Cancel (back to editing)"
+                "Y Yes (save)   N No (discard)   ^Q Cancel (back to editing)"
             }
-            EditorMode::ConfirmDiscard => "Y Yes (discard)   N No (keep editing)",
-            EditorMode::Search { .. } => "Enter Find   ^C Cancel",
-            EditorMode::ReplaceQuery { .. } => "Enter Next stage   ^C Cancel",
-            EditorMode::ReplaceWith { .. } => "Enter Apply replace-all   ^C Cancel",
-            EditorMode::GotoLine { .. } => "Enter Jump   ^C Cancel",
-            _ => "^O Save  ^X Exit  ^W Search  ^\\ Replace  ^_ Goto  ^Z Undo  ^G Help",
+            EditorMode::Search { .. } => "Enter Find   ^Q Cancel",
+            EditorMode::ReplaceQuery { .. } => "Enter Next stage   ^Q Cancel",
+            EditorMode::ReplaceWith { .. } => "Enter Apply replace-all   ^Q Cancel",
+            EditorMode::GotoLine { .. } => "Enter Jump   ^Q Cancel",
+            _ => "^O Save  ^Q Exit  ^W Search  ^\\ Replace  ^_ Goto  ^Z Undo  ^G Help",
         };
         out.extend_from_slice(b"\x1b[2m");
         out.extend_from_slice(pad_to_width(hints, w).as_bytes());
@@ -1652,29 +1698,28 @@ impl EditorSession {
             "Editing:",
             "  printable chars insert at cursor",
             "  Enter splits the line at the cursor",
-            "  Backspace removes the char to the left (joins lines at col 0)",
-            "  Delete removes the char under the cursor (joins lines at EOL)",
-            "  Tab inserts a literal tab",
+            "  Backspace / Delete remove characters",
             "",
-            "Cut / paste:",
-            "  Ctrl-K cut current line (consecutive cuts accumulate)",
-            "  Ctrl-U paste the kill ring at the cursor",
+            "Cut / copy / paste:",
+            "  Ctrl-X cut selection       Ctrl-C copy selection",
+            "  Ctrl-V paste the kill ring at the cursor",
+            "  Ctrl-K cut from cursor to end of line (consecutive cuts accumulate)",
+            "  Ctrl-U kill from cursor to start of line",
             "",
             "Undo / redo:",
             "  Ctrl-Z undo last batch     Ctrl-Y redo",
             "",
             "Search / replace / goto:",
-            "  Ctrl-W incremental search (Enter jumps, ^C cancels)",
+            "  Ctrl-W incremental search (Enter jumps, ^Q cancels)",
             "  Ctrl-\\ replace-all  (find, then replacement, Enter applies)",
             "  Ctrl-_ jump to line number",
             "",
             "Save / exit:",
             "  Ctrl-O save and exit",
-            "  Ctrl-X exit (prompts on a dirty buffer)",
-            "  Ctrl-C cancel (prompts on a dirty buffer)",
+            "  Ctrl-Q exit (prompts on a dirty buffer)",
             "",
             "  Ctrl-L redraw screen     Ctrl-G this help",
-            "  Ctrl-T toggle mouse tracking (turn off to paste from clipboard)",
+            "  Ctrl-T toggle mouse tracking",
         ];
         for l in lines.iter() {
             out.extend_from_slice(pad_to_width(l, w).as_bytes());
@@ -1866,45 +1911,37 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_x_cancels_clean_buffer() {
+    fn ctrl_q_cancels_clean_buffer() {
         let mut s = EditorSession::new(EditorKind::RoomDesc, "hello", 80, 24);
-        assert_eq!(s.handle_key(&KeyEvent::CtrlX), EditorAction::Cancel);
+        assert_eq!(s.handle_key(&KeyEvent::CtrlQ), EditorAction::Cancel);
     }
 
     #[test]
-    fn ctrl_x_dirty_then_y_saves() {
+    fn ctrl_q_dirty_then_y_saves() {
         let mut s = EditorSession::new(EditorKind::RoomDesc, "hi", 80, 24);
         s.handle_key(&KeyEvent::Char('!'));
-        s.handle_key(&KeyEvent::CtrlX);
+        s.handle_key(&KeyEvent::CtrlQ);
         assert_eq!(s.handle_key(&KeyEvent::Char('Y')), EditorAction::Save);
     }
 
     #[test]
-    fn ctrl_x_dirty_then_n_discards() {
+    fn ctrl_q_dirty_then_n_discards() {
         let mut s = EditorSession::new(EditorKind::RoomDesc, "hi", 80, 24);
         s.handle_key(&KeyEvent::Char('!'));
-        s.handle_key(&KeyEvent::CtrlX);
+        s.handle_key(&KeyEvent::CtrlQ);
         assert_eq!(s.handle_key(&KeyEvent::Char('N')), EditorAction::Cancel);
     }
 
     #[test]
-    fn ctrl_c_dirty_then_n_keeps_editing() {
+    fn ctrl_q_dirty_then_cancel_keeps_editing() {
         let mut s = EditorSession::new(EditorKind::RoomDesc, "hi", 80, 24);
         s.handle_key(&KeyEvent::End);
         s.handle_key(&KeyEvent::Char('!'));
-        s.handle_key(&KeyEvent::CtrlC);
-        assert_eq!(s.handle_key(&KeyEvent::Char('N')), EditorAction::None);
-        // Buffer still dirty, can keep typing.
+        s.handle_key(&KeyEvent::CtrlQ);
+        // ^Q again cancels the prompt and returns to editing.
+        assert_eq!(s.handle_key(&KeyEvent::CtrlQ), EditorAction::None);
         s.handle_key(&KeyEvent::Char('?'));
         assert_eq!(s.take_text(), "hi!?");
-    }
-
-    #[test]
-    fn ctrl_c_dirty_then_y_discards() {
-        let mut s = EditorSession::new(EditorKind::RoomDesc, "hi", 80, 24);
-        s.handle_key(&KeyEvent::Char('!'));
-        s.handle_key(&KeyEvent::CtrlC);
-        assert_eq!(s.handle_key(&KeyEvent::Char('Y')), EditorAction::Cancel);
     }
 
     #[test]
@@ -1966,7 +2003,7 @@ mod tests {
         s.handle_key(&KeyEvent::Home);
         s.handle_key(&KeyEvent::CtrlK);
         assert_eq!(s.lines, vec![""]);
-        s.handle_key(&KeyEvent::CtrlU);
+        s.handle_key(&KeyEvent::CtrlV);
         assert_eq!(s.take_text(), "hello world");
     }
 
@@ -2177,16 +2214,23 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_k_cuts_selection_not_line() {
+    fn ctrl_x_cuts_selection() {
         let mut s = EditorSession::new(EditorKind::ItemNote, "hello world", 80, 24);
         for _ in 0..5 {
             s.handle_key(&KeyEvent::ShiftArrowRight);
         }
-        s.handle_key(&KeyEvent::CtrlK);
+        s.handle_key(&KeyEvent::CtrlX);
         assert_eq!(s.take_text(), " world");
-        s.handle_key(&KeyEvent::CtrlU);
-        // Paste re-inserts at the cursor.
+        s.handle_key(&KeyEvent::CtrlV);
         assert_eq!(s.take_text(), "hello world");
+    }
+
+    #[test]
+    fn ctrl_x_without_selection_is_noop() {
+        let mut s = EditorSession::new(EditorKind::ItemNote, "hello", 80, 24);
+        let action = s.handle_key(&KeyEvent::CtrlX);
+        assert_eq!(action, EditorAction::None);
+        assert_eq!(s.take_text(), "hello");
     }
 
     #[test]
@@ -2244,5 +2288,94 @@ mod tests {
         // The dim '>' marker comes from the legacy clip path; word wrap
         // should never emit it.
         assert!(!out.contains("\x1b[2m>\x1b[0m"), "found truncation marker in wrapped render");
+    }
+
+    #[test]
+    fn ctrl_u_kills_to_start_of_line() {
+        let mut s = EditorSession::new(EditorKind::ItemNote, "hello world", 80, 24);
+        s.cursor_col = 5;
+        s.handle_key(&KeyEvent::CtrlU);
+        assert_eq!(s.take_text(), " world");
+        assert_eq!(s.cursor_col, 0);
+    }
+
+    #[test]
+    fn ctrl_u_at_col_zero_is_noop() {
+        let mut s = EditorSession::new(EditorKind::ItemNote, "hello", 80, 24);
+        s.handle_key(&KeyEvent::CtrlU);
+        assert_eq!(s.take_text(), "hello");
+        assert_eq!(s.cursor_col, 0);
+    }
+
+    #[test]
+    fn ctrl_u_stores_in_kill_ring_and_ctrl_v_pastes() {
+        let mut s = EditorSession::new(EditorKind::ItemNote, "hello world", 80, 24);
+        s.cursor_col = 5;
+        s.handle_key(&KeyEvent::CtrlU);
+        assert_eq!(s.kill_ring, vec!["hello"]);
+        s.handle_key(&KeyEvent::End);
+        s.handle_key(&KeyEvent::CtrlV);
+        assert_eq!(s.take_text(), " worldhello");
+    }
+
+    #[test]
+    fn ctrl_c_copies_selection() {
+        let mut s = EditorSession::new(EditorKind::ItemNote, "hello world", 80, 24);
+        for _ in 0..5 {
+            s.handle_key(&KeyEvent::ShiftArrowRight);
+        }
+        s.handle_key(&KeyEvent::CtrlC);
+        assert_eq!(s.take_text(), "hello world");
+        assert_eq!(s.kill_ring, vec!["hello"]);
+    }
+
+    #[test]
+    fn ctrl_q_prompts_dirty_editor() {
+        let mut s = EditorSession::new(EditorKind::RoomDesc, "hi", 80, 24);
+        s.handle_key(&KeyEvent::Char('!'));
+        let action = s.handle_key(&KeyEvent::CtrlQ);
+        assert_eq!(action, EditorAction::None);
+        assert!(matches!(s.mode, EditorMode::ConfirmExitSaveOrDiscard));
+    }
+
+    #[test]
+    fn bracketed_paste_suppresses_auto_indent() {
+        let mut s = EditorSession::new(EditorKind::DgTriggerBody, "", 80, 24);
+        s.handle_key(&KeyEvent::BracketedPasteStart);
+        for c in "if %actor.is_pc%".chars() {
+            s.handle_key(&KeyEvent::Char(c));
+        }
+        s.handle_key(&KeyEvent::Enter);
+        for c in "  say hello".chars() {
+            s.handle_key(&KeyEvent::Char(c));
+        }
+        s.handle_key(&KeyEvent::Enter);
+        for c in "end".chars() {
+            s.handle_key(&KeyEvent::Char(c));
+        }
+        s.handle_key(&KeyEvent::BracketedPasteEnd);
+        assert_eq!(s.lines, vec!["if %actor.is_pc%", "  say hello", "end"]);
+    }
+
+    #[test]
+    fn bracketed_paste_is_single_undo() {
+        let mut s = EditorSession::new(EditorKind::ItemNote, "original", 80, 24);
+        s.handle_key(&KeyEvent::End);
+        s.handle_key(&KeyEvent::BracketedPasteStart);
+        for c in " pasted".chars() {
+            s.handle_key(&KeyEvent::Char(c));
+        }
+        s.handle_key(&KeyEvent::BracketedPasteEnd);
+        assert_eq!(s.take_text(), "original pasted");
+        s.handle_key(&KeyEvent::CtrlZ);
+        assert_eq!(s.take_text(), "original");
+    }
+
+    #[test]
+    fn stray_paste_end_is_noop() {
+        let mut s = EditorSession::new(EditorKind::ItemNote, "hello", 80, 24);
+        let action = s.handle_key(&KeyEvent::BracketedPasteEnd);
+        assert_eq!(action, EditorAction::None);
+        assert_eq!(s.take_text(), "hello");
     }
 }

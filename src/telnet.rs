@@ -81,7 +81,9 @@ pub const CTRL_D: u8 = 0x04; // EOF/logout
 pub const CTRL_E: u8 = 0x05; // End of line
 pub const CTRL_K: u8 = 0x0B; // Kill to end of line
 pub const CTRL_L: u8 = 0x0C; // Clear screen
+pub const CTRL_Q: u8 = 0x11; // Quit / exit editor
 pub const CTRL_U: u8 = 0x15; // Kill to beginning of line
+pub const CTRL_V: u8 = 0x16; // Paste from kill ring
 pub const CTRL_T: u8 = 0x14; // Transpose characters
 pub const CTRL_W: u8 = 0x17; // Delete word backward
 pub const CTRL_X: u8 = 0x18; // Exit editor (nano-style)
@@ -198,7 +200,9 @@ pub enum KeyEvent {
     CtrlE, // End of line
     CtrlK, // Kill to end of line
     CtrlL, // Clear screen/redraw
+    CtrlQ, // Quit / exit editor
     CtrlU, // Kill to beginning of line
+    CtrlV, // Paste from kill ring
     CtrlT, // Transpose characters
     CtrlW, // Delete word backward
     CtrlX, // Exit editor (nano)
@@ -218,6 +222,10 @@ pub enum KeyEvent {
     ShiftArrowRight,
     ShiftHome,
     ShiftEnd,
+    /// Start of a bracketed paste (DECSET 2004).
+    BracketedPasteStart,
+    /// End of a bracketed paste (DECSET 2004).
+    BracketedPasteEnd,
     /// Unknown/ignored
     Unknown,
 }
@@ -238,8 +246,10 @@ pub fn parse_key_byte(state: EscapeState, byte: u8) -> (EscapeState, Option<KeyE
                 CTRL_E => (EscapeState::Normal, Some(KeyEvent::CtrlE)),
                 CTRL_K => (EscapeState::Normal, Some(KeyEvent::CtrlK)),
                 CTRL_L => (EscapeState::Normal, Some(KeyEvent::CtrlL)),
+                CTRL_Q => (EscapeState::Normal, Some(KeyEvent::CtrlQ)),
                 CTRL_T => (EscapeState::Normal, Some(KeyEvent::CtrlT)),
                 CTRL_U => (EscapeState::Normal, Some(KeyEvent::CtrlU)),
+                CTRL_V => (EscapeState::Normal, Some(KeyEvent::CtrlV)),
                 CTRL_W => (EscapeState::Normal, Some(KeyEvent::CtrlW)),
                 CTRL_X => (EscapeState::Normal, Some(KeyEvent::CtrlX)),
                 CTRL_O => (EscapeState::Normal, Some(KeyEvent::CtrlO)),
@@ -325,6 +335,8 @@ pub fn parse_key_byte(state: EscapeState, byte: u8) -> (EscapeState, Option<KeyE
                         [b'3'] => KeyEvent::Delete,
                         [b'5'] => KeyEvent::PageUp,
                         [b'6'] => KeyEvent::PageDown,
+                        [b'2', b'0', b'0'] => KeyEvent::BracketedPasteStart,
+                        [b'2', b'0', b'1'] => KeyEvent::BracketedPasteEnd,
                         _ => KeyEvent::Unknown,
                     };
                     (EscapeState::Normal, Some(key))

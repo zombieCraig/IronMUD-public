@@ -2486,9 +2486,7 @@ pub async fn handle_connection(
                         .get(&connection_id)
                         .and_then(|s| s.raw_sender.clone())
                 } {
-                    // Disable X10 mouse tracking and clear the editor's
-                    // screen so the legacy prompt lands on a clean line.
-                    let _ = raw.send(b"\x1b[?1000l\x1b[2J\x1b[H".to_vec());
+                    let _ = raw.send(b"\x1b[?2004l\x1b[?1000l\x1b[2J\x1b[H".to_vec());
                 }
                 let _ = tx_client.send("Editing cancelled — no changes saved.\n".to_string());
                 let prompt = build_prompt(&connection_id, &connections, &state);
@@ -2516,9 +2514,7 @@ pub async fn handle_connection(
                         .get(&connection_id)
                         .and_then(|s| s.raw_sender.clone())
                 } {
-                    // Disable X10 mouse tracking and clear the editor's
-                    // screen so the legacy prompt lands on a clean line.
-                    let _ = raw.send(b"\x1b[?1000l\x1b[2J\x1b[H".to_vec());
+                    let _ = raw.send(b"\x1b[?2004l\x1b[?1000l\x1b[2J\x1b[H".to_vec());
                 }
                 let msg = match (result, mode.as_deref()) {
                     (Some(_), Some("collecting_desc")) => "Description saved.\n".to_string(),
@@ -4622,10 +4618,13 @@ async fn handle_read_char_mode(
                                 | KeyEvent::ShiftArrowLeft
                                 | KeyEvent::ShiftArrowRight
                                 | KeyEvent::ShiftHome
-                                | KeyEvent::ShiftEnd => {
-                                    // Shift-modified navigation extends a
-                                    // selection inside the modern editor;
-                                    // outside, ignore.
+                                | KeyEvent::ShiftEnd
+                                | KeyEvent::CtrlQ
+                                | KeyEvent::CtrlV
+                                | KeyEvent::BracketedPasteStart
+                                | KeyEvent::BracketedPasteEnd => {
+                                    // Modern-editor-only keys; ignore in
+                                    // readline mode.
                                 }
                             }
                         }

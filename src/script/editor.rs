@@ -80,7 +80,7 @@ pub fn register(engine: &mut Engine, connections: SharedConnections) {
             let mut initial = editor.take_output();
             // Enable X10 mouse tracking — left-clicks position the cursor.
             // Disabled symmetrically in the dispatcher's exit branches.
-            let mut payload = b"\x1b[?1000h".to_vec();
+            let mut payload = b"\x1b[?1000h\x1b[?2004h".to_vec();
             payload.append(&mut initial);
             session.modern_editor = Some(editor);
 
