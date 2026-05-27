@@ -2618,12 +2618,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
                 if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
                     if let Some(et) = EffectType::from_str(&effect_type_str) {
-                        item.liquid_effects.push(ItemEffect {
-                            effect_type: et,
-                            magnitude: magnitude as i32,
-                            duration: duration as i32,
-                            script_callback: None,
-                        });
+                        if let Some(existing) = item.liquid_effects.iter_mut().find(|e| e.effect_type == et) {
+                            existing.magnitude = magnitude as i32;
+                            existing.duration = duration as i32;
+                        } else {
+                            item.liquid_effects.push(ItemEffect {
+                                effect_type: et,
+                                magnitude: magnitude as i32,
+                                duration: duration as i32,
+                                script_callback: None,
+                            });
+                        }
                         return cloned_db.save_item_data(item).is_ok();
                     }
                 }

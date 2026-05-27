@@ -123,6 +123,8 @@ pub struct RoomFlagsRequest {
     pub soundproof: Option<bool>,
     #[serde(default, alias = "no_track")]
     pub notrack: Option<bool>,
+    #[serde(default, alias = "norecall")]
+    pub no_recall: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -510,6 +512,7 @@ async fn create_room(
             no_magic: req.flags.no_magic.unwrap_or(area_defaults.no_magic),
             soundproof: req.flags.soundproof.unwrap_or(area_defaults.soundproof),
             notrack: req.flags.notrack.unwrap_or(area_defaults.notrack),
+            no_recall: req.flags.no_recall.unwrap_or(area_defaults.no_recall),
         },
         vnum: req.vnum,
         area_id,
@@ -715,6 +718,9 @@ async fn update_room(
         }
         if let Some(v) = flags.notrack {
             room.flags.notrack = v;
+        }
+        if let Some(v) = flags.no_recall {
+            room.flags.no_recall = v;
         }
     }
     if room.flags.liveable && room.living_capacity <= 0 {

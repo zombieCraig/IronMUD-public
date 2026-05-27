@@ -432,7 +432,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         .register_get("death", |f: &mut RoomFlags| f.death)
         .register_get("no_magic", |f: &mut RoomFlags| f.no_magic)
         .register_get("soundproof", |f: &mut RoomFlags| f.soundproof)
-        .register_get("notrack", |f: &mut RoomFlags| f.notrack);
+        .register_get("notrack", |f: &mut RoomFlags| f.notrack)
+        .register_get("no_recall", |f: &mut RoomFlags| f.no_recall);
 
     // Register ExtraDesc type with getters
     engine

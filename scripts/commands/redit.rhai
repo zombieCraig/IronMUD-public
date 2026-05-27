@@ -905,6 +905,9 @@ fn run_command(args, connection_id) {
         if flags.tunnel { flag_str += "tunnel "; }
         if flags.death { flag_str += "death "; }
         if flags.no_magic { flag_str += "no_magic "; }
+        if flags.soundproof { flag_str += "soundproof "; }
+        if flags.notrack { flag_str += "notrack "; }
+        if flags.no_recall { flag_str += "no_recall "; }
 
         if flag_str == "" {
             output += "  (none)\n";
@@ -1170,6 +1173,10 @@ fn run_command(args, connection_id) {
         let notrack_plain = if flags.notrack { "ON" } else { "off" };
         let notrack_toggle = mxp_or(mxp_send("redit flag notrack", notrack_text), notrack_plain, connection_id);
 
+        let no_recall_text = if flags.no_recall { "[ON]" } else { "[off]" };
+        let no_recall_plain = if flags.no_recall { "ON" } else { "off" };
+        let no_recall_toggle = mxp_or(mxp_send("redit flag no_recall", no_recall_text), no_recall_plain, connection_id);
+
         output += "Combat Zone:         " + zone_toggle + "  (cycles: inherit->pve->safe->pvp)\n\n";
         output += "  dark:              " + dark_toggle + "  (room is too dark to see without light)\n";
         output += "  no_mob:            " + nomob_toggle + "  (NPCs cannot enter)\n";
@@ -1192,6 +1199,7 @@ fn run_command(args, connection_id) {
         output += "  no_magic:          " + no_magic_toggle + "  (suppresses spellcasting from this room)\n";
         output += "  soundproof:        " + soundproof_toggle + "  (blocks shouts from leaking in or out)\n";
         output += "  notrack:           " + notrack_toggle + "  (defeats the track skill in this room)\n";
+        output += "  no_recall:         " + no_recall_toggle + "  (prevents recall/teleport out of this room)\n";
         output += "\nClick a flag to toggle, or use 'redit flag <name> [on|off]'.";
         output += "\nUse 'redit zone [pve|safe|pvp|inherit]' for combat zone.";
 
@@ -1211,7 +1219,7 @@ fn run_command(args, connection_id) {
             return;
         }
 
-        let valid_flags = ["dark", "no_mob", "nomob", "indoors", "underwater", "shallow_water", "deep_water", "city", "no_windows", "nowindows", "difficult_terrain", "dirt_floor", "post_office", "bank", "garden", "spawn_point", "liveable", "livable", "private", "private_room", "tunnel", "death", "no_magic", "nomagic", "soundproof", "notrack", "no_track", "safe", "peaceful"];
+        let valid_flags = ["dark", "no_mob", "nomob", "indoors", "underwater", "shallow_water", "deep_water", "city", "no_windows", "nowindows", "difficult_terrain", "dirt_floor", "post_office", "bank", "garden", "spawn_point", "liveable", "livable", "private", "private_room", "tunnel", "death", "no_magic", "nomagic", "soundproof", "notrack", "no_track", "no_recall", "norecall", "safe", "peaceful"];
 
         // Split into flag names and optional trailing on/off value.
         let flag_names = [];

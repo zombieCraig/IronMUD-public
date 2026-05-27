@@ -234,6 +234,7 @@ pub(crate) fn apply_named_room_flag(flags: &mut RoomFlags, name: &str) -> bool {
         "no_magic" => flags.no_magic = true,
         "soundproof" => flags.soundproof = true,
         "notrack" | "no_track" => flags.notrack = true,
+        "no_recall" | "norecall" => flags.no_recall = true,
         _ => return false,
     }
     true

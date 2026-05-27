@@ -26,6 +26,13 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Block if room prevents recall
+    let current_room = get_room_data(char.current_room_id);
+    if current_room != () && get_room_flag(char.current_room_id, "no_recall") {
+        send_client_message(connection_id, "A mysterious force prevents you from recalling!");
+        return;
+    }
+
     // Block if in combat
     if is_in_combat(char.name) {
         send_client_message(connection_id, "You can't recall while in combat! Try 'flee' or 'retreat' first.");

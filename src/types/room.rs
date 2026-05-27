@@ -276,6 +276,8 @@ pub struct RoomFlags {
     pub soundproof: bool, // Blocks shouts from leaking in/out (Circle ROOM_SOUNDPROOF)
     #[serde(default)]
     pub notrack: bool, // Defeats the track skill (Circle ROOM_NOTRACK)
+    #[serde(default)]
+    pub no_recall: bool, // Prevents recall (teleport) out of this room
 }
 
 impl RoomFlags {
@@ -309,6 +311,7 @@ impl RoomFlags {
         self.no_magic |= defaults.no_magic;
         self.soundproof |= defaults.soundproof;
         self.notrack |= defaults.notrack;
+        self.no_recall |= defaults.no_recall;
     }
 }
 
