@@ -36,7 +36,20 @@ pub(super) fn complete_achedit(words: &[&str], completing_word: bool, achievemen
         // achedit <subcmd/key> - show subcommands
         2 if !completing_word => all_static(ACHEDIT_SUBCOMMANDS, CompletionType::AcheditSubcommand),
         // achedit <key> <partial_subcmd>
-        3 if completing_word => filter_static(ACHEDIT_SUBCOMMANDS, &partial, CompletionType::AcheditSubcommand),
+        // When the partial exactly matches a subcommand with sub-options, advance
+        // to showing those sub-options instead of just confirming the word.
+        3 if completing_word => {
+            let p = partial.as_str();
+            if p == "category" {
+                all_static(ACHIEVEMENT_CATEGORIES, CompletionType::AchievementCategory)
+            } else if p == "reward" {
+                all_static(ACHIEVEMENT_REWARD_ACTIONS, CompletionType::AchievementRewardAction)
+            } else if p == "criterion" {
+                all_static(ACHIEVEMENT_CRITERION_ACTIONS, CompletionType::AchievementCriterionAction)
+            } else {
+                filter_static(ACHEDIT_SUBCOMMANDS, &partial, CompletionType::AcheditSubcommand)
+            }
+        }
         // achedit <key> category <partial_cat>
         4 if completing_word && words[2].to_lowercase() == "category" => {
             filter_static(ACHIEVEMENT_CATEGORIES, &partial, CompletionType::AchievementCategory)

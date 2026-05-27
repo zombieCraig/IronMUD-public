@@ -181,7 +181,7 @@ fn handle_reward(key, parts, connection_id) {
 
 fn handle_criterion(key, parts, connection_id) {
     if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: achedit <key> criterion manual|counter|skill|recipe|lease|gold ...");
+        send_criterion_help(connection_id);
         return;
     }
     let kind = parts[2].to_lower();
@@ -277,6 +277,48 @@ fn show_achievement(key, connection_id) {
     }
 
     send_client_message(connection_id, out);
+}
+
+fn send_criterion_help(connection_id) {
+    let lines = [
+        olc::c_header("Achievement Criteria:", connection_id),
+        "",
+        olc::c_label("  manual", connection_id) + "   — Awarded by script or admin only.",
+        "    Syntax:  achedit <key> criterion manual",
+        "    Then wire a DG trigger (e.g. mob death) that runs:",
+        "      award_achievement %actor.name% <key>",
+        "    Or from Rhai: award_achievement(player_name, \"<key>\")",
+        "",
+        olc::c_label("  counter", connection_id) + "  — Tracks a named counter; unlocks at threshold.",
+        "    Syntax:  achedit <key> criterion counter <counter_key> <threshold>",
+        "    Example: achedit boss_slayer criterion counter kills.bosses 5",
+        "    Engine fires automatically from combat/scripts. Or bump manually:",
+        "      DG:   nop %actor.name%  (use notify_achievement_counter in Rhai)",
+        "      Rhai: notify_achievement_counter(player_name, \"kills.bosses\", 1)",
+        "",
+        olc::c_label("  skill", connection_id) + "    — Unlocks when a skill reaches a level.",
+        "    Syntax:  achedit <key> criterion skill <skill_name> <level>",
+        "    Example: achedit master_mage criterion skill fireball 100",
+        "    Engine checks automatically when skills are set.",
+        "",
+        olc::c_label("  recipe", connection_id) + "   — Unlocks when a recipe is learned.",
+        "    Syntax:  achedit <key> criterion recipe <recipe_vnum>",
+        "    Example: achedit apprentice_smith criterion recipe blacksmith:sword",
+        "    Engine checks automatically on learn.",
+        "",
+        olc::c_label("  lease", connection_id) + "    — Unlocks when the player owns a lease.",
+        "    Syntax:  achedit <key> criterion lease [area_vnum]",
+        "    Example: achedit homeowner criterion lease",
+        "    Omit vnum to match any area. Engine checks on lease purchase.",
+        "",
+        olc::c_label("  gold", connection_id) + "     — Unlocks when gold held reaches a high-water mark.",
+        "    Syntax:  achedit <key> criterion gold <amount>",
+        "    Example: achedit wealthy criterion gold 10000",
+        "    Engine checks automatically when gold changes.",
+    ];
+    let s = "";
+    for l in lines { s += l + "\n"; }
+    send_client_message(connection_id, s);
 }
 
 fn send_help(connection_id) {

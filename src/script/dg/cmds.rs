@@ -575,7 +575,7 @@ fn cmd_dg_cast(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
         remove_dg_effect(removed, &target_tok, ctx);
         return Ok(());
     }
-    apply_dg_effect(&spell, &target_tok, 1, default_dg_cast_duration(), ctx)
+    apply_dg_effect(&spell, &target_tok, 1, default_dg_cast_duration(), false, ctx)
 }
 
 /// Map a stock cure/remove spell name to the EffectType it strips.
@@ -715,19 +715,24 @@ fn apply_dg_heal(target_tok: &str, amount: i32, ctx: &EvalCtx) {
     }
 }
 
-/// `dg_affect <target> <effect> <magnitude> <duration>` — direct buff.
+/// `dg_affect <target> <effect> <magnitude> [<duration>] [noresist]` — direct buff.
 /// Magnitude and duration are optional; defaults are 1 and 60s.
+/// `noresist` bypasses any resistance roll (currently only stun rolls resistance).
 fn cmd_dg_affect(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     let mut tok = rest.split_whitespace();
     let target_tok = tok.next().unwrap_or("").to_string();
     let effect = tok.next().unwrap_or("").to_string();
     let magnitude: i32 = tok.next().and_then(|s| s.parse().ok()).unwrap_or(1);
-    let duration: i32 = tok.next().and_then(|s| s.parse().ok()).unwrap_or(60);
+    let remaining: Vec<&str> = tok.collect();
+    let noresist = remaining.iter().any(|s| s.eq_ignore_ascii_case("noresist"));
+    let duration: i32 = remaining.iter()
+        .find_map(|s| s.parse().ok())
+        .unwrap_or(60);
     if target_tok.is_empty() || effect.is_empty() {
         super::warn_builder(ctx, "dg_affect: needs target and effect");
         return Ok(());
     }
-    apply_dg_effect(&effect, &target_tok, magnitude, duration, ctx)
+    apply_dg_effect(&effect, &target_tok, magnitude, duration, noresist, ctx)
 }
 
 fn default_dg_cast_duration() -> i32 {
@@ -781,6 +786,7 @@ fn apply_dg_effect(
     target_tok: &str,
     magnitude: i32,
     duration: i32,
+    noresist: bool,
     ctx: &EvalCtx,
 ) -> Result<(), String> {
     // Stun routes through the combat stun_rounds_remaining mechanic
@@ -788,7 +794,7 @@ fn apply_dg_effect(
     // chance (default 75%). StatusResistance + Luck gate application.
     if effect_name.eq_ignore_ascii_case("stun") {
         let base_chance = if duration > 0 { duration } else { 75 };
-        return apply_dg_stun(target_tok, magnitude, base_chance, ctx);
+        return apply_dg_stun(target_tok, magnitude, base_chance, noresist, ctx);
     }
 
     let effect = match crate::EffectType::from_str(effect_name) {
@@ -846,7 +852,7 @@ fn apply_dg_effect(
 /// Apply combat stun to a target. Magnitude = number of rounds (capped at 5).
 /// `base_chance` (0-100) is passed through `roll_status_application` so
 /// `StatusResistance` buffs targeting "stun" (or "*") and `Luck` can resist.
-fn apply_dg_stun(target_tok: &str, rounds: i32, base_chance: i32, ctx: &EvalCtx) -> Result<(), String> {
+fn apply_dg_stun(target_tok: &str, rounds: i32, base_chance: i32, noresist: bool, ctx: &EvalCtx) -> Result<(), String> {
     let rounds = rounds.max(1).min(5);
     let Some(actor) = resolve_target(target_tok, ctx) else {
         return Ok(());
@@ -855,7 +861,7 @@ fn apply_dg_stun(target_tok: &str, rounds: i32, base_chance: i32, ctx: &EvalCtx)
     match actor {
         ActorRef::Mob { mobile_id, .. } => {
             if let Ok(Some(mut mob)) = ctx.db.get_mobile_data(&mobile_id) {
-                if !crate::script::combat::roll_status_application(&mob.active_buffs, crate::EffectType::Stun, base_chance, &mut rng) {
+                if !noresist && !crate::script::combat::roll_status_application(&mob.active_buffs, crate::EffectType::Stun, base_chance, &mut rng) {
                     return Ok(());
                 }
                 mob.combat.stun_rounds_remaining =
@@ -865,7 +871,7 @@ fn apply_dg_stun(target_tok: &str, rounds: i32, base_chance: i32, ctx: &EvalCtx)
         }
         ActorRef::Player { name, .. } => {
             if let Ok(Some(mut ch)) = ctx.db.get_character_data(&name) {
-                if !crate::script::combat::roll_status_application(&ch.active_buffs, crate::EffectType::Stun, base_chance, &mut rng) {
+                if !noresist && !crate::script::combat::roll_status_application(&ch.active_buffs, crate::EffectType::Stun, base_chance, &mut rng) {
                     return Ok(());
                 }
                 ch.combat.stun_rounds_remaining =
