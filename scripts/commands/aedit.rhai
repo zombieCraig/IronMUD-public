@@ -129,6 +129,7 @@ fn is_subcommand(arg) {
     if cmd == "default_flags" { return true; }
     if cmd == "immigration" { return true; }
     if cmd == "donation" { return true; }
+    if cmd == "starting_room" { return true; }
     return false;
 }
 
@@ -262,12 +263,18 @@ fn run_command(args, connection_id) {
         output += "  aedit flags [climate_controlled] [on|off]\n";
         output += "  aedit default_flags [<flag>] [on|off]  (template flags for new rooms)\n";
         output += "  aedit immigration [...]  (migrant spawning config)\n";
-        output += "  aedit donation <vnum>|clear  (donation room for `donate <item>`)";
+        output += "  aedit donation <vnum>|clear  (donation room for `donate <item>`)\n";
+        output += "  aedit starting_room <vnum>|clear  (entry point for `agoto`)";
 
         // Donation room summary
         let donation_vnum = get_area_donation_room_vnum(area.id);
         let donation_display = if donation_vnum == "" { "(disabled)" } else { donation_vnum };
-        output += "\n" + olc::c_label("donation:  ", connection_id) + olc::c_value(donation_display, connection_id);
+        output += "\n" + olc::c_label("donation:      ", connection_id) + olc::c_value(donation_display, connection_id);
+
+        // Starting room summary
+        let starting_vnum = get_area_starting_room_vnum(area.id);
+        let starting_display = if starting_vnum == "" { "(not set)" } else { starting_vnum };
+        output += "\n" + olc::c_label("starting_room: ", connection_id) + olc::c_value(starting_display, connection_id);
 
         // Immigration summary block
         output += "\n\n" + olc::c_label("--- Migrant Immigration ---", connection_id) + "\n";
@@ -545,6 +552,11 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "starting_room" {
+        handle_starting_room_subcommand(area, remaining, connection_id);
+        return;
+    }
+
     if subcommand == "caps" {
         handle_caps_subcommand(area, remaining, connection_id);
         return;
@@ -666,6 +678,45 @@ fn handle_donation_subcommand(area, args, connection_id) {
         send_client_message(connection_id, "Donation room set to: " + args[0] + " (" + dest.name + ")");
     } else {
         send_client_message(connection_id, "Failed to update donation room.");
+    }
+}
+
+// === Starting room subcommand handler ===
+//   aedit starting_room                → show current setting
+//   aedit starting_room <vnum>         → set starting room
+//   aedit starting_room clear|none|off → clear starting room
+fn handle_starting_room_subcommand(area, args, connection_id) {
+    if args.len() == 0 {
+        let cur = get_area_starting_room_vnum(area.id);
+        if cur == "" {
+            send_client_message(connection_id, "Starting room: (not set)");
+        } else {
+            send_client_message(connection_id, "Starting room: " + cur);
+        }
+        send_client_message(connection_id, "Usage: aedit starting_room <vnum>|clear");
+        return;
+    }
+
+    let arg = args[0].to_lower();
+    if arg == "clear" || arg == "none" || arg == "off" {
+        if set_area_starting_room(area.id, "") {
+            send_client_message(connection_id, "Starting room cleared.");
+        } else {
+            send_client_message(connection_id, "Failed to update starting room.");
+        }
+        return;
+    }
+
+    let dest = get_room_by_vnum(args[0]);
+    if dest == () {
+        send_client_message(connection_id, "No room with vnum '" + args[0] + "'.");
+        return;
+    }
+
+    if set_area_starting_room(area.id, args[0]) {
+        send_client_message(connection_id, "Starting room set to: " + args[0] + " (" + dest.name + ")");
+    } else {
+        send_client_message(connection_id, "Failed to update starting room.");
     }
 }
 

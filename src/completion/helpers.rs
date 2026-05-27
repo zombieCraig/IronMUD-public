@@ -17,7 +17,7 @@ pub fn get_argument_context(command: &str) -> ArgumentContext {
         "medit" | "mspawn" | "mdelete" | "mrefresh" => ArgumentContext::MobileVnum,
 
         // Area prefix commands
-        "aedit" | "adelete" | "spedit" | "areset" | "acreate" => ArgumentContext::AreaPrefix,
+        "aedit" | "adelete" | "spedit" | "areset" | "acreate" | "agoto" => ArgumentContext::AreaPrefix,
 
         // Direction commands
         "go" | "dig" | "snipe" => ArgumentContext::Direction,

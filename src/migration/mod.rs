@@ -1491,6 +1491,7 @@ mod pair_housing_tests {
             guard_wage_per_hour: 0,
             healer_wage_per_hour: 0,
             donation_room_vnum: None,
+            starting_room_vnum: None,
             scavenger_wage_per_hour: 0,
             max_rooms: None,
             max_items: None,

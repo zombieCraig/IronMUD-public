@@ -468,6 +468,8 @@ pub const AEDIT_SUBCOMMANDS: &[&str] = &[
     "zone",
     "flags",
     "immigration",
+    "donation",
+    "starting_room",
 ];
 
 /// Permission levels

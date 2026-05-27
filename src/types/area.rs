@@ -184,6 +184,9 @@ pub struct AreaData {
     /// (default 1800) via the donation-decay tick.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub donation_room_vnum: Option<String>,
+    /// Optional vnum of a room that `agoto <area>` teleports builders to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub starting_room_vnum: Option<String>,
     /// Hourly scavenging wage for migrant scavengers, paid only while not at
     /// their home room (they have to actually be out scrounging). Default 0.
     #[serde(default)]

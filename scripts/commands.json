@@ -187,6 +187,10 @@
     "access": "builder",
     "description": "Delete an area"
   },
+  "agoto": {
+    "access": "builder",
+    "description": "Teleport to an area's starting room"
+  },
   "setbuilder": {
     "access": "user",
     "description": "Manage builder access (behavior depends on server settings)"

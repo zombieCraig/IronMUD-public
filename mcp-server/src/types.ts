@@ -16,6 +16,7 @@ export interface Area {
   immigration_enabled?: boolean;
   immigration_room_vnum?: string;
   donation_room_vnum?: string | null;
+  starting_room_vnum?: string | null;
   immigration_name_pool?: string;
   immigration_visual_profile?: string;
   migration_interval_days?: number;
@@ -574,6 +575,7 @@ export interface UpdateAreaRequest {
   immigration_vampire_chance?: number;
   migrant_starting_gold?: GoldRange;
   donation_room_vnum?: string | null;
+  starting_room_vnum?: string | null;
   guard_wage_per_hour?: number;
   healer_wage_per_hour?: number;
   scavenger_wage_per_hour?: number;

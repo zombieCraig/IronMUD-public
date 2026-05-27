@@ -96,6 +96,9 @@ pub struct UpdateAreaRequest {
     /// Optional vnum of a room that accepts `donate <item>`. Empty string clears
     /// (donations refused). Absent leaves the existing setting alone.
     pub donation_room_vnum: Option<String>,
+    /// Optional vnum of a room that `agoto <area>` teleports builders to.
+    /// Empty string clears. Absent leaves the existing setting alone.
+    pub starting_room_vnum: Option<String>,
     /// Per-flag overrides for the area's default_room_flags template.
     /// Absent keys preserve current state; unknown keys are ignored.
     pub default_room_flags: Option<std::collections::HashMap<String, bool>>,
@@ -336,6 +339,7 @@ async fn create_area(
         guard_wage_per_hour: 0,
         healer_wage_per_hour: 0,
             donation_room_vnum: None,
+            starting_room_vnum: None,
         scavenger_wage_per_hour: 0,
         max_rooms: None,
         max_items: None,
@@ -412,6 +416,9 @@ async fn update_area(
     }
     if let Some(v) = req.donation_room_vnum {
         area.donation_room_vnum = if v.trim().is_empty() { None } else { Some(v) };
+    }
+    if let Some(v) = req.starting_room_vnum {
+        area.starting_room_vnum = if v.trim().is_empty() { None } else { Some(v) };
     }
     if let Some(v) = req.immigration_name_pool {
         area.immigration_name_pool = v;
