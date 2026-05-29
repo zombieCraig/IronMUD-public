@@ -66,6 +66,7 @@ pub fn dispatch(line: &str, ctx: &EvalCtx) -> Result<(), String> {
         "dg_cast" => cmd_dg_cast(rest, ctx),
         "dg_affect" => cmd_dg_affect(rest, ctx),
         "morality" | "dg_morality" => cmd_dg_morality(rest, ctx),
+        "raise_dead" => cmd_raise_dead(rest, ctx),
         "force" | "mforce" | "oforce" | "wforce" => cmd_force(rest, ctx),
 
         // ---- Phase 4 ----
@@ -157,6 +158,7 @@ pub const COMMANDS: &[&str] = &[
     "log", "mlog", "olog", "wlog",
     "dg_cast", "dg_affect",
     "morality", "dg_morality",
+    "raise_dead",
     "force", "mforce", "oforce", "wforce",
     "mremember", "mforget", "mhunt",
     "at", "mat", "oat", "wat",
@@ -190,6 +192,7 @@ pub(super) fn is_known_dg_verb(verb: &str) -> bool {
         | "log" | "mlog" | "olog" | "wlog"
         | "dg_cast" | "dg_affect"
         | "morality" | "dg_morality"
+        | "raise_dead"
         | "force" | "mforce" | "oforce" | "wforce"
         | "mremember" | "mforget" | "mhunt"
         | "at" | "mat" | "oat" | "wat"
@@ -776,6 +779,43 @@ fn cmd_dg_morality(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
             // Mobs don't carry morality in this slice.
             tracing::debug!("DG morality: mob target ignored (no morality field on mobs)");
         }
+    }
+    Ok(())
+}
+
+/// `raise_dead <corpse_keyword> [mana_cost] [morality_cost] [mastery_xp]` —
+/// raise a charmed undead minion from a corpse in the actor's room. Acts on
+/// `%actor%` (the player who spoke the artifact's word), so a builder wires it
+/// from an item's OnCommand trigger: `raise_dead %arg% 70 3 25`. The mechanic
+/// itself lives in [`crate::necromancy`], shared with the Rhai binding
+/// `raise_dead_from_corpse`. Defaults match that binding's documented values.
+fn cmd_raise_dead(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
+    let mut tok = rest.split_whitespace();
+    let corpse_kw = tok.next().unwrap_or("").to_string();
+    let mana_cost: i32 = tok.next().and_then(|s| s.parse().ok()).unwrap_or(70);
+    let morality_cost: i32 = tok.next().and_then(|s| s.parse().ok()).unwrap_or(3);
+    let mastery_xp: i32 = tok.next().and_then(|s| s.parse().ok()).unwrap_or(25);
+
+    // Only a player can raise the dead; %actor% is the one who spoke the word.
+    let Some(ActorRef::Player { connection_id, name, .. }) = ctx.actor.clone() else {
+        return Ok(());
+    };
+    if name.is_empty() {
+        return Ok(());
+    }
+
+    let outcome = crate::necromancy::raise_dead_from_corpse(
+        &ctx.db,
+        &name,
+        &corpse_kw,
+        crate::necromancy::RaiseParams { mana_cost, morality_cost, mastery_xp },
+    );
+
+    if !outcome.caster_msg.is_empty() && !connection_id.is_empty() {
+        crate::send_client_message(&ctx.connections, connection_id, outcome.caster_msg);
+    }
+    if let (Some(room_msg), Some(room_id)) = (outcome.room_msg, outcome.room_id) {
+        crate::broadcast_to_room(&ctx.connections, room_id, room_msg, Some(&name));
     }
     Ok(())
 }

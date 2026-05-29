@@ -322,6 +322,14 @@ fn run_trigger(item_id, connection_id, context) {
 }
 ```
 
+### Artifact granting a spoken word (DG `on_command`)
+
+To make a carried item grant a special word that triggers an effect — e.g. a Book of the
+Dead whose holder speaks `raise <corpse>` to raise an undead minion — use a DG `on_command`
+trigger on the item. It fires only while the item is carried (possession enforced for free)
+and invokes a core capability verb such as `raise_dead`. See the worked example and the
+`raise_dead` reference in [dg-scripts.md](dg-scripts.md#necromancy-raise_dead).
+
 ## NPC Trigger Examples
 
 ### Guard Greeting (on_greet)

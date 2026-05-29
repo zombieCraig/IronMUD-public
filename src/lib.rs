@@ -29,6 +29,7 @@ pub mod init;
 pub mod matrix;
 pub mod migration;
 pub mod morality;
+pub mod necromancy;
 pub mod quest;
 pub mod ratelimit;
 pub mod readline;

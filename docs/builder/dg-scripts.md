@@ -476,6 +476,25 @@ Damage table covers `fireball`, `magic_missile`, `lightning_bolt`, `harm`, `caus
 
 `EffectType` aliases recognised: `armor` → ArmorClassBoost, `refresh` → StaminaRestore, `true_seeing` / `sense_life` → DetectInvisible, `stone_skin` / `protection_from_*` → DamageReduction, `infravision` → NightVision, `bless`, `silence`, `haste`, `slow`, `regeneration`, `sanctuary`, `poison`, `curse`, `blind`, `sleep`, `invisibility`, `detect_invisible`, `detect_magic`, etc.
 
+### Necromancy: `raise_dead`
+
+```
+raise_dead %arg%                              * raise the corpse named in %arg%, default costs
+raise_dead %arg% 70 3 25                      * raise <corpse> mana_cost=70 morality_cost=3 mastery_xp=25
+```
+
+`raise_dead <corpse_keyword> [mana_cost] [morality_cost] [mastery_xp]` raises a **charmed undead minion** from a non-player corpse in `%actor%`'s room and binds it permanently to the actor (released on the actor's death/quit, like any charm). It acts on `%actor%`, so the idiom is to fire it from an artifact's `on_command` trigger — see the worked example below. Defaults when args are omitted: `mana=70 morality=3 mastery_xp=25`.
+
+Rules enforced by the capability (no scripting needed):
+
+- **Non-player corpses only**, and only if the corpse carries a source prototype vnum (set automatically when a mob dies).
+- **Level cap:** the corpse's creature level must be ≤ the actor's `necromancy` skill level.
+- **Success roll** scales with the actor's `magic` skill: `clamp(40 + magic*4 − corpse_level*3, 5, 95)%`. Works at magic 0 (low odds) — this is an *artifact* ability, not a class spell, so non-mages can use it.
+- **Minion cap** scales with mastery: `1 + necromancy/3` simultaneous bound dead.
+- On **success**: the corpse is consumed, a 60%-HP "risen corpse of …" appears charmed to the actor, `mana_cost` mana is spent, morality drops by `morality_cost`, and `necromancy` gains `mastery_xp` (raising the cap over time). A **botched** roll still spends mana but raises nothing.
+
+This is the *capability* layer in core (`src/necromancy.rs`); the same mechanic is exposed to Rhai as `raise_dead_from_corpse(name, keyword, mana, morality, xp)`. Per-artifact config — which item grants it and the spoken word — lives entirely on the item's trigger (below), so no vnum is hardcoded in core.
+
 ### Force / order
 
 ```
@@ -730,6 +749,25 @@ end
 %send% %actor% The temple door swings open.
 return 1
 ```
+
+### Artifact that grants a spoken word (Book of the Dead)
+
+The reusable "hold an item, speak a word, trigger an effect" pattern: put an `on_command`
+trigger on the item. It only fires while the item is **carried**, so possession is enforced
+for free — no vnum check needed. Here the word `raise` invokes the necromancy capability.
+
+```
+* on_command 'raise'  (on the Book of the Dead item)
+if %cmd% /= raise
+  raise_dead %arg% 70 3 25
+  return 0
+end
+return 1
+```
+
+Any artifact can reuse this shape with its own word and its own capability verb. Pair with an
+`on_examine` trigger for lore ("Hold it and speak the word to raise the dead — but the act
+stains the soul.").
 
 ### Combat heal pulse
 

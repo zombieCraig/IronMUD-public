@@ -622,6 +622,50 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
         }
     });
 
+    // raise_dead_from_corpse(char_name, corpse_keyword, mana_cost, morality_cost, mastery_xp)
+    //   -> #{ success, message, room_message, minion_id }
+    // Rhai-side twin of the DG `raise_dead` verb; both call the shared
+    // `crate::necromancy` capability so the layers stay in parity. The caller
+    // is responsible for relaying `message` to the caster and broadcasting
+    // `room_message` to the room.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "raise_dead_from_corpse",
+        move |char_name: String,
+              corpse_keyword: String,
+              mana_cost: i64,
+              morality_cost: i64,
+              mastery_xp: i64|
+              -> rhai::Dynamic {
+            let outcome = crate::necromancy::raise_dead_from_corpse(
+                &cloned_db,
+                &char_name,
+                &corpse_keyword,
+                crate::necromancy::RaiseParams {
+                    mana_cost: mana_cost as i32,
+                    morality_cost: morality_cost as i32,
+                    mastery_xp: mastery_xp as i32,
+                },
+            );
+            let mut map = rhai::Map::new();
+            map.insert("success".into(), outcome.success.into());
+            map.insert("message".into(), outcome.caster_msg.into());
+            map.insert(
+                "room_message".into(),
+                outcome.room_msg.unwrap_or_default().into(),
+            );
+            map.insert(
+                "minion_id".into(),
+                outcome
+                    .minion_id
+                    .map(|u| u.to_string())
+                    .unwrap_or_default()
+                    .into(),
+            );
+            rhai::Dynamic::from_map(map)
+        },
+    );
+
     // refresh_mobile_from_prototype(mobile_id) -> MobileData or ()
     let cloned_db = db.clone();
     engine.register_fn(
@@ -954,6 +998,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
                         "aggro_good" | "aggrgood" => mobile.flags.aggro_good = value,
                         "aggro_evil" | "aggrevil" => mobile.flags.aggro_evil = value,
                         "aggro_neutral" | "aggrneutral" => mobile.flags.aggro_neutral = value,
+                        "tameable" => mobile.flags.tameable = value,
                         _ => return false,
                     }
                     return cloned_db.save_mobile_data(mobile).is_ok();
