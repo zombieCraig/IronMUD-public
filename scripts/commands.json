@@ -203,6 +203,10 @@
     "access": "admin",
     "description": "Admin commands (kick, broadcast, shutdown, etc.)"
   },
+  "tattoo": {
+    "access": "admin",
+    "description": "Manage a character's tattoos (list/remove) — admin only"
+  },
   "mxp": {
     "access": "any",
     "description": "Toggle MXP (clickable links) support (see also: set mxp)"
