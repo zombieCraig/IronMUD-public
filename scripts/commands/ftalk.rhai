@@ -11,6 +11,8 @@ fn run_command(args, connection_id) {
     let char = get_player_character(connection_id);
     let friends = char.friends;
     let count = 0;
+    // Track why a friend didn't hear us, so we can give useful feedback.
+    let pending_online = [];   // online, but they haven't added us back (not mutual)
 
     for friend_name in friends {
         // Check if mutual and not ignored
@@ -20,14 +22,41 @@ fn run_command(args, connection_id) {
                 send_client_message(target_conn, "\x1b[1;36m[Friend] " + char.name + " talks: " + args + "\x1b[0m");
                 count += 1;
             }
+        } else if is_player_online(friend_name) && is_friend_of(char.name, friend_name) {
+            // We have them, they're online, but it isn't mutual (they haven't added us,
+            // or one side ignores the other). Surface this so the user isn't confused.
+            pending_online.push(friend_name);
         }
     }
 
     if count > 0 {
         send_client_message(connection_id, "\x1b[1;36mYou tell your friends: " + args + "\x1b[0m");
-    } else {
-        send_client_message(connection_id, "None of your mutual friends are online to hear you.");
+        return;
     }
+
+    // Nobody heard us — explain why as specifically as we can.
+    if friends.len() == 0 {
+        send_client_message(connection_id, "You haven't added any friends yet. Use 'friend add <name>'.");
+        return;
+    }
+
+    if pending_online.len() > 0 {
+        let names = pending_online[0];
+        for i in 1..pending_online.len() { names += ", " + pending_online[i]; }
+        send_client_message(connection_id, names + " " + (if pending_online.len() == 1 { "is" } else { "are" }) + " online, but ftalk only reaches mutual friends. They need to 'friend add " + char.name + "' back.");
+        return;
+    }
+
+    send_client_message(connection_id, "None of your mutual friends are online to hear you.");
+}
+
+// Helper: does A have B on their friend list? (one-directional)
+fn is_friend_of(a_name, b_name) {
+    let a = get_character_data(a_name);
+    if a == () { return false; }
+    let lower_b = b_name.to_lower();
+    for f in a.friends { if f.to_lower() == lower_b { return true; } }
+    return false;
 }
 
 // Helper to check if two players are mutual friends and neither ignores the other

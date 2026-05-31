@@ -764,7 +764,25 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     });
 
     let cloned_db = db.clone();
+    let sync_conns = connections.clone();
     engine.register_fn("save_character_data", move |character: CharacterData| {
+        // Keep the online player's in-memory session copy in sync with the DB.
+        // The regen tick (`process_regen` in src/ticks/character.rs) periodically
+        // flushes every online player's *session* character back to the DB. A
+        // script that writes only to the DB (e.g. `friend add`/`ignore`) without
+        // also updating the session would be silently clobbered by the next regen
+        // flush. Update the session here so the change sticks. Mirrors the
+        // `sync_character_to_session` helper used throughout the tick code.
+        if let Ok(mut conns) = sync_conns.lock() {
+            for session in conns.values_mut() {
+                if let Some(ref mut existing) = session.character {
+                    if existing.name.eq_ignore_ascii_case(&character.name) {
+                        *existing = character.clone();
+                        break;
+                    }
+                }
+            }
+        }
         cloned_db
             .save_character_data(character)
             .map_err(|e| {
