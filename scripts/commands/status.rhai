@@ -386,6 +386,13 @@ fn show_basic_status(char, connection_id) {
     // Spawn Point
     output += "Spawn Point: " + get_spawn_point_display(char, connection_id) + "\n";
 
+    // Tattoos — show a brief count when the character bears any; the full
+    // listing (with examine keywords) lives in 'status detailed'.
+    let tattoos = get_character_tattoos(char.name);
+    if tattoos.len() > 0 {
+        output += "Tattoos: " + tattoos.len() + " (use 'status detailed' to view)\n";
+    }
+
     // Hints
     output += "\nHints: Use 'skills' to view abilities, 'traits' to view/spend trait points.\n";
 
@@ -416,6 +423,26 @@ fn format_traits_detailed(traits, connection_id) {
         } else {
             output += "  " + trait_id + "\n";
         }
+    }
+    return output;
+}
+
+// List the character's permanent tattoos. Each line shows the body location,
+// the short description, and the keywords the wearer can use to `examine` the
+// mark for its full art.
+fn format_tattoos_detailed(char_name) {
+    let tattoos = get_character_tattoos(char_name);
+    if tattoos.len() == 0 {
+        return "  (none)";
+    }
+    let output = "";
+    for t in tattoos {
+        output += "  [" + format_location(t.location) + "] " + t.short_desc;
+        let kws = t.keywords;
+        if kws.len() > 0 {
+            output += " (examine: " + kws.join(", ") + ")";
+        }
+        output += "\n";
     }
     return output;
 }
@@ -586,6 +613,10 @@ fn show_detailed_status(char, connection_id) {
     // Skills placeholder
     output += color_or(ansi_green("--- Skills ---"), "--- Skills ---", connection_id) + "\n";
     output += "  (Skills not yet implemented)\n\n";
+
+    // Tattoos — permanent body marks applied via `apply`
+    output += color_or(ansi_green("--- Tattoos ---"), "--- Tattoos ---", connection_id) + "\n";
+    output += format_tattoos_detailed(char.name) + "\n";
 
     // Equipment details
     output += color_or(ansi_green("--- Equipment ---"), "--- Equipment ---", connection_id) + "\n";
