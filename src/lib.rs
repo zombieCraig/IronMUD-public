@@ -206,6 +206,10 @@ pub enum InputEvent {
     ModernEditorSave(String),
     /// Modern editor user cancelled — discard the buffer.
     ModernEditorCancel,
+    /// Read task is ending (EOF, idle, error, oversized line, or unwind).
+    /// Sentinel so the main loop breaks and runs linkdead cleanup even though
+    /// the session's `input_sender` clone keeps the channel otherwise open.
+    Disconnect,
 }
 
 pub type SharedConnections = Arc<Mutex<HashMap<ConnectionId, PlayerSession>>>;
@@ -2121,6 +2125,13 @@ pub async fn handle_connection(
             None => break, // Read task disconnected
         };
 
+        // Read task signalled it is ending (idle/EOF/error). Break here so the
+        // linkdead-cleanup block below runs — the channel itself never closes
+        // because the session's `input_sender` clone outlives the read task.
+        if matches!(event, InputEvent::Disconnect) {
+            break;
+        }
+
         // Handle Tab completion
         if matches!(event, InputEvent::Tab) {
             // Get current input buffer and cursor position
@@ -2565,6 +2576,7 @@ pub async fn handle_connection(
             InputEvent::ModernEditorSave(_) | InputEvent::ModernEditorCancel => {
                 unreachable!("modern editor events handled above")
             }
+            InputEvent::Disconnect => continue, // handled above; unreachable in practice
         };
 
         // Update last activity time for idle tracking
@@ -4127,6 +4139,19 @@ pub async fn handle_connection(
     }
 }
 
+/// Emits `InputEvent::Disconnect` when dropped, unblocking the main connection
+/// loop on every read-task exit path (idle, EOF, error, oversized line, unwind).
+/// Without this the session's `input_sender` clone keeps the channel open and
+/// the loop blocks on `recv()` forever, leaking the session into
+/// `SharedConnections` (showing as a permanent `[Idle]` player in `who`).
+struct DisconnectOnDrop(mpsc::Sender<InputEvent>);
+impl Drop for DisconnectOnDrop {
+    fn drop(&mut self) {
+        // Bounded channel: full or closed are both fine — ignore the error.
+        let _ = self.0.try_send(InputEvent::Disconnect);
+    }
+}
+
 /// Character-mode read handler with telnet protocol support
 ///
 /// This handler processes input byte-by-byte, handles telnet protocol
@@ -4141,6 +4166,9 @@ async fn handle_read_char_mode(
     tx_raw: mpsc::UnboundedSender<Vec<u8>>,
 ) {
     use crate::telnet::*;
+
+    // Fires on every exit path so the main loop breaks and cleans up the session.
+    let _disconnect_guard = DisconnectOnDrop(tx_input.clone());
 
     let mut parser = TelnetParser::new();
     let mut buf = [0u8; 256];

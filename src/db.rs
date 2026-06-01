@@ -2836,6 +2836,27 @@ impl Db {
         Ok(self.get_setting(key)?.unwrap_or_else(|| default.to_string()))
     }
 
+    /// Resolve the configured starting room to a UUID. Reads the
+    /// `starting_room_id` setting (a room vnum); if set and resolvable via the
+    /// vnum index, returns that room's id. Falls back to `STARTING_ROOM_ID` for
+    /// unset/blank/unresolvable values so a typo can't brick spawn/recall/death.
+    /// Warns on an unresolvable non-empty vnum so operators notice.
+    pub fn resolve_starting_room_id(&self) -> Uuid {
+        if let Ok(Some(vnum)) = self.get_setting("starting_room_id") {
+            let trimmed = vnum.trim();
+            if !trimmed.is_empty() {
+                match self.get_room_by_vnum(trimmed) {
+                    Ok(Some(room)) => return room.id,
+                    _ => tracing::warn!(
+                        "starting_room_id setting '{}' does not resolve to a room; using default",
+                        vnum
+                    ),
+                }
+            }
+        }
+        Uuid::parse_str(STARTING_ROOM_ID).expect("valid STARTING_ROOM_ID constant")
+    }
+
     // ========== Email Audit Log ==========
 
     /// Append a row to the bounded email-audit ring. Drops the oldest entries

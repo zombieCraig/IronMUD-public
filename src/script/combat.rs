@@ -6,7 +6,7 @@ use crate::{
     ActiveBuff, BodyPart, CombatDistance, CombatState, CombatTarget, CombatTargetType, CombatZoneType, EffectType,
     MobileData, OngoingEffect, WeaponSkill, Wound, WoundLevel, WoundType,
 };
-use crate::{ItemData, ItemFlags, ItemLocation, ItemType, LiquidType, STARTING_ROOM_ID, WearLocation};
+use crate::{ItemData, ItemFlags, ItemLocation, ItemType, LiquidType, WearLocation};
 use rand::Rng;
 use rhai::{Dynamic, Engine, Map};
 use std::sync::Arc;
@@ -2931,7 +2931,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             // Get spawn room (default to starting room)
             let spawn_room = char
                 .spawn_room_id
-                .unwrap_or_else(|| Uuid::parse_str(STARTING_ROOM_ID).unwrap());
+                .unwrap_or_else(|| cloned_db.resolve_starting_room_id());
 
             // Move to spawn room
             char.current_room_id = spawn_room;
@@ -2968,12 +2968,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     let cloned_db = db.clone();
     engine.register_fn("get_character_spawn_room", move |char_name: String| -> String {
         if let Ok(Some(char)) = cloned_db.get_character_data(&char_name) {
-            return char
-                .spawn_room_id
-                .map(|u| u.to_string())
-                .unwrap_or_else(|| STARTING_ROOM_ID.to_string());
+            if let Some(u) = char.spawn_room_id {
+                return u.to_string();
+            }
         }
-        STARTING_ROOM_ID.to_string()
+        cloned_db.resolve_starting_room_id().to_string()
     });
 
     // set_character_spawn_room(char_name, room_id) -> bool

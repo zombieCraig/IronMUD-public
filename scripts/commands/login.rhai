@@ -658,8 +658,8 @@ fn complete_login(connection_id, char_data) {
     // Safety net: verify room exists, relocate if not
     let room = get_room_data(char_data.current_room_id);
     if room == () {
-        // Room doesn't exist, move to starting room
-        char_data.current_room_id = "00000000-0000-0000-0000-000000000001";
+        // Room doesn't exist, move to the configured starting room
+        char_data.current_room_id = resolve_starting_room_uuid();
         save_character_data(char_data);
         set_player_character(connection_id, char_data);
 

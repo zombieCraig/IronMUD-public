@@ -15,7 +15,6 @@ use crate::SharedConnections;
 use crate::db::Db;
 use crate::session::broadcast::broadcast_to_room;
 use crate::session::connection::send_client_message;
-use crate::STARTING_ROOM_ID;
 use crate::types::{CharacterData, EffectType, ItemData, ItemFlags, ItemLocation, ItemType, LiquidType};
 
 /// Drop any `EffectType::Charmed` buffs sourced to `player_name` from every
@@ -242,7 +241,7 @@ pub fn kill_player_at_room(
 
     let spawn_room = char
         .spawn_room_id
-        .unwrap_or_else(|| Uuid::parse_str(STARTING_ROOM_ID).unwrap());
+        .unwrap_or_else(|| db.resolve_starting_room_id());
 
     char.current_room_id = spawn_room;
     char.hp = (char.max_hp / 4).max(1);

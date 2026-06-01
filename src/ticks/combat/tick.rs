@@ -8,7 +8,7 @@ use tracing::{debug, error};
 
 use ironmud::{
     ActiveBuff, BodyPart, CharacterData, CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, DamageType,
-    EffectType, ItemLocation, ItemType, MobileData, STARTING_ROOM_ID, SharedConnections, SharedState, SkillProgress,
+    EffectType, ItemLocation, ItemType, MobileData, SharedConnections, SharedState, SkillProgress,
     WeaponSkill, WearLocation, WoundLevel, WoundType, break_all_charms_by_player, db,
 };
 
@@ -3274,7 +3274,7 @@ pub fn process_player_death(
     // Respawn character
     let spawn_room = char
         .spawn_room_id
-        .unwrap_or_else(|| uuid::Uuid::parse_str(STARTING_ROOM_ID).unwrap());
+        .unwrap_or_else(|| db.resolve_starting_room_id());
 
     char.current_room_id = spawn_room;
     char.hp = char.max_hp / 4;

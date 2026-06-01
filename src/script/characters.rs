@@ -6,7 +6,7 @@ use crate::SharedConnections;
 use crate::SharedState;
 use crate::db::Db;
 use crate::{
-    ActiveBuff, BodyPart, EffectType, STARTING_ROOM_ID, WeaponSkill, broadcast_to_all_players,
+    ActiveBuff, BodyPart, EffectType, WeaponSkill, broadcast_to_all_players,
     broadcast_to_outdoor_players, fire_environmental_triggers_impl, get_season_transition_message,
     get_time_transition_message,
 };
@@ -771,19 +771,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // creation. Warns on unresolvable vnums so operators notice typos.
     let cloned_db = db.clone();
     engine.register_fn("resolve_starting_room_uuid", move || -> String {
-        if let Ok(Some(vnum)) = cloned_db.get_setting("starting_room_id") {
-            let trimmed = vnum.trim();
-            if !trimmed.is_empty() {
-                match cloned_db.get_room_by_vnum(trimmed) {
-                    Ok(Some(room)) => return room.id.to_string(),
-                    _ => tracing::warn!(
-                        "starting_room_id setting '{}' does not resolve to a room; using default",
-                        vnum
-                    ),
-                }
-            }
-        }
-        STARTING_ROOM_ID.to_string()
+        cloned_db.resolve_starting_room_id().to_string()
     });
 
     // count_characters() -> i64 - Count total characters in database
