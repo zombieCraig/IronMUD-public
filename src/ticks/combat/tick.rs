@@ -328,9 +328,10 @@ fn process_character_combat_round(
     };
 
     // Process attack based on target type
+    let mut kill_info: Option<MobKill> = None;
     match target.target_type {
         CombatTargetType::Mobile => {
-            process_character_attacks_mobile(db, connections, state, &mut char, &target.target_id)?;
+            process_character_attacks_mobile(db, connections, state, &mut char, &target.target_id, &mut kill_info)?;
         }
         CombatTargetType::Player => {
             process_character_attacks_player(db, connections, &mut char, &target.target_id)?;
@@ -347,6 +348,17 @@ fn process_character_combat_round(
 
     db.save_character_data(char.clone())?;
     sync_character_to_session(connections, &char, state);
+
+    // Kill-credit notifications run AFTER the char save+sync above so they are
+    // the last writers. They mutate the killer's character out-of-band (the
+    // achievement unlock/counter and quest progress); running them before the
+    // save would let the save clobber those writes back out of the DB and
+    // session (the symptom: the first-kill achievement's banner fired but the
+    // award never appeared under `achievements`/stats).
+    if let Some(kill) = kill_info {
+        crate::ticks::achievements::notify_kill_with_state(db, connections, state, &char.name, &kill.killed_vnum);
+        ironmud::quest::handle_mob_kill(db, connections, state, &char.name, &kill.killed_vnum, &kill.damaged_by);
+    }
     Ok(())
 }
 
@@ -642,12 +654,24 @@ mod tests {
 }
 
 /// Process a character attacking a mobile
+/// A mob kill detected during a swing, reported back to the caller so the
+/// kill-credit notifications (achievements, quests) can run *after* the
+/// combat round persists `char`. Running them mid-round would let the
+/// caller's wholesale `char` save clobber the out-of-band achievement/quest
+/// writes — that is how the first-kill achievement vanished even though its
+/// unlock banner fired.
+struct MobKill {
+    killed_vnum: String,
+    damaged_by: std::collections::HashMap<String, i32>,
+}
+
 fn process_character_attacks_mobile(
     db: &db::Db,
     connections: &SharedConnections,
     state: &SharedState,
     char: &mut CharacterData,
     target_id: &uuid::Uuid,
+    kill_out: &mut Option<MobKill>,
 ) -> Result<()> {
     use rand::Rng;
 
@@ -1349,20 +1373,16 @@ fn process_character_attacks_mobile(
         // Check if target died
         if mobile.current_hp <= 0 {
             let killed_vnum = mobile.vnum.clone();
-            let killed_name = char.name.clone();
             // Snapshot the damage map BEFORE process_mobile_death so all
             // contributing players can be credited (slice 3c party credit).
             let damaged_by = mobile.combat.damaged_by.clone();
             process_mobile_death(db, connections, &mut mobile, &room_id)?;
-            crate::ticks::achievements::notify_kill_with_state(db, connections, state, &killed_name, &killed_vnum);
-            ironmud::quest::handle_mob_kill(
-                db,
-                connections,
-                state,
-                &killed_name,
-                &killed_vnum,
-                &damaged_by,
-            );
+            // Defer kill-credit notifications (achievements, quests) to the
+            // caller, which runs them only after persisting `char`. Firing
+            // them here would write the award out-of-band, then the caller's
+            // wholesale `char` save would clobber it (vanished first-kill
+            // achievement). See `MobKill`.
+            *kill_out = Some(MobKill { killed_vnum, damaged_by });
 
             char.combat.targets.retain(|t| t.target_id != *target_id);
             if char.combat.targets.is_empty() {
