@@ -439,6 +439,7 @@ export interface Mobile {
   simulation?: SimulationConfig;
   needs?: NeedsState;
   position?: "standing" | "sitting" | "sleeping";
+  creature_type?: "mortal" | "animal" | "insect" | "plant" | "construct" | "spirit";
   pet_owner?: string;
   gender?: string;
 }
@@ -726,6 +727,8 @@ export interface CreateMobileRequest {
   on_hit_effects?: OnHitEffect[];
   // Default physical stance (standing | sitting | sleeping)
   position?: "standing" | "sitting" | "sleeping";
+  // Base biology; drives vampire feeding. Independent of undead/vampire flags.
+  creature_type?: "mortal" | "animal" | "insect" | "plant" | "construct" | "spirit";
   // Authored gender for DG pronouns. "male" | "female" | "nonbinary" | any
   // free string. Lazy-instantiates Characteristics; unrecognised values
   // resolve as neuter pronouns in DG Scripts.

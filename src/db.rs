@@ -4032,6 +4032,19 @@ impl Db {
         Ok(count)
     }
 
+    /// Count bug reports awaiting approval (approved == false)
+    pub fn count_unapproved_bug_reports(&self) -> Result<i64> {
+        let mut count = 0i64;
+        for entry in self.bug_reports.iter() {
+            let (_key, value) = entry?;
+            let report: crate::BugReport = serde_json::from_slice(&value)?;
+            if !report.approved {
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+
     // ========== Gardening System Functions ==========
 
     /// Get a plant instance by UUID

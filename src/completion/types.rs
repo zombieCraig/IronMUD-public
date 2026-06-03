@@ -131,6 +131,8 @@ pub enum CompletionType {
     BugStatusFilter,
     BugPriorityValue,
     DamageType,
+    /// `medit <vnum> creature <type>` — base biology (mortal/animal/...).
+    CreatureType,
     /// `oedit <vnum> affect <subcmd>` — list/add/rm/clear.
     AffectAction,
     /// `oedit <vnum> affect add <effect>` — snake_case EffectType.

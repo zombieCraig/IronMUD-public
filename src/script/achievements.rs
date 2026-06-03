@@ -67,6 +67,57 @@ fn sync_to_session(connections: &SharedConnections, ch: &CharacterData) {
     }
 }
 
+/// Apply a mutation to a player's character, preferring the live in-memory
+/// session copy when the player is online.
+///
+/// For online players this mutates `session.character` in place while holding
+/// the connections lock — the same lock the regen tick holds while flushing
+/// `session.character` to the DB. Serializing on that lock prevents a
+/// concurrent regen flush of a *stale* session from clobbering the write
+/// (bug #14: a freshly-awarded achievement/counter vanishing from the DB),
+/// and conversely avoids overwriting session-only state (HP/stamina regen)
+/// that a fresh DB load would not reflect. Offline players fall back to a
+/// plain DB load/save.
+///
+/// `mutate` returns `true` when the character was changed and should be
+/// persisted. Returns the resulting character, or `None` if the player can't
+/// be found online or in the DB (or the save failed).
+fn apply_to_character<F>(
+    db: &Db,
+    connections: &SharedConnections,
+    player_name: &str,
+    mutate: F,
+) -> Option<CharacterData>
+where
+    F: FnOnce(&mut CharacterData) -> bool,
+{
+    if let Ok(mut conns) = connections.lock() {
+        for (_, session) in conns.iter_mut() {
+            if let Some(ref mut ch) = session.character {
+                if ch.name.eq_ignore_ascii_case(player_name) {
+                    if mutate(ch) {
+                        let snapshot = ch.clone();
+                        if db.save_character_data(snapshot.clone()).is_err() {
+                            return None;
+                        }
+                        return Some(snapshot);
+                    }
+                    return Some(ch.clone());
+                }
+            }
+        }
+    }
+
+    let mut ch = match db.get_character_data(&player_name.to_lowercase()) {
+        Ok(Some(c)) => c,
+        _ => return None,
+    };
+    if mutate(&mut ch) && db.save_character_data(ch.clone()).is_err() {
+        return None;
+    }
+    Some(ch)
+}
+
 /// Core unlock pipeline. Idempotent: returns false if the achievement is
 /// already unlocked, missing, the system is disabled, or the player can't
 /// be loaded.
@@ -153,60 +204,62 @@ pub fn award_manual_via_db(db: &Db, connections: &SharedConnections, player_name
 fn unlock_with_def(db: &Db, connections: &SharedConnections, def: &AchievementDef, player_name: &str) -> bool {
     let key_lc = def.key.to_lowercase();
 
-    let mut ch = match db.get_character_data(&player_name.to_lowercase()) {
-        Ok(Some(c)) => c,
-        _ => return false,
-    };
+    let mut newly_unlocked = false;
+    let mut gold_awarded: Option<i32> = None;
+    let mut morality_shift: Option<(i32, i32)> = None;
 
-    if ch.achievements_unlocked.contains_key(&key_lc) {
-        return false;
-    }
-
-    ch.achievements_unlocked.insert(
-        key_lc.clone(),
-        crate::types::AchievementUnlock { unlocked_at: now_secs() },
-    );
-
-    if ch.active_title.is_none() {
-        ch.active_title = Some(key_lc.clone());
-    }
-
-    if let Some(gold) = def.reward.gold {
-        ch.gold = ch.gold.saturating_add(gold);
-        if ch.gold > ch.gold_high_water {
-            ch.gold_high_water = ch.gold;
+    let applied = apply_to_character(db, connections, player_name, |ch| {
+        if ch.achievements_unlocked.contains_key(&key_lc) {
+            return false;
         }
-    }
 
-    if def.reward.item_vnum.is_some() {
-        // Slice 3 wires item delivery (with escrow on overflow). For now
-        // log so future JSON entries surface as audit signals rather
-        // than silent drops.
-        tracing::debug!(
-            "Achievement '{}' has item_vnum reward; item delivery is wired in slice 3",
-            key_lc
+        ch.achievements_unlocked.insert(
+            key_lc.clone(),
+            crate::types::AchievementUnlock { unlocked_at: now_secs() },
         );
-    }
 
-    let morality_shift = if def.reward.morality_delta != 0 {
-        let before = ch.morality;
-        ch.morality = crate::morality::adjust(before, def.reward.morality_delta);
-        Some((before, ch.morality))
-    } else {
-        None
-    };
+        if ch.active_title.is_none() {
+            ch.active_title = Some(key_lc.clone());
+        }
 
-    if db.save_character_data(ch.clone()).is_err() {
+        if let Some(gold) = def.reward.gold {
+            ch.gold = ch.gold.saturating_add(gold);
+            if ch.gold > ch.gold_high_water {
+                ch.gold_high_water = ch.gold;
+            }
+            gold_awarded = Some(gold);
+        }
+
+        if def.reward.item_vnum.is_some() {
+            // Slice 3 wires item delivery (with escrow on overflow). For now
+            // log so future JSON entries surface as audit signals rather
+            // than silent drops.
+            tracing::debug!(
+                "Achievement '{}' has item_vnum reward; item delivery is wired in slice 3",
+                key_lc
+            );
+        }
+
+        if def.reward.morality_delta != 0 {
+            let before = ch.morality;
+            ch.morality = crate::morality::adjust(before, def.reward.morality_delta);
+            morality_shift = Some((before, ch.morality));
+        }
+
+        newly_unlocked = true;
+        true
+    });
+
+    if applied.is_none() || !newly_unlocked {
         return false;
     }
-    sync_to_session(connections, &ch);
 
     let banner = format!(
         "\x1b[1;33m*** Achievement unlocked: {} ***\x1b[0m\n  {}",
         def.name, def.description
     );
     send_to_player(connections, player_name, &banner);
-    if let Some(gold) = def.reward.gold {
+    if let Some(gold) = gold_awarded {
         if gold > 0 {
             send_to_player(connections, player_name, &format!("You receive {} gold.", gold));
         }
@@ -235,18 +288,16 @@ pub fn notify_counter_core(
     }
     let key_lc = counter_key.to_lowercase();
 
-    let new_value = match db.get_character_data(&player_name.to_lowercase()) {
-        Ok(Some(mut ch)) => {
-            let entry = ch.achievement_counters.entry(key_lc.clone()).or_insert(0);
-            *entry = entry.saturating_add(increment);
-            let v = *entry;
-            if db.save_character_data(ch).is_err() {
-                return 0;
-            }
-            v
-        }
-        _ => return 0,
-    };
+    let mut new_value = 0u32;
+    let applied = apply_to_character(db, connections, player_name, |ch| {
+        let entry = ch.achievement_counters.entry(key_lc.clone()).or_insert(0);
+        *entry = entry.saturating_add(increment);
+        new_value = *entry;
+        true
+    });
+    if applied.is_none() {
+        return 0;
+    }
 
     let candidates: Vec<(String, u32)> = match state.lock() {
         Ok(world) => world

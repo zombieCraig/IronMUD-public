@@ -276,6 +276,7 @@ fn dispatch_combat_subcommand(uuid, subcommand, parts, connection_id) {
     if subcommand == "damage" { handle_damage_subcommand(uuid, parts, connection_id); return true; }
     if subcommand == "ac" { handle_ac_subcommand(uuid, parts, connection_id); return true; }
     if subcommand == "damtype" { handle_damtype_subcommand(uuid, parts, connection_id); return true; }
+    if subcommand == "creature" || subcommand == "biology" { handle_creature_subcommand(uuid, parts, connection_id); return true; }
     if subcommand == "stat" { handle_stat_subcommand(uuid, parts, connection_id); return true; }
     if subcommand == "autostats" { handle_autostats_subcommand(uuid, parts, connection_id); return true; }
     if subcommand == "gold" { handle_gold_subcommand(uuid, parts, connection_id); return true; }
@@ -1151,6 +1152,23 @@ fn handle_damtype_subcommand(mobile_id, parts, connection_id) {
     }
 }
 
+fn handle_creature_subcommand(mobile_id, parts, connection_id) {
+    if parts.len() < 3 {
+        let all_types = get_all_creature_types();
+        let types_str = olc::join_array(all_types);
+        send_client_message(connection_id, "Usage: medit <mobile> creature <type>\nAvailable: " + types_str + "\n(Base biology, drives vampire feeding. Undead/vampire are separate state flags.)");
+        return;
+    }
+    let type_str = parts[2].to_lower();
+    if set_mobile_creature_type(mobile_id, type_str) {
+        send_client_message(connection_id, "Creature type set to: " + type_str);
+    } else {
+        let all_types = get_all_creature_types();
+        let types_str = olc::join_array(all_types);
+        send_client_message(connection_id, "Invalid creature type. Available: " + types_str);
+    }
+}
+
 fn handle_stat_subcommand(mobile_id, parts, connection_id) {
     if parts.len() < 4 {
         send_client_message(connection_id, "Usage: medit " + mobile_id + " stat <str|dex|con|int|wis|cha> <value>");
@@ -1395,6 +1413,7 @@ fn show_mobile_properties(mobile, mobile_id, connection_id) {
     output += olc::c_label("Level: ", connection_id) + olc::c_value("" + mobile.level, connection_id) + "\n";
     output += olc::c_label("HP: ", connection_id) + olc::c_value(mobile.current_hp + "/" + mobile.max_hp, connection_id) + "\n";
     output += olc::c_label("Damage: ", connection_id) + olc::c_value(mobile.damage_dice, connection_id) + " (" + mobile.damage_type + ")\n";
+    output += olc::c_label("Biology: ", connection_id) + olc::c_value(mobile.creature_type, connection_id) + "\n";
     output += olc::c_label("AC: ", connection_id) + olc::c_value("" + mobile.armor_class, connection_id) + "\n";
     output += olc::c_label("Hit Modifier: ", connection_id) + olc::c_value("" + mobile.hit_modifier, connection_id) + "\n";
     output += olc::c_label("Perception: ", connection_id) + olc::c_value("" + mobile.perception, connection_id) + "\n";
@@ -1541,6 +1560,7 @@ fn build_commands_help(mobile_id, mobile) {
     output += "  medit " + display_id + " hp <value>\n";
     output += "  medit " + display_id + " damage <dice> (e.g., 2d6+3)\n";
     output += "  medit " + display_id + " damtype <type>\n";
+    output += "  medit " + display_id + " creature <type>          (base biology: mortal/animal/insect/...)\n";
     output += "  medit " + display_id + " ac <value>\n";
     output += "  medit " + display_id + " gold <amount>            (gold dropped on death)\n";
     output += "  medit " + display_id + " perception <0-10>       (stealth detection ability)\n";

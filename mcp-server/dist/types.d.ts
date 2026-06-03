@@ -13,6 +13,7 @@ export interface Area {
     immigration_enabled?: boolean;
     immigration_room_vnum?: string;
     donation_room_vnum?: string | null;
+    starting_room_vnum?: string | null;
     immigration_name_pool?: string;
     immigration_visual_profile?: string;
     migration_interval_days?: number;
@@ -420,6 +421,7 @@ export interface Mobile {
     simulation?: SimulationConfig;
     needs?: NeedsState;
     position?: "standing" | "sitting" | "sleeping";
+    creature_type?: "mortal" | "animal" | "insect" | "plant" | "construct" | "spirit";
     pet_owner?: string;
     gender?: string;
 }
@@ -544,6 +546,7 @@ export interface UpdateAreaRequest {
     immigration_vampire_chance?: number;
     migrant_starting_gold?: GoldRange;
     donation_room_vnum?: string | null;
+    starting_room_vnum?: string | null;
     guard_wage_per_hour?: number;
     healer_wage_per_hour?: number;
     scavenger_wage_per_hour?: number;
@@ -675,6 +678,7 @@ export interface CreateMobileRequest {
     combat_spell_chance?: number;
     on_hit_effects?: OnHitEffect[];
     position?: "standing" | "sitting" | "sleeping";
+    creature_type?: "mortal" | "animal" | "insect" | "plant" | "construct" | "spirit";
     gender?: string;
 }
 export interface RoutineEntry {

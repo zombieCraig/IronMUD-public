@@ -68,6 +68,7 @@ export const roomToolDefinitions = [
                         no_magic: { type: "boolean", description: "Suppresses spellcasting from this room (Circle ROOM_NOMAGIC)" },
                         soundproof: { type: "boolean", description: "Blocks shouts from leaking in or out (Circle ROOM_SOUNDPROOF)" },
                         notrack: { type: "boolean", description: "Defeats the track skill in this room (Circle ROOM_NOTRACK)" },
+                        no_recall: { type: "boolean", description: "Prevents players from recalling (teleporting) out of this room" },
                     },
                 },
                 contextual_commands: {

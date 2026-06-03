@@ -42,6 +42,69 @@ impl MobilePosition {
     }
 }
 
+/// The base biology of a mobile. This is the *kind of creature* it is, and is
+/// independent of the `MobileFlags.undead` / `MobileFlags.vampire` STATE flags,
+/// which overlay any biology (an undead wolf = `Animal` + `flags.undead`; a
+/// vampire = some biology + `flags.vampire`).
+///
+/// Drives vampire feeding (`vampire_feed_on_mobile`): `Mortal` yields full
+/// blood, `Animal` yields thin blood at no Humanity cost, and the remaining
+/// non-blooded variants cannot be fed upon at all. Defaults to `Mortal` so
+/// every existing/imported mobile and `MobileData::new` needs no change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum CreatureType {
+    /// Living, sentient humanoid (the VtM "kine"). Full blood.
+    #[default]
+    Mortal,
+    /// Living non-sentient fauna (wolves, rats, cattle). The morally-clean feed.
+    Animal,
+    /// Vermin / arthropods (swarms, giant spiders). No blood worth taking.
+    Insect,
+    /// Flora / fungal mobiles. No blood.
+    Plant,
+    /// Golems, animated statues, machines. No blood.
+    Construct,
+    /// Incorporeal / ephemeral beings (ghosts, wraiths, elementals). No blood.
+    Spirit,
+}
+
+impl CreatureType {
+    pub fn from_str(s: &str) -> Option<CreatureType> {
+        match s.to_lowercase().as_str() {
+            "mortal" | "human" | "humanoid" | "person" => Some(CreatureType::Mortal),
+            "animal" | "beast" | "fauna" => Some(CreatureType::Animal),
+            "insect" | "vermin" | "bug" => Some(CreatureType::Insect),
+            "plant" | "flora" | "fungus" => Some(CreatureType::Plant),
+            "construct" | "golem" | "machine" => Some(CreatureType::Construct),
+            "spirit" | "ghost" | "elemental" | "aberration" => Some(CreatureType::Spirit),
+            _ => None,
+        }
+    }
+
+    pub fn to_display_string(&self) -> &'static str {
+        match self {
+            CreatureType::Mortal => "mortal",
+            CreatureType::Animal => "animal",
+            CreatureType::Insect => "insect",
+            CreatureType::Plant => "plant",
+            CreatureType::Construct => "construct",
+            CreatureType::Spirit => "spirit",
+        }
+    }
+
+    pub fn all() -> Vec<&'static str> {
+        vec![
+            "mortal",
+            "animal",
+            "insect",
+            "plant",
+            "construct",
+            "spirit",
+        ]
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct MobileFlags {
     #[serde(default)]
@@ -172,6 +235,10 @@ pub struct MobileData {
     pub damage_dice: String, // "2d6+3"
     #[serde(default)]
     pub damage_type: DamageType,
+    /// Base biology (Mortal/Animal/Insect/...). Independent of the
+    /// `flags.undead`/`flags.vampire` state overlays. Drives vampire feeding.
+    #[serde(default)]
+    pub creature_type: CreatureType,
     #[serde(default)]
     pub armor_class: i32,
     #[serde(default)]
@@ -461,6 +528,7 @@ impl MobileData {
             current_stamina: 50,
             damage_dice: "1d4".to_string(),
             damage_type: DamageType::default(),
+            creature_type: CreatureType::default(),
             armor_class: 10,
             hit_modifier: 0,
             stat_str: 10,

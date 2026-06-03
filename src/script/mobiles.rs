@@ -4,8 +4,8 @@
 use crate::SharedState;
 use crate::db::Db;
 use crate::{
-    ActivityState, DamageType, EffectType, MobileData, MobileFlags, RememberedEnemy, RoutineEntry,
-    find_active_entry,
+    ActivityState, CreatureType, DamageType, EffectType, MobileData, MobileFlags, RememberedEnemy,
+    RoutineEntry, find_active_entry,
 };
 use rhai::Engine;
 
@@ -259,6 +259,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
         })
         .register_get("damage_type", |m: &mut MobileData| {
             m.damage_type.to_display_string().to_string()
+        })
+        .register_get("creature_type", |m: &mut MobileData| {
+            m.creature_type.to_display_string().to_string()
         })
         .register_get("flags", |m: &mut MobileData| m.flags.clone())
         .register_get("position", |m: &mut MobileData| m.position.to_string())
@@ -813,6 +816,23 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
                 if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
                     if let Some(dt) = DamageType::from_str(&damage_type_str) {
                         mobile.damage_type = dt;
+                        return cloned_db.save_mobile_data(mobile).is_ok();
+                    }
+                }
+            }
+            false
+        },
+    );
+
+    // set_mobile_creature_type(mobile_id, creature_type_str) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_mobile_creature_type",
+        move |mobile_id: String, creature_type_str: String| {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+                if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
+                    if let Some(ct) = CreatureType::from_str(&creature_type_str) {
+                        mobile.creature_type = ct;
                         return cloned_db.save_mobile_data(mobile).is_ok();
                     }
                 }

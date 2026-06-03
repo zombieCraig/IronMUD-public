@@ -28,6 +28,21 @@ pub const DEFAULT_HUMANITY: i32 = 7;
 pub const HUMANITY_MIN: i32 = 0;
 pub const HUMANITY_MAX: i32 = 10;
 
+// --- Feeding policy (see `vampire_feed_on_mobile`) ----------------------------
+/// Blood gained per HP drained from a living mortal (full, rich vitae).
+pub const FEED_BLOOD_PER_HP_MORTAL: i32 = 4;
+/// Blood gained per HP drained from a living animal. Animal blood is thinner —
+/// the morally-clean but unsatisfying feed of VtM. Tunable (1/2/3).
+pub const FEED_BLOOD_PER_HP_ANIMAL: i32 = 2;
+/// Humanity lost on a lethal feed that kills a non-aggressive mortal innocent.
+/// Routed through `apply_humanity_loss`, which halves it for thin-bloods.
+pub const FEED_HUMANITY_COST_LETHAL_MORTAL: i32 = 1;
+/// ONE-LINE POLICY SWITCH. VtM-by-the-book: feeding on the undead is forbidden —
+/// dead/animated flesh holds no living vitae. Flip to `true` to allow it (the
+/// target would then feed as its underlying `creature_type` biology, with no
+/// Humanity cost since the undead is not a living innocent).
+pub const FEED_ALLOW_UNDEAD: bool = false;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VampireState {
     /// Current blood points. Spent by disciplines, restored by feeding,

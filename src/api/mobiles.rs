@@ -141,6 +141,10 @@ pub struct CreateMobileRequest {
     /// Physical stance: standing | sitting | sleeping. Defaults to standing.
     #[serde(default)]
     pub position: Option<String>,
+    /// Base biology: mortal | animal | insect | plant | construct | spirit.
+    /// Defaults to mortal. Drives vampire feeding. Independent of undead/vampire flags.
+    #[serde(default)]
+    pub creature_type: Option<String>,
     /// Authored gender for DG pronouns. Free string — DG falls back to
     /// neuter for unrecognised values. Lazy-instantiates `Characteristics`.
     #[serde(default)]
@@ -413,6 +417,10 @@ pub struct UpdateMobileRequest {
     /// leave the field unchanged.
     #[serde(default)]
     pub position: Option<String>,
+    /// Base biology: mortal | animal | insect | plant | construct | spirit.
+    /// Unrecognised values leave the field unchanged.
+    #[serde(default)]
+    pub creature_type: Option<String>,
     /// Authored gender for DG pronouns. Free string. Empty string clears
     /// the gender (Characteristics survives so age/visuals are kept).
     #[serde(default)]
@@ -963,6 +971,11 @@ async fn create_mobile(
             .as_deref()
             .and_then(crate::types::MobilePosition::parse)
             .unwrap_or_default(),
+        creature_type: req
+            .creature_type
+            .as_deref()
+            .and_then(crate::types::CreatureType::from_str)
+            .unwrap_or_default(),
         pet_owner: None,
         nickname: None,
     };
@@ -1172,6 +1185,11 @@ async fn update_mobile(
     if let Some(ref pos_str) = req.position {
         if let Some(parsed) = crate::types::MobilePosition::parse(pos_str) {
             mobile.position = parsed;
+        }
+    }
+    if let Some(ref ct_str) = req.creature_type {
+        if let Some(parsed) = crate::types::CreatureType::from_str(ct_str) {
+            mobile.creature_type = parsed;
         }
     }
     if let Some(ref g) = req.gender {

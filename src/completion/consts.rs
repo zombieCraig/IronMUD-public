@@ -28,6 +28,7 @@ pub const MEDIT_SUBCOMMANDS: &[&str] = &[
     "damage",
     "ac",
     "damtype",
+    "creature",
     "stat",
     "flags",
     "flag",
@@ -373,6 +374,16 @@ pub const DAMAGE_TYPES: &[&str] = &[
     "acid",
     "bite",
     "ballistic",
+];
+
+/// Creature base-biology types (medit creature)
+pub const CREATURE_TYPES: &[&str] = &[
+    "mortal",
+    "animal",
+    "insect",
+    "plant",
+    "construct",
+    "spirit",
 ];
 
 /// Ranged weapon types

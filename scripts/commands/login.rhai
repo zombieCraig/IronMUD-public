@@ -734,6 +734,16 @@ fn complete_login(connection_id, char_data) {
         send_client_message(connection_id, "\n[MAIL] You have " + unread_mail + " unread message" + plural + ". Type 'mail list' to view.\n");
     }
 
+    // Alert admins to bug reports awaiting approval
+    if char_data.is_admin {
+        let unapproved_bugs = count_unapproved_bugs();
+        if unapproved_bugs > 0 {
+            let plural = "s";
+            if unapproved_bugs == 1 { plural = ""; }
+            send_client_message(connection_id, "\n\x1b[1;31m[BUGS] " + unapproved_bugs + " bug report" + plural + " awaiting approval.\x1b[0m Use 'bugs list unapproved' to review.\n");
+        }
+    }
+
     // Display MOTD if set
     let motd = get_setting("motd");
     if motd != "" {

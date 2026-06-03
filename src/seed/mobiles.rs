@@ -34,6 +34,7 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
         current_stamina: 50,
         damage_dice: "1d4".to_string(),
         damage_type: DamageType::default(),
+        creature_type: crate::types::CreatureType::default(),
         armor_class: 10,
         hit_modifier: 0,
         gold: 0,
@@ -582,6 +583,7 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
     wolf.current_hp = 25;
     wolf.damage_dice = "1d6+1".to_string();
     wolf.damage_type = DamageType::Bite;
+    wolf.creature_type = crate::types::CreatureType::Animal;
     wolf.armor_class = 8;
     wolf.stat_dex = 14;
     wolf.flags.aggressive = true;
@@ -625,6 +627,7 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
     spider.current_hp = 40;
     spider.damage_dice = "1d8+2".to_string();
     spider.damage_type = DamageType::Bite;
+    spider.creature_type = crate::types::CreatureType::Insect;
     spider.armor_class = 7;
     spider.stat_dex = 14;
     spider.flags.aggressive = true;
@@ -650,6 +653,7 @@ pub fn seed_mobiles(db: &Db) -> Result<()> {
     drake.current_stamina = 100;
     drake.damage_dice = "3d6+4".to_string();
     drake.damage_type = DamageType::Cold;
+    drake.creature_type = crate::types::CreatureType::Animal;
     drake.armor_class = 2;
     drake.hit_modifier = 3;
     drake.stat_str = 16;

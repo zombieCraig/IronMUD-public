@@ -1058,6 +1058,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             .collect::<Vec<_>>()
     });
 
+    // get_all_creature_types() -> Array of strings
+    engine.register_fn("get_all_creature_types", || {
+        crate::types::CreatureType::all()
+            .iter()
+            .map(|s| rhai::Dynamic::from(s.to_string()))
+            .collect::<Vec<_>>()
+    });
+
     // ========== Weapon Skill Functions ==========
 
     // get_all_weapon_skills() -> Array of strings

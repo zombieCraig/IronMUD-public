@@ -592,15 +592,49 @@ pub(super) fn set_entity_var(ctx: &EvalCtx, scope: &ScopeRef, name: &str, value:
             }
             false
         }
-        ScopeRef::Player(pname) => {
-            if let Ok(Some(mut ch)) = ctx.db.get_character_data(pname) {
-                ch.dg_vars.insert(name.to_string(), value.to_string());
-                let _ = ctx.db.save_character_data(ch);
-                return true;
+        ScopeRef::Player(pname) => set_player_dg_var(ctx, pname, name, Some(value)),
+    }
+}
+
+/// Write (`Some`) or remove (`None`) a durable `dg_var` on a player,
+/// preferring the live in-memory session copy when the player is online.
+///
+/// Player DG vars are stored on `CharacterData.dg_vars`. For online players the
+/// regen tick continually flushes `session.character` to the DB, so a DB-only
+/// write here (load → mutate → save) is clobbered by the next flush of the
+/// stale session — which dropped, e.g., the `hub_origin` var the `leave`
+/// gateway script stamps on entry before the player can type `leave` (bug #17).
+/// Mutating the authoritative session copy under the connections lock (the same
+/// lock the regen tick holds) keeps the write; offline players fall back to a
+/// plain DB load/save. Returns `true` when the player was found.
+fn set_player_dg_var(ctx: &EvalCtx, pname: &str, name: &str, value: Option<&str>) -> bool {
+    let apply = |ch: &mut crate::types::CharacterData| match value {
+        Some(v) => {
+            ch.dg_vars.insert(name.to_string(), v.to_string());
+        }
+        None => {
+            ch.dg_vars.remove(name);
+        }
+    };
+
+    if let Ok(mut conns) = ctx.connections.lock() {
+        for session in conns.values_mut() {
+            if let Some(ref mut ch) = session.character {
+                if ch.name.eq_ignore_ascii_case(pname) {
+                    apply(ch);
+                    let _ = ctx.db.save_character_data(ch.clone());
+                    return true;
+                }
             }
-            false
         }
     }
+
+    if let Ok(Some(mut ch)) = ctx.db.get_character_data(pname) {
+        apply(&mut ch);
+        let _ = ctx.db.save_character_data(ch);
+        return true;
+    }
+    false
 }
 
 /// Remove `name` from the scope's `dg_vars`. Mirror of [`set_entity_var`].
@@ -629,15 +663,7 @@ pub(super) fn clear_entity_var(ctx: &EvalCtx, scope: &ScopeRef, name: &str) -> b
             }
             false
         }
-        ScopeRef::Player(pname) => {
-            if let Ok(Some(mut ch)) = ctx.db.get_character_data(pname) {
-                if ch.dg_vars.remove(name).is_some() {
-                    let _ = ctx.db.save_character_data(ch);
-                }
-                return true;
-            }
-            false
-        }
+        ScopeRef::Player(pname) => set_player_dg_var(ctx, pname, name, None),
     }
 }
 

@@ -2111,10 +2111,10 @@ fn process_mobile_attacks_player(
     }
 
     // Apply underwater damage type modifier
-    let (modified_damage, _water_msg) = apply_underwater_modifier(db, room_id, damage, damage_type);
+    let (modified_damage, water_msg) = apply_underwater_modifier(db, room_id, damage, damage_type);
     damage = modified_damage;
-    if damage == 0 {
-        // Fire attacks extinguished by water
+    if water_msg.is_some() && damage == 0 {
+        // Fire attacks extinguished by water (underwater rooms only)
         broadcast_to_room_awake(
             connections,
             room_id,

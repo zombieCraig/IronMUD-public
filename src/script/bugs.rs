@@ -184,6 +184,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         cloned_db.count_open_bug_reports().unwrap_or(0)
     });
 
+    // count_unapproved_bugs() -> i64
+    let cloned_db = db.clone();
+    engine.register_fn("count_unapproved_bugs", move || -> i64 {
+        cloned_db.count_unapproved_bug_reports().unwrap_or(0)
+    });
+
     // ========== Bug Admin Functions ==========
 
     // add_bug_note(ticket, author, message) -> bool

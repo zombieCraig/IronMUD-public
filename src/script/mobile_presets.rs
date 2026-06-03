@@ -136,6 +136,11 @@ pub fn apply_preset_to_mobile(mobile: &mut crate::types::MobileData, preset: &se
     if let Some(s) = preset.get("damage_dice").and_then(|v| v.as_str()) {
         mobile.damage_dice = s.to_string();
     }
+    if let Some(s) = preset.get("creature_type").and_then(|v| v.as_str()) {
+        if let Some(ct) = crate::types::CreatureType::from_str(s) {
+            mobile.creature_type = ct;
+        }
+    }
     if let Some(n) = preset.get("perception").and_then(|v| v.as_i64()) {
         mobile.perception = n as i32;
     }

@@ -12341,3 +12341,118 @@ fn test_character_deletion_pulls_from_clan_roster() {
         std::panic::resume_unwind(e);
     }
 }
+
+/// Tests for the `creature_type` biology taxonomy and the VtM-accurate vampire
+/// feed gating it drives (`feed_outcome_for`).
+mod creature_type_tests {
+    use ironmud::script::vampire::{FeedDecision, feed_outcome_for};
+    use ironmud::types::{CreatureType, MobileData, VampireState};
+
+    fn mob(ct: CreatureType) -> MobileData {
+        let mut m = MobileData::new("test".to_string());
+        m.is_prototype = false;
+        m.creature_type = ct;
+        m
+    }
+
+    #[test]
+    fn test_creature_type_defaults_mortal() {
+        // `::new` defaults to Mortal so existing/imported mobs need no change.
+        assert_eq!(MobileData::new("x".to_string()).creature_type, CreatureType::Mortal);
+
+        // A persisted record missing the field deserializes to Mortal
+        // (proves `#[serde(default)]`).
+        let mut v = serde_json::to_value(MobileData::new("y".to_string())).unwrap();
+        v.as_object_mut().unwrap().remove("creature_type");
+        let reloaded: MobileData = serde_json::from_value(v).unwrap();
+        assert_eq!(reloaded.creature_type, CreatureType::Mortal);
+    }
+
+    #[test]
+    fn test_creature_type_from_str_roundtrip() {
+        // Every advertised string parses, and to_display_string is its inverse.
+        for s in CreatureType::all() {
+            let parsed = CreatureType::from_str(s)
+                .unwrap_or_else(|| panic!("from_str failed for {s}"));
+            assert_eq!(parsed.to_display_string(), s);
+        }
+        // A couple of aliases resolve.
+        assert_eq!(CreatureType::from_str("beast"), Some(CreatureType::Animal));
+        assert_eq!(CreatureType::from_str("golem"), Some(CreatureType::Construct));
+        assert_eq!(CreatureType::from_str("nonsense"), None);
+    }
+
+    #[test]
+    fn test_feed_mortal_full_blood_and_humanity() {
+        match feed_outcome_for(&mob(CreatureType::Mortal)) {
+            FeedDecision::Allowed { blood_per_hp, can_cost_humanity } => {
+                assert_eq!(blood_per_hp, 4);
+                assert!(can_cost_humanity, "mortal feed must be able to cost humanity");
+            }
+            other => panic!("expected Allowed for mortal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_feed_animal_thin_blood_no_humanity() {
+        match feed_outcome_for(&mob(CreatureType::Animal)) {
+            FeedDecision::Allowed { blood_per_hp, can_cost_humanity } => {
+                assert_eq!(blood_per_hp, 2, "animal blood is thinner");
+                assert!(!can_cost_humanity, "animal feed is morally clean — never costs humanity");
+            }
+            other => panic!("expected Allowed for animal, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_feed_bloodless_biologies_forbidden() {
+        for ct in [
+            CreatureType::Insect,
+            CreatureType::Plant,
+            CreatureType::Construct,
+            CreatureType::Spirit,
+        ] {
+            match feed_outcome_for(&mob(ct)) {
+                FeedDecision::Forbidden(reason) => {
+                    assert!(reason.contains("blood"), "unexpected reason for {ct:?}: {reason}");
+                }
+                other => panic!("expected Forbidden for {ct:?}, got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_feed_undead_animal_forbidden_dead_flesh() {
+        // An undead wolf = Animal biology + undead state flag. The state flag
+        // forbids feeding regardless of the (otherwise feedable) biology.
+        let mut undead_wolf = mob(CreatureType::Animal);
+        undead_wolf.flags.undead = true;
+        match feed_outcome_for(&undead_wolf) {
+            FeedDecision::Forbidden(reason) => assert!(reason.contains("dead flesh")),
+            other => panic!("expected dead-flesh Forbidden, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_feed_vampire_forbidden_regardless_of_biology() {
+        // Kindred blood is forbidden (diablerie) whether flagged or stateful,
+        // and regardless of the underlying biology.
+        let mut flagged = mob(CreatureType::Mortal);
+        flagged.flags.vampire = true;
+        assert!(matches!(feed_outcome_for(&flagged), FeedDecision::Forbidden(_)));
+
+        let mut stateful = mob(CreatureType::Animal);
+        stateful.vampire_state = Some(VampireState::newly_embraced(0, None));
+        assert!(matches!(feed_outcome_for(&stateful), FeedDecision::Forbidden(_)));
+    }
+
+    #[test]
+    fn test_feed_allow_undead_policy_is_book_accurate() {
+        // Tripwire: flipping the policy switch should fail this loudly.
+        assert!(
+            !ironmud::types::FEED_ALLOW_UNDEAD,
+            "FEED_ALLOW_UNDEAD changed — feeding on the dead diverges from VtM canon; \
+             update the feed tests intentionally if this is desired."
+        );
+    }
+}

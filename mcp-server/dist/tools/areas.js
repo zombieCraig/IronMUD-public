@@ -94,6 +94,7 @@ export const areaToolDefinitions = [
                 immigration_enabled: { type: "boolean", description: "Enable/disable migrant spawning for this area" },
                 immigration_room_vnum: { type: "string", description: "Room vnum where migrants arrive" },
                 donation_room_vnum: { type: "string", description: "Room vnum that accepts player `donate <item>` (empty string disables)" },
+                starting_room_vnum: { type: "string", description: "Room vnum that `agoto <area>` teleports builders to (empty string clears)" },
                 immigration_name_pool: { type: "string", description: "Name pool file (e.g. 'generic', 'japan')" },
                 immigration_visual_profile: { type: "string", description: "Visual profile file (e.g. 'human')" },
                 migration_interval_days: { type: "number", description: "Game-days between migration checks (1-30)" },

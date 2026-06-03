@@ -686,6 +686,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     combat_spell_chance: args?.combat_spell_chance,
                     on_hit_effects: args?.on_hit_effects,
                     position: args?.position,
+                    creature_type: args?.creature_type,
                     gender: args?.gender,
                 });
                 return {
@@ -708,7 +709,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     "daily_routine", "simulation", "remove_simulation", "world_max_count",
                     "dialogue_tree", "clear_dialogue_tree",
                     "faction", "spoken_language", "combat_spells", "combat_spell_chance", "on_hit_effects",
-                    "position", "gender",
+                    "position", "creature_type", "gender",
                 ];
                 for (const field of mobileFields) {
                     if (args?.[field] !== undefined) {

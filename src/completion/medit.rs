@@ -237,6 +237,18 @@ pub(super) fn complete_medit(
         4 if completing_word && words[2].to_lowercase() == "damtype" => {
             filter_static(DAMAGE_TYPES, &partial, CompletionType::DamageType)
         }
+        // medit <vnum> creature - show all creature types
+        3 if !completing_word
+            && (words[2].to_lowercase() == "creature" || words[2].to_lowercase() == "biology") =>
+        {
+            all_static(CREATURE_TYPES, CompletionType::CreatureType)
+        }
+        // medit <vnum> creature <partial_type> - complete creature type
+        4 if completing_word
+            && (words[2].to_lowercase() == "creature" || words[2].to_lowercase() == "biology") =>
+        {
+            filter_static(CREATURE_TYPES, &partial, CompletionType::CreatureType)
+        }
         // medit <vnum> simulation - show all simulation subcommands
         3 if !completing_word && (words[2].to_lowercase() == "simulation" || words[2].to_lowercase() == "sim") => {
             all_static(SIMULATION_SUBCOMMANDS, CompletionType::SimulationSubcommand)

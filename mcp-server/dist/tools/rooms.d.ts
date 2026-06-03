@@ -154,6 +154,10 @@ export declare const roomToolDefinitions: ({
                         type: string;
                         description: string;
                     };
+                    no_recall: {
+                        type: string;
+                        description: string;
+                    };
                 };
             };
             contextual_commands: {

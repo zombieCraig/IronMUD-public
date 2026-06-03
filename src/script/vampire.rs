@@ -23,7 +23,7 @@
 
 use crate::SharedConnections;
 use crate::db::Db;
-use crate::types::{CharacterData, SkillProgress, VampireState};
+use crate::types::{CharacterData, CreatureType, MobileData, SkillProgress, VampireState};
 use rhai::Engine;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -306,6 +306,57 @@ pub fn apply_humanity_loss(ch: &mut CharacterData, base: i32) -> i32 {
 /// vampire state.
 fn is_pc_thinblood_state(_v: &VampireState, traits: &[String]) -> bool {
     !traits.iter().any(|t| t.starts_with("clan_"))
+}
+
+/// Outcome of deciding whether/how a vampire can feed on a given mobile.
+/// Pure data so the whole feed truth-table can be unit-tested without a DB or
+/// session. See `feed_outcome_for`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FeedDecision {
+    /// Feeding is allowed. `blood_per_hp` is the yield multiplier;
+    /// `can_cost_humanity` is true only for living mortals (animals are clean).
+    Allowed {
+        blood_per_hp: i32,
+        can_cost_humanity: bool,
+    },
+    /// Feeding is refused; the string is the player-facing reason.
+    Forbidden(&'static str),
+}
+
+/// Decide how a vampire may feed on `target`, combining the two axes:
+///   1. STATE flags — `vampire`/`vampire_state` (kindred → diablerie, forbidden)
+///      and `undead` (dead flesh → no living vitae, forbidden unless policy on).
+///   2. base biology — `creature_type` (Mortal full, Animal thin+clean, others
+///      bloodless).
+/// This is the single source of truth for the feed table; `vampire_feed_on_mobile`
+/// is a thin wrapper that applies the numbers.
+pub fn feed_outcome_for(target: &MobileData) -> FeedDecision {
+    use crate::types::{FEED_ALLOW_UNDEAD, FEED_BLOOD_PER_HP_ANIMAL, FEED_BLOOD_PER_HP_MORTAL};
+
+    // Axis 1 — kindred blood is forbidden (diablerie), regardless of biology.
+    if target.vampire_state.is_some() || target.flags.vampire {
+        return FeedDecision::Forbidden("vampires have no blood worth taking");
+    }
+    // Axis 1 — undead flesh holds no living vitae (covers undead skeleton AND
+    // undead wolf). One-line policy switch flips this on.
+    if target.flags.undead && !FEED_ALLOW_UNDEAD {
+        return FeedDecision::Forbidden("there is no living blood in dead flesh");
+    }
+    // Axis 2 — base biology decides yield and Humanity exposure.
+    match target.creature_type {
+        CreatureType::Mortal => FeedDecision::Allowed {
+            blood_per_hp: FEED_BLOOD_PER_HP_MORTAL,
+            can_cost_humanity: true,
+        },
+        CreatureType::Animal => FeedDecision::Allowed {
+            blood_per_hp: FEED_BLOOD_PER_HP_ANIMAL,
+            can_cost_humanity: false,
+        },
+        CreatureType::Insect
+        | CreatureType::Plant
+        | CreatureType::Construct
+        | CreatureType::Spirit => FeedDecision::Forbidden("there is no blood there worth taking"),
+    }
 }
 
 pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections) {
@@ -947,15 +998,21 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if Some(ch.current_room_id) != target.current_room_id {
                 return fail("target is not in your room");
             }
-            if target.vampire_state.is_some() || target.flags.vampire {
-                return fail("vampires have no blood worth taking");
-            }
             if target.flags.no_attack {
                 return fail("target cannot be attacked");
             }
             if target.current_hp <= 0 {
                 return fail("target is already dead");
             }
+            // Combine the kindred/undead state flags with the base biology to
+            // decide whether (and how) this feed is allowed.
+            let (blood_per_hp, can_cost_humanity) = match feed_outcome_for(&target) {
+                FeedDecision::Allowed {
+                    blood_per_hp,
+                    can_cost_humanity,
+                } => (blood_per_hp, can_cost_humanity),
+                FeedDecision::Forbidden(reason) => return fail(reason),
+            };
 
             // Roll bite damage: 1d4. Capped by target's remaining HP so we
             // can never overdrain.
@@ -963,11 +1020,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             let roll: i32 = rng.gen_range(1..=4);
             let damage = roll.min(target.current_hp);
 
-            // Blood gained: 4 per HP drained, capped by caster's missing pool.
+            // Blood gained: `blood_per_hp` per HP drained (4 mortal / 2 animal),
+            // capped by caster's missing pool.
             let (blood_gained, post_blood) = {
                 let v = ch.vampire_state.as_ref().unwrap();
                 let missing = (v.max_blood_pool - v.blood_pool).max(0);
-                let gained = (damage * 4).min(missing);
+                let gained = (damage * blood_per_hp).min(missing);
                 (gained, v.blood_pool + gained)
             };
 
@@ -1002,15 +1060,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 }
             }
 
-            // Humanity loss: lethal, mortal target who isn't bloodfeed_willing
-            // and isn't aggro (vampire hunters / wild beasts excused). PC
-            // bloodfeed_willing is checked by name lookup if the target is
-            // a player character — for mob targets, there's no consent flag.
+            // Humanity loss: only when the kill takes a living mortal innocent.
+            // `can_cost_humanity` is false for animals (the morally-clean feed),
+            // and aggro targets (vampire hunters / wild beasts) are excused.
             // Routed through `apply_humanity_loss` so thinbloods get the
             // half-loss pro automatically (base=1 → 0 for thinbloods).
             let mut humanity_loss = 0i64;
-            if killed && !target.flags.aggressive {
-                humanity_loss = apply_humanity_loss(ch, 1) as i64;
+            if killed && can_cost_humanity && !target.flags.aggressive {
+                humanity_loss =
+                    apply_humanity_loss(ch, crate::types::FEED_HUMANITY_COST_LETHAL_MORTAL) as i64;
             }
 
             // Apply blood to caster.

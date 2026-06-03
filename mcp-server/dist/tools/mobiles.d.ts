@@ -26,6 +26,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -112,6 +113,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -201,6 +203,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -290,6 +293,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -536,6 +540,11 @@ export declare const mobileToolDefinitions: ({
                 };
             };
             position: {
+                type: string;
+                enum: string[];
+                description: string;
+            };
+            creature_type: {
                 type: string;
                 enum: string[];
                 description: string;
@@ -996,6 +1005,11 @@ export declare const mobileToolDefinitions: ({
                 enum: string[];
                 description: string;
             };
+            creature_type: {
+                type: string;
+                enum: string[];
+                description: string;
+            };
             gender: {
                 type: string;
                 description: string;
@@ -1297,6 +1311,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -1394,6 +1409,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -1485,6 +1501,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -1577,6 +1594,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -1684,6 +1702,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -1789,6 +1808,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -1909,6 +1929,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -2029,6 +2050,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -2116,6 +2138,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -2227,6 +2250,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -2314,6 +2338,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -2405,6 +2430,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -2521,6 +2547,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -2604,6 +2631,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
@@ -2697,6 +2725,7 @@ export declare const mobileToolDefinitions: ({
             armor_class?: undefined;
             flags?: undefined;
             position?: undefined;
+            creature_type?: undefined;
             gender?: undefined;
             perception?: undefined;
             world_max_count?: undefined;
