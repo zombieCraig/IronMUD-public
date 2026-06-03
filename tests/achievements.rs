@@ -10,6 +10,7 @@
 
 use ironmud::types::{
     AchievementCategory, AchievementCriterion, AchievementDef, AchievementReward, AchievementSource, CharacterData,
+    ItemData, ItemLocation,
 };
 use ironmud::{SharedConnections, SharedState, World, db::Db, script};
 use rhai::Engine;
@@ -447,6 +448,54 @@ fn set_hidden_persists_through_world_map() {
     assert_eq!(err, "");
     let world = state.lock().unwrap();
     assert!(!world.achievement_definitions.get("toggle_me").unwrap().hidden);
+}
+
+#[test]
+fn test_item_reward_delivered_to_inventory() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(temp.path()).expect("open DB");
+
+        // Prototype the reward item.
+        let mut proto = ItemData::new(
+            "test glove".to_string(),
+            "a test glove".to_string(),
+            "A test glove lies here.".to_string(),
+        );
+        proto.vnum = Some("glove_test".to_string());
+        proto.is_prototype = true;
+        db.save_item_data(proto).expect("save prototype");
+
+        let ch = make_character("hero");
+        db.save_character_data(ch).expect("save char");
+
+        // Manual achievement whose reward grants the glove.
+        let mut def = make_def_manual("glove_award", "Glove Award", "the Gloved");
+        def.reward.item_vnum = Some("glove_test".to_string());
+        let (state, connections) = build_state(db.clone(), vec![def]);
+
+        let ok = script::achievements::award_core(&db, &connections, &state, "hero", "glove_award", true);
+        assert!(ok, "manual award should unlock");
+
+        // The reward item is now a live instance in hero's inventory.
+        let instances = db.get_item_instances_by_vnum("glove_test").expect("instances");
+        assert_eq!(instances.len(), 1, "exactly one glove delivered");
+        match &instances[0].location {
+            ItemLocation::Inventory(owner) => assert_eq!(owner, "hero"),
+            other => panic!("glove not in inventory: {:?}", other),
+        }
+
+        // Idempotent: re-awarding an already-unlocked achievement delivers nothing more.
+        let ok = script::achievements::award_core(&db, &connections, &state, "hero", "glove_award", true);
+        assert!(!ok, "second award is a no-op");
+        let instances = db.get_item_instances_by_vnum("glove_test").expect("instances");
+        assert_eq!(instances.len(), 1, "no duplicate delivery on idempotent re-award");
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
 }
 
 #[test]

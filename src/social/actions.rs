@@ -283,6 +283,11 @@ pub enum DispatchOutcome {
 /// This is the player command entry point only. NPC sim emotes call
 /// [`render::render`] directly with their own broadcast plumbing, and
 /// DG triggers go through [`crate::script::dg`].
+/// CircleMUD immortal threshold (`LVL_IMMORT`). Socials authored at or above
+/// this level are staff-only; IronMUD collapses the numeric level ladder to a
+/// single `is_admin` flag, so this is the one meaningful gate.
+const IMMORTAL_SOCIAL_MIN_LEVEL: u8 = 51;
+
 pub fn dispatch_player_social(
     state: &SharedState,
     connections: &SharedConnections,
@@ -315,6 +320,13 @@ pub fn dispatch_player_social(
         return DispatchOutcome::Handled;
     };
 
+    // Immortal-only socials are invisible to mortals: fall through as
+    // NotASocial (reads as "unknown command") rather than revealing the
+    // social exists or running it.
+    if social.min_level >= IMMORTAL_SOCIAL_MIN_LEVEL && !actor.is_admin {
+        return DispatchOutcome::NotASocial;
+    }
+
     // Position gate.
     let actor_pos = SocialPosition::from_character(actor.position);
     if !SocialPosition::permits(social.min_char_position, actor_pos) {
@@ -345,9 +357,18 @@ pub fn dispatch_player_social(
         return DispatchOutcome::Handled;
     }
 
+    // Split into a target keyword and an optional remainder. The remainder
+    // drives the body-part variants ("$t"), e.g. `pat bob head`.
+    let mut arg_parts = trimmed.splitn(2, char::is_whitespace);
+    let target_kw = arg_parts.next().unwrap_or("").trim();
+    let body_part = arg_parts
+        .next()
+        .map(sanitize_body_part)
+        .filter(|s| !s.is_empty());
+
     // Find a target — try players in room first (case-insensitive name
     // prefix), then mobiles by keyword.
-    let target = resolve_target(state, connections, &actor, trimmed);
+    let target = resolve_target(state, connections, &actor, target_kw);
     match target {
         Some(Target::Player(t)) => {
             // Victim position gate.
@@ -365,14 +386,11 @@ pub fn dispatch_player_social(
                 visible_name: &t.name,
                 gender: render::parse_gender(&t.gender),
             };
-            emit_found(
-                connections,
-                &social,
-                &actor,
-                &actor_party,
-                &vict_party,
-                Some(&t.name),
-            );
+            if let (Some(bp), true) = (&body_part, social_has_body_variant(&social)) {
+                emit_body(connections, &social, &actor, &actor_party, &vict_party, Some(&t.name), bp);
+            } else {
+                emit_found(connections, &social, &actor, &actor_party, &vict_party, Some(&t.name));
+            }
         }
         Some(Target::Mobile { name, gender }) => {
             let vict_party = RenderParty {
@@ -383,9 +401,22 @@ pub fn dispatch_player_social(
             // to the socials gate — assume they pass (the simulation
             // tick already keeps mobs in plausible positions for their
             // activity).
-            emit_found(connections, &social, &actor, &actor_party, &vict_party, None);
+            if let (Some(bp), true) = (&body_part, social_has_body_variant(&social)) {
+                emit_body(connections, &social, &actor, &actor_party, &vict_party, None, bp);
+            } else {
+                emit_found(connections, &social, &actor, &actor_party, &vict_party, None);
+            }
         }
         None => {
+            // No character/mobile by that keyword. Try an object (item) in
+            // the room or inventory for the object_* variants (e.g.
+            // `pat <item>` -> "You pat $p.").
+            if social_has_object_variant(&social) {
+                if let Some(short_desc) = resolve_object(state, connections, &actor, target_kw) {
+                    emit_object(connections, &social, &actor, &actor_party, &short_desc);
+                    return DispatchOutcome::Handled;
+                }
+            }
             let msg = social
                 .not_found
                 .as_deref()
@@ -396,6 +427,20 @@ pub fn dispatch_player_social(
     }
 
     DispatchOutcome::Handled
+}
+
+fn social_has_body_variant(s: &SocialAction) -> bool {
+    s.body_char_found.is_some() || s.body_others_found.is_some() || s.body_vict_found.is_some()
+}
+
+fn social_has_object_variant(s: &SocialAction) -> bool {
+    s.object_char_found.is_some() || s.object_others_found.is_some()
+}
+
+/// Clamp a free-text body-part argument: strip control chars (no newline
+/// injection into room broadcasts) and cap length.
+fn sanitize_body_part(raw: &str) -> String {
+    raw.trim().chars().filter(|c| !c.is_control()).take(32).collect()
 }
 
 enum Target {
@@ -522,6 +567,91 @@ fn emit_found(
             victim_player_name,
         );
     }
+}
+
+/// Body-part variant: actor targets a victim's body part (`$t`). Mirrors
+/// [`emit_found`] but renders the `body_*` template trio with the body part.
+fn emit_body(
+    connections: &SharedConnections,
+    social: &SocialAction,
+    actor: &CharacterData,
+    actor_party: &RenderParty<'_>,
+    vict_party: &RenderParty<'_>,
+    victim_player_name: Option<&str>,
+    body_part: &str,
+) {
+    if let Some(t) = &social.body_char_found {
+        let line = render::render(t, actor_party, Some(vict_party), None, Some(body_part));
+        send_to_actor(connections, actor, &line);
+    }
+    if let (Some(name), Some(t)) = (victim_player_name, &social.body_vict_found) {
+        let line = render::render(t, actor_party, Some(vict_party), None, Some(body_part));
+        send_to_player_named(connections, name, &line);
+    }
+    if let Some(t) = &social.body_others_found {
+        if social.hide {
+            return;
+        }
+        let line = render::render(t, actor_party, Some(vict_party), None, Some(body_part));
+        broadcast_excluding_two(connections, actor.current_room_id, &line, &actor.name, victim_player_name);
+    }
+}
+
+/// Object variant: actor targets an item (`$p`). Only the actor and room
+/// lines exist in the data (no victim — the target is an object).
+fn emit_object(
+    connections: &SharedConnections,
+    social: &SocialAction,
+    actor: &CharacterData,
+    actor_party: &RenderParty<'_>,
+    object_short_desc: &str,
+) {
+    let object = RenderObject { short_desc: object_short_desc };
+    if let Some(t) = &social.object_char_found {
+        let line = render::render(t, actor_party, None, Some(&object), None);
+        send_to_actor(connections, actor, &line);
+    }
+    if let Some(t) = &social.object_others_found {
+        if social.hide {
+            return;
+        }
+        let line = render::render(t, actor_party, None, Some(&object), None);
+        broadcast_awake_with_color(connections, actor.current_room_id, &line, &actor.name);
+    }
+}
+
+/// Resolve an item the actor can see by keyword — inventory first, then the
+/// floor. Returns its `short_desc` for `$p` rendering. Mirrors the mob
+/// keyword match in [`resolve_target`].
+fn resolve_object(
+    state: &SharedState,
+    _connections: &SharedConnections,
+    actor: &CharacterData,
+    keyword: &str,
+) -> Option<String> {
+    if keyword.is_empty() {
+        return None;
+    }
+    let keyword_l = keyword.to_ascii_lowercase();
+    let db = {
+        let world = state.lock().unwrap();
+        world.db.clone()
+    };
+    let matches = |item: &crate::types::ItemData| -> bool {
+        item.keywords.iter().any(|k| k.to_ascii_lowercase().starts_with(&keyword_l))
+            || item.short_desc.to_ascii_lowercase().contains(&keyword_l)
+    };
+    if let Ok(items) = db.get_items_in_inventory(&actor.name) {
+        if let Some(it) = items.iter().find(|i| matches(i)) {
+            return Some(it.short_desc.clone());
+        }
+    }
+    if let Ok(items) = db.get_items_in_room(&actor.current_room_id) {
+        if let Some(it) = items.iter().find(|i| matches(i)) {
+            return Some(it.short_desc.clone());
+        }
+    }
+    None
 }
 
 /// Send to a specific connection by id. Translates inline tba color
@@ -736,5 +866,35 @@ mod tests {
         }"#;
         let reg = SocialRegistry::from_json(wrapped).unwrap();
         assert!(reg.get("bow").is_some());
+    }
+
+    fn pat_with_variants() -> SocialAction {
+        let mut s = smile();
+        s.name = "pat".into();
+        s.body_char_found = Some("You pat $M on $S $t.".into());
+        s.body_others_found = Some("$n pats $N on $S $t.".into());
+        s.body_vict_found = Some("$n pats you on your $t.".into());
+        s.object_char_found = Some("You pat $p.".into());
+        s.object_others_found = Some("$n pats $p.".into());
+        s
+    }
+
+    #[test]
+    fn variant_detectors() {
+        assert!(!social_has_body_variant(&smile()));
+        assert!(!social_has_object_variant(&smile()));
+        let pat = pat_with_variants();
+        assert!(social_has_body_variant(&pat));
+        assert!(social_has_object_variant(&pat));
+    }
+
+    #[test]
+    fn sanitize_body_part_strips_control_and_caps() {
+        // Newline injection into a room broadcast must be neutralized.
+        assert_eq!(sanitize_body_part("head\nLook: gold here"), "headLook: gold here");
+        assert_eq!(sanitize_body_part("  arm  "), "arm");
+        // Length cap (32 chars).
+        let long = "x".repeat(50);
+        assert_eq!(sanitize_body_part(&long).len(), 32);
     }
 }

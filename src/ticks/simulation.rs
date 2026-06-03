@@ -1409,7 +1409,9 @@ fn pick_emote_from_socials(
         return None;
     }
     let reg = registry();
-    let candidates = reg.tagged_any(&want);
+    // Skip `hide` socials: this path only emits the public room line
+    // (others_no_arg), which a hide social must never broadcast.
+    let candidates: Vec<_> = reg.tagged_any(&want).into_iter().filter(|s| !s.hide).collect();
     if candidates.is_empty() {
         return None;
     }

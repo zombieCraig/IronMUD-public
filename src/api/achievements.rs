@@ -124,6 +124,9 @@ async fn create_achievement(
     };
 
     state.db.save_achievement(def.clone()).map_err(|e| ApiError::Internal(e.to_string()))?;
+    // Mirror into the live world so the engine notify path (and player-facing
+    // `achievements` list) sees it without a restart.
+    crate::script::achievements::sync_world_after_save(&state.state, def.clone());
 
     notify_builders(&state.connections, &format!("[API] {} created achievement '{}'", user.api_key.owner_character, key));
 
@@ -177,6 +180,9 @@ async fn update_achievement(
     }
 
     state.db.save_achievement(def.clone()).map_err(|e| ApiError::Internal(e.to_string()))?;
+    // Mirror the updated definition (criterion/counter index, hidden, etc.)
+    // into the live world so the running engine picks it up immediately.
+    crate::script::achievements::sync_world_after_save(&state.state, def.clone());
 
     notify_builders(&state.connections, &format!("[API] {} updated achievement '{}'", user.api_key.owner_character, key));
 
@@ -194,6 +200,7 @@ async fn delete_achievement(
 
     let key = key.to_lowercase();
     if state.db.delete_achievement(&key).map_err(|e| ApiError::Internal(e.to_string()))? {
+        crate::script::achievements::sync_world_after_delete(&state.state, &key);
         notify_builders(&state.connections, &format!("[API] {} deleted achievement '{}'", user.api_key.owner_character, key));
         Ok(Json(serde_json::json!({ "success": true })))
     } else {

@@ -698,6 +698,7 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
                                         m.combat.targets.push(CombatTarget {
                                             target_type: CombatTargetType::Player,
                                             target_id: player_target_id,
+                                            target_name: None,
                                         });
                                     }
                                     m.combat.distances.insert(player_target_id, CombatDistance::Ranged);
@@ -706,10 +707,7 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
                                 // Put the player in combat with this mobile
                                 char.combat.in_combat = true;
                                 if !char.combat.targets.iter().any(|t| t.target_id == current_mobile.id) {
-                                    char.combat.targets.push(CombatTarget {
-                                        target_type: CombatTargetType::Mobile,
-                                        target_id: current_mobile.id,
-                                    });
+                                    char.combat.targets.push(CombatTarget::mobile(current_mobile.id));
                                 }
                                 // Player also at ranged distance from mob
                                 char.combat.distances.insert(current_mobile.id, CombatDistance::Ranged);
@@ -858,6 +856,7 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
                                                     m.combat.targets.push(CombatTarget {
                                                         target_type: CombatTargetType::Player,
                                                         target_id: player_target_id,
+                                                        target_name: None,
                                                     });
                                                 }
                                                 m.combat.distances.insert(player_target_id, CombatDistance::Melee);
@@ -865,10 +864,7 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
 
                                             char.combat.in_combat = true;
                                             if !char.combat.targets.iter().any(|t| t.target_id == current_mobile.id) {
-                                                char.combat.targets.push(CombatTarget {
-                                                    target_type: CombatTargetType::Mobile,
-                                                    target_id: current_mobile.id,
-                                                });
+                                                char.combat.targets.push(CombatTarget::mobile(current_mobile.id));
                                             }
                                             char.combat.distances.insert(current_mobile.id, CombatDistance::Melee);
                                             let _ = db.save_character_data(char.clone());

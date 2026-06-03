@@ -13,6 +13,24 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
+/// Effective combat zone for a room: a room-level `combat_zone` override wins,
+/// else the room's area zone, else the `Pve` default. Public so tick-side PvP
+/// code can gate on it (mirrors the private `get_effective_zone` used by the
+/// Rhai `get_combat_zone`/`can_attack_players` bindings).
+pub fn effective_combat_zone(db: &Db, room_id: &Uuid) -> CombatZoneType {
+    if let Ok(Some(room)) = db.get_room_data(room_id) {
+        if let Some(room_zone) = room.flags.combat_zone {
+            return room_zone;
+        }
+        if let Some(area_id) = room.area_id {
+            if let Ok(Some(area)) = db.get_area_data(&area_id) {
+                return area.combat_zone;
+            }
+        }
+    }
+    CombatZoneType::Pve
+}
+
 /// Append on-hit DoT effects driven by mobile flags. Each enabled flag pushes a 3-round
 /// `OngoingEffect` of the matching element with `damage_per_round = max(1, mobile.level / 2)`.
 /// Flags compose — a mobile with both `poisonous` and `fiery` applies both DoTs.
@@ -1400,18 +1418,29 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 Some(t) => t,
                 None => return false,
             };
-            let tid = match uuid::Uuid::parse_str(&target_id) {
-                Ok(u) => u,
-                Err(_) => return false,
+
+            // Player targets carry a name (players have no UUID); mobile
+            // targets carry the instance UUID.
+            let new_target = match tt {
+                CombatTargetType::Player => {
+                    if target_id.trim().is_empty() {
+                        return false;
+                    }
+                    CombatTarget::player(target_id.clone())
+                }
+                CombatTargetType::Mobile => match uuid::Uuid::parse_str(&target_id) {
+                    Ok(u) => CombatTarget::mobile(u),
+                    Err(_) => return false,
+                },
             };
 
             if let Ok(Some(mut char)) = cloned_db.get_character_data(&char_name) {
-                // Check if already targeting this entity
-                if !char.combat.targets.iter().any(|t| t.target_id == tid) {
-                    char.combat.targets.push(CombatTarget {
-                        target_type: tt,
-                        target_id: tid,
-                    });
+                let already = char.combat.targets.iter().any(|t| match tt {
+                    CombatTargetType::Player => t.is_player_named(&target_id),
+                    CombatTargetType::Mobile => t.target_id == new_target.target_id,
+                });
+                if !already {
+                    char.combat.targets.push(new_target);
                 }
                 char.combat.in_combat = true;
                 return cloned_db.save_character_data(char).is_ok();
@@ -1441,14 +1470,20 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     engine.register_fn(
         "remove_combat_target",
         move |char_name: String, target_id: String| -> bool {
-            let tid = match uuid::Uuid::parse_str(&target_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
+            // A UUID removes a mobile target; anything else is treated as a
+            // player name (PvP targets are keyed by name, not UUID).
+            let parsed = uuid::Uuid::parse_str(&target_id).ok();
 
             if let Ok(Some(mut char)) = cloned_db.get_character_data(&char_name) {
-                char.combat.targets.retain(|t| t.target_id != tid);
-                char.combat.distances.remove(&tid);
+                match parsed {
+                    Some(tid) => {
+                        char.combat.targets.retain(|t| t.target_id != tid);
+                        char.combat.distances.remove(&tid);
+                    }
+                    None => {
+                        char.combat.targets.retain(|t| !t.is_player_named(&target_id));
+                    }
+                }
                 // Exit combat if no targets left
                 if char.combat.targets.is_empty() {
                     char.combat.in_combat = false;
@@ -1503,6 +1538,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                     Dynamic::from(t.target_type.to_display_string().to_string()),
                 );
                 map.insert("target_id".into(), Dynamic::from(t.target_id.to_string()));
+                map.insert(
+                    "target_name".into(),
+                    Dynamic::from(t.target_name.clone().unwrap_or_default()),
+                );
                 return Dynamic::from(map);
             }
         }
@@ -1540,11 +1579,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "unknown".to_string()
                     }
                 }
-                CombatTargetType::Player => {
-                    // For player targets we'd need the name, but we store UUIDs
-                    // This would require iterating characters - return empty for now
-                    "a player".to_string()
-                }
+                CombatTargetType::Player => target
+                    .target_name
+                    .clone()
+                    .unwrap_or_else(|| "a player".to_string()),
             };
             map.insert("target_name".into(), Dynamic::from(target_name));
 
@@ -1893,6 +1931,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                     mobile.combat.targets.push(CombatTarget {
                         target_type: tt,
                         target_id: tid,
+                        target_name: None,
                     });
                     tracing::debug!(
                         "enter_mobile_combat: added target, now {} targets",

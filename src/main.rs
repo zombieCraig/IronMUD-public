@@ -457,12 +457,14 @@ async fn main() -> Result<()> {
         .unwrap_or(false)
     {
         let api_connections = connections.clone();
+        let api_world = state.clone();
         let api_port = args.api_port;
         let api_bind = args.api_bind.clone();
         tokio::spawn(async move {
             let api_state = std::sync::Arc::new(ironmud::api::ApiState {
                 db: api_db,
                 connections: api_connections,
+                state: api_world,
             });
             ironmud::api::run_api_server(api_state, &api_bind, api_port).await;
         });

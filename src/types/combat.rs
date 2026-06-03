@@ -127,6 +127,12 @@ impl CombatTargetType {
 pub struct CombatTarget {
     pub target_type: CombatTargetType,
     pub target_id: Uuid,
+    /// For `Player` targets, the victim's character name. Players are keyed
+    /// by name (no UUID), so `target_id` is nil for them and this carries
+    /// the identity the combat tick / MSDP need to resolve the opponent.
+    /// `None` for mobile targets (use `target_id`).
+    #[serde(default)]
+    pub target_name: Option<String>,
 }
 
 impl Default for CombatTarget {
@@ -134,7 +140,38 @@ impl Default for CombatTarget {
         CombatTarget {
             target_type: CombatTargetType::default(),
             target_id: Uuid::nil(),
+            target_name: None,
         }
+    }
+}
+
+impl CombatTarget {
+    /// A mobile target, identified by its instance UUID.
+    pub fn mobile(target_id: Uuid) -> Self {
+        CombatTarget {
+            target_type: CombatTargetType::Mobile,
+            target_id,
+            target_name: None,
+        }
+    }
+
+    /// A player target, identified by character name (UUID is nil).
+    pub fn player(name: impl Into<String>) -> Self {
+        CombatTarget {
+            target_type: CombatTargetType::Player,
+            target_id: Uuid::nil(),
+            target_name: Some(name.into()),
+        }
+    }
+
+    /// True when this target refers to `name` (case-insensitive player match).
+    pub fn is_player_named(&self, name: &str) -> bool {
+        self.target_type == CombatTargetType::Player
+            && self
+                .target_name
+                .as_deref()
+                .map(|n| n.eq_ignore_ascii_case(name))
+                .unwrap_or(false)
     }
 }
 
@@ -565,5 +602,55 @@ impl WeaponSkill {
     /// (used for mob AI auto-advance behavior)
     pub fn prefers_melee(&self) -> bool {
         !matches!(self, WeaponSkill::Ranged)
+    }
+}
+
+#[cfg(test)]
+mod combat_target_tests {
+    use super::*;
+
+    #[test]
+    fn mobile_constructor_sets_uuid_no_name() {
+        let id = Uuid::new_v4();
+        let t = CombatTarget::mobile(id);
+        assert_eq!(t.target_type, CombatTargetType::Mobile);
+        assert_eq!(t.target_id, id);
+        assert!(t.target_name.is_none());
+    }
+
+    #[test]
+    fn player_constructor_sets_name_nil_uuid() {
+        let t = CombatTarget::player("Yumiko");
+        assert_eq!(t.target_type, CombatTargetType::Player);
+        assert_eq!(t.target_id, Uuid::nil());
+        assert_eq!(t.target_name.as_deref(), Some("Yumiko"));
+    }
+
+    #[test]
+    fn is_player_named_is_case_insensitive_and_type_gated() {
+        let p = CombatTarget::player("Yumiko");
+        assert!(p.is_player_named("yumiko"));
+        assert!(p.is_player_named("YUMIKO"));
+        assert!(!p.is_player_named("someone_else"));
+        // A mobile target never matches a player-name query, even on a nil id.
+        let m = CombatTarget::mobile(Uuid::nil());
+        assert!(!m.is_player_named("Yumiko"));
+    }
+
+    #[test]
+    fn player_target_survives_json_roundtrip() {
+        let p = CombatTarget::player("Yumiko");
+        let json = serde_json::to_string(&p).unwrap();
+        let back: CombatTarget = serde_json::from_str(&json).unwrap();
+        assert!(back.is_player_named("yumiko"));
+    }
+
+    #[test]
+    fn legacy_target_without_name_defaults_to_none() {
+        // Pre-existing persisted targets lack `target_name`; serde default fills None.
+        let legacy = r#"{"target_type":"mobile","target_id":"00000000-0000-0000-0000-000000000000"}"#;
+        let t: CombatTarget = serde_json::from_str(legacy).unwrap();
+        assert!(t.target_name.is_none());
+        assert_eq!(t.target_type, CombatTargetType::Mobile);
     }
 }

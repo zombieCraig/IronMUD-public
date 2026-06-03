@@ -391,7 +391,11 @@ fn do_kill(rest: &str, ctx: &EvalCtx) {
         ActorRef::Mob { mobile_id, .. } => (crate::types::CombatTargetType::Mobile, mobile_id),
     };
     if !mob.combat.targets.iter().any(|t| t.target_id == target_id) {
-        mob.combat.targets.push(crate::types::CombatTarget { target_type, target_id });
+        mob.combat.targets.push(crate::types::CombatTarget {
+            target_type,
+            target_id,
+            target_name: None,
+        });
     }
     let _ = ctx.db.save_mobile_data(mob);
 }

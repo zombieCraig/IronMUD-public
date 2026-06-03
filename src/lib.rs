@@ -1863,16 +1863,24 @@ impl PlayerSession {
                     if reported.contains("OPPONENT_NAME") {
                         let target_name = match primary.target_type {
                             CombatTargetType::Mobile => world.db.get_mobile_data(&primary.target_id).ok().flatten().map(|m| m.name.clone()).unwrap_or_else(|| "opponent".to_string()),
-                            CombatTargetType::Player => "another player".to_string(), // Character lookup by Uuid is not yet supported
+                            CombatTargetType::Player => primary
+                                .target_name
+                                .clone()
+                                .unwrap_or_else(|| "another player".to_string()),
                         };
                         let _ = tx_raw.send(telnet::build_msdp_var("OPPONENT_NAME", &target_name));
                     }
                     if reported.contains("OPPONENT_HEALTH") {
                         let (hp, max_hp) = match primary.target_type {
                             CombatTargetType::Mobile => world.db.get_mobile_data(&primary.target_id).ok().flatten().map(|m| (m.current_hp, m.max_hp)).unwrap_or((0, 1)),
-                            CombatTargetType::Player => (100, 100), // HP lookup for other players not yet supported
+                            CombatTargetType::Player => primary
+                                .target_name
+                                .as_deref()
+                                .and_then(|n| world.db.get_character_data(n).ok().flatten())
+                                .map(|c| (c.hp, c.max_hp.max(1)))
+                                .unwrap_or((100, 100)),
                         };
-                        let pct: i32 = (hp * 100) / max_hp;
+                        let pct: i32 = (hp * 100) / max_hp.max(1);
                         let _ = tx_raw.send(telnet::build_msdp_var("OPPONENT_HEALTH", &pct.to_string()));
                     }
                 } else {

@@ -27,12 +27,19 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 use crate::SharedConnections;
+use crate::SharedState;
 use crate::db::Db;
 
 /// Shared state for API handlers
 pub struct ApiState {
     pub db: Db,
     pub connections: SharedConnections,
+    /// Live game world, so API mutations can mirror DB writes into the
+    /// in-memory caches the running server reads (e.g. the achievement
+    /// definition map / counter index). Without this, an achievement
+    /// created or edited over the API wouldn't be seen by the engine
+    /// notify path until a server restart.
+    pub state: SharedState,
 }
 
 /// Create the API router with all routes

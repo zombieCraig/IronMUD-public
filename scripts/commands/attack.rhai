@@ -420,13 +420,21 @@ fn execute_attack_vs_player(attacker, target_info, connection_id) {
         broadcast_to_room_awake(attacker.current_room_id, target.name + " is jolted awake!", target.name);
     }
 
-    // Enter combat with the player (PvP) - use character name as target_id
-    // Note: For PvP, we store the character name, not UUID
-    // Distance tracking for PvP will be added when PvP UUID handling is improved
+    // Enter combat with the player (PvP). Player combat targets are keyed by
+    // character name (players have no UUID); enter_combat stores the name and
+    // the combat tick sustains the fight from here.
     enter_combat(attacker.name, "player", target_info.target_name);
 
-    // Target enters combat with the attacker (they fight back)
+    // Target enters combat with the attacker (they fight back).
     enter_combat(target_info.target_name, "player", attacker.name);
+
+    // Reload the victim so the post-swing save below preserves the combat
+    // engagement enter_combat just wrote (it was loaded before that), rather
+    // than clobbering it with a stale copy.
+    target = get_character_data(target_info.target_name);
+    if target == () {
+        return;
+    }
 
     // Get attacker's weapon and skill
     let weapon_info = get_attacker_weapon_info(attacker.name);
@@ -502,16 +510,23 @@ fn execute_attack_vs_player(attacker, target_info, connection_id) {
                       armor_result.blocked, armor_result.armor_name,
                       weapon_info.damage_type, connection_id);
 
-    // Check if target died
+    // Target dropped to 0 from this swing. Route through the same
+    // unconscious -> bleedout -> process_player_death flow as PvE and as
+    // sustained PvP tick rounds (rather than an instant "dead" message that
+    // left the victim alive at <=0 HP and out of combat). Keep both engaged
+    // so the victim's own combat round runs the bleedout; persist via
+    // save_character_data so the live session is synced (the regen tick can't
+    // revert it). `target` already carries the combat state (reloaded above).
     if target.hp <= 0 {
-        send_death_message(attacker, target.name, connection_id);
-        // Exit combat for both parties
-        exit_combat(target_info.target_name);
-        remove_combat_target(attacker.name, target_info.target_name);
-        // Check if attacker has no more targets
-        let targets = get_combat_targets(attacker.name);
-        if targets.len() == 0 {
-            exit_combat(attacker.name);
+        target.hp = 0;
+        target.is_unconscious = true;
+        target.bleedout_rounds_remaining = 5;
+        save_character_data(target);
+        // Victim excluded from the room line; they get the second-person form.
+        broadcast_to_room_awake(attacker.current_room_id, target.name + " collapses, unconscious!", target.name);
+        let victim_conn = find_player_connection_by_name(target.name);
+        if victim_conn != "" {
+            send_client_message(victim_conn, "You collapse, unconscious!");
         }
     }
 }

@@ -23,6 +23,7 @@ use std::sync::Arc;
 use crate::db::Db;
 use crate::types::{
     AchievementCategory, AchievementCriterion, AchievementDef, AchievementReward, AchievementSource, CharacterData,
+    ItemLocation,
 };
 use crate::{SharedConnections, SharedState};
 
@@ -230,15 +231,8 @@ fn unlock_with_def(db: &Db, connections: &SharedConnections, def: &AchievementDe
             gold_awarded = Some(gold);
         }
 
-        if def.reward.item_vnum.is_some() {
-            // Slice 3 wires item delivery (with escrow on overflow). For now
-            // log so future JSON entries surface as audit signals rather
-            // than silent drops.
-            tracing::debug!(
-                "Achievement '{}' has item_vnum reward; item delivery is wired in slice 3",
-                key_lc
-            );
-        }
+        // Item rewards are delivered after the character mutation commits
+        // (they touch the item tree, not the character) — see below.
 
         if def.reward.morality_delta != 0 {
             let before = ch.morality;
@@ -269,8 +263,51 @@ fn unlock_with_def(db: &Db, connections: &SharedConnections, def: &AchievementDe
             send_to_player(connections, player_name, line);
         }
     }
+    if let Some(ref vnum) = def.reward.item_vnum {
+        deliver_item_reward(db, connections, player_name, vnum);
+    }
 
     true
+}
+
+/// Deliver an achievement's item reward into the player's inventory.
+///
+/// Mirrors the quest `QuestReward::Item` path (`src/quest/mod.rs`): spawn one
+/// instance from the prototype, relocate it to the player's inventory, and
+/// persist. Items live in their own sled tree keyed by id (inventory is the
+/// set of items whose `location` is `Inventory(name)`), so this never touches
+/// the character record and needs no session sync. Honors the prototype's
+/// `world_max_count` cap — `spawn_item_from_prototype` returns `Ok(None)` when
+/// the vnum is unknown or the live cap is reached, which we surface as a warn
+/// rather than a silent drop.
+fn deliver_item_reward(db: &Db, connections: &SharedConnections, player_name: &str, vnum: &str) {
+    match db.spawn_item_from_prototype(vnum) {
+        Ok(Some(mut item)) => {
+            item.location = ItemLocation::Inventory(player_name.to_string());
+            if db.save_item_data(item).is_ok() {
+                let label = db
+                    .get_item_by_vnum(vnum)
+                    .ok()
+                    .flatten()
+                    .map(|i| i.short_desc)
+                    .unwrap_or_else(|| format!("item {}", vnum));
+                send_to_player(connections, player_name, &format!("You receive {}.", label));
+            } else {
+                tracing::warn!(
+                    "achievement item reward '{}' failed to save for {}",
+                    vnum, player_name
+                );
+            }
+        }
+        Ok(None) => tracing::warn!(
+            "achievement item reward '{}' not delivered to {}: unknown prototype or world cap reached",
+            vnum, player_name
+        ),
+        Err(e) => tracing::warn!(
+            "achievement item reward '{}' spawn error for {}: {}",
+            vnum, player_name, e
+        ),
+    }
 }
 
 /// Bump a counter on the character and award any matching achievements.
@@ -820,14 +857,14 @@ where
 /// world map so subsequent reads (`get_achievement_def`, `list_achievement_defs`,
 /// counter notify path) see the update without requiring a restart. Also
 /// refreshes the counter index from scratch — the dataset is small.
-fn sync_world_after_save(state: &SharedState, def: AchievementDef) {
+pub fn sync_world_after_save(state: &SharedState, def: AchievementDef) {
     let Ok(mut world) = state.lock() else { return };
     let key = def.key.to_lowercase();
     world.achievement_definitions.insert(key, def);
     world.achievement_index_by_counter = rebuild_counter_index(&world.achievement_definitions);
 }
 
-fn sync_world_after_delete(state: &SharedState, key: &str) {
+pub fn sync_world_after_delete(state: &SharedState, key: &str) {
     let Ok(mut world) = state.lock() else { return };
     let key_lc = key.to_lowercase();
     world.achievement_definitions.remove(&key_lc);

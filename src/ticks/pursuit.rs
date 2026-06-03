@@ -194,6 +194,7 @@ fn process_pursuit_tick(db: &db::Db, connections: &SharedConnections, state: &Sh
                                     m.combat.targets.push(CombatTarget {
                                         target_type: CombatTargetType::Player,
                                         target_id: player_target_id,
+                                        target_name: None,
                                     });
                                 }
                                 m.combat.distances.insert(player_target_id, CombatDistance::Ranged);
@@ -210,10 +211,7 @@ fn process_pursuit_tick(db: &db::Db, connections: &SharedConnections, state: &Sh
                                 let after = db.update_character(&char_name, |c| {
                                     c.combat.in_combat = true;
                                     if !c.combat.targets.iter().any(|t| t.target_id == mob_id) {
-                                        c.combat.targets.push(CombatTarget {
-                                            target_type: CombatTargetType::Mobile,
-                                            target_id: mob_id,
-                                        });
+                                        c.combat.targets.push(CombatTarget::mobile(mob_id));
                                     }
                                     c.combat.distances.insert(mob_id, CombatDistance::Ranged);
                                 })?;

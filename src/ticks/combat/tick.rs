@@ -7,9 +7,9 @@ use tokio::time::{Duration, interval};
 use tracing::{debug, error};
 
 use ironmud::{
-    ActiveBuff, BodyPart, CharacterData, CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, DamageType,
-    EffectType, ItemLocation, ItemType, MobileData, SharedConnections, SharedState, SkillProgress,
-    WeaponSkill, WearLocation, WoundLevel, WoundType, break_all_charms_by_player, db,
+    ActiveBuff, BodyPart, CharacterData, CharacterPosition, CombatDistance, CombatTarget, CombatTargetType,
+    CombatZoneType, DamageType, EffectType, ItemLocation, ItemType, MobileData, SharedConnections, SharedState,
+    SkillProgress, WeaponSkill, WearLocation, WoundLevel, WoundType, break_all_charms_by_player, db,
 };
 
 use ironmud::corpse::{CorpseBuilder, mobile_gold_with_variance};
@@ -334,7 +334,7 @@ fn process_character_combat_round(
             process_character_attacks_mobile(db, connections, state, &mut char, &target.target_id, &mut kill_info)?;
         }
         CombatTargetType::Player => {
-            process_character_attacks_player(db, connections, &mut char, &target.target_id)?;
+            process_character_attacks_player(db, connections, state, &mut char, &target)?;
         }
     }
 
@@ -432,6 +432,7 @@ fn process_helper_joins(
                 m.combat.targets.push(CombatTarget {
                     target_type: CombatTargetType::Player,
                     target_id: player_target_id,
+                    target_name: None,
                 });
             }
             m.combat.distances.insert(player_target_id, CombatDistance::Melee);
@@ -509,10 +510,7 @@ mod tests {
         .expect("build character");
         char.position = CharacterPosition::Standing;
         char.combat.in_combat = true;
-        char.combat.targets.push(CombatTarget {
-            target_type: CombatTargetType::Mobile,
-            target_id: victim_id,
-        });
+        char.combat.targets.push(CombatTarget::mobile(victim_id));
         char
     }
 
@@ -1397,23 +1395,177 @@ fn process_character_attacks_mobile(
 }
 
 /// Process a character attacking another player (PvP)
+/// Process a character's automatic swing against another player (sustained
+/// PvP). Mirrors the PvE mob-vs-player hit formula and weapon dice, then
+/// routes a downed victim through the existing unconscious -> bleedout ->
+/// `process_player_death` flow (the victim's own combat round runs the
+/// bleedout countdown), so PvP death is identical to PvE death.
+///
+/// Entry is already zone-gated by attack.rhai (player targets only resolve in
+/// `Pvp` zones); this path additionally drops the engagement if the room is a
+/// `Safe` zone or the victim has left, so combat can't be sustained where it
+/// couldn't be started.
 fn process_character_attacks_player(
-    _db: &db::Db,
-    _connections: &SharedConnections,
+    db: &db::Db,
+    connections: &SharedConnections,
+    state: &SharedState,
     char: &mut CharacterData,
-    target_id: &uuid::Uuid,
+    target: &CombatTarget,
 ) -> Result<()> {
-    // Find target player by name stored in target_id (it's actually a string converted)
-    // Actually, target_id is a UUID. We need to find the character somehow.
-    // For now, skip PvP in automatic combat rounds.
-    // PvP attacks are handled manually through the attack command.
+    use rand::Rng;
 
-    // Remove this target from combat since we can't process it automatically
-    char.combat.targets.retain(|t| t.target_id != *target_id);
-    if char.combat.targets.is_empty() {
-        char.combat.in_combat = false;
+    // Players are keyed by name; a player CombatTarget without a name is
+    // unusable — drop it.
+    let target_name = match target.target_name.as_deref() {
+        Some(n) => n.to_string(),
+        None => {
+            char.combat.targets.retain(|t| t.target_type != CombatTargetType::Player);
+            if char.combat.targets.is_empty() {
+                char.combat.in_combat = false;
+            }
+            return Ok(());
+        }
+    };
+
+    // Drop the player engagement and exit combat if it was the last target.
+    fn drop_player_target(char: &mut CharacterData, name: &str) {
+        char.combat.targets.retain(|t| !t.is_player_named(name));
+        if char.combat.targets.is_empty() {
+            char.combat.in_combat = false;
+        }
     }
 
+    let mut victim = match db.get_character_data(&target_name)? {
+        Some(c) => c,
+        None => {
+            // Target logged out or was deleted.
+            drop_player_target(char, &target_name);
+            return Ok(());
+        }
+    };
+
+    let room_id = char.current_room_id;
+
+    if victim.current_room_id != room_id {
+        drop_player_target(char, &target_name);
+        send_message_to_character(connections, &char.name, "Your target is no longer here.");
+        return Ok(());
+    }
+
+    // Combat can't be sustained in a Safe zone (entry was already blocked there).
+    if ironmud::script::effective_combat_zone(db, &room_id) == CombatZoneType::Safe {
+        drop_player_target(char, &target_name);
+        return Ok(());
+    }
+
+    // Victim is already down — let their own bleedout finish; don't pile on.
+    if victim.is_unconscious {
+        return Ok(());
+    }
+
+    // A sleeping victim is jolted awake and eats an automatic hit.
+    let was_sleeping = victim.position == CharacterPosition::Sleeping;
+    if was_sleeping {
+        victim.position = CharacterPosition::Standing;
+        send_message_to_character(connections, &target_name, "You are jolted awake by an attack!");
+    }
+
+    // Ensure the engagement is mutual so the victim's own round retaliates and
+    // runs the bleedout countdown.
+    if !victim.combat.targets.iter().any(|t| t.is_player_named(&char.name)) {
+        victim.combat.in_combat = true;
+        victim.combat.targets.push(CombatTarget::player(char.name.clone()));
+    }
+
+    let mut rng = rand::thread_rng();
+
+    // Attacker offense.
+    let (weapon_skill, count, sides, weapon_bonus, _wdt) = get_character_weapon_info(db, char);
+    let skill = get_skill_level_for_character(char, &weapon_skill);
+    let (atk_hit_bonus, atk_dam_bonus, atk_dex_bonus) = sum_combat_buff_bonuses(&char.active_buffs);
+    let attacker_dex_mod = (char.stat_dex as i32 + atk_dex_bonus - 10) / 2;
+    let str_mod = (char.stat_str as i32 - 10) / 2;
+
+    // Victim defense (mirrors process_mobile_attacks_player: dex + AC buffs).
+    let (_, _, vic_dex_bonus) = sum_combat_buff_bonuses(&victim.active_buffs);
+    let target_dex_mod = (victim.stat_dex as i32 + vic_dex_bonus - 10) / 2;
+    let ac_buff_bonus: i32 = victim
+        .active_buffs
+        .iter()
+        .filter(|b| b.effect_type == EffectType::ArmorClassBoost)
+        .map(|b| b.magnitude)
+        .sum();
+
+    let mut hit_chance =
+        (50 + skill * 5 + attacker_dex_mod - target_dex_mod - ac_buff_bonus + atk_hit_bonus).clamp(5, 95);
+    if let Some(blind) = char.active_buffs.iter().find(|b| b.effect_type == EffectType::Blind) {
+        hit_chance = (hit_chance - blind.magnitude).clamp(5, 95);
+    }
+
+    let roll = rng.gen_range(1..=100);
+    if !was_sleeping && roll > hit_chance {
+        send_message_to_character(connections, &char.name, &format!("You attack {} but miss!", victim.name));
+        let victim_name = victim.name.clone();
+        let attacker_name = char.name.clone();
+        broadcast_to_room_except_awake_per_viewer(connections, &room_id, &attacker_name, |viewer| {
+            if viewer.name.eq_ignore_ascii_case(&victim_name) {
+                format!("{} attacks you but misses!", attacker_name)
+            } else {
+                format!("{} attacks {} but misses!", attacker_name, victim_name)
+            }
+        });
+        db.save_character_data(victim.clone())?;
+        sync_character_to_session(connections, &victim, state);
+        return Ok(());
+    }
+
+    // Hit. Damage = weapon dice + bonuses + strength, light crit at 1.5x.
+    let mut damage = (roll_dice(count, sides) + weapon_bonus + atk_dam_bonus + str_mod).max(1);
+    let crit_chance = 5 + skill / 2;
+    let is_crit = rng.gen_range(1..=100) <= crit_chance;
+    if is_crit {
+        damage = (damage * 3) / 2;
+    }
+    let crit_text = if is_crit { " \x1b[1;31m(critical!)\x1b[0m" } else { "" };
+
+    victim.hp -= damage;
+
+    send_message_to_character(
+        connections,
+        &char.name,
+        &format!("You hit {} for {} damage!{}", victim.name, damage, crit_text),
+    );
+    {
+        let victim_name = victim.name.clone();
+        let attacker_name = char.name.clone();
+        broadcast_to_room_except_awake_per_viewer(connections, &room_id, &attacker_name, |viewer| {
+            if viewer.name.eq_ignore_ascii_case(&victim_name) {
+                format!("{} hits you for {} damage!", attacker_name, damage)
+            } else {
+                format!("{} hits {} for {} damage!", attacker_name, victim_name, damage)
+            }
+        });
+    }
+
+    // Downed: route through the shared PvE unconscious/bleedout flow.
+    if victim.hp <= 0 {
+        victim.hp = 0;
+        victim.is_unconscious = true;
+        victim.bleedout_rounds_remaining = 5;
+        send_message_to_character(connections, &char.name, &format!("{} collapses, unconscious!", victim.name));
+        let victim_name = victim.name.clone();
+        let attacker_name = char.name.clone();
+        broadcast_to_room_except_awake_per_viewer(connections, &room_id, &attacker_name, |viewer| {
+            if viewer.name.eq_ignore_ascii_case(&victim_name) {
+                "You collapse, unconscious!".to_string()
+            } else {
+                format!("{} collapses, unconscious!", victim_name)
+            }
+        });
+    }
+
+    db.save_character_data(victim.clone())?;
+    sync_character_to_session(connections, &victim, state);
     Ok(())
 }
 
@@ -1963,10 +2115,7 @@ fn process_mobile_attacks_player(
     if !char.combat.in_combat || !char.combat.targets.iter().any(|t| t.target_id == mobile.id) {
         char.combat.in_combat = true;
         if !char.combat.targets.iter().any(|t| t.target_id == mobile.id) {
-            char.combat.targets.push(CombatTarget {
-                target_type: CombatTargetType::Mobile,
-                target_id: mobile.id,
-            });
+            char.combat.targets.push(CombatTarget::mobile(mobile.id));
         }
         db.save_character_data(char.clone())?;
         sync_character_to_session(connections, &char, state);
@@ -2469,10 +2618,7 @@ fn mob_cast_spell_at_player(
     if !char.combat.in_combat || !char.combat.targets.iter().any(|t| t.target_id == mobile.id) {
         char.combat.in_combat = true;
         if !char.combat.targets.iter().any(|t| t.target_id == mobile.id) {
-            char.combat.targets.push(CombatTarget {
-                target_type: CombatTargetType::Mobile,
-                target_id: mobile.id,
-            });
+            char.combat.targets.push(CombatTarget::mobile(mobile.id));
         }
         db.save_character_data(char.clone())?;
         sync_character_to_session(connections, &char, state);
