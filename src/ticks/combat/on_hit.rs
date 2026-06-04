@@ -32,6 +32,9 @@ pub fn apply_on_hit_effects_to_mobile(
         }
         match eff.effect.to_lowercase().as_str() {
             "bleeding" => {
+                if !mobile.bleeds() {
+                    continue;
+                }
                 add_wound_bleeding(mobile, body_part, eff.magnitude.max(1));
                 room_messages.push(format!("{}'s {} bleeds heavily!", mobile.name, body_part));
             }

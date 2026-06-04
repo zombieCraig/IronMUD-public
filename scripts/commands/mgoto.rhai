@@ -65,14 +65,24 @@ fn resolve_mobile_id(args) {
         return args;
     }
 
-    // If not found by UUID, try resolving by vnum or name
+    // If not found by UUID, try resolving by vnum or name.
+    // Skip prototypes and roomless mobiles: a prototype shares the vnum but
+    // has no room, so teleporting to it strands the player in a void.
     let mobiles = list_all_mobiles();
+    let fallback = "";
     for mob in mobiles {
+        if mob.is_prototype { continue; }
         if mob.vnum == args || mob.name.to_lower() == args.to_lower() {
-            return mob.id;
+            if mob.has_room_id {
+                return mob.id;
+            }
+            if fallback == "" {
+                fallback = mob.id;
+            }
         }
     }
 
-    // Return empty string if no match found
-    ""
+    // Return the best (live, roomed) match, or a roomless fallback if that's
+    // all we found, or empty string if no match at all.
+    fallback
 }

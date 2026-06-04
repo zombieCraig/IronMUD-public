@@ -196,8 +196,9 @@ fn process_mobile_bleeding(db: &db::Db, connections: &SharedConnections) -> Resu
     let mobiles = db.list_all_mobiles()?;
 
     for mut mobile in mobiles {
-        // Skip prototypes (no room assignment) and dead mobiles
-        if mobile.is_prototype || mobile.current_hp <= 0 {
+        // Skip prototypes (no room assignment), dead mobiles, and bloodless
+        // biologies (undead/construct/spirit/plant) that cannot bleed.
+        if mobile.is_prototype || mobile.current_hp <= 0 || !mobile.bleeds() {
             continue;
         }
 
