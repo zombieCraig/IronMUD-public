@@ -794,6 +794,36 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
             .map(|_| rhai::Dynamic::UNIT)
     });
 
+    // refresh_dg_vars(char) -> CharacterData
+    // Return `char` with its `dg_vars` replaced by the authoritative live copy.
+    //
+    // A command-handling script (e.g. go.rhai) loads `char` at entry, then
+    // fires triggers — an on_enter gateway stamping `hub_origin` writes through
+    // `set_player_dg_var` to the *session* + DB. The script's later
+    // `save_character_data(char)` would clobber that with its stale snapshot,
+    // dropping the var before the player can use it (the `leave` gateway never
+    // worked because of this). Folding the live dg_vars back into the local
+    // snapshot before the save preserves anything triggers stamped mid-command.
+    // Online players read from the session; offline players fall back to the DB.
+    let cloned_db = db.clone();
+    let sync_conns = connections.clone();
+    engine.register_fn("refresh_dg_vars", move |mut character: CharacterData| -> CharacterData {
+        if let Ok(conns) = sync_conns.lock() {
+            for session in conns.values() {
+                if let Some(ref existing) = session.character {
+                    if existing.name.eq_ignore_ascii_case(&character.name) {
+                        character.dg_vars = existing.dg_vars.clone();
+                        return character;
+                    }
+                }
+            }
+        }
+        if let Ok(Some(fresh)) = cloned_db.get_character_data(&character.name) {
+            character.dg_vars = fresh.dg_vars;
+        }
+        character
+    });
+
     let cloned_db = db.clone();
     engine.register_fn("hash_password", move |password: String| {
         cloned_db

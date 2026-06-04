@@ -292,6 +292,12 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // The on_enter trigger may have stamped dg_vars on the live session
+    // (e.g. a gateway recording `hub_origin` for a later `leave` verb). Fold
+    // those back into our local snapshot so the room-change save below doesn't
+    // clobber them with the pre-trigger copy.
+    char = refresh_dg_vars(char);
+
     // Get target room data to check for difficult terrain
     let target_room = get_room_data(target_room_id);
 
