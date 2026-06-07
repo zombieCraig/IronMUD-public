@@ -340,7 +340,7 @@ fn handle_config(connection_id, args, admin_char) {
     
     let allowed_keys = [
         "enable_vampire_creation", "builder_mode", "motd", "recall_enabled",
-        "login_lockout_duration", "idle_timeout_secs", "starting_room_id",
+        "login_lockout_duration", "idle_timeout_secs", "idle_disconnect_enabled", "starting_room_id",
         "stamina_regen_standing", "stamina_regen_sitting", "stamina_regen_sleeping",
         "hp_regen_sitting", "hp_regen_sleeping",
         "mana_regen_standing", "mana_regen_sitting", "mana_regen_sleeping",

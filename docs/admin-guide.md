@@ -212,7 +212,8 @@ ironmud-admin settings delete <key>
 | `motd` | (empty) | Message of the day shown at login |
 | `recall_enabled` | `true` | Whether the `recall` command is available |
 | `login_lockout_duration` | `600` | Seconds of failed-login lockout |
-| `idle_timeout_secs` | `300` | Seconds before idle disconnect |
+| `idle_timeout_secs` | `300` | Seconds before a player is shown as `[Idle]`/afk (display only — does **not** disconnect) |
+| `idle_disconnect_enabled` | `true` | Whether idle sessions are dropped after the 30-minute inactivity threshold. Set to `false` to keep builders/admins logged in indefinitely |
 | `wander_chance_percent` | `33` | Per-tick chance a wander-eligible mobile moves |
 | `rent_period_game_days` | `30` | Length of a rental period for properties |
 | `min_attackable_age` | `0` | Minimum NPC age (in game days) a player can attack. Protects children when raised above 0 |
