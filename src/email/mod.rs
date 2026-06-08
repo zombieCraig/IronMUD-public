@@ -126,10 +126,15 @@ pub fn audit_email_send(db: &Db, kind: &str, account_name: &str, outcome: &str) 
     }
 }
 
-/// Send a 6-digit verification code to `to_address`. Reads SMTP and `From:`
-/// configuration from the settings tree on every call.
-pub fn send_verification_email(db: &Db, to_address: &str, code: &str) -> Result<(), EmailError> {
-    check_and_increment_send_quota(db)?;
+/// Fixed body for the admin SMTP test message. No substitution tokens — the
+/// only purpose is to prove a message can actually reach an inbox.
+const TEST_EMAIL_BODY: &str = "This is a test message from IronMUD.\n\nIf you are reading this, the server's SMTP configuration is working: verification codes and password-reset emails can be delivered.\n\nNo action is required.\n";
+
+/// Read the SMTP config from the settings tree, build the message, and relay it
+/// over STARTTLS. Shared by every public sender — the callers differ only in
+/// quota handling, subject, and body. Reads config on every call so admins can
+/// rotate credentials without restarting.
+fn deliver(db: &Db, to_address: &str, subject: &str, body: String) -> Result<(), EmailError> {
     let host = read_setting_required(db, "smtp_host", "smtp_host")?;
     let port = db
         .get_setting_or_default("smtp_port", "587")
@@ -148,11 +153,6 @@ pub fn send_verification_email(db: &Db, to_address: &str, code: &str) -> Result<
     let from_name = db
         .get_setting_or_default("smtp_from_name", "IronMUD")
         .map_err(|e| EmailError::SmtpFailure(format!("settings read: {}", e)))?;
-    let subject = db
-        .get_setting_or_default("email_verification_subject", "Verify your IronMUD account")
-        .map_err(|e| EmailError::SmtpFailure(format!("settings read: {}", e)))?;
-
-    let body = load_template().replace("{{code}}", code);
 
     let from_mbox = format!("{} <{}>", from_name, from_address)
         .parse::<lettre::message::Mailbox>()
@@ -182,62 +182,40 @@ pub fn send_verification_email(db: &Db, to_address: &str, code: &str) -> Result<
     Ok(())
 }
 
+/// Send a 6-digit verification code to `to_address`. Reads SMTP and `From:`
+/// configuration from the settings tree on every call.
+pub fn send_verification_email(db: &Db, to_address: &str, code: &str) -> Result<(), EmailError> {
+    check_and_increment_send_quota(db)?;
+    let subject = db
+        .get_setting_or_default("email_verification_subject", "Verify your IronMUD account")
+        .map_err(|e| EmailError::SmtpFailure(format!("settings read: {}", e)))?;
+    let body = load_template().replace("{{code}}", code);
+    deliver(db, to_address, &subject, body)
+}
+
 /// Send a freshly generated temporary password to `to_address`. Reads SMTP and
 /// `From:` configuration from the settings tree on every call. Mirrors
 /// `send_verification_email` — only the subject, template, and substitution
 /// token differ.
 pub fn send_password_reset_email(db: &Db, to_address: &str, password: &str) -> Result<(), EmailError> {
     check_and_increment_send_quota(db)?;
-    let host = read_setting_required(db, "smtp_host", "smtp_host")?;
-    let port = db
-        .get_setting_or_default("smtp_port", "587")
-        .map_err(|e| EmailError::SmtpFailure(format!("settings read: {}", e)))?
-        .parse::<u16>()
-        .unwrap_or(587);
-    let user = db
-        .get_setting("smtp_user")
-        .map_err(|e| EmailError::SmtpFailure(format!("settings read: {}", e)))?
-        .unwrap_or_default();
-    let pass = db
-        .get_setting("smtp_pass")
-        .map_err(|e| EmailError::SmtpFailure(format!("settings read: {}", e)))?
-        .unwrap_or_default();
-    let from_address = read_setting_required(db, "smtp_from_address", "smtp_from_address")?;
-    let from_name = db
-        .get_setting_or_default("smtp_from_name", "IronMUD")
-        .map_err(|e| EmailError::SmtpFailure(format!("settings read: {}", e)))?;
     let subject = db
         .get_setting_or_default("password_reset_subject", "Your IronMUD password has been reset")
         .map_err(|e| EmailError::SmtpFailure(format!("settings read: {}", e)))?;
-
     let body = load_password_reset_template().replace("{{password}}", password);
+    deliver(db, to_address, &subject, body)
+}
 
-    let from_mbox = format!("{} <{}>", from_name, from_address)
-        .parse::<lettre::message::Mailbox>()
-        .map_err(|e| EmailError::BadAddress(format!("from: {}", e)))?;
-    let to_mbox = to_address
-        .parse::<lettre::message::Mailbox>()
-        .map_err(|e| EmailError::BadAddress(format!("to: {}", e)))?;
-
-    let email = Message::builder()
-        .from(from_mbox)
-        .to(to_mbox)
-        .subject(subject)
-        .body(body)
-        .map_err(|e| EmailError::BuildFailure(e.to_string()))?;
-
-    let mut builder = SmtpTransport::starttls_relay(&host)
-        .map_err(|e| EmailError::SmtpFailure(format!("relay setup: {}", e)))?
-        .port(port);
-    if !user.is_empty() {
-        builder = builder.credentials(Credentials::new(user, pass));
-    }
-    let mailer = builder.build();
-
-    mailer
-        .send(&email)
-        .map_err(|e| EmailError::SmtpFailure(e.to_string()))?;
-    Ok(())
+/// Send a fixed diagnostic message to `to_address` to prove SMTP delivery
+/// works. Counts against the daily/monthly send budget like the other senders
+/// (an admin choice — keeps a single test from masking budget pressure). The
+/// caller is responsible for recording the audit row.
+pub fn send_test_email(db: &Db, to_address: &str) -> Result<(), EmailError> {
+    check_and_increment_send_quota(db)?;
+    let subject = db
+        .get_setting_or_default("email_test_subject", "IronMUD SMTP test")
+        .map_err(|e| EmailError::SmtpFailure(format!("settings read: {}", e)))?;
+    deliver(db, to_address, &subject, TEST_EMAIL_BODY.to_string())
 }
 
 /// Bump the global daily/monthly send counters and refuse the send if

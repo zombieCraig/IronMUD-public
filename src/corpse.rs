@@ -172,17 +172,57 @@ impl CorpseBuilder {
     }
 }
 
-/// Calculate gold drop with random variance for mobiles
+/// Calculate gold drop with random variance for mobiles.
+///
+/// Single source of truth for mob corpse gold: both the combat-tick death path
+/// (`process_mobile_death`) and the script death paths (`set_corpse_gold`) route
+/// through here so the drop math never diverges.
+///
+/// Applies a ±20% spread, rounded (not truncated) and floored at ±1 so even
+/// small values like 5 actually vary (4..=6) instead of dropping a flat amount.
+/// A non-positive base always yields 0.
 pub fn mobile_gold_with_variance(base_gold: i64) -> i64 {
     use rand::Rng;
 
     if base_gold > 0 {
         let mut rng = rand::thread_rng();
-        let variance = (base_gold as f64 * 0.1) as i64;
+        let variance = ((base_gold as f64 * 0.20).round() as i64).max(1);
         let min = (base_gold - variance).max(0);
         let max = base_gold + variance;
-        rng.gen_range(min..=max)
+        let rolled = rng.gen_range(min..=max);
+        tracing::debug!("gold drop: base={} -> rolled={}", base_gold, rolled);
+        rolled
     } else {
+        tracing::debug!("gold drop: base={} -> rolled=0 (no gold)", base_gold);
         0
+    }
+}
+
+#[cfg(test)]
+mod gold_variance_tests {
+    use super::mobile_gold_with_variance;
+
+    #[test]
+    fn small_value_varies_within_bounds() {
+        // base=5 -> variance = round(1.0).max(1) = 1 -> [4, 6]
+        for _ in 0..1000 {
+            let rolled = mobile_gold_with_variance(5);
+            assert!((4..=6).contains(&rolled), "rolled {rolled} out of [4,6]");
+        }
+    }
+
+    #[test]
+    fn zero_and_negative_yield_zero() {
+        assert_eq!(mobile_gold_with_variance(0), 0);
+        assert_eq!(mobile_gold_with_variance(-10), 0);
+    }
+
+    #[test]
+    fn larger_value_uses_twenty_percent_spread() {
+        // base=100 -> variance = 20 -> [80, 120]
+        for _ in 0..1000 {
+            let rolled = mobile_gold_with_variance(100);
+            assert!((80..=120).contains(&rolled), "rolled {rolled} out of [80,120]");
+        }
     }
 }

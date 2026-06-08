@@ -20,6 +20,7 @@ pub const KNOWN_SETTINGS: &[(&str, &str)] = &[
     ("recall_enabled", "true"),
     ("login_lockout_duration", "600"),
     ("idle_timeout_secs", "300"),
+    ("idle_disconnect_enabled", "true"),
     ("starting_room_id", ""),
     // Regeneration
     ("stamina_regen_standing", "1"),

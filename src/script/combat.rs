@@ -2862,15 +2862,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             _ => return false,
         };
 
-        let amount = if gold > 0 {
-            let mut rng = rand::thread_rng();
-            let variance = ((gold as f64 * 0.1) as i64).max(1);
-            let min = (gold - variance).max(0);
-            let max = gold + variance;
-            rng.gen_range(min..=max)
-        } else {
-            0
-        };
+        // Single source of truth for the drop math (shared with the
+        // combat-tick death path in process_mobile_death).
+        let amount = crate::corpse::mobile_gold_with_variance(gold);
 
         corpse.flags.corpse_gold = amount;
         cloned_db.save_item_data(corpse).is_ok()

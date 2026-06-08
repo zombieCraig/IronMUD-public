@@ -121,6 +121,11 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "email-test" {
+        handle_email_test(connection_id, args, char);
+        return;
+    }
+
     if subcommand == "embrace" {
         handle_embrace(connection_id, args, char);
         return;
@@ -340,7 +345,7 @@ fn handle_config(connection_id, args, admin_char) {
     
     let allowed_keys = [
         "enable_vampire_creation", "builder_mode", "motd", "recall_enabled",
-        "login_lockout_duration", "idle_timeout_secs", "starting_room_id",
+        "login_lockout_duration", "idle_timeout_secs", "idle_disconnect_enabled", "starting_room_id",
         "stamina_regen_standing", "stamina_regen_sitting", "stamina_regen_sleeping",
         "hp_regen_sitting", "hp_regen_sleeping",
         "mana_regen_standing", "mana_regen_sitting", "mana_regen_sleeping",
@@ -353,7 +358,15 @@ fn handle_config(connection_id, args, admin_char) {
         "wander_chance_percent", "min_attackable_age",
         "conception_chance_per_day", "adoption_chance_per_day",
         "email_verification_required", "email_daily_cap", "email_monthly_cap",
-        "email_verification_code_ttl_secs"
+        "email_verification_code_ttl_secs",
+        // SMTP delivery config. Listed here so it's settable live (the email
+        // module re-reads these on every send — no restart needed). smtp_user
+        // and smtp_pass are intentionally omitted: they stay offline-only via
+        // `ironmud-admin settings set` so credentials aren't typed over the
+        // wire or shown in `admin config list`. If a password somehow is set,
+        // mask_secret() below keeps it out of the display/broadcast.
+        "smtp_host", "smtp_port", "smtp_from_address", "smtp_from_name",
+        "email_verification_subject", "password_reset_subject", "email_test_subject"
     ];
 
     if parts.len() < 2 || parts[1] == "" || parts[1] == "list" {
@@ -365,7 +378,7 @@ fn handle_config(connection_id, args, admin_char) {
             let found = false;
             for entry in configured {
                 if entry.key == k {
-                    val = entry.value;
+                    val = mask_secret(k, entry.value);
                     found = true;
                     break;
                 }
@@ -387,7 +400,7 @@ fn handle_config(connection_id, args, admin_char) {
                     output += "\nExtra configured settings:\n";
                     extra_shown = true;
                 }
-                output += "  " + pad_right(entry.key, 35) + " " + entry.value + "\n";
+                output += "  " + pad_right(entry.key, 35) + " " + mask_secret(entry.key, entry.value) + "\n";
             }
         }
         
@@ -408,7 +421,7 @@ fn handle_config(connection_id, args, admin_char) {
                 send_client_message(connection_id, key + " is not set (default: " + def + ").");
             }
         } else {
-            send_client_message(connection_id, key + " is currently: " + current);
+            send_client_message(connection_id, key + " is currently: " + mask_secret(key, current));
         }
         return;
     }
@@ -442,11 +455,24 @@ fn handle_config(connection_id, args, admin_char) {
     };
 
     if set_setting(key, value) {
-        send_client_message(connection_id, "Set " + key + " = " + value + ".");
-        broadcast_to_builders("[admin] " + admin_char.name + " set " + key + " = " + value);
+        let shown = mask_secret(key, value);
+        send_client_message(connection_id, "Set " + key + " = " + shown + ".");
+        broadcast_to_builders("[admin] " + admin_char.name + " set " + key + " = " + shown);
     } else {
         send_client_message(connection_id, "Failed to write setting.");
     }
+}
+
+// Mask secret setting values (e.g. smtp_pass) so they never appear in the
+// `admin config` list, single-key display, or the builder broadcast. Empty
+// values pass through so "(not set)" / deletion still read correctly.
+fn mask_secret(key, value) {
+    let lk = key.to_lower();
+    if lk == "smtp_pass" || lk == "smtp_password" {
+        if value == "" { return value; }
+        return "********";
+    }
+    value
 }
 
 fn show_help(connection_id) {
@@ -470,6 +496,7 @@ fn show_help(connection_id) {
     help += "  admin reload                      - Reload class/race/spell/language definitions from disk\n";
     help += "  admin email-stats                 - Show email send counters vs daily/monthly caps\n";
     help += "  admin email-audit [N]             - Show last N email send attempts (default 20)\n";
+    help += "  admin email-test <address>        - Send a test email to confirm SMTP delivery works\n";
     help += "  admin embrace <player> [<clan>]   - Embrace a PC as kindred (clans: brujah/toreador/ventrue/nosferatu/gangrel)\n";
     help += "  admin embrace_revoke <player>     - Restore mortality to a vampire PC\n";
     help += "  admin masquerade_reset <player>   - Clear masquerade_broken on a vampire PC\n";
@@ -2146,4 +2173,27 @@ fn handle_email_audit(connection_id, args) {
         out += "  " + entry.timestamp + "  " + entry.kind + "  " + acct + "  " + entry.outcome + "\n";
     }
     send_client_message(connection_id, out);
+}
+
+// `admin email-test <address>` — send a fixed diagnostic message to <address>
+// to confirm SMTP is actually delivering. Counts against the daily/monthly
+// budget and records an audit row (kind "test") tagged with the admin's name.
+// Reports the real delivery outcome so a misconfiguration is visible.
+fn handle_email_test(connection_id, args, admin_char) {
+    let parts = args.split(" ");
+    let address = if parts.len() >= 2 && parts[1] != "" { parts[1] } else { "" };
+    if address == "" {
+        send_client_message(connection_id, "Usage: admin email-test <address>");
+        return;
+    }
+    if !is_valid_email_format(address) {
+        send_client_message(connection_id, "That doesn't look like an email address: " + address);
+        return;
+    }
+    let outcome = send_test_email(address, admin_char.name);
+    if outcome == "sent" {
+        send_client_message(connection_id, "Test email to " + address + ": sent. Check the inbox (and spam) to confirm delivery.");
+    } else {
+        send_client_message(connection_id, "Test email to " + address + " FAILED: " + outcome);
+    }
 }

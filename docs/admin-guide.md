@@ -212,7 +212,8 @@ ironmud-admin settings delete <key>
 | `motd` | (empty) | Message of the day shown at login |
 | `recall_enabled` | `true` | Whether the `recall` command is available |
 | `login_lockout_duration` | `600` | Seconds of failed-login lockout |
-| `idle_timeout_secs` | `300` | Seconds before idle disconnect |
+| `idle_timeout_secs` | `300` | Seconds before a player is shown as `[Idle]`/afk (display only — does **not** disconnect) |
+| `idle_disconnect_enabled` | `true` | Whether idle sessions are dropped after the 30-minute inactivity threshold. Set to `false` to keep builders/admins logged in indefinitely |
 | `wander_chance_percent` | `33` | Per-tick chance a wander-eligible mobile moves |
 | `rent_period_game_days` | `30` | Length of a rental period for properties |
 | `min_attackable_age` | `0` | Minimum NPC age (in game days) a player can attack. Protects children when raised above 0 |
@@ -243,7 +244,27 @@ ironmud-admin settings set smtp_from_name "Example MUD"
 # Optional tunings
 ironmud-admin settings set email_verification_subject "Verify your account"
 ironmud-admin settings set email_verification_code_ttl_secs 1800   # default 30 min
+ironmud-admin settings set email_test_subject "SMTP test"          # admin email-test subject
 ```
+
+Most of these keys can also be set live in-game with no restart, since the
+email module re-reads SMTP config on every send. Use `admin config <key>
+<value>` — e.g. `admin config smtp_from_address support@example.com` to change
+the From address without taking the server down (handy when your provider, e.g.
+Postmark, requires a verified sender signature for the sending domain). The
+non-secret keys (`smtp_host`, `smtp_port`, `smtp_from_address`, `smtp_from_name`,
+and the `*_subject` keys) appear in `admin config list`. `smtp_user` and
+`smtp_pass` are intentionally **not** listed and stay offline-only via
+`ironmud-admin settings set`, so credentials aren't typed over the wire or shown
+in the config listing.
+
+To confirm SMTP is actually delivering (not just configured), use the in-game
+`admin email-test <address>` command — it sends a fixed diagnostic message to
+any address and reports the real outcome (`sent`, or the specific failure like
+`missing SMTP config: smtp_host` or `SMTP send failed: ...`). Test sends count
+against the daily/monthly budget and appear in `admin email-audit` as `test`
+rows. Pair it with `admin email-stats` to check config status and remaining
+budget.
 
 Behavior when enabled:
 
@@ -261,7 +282,10 @@ Behavior when enabled:
   closed: account creation refuses with "the server can't send mail right now"
   rather than stranding an unverifiable account.
 
-When a user is stuck (lost their email, mistyped it, etc.), use
+Players can self-service their own address in-game with the `email` command
+(`email set <address>`, `email verify <code>`) — useful when verification is
+turned on after accounts already exist, or to fix a typo'd address. When a user
+is still stuck (lost access to their inbox, etc.), use
 `ironmud-admin account set-email` and `account send-code`, or skip verification
 entirely with `ironmud-admin account verify`.
 

@@ -502,6 +502,26 @@ fn default_combat_spell_chance() -> u8 {
 }
 
 impl MobileData {
+    /// Bloodless: the undead and non-flesh biologies (construct, spirit, plant)
+    /// have no blood to lose and no muscles to tire.
+    fn is_bloodless(&self) -> bool {
+        self.flags.undead
+            || matches!(
+                self.creature_type,
+                CreatureType::Construct | CreatureType::Spirit | CreatureType::Plant
+            )
+    }
+
+    /// Whether this mobile can suffer bleeding wounds and lose HP to bleeding.
+    pub fn bleeds(&self) -> bool {
+        !self.is_bloodless()
+    }
+
+    /// Whether combat drains this mobile's stamina (and it can be exhausted).
+    pub fn tires(&self) -> bool {
+        !self.is_bloodless()
+    }
+
     pub fn new(name: String) -> Self {
         MobileData {
             id: Uuid::new_v4(),
@@ -643,5 +663,39 @@ impl MobileData {
             .map(|c| c.gender.as_str())
             .filter(|g| !g.is_empty())
             .unwrap_or("neuter")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn undead_flag_is_bloodless() {
+        let mut m = MobileData::new("skeleton".to_string());
+        m.flags.undead = true;
+        assert!(!m.bleeds());
+        assert!(!m.tires());
+    }
+
+    #[test]
+    fn bloodless_biologies_do_not_bleed_or_tire() {
+        for ct in [CreatureType::Construct, CreatureType::Spirit, CreatureType::Plant] {
+            let mut m = MobileData::new("thing".to_string());
+            m.creature_type = ct;
+            assert!(!m.bleeds(), "{ct:?} should not bleed");
+            assert!(!m.tires(), "{ct:?} should not tire");
+        }
+    }
+
+    #[test]
+    fn living_flesh_bleeds_and_tires() {
+        for ct in [CreatureType::Mortal, CreatureType::Animal, CreatureType::Insect] {
+            let mut m = MobileData::new("creature".to_string());
+            m.creature_type = ct;
+            assert!(m.flags.undead == false);
+            assert!(m.bleeds(), "{ct:?} should bleed");
+            assert!(m.tires(), "{ct:?} should tire");
+        }
     }
 }

@@ -343,6 +343,10 @@
     "access": "user",
     "description": "Change your password"
   },
+  "email": {
+    "access": "user",
+    "description": "View, set, or verify the email used for password recovery"
+  },
   "eat": {
     "access": "user",
     "description": "Eat a food item"
