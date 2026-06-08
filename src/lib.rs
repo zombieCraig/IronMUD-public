@@ -2081,10 +2081,7 @@ pub async fn handle_connection(
         let _ = tx_client.send(banner);
     }
 
-    // Spawn character-mode read task with telnet protocol support. Hand it a
-    // cloned `Db` handle (cheap, Arc-based) so the read loop can consult the
-    // `idle_disconnect_enabled` setting without ever locking the World mutex.
-    let read_db = { state.lock().unwrap().db.clone() };
+    // Spawn character-mode read task with telnet protocol support
     tokio::spawn(handle_read_char_mode(
         reader,
         addr,
@@ -2092,7 +2089,6 @@ pub async fn handle_connection(
         tx_input,
         connections.clone(),
         tx_raw,
-        read_db,
     ));
 
     // Spawn write task with raw byte support for telnet negotiation
@@ -4176,7 +4172,6 @@ async fn handle_read_char_mode(
     tx_input: mpsc::Sender<InputEvent>,
     connections: SharedConnections,
     tx_raw: mpsc::UnboundedSender<Vec<u8>>,
-    db: crate::db::Db,
 ) {
     use crate::telnet::*;
 
@@ -4209,10 +4204,7 @@ async fn handle_read_char_mode(
 
         // Idle disconnect — drop sessions whose `last_activity_time` has not
         // advanced within the threshold. Reclaims sockets/RAM held by idle
-        // or abandoned connections (HIGH-3 in the security audit). Admins can
-        // disable it globally via the `idle_disconnect_enabled` setting (set to
-        // "false"); the setting is only consulted once a session is already past
-        // the threshold, so this sled read stays rare and cheap.
+        // or abandoned connections (HIGH-3 in the security audit).
         let now_secs = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)
@@ -4224,12 +4216,7 @@ async fn handle_read_char_mode(
                 .map(|s| now_secs.saturating_sub(s.last_activity_time))
                 .unwrap_or(0)
         };
-        if idle_secs > IDLE_DISCONNECT_SECS
-            && db
-                .get_setting_or_default("idle_disconnect_enabled", "true")
-                .unwrap_or_else(|_| "true".to_string())
-                != "false"
-        {
+        if idle_secs > IDLE_DISCONNECT_SECS {
             info!("Client {} idle for {}s, disconnecting.", addr, idle_secs);
             let _ = tx_raw.send(b"\r\nDisconnected for inactivity.\r\n".to_vec());
             break;

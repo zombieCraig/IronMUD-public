@@ -809,21 +809,6 @@ You have logged out. Use 'login' to reconnect.
 Password changed successfully.
 ```
 
-### Managing Your Email
-
-If the server uses email, keeping a verified address on your account lets you
-recover a forgotten password yourself with `forgot` at the login screen. Manage
-it any time with the `email` command:
-
-```
-> email
-Account email: me@example.com  (verified)
-
-> email set me@example.com      # sends a 6-digit code to that address
-> email verify 123456           # confirm the code
-> email resend                  # send a fresh code (limited to once a minute)
-```
-
 ### Creating Aliases
 
 ```

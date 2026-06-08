@@ -199,6 +199,13 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Read-only reverse spawn lookup: where does this mob spawn (directly or
+    // as a dependency)? Not gated, like `show`.
+    if subcommand == "spawns" {
+        send_client_message(connection_id, olc::format_spawn_locations(mobile.vnum, connection_id));
+        return;
+    }
+
     // Sandbox: stamped prototypes require can_edit_area on their owner.
     // Orphans (area_id == "") remain editable by any builder. Read-only
     // `show` above is intentionally not gated.

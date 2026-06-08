@@ -77,3 +77,75 @@ fn build_string_from_parts(parts, start_idx) {
     }
     return result;
 }
+
+// Reverse spawn lookup: render every spawn point that references `vnum`,
+// either DIRECTly (the spawn's own entity) or as a spawn DEPendency
+// (carried/equipped/contained by another spawned entity). Grouped by area.
+// Read-only: callers use this without an area-edit permission check.
+fn format_spawn_locations(vnum, conn_id) {
+    let sps = find_spawn_points_for_vnum(vnum);
+    if sps.len() == 0 {
+        return "No spawn points reference " + vnum + ".";
+    }
+
+    // Group by area using parallel arrays: ids, resolved names, body strings.
+    let area_ids = [];
+    let area_names = [];
+    let area_bodies = [];
+
+    for sp in sps {
+        let gi = -1;
+        for i in 0..area_ids.len() {
+            if area_ids[i] == sp.area_id { gi = i; }
+        }
+        if gi == -1 {
+            area_ids.push(sp.area_id);
+            let area = get_area_data(sp.area_id);
+            let aname = if area != () && area.name != "" { area.name } else { sp.area_id };
+            area_names.push(aname);
+            area_bodies.push("");
+            gi = area_ids.len() - 1;
+        }
+        area_bodies[gi] += format_one_spawn_location(sp, vnum, conn_id);
+    }
+
+    let output = c_header("=== Spawn locations for " + vnum + " ===", conn_id) + "\n\n";
+    for i in 0..area_ids.len() {
+        output += c_label(area_names[i], conn_id) + "\n";
+        output += area_bodies[i];
+        output += "\n";
+    }
+    output
+}
+
+// One spawn point may match both directly AND via a dependency; emit a line
+// for each match. entity_type getter returns lowercase "mobile"/"item".
+fn format_one_spawn_location(sp, vnum, conn_id) {
+    let room = get_room_data(sp.room_id);
+    let room_name = if room != () && room.title != "" { room.title } else { sp.room_id };
+
+    let out = "";
+
+    // Direct: the spawn point's own entity is the vnum.
+    if sp.vnum == vnum {
+        let status = "[OFF]";
+        if sp.enabled { status = c_warn("[ON]", conn_id); }
+        out += "  " + status + " " + c_label("DIRECT", conn_id) + " ";
+        out += c_value(room_name, conn_id);
+        out += "  " + c_label("Max: ", conn_id) + c_value("" + sp.max_count, conn_id) + "\n";
+    }
+
+    // Dependency: the vnum is carried/equipped/contained by this spawn's entity.
+    let deps = get_spawn_dependencies(sp.id);
+    for dep in deps {
+        if dep.item_vnum == vnum {
+            let count_str = if dep.count > 1 { " x" + dep.count } else { "" };
+            out += "  " + c_label("DEP", conn_id) + "    ";
+            out += c_value(room_name, conn_id);
+            out += "  " + c_label("in ", conn_id) + c_value(sp.entity_type + ": " + sp.vnum, conn_id);
+            out += " (" + dep.destination + count_str + ")\n";
+        }
+    }
+
+    out
+}

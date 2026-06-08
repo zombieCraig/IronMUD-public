@@ -132,6 +132,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         }
     });
 
+    // find_spawn_points_for_vnum(vnum) -> Array of SpawnPointData
+    let cloned_db = db.clone();
+    engine.register_fn("find_spawn_points_for_vnum", move |vnum: String| {
+        cloned_db
+            .find_spawn_points_referencing_vnum(&vnum)
+            .unwrap_or_default()
+            .into_iter()
+            .map(rhai::Dynamic::from)
+            .collect::<Vec<_>>()
+    });
+
     // set_spawn_point_enabled(spawn_point_id, enabled) -> bool
     let cloned_db = db.clone();
     engine.register_fn(

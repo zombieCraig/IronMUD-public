@@ -1848,7 +1848,7 @@ fn process_mobile_combat_round(
     const MOBILE_COMBAT_STAMINA_COST: i32 = 5;
     const MOBILE_MIN_STAMINA_RESTORE: i32 = 5;
 
-    if mobile.tires() && mobile.current_stamina <= 0 {
+    if mobile.current_stamina <= 0 {
         // Too exhausted - skip turn but restore minimum stamina
         debug!("Mobile {} exhausted, restoring stamina", mobile.name);
         mobile.current_stamina = MOBILE_MIN_STAMINA_RESTORE;
@@ -1869,10 +1869,8 @@ fn process_mobile_combat_round(
     // a trigger-specified threshold and re-arms when HP% rises above it.
     fire_combat_dg_triggers(db, connections, &mut mobile);
 
-    // Consume stamina for attack (bloodless mobiles never tire).
-    if mobile.tires() {
-        mobile.current_stamina = (mobile.current_stamina - MOBILE_COMBAT_STAMINA_COST).max(0);
-    }
+    // Consume stamina for attack
+    mobile.current_stamina = (mobile.current_stamina - MOBILE_COMBAT_STAMINA_COST).max(0);
 
     // Check if mobile should attempt to flee (HP <= 25%)
     let mut rng = rand::thread_rng();
@@ -3516,13 +3514,7 @@ pub fn process_mobile_death(
         }
     }
 
-    // Create corpse using builder with random gold variance.
-    // Logs base (mobile.gold) vs rolled so a "corpse has 0 gold" report can be
-    // traced to either a 0-gold mob (data/sim drain) or the drop math.
-    debug!(
-        "process_mobile_death: {} base gold={}",
-        mobile.name, mobile.gold
-    );
+    // Create corpse using builder with random gold variance
     let gold = mobile_gold_with_variance(mobile.gold as i64);
     let corpse = CorpseBuilder::for_mobile(&mobile_name, *room_id, gold)
         .with_source_vnum(Some(mobile.vnum.clone()))

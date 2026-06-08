@@ -120,6 +120,17 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Read-only world-wide reverse lookup: where does a vnum spawn (directly
+    // or as a dependency), across all areas. Not area-scoped like the others.
+    if subcommand == "where" || subcommand == "find" {
+        if parts.len() < 2 {
+            send_client_message(connection_id, "Usage: spedit where <vnum>");
+            return;
+        }
+        send_client_message(connection_id, olc::format_spawn_locations(parts[1], connection_id));
+        return;
+    }
+
     if subcommand == "create" {
         handle_create(area, parts, connection_id);
         return;
@@ -243,7 +254,7 @@ fn handle_buried(spawns, parts, idx_pos, connection_id) {
         return;
     }
 
-    if sp.entity_type != "Item" {
+    if sp.entity_type != "item" {
         send_client_message(connection_id, "buried only applies to item spawn points.");
         return;
     }
@@ -263,6 +274,7 @@ fn show_usage(connection_id) {
     msg += "(Uses current room's area automatically)\n\n";
     msg += "Subcommands:\n";
     msg += "  spedit list [filter]           - List spawn points\n";
+    msg += "  spedit where <vnum>            - Find where a vnum spawns (world-wide, direct + deps)\n";
     msg += "  spedit create <room|.> <mobile|item> <vnum> <max> <interval>\n\n";
     msg += "  # Modification commands (all support optional [filter] before index):\n";
     msg += "  spedit delete [filter] <index> - Delete spawn point\n";
@@ -363,7 +375,7 @@ fn format_spawn_entry(sp, idx, conn_id) {
     output += "  " + olc::c_label("Max: ", conn_id) + olc::c_value("" + sp.max_count, conn_id);
     output += "  " + olc::c_label("Interval: ", conn_id) + olc::c_value(sp.respawn_interval_secs + "s", conn_id);
     output += "  " + olc::c_label("Active: ", conn_id) + olc::c_value(sp.spawned_count + "/" + sp.max_count, conn_id);
-    if sp.entity_type == "Item" && sp.bury_on_spawn {
+    if sp.entity_type == "item" && sp.bury_on_spawn {
         output += "  " + olc::c_label("Buried: ", conn_id) + olc::c_value("yes", conn_id);
     }
     if sp.replace_on_respawn {

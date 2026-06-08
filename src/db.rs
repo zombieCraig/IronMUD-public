@@ -2737,6 +2737,25 @@ impl Db {
         Ok(spawn_points)
     }
 
+    /// Find all spawn points that reference a vnum, either as the spawn's own
+    /// entity (sp.vnum) or as a spawn dependency (dependency.item_vnum).
+    pub fn find_spawn_points_referencing_vnum(
+        &self,
+        vnum: &str,
+    ) -> Result<Vec<SpawnPointData>> {
+        let mut spawn_points = Vec::new();
+        for entry in self.spawn_points.iter() {
+            let (_key, value) = entry?;
+            let sp: SpawnPointData = serde_json::from_slice(&value)?;
+            let direct = sp.vnum == vnum;
+            let via_dep = sp.dependencies.iter().any(|d| d.item_vnum == vnum);
+            if direct || via_dep {
+                spawn_points.push(sp);
+            }
+        }
+        Ok(spawn_points)
+    }
+
     /// Get all spawn points for an area
     pub fn get_spawn_points_for_area(&self, area_id: &Uuid) -> Result<Vec<SpawnPointData>> {
         let mut spawn_points = Vec::new();
