@@ -6,7 +6,7 @@
 use crate::db::Db;
 use crate::email::{
     audit_email_send, audit_outcome_for, generate_code, generate_temp_password,
-    is_disposable_email_domain, normalize_email, send_password_reset_email,
+    is_disposable_email_domain, normalize_email, send_password_reset_email, send_test_email,
     send_verification_email,
 };
 use rhai::Engine;
@@ -509,6 +509,31 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             None => false,
         }
     });
+
+    // send_test_email(to_address, requested_by) -> String
+    // Admin diagnostic: send a fixed message to an arbitrary address to prove
+    // SMTP delivery works end-to-end. Records an audit row (kind "test") tagged
+    // with the requesting admin, and returns a human-readable outcome — "sent"
+    // on success, otherwise the EmailError display text (e.g.
+    // "missing SMTP config: smtp_host", "bad email address: ...",
+    // "SMTP send failed: ...") so the admin sees the real failure, not a bool.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "send_test_email",
+        move |to_address: String, requested_by: String| -> String {
+            let result = send_test_email(&cloned_db, &to_address);
+            audit_email_send(
+                &cloned_db,
+                "test",
+                &requested_by,
+                audit_outcome_for(&result),
+            );
+            match result {
+                Ok(()) => "sent".to_string(),
+                Err(e) => e.to_string(),
+            }
+        },
+    );
 }
 
 /// Rotates the password on `account_id` and every linked character, marks all

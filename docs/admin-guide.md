@@ -244,7 +244,16 @@ ironmud-admin settings set smtp_from_name "Example MUD"
 # Optional tunings
 ironmud-admin settings set email_verification_subject "Verify your account"
 ironmud-admin settings set email_verification_code_ttl_secs 1800   # default 30 min
+ironmud-admin settings set email_test_subject "SMTP test"          # admin email-test subject
 ```
+
+To confirm SMTP is actually delivering (not just configured), use the in-game
+`admin email-test <address>` command — it sends a fixed diagnostic message to
+any address and reports the real outcome (`sent`, or the specific failure like
+`missing SMTP config: smtp_host` or `SMTP send failed: ...`). Test sends count
+against the daily/monthly budget and appear in `admin email-audit` as `test`
+rows. Pair it with `admin email-stats` to check config status and remaining
+budget.
 
 Behavior when enabled:
 
@@ -262,7 +271,10 @@ Behavior when enabled:
   closed: account creation refuses with "the server can't send mail right now"
   rather than stranding an unverifiable account.
 
-When a user is stuck (lost their email, mistyped it, etc.), use
+Players can self-service their own address in-game with the `email` command
+(`email set <address>`, `email verify <code>`) — useful when verification is
+turned on after accounts already exist, or to fix a typo'd address. When a user
+is still stuck (lost access to their inbox, etc.), use
 `ironmud-admin account set-email` and `account send-code`, or skip verification
 entirely with `ironmud-admin account verify`.
 

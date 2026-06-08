@@ -121,6 +121,11 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "email-test" {
+        handle_email_test(connection_id, args, char);
+        return;
+    }
+
     if subcommand == "embrace" {
         handle_embrace(connection_id, args, char);
         return;
@@ -459,6 +464,7 @@ fn show_help(connection_id) {
     help += "  admin reload                      - Reload class/race/spell/language definitions from disk\n";
     help += "  admin email-stats                 - Show email send counters vs daily/monthly caps\n";
     help += "  admin email-audit [N]             - Show last N email send attempts (default 20)\n";
+    help += "  admin email-test <address>        - Send a test email to confirm SMTP delivery works\n";
     help += "  admin embrace <player> [<clan>]   - Embrace a PC as kindred (clans: brujah/toreador/ventrue/nosferatu/gangrel)\n";
     help += "  admin embrace_revoke <player>     - Restore mortality to a vampire PC\n";
     help += "  admin masquerade_reset <player>   - Clear masquerade_broken on a vampire PC\n";
@@ -2135,4 +2141,27 @@ fn handle_email_audit(connection_id, args) {
         out += "  " + entry.timestamp + "  " + entry.kind + "  " + acct + "  " + entry.outcome + "\n";
     }
     send_client_message(connection_id, out);
+}
+
+// `admin email-test <address>` — send a fixed diagnostic message to <address>
+// to confirm SMTP is actually delivering. Counts against the daily/monthly
+// budget and records an audit row (kind "test") tagged with the admin's name.
+// Reports the real delivery outcome so a misconfiguration is visible.
+fn handle_email_test(connection_id, args, admin_char) {
+    let parts = args.split(" ");
+    let address = if parts.len() >= 2 && parts[1] != "" { parts[1] } else { "" };
+    if address == "" {
+        send_client_message(connection_id, "Usage: admin email-test <address>");
+        return;
+    }
+    if !is_valid_email_format(address) {
+        send_client_message(connection_id, "That doesn't look like an email address: " + address);
+        return;
+    }
+    let outcome = send_test_email(address, admin_char.name);
+    if outcome == "sent" {
+        send_client_message(connection_id, "Test email to " + address + ": sent. Check the inbox (and spam) to confirm delivery.");
+    } else {
+        send_client_message(connection_id, "Test email to " + address + " FAILED: " + outcome);
+    }
 }
