@@ -358,7 +358,15 @@ fn handle_config(connection_id, args, admin_char) {
         "wander_chance_percent", "min_attackable_age",
         "conception_chance_per_day", "adoption_chance_per_day",
         "email_verification_required", "email_daily_cap", "email_monthly_cap",
-        "email_verification_code_ttl_secs"
+        "email_verification_code_ttl_secs",
+        // SMTP delivery config. Listed here so it's settable live (the email
+        // module re-reads these on every send — no restart needed). smtp_user
+        // and smtp_pass are intentionally omitted: they stay offline-only via
+        // `ironmud-admin settings set` so credentials aren't typed over the
+        // wire or shown in `admin config list`. If a password somehow is set,
+        // mask_secret() below keeps it out of the display/broadcast.
+        "smtp_host", "smtp_port", "smtp_from_address", "smtp_from_name",
+        "email_verification_subject", "password_reset_subject", "email_test_subject"
     ];
 
     if parts.len() < 2 || parts[1] == "" || parts[1] == "list" {
@@ -369,7 +377,7 @@ fn handle_config(connection_id, args, admin_char) {
             let val = "(not set)";
             for entry in configured {
                 if entry.key == k {
-                    val = entry.value;
+                    val = mask_secret(k, entry.value);
                     break;
                 }
             }
@@ -386,7 +394,7 @@ fn handle_config(connection_id, args, admin_char) {
                     output += "\nExtra configured settings:\n";
                     extra_shown = true;
                 }
-                output += "  " + pad_right(entry.key, 35) + " " + entry.value + "\n";
+                output += "  " + pad_right(entry.key, 35) + " " + mask_secret(entry.key, entry.value) + "\n";
             }
         }
         
@@ -402,7 +410,7 @@ fn handle_config(connection_id, args, admin_char) {
         if current == "" {
             send_client_message(connection_id, key + " is not set.");
         } else {
-            send_client_message(connection_id, key + " is currently: " + current);
+            send_client_message(connection_id, key + " is currently: " + mask_secret(key, current));
         }
         return;
     }
@@ -436,11 +444,24 @@ fn handle_config(connection_id, args, admin_char) {
     };
 
     if set_setting(key, value) {
-        send_client_message(connection_id, "Set " + key + " = " + value + ".");
-        broadcast_to_builders("[admin] " + admin_char.name + " set " + key + " = " + value);
+        let shown = mask_secret(key, value);
+        send_client_message(connection_id, "Set " + key + " = " + shown + ".");
+        broadcast_to_builders("[admin] " + admin_char.name + " set " + key + " = " + shown);
     } else {
         send_client_message(connection_id, "Failed to write setting.");
     }
+}
+
+// Mask secret setting values (e.g. smtp_pass) so they never appear in the
+// `admin config` list, single-key display, or the builder broadcast. Empty
+// values pass through so "(not set)" / deletion still read correctly.
+fn mask_secret(key, value) {
+    let lk = key.to_lower();
+    if lk == "smtp_pass" || lk == "smtp_password" {
+        if value == "" { return value; }
+        return "********";
+    }
+    value
 }
 
 fn show_help(connection_id) {

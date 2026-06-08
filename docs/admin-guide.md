@@ -247,6 +247,17 @@ ironmud-admin settings set email_verification_code_ttl_secs 1800   # default 30 
 ironmud-admin settings set email_test_subject "SMTP test"          # admin email-test subject
 ```
 
+Most of these keys can also be set live in-game with no restart, since the
+email module re-reads SMTP config on every send. Use `admin config <key>
+<value>` — e.g. `admin config smtp_from_address support@example.com` to change
+the From address without taking the server down (handy when your provider, e.g.
+Postmark, requires a verified sender signature for the sending domain). The
+non-secret keys (`smtp_host`, `smtp_port`, `smtp_from_address`, `smtp_from_name`,
+and the `*_subject` keys) appear in `admin config list`. `smtp_user` and
+`smtp_pass` are intentionally **not** listed and stay offline-only via
+`ironmud-admin settings set`, so credentials aren't typed over the wire or shown
+in the config listing.
+
 To confirm SMTP is actually delivering (not just configured), use the in-game
 `admin email-test <address>` command — it sends a fixed diagnostic message to
 any address and reports the real outcome (`sent`, or the specific failure like
