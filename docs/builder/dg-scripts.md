@@ -240,6 +240,32 @@ When `self` is a **room**, or with chained `%head.room.field%`:
 
 Chained example: `%self.room.vnum%` reads the vnum of the room the mob is currently in. `%actor.room.people%` lists everyone with the actor.
 
+#### Area roster — `%head.area%` and `%head.area.*%`
+
+Where `%head.room.*%` reaches one room, `%head.area.*%` reaches **every room in
+the same area**. `head` is `self`, `actor`, or `victim`; the area is resolved
+from that entity's room. Returns are comma-joined name lists, just like
+`people`. Works from item, mob, and room triggers alike — e.g. an item trigger
+can ask who is anywhere in its zone, not just its own room.
+
+| Accessor | Returns |
+|---|---|
+| `%head.area%` | The area's UUID (empty when the entity has no room/area) |
+| `%head.area.people%` | All players **and** mobs across the area |
+| `%head.area.players%` (alias `pcs`) | Players only |
+| `%head.area.mobs%` | Mobs only — can be a large list area-wide |
+| `%head.area.people(<f>)%` / `.players(<f>)` / `.mobs(<f>)` | Same, filtered by `<f>` |
+
+The filter `<f>` matches case-insensitively when an occupant's **name contains**
+`<f>`, or (mobs) any **keyword starts with** `<f>`, or its **vnum equals** `<f>`
+— so `%self.area.mobs(rat)%` lists every rat in the zone. Count occupants by
+splitting the result on commas; test presence with a substring `if` check.
+
+```
+* item OnUse: warn the wielder how many rats infest the zone
+osend %actor% Rats nearby: %self.area.mobs(rat)%
+```
+
 #### Door state — `%self.door(<dir>, <field>)%`
 
 Call-form accessor for inspecting the door on self's room (Mob self resolves to the mob's current room; Room self is the room). Direction accepts long names (`east`) or one-letter shortcuts (`e`, `n`, `s`, `w`, `u`, `d`).

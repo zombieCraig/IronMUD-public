@@ -125,6 +125,43 @@ pub fn resolve(expr: &str, ctx: &EvalCtx, state: &State) -> String {
         }
     }
 
+    // Chained-area form: `%head.area.people%` / `.players` / `.mobs`, plus
+    // optional filter call form `%head.area.mobs(rat)%`. Resolves head's
+    // room, then that room's area, then iterates every room in the area.
+    // Checked BEFORE the generic call-form block so the filtered variant
+    // (`area.mobs(rat)`) isn't swallowed by `parse_field_call`. Supported on
+    // actor / victim / self.
+    if let Some(field_str) = field {
+        if let Some(inner) = field_str.strip_prefix("area.") {
+            let room_id = match head {
+                "actor" => actor_room_id(ctx.actor.as_ref(), ctx),
+                "victim" => actor_room_id(ctx.victim.as_ref(), ctx),
+                "self" => ctx.self_room,
+                _ => None,
+            };
+            let Some(rid) = room_id else {
+                return String::new();
+            };
+            let Some(area_id) = ctx
+                .db
+                .get_room_data(&rid)
+                .ok()
+                .flatten()
+                .and_then(|r| r.area_id)
+            else {
+                return String::new();
+            };
+            let (name, arg) = parse_field_call(inner).unwrap_or((inner, ""));
+            let filter = (!arg.is_empty()).then_some(arg);
+            return match name {
+                "people" => list_area_people(ctx, &area_id, AreaKind::Both, filter),
+                "players" | "pcs" => list_area_people(ctx, &area_id, AreaKind::Players, filter),
+                "mobs" => list_area_people(ctx, &area_id, AreaKind::Mobs, filter),
+                _ => String::new(),
+            };
+        }
+    }
+
     // Call form: `%head.field(args)%` — splits to (fn_name, args). The
     // dispatcher routes to either a mutator (gold/hitp/move/exp — Phase 5d)
     // or a reader (varexists/has_item/eq — Phase 7). Recognised on
@@ -552,6 +589,14 @@ fn resolve_self_field(ctx: &EvalCtx, field: Option<&str>) -> String {
         (_, Some("name")) => ctx.self_name.clone(),
         (_, Some("vnum")) => ctx.self_vnum.clone(),
         (_, Some("room")) => ctx.self_room.map(|r| r.to_string()).unwrap_or_default(),
+        // `%self.area%` — the UUID of self's area (resolved via self's room),
+        // parallel to `%self.room%`. Empty when self has no room/area.
+        (_, Some("area")) => ctx
+            .self_room
+            .and_then(|rid| ctx.db.get_room_data(&rid).ok().flatten())
+            .and_then(|r| r.area_id)
+            .map(|a| a.to_string())
+            .unwrap_or_default(),
         (SelfKind::Mob, Some("inventory")) => ctx
             .db
             .get_items_in_mobile_inventory(&ctx.self_id)
@@ -656,6 +701,83 @@ fn list_room_people(ctx: &EvalCtx, room_id: &uuid::Uuid, exclude: Option<uuid::U
             }
         }
     }
+    names.join(", ")
+}
+
+/// Which occupants `list_area_people` collects for the `%head.area.*%` forms.
+#[derive(Clone, Copy)]
+enum AreaKind {
+    /// `area.people` — both players and mobs.
+    Both,
+    /// `area.players` / `area.pcs` — players only.
+    Players,
+    /// `area.mobs` — mobs only.
+    Mobs,
+}
+
+/// Returns true when `entity` (a mob or player) matches the optional filter.
+/// Match is case-insensitive: name-contains OR any keyword starts-with OR
+/// (mobs) vnum-equals. `None` filter matches everything. Mirrors the lookup
+/// semantics of `find_mobile_by_keyword_anywhere`.
+fn area_filter_matches(name: &str, keywords: &[String], vnum: Option<&str>, filter: &str) -> bool {
+    let f = filter.to_ascii_lowercase();
+    if name.to_ascii_lowercase().contains(&f) {
+        return true;
+    }
+    if keywords.iter().any(|k| k.to_ascii_lowercase().starts_with(&f)) {
+        return true;
+    }
+    if let Some(v) = vnum {
+        if v.eq_ignore_ascii_case(filter) {
+            return true;
+        }
+    }
+    false
+}
+
+/// `%head.area.people%` / `.players` / `.mobs` — comma-joined names of the
+/// occupants of every room in `area_id`. The optional `filter` narrows the
+/// list (chiefly to tame area-wide mob counts), e.g. `%self.area.mobs(rat)%`.
+/// Player rows come from the same source as `list_room_people` (DB chars by
+/// `current_room_id`); mobs from `get_mobiles_in_room` per area room.
+fn list_area_people(
+    ctx: &EvalCtx,
+    area_id: &uuid::Uuid,
+    kind: AreaKind,
+    filter: Option<&str>,
+) -> String {
+    let Ok(rooms) = ctx.db.get_rooms_in_area(area_id) else {
+        return String::new();
+    };
+    let room_ids: std::collections::HashSet<uuid::Uuid> = rooms.iter().map(|r| r.id).collect();
+    let mut names: Vec<String> = Vec::new();
+
+    if matches!(kind, AreaKind::Both | AreaKind::Mobs) {
+        for rid in &room_ids {
+            if let Ok(mobs) = ctx.db.get_mobiles_in_room(rid) {
+                for m in mobs {
+                    if filter.is_none_or(|f| {
+                        area_filter_matches(&m.name, &m.keywords, Some(&m.vnum), f)
+                    }) {
+                        names.push(m.name);
+                    }
+                }
+            }
+        }
+    }
+
+    if matches!(kind, AreaKind::Both | AreaKind::Players) {
+        if let Ok(chars) = ctx.db.list_all_characters() {
+            for c in chars {
+                if room_ids.contains(&c.current_room_id)
+                    && filter.is_none_or(|f| area_filter_matches(&c.name, &[], None, f))
+                {
+                    names.push(c.name);
+                }
+            }
+        }
+    }
+
     names.join(", ")
 }
 

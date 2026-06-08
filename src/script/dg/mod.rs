@@ -1036,6 +1036,88 @@ end";
         assert!(matches!(resolved, Some(ActorRef::Mob { ref name, .. }) if name == "merchant"));
     }
 
+    /// Build an empty room assigned to `area_id` and return its id.
+    fn build_room_in_area(db: &Db, area_id: Uuid) -> Uuid {
+        let room: crate::types::RoomData = serde_json::from_value(serde_json::json!({
+            "id": Uuid::new_v4(),
+            "title": "test",
+            "description": "test",
+            "exits": {},
+            "area_id": area_id,
+        }))
+        .expect("build room");
+        let id = room.id;
+        db.save_room_data(room).expect("save room");
+        id
+    }
+
+    fn place_mob(db: &Db, name: &str, vnum: &str, room: Uuid) {
+        let mut mob = crate::types::MobileData::new(name.to_string());
+        mob.is_prototype = false;
+        mob.vnum = vnum.to_string();
+        if !vnum.is_empty() {
+            mob.keywords = vec![vnum.to_string()];
+        }
+        mob.current_room_id = Some(room);
+        db.save_mobile_data(mob).expect("save mob");
+    }
+
+    #[test]
+    fn area_people_accessor_lists_players_and_mobs_across_area() {
+        let mut ctx = make_ctx(SelfKind::Obj, Uuid::new_v4(), "beacon");
+
+        // Area A spans two rooms; the item-self sits in room_a1, while a
+        // player and mobs live in a *different* room of the same area.
+        // Area B holds a same-vnum rat that must NOT be matched.
+        let area_a = Uuid::new_v4();
+        let area_b = Uuid::new_v4();
+        let room_a1 = build_room_in_area(&ctx.db, area_a);
+        let room_a2 = build_room_in_area(&ctx.db, area_a);
+        let room_b1 = build_room_in_area(&ctx.db, area_b);
+        ctx.self_room = Some(room_a1);
+
+        place_mob(&ctx.db, "a rat", "rat", room_a2);
+        place_mob(&ctx.db, "a goblin", "goblin", room_a2);
+        place_mob(&ctx.db, "a rat", "rat", room_b1); // other area — excluded
+
+        let pc: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "Aldous",
+            "password_hash": "",
+            "current_room_id": room_a2,
+        }))
+        .expect("build pc");
+        ctx.db.save_character_data(pc).expect("save pc");
+
+        let state = crate::script::dg::eval::State::new();
+
+        // players-only — just the PC, no mobs.
+        assert_eq!(vars::resolve("self.area.players", &ctx, &state), "Aldous");
+        assert_eq!(vars::resolve("self.area.pcs", &ctx, &state), "Aldous");
+
+        // filtered mobs — only the area-A rat (area-B rat excluded by area).
+        assert_eq!(vars::resolve("self.area.mobs(rat)", &ctx, &state), "a rat");
+
+        // unfiltered mobs — both area-A mobs (room iter order is unstable).
+        let mobs = vars::resolve("self.area.mobs", &ctx, &state);
+        assert!(mobs.contains("a rat") && mobs.contains("a goblin"), "got {mobs}");
+        assert!(!mobs.contains("Aldous"), "mobs must not list players: {mobs}");
+
+        // people — players AND mobs together.
+        let people = vars::resolve("self.area.people", &ctx, &state);
+        assert!(
+            people.contains("Aldous") && people.contains("a rat") && people.contains("a goblin"),
+            "got {people}"
+        );
+
+        // bare %self.area% — the area UUID.
+        assert_eq!(vars::resolve("self.area", &ctx, &state), area_a.to_string());
+
+        // no-area item resolves to empty, not a panic.
+        ctx.self_room = None;
+        assert_eq!(vars::resolve("self.area.people", &ctx, &state), "");
+        assert_eq!(vars::resolve("self.area", &ctx, &state), "");
+    }
+
     #[test]
     fn victim_resolves_mob_kind_from_db() {
         let mob = crate::types::MobileData::new("kobold".to_string());
