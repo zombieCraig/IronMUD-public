@@ -180,39 +180,33 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // set_summonable(connection_id, enabled) -> bool
     let conns = connections.clone();
     let cloned_db = db.clone();
-    engine.register_fn(
-        "set_summonable",
-        move |connection_id: String, enabled: bool| -> bool {
-            if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-                let mut conns_lock = conns.lock().unwrap();
-                if let Some(session) = conns_lock.get_mut(&conn_id) {
-                    if let Some(ref mut char) = session.character {
-                        char.summonable = enabled;
-                        let _ = cloned_db.save_character_data(char.clone());
-                        return true;
-                    }
+    engine.register_fn("set_summonable", move |connection_id: String, enabled: bool| -> bool {
+        if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+            let mut conns_lock = conns.lock().unwrap();
+            if let Some(session) = conns_lock.get_mut(&conn_id) {
+                if let Some(ref mut char) = session.character {
+                    char.summonable = enabled;
+                    let _ = cloned_db.save_character_data(char.clone());
+                    return true;
                 }
             }
-            false
-        },
-    );
+        }
+        false
+    });
 
     // is_bloodfeed_willing(connection_id) -> bool
     let conns = connections.clone();
-    engine.register_fn(
-        "is_bloodfeed_willing",
-        move |connection_id: String| -> bool {
-            if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-                let conns_lock = conns.lock().unwrap();
-                if let Some(session) = conns_lock.get(&conn_id) {
-                    if let Some(ref char) = session.character {
-                        return char.bloodfeed_willing;
-                    }
+    engine.register_fn("is_bloodfeed_willing", move |connection_id: String| -> bool {
+        if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+            let conns_lock = conns.lock().unwrap();
+            if let Some(session) = conns_lock.get(&conn_id) {
+                if let Some(ref char) = session.character {
+                    return char.bloodfeed_willing;
                 }
             }
-            false
-        },
-    );
+        }
+        false
+    });
 
     // set_bloodfeed_willing(connection_id, enabled) -> bool
     let conns = connections.clone();
@@ -236,20 +230,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // is_new_editor_enabled(connection_id) -> bool
     let conns = connections.clone();
-    engine.register_fn(
-        "is_new_editor_enabled",
-        move |connection_id: String| -> bool {
-            if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
-                let conns_lock = conns.lock().unwrap();
-                if let Some(session) = conns_lock.get(&conn_id) {
-                    if let Some(ref char) = session.character {
-                        return char.new_editor_enabled;
-                    }
+    engine.register_fn("is_new_editor_enabled", move |connection_id: String| -> bool {
+        if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+            let conns_lock = conns.lock().unwrap();
+            if let Some(session) = conns_lock.get(&conn_id) {
+                if let Some(ref char) = session.character {
+                    return char.new_editor_enabled;
                 }
             }
-            false
-        },
-    );
+        }
+        false
+    });
 
     // set_new_editor_enabled(connection_id, enabled) -> bool
     let conns = connections.clone();

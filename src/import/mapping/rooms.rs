@@ -1,16 +1,14 @@
-
-use crate::import::{
-    IrRoom,
-    IrZone, MappingOptions, PlannedDoor,
-    PlannedRoom, Severity, Warning, WarningKind,
-};
-use crate::types::{
-    CombatZoneType, ExtraDesc, RoomFlags,
-};
+use crate::import::{IrRoom, IrZone, MappingOptions, PlannedDoor, PlannedRoom, Severity, Warning, WarningKind};
+use crate::types::{CombatZoneType, ExtraDesc, RoomFlags};
 
 use super::FlagAction;
 
-pub(super) fn map_room(zone: &IrZone, area_prefix: &str, room: &IrRoom, opts: &MappingOptions) -> (PlannedRoom, Vec<Warning>) {
+pub(super) fn map_room(
+    zone: &IrZone,
+    area_prefix: &str,
+    room: &IrRoom,
+    opts: &MappingOptions,
+) -> (PlannedRoom, Vec<Warning>) {
     let mut warnings = Vec::new();
     let mut flags = RoomFlags::default();
     let _ = zone; // currently unused but kept in the signature for future per-zone overrides

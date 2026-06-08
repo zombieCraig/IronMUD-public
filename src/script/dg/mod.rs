@@ -105,8 +105,15 @@ pub enum SelfKind {
 /// Field lookups (`%actor.level%`, `%actor.is_pc%`) read from this.
 #[derive(Debug, Clone)]
 pub enum ActorRef {
-    Player { connection_id: String, char_id: Uuid, name: String },
-    Mob { mobile_id: Uuid, name: String },
+    Player {
+        connection_id: String,
+        char_id: Uuid,
+        name: String,
+    },
+    Mob {
+        mobile_id: Uuid,
+        name: String,
+    },
 }
 
 impl ActorRef {
@@ -198,7 +205,8 @@ impl EvalCtx {
         let Some(area_id) = area_id else {
             tracing::warn!(
                 "[SECURITY] DG opcode '{}' blocked: trigger author '{}' tried to act on un-areaed target",
-                opcode, author
+                opcode,
+                author
             );
             return false;
         };
@@ -210,7 +218,9 @@ impl EvalCtx {
         if !allowed {
             tracing::warn!(
                 "[SECURITY] DG opcode '{}' blocked: author '{}' lacks edit permission on area '{}'",
-                opcode, author, area.name
+                opcode,
+                author,
+                area.name
             );
         }
         allowed
@@ -299,7 +309,12 @@ pub fn fire_dg(body: &str, ctx: &EvalCtx) -> Outcome {
     let block = match parser::parse(body) {
         Ok(b) => b,
         Err(e) => {
-            tracing::warn!("DG parse error in trigger on {} ({:?}): {}", ctx.self_name, ctx.self_kind, e);
+            tracing::warn!(
+                "DG parse error in trigger on {} ({:?}): {}",
+                ctx.self_name,
+                ctx.self_kind,
+                e
+            );
             warn_builder(ctx, &format!("parse error: {e}"));
             return Outcome::Done;
         }
@@ -313,7 +328,9 @@ pub fn fire_dg(body: &str, ctx: &EvalCtx) -> Outcome {
             Err(e) => {
                 tracing::warn!(
                     "DG eval error in trigger on {} ({:?}): {}",
-                    ctx.self_name, ctx.self_kind, e
+                    ctx.self_name,
+                    ctx.self_kind,
+                    e
                 );
                 warn_builder(ctx, &format!("eval error: {e}"));
                 Outcome::Done
@@ -336,7 +353,9 @@ pub fn fire_dg(body: &str, ctx: &EvalCtx) -> Outcome {
                 if let Err(e) = eval::eval_block_async(&block_owned, &ctx_owned, &mut state).await {
                     tracing::warn!(
                         "DG eval error in async trigger on {} ({:?}): {}",
-                        self_name, self_kind, e
+                        self_name,
+                        self_kind,
+                        e
                     );
                     warn_builder(&ctx_owned, &format!("eval error: {e}"));
                 }
@@ -637,8 +656,12 @@ pub fn fire_oncommand_for_player(
     // Snapshot what we need from the session under one lock.
     let (char_name, room_id) = {
         let Ok(conns) = connections.lock() else { return false };
-        let Some(session) = conns.get(connection_id) else { return false };
-        let Some(ch) = session.character.as_ref() else { return false };
+        let Some(session) = conns.get(connection_id) else {
+            return false;
+        };
+        let Some(ch) = session.character.as_ref() else {
+            return false;
+        };
         (ch.name.clone(), ch.current_room_id)
     };
 
@@ -826,7 +849,10 @@ fn victim_from_context_vars(
             let id_str = context_vars.get("target_id").map(String::as_str).unwrap_or("");
             let mob_id = Uuid::parse_str(id_str).ok()?;
             let mob = db.get_mobile_data(&mob_id).ok().flatten()?;
-            Some(ActorRef::Mob { mobile_id: mob_id, name: mob.name })
+            Some(ActorRef::Mob {
+                mobile_id: mob_id,
+                name: mob.name,
+            })
         }
         _ => None,
     }
@@ -975,10 +1001,7 @@ set greeting hello
 global greeting
 halt";
         assert_eq!(fire_dg(body1, &ctx), Outcome::Halt);
-        assert_eq!(
-            ctx.db.get_dg_global("greeting").expect("get").as_deref(),
-            Some("hello")
-        );
+        assert_eq!(ctx.db.get_dg_global("greeting").expect("get").as_deref(), Some("hello"));
 
         // A second script with no local should read through to the global.
         // We can't observe interpreter state directly, but we can verify
@@ -988,10 +1011,7 @@ global greeting
 halt";
         assert_eq!(fire_dg(body2, &ctx), Outcome::Halt);
         // Greeting still set (no local to promote, but no clear either).
-        assert_eq!(
-            ctx.db.get_dg_global("greeting").expect("get").as_deref(),
-            Some("hello")
-        );
+        assert_eq!(ctx.db.get_dg_global("greeting").expect("get").as_deref(), Some("hello"));
     }
 
     #[test]
@@ -1014,12 +1034,7 @@ end";
         let mut ctx = make_ctx(SelfKind::Obj, Uuid::new_v4(), "kit");
         ctx.context_vars.insert("target_kind".to_string(), "self".to_string());
 
-        let resolved = victim_from_context_vars(
-            &ctx.context_vars,
-            ctx.actor.as_ref(),
-            &ctx.connections,
-            &ctx.db,
-        );
+        let resolved = victim_from_context_vars(&ctx.context_vars, ctx.actor.as_ref(), &ctx.connections, &ctx.db);
         assert!(resolved.is_none(), "no actor → no self-victim");
 
         // With an actor present, target_kind=self clones it.
@@ -1027,12 +1042,7 @@ end";
             mobile_id: Uuid::new_v4(),
             name: "merchant".to_string(),
         });
-        let resolved = victim_from_context_vars(
-            &ctx.context_vars,
-            ctx.actor.as_ref(),
-            &ctx.connections,
-            &ctx.db,
-        );
+        let resolved = victim_from_context_vars(&ctx.context_vars, ctx.actor.as_ref(), &ctx.connections, &ctx.db);
         assert!(matches!(resolved, Some(ActorRef::Mob { ref name, .. }) if name == "merchant"));
     }
 
@@ -1129,8 +1139,7 @@ end";
         context_vars.insert("target_kind".to_string(), "mob".to_string());
         context_vars.insert("target_id".to_string(), mob_id.to_string());
 
-        let resolved =
-            victim_from_context_vars(&context_vars, None, &ctx.connections, &ctx.db);
+        let resolved = victim_from_context_vars(&context_vars, None, &ctx.connections, &ctx.db);
         match resolved {
             Some(ActorRef::Mob { mobile_id, name }) => {
                 assert_eq!(mobile_id, mob_id);
@@ -1809,10 +1818,7 @@ end";
         );
         assert!(!cancelled, "test triggers don't return 0");
         // `fired` global must be 'pan', not 'shovel' (or empty).
-        assert_eq!(
-            ctx.db.get_dg_global("fired").expect("get").as_deref(),
-            Some("pan")
-        );
+        assert_eq!(ctx.db.get_dg_global("fired").expect("get").as_deref(), Some("pan"));
     }
 
     // ---------- F3 (author-stamped DG opcode gate) ----------
@@ -1839,11 +1845,7 @@ end";
     /// supplied target area. The target mob is created here, the gate is
     /// queried via cmd_purge, and the assertion is "is the mob still in
     /// the db after the trigger ran".
-    fn purge_test(
-        author_name: &str,
-        author_owns_target: bool,
-        elevated: bool,
-    ) -> bool {
+    fn purge_test(author_name: &str, author_owns_target: bool, elevated: bool) -> bool {
         // Author is a non-admin builder.
         let author_char: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
             "name": author_name,
@@ -1864,7 +1866,11 @@ end";
         let foreign_area = make_area("foreign", Some("other"), crate::AreaPermission::OwnerOnly);
         ctx.db.save_area_data(foreign_area.clone()).expect("save foreign");
 
-        let target_area_id = if author_owns_target { owner_area.id } else { foreign_area.id };
+        let target_area_id = if author_owns_target {
+            owner_area.id
+        } else {
+            foreign_area.id
+        };
 
         // Target mob lives in the chosen area.
         let mut target = crate::types::MobileData::new("victim".to_string());
@@ -2096,10 +2102,7 @@ end";
         let body = "remote greeting %actor.id% Welcome back!";
         let _ = fire_dg(body, &ctx);
         let after = ctx.db.get_character_data("alex").unwrap().unwrap();
-        assert_eq!(
-            after.dg_vars.get("greeting").map(String::as_str),
-            Some("Welcome back!")
-        );
+        assert_eq!(after.dg_vars.get("greeting").map(String::as_str), Some("Welcome back!"));
     }
 
     #[test]
@@ -2154,11 +2157,8 @@ end";
     /// the named player. Mirrors the wear/grant setup used by tests in
     /// tests/items_affects.rs.
     fn equip_item_with_vnum(db: &Db, char_name: &str, vnum: &str, name: &str) -> Uuid {
-        let mut item = crate::types::ItemData::new(
-            name.to_string(),
-            format!("a {name}"),
-            format!("A {name} lies here."),
-        );
+        let mut item =
+            crate::types::ItemData::new(name.to_string(), format!("a {name}"), format!("A {name} lies here."));
         item.vnum = Some(vnum.to_string());
         let item_id = item.id;
         db.save_item_data(item).expect("save item");
@@ -2246,12 +2246,7 @@ end";
     /// Helper: create an item-kind proto, attach it to two fresh items,
     /// return (db handle, proto_vnum, [item ids]). Both items end up with
     /// triggers carrying source_proto_vnum tagged to the proto.
-    fn setup_two_attached_items(
-        ctx: &EvalCtx,
-        proto_vnum: &str,
-        flags: &str,
-        body: &str,
-    ) -> Vec<Uuid> {
+    fn setup_two_attached_items(ctx: &EvalCtx, proto_vnum: &str, flags: &str, body: &str) -> Vec<Uuid> {
         let proto = crate::types::DgTriggerProto {
             vnum: proto_vnum.to_string(),
             name: "set_check".to_string(),
@@ -2276,11 +2271,7 @@ end";
         }
         // Attach via the same cmds path the runtime uses.
         for id in &ids {
-            crate::script::dg::cmds::attach_trigger_proto(
-                proto_vnum,
-                &id.to_string(),
-                ctx,
-            );
+            crate::script::dg::cmds::attach_trigger_proto(proto_vnum, &id.to_string(), ctx);
         }
         ids
     }
@@ -2303,10 +2294,7 @@ end";
         // Edit the proto body via the save+refresh path.
         let mut proto = ctx.db.get_dg_trigger_proto("7777").unwrap().unwrap();
         proto.body = "return 0".to_string();
-        let (refreshed, warnings) = ctx
-            .db
-            .save_dg_trigger_proto_with_refresh(&proto)
-            .expect("save");
+        let (refreshed, warnings) = ctx.db.save_dg_trigger_proto_with_refresh(&proto).expect("save");
         assert_eq!(refreshed, 2, "both attached items should be refreshed");
         assert!(warnings.is_empty(), "halt+return 0 has no warnings");
 
@@ -2333,10 +2321,7 @@ end";
 
         let mut proto = ctx.db.get_dg_trigger_proto("7700").unwrap().unwrap();
         proto.flags = "gh".to_string();
-        let (refreshed, _) = ctx
-            .db
-            .save_dg_trigger_proto_with_refresh(&proto)
-            .expect("save");
+        let (refreshed, _) = ctx.db.save_dg_trigger_proto_with_refresh(&proto).expect("save");
         assert_eq!(refreshed, 2);
 
         for id in &ids {
@@ -2378,10 +2363,7 @@ end";
         let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "host");
         let ids = setup_two_attached_items(&ctx, "7755", "g", "halt");
 
-        let orphaned = ctx
-            .db
-            .orphan_attached_dg_triggers("7755")
-            .expect("orphan sweep");
+        let orphaned = ctx.db.orphan_attached_dg_triggers("7755").expect("orphan sweep");
         assert_eq!(orphaned, 2);
         ctx.db.delete_dg_trigger_proto("7755").expect("delete");
 
@@ -2464,16 +2446,14 @@ end";
         wear_locations: Vec<crate::types::WearLocation>,
         slot: crate::types::WearLocation,
     ) -> Uuid {
-        let mut item = crate::types::ItemData::new(
-            name.to_string(),
-            format!("a {name}"),
-            format!("A {name} lies here."),
-        );
+        let mut item =
+            crate::types::ItemData::new(name.to_string(), format!("a {name}"), format!("A {name} lies here."));
         item.vnum = Some(vnum.to_string());
         item.wear_locations = wear_locations;
         let item_id = item.id;
         db.save_item_data(item).expect("save item");
-        db.move_item_to_equipped_at(&item_id, char_name, Some(slot)).expect("equip");
+        db.move_item_to_equipped_at(&item_id, char_name, Some(slot))
+            .expect("equip");
         item_id
     }
 
@@ -2612,11 +2592,8 @@ end";
         // (move_item_to_equipped is char-only; mob equips go through a
         // different db path that's not yet on the test surface).
         for name in ["sword", "buckler"] {
-            let mut item = crate::types::ItemData::new(
-                name.to_string(),
-                format!("a {name}"),
-                format!("A {name} lies here."),
-            );
+            let mut item =
+                crate::types::ItemData::new(name.to_string(), format!("a {name}"), format!("A {name} lies here."));
             item.vnum = Some("5500".to_string());
             item.location = crate::types::ItemLocation::Equipped(mob_id.to_string());
             ctx.db.save_item_data(item).expect("save");
@@ -2856,8 +2833,7 @@ return 2";
         ctx.db.save_item_data(item.clone()).expect("save item");
 
         let mut ctx2 = ctx.clone();
-        ctx2.context_vars
-            .insert("item_id".into(), item.id.to_string());
+        ctx2.context_vars.insert("item_id".into(), item.id.to_string());
 
         let body = "purge %object.id%\nhalt";
         assert_eq!(fire_dg(body, &ctx2), Outcome::Halt);
@@ -2886,8 +2862,7 @@ return 2";
         // not a crash and not a stale lookup.
         let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "well");
         let mut ctx2 = ctx.clone();
-        ctx2.context_vars
-            .insert("item_id".into(), Uuid::new_v4().to_string());
+        ctx2.context_vars.insert("item_id".into(), Uuid::new_v4().to_string());
         let body = "if %object.cost% >= 100\n  return 1\nend\nreturn 7";
         assert_eq!(fire_dg(body, &ctx2), Outcome::Return(7));
     }

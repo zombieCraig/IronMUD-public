@@ -9,8 +9,7 @@
 use ironmud::SharedConnections;
 use ironmud::db::Db;
 use ironmud::types::{
-    ActiveQuest, CharacterData, ItemData, ItemLocation, MobileData, QuestData, QuestObjective,
-    QuestReward,
+    ActiveQuest, CharacterData, ItemData, ItemLocation, MobileData, QuestData, QuestObjective, QuestReward,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -101,8 +100,7 @@ fn quest_data_round_trips_through_json() {
 
 #[test]
 fn quest_offer_adds_to_active_then_idempotent() {
-    let (db, _temp) = fresh_db(
-"offer_idempotent");
+    let (db, _temp) = fresh_db("offer_idempotent");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let q = make_quest("qst:1", "First");
         db.save_quest_data(&q).expect("save quest");
@@ -120,8 +118,7 @@ fn quest_offer_adds_to_active_then_idempotent() {
 
 #[test]
 fn quest_kill_listener_increments_progress() {
-    let (db, _temp) = fresh_db(
-"kill_listener");
+    let (db, _temp) = fresh_db("kill_listener");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:2", "Kill the Mice");
         q.objectives.push(QuestObjective::KillMob {
@@ -152,8 +149,7 @@ fn quest_kill_listener_increments_progress() {
 
 #[test]
 fn quest_item_turn_in_consumes_item_and_advances() {
-    let (db, _temp) = fresh_db(
-"item_turn_in");
+    let (db, _temp) = fresh_db("item_turn_in");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         // Quest "bring 1 mouse_tail to mob 100".
         let mut q = make_quest("qst:3", "Tail Tribute");
@@ -195,8 +191,7 @@ fn quest_item_turn_in_consumes_item_and_advances() {
 
 #[test]
 fn quest_item_turn_in_ignores_unrelated_item() {
-    let (db, _temp) = fresh_db(
-"item_unrelated");
+    let (db, _temp) = fresh_db("item_unrelated");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:4", "Specific Pelt");
         q.objectives.push(QuestObjective::BringItem {
@@ -232,8 +227,7 @@ fn quest_item_turn_in_ignores_unrelated_item() {
 
 #[test]
 fn quest_completion_grants_skill_xp() {
-    let (db, _temp) = fresh_db(
-"skill_xp_reward");
+    let (db, _temp) = fresh_db("skill_xp_reward");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:5", "Xp Quest");
         q.objectives.push(QuestObjective::KillMob {
@@ -261,8 +255,7 @@ fn quest_completion_grants_skill_xp() {
 
 #[test]
 fn quest_repeatable_can_re_accept_after_completion() {
-    let (db, _temp) = fresh_db(
-"repeatable");
+    let (db, _temp) = fresh_db("repeatable");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:6", "Endless");
         q.repeatable = true;
@@ -289,8 +282,7 @@ fn quest_repeatable_can_re_accept_after_completion() {
 
 #[test]
 fn quest_non_repeatable_refuses_re_accept() {
-    let (db, _temp) = fresh_db(
-"non_repeatable");
+    let (db, _temp) = fresh_db("non_repeatable");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:7", "Once");
         q.objectives.push(QuestObjective::KillMob {
@@ -311,8 +303,7 @@ fn quest_non_repeatable_refuses_re_accept() {
 
 #[test]
 fn quest_abandon_drops_progress() {
-    let (db, _temp) = fresh_db(
-"abandon");
+    let (db, _temp) = fresh_db("abandon");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:8", "Quitter");
         q.objectives.push(QuestObjective::KillMob {
@@ -330,12 +321,7 @@ fn quest_abandon_drops_progress() {
         ironmud::quest::handle_mob_kill(&db, &conns, &state, "henry", "500", &HashMap::new());
         let ch = db.get_character_data("henry").unwrap().unwrap();
         assert_eq!(
-            ch.active_quests
-                .get("qst:8")
-                .unwrap()
-                .kill_progress
-                .get("500")
-                .copied(),
+            ch.active_quests.get("qst:8").unwrap().kill_progress.get("500").copied(),
             Some(2)
         );
 
@@ -370,8 +356,7 @@ fn active_quest_default_skip_serializes_clean() {
 /// containing both names — both should advance.
 #[test]
 fn quest_party_credit_advances_all_damagers() {
-    let (db, _temp) = fresh_db(
-"party_credit");
+    let (db, _temp) = fresh_db("party_credit");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:party", "Slay the Hydra");
         q.objectives.push(QuestObjective::KillMob {
@@ -408,8 +393,7 @@ fn quest_party_credit_advances_all_damagers() {
 /// expiry helper directly.
 #[test]
 fn quest_expires_when_duration_elapsed() {
-    let (db, _temp) = fresh_db(
-"expire");
+    let (db, _temp) = fresh_db("expire");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:tl1", "Tick Tock");
         q.duration_secs = Some(60);
@@ -444,8 +428,7 @@ fn quest_expires_when_duration_elapsed() {
 /// Slice 3a: prereq_quest_vnum gates `offer` until the prereq is completed.
 #[test]
 fn quest_offer_blocked_by_prereq() {
-    let (db, _temp) = fresh_db(
-"offer_prereq");
+    let (db, _temp) = fresh_db("offer_prereq");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut prereq = make_quest("qst:p1", "Tutorial");
         prereq.objectives.push(QuestObjective::KillMob {
@@ -482,8 +465,7 @@ fn quest_offer_blocked_by_prereq() {
 /// skill levels meet the threshold.
 #[test]
 fn quest_offer_blocked_by_skill_total() {
-    let (db, _temp) = fresh_db(
-"offer_skill");
+    let (db, _temp) = fresh_db("offer_skill");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:s1", "Master Class");
         q.min_player_skill_total = Some(15);
@@ -502,11 +484,17 @@ fn quest_offer_blocked_by_skill_total() {
         let mut ch = db.get_character_data("apprentice").unwrap().unwrap();
         ch.skills.insert(
             "swords".into(),
-            ironmud::types::SkillProgress { level: 8, experience: 0 },
+            ironmud::types::SkillProgress {
+                level: 8,
+                experience: 0,
+            },
         );
         ch.skills.insert(
             "shields".into(),
-            ironmud::types::SkillProgress { level: 8, experience: 0 },
+            ironmud::types::SkillProgress {
+                level: 8,
+                experience: 0,
+            },
         );
         db.save_character_data(ch).unwrap();
 
@@ -522,8 +510,7 @@ fn quest_offer_blocked_by_skill_total() {
 /// quest's offer flips on automatically.
 #[test]
 fn quest_offer_blocked_by_achievement_set_prereq() {
-    let (db, _temp) = fresh_db(
-"offer_achievement_set");
+    let (db, _temp) = fresh_db("offer_achievement_set");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:endgame", "Court of the Concord");
         q.achievement_set_prereq = Some(ironmud::types::AchievementSetPrereq {
@@ -580,8 +567,7 @@ fn quest_offer_blocked_by_achievement_set_prereq() {
 /// and auto-completes a kill-only quest when the threshold is met.
 #[test]
 fn quest_kill_any_mob_objective_accumulates_and_completes() {
-    let (db, _temp) = fresh_db(
-"kill_any");
+    let (db, _temp) = fresh_db("kill_any");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:bounty", "Hunter Bounty");
         q.objectives.push(QuestObjective::KillAnyMob {
@@ -601,11 +587,7 @@ fn quest_kill_any_mob_objective_accumulates_and_completes() {
 
         let ch = db.get_character_data("deputy").unwrap().unwrap();
         let progress = ch.active_quests.get("qst:bounty").expect("active");
-        let key = ironmud::types::kill_any_key(&[
-            "hunter_a".into(),
-            "hunter_b".into(),
-            "hunter_c".into(),
-        ]);
+        let key = ironmud::types::kill_any_key(&["hunter_a".into(), "hunter_b".into(), "hunter_c".into()]);
         assert_eq!(progress.kill_any_progress.get(&key).copied(), Some(2));
         assert!(
             progress.kill_progress.is_empty(),
@@ -643,13 +625,10 @@ fn kill_any_key_is_stable_across_input_order() {
 /// visit-only quest.
 #[test]
 fn quest_visit_room_listener_completes_visit_quest() {
-    let (db, _temp) = fresh_db(
-"visit_listener");
+    let (db, _temp) = fresh_db("visit_listener");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:60", "Wander to the Crossroads");
-        q.objectives.push(QuestObjective::VisitRoom {
-            vnum: "tav_42".into(),
-        });
+        q.objectives.push(QuestObjective::VisitRoom { vnum: "tav_42".into() });
         db.save_quest_data(&q).expect("save");
         save_character(&db, "wanderer");
         ironmud::quest::offer(&db, "wanderer", "qst:60");
@@ -669,8 +648,7 @@ fn quest_visit_room_listener_completes_visit_quest() {
 /// flag-only quest.
 #[test]
 fn quest_dg_flag_listener_completes_flag_quest() {
-    let (db, _temp) = fresh_db(
-"dg_flag_listener");
+    let (db, _temp) = fresh_db("dg_flag_listener");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:61", "Solve the Riddle");
         q.objectives.push(QuestObjective::DgFlag {
@@ -704,8 +682,7 @@ fn quest_dg_flag_listener_completes_flag_quest() {
 /// return".
 #[test]
 fn quest_describe_quest_offers_returns_cue() {
-    let (db, _temp) = fresh_db(
-"describe_offers");
+    let (db, _temp) = fresh_db("describe_offers");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut q = make_quest("qst:70", "Hunt the Wolves");
         q.giver_mob_vnum = Some("hunter".into());
@@ -758,11 +735,9 @@ fn quest_describe_quest_offers_returns_cue() {
 #[test]
 fn quest_complete_grants_achievement_reward_via_try_complete() {
     use ironmud::types::{
-        AchievementCategory, AchievementCriterion, AchievementDef, AchievementReward,
-        AchievementSource,
+        AchievementCategory, AchievementCriterion, AchievementDef, AchievementReward, AchievementSource,
     };
-    let (db, _temp) = fresh_db(
-"achievement_reward");
+    let (db, _temp) = fresh_db("achievement_reward");
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         // Achievement: must be Manual so award_core(manual=true) accepts it.
         let ach = AchievementDef {
@@ -773,9 +748,7 @@ fn quest_complete_grants_achievement_reward_via_try_complete() {
             criterion: AchievementCriterion::Manual,
             reward: AchievementReward::default(),
             hidden: false,
-            source: AchievementSource::Db {
-                author: "test".into(),
-            },
+            source: AchievementSource::Db { author: "test".into() },
         };
 
         // Quest: kill 1 wolf -> achievement.

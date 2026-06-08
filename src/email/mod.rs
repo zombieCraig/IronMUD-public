@@ -9,8 +9,8 @@
 
 use crate::chat::{ChatMessage, ChatSender};
 use crate::db::{Db, EmailAuditEntry};
-use lettre::{Message, SmtpTransport, Transport};
 use lettre::transport::smtp::authentication::Credentials;
+use lettre::{Message, SmtpTransport, Transport};
 use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
@@ -186,11 +186,7 @@ pub fn send_verification_email(db: &Db, to_address: &str, code: &str) -> Result<
 /// `From:` configuration from the settings tree on every call. Mirrors
 /// `send_verification_email` — only the subject, template, and substitution
 /// token differ.
-pub fn send_password_reset_email(
-    db: &Db,
-    to_address: &str,
-    password: &str,
-) -> Result<(), EmailError> {
+pub fn send_password_reset_email(db: &Db, to_address: &str, password: &str) -> Result<(), EmailError> {
     check_and_increment_send_quota(db)?;
     let host = read_setting_required(db, "smtp_host", "smtp_host")?;
     let port = db
@@ -291,17 +287,14 @@ pub fn check_and_increment_send_quota(db: &Db) -> Result<(), EmailError> {
         let warn_stamp = read_counter_i64(db, "email_quota_warning_day_started_at");
         if warn_stamp != day_start {
             warn!(
-                daily_cap, monthly_cap, day_count, month_count,
-                "email daily cap hit — refusing further sends until tomorrow"
+                daily_cap,
+                monthly_cap, day_count, month_count, "email daily cap hit — refusing further sends until tomorrow"
             );
             broadcast_admin_warning(&format!(
                 "[email] Daily send cap reached ({}/{}). No more verification or password-reset emails will be sent today.",
                 day_count, daily_cap
             ));
-            let _ = db.set_setting(
-                "email_quota_warning_day_started_at",
-                &day_start.to_string(),
-            );
+            let _ = db.set_setting("email_quota_warning_day_started_at", &day_start.to_string());
         }
         return Err(EmailError::QuotaExceeded("daily"));
     }
@@ -309,17 +302,14 @@ pub fn check_and_increment_send_quota(db: &Db) -> Result<(), EmailError> {
         let warn_stamp = read_counter_i64(db, "email_quota_warning_month_started_at");
         if warn_stamp != month_start {
             warn!(
-                daily_cap, monthly_cap, day_count, month_count,
-                "email monthly cap hit — refusing further sends until next window"
+                daily_cap,
+                monthly_cap, day_count, month_count, "email monthly cap hit — refusing further sends until next window"
             );
             broadcast_admin_warning(&format!(
                 "[email] Monthly send cap reached ({}/{}). Email-driven flows are paused until the window resets.",
                 month_count, monthly_cap
             ));
-            let _ = db.set_setting(
-                "email_quota_warning_month_started_at",
-                &month_start.to_string(),
-            );
+            let _ = db.set_setting("email_quota_warning_month_started_at", &month_start.to_string());
         }
         return Err(EmailError::QuotaExceeded("monthly"));
     }
@@ -353,11 +343,7 @@ fn write_counter(db: &Db, key: &str, value: u64) {
     let _ = db.set_setting(key, &value.to_string());
 }
 
-fn read_setting_required(
-    db: &Db,
-    key: &str,
-    label: &'static str,
-) -> Result<String, EmailError> {
+fn read_setting_required(db: &Db, key: &str, label: &'static str) -> Result<String, EmailError> {
     let value = db
         .get_setting(key)
         .map_err(|e| EmailError::SmtpFailure(format!("settings read: {}", e)))?
@@ -398,8 +384,7 @@ pub fn generate_code() -> String {
 /// Charset for temporary passwords. Excludes visually ambiguous glyphs
 /// (`0/O`, `1/l/I`) so a player typing the password back from their email
 /// client doesn't trip on font-dependent substitutions.
-const TEMP_PASSWORD_CHARSET: &[u8] =
-    b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+const TEMP_PASSWORD_CHARSET: &[u8] = b"ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
 
 /// Random 12-character temp password. ~71 bits of entropy from a 56-char
 /// alphabet; combined with per-account throttling and immediate forced
@@ -434,7 +419,11 @@ pub fn normalize_email(raw: &str) -> Option<String> {
     if KNOWN_DOT_PLUS_PROVIDERS.contains(&domain) {
         let local_no_plus = local.split('+').next().unwrap_or("");
         let local_no_dots: String = local_no_plus.chars().filter(|c| *c != '.').collect();
-        let canonical_domain = if domain == "googlemail.com" { "gmail.com" } else { domain };
+        let canonical_domain = if domain == "googlemail.com" {
+            "gmail.com"
+        } else {
+            domain
+        };
         if local_no_dots.is_empty() {
             return None;
         }
@@ -583,12 +572,7 @@ mod quota_tests {
         t.db.set_setting("email_daily_cap", "2").unwrap();
         t.db.set_setting("email_monthly_cap", "100").unwrap();
         // Pre-stamp a counter at the cap with a window start one day ago.
-        let yesterday = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64
-            - SECS_PER_DAY
-            - 60;
+        let yesterday = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64 - SECS_PER_DAY - 60;
         t.db.set_setting("email_sent_count_day", "2").unwrap();
         t.db.set_setting("email_sent_count_day_start", &yesterday.to_string())
             .unwrap();

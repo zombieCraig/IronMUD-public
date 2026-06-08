@@ -88,11 +88,7 @@ pub fn set_root(slot: &mut Option<DialogueTree>, node_name: &str) -> EditResult<
     Ok(())
 }
 
-pub fn add_node(
-    slot: &mut Option<DialogueTree>,
-    name: &str,
-    node: DialogueNode,
-) -> EditResult<()> {
+pub fn add_node(slot: &mut Option<DialogueTree>, name: &str, node: DialogueNode) -> EditResult<()> {
     if name.trim().is_empty() {
         return Err(DialogueEditError::EmptyNodeName);
     }
@@ -113,11 +109,7 @@ pub struct NodePatch {
     pub on_exit: Option<Vec<DialogueEffect>>,
 }
 
-pub fn update_node(
-    slot: &mut Option<DialogueTree>,
-    name: &str,
-    patch: NodePatch,
-) -> EditResult<()> {
+pub fn update_node(slot: &mut Option<DialogueTree>, name: &str, patch: NodePatch) -> EditResult<()> {
     let tree = ensure_tree(slot)?;
     let node = tree
         .nodes
@@ -154,10 +146,7 @@ pub fn remove_node(slot: &mut Option<DialogueTree>, name: &str) -> EditResult<()
         for choice in &other.choices {
             if let crate::types::DialogueTarget::Goto { node } = &choice.target {
                 if node == name {
-                    return Err(DialogueEditError::NodeReferenced(
-                        name.into(),
-                        other_name.clone(),
-                    ));
+                    return Err(DialogueEditError::NodeReferenced(name.into(), other_name.clone()));
                 }
             }
         }
@@ -166,11 +155,7 @@ pub fn remove_node(slot: &mut Option<DialogueTree>, name: &str) -> EditResult<()
     Ok(())
 }
 
-pub fn add_choice(
-    slot: &mut Option<DialogueTree>,
-    node_name: &str,
-    choice: DialogueChoice,
-) -> EditResult<()> {
+pub fn add_choice(slot: &mut Option<DialogueTree>, node_name: &str, choice: DialogueChoice) -> EditResult<()> {
     let tree = ensure_tree(slot)?;
     validate_choice_target(tree, &choice)?;
     let node = tree
@@ -194,30 +179,20 @@ pub fn update_choice(
         .get_mut(node_name)
         .ok_or_else(|| DialogueEditError::NodeMissing(node_name.into()))?;
     if index >= node.choices.len() {
-        return Err(DialogueEditError::ChoiceIndexOutOfRange(
-            index,
-            node.choices.len(),
-        ));
+        return Err(DialogueEditError::ChoiceIndexOutOfRange(index, node.choices.len()));
     }
     node.choices[index] = choice;
     Ok(())
 }
 
-pub fn remove_choice(
-    slot: &mut Option<DialogueTree>,
-    node_name: &str,
-    index: usize,
-) -> EditResult<()> {
+pub fn remove_choice(slot: &mut Option<DialogueTree>, node_name: &str, index: usize) -> EditResult<()> {
     let tree = ensure_tree(slot)?;
     let node = tree
         .nodes
         .get_mut(node_name)
         .ok_or_else(|| DialogueEditError::NodeMissing(node_name.into()))?;
     if index >= node.choices.len() {
-        return Err(DialogueEditError::ChoiceIndexOutOfRange(
-            index,
-            node.choices.len(),
-        ));
+        return Err(DialogueEditError::ChoiceIndexOutOfRange(index, node.choices.len()));
     }
     node.choices.remove(index);
     Ok(())
@@ -402,9 +377,7 @@ mod tests {
         let bad = DialogueChoice {
             keyword: "ghost".into(),
             label: "ghost".into(),
-            target: DialogueTarget::Goto {
-                node: "ghost".into(),
-            },
+            target: DialogueTarget::Goto { node: "ghost".into() },
             conditions: vec![],
             effects: vec![],
             hint: None,

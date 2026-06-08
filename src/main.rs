@@ -20,18 +20,19 @@ use ironmud::{
     discord::{DiscordConfig, run_discord_bot},
     game::Entity,
     gemini::{GeminiConfig, GeminiRequest, run_gemini_task},
-    load_command_metadata, load_game_data, load_scripts, register_socials_in_command_metadata,
+    load_command_metadata, load_game_data, load_scripts,
     matrix::{MatrixConfig, run_matrix_bot},
-    run_server, save_all_players, watch_scripts,
+    register_socials_in_command_metadata, run_server, save_all_players, watch_scripts,
 };
 
 use ironmud::script;
 use ticks::{
-    register_all_heartbeats, run_aging_tick, run_bleeding_tick, run_combat_tick, run_corpse_decay_tick, run_donation_decay_tick, run_drowning_tick, run_exposure_tick,
-    run_garden_tick, run_heartbeat_watchdog, run_hunger_tick, run_hunting_tick, run_migration_tick, run_mobile_effects_tick,
-    run_periodic_trigger_tick, run_pursuit_tick, run_quest_tick, run_regen_tick, run_rent_tick, run_routine_tick, run_simulation_tick,
-    run_slow_move_tick, run_spawn_tick, run_spoilage_tick, run_thirst_tick, run_time_tick, run_transport_tick, run_wander_tick,
-    run_blood_tick, run_sun_tick,
+    register_all_heartbeats, run_aging_tick, run_bleeding_tick, run_blood_tick, run_combat_tick, run_corpse_decay_tick,
+    run_donation_decay_tick, run_drowning_tick, run_exposure_tick, run_garden_tick, run_heartbeat_watchdog,
+    run_hunger_tick, run_hunting_tick, run_migration_tick, run_mobile_effects_tick, run_periodic_trigger_tick,
+    run_pursuit_tick, run_quest_tick, run_regen_tick, run_rent_tick, run_routine_tick, run_simulation_tick,
+    run_slow_move_tick, run_spawn_tick, run_spoilage_tick, run_sun_tick, run_thirst_tick, run_time_tick,
+    run_transport_tick, run_wander_tick,
 };
 
 #[derive(Parser, Debug)]
@@ -197,10 +198,7 @@ async fn main() -> Result<()> {
                 .map(|s| {
                     let mut m = rhai::Map::new();
                     m.insert("name".into(), rhai::Dynamic::from(s.name.to_string()));
-                    m.insert(
-                        "age_secs".into(),
-                        rhai::Dynamic::from(s.age().as_secs() as i64),
-                    );
+                    m.insert("age_secs".into(), rhai::Dynamic::from(s.age().as_secs() as i64));
                     m.insert(
                         "expected_secs".into(),
                         rhai::Dynamic::from(s.expected_interval.as_secs() as i64),
@@ -342,7 +340,6 @@ async fn main() -> Result<()> {
         run_hunting_tick(tick_db18, hunting_connections, hunting_state).await;
     });
 
-
     // Start background drowning tick (breath depletion and drowning damage)
     let drowning_connections = connections.clone();
     let drowning_state = state.clone();
@@ -363,7 +360,6 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         run_bleeding_tick(tick_db20, bleeding_connections, bleeding_state).await;
     });
-
 
     // Start background simulation tick (NPC needs simulation)
     let simulation_connections = connections.clone();

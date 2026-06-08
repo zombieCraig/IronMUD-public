@@ -18,42 +18,33 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // account_shared_bank_gold(account_id) -> i64
     let cloned_db = db.clone();
-    engine.register_fn(
-        "account_shared_bank_gold",
-        move |account_id: String| -> i64 {
-            let uuid = match Uuid::parse_str(&account_id) {
-                Ok(u) => u,
-                Err(_) => return 0,
-            };
-            match cloned_db.get_account_by_id(&uuid) {
-                Ok(Some(a)) => a.shared_bank_gold,
-                _ => 0,
-            }
-        },
-    );
+    engine.register_fn("account_shared_bank_gold", move |account_id: String| -> i64 {
+        let uuid = match Uuid::parse_str(&account_id) {
+            Ok(u) => u,
+            Err(_) => return 0,
+        };
+        match cloned_db.get_account_by_id(&uuid) {
+            Ok(Some(a)) => a.shared_bank_gold,
+            _ => 0,
+        }
+    });
 
     // lookup_account_id_for_character(char_name) -> String  ("" when not found)
     let cloned_db = db.clone();
-    engine.register_fn(
-        "lookup_account_id_for_character",
-        move |char_name: String| -> String {
-            let needle = char_name.trim().to_lowercase();
-            match cloned_db.list_accounts() {
-                Ok(accounts) => {
-                    for a in accounts {
-                        if a.character_names
-                            .iter()
-                            .any(|n| n.to_lowercase() == needle)
-                        {
-                            return a.id.to_string();
-                        }
+    engine.register_fn("lookup_account_id_for_character", move |char_name: String| -> String {
+        let needle = char_name.trim().to_lowercase();
+        match cloned_db.list_accounts() {
+            Ok(accounts) => {
+                for a in accounts {
+                    if a.character_names.iter().any(|n| n.to_lowercase() == needle) {
+                        return a.id.to_string();
                     }
-                    String::new()
                 }
-                Err(_) => String::new(),
+                String::new()
             }
-        },
-    );
+            Err(_) => String::new(),
+        }
+    });
 
     // transfer_pocket_to_shared_bank(char_name, amount) -> bool
     //   Debits the character's pocket gold; credits the account's shared pile.
@@ -87,10 +78,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if cloned_db.save_character_data(character).is_err() {
                 return false;
             }
-            let credit_ok = matches!(
-                cloned_db.add_shared_bank_gold(&account_id, amount),
-                Ok(Some(_))
-            );
+            let credit_ok = matches!(cloned_db.add_shared_bank_gold(&account_id, amount), Ok(Some(_)));
             if !credit_ok {
                 tracing::error!(
                     "transfer_pocket_to_shared_bank: pocket debited but shared credit failed for char={} acct={}",
@@ -130,10 +118,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             };
             // Try to debit the shared pile first; if it fails (insufficient
             // funds), the character is untouched.
-            let debit_ok = matches!(
-                cloned_db.add_shared_bank_gold(&account_id, -amount),
-                Ok(Some(_))
-            );
+            let debit_ok = matches!(cloned_db.add_shared_bank_gold(&account_id, -amount), Ok(Some(_)));
             if !debit_ok {
                 return false;
             }
@@ -367,10 +352,7 @@ struct Snapshot {
 fn find_account_id(db: &Db, char_name_lower: &str) -> Option<Uuid> {
     let accounts = db.list_accounts().ok()?;
     for a in accounts {
-        if a.character_names
-            .iter()
-            .any(|n| n.to_lowercase() == char_name_lower)
-        {
+        if a.character_names.iter().any(|n| n.to_lowercase() == char_name_lower) {
             return Some(a.id);
         }
     }

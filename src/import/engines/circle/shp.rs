@@ -90,7 +90,9 @@ pub fn parse_str(text: &str, path: &Path) -> Result<Vec<IrShop>> {
     p.inner.skip_blank();
     if let Some(line) = p.inner.peek_line() {
         let trimmed = line.trim();
-        if trimmed.starts_with("CircleMUD") || trimmed.ends_with('~') && !trimmed.starts_with('#') && !trimmed.starts_with('$') {
+        if trimmed.starts_with("CircleMUD")
+            || trimmed.ends_with('~') && !trimmed.starts_with('#') && !trimmed.starts_with('$')
+        {
             // Consume the header line if it's not a shop record / EOF.
             if !trimmed.starts_with('#') && !trimmed.starts_with('$') {
                 p.inner.consume_line();
@@ -159,9 +161,7 @@ impl<'a> ShpParser<'a> {
                 .to_string();
         }
 
-        let temper = self
-            .read_int_line()
-            .with_context(|| format!("shop #{vnum}: temper"))?;
+        let temper = self.read_int_line().with_context(|| format!("shop #{vnum}: temper"))?;
         let bitvector = self
             .read_int_line()
             .with_context(|| format!("shop #{vnum}: bitvector"))? as u32;
@@ -176,18 +176,10 @@ impl<'a> ShpParser<'a> {
             .read_int_list_terminated()
             .with_context(|| format!("shop #{vnum}: room list"))?;
 
-        let open1 = self
-            .read_int_line()
-            .with_context(|| format!("shop #{vnum}: open1"))?;
-        let close1 = self
-            .read_int_line()
-            .with_context(|| format!("shop #{vnum}: close1"))?;
-        let open2 = self
-            .read_int_line()
-            .with_context(|| format!("shop #{vnum}: open2"))?;
-        let close2 = self
-            .read_int_line()
-            .with_context(|| format!("shop #{vnum}: close2"))?;
+        let open1 = self.read_int_line().with_context(|| format!("shop #{vnum}: open1"))?;
+        let close1 = self.read_int_line().with_context(|| format!("shop #{vnum}: close1"))?;
+        let open2 = self.read_int_line().with_context(|| format!("shop #{vnum}: open2"))?;
+        let close2 = self.read_int_line().with_context(|| format!("shop #{vnum}: close2"))?;
 
         Ok(IrShop {
             vnum,

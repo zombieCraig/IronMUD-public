@@ -57,7 +57,11 @@ const MAGIC_SKILL: &str = "magic";
 fn refuse(msg: &str) -> RaiseOutcome {
     RaiseOutcome {
         success: false,
-        caster_msg: if msg.is_empty() { String::new() } else { format!("{msg}\n") },
+        caster_msg: if msg.is_empty() {
+            String::new()
+        } else {
+            format!("{msg}\n")
+        },
         room_msg: None,
         room_id: None,
         minion_id: None,
@@ -66,12 +70,7 @@ fn refuse(msg: &str) -> RaiseOutcome {
 
 /// Perform the raise-dead rite for `caster_name` on a corpse matching
 /// `corpse_keyword` in the caster's current room. See module docs.
-pub fn raise_dead_from_corpse(
-    db: &Db,
-    caster_name: &str,
-    corpse_keyword: &str,
-    p: RaiseParams,
-) -> RaiseOutcome {
+pub fn raise_dead_from_corpse(db: &Db, caster_name: &str, corpse_keyword: &str, p: RaiseParams) -> RaiseOutcome {
     if corpse_keyword.trim().is_empty() {
         return refuse("Raise which corpse?");
     }
@@ -87,8 +86,7 @@ pub fn raise_dead_from_corpse(
     let kw = corpse_keyword.trim().to_ascii_lowercase();
     let corpse = items.into_iter().find(|it| {
         it.flags.is_corpse
-            && (it.keywords.iter().any(|k| k.eq_ignore_ascii_case(&kw))
-                || it.name.to_ascii_lowercase().contains(&kw))
+            && (it.keywords.iter().any(|k| k.eq_ignore_ascii_case(&kw)) || it.name.to_ascii_lowercase().contains(&kw))
     });
     let Some(corpse) = corpse else {
         return refuse("There is no corpse here by that name.");
@@ -182,12 +180,10 @@ pub fn raise_dead_from_corpse(
 
     // Costs + progression on the caster.
     ch.mana = (ch.mana - p.mana_cost).max(0);
-    ch.morality = (ch.morality as i64)
-        .saturating_sub(p.morality_cost as i64)
-        .clamp(
-            crate::morality::MORALITY_MIN as i64,
-            crate::morality::MORALITY_MAX as i64,
-        ) as i32;
+    ch.morality = (ch.morality as i64).saturating_sub(p.morality_cost as i64).clamp(
+        crate::morality::MORALITY_MIN as i64,
+        crate::morality::MORALITY_MAX as i64,
+    ) as i32;
     let _ = crate::script::dialogue::award_skill_xp(&mut ch, MASTERY_SKILL, p.mastery_xp);
     let _ = db.save_character_data(ch);
 
@@ -216,8 +212,7 @@ fn count_charmed_minions(db: &Db, caster_name: &str) -> i32 {
         .filter(|m| {
             !m.is_prototype
                 && m.active_buffs.iter().any(|b| {
-                    (b.effect_type == crate::EffectType::Charmed
-                        || b.effect_type == crate::EffectType::Dominated)
+                    (b.effect_type == crate::EffectType::Charmed || b.effect_type == crate::EffectType::Dominated)
                         && b.source.eq_ignore_ascii_case(caster_name)
                 })
         })
@@ -272,7 +267,11 @@ mod tests {
     }
 
     fn params() -> RaiseParams {
-        RaiseParams { mana_cost: 70, morality_cost: 3, mastery_xp: 25 }
+        RaiseParams {
+            mana_cost: 70,
+            morality_cost: 3,
+            mastery_xp: 25,
+        }
     }
 
     #[test]
@@ -351,9 +350,11 @@ mod tests {
 
             let mid = out.minion_id.expect("minion id on success");
             let pet = db.get_mobile_data(&mid).unwrap().unwrap();
-            assert!(pet.active_buffs.iter().any(|b| b.effect_type
-                == crate::EffectType::Charmed
-                && b.source == "Necro"));
+            assert!(
+                pet.active_buffs
+                    .iter()
+                    .any(|b| b.effect_type == crate::EffectType::Charmed && b.source == "Necro")
+            );
             assert_eq!(pet.current_hp, 30, "weakened to 60% of 50");
             assert_eq!(pet.max_hp, 30);
             assert!(pet.short_desc.starts_with("the risen corpse of"));
@@ -365,11 +366,12 @@ mod tests {
             assert_eq!(ch.skills.get("necromancy").unwrap().experience, 25);
 
             // Corpse consumed.
-            assert!(db
-                .get_items_in_room(&room)
-                .unwrap()
-                .iter()
-                .all(|it| !it.flags.is_corpse));
+            assert!(
+                db.get_items_in_room(&room)
+                    .unwrap()
+                    .iter()
+                    .all(|it| !it.flags.is_corpse)
+            );
             return;
         }
         panic!("raise never succeeded in 40 attempts at ~95% — RNG or logic broken");

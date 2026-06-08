@@ -48,10 +48,7 @@ fn resolve_areas_dir(source: &Path) -> Result<PathBuf> {
     if source.file_name().and_then(|s| s.to_str()) == Some("areas") && source.is_dir() {
         return Ok(source.to_path_buf());
     }
-    anyhow::bail!(
-        "could not find an `areas/` subdirectory under {}",
-        source.display()
-    )
+    anyhow::bail!("could not find an `areas/` subdirectory under {}", source.display())
 }
 
 fn parse_area(area_dir: &Path, warnings: &mut Vec<Warning>) -> Result<IrArea> {

@@ -111,7 +111,11 @@ pub(super) fn complete_oedit(
             && words[3].to_lowercase() == "dg"
             && words[4].to_lowercase() == "proto" =>
         {
-            filter_static(TRIGGER_DG_PROTO_SUBCOMMANDS, &partial, CompletionType::TriggerDgProtoSubcommand)
+            filter_static(
+                TRIGGER_DG_PROTO_SUBCOMMANDS,
+                &partial,
+                CompletionType::TriggerDgProtoSubcommand,
+            )
         }
         // oedit <vnum> trigger dg proto retype <vnum> <partial_type>
         8 if completing_word
@@ -219,18 +223,14 @@ pub(super) fn complete_oedit(
             filter_static(FIRE_MODES, &partial, CompletionType::OeditSubcommand)
         }
         // oedit <vnum> cast_on_use - show spell ids + show/clear actions
-        3 if !completing_word
-            && (words[2].to_lowercase() == "cast_on_use" || words[2].to_lowercase() == "spell") =>
-        {
+        3 if !completing_word && (words[2].to_lowercase() == "cast_on_use" || words[2].to_lowercase() == "spell") => {
             let mut matches: Vec<String> = spell_names.to_vec();
             matches.push("show".to_string());
             matches.push("clear".to_string());
             CompletionResult::new(matches, "", CompletionType::SpellName)
         }
         // oedit <vnum> cast_on_use <partial> - complete spell id (or show/clear)
-        4 if completing_word
-            && (words[2].to_lowercase() == "cast_on_use" || words[2].to_lowercase() == "spell") =>
-        {
+        4 if completing_word && (words[2].to_lowercase() == "cast_on_use" || words[2].to_lowercase() == "spell") => {
             let mut matches: Vec<String> = spell_names
                 .iter()
                 .filter(|s| s.to_lowercase().starts_with(&partial))

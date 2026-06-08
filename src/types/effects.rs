@@ -219,10 +219,15 @@ impl EffectType {
             "sleep" => Some(EffectType::Sleep),
             "blind" | "blindness" => Some(EffectType::Blind),
             "invisibility" | "invis" => Some(EffectType::Invisibility),
-            "detect_invisible" | "detectinvisible" | "detect_invis" | "detect_invisibility"
-            | "true_seeing" | "trueseeing" | "true_sight" | "sense_life" | "senselife" => {
-                Some(EffectType::DetectInvisible)
-            }
+            "detect_invisible"
+            | "detectinvisible"
+            | "detect_invis"
+            | "detect_invisibility"
+            | "true_seeing"
+            | "trueseeing"
+            | "true_sight"
+            | "sense_life"
+            | "senselife" => Some(EffectType::DetectInvisible),
             "detect_magic" | "detectmagic" => Some(EffectType::DetectMagic),
             "night_vision" | "nightvision" | "infravision" => Some(EffectType::NightVision),
             "regeneration" | "regen" => Some(EffectType::Regeneration),
@@ -235,19 +240,20 @@ impl EffectType {
             "magic_light" | "magiclight" | "light" => Some(EffectType::MagicLight),
             "disguise" => Some(EffectType::Disguise),
             "water_breathing" | "waterbreathing" | "aqua_breath" => Some(EffectType::WaterBreathing),
-            "damage_reduction" | "damagereduction" | "sanctuary" | "stone_skin" | "stoneskin"
-            | "protection_from_evil" | "protection_from_good" => {
-                Some(EffectType::DamageReduction)
-            }
+            "damage_reduction"
+            | "damagereduction"
+            | "sanctuary"
+            | "stone_skin"
+            | "stoneskin"
+            | "protection_from_evil"
+            | "protection_from_good" => Some(EffectType::DamageReduction),
             "charm" | "charmed" => Some(EffectType::Charmed),
             "curse" | "cursed" => Some(EffectType::Curse),
             "bless" | "blessed" | "blessing" => Some(EffectType::Bless),
             "luck" | "lucky" | "fortune" | "misfortune" => Some(EffectType::Luck),
             "silence" | "silenced" => Some(EffectType::Silence),
             "sunlight_burn" | "sunlightburn" | "sunburn" => Some(EffectType::SunlightBurn),
-            "sunlight_burning" | "sunlightburning" | "sun_burning" => {
-                Some(EffectType::SunlightBurning)
-            }
+            "sunlight_burning" | "sunlightburning" | "sun_burning" => Some(EffectType::SunlightBurning),
             "frenzy" | "frenzied" | "berserk" => Some(EffectType::Frenzy),
             "dominated" | "dominate" => Some(EffectType::Dominated),
             "obfuscate" | "obfuscated" => Some(EffectType::Obfuscate),

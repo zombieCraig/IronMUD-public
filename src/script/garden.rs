@@ -23,7 +23,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // Register PlantPrototype type
     engine.register_type_with_name::<PlantPrototype>("PlantPrototype");
     register_string!(engine, PlantPrototype, name, seed_vnum, harvest_vnum);
-    register_i32!(engine, PlantPrototype, harvest_min, harvest_max, min_skill_to_plant, base_xp, pest_resistance);
+    register_i32!(
+        engine,
+        PlantPrototype,
+        harvest_min,
+        harvest_max,
+        min_skill_to_plant,
+        base_xp,
+        pest_resistance
+    );
     register_bool_flags!(engine, PlantPrototype, multi_harvest);
     register_bool_ro!(engine, PlantPrototype, indoor_only, is_prototype);
 

@@ -1,14 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::import::{
-    DeferredItem, IrResetKind,
-    IrZone,
-    PlannedRoom, PlannedSpawn, PlannedSpawnDep, Severity, SourceLoc, Warning, WarningKind,
+    DeferredItem, IrResetKind, IrZone, PlannedRoom, PlannedSpawn, PlannedSpawnDep, Severity, SourceLoc, Warning,
+    WarningKind,
 };
-use crate::types::{
-    ItemType, SpawnDestination, SpawnEntityType,
-};
-
+use crate::types::{ItemType, SpawnDestination, SpawnEntityType};
 
 const RESET_DIRECTIONS: &[&str] = &["north", "east", "south", "west", "up", "down"];
 
@@ -94,11 +90,7 @@ pub(super) fn map_resets(
 
     for reset in &zone.resets {
         match &reset.kind {
-            IrResetKind::LoadMob {
-                vnum,
-                max,
-                room_vnum,
-            } => {
+            IrResetKind::LoadMob { vnum, max, room_vnum } => {
                 let Some(mob_pref) = mob_index.get(vnum) else {
                     warnings.push(Warning::new(
                         WarningKind::DeferredFeature,
@@ -124,11 +116,7 @@ pub(super) fn map_resets(
                 // O→P chains shouldn't survive an intervening M.
                 last_obj_idx = None;
             }
-            IrResetKind::LoadObj {
-                vnum,
-                max,
-                room_vnum,
-            } => {
+            IrResetKind::LoadObj { vnum, max, room_vnum } => {
                 let Some(item_pref) = item_index.get(vnum) else {
                     warnings.push(Warning::new(
                         WarningKind::DeferredFeature,
@@ -230,9 +218,7 @@ pub(super) fn map_resets(
                         WarningKind::UnsupportedValueSemantic,
                         Severity::Warn,
                         reset.source.clone(),
-                        format!(
-                            "E reset wear-slot {wear_loc} for obj #{vnum} has no IronMUD analogue — drop"
-                        ),
+                        format!("E reset wear-slot {wear_loc} for obj #{vnum} has no IronMUD analogue — drop"),
                     ));
                     continue;
                 };
@@ -343,11 +329,7 @@ pub(super) fn map_resets(
                     count: 1,
                 });
             }
-            IrResetKind::SetDoor {
-                room_vnum,
-                dir,
-                state,
-            } => {
+            IrResetKind::SetDoor { room_vnum, dir, state } => {
                 let direction = match RESET_DIRECTIONS.get(*dir as usize) {
                     Some(d) => (*d).to_string(),
                     None => {
@@ -369,9 +351,7 @@ pub(super) fn map_resets(
                             WarningKind::DeferredFeature,
                             Severity::Warn,
                             reset.source.clone(),
-                            format!(
-                                "D reset on room #{room_vnum} has unsupported state {state} (only 0/1/2) — drop"
-                            ),
+                            format!("D reset on room #{room_vnum} has unsupported state {state} (only 0/1/2) — drop"),
                         ));
                         continue;
                     }

@@ -14,9 +14,7 @@ use std::collections::HashSet;
 use crate::import::{
     ImportIR, IrDgTrigger, MappingOptions, Plan, PlannedArea, PlannedExit, Severity, SourceLoc, Warning, WarningKind,
 };
-use crate::types::{
-    ItemType, SpawnEntityType,
-};
+use crate::types::{ItemType, SpawnEntityType};
 
 mod dg;
 mod items;
@@ -28,12 +26,12 @@ mod shops;
 mod triggers;
 
 // Re-exports used by the orchestrator below and (for apply_named_room_flag) by writer.rs.
-pub(crate) use rooms::apply_named_room_flag;
 use dg::{item_index_for_dg, map_dg_triggers, mob_index_for_dg, room_index_for_dg};
 use items::map_item;
 use mobs::{map_mob, unique_prefix};
 use quests::translate_quest;
 use resets::{apply_door_override, deferred_to_warning, map_resets};
+pub(crate) use rooms::apply_named_room_flag;
 use rooms::map_room;
 use shops::map_shop;
 use triggers::map_triggers;
@@ -276,16 +274,16 @@ impl CircleMappingTable {
         // The bundled JSON is checked at compile time via `include_str!` and
         // tested below; a runtime parse failure would mean we shipped a
         // broken default. Panic so it's caught in dev.
-        let mut table: Self = serde_json::from_str(DEFAULT_ROOM_MAPPING_JSON)
-            .expect("bundled circle_room_mapping.json must parse");
+        let mut table: Self =
+            serde_json::from_str(DEFAULT_ROOM_MAPPING_JSON).expect("bundled circle_room_mapping.json must parse");
         let mob: Self =
             serde_json::from_str(DEFAULT_MOB_MAPPING_JSON).expect("bundled circle_mob_mapping.json must parse");
         let obj: Self =
             serde_json::from_str(DEFAULT_OBJ_MAPPING_JSON).expect("bundled circle_obj_mapping.json must parse");
         let shop: Self =
             serde_json::from_str(DEFAULT_SHOP_MAPPING_JSON).expect("bundled circle_shop_mapping.json must parse");
-        let trig: Self = serde_json::from_str(DEFAULT_TRIGGER_MAPPING_JSON)
-            .expect("bundled circle_trigger_mapping.json must parse");
+        let trig: Self =
+            serde_json::from_str(DEFAULT_TRIGGER_MAPPING_JSON).expect("bundled circle_trigger_mapping.json must parse");
         // Merge: room mapping JSON owns sector + room actions; mob mapping
         // JSON owns mob + aff actions; obj mapping JSON owns extra + apply
         // actions; shop mapping JSON owns buy_type actions; trigger mapping
@@ -424,16 +422,8 @@ pub fn ir_to_plan(ir: &ImportIR, opts: &MappingOptions) -> (Plan, Vec<Warning>) 
     // different zone than the shop record itself. Build global vnum
     // indices from the per-zone passes above, then resolve shop overlays
     // in a second sweep across all zones.
-    let mob_index: HashMap<i32, String> = plan
-        .mobiles
-        .iter()
-        .map(|m| (m.source_vnum, m.vnum.clone()))
-        .collect();
-    let item_index: HashMap<i32, String> = plan
-        .items
-        .iter()
-        .map(|i| (i.source_vnum, i.vnum.clone()))
-        .collect();
+    let mob_index: HashMap<i32, String> = plan.mobiles.iter().map(|m| (m.source_vnum, m.vnum.clone())).collect();
+    let item_index: HashMap<i32, String> = plan.items.iter().map(|i| (i.source_vnum, i.vnum.clone())).collect();
 
     for zone in &ir.zones {
         for shop in &zone.shops {
@@ -448,17 +438,11 @@ pub fn ir_to_plan(ir: &ImportIR, opts: &MappingOptions) -> (Plan, Vec<Warning>) 
     // Zone reset commands → spawn points + door overrides. Walk each zone's
     // resets in source order; needs the prefix from PlannedArea + global mob
     // and item indices. Door overrides mutate already-planned rooms in place.
-    let prefix_by_source_vnum: HashMap<i32, String> = plan
-        .areas
-        .iter()
-        .map(|a| (a.source_vnum, a.prefix.clone()))
-        .collect();
+    let prefix_by_source_vnum: HashMap<i32, String> =
+        plan.areas.iter().map(|a| (a.source_vnum, a.prefix.clone())).collect();
     // Item-vnum → ItemType for container detection (P chains onto Containers).
-    let item_type_by_source_vnum: HashMap<i32, ItemType> = plan
-        .items
-        .iter()
-        .map(|p| (p.source_vnum, p.data.item_type))
-        .collect();
+    let item_type_by_source_vnum: HashMap<i32, ItemType> =
+        plan.items.iter().map(|p| (p.source_vnum, p.data.item_type)).collect();
 
     for zone in &ir.zones {
         if zone.resets.is_empty() {
@@ -495,12 +479,9 @@ pub fn ir_to_plan(ir: &ImportIR, opts: &MappingOptions) -> (Plan, Vec<Warning>) 
     // the global mob/item/room indexes and emit a `PlannedTriggerOverlay`
     // (or a Warn).
     if !ir.triggers.is_empty() {
-        let room_index: HashMap<i32, String> = plan
-            .rooms
-            .iter()
-            .map(|r| (r.source_vnum, r.vnum.clone()))
-            .collect();
-        let (overlays, trig_warnings) = map_triggers(&ir.triggers, &mob_index, &item_index, &room_index, &plan.spawns, opts);
+        let room_index: HashMap<i32, String> = plan.rooms.iter().map(|r| (r.source_vnum, r.vnum.clone())).collect();
+        let (overlays, trig_warnings) =
+            map_triggers(&ir.triggers, &mob_index, &item_index, &room_index, &plan.spawns, opts);
         plan.trigger_overlays.extend(overlays);
         warnings.extend(trig_warnings);
     }
@@ -558,8 +539,7 @@ pub fn ir_to_plan(ir: &ImportIR, opts: &MappingOptions) -> (Plan, Vec<Warning>) 
             ));
         }
 
-        let trig_index: HashMap<i32, &IrDgTrigger> =
-            ir.dg_triggers.iter().map(|t| (t.vnum, t)).collect();
+        let trig_index: HashMap<i32, &IrDgTrigger> = ir.dg_triggers.iter().map(|t| (t.vnum, t)).collect();
         let dg_overlays_and_warnings = map_dg_triggers(
             &trig_index,
             &ir.zones,
@@ -650,9 +630,9 @@ fn apply_world_caps_from_spawns(plan: &mut Plan) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::mobs::{dice_max, slug, unique_prefix};
     use super::shops::synthesize_shop_routine;
+    use super::*;
     use crate::import::IrShop;
     use crate::types::ActivityState;
 
@@ -730,10 +710,7 @@ mod tests {
         let mut warnings = Vec::new();
         let routine = synthesize_shop_routine(&shop_with_hours(8, 12, 14, 20), &mut warnings);
         assert_eq!(routine.len(), 4);
-        let pairs: Vec<(u8, ActivityState)> = routine
-            .iter()
-            .map(|e| (e.start_hour, e.activity.clone()))
-            .collect();
+        let pairs: Vec<(u8, ActivityState)> = routine.iter().map(|e| (e.start_hour, e.activity.clone())).collect();
         assert_eq!(
             pairs,
             vec![

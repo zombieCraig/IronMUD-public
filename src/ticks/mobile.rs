@@ -9,7 +9,8 @@ use tracing::{debug, error, warn};
 
 use ironmud::{
     CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, CombatZoneType, EffectType, InputEvent,
-    ItemData, MobileData, RoomData, SharedConnections, SharedState, WoundType, broadcast_to_builders, db, get_opposite_direction,
+    ItemData, MobileData, RoomData, SharedConnections, SharedState, WoundType, broadcast_to_builders, db,
+    get_opposite_direction,
 };
 
 use super::broadcast::{
@@ -1191,9 +1192,7 @@ pub fn propagate_mobile_followers(
         let _ = session
             .sender
             .send(format!("You follow {} {}.\r\n", mobile_name, direction));
-        let _ = session
-            .input_sender
-            .try_send(InputEvent::Line(direction.to_string()));
+        let _ = session.input_sender.try_send(InputEvent::Line(direction.to_string()));
     }
 }
 

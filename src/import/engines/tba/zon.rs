@@ -17,8 +17,7 @@ use crate::import::engines::circle::zon::{ParsedZon, ZonHeader};
 use crate::import::{DeferredItem, IrReset, IrResetKind, SourceLoc};
 
 pub fn parse_file(path: &Path) -> Result<ParsedZon> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|e| anyhow!("reading {}: {}", path.display(), e))?;
+    let text = std::fs::read_to_string(path).map_err(|e| anyhow!("reading {}: {}", path.display(), e))?;
     parse_str(&text, path)
 }
 
@@ -46,8 +45,8 @@ pub fn parse_str(text: &str, path: &Path) -> Result<ParsedZon> {
     let mut header_line_no: usize;
     let mut header_line: String;
     let mut name: String;
-    let (no, peek) = next_significant(&mut lines)
-        .ok_or_else(|| anyhow!("{}: missing zone header line", path.display()))?;
+    let (no, peek) =
+        next_significant(&mut lines).ok_or_else(|| anyhow!("{}: missing zone header line", path.display()))?;
     if peek
         .trim()
         .split_whitespace()

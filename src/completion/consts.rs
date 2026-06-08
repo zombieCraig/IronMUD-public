@@ -176,8 +176,17 @@ pub const TRIGGER_ACTIONS: &[&str] = &[
 
 /// `trigger dg <subcmd>` family
 pub const TRIGGER_DG_SUBCOMMANDS: &[&str] = &[
-    "list", "view", "add", "edit", "retype", "attach", "detach", "makeproto",
-    "elevate", "protos", "proto",
+    "list",
+    "view",
+    "add",
+    "edit",
+    "retype",
+    "attach",
+    "detach",
+    "makeproto",
+    "elevate",
+    "protos",
+    "proto",
 ];
 
 /// `trigger dg proto <subcmd>` family
@@ -186,20 +195,26 @@ pub const TRIGGER_DG_PROTO_SUBCOMMANDS: &[&str] = &["new", "view", "edit", "rety
 /// DG trigger types accepted by `trigger dg add <type>` and `trigger dg retype <idx> <type>`
 /// on mobile hosts. Friendly names; mirrors `valid_types_for("mobile")` in dg_olc.rhai.
 pub const DG_MOBILE_TRIGGER_TYPES: &[&str] = &[
-    "greet", "attack", "death", "say", "idle", "always", "flee", "fight",
-    "hitprcnt", "receive", "bribe", "load", "command",
+    "greet", "attack", "death", "say", "idle", "always", "flee", "fight", "hitprcnt", "receive", "bribe", "load",
+    "command",
 ];
 
 /// DG trigger types accepted on item hosts.
 pub const DG_ITEM_TRIGGER_TYPES: &[&str] = &[
-    "get", "drop", "use", "examine", "prompt", "load", "command",
-    "wear", "wield", "remove",
+    "get", "drop", "use", "examine", "prompt", "load", "command", "wear", "wield", "remove",
 ];
 
 /// DG trigger types accepted on room hosts.
 pub const DG_ROOM_TRIGGER_TYPES: &[&str] = &[
-    "enter", "exit", "look", "periodic", "time_change", "weather_change",
-    "season_change", "month_change", "command",
+    "enter",
+    "exit",
+    "look",
+    "periodic",
+    "time_change",
+    "weather_change",
+    "season_change",
+    "month_change",
+    "command",
 ];
 
 /// Combat spells subcommand actions (medit <id> combat_spells <action>)
@@ -293,11 +308,21 @@ pub const OEDIT_SUBCOMMANDS: &[&str] = &[
 ];
 
 /// Item trigger actions
-pub const ITEM_TRIGGER_ACTIONS: &[&str] = &["list", "add", "remove", "enable", "disable", "chance", "test", "view", "dg"];
+pub const ITEM_TRIGGER_ACTIONS: &[&str] = &[
+    "list", "add", "remove", "enable", "disable", "chance", "test", "view", "dg",
+];
 
 /// Item trigger types
-pub const ITEM_TRIGGER_TYPES: &[&str] =
-    &["get", "drop", "use", "examine", "on_prompt", "on_wear", "on_remove", "on_wield"];
+pub const ITEM_TRIGGER_TYPES: &[&str] = &[
+    "get",
+    "drop",
+    "use",
+    "examine",
+    "on_prompt",
+    "on_wear",
+    "on_remove",
+    "on_wield",
+];
 
 /// `oedit <vnum> affect` sub-actions.
 pub const AFFECT_ACTIONS: &[&str] = &["list", "add", "rm", "clear"];
@@ -377,14 +402,7 @@ pub const DAMAGE_TYPES: &[&str] = &[
 ];
 
 /// Creature base-biology types (medit creature)
-pub const CREATURE_TYPES: &[&str] = &[
-    "mortal",
-    "animal",
-    "insect",
-    "plant",
-    "construct",
-    "spirit",
-];
+pub const CREATURE_TYPES: &[&str] = &["mortal", "animal", "insect", "plant", "construct", "spirit"];
 
 /// Ranged weapon types
 pub const RANGED_TYPES: &[&str] = &["bow", "crossbow", "firearm", "none"];

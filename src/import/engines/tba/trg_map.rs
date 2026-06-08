@@ -192,9 +192,9 @@ pub fn flags_for_mobile_trigger(t: MobileTriggerType) -> String {
         // never uses (s=18 onward) so importing stock `.trg` files
         // with one of these letters still drops silently as Info
         // warnings rather than promoting to an IronMUD-native type.
-        MobileTriggerType::OnAttack => "v",   // bit 21 (unused in stock)
-        MobileTriggerType::OnAlways => "w",   // bit 22 (unused in stock)
-        MobileTriggerType::OnFlee => "x",     // bit 23 (unused in stock)
+        MobileTriggerType::OnAttack => "v", // bit 21 (unused in stock)
+        MobileTriggerType::OnAlways => "w", // bit 22 (unused in stock)
+        MobileTriggerType::OnFlee => "x",   // bit 23 (unused in stock)
     }
     .to_string()
 }
@@ -231,10 +231,10 @@ pub fn flags_for_room_trigger(t: TriggerType) -> String {
         TriggerType::OnExit => "q",
         TriggerType::OnTimeChange => "t",
         // IronMUD-native — bits stock tbamud doesn't define for rooms.
-        TriggerType::OnLook => "y",            // 24
-        TriggerType::OnWeatherChange => "w",   // 22
-        TriggerType::OnSeasonChange => "z",    // 25 (s=18 is stock LOGIN)
-        TriggerType::OnMonthChange => "m",     // 12 (unused for rooms in stock)
+        TriggerType::OnLook => "y",          // 24
+        TriggerType::OnWeatherChange => "w", // 22
+        TriggerType::OnSeasonChange => "z",  // 25 (s=18 is stock LOGIN)
+        TriggerType::OnMonthChange => "m",   // 12 (unused for rooms in stock)
     }
     .to_string()
 }
@@ -263,7 +263,10 @@ mod tests {
         assert_eq!(item_trigger_types("g"), vec![ItemTriggerType::OnGet]);
         assert_eq!(item_trigger_types("h"), vec![ItemTriggerType::OnDrop]);
         // Combined: both flags set.
-        assert_eq!(item_trigger_types("gh"), vec![ItemTriggerType::OnGet, ItemTriggerType::OnDrop]);
+        assert_eq!(
+            item_trigger_types("gh"),
+            vec![ItemTriggerType::OnGet, ItemTriggerType::OnDrop]
+        );
     }
 
     #[test]

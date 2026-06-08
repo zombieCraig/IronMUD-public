@@ -81,7 +81,8 @@ pub fn parse_and_authorize_area(
         Some(s) if !s.trim().is_empty() => s,
         _ => return Ok(None),
     };
-    let uuid = uuid::Uuid::parse_str(raw.trim()).map_err(|_| ApiError::InvalidInput("Invalid area_id UUID format".into()))?;
+    let uuid =
+        uuid::Uuid::parse_str(raw.trim()).map_err(|_| ApiError::InvalidInput("Invalid area_id UUID format".into()))?;
     let area = db
         .get_area_data(&uuid)
         .map_err(|e| ApiError::Internal(e.to_string()))?
@@ -107,10 +108,7 @@ pub fn authorize_existing_area(
     let Some(uuid) = area_id else {
         return Ok(());
     };
-    let area = match db
-        .get_area_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-    {
+    let area = match db.get_area_data(&uuid).map_err(|e| ApiError::Internal(e.to_string()))? {
         Some(a) => a,
         // Dangling area_id (the area was deleted out from under the
         // prototype): treat as orphan and allow.
@@ -197,7 +195,11 @@ mod tests {
                 key_hash: String::new(),
                 name: format!("{character}-key"),
                 owner_character: character.to_string(),
-                permissions: ApiPermissions { read: true, write, admin },
+                permissions: ApiPermissions {
+                    read: true,
+                    write,
+                    admin,
+                },
                 created_at: 0,
                 last_used_at: None,
                 enabled: true,
@@ -226,8 +228,7 @@ mod tests {
 
     #[test]
     fn authorize_existing_area_blocks_non_owner_on_owner_only() {
-        let (db, _temp) = open_temp_db(
-"owner_only_block");
+        let (db, _temp) = open_temp_db("owner_only_block");
         let area_id = save_area(&db, Some("alice"), AreaPermission::OwnerOnly);
         let bob = user_for("bob", true, false);
         let res = authorize_existing_area(&db, &bob, Some(area_id));
@@ -236,8 +237,7 @@ mod tests {
 
     #[test]
     fn authorize_existing_area_allows_owner_on_owner_only() {
-        let (db, _temp) = open_temp_db(
-"owner_only_allow");
+        let (db, _temp) = open_temp_db("owner_only_allow");
         let area_id = save_area(&db, Some("alice"), AreaPermission::OwnerOnly);
         let alice = user_for("alice", true, false);
         assert!(authorize_existing_area(&db, &alice, Some(area_id)).is_ok());
@@ -245,8 +245,7 @@ mod tests {
 
     #[test]
     fn authorize_existing_area_allows_all_builders() {
-        let (db, _temp) = open_temp_db(
-"all_builders");
+        let (db, _temp) = open_temp_db("all_builders");
         let area_id = save_area(&db, Some("alice"), AreaPermission::AllBuilders);
         let bob = user_for("bob", true, false);
         assert!(authorize_existing_area(&db, &bob, Some(area_id)).is_ok());
@@ -254,8 +253,7 @@ mod tests {
 
     #[test]
     fn authorize_existing_area_admin_bypasses_owner_only() {
-        let (db, _temp) = open_temp_db(
-"admin_bypass");
+        let (db, _temp) = open_temp_db("admin_bypass");
         let area_id = save_area(&db, Some("alice"), AreaPermission::OwnerOnly);
         let admin = user_for("eve", true, true);
         assert!(authorize_existing_area(&db, &admin, Some(area_id)).is_ok());
@@ -263,16 +261,14 @@ mod tests {
 
     #[test]
     fn authorize_existing_area_passes_orphans() {
-        let (db, _temp) = open_temp_db(
-"orphan");
+        let (db, _temp) = open_temp_db("orphan");
         let bob = user_for("bob", true, false);
         assert!(authorize_existing_area(&db, &bob, None).is_ok());
     }
 
     #[test]
     fn authorize_existing_area_passes_dangling_uuid() {
-        let (db, _temp) = open_temp_db(
-"dangling");
+        let (db, _temp) = open_temp_db("dangling");
         let bob = user_for("bob", true, false);
         // Random UUID that has no area row — historically treated as orphan.
         assert!(authorize_existing_area(&db, &bob, Some(Uuid::new_v4())).is_ok());

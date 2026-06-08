@@ -231,10 +231,7 @@ fn apply_scavenger<R: Rng>(mobile: &mut MobileData, _rng: &mut R) {
 /// Masquerade is the point).
 fn apply_vampire<R: Rng>(mobile: &mut MobileData, rng: &mut R) {
     let clans = crate::script::vampire::list_clan_ids();
-    let clan = clans
-        .choose(rng)
-        .cloned()
-        .unwrap_or_else(|| "brujah".to_string());
+    let clan = clans.choose(rng).cloned().unwrap_or_else(|| "brujah".to_string());
 
     mobile.vampire_state = Some(VampireState::newly_embraced(now_secs(), None));
     mobile.flags.vampire = true;
@@ -479,7 +476,11 @@ mod tests {
             .filter(|k| known.iter().any(|c| *c == k.as_str()))
             .count();
         assert_eq!(clan_hits, 1, "exactly one clan keyword: keywords={:?}", m.keywords);
-        assert!(m.short_desc.contains("pale"), "short_desc references pale: {}", m.short_desc);
+        assert!(
+            m.short_desc.contains("pale"),
+            "short_desc references pale: {}",
+            m.short_desc
+        );
         assert!(
             m.long_desc.contains("moonlight-pale") || m.long_desc.contains("unnatural stillness"),
             "long_desc has vampire flavor: {}",
@@ -489,8 +490,8 @@ mod tests {
 
     fn mk_area(zone: crate::types::CombatZoneType, vampire_chance: f32) -> AreaData {
         use crate::types::{
-            AreaFlags, AreaPermission, ClimateProfile, GoldRange, ImmigrationFamilyChance,
-            ImmigrationVariationChances, RoomFlags,
+            AreaFlags, AreaPermission, ClimateProfile, GoldRange, ImmigrationFamilyChance, ImmigrationVariationChances,
+            RoomFlags,
         };
         use uuid::Uuid;
         let mut chances = ImmigrationVariationChances::default();

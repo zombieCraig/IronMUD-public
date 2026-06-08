@@ -319,11 +319,7 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
     match std::fs::read_to_string(&languages_path) {
         Ok(content) => match serde_json::from_str::<HashMap<String, LanguageDefinition>>(&content) {
             Ok(langs) => {
-                info!(
-                    "Loaded {} language definitions from {}",
-                    langs.len(),
-                    languages_path
-                );
+                info!("Loaded {} language definitions from {}", langs.len(), languages_path);
                 world.language_definitions = langs;
             }
             Err(e) => {
@@ -391,11 +387,7 @@ fn load_achievements(world: &mut crate::World) {
                 if path.extension().and_then(|s| s.to_str()) != Some("json") {
                     continue;
                 }
-                let file_label = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("?")
-                    .to_string();
+                let file_label = path.file_name().and_then(|n| n.to_str()).unwrap_or("?").to_string();
                 let content = match std::fs::read_to_string(&path) {
                     Ok(s) => s,
                     Err(e) => {
@@ -433,10 +425,7 @@ fn load_achievements(world: &mut crate::World) {
             for def in db_defs {
                 let key = def.key.to_lowercase();
                 if defs.contains_key(&key) {
-                    tracing::warn!(
-                        "Achievement key '{}' from database overrides JSON definition",
-                        key
-                    );
+                    tracing::warn!("Achievement key '{}' from database overrides JSON definition", key);
                 }
                 defs.insert(key, def);
             }

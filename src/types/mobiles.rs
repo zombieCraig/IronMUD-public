@@ -4,9 +4,9 @@
 
 use super::serde_defaults::default_stat;
 use super::{
-    ActiveBuff, ActivityState, Characteristics, CombatState, DamageType, DialogueTree, EffectType,
-    MobileTrigger, NeedsState, OnHitEffect, OngoingEffect, Relationship, RoutineEntry,
-    SimulationConfig, SocialState, TransportRoute, Wound,
+    ActiveBuff, ActivityState, Characteristics, CombatState, DamageType, DialogueTree, EffectType, MobileTrigger,
+    NeedsState, OnHitEffect, OngoingEffect, Relationship, RoutineEntry, SimulationConfig, SocialState, TransportRoute,
+    Wound,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -94,14 +94,7 @@ impl CreatureType {
     }
 
     pub fn all() -> Vec<&'static str> {
-        vec![
-            "mortal",
-            "animal",
-            "insect",
-            "plant",
-            "construct",
-            "spirit",
-        ]
+        vec!["mortal", "animal", "insect", "plant", "construct", "spirit"]
     }
 }
 
@@ -623,11 +616,7 @@ impl MobileData {
     /// helper covers both. Charmed wins ties when both buffs exist (rare
     /// edge case).
     pub fn charm_master(&self) -> Option<&str> {
-        if let Some(b) = self
-            .active_buffs
-            .iter()
-            .find(|b| b.effect_type == EffectType::Charmed)
-        {
+        if let Some(b) = self.active_buffs.iter().find(|b| b.effect_type == EffectType::Charmed) {
             return Some(b.source.as_str());
         }
         self.active_buffs

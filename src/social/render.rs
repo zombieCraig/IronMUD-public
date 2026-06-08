@@ -36,9 +36,7 @@ pub fn parse_gender(g: &str) -> GenderKind {
         "male" | "m" | "man" => GenderKind::Male,
         "female" | "f" | "woman" => GenderKind::Female,
         "nonbinary" | "non-binary" | "nb" | "enby" | "they" | "them" => GenderKind::Nonbinary,
-        "neuter" | "it" | "object" | "thing" | "robot" | "automaton" | "construct" => {
-            GenderKind::Neuter
-        }
+        "neuter" | "it" | "object" | "thing" | "robot" | "automaton" | "construct" => GenderKind::Neuter,
         _ => GenderKind::Neuter,
     }
 }

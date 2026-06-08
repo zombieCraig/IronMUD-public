@@ -30,9 +30,9 @@ use std::time::Duration;
 
 use uuid::Uuid;
 
-use super::{Outcome, EvalCtx};
 use super::ast::{Block, Stmt, SwitchCase};
 use super::vars;
+use super::{EvalCtx, Outcome};
 
 /// Hard cap on iterations of any single `while` loop. Matches tbamud's
 /// per-pulse cap (30) — stock scripts never legitimately loop more.
@@ -280,7 +280,12 @@ fn eval_stmt(stmt: &Stmt, ctx: &EvalCtx, state: &mut State) -> Result<Flow, Eval
             Ok(Flow::Continue)
         }
 
-        Stmt::If { cond, then_body, elif_branches, else_body } => {
+        Stmt::If {
+            cond,
+            then_body,
+            elif_branches,
+            else_body,
+        } => {
             if eval_cond(cond, ctx, state) {
                 return eval_stmts(then_body, ctx, state);
             }
@@ -711,7 +716,10 @@ pub(crate) fn eval_expr(s: &str) -> String {
 /// when the input has any non-numeric atoms, leftover characters, or
 /// division/mod by zero — caller treats that as "not arithmetic".
 pub(crate) fn parse_arith(s: &str) -> Option<i64> {
-    let mut p = ArithParser { bytes: s.as_bytes(), pos: 0 };
+    let mut p = ArithParser {
+        bytes: s.as_bytes(),
+        pos: 0,
+    };
     let v = p.parse_addsub()?;
     p.skip_ws();
     if p.pos != p.bytes.len() {
@@ -848,7 +856,12 @@ pub fn block_contains_wait(block: &Block) -> bool {
 fn stmt_contains_wait(s: &Stmt) -> bool {
     match s {
         Stmt::Wait(_) => true,
-        Stmt::If { then_body, elif_branches, else_body, .. } => {
+        Stmt::If {
+            then_body,
+            elif_branches,
+            else_body,
+            ..
+        } => {
             block_contains_wait(then_body)
                 || elif_branches.iter().any(|(_, b)| block_contains_wait(b))
                 || else_body.as_ref().is_some_and(|b| block_contains_wait(b))
@@ -907,7 +920,12 @@ fn eval_stmt_async<'a>(stmt: &'a Stmt, ctx: &'a EvalCtx, state: &'a mut State) -
 
             // Control-flow statements recurse into nested blocks via the
             // async path so any `wait` inside them is honored.
-            Stmt::If { cond, then_body, elif_branches, else_body } => {
+            Stmt::If {
+                cond,
+                then_body,
+                elif_branches,
+                else_body,
+            } => {
                 if eval_cond(cond, ctx, state) {
                     return eval_stmts_async(then_body, ctx, state).await;
                 }
@@ -926,9 +944,7 @@ fn eval_stmt_async<'a>(stmt: &'a Stmt, ctx: &'a EvalCtx, state: &'a mut State) -
                 let mut iters: u32 = 0;
                 while eval_cond(cond, ctx, state) {
                     if iters >= LOOP_CAP {
-                        tracing::warn!(
-                            "DG while loop hit LOOP_CAP={} on '{}'", LOOP_CAP, ctx.self_name
-                        );
+                        tracing::warn!("DG while loop hit LOOP_CAP={} on '{}'", LOOP_CAP, ctx.self_name);
                         break;
                     }
                     match eval_stmts_async(body, ctx, state).await? {

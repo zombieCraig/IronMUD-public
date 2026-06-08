@@ -34,17 +34,8 @@ fn imports_starter_bundle_with_expected_counts() {
     cleanup_sidecar("test-bundle-counts");
 
     let db = Db::open(temp.path()).expect("open db");
-    let import = ranvier::import_bundle(
-        &bundle,
-        "test-bundle-counts",
-        60000,
-        9000,
-        &[],
-        &[],
-        &[],
-        &[],
-    )
-    .expect("import bundle");
+    let import =
+        ranvier::import_bundle(&bundle, "test-bundle-counts", 60000, 9000, &[], &[], &[], &[]).expect("import bundle");
 
     assert_eq!(import.plan.areas.len(), 2, "limbo + mapped");
     assert_eq!(import.plan.rooms.len(), 21, "limbo 11 + mapped 10");
@@ -53,14 +44,13 @@ fn imports_starter_bundle_with_expected_counts() {
     assert_eq!(import.plan.shop_overlays.len(), 1, "wally vendor");
 
     // Cross-area exit (limbo:white -> mapped:start) must resolve.
-    assert_eq!(import.plan.exits.iter().filter(|e| e.direction == "north").count() >= 1, true);
+    assert_eq!(
+        import.plan.exits.iter().filter(|e| e.direction == "north").count() >= 1,
+        true
+    );
 
     // No Block warnings on a clean import.
-    let blocks = import
-        .warnings
-        .iter()
-        .filter(|w| w.severity == Severity::Block)
-        .count();
+    let blocks = import.warnings.iter().filter(|w| w.severity == Severity::Block).count();
     assert_eq!(blocks, 0, "no blocking warnings expected");
 
     // EquipGoal twice (auto-complete fetch quest + journeybegins lists EquipGoal twice).
@@ -103,30 +93,12 @@ fn vnum_map_is_idempotent_across_reruns() {
     };
     cleanup_sidecar("test-bundle-idempotent");
 
-    let import_a = ranvier::import_bundle(
-        &bundle,
-        "test-bundle-idempotent",
-        60000,
-        9000,
-        &[],
-        &[],
-        &[],
-        &[],
-    )
-    .expect("first import");
+    let import_a = ranvier::import_bundle(&bundle, "test-bundle-idempotent", 60000, 9000, &[], &[], &[], &[])
+        .expect("first import");
     let vnums_a: Vec<String> = import_a.plan.rooms.iter().map(|r| r.vnum.clone()).collect();
 
-    let import_b = ranvier::import_bundle(
-        &bundle,
-        "test-bundle-idempotent",
-        60000,
-        9000,
-        &[],
-        &[],
-        &[],
-        &[],
-    )
-    .expect("second import");
+    let import_b = ranvier::import_bundle(&bundle, "test-bundle-idempotent", 60000, 9000, &[], &[], &[], &[])
+        .expect("second import");
     let vnums_b: Vec<String> = import_b.plan.rooms.iter().map(|r| r.vnum.clone()).collect();
 
     assert_eq!(vnums_a, vnums_b, "re-running with sidecar must produce identical vnums");

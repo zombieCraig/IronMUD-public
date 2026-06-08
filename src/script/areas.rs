@@ -139,8 +139,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 migrant_starting_gold: crate::types::GoldRange::default(),
                 guard_wage_per_hour: 0,
                 healer_wage_per_hour: 0,
-            donation_room_vnum: None,
-            starting_room_vnum: None,
+                donation_room_vnum: None,
+                starting_room_vnum: None,
                 scavenger_wage_per_hour: 0,
                 max_rooms: None,
                 max_items: None,
@@ -377,50 +377,48 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // set_area_max(area_id, kind, n) -> bool. n <= 0 clears the cap (None).
     // `kind` is one of: "rooms", "items", "mobiles", "spawn_points".
     let cloned_db = db.clone();
-    engine.register_fn(
-        "set_area_max",
-        move |area_id: String, kind: String, n: i64| -> bool {
-            let uuid = match uuid::Uuid::parse_str(&area_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            let new_cap = if n <= 0 { None } else { Some(n.min(i32::MAX as i64) as i32) };
-            if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
-                match kind.as_str() {
-                    "rooms" => area.max_rooms = new_cap,
-                    "items" => area.max_items = new_cap,
-                    "mobiles" => area.max_mobiles = new_cap,
-                    "spawn_points" => area.max_spawn_points = new_cap,
-                    _ => return false,
-                }
-                return cloned_db.save_area_data(area).is_ok();
+    engine.register_fn("set_area_max", move |area_id: String, kind: String, n: i64| -> bool {
+        let uuid = match uuid::Uuid::parse_str(&area_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let new_cap = if n <= 0 {
+            None
+        } else {
+            Some(n.min(i32::MAX as i64) as i32)
+        };
+        if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+            match kind.as_str() {
+                "rooms" => area.max_rooms = new_cap,
+                "items" => area.max_items = new_cap,
+                "mobiles" => area.max_mobiles = new_cap,
+                "spawn_points" => area.max_spawn_points = new_cap,
+                _ => return false,
             }
-            false
-        },
-    );
+            return cloned_db.save_area_data(area).is_ok();
+        }
+        false
+    });
 
     // get_area_max(area_id, kind) -> i64. 0 = unlimited (None on the type).
     let cloned_db = db.clone();
-    engine.register_fn(
-        "get_area_max",
-        move |area_id: String, kind: String| -> i64 {
-            let uuid = match uuid::Uuid::parse_str(&area_id) {
-                Ok(u) => u,
-                Err(_) => return 0,
+    engine.register_fn("get_area_max", move |area_id: String, kind: String| -> i64 {
+        let uuid = match uuid::Uuid::parse_str(&area_id) {
+            Ok(u) => u,
+            Err(_) => return 0,
+        };
+        if let Ok(Some(area)) = cloned_db.get_area_data(&uuid) {
+            let v = match kind.as_str() {
+                "rooms" => area.max_rooms,
+                "items" => area.max_items,
+                "mobiles" => area.max_mobiles,
+                "spawn_points" => area.max_spawn_points,
+                _ => return 0,
             };
-            if let Ok(Some(area)) = cloned_db.get_area_data(&uuid) {
-                let v = match kind.as_str() {
-                    "rooms" => area.max_rooms,
-                    "items" => area.max_items,
-                    "mobiles" => area.max_mobiles,
-                    "spawn_points" => area.max_spawn_points,
-                    _ => return 0,
-                };
-                return v.unwrap_or(0) as i64;
-            }
-            0
-        },
-    );
+            return v.unwrap_or(0) as i64;
+        }
+        0
+    });
 
     // area_count(area_id, kind) -> i64. Current per-kind population count.
     let cloned_db = db.clone();
@@ -1509,22 +1507,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // set_area_donation_room(area_id, vnum) -> bool
     // Empty `vnum` clears the setting (donations refused).
     let cloned_db = db.clone();
-    engine.register_fn(
-        "set_area_donation_room",
-        move |area_id: String, vnum: String| -> bool {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-                if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
-                    area.donation_room_vnum = if vnum.trim().is_empty() {
-                        None
-                    } else {
-                        Some(vnum)
-                    };
-                    return cloned_db.save_area_data(area).is_ok();
-                }
+    engine.register_fn("set_area_donation_room", move |area_id: String, vnum: String| -> bool {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+            if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+                area.donation_room_vnum = if vnum.trim().is_empty() { None } else { Some(vnum) };
+                return cloned_db.save_area_data(area).is_ok();
             }
-            false
-        },
-    );
+        }
+        false
+    });
 
     // get_area_donation_room_vnum(area_id) -> String ("" when unset)
     let cloned_db = db.clone();
@@ -1540,22 +1531,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // set_area_starting_room(area_id, vnum) -> bool
     // Empty `vnum` clears the setting.
     let cloned_db = db.clone();
-    engine.register_fn(
-        "set_area_starting_room",
-        move |area_id: String, vnum: String| -> bool {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
-                if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
-                    area.starting_room_vnum = if vnum.trim().is_empty() {
-                        None
-                    } else {
-                        Some(vnum)
-                    };
-                    return cloned_db.save_area_data(area).is_ok();
-                }
+    engine.register_fn("set_area_starting_room", move |area_id: String, vnum: String| -> bool {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&area_id) {
+            if let Ok(Some(mut area)) = cloned_db.get_area_data(&uuid) {
+                area.starting_room_vnum = if vnum.trim().is_empty() { None } else { Some(vnum) };
+                return cloned_db.save_area_data(area).is_ok();
             }
-            false
-        },
-    );
+        }
+        false
+    });
 
     // get_area_starting_room_vnum(area_id) -> String ("" when unset)
     let cloned_db = db.clone();

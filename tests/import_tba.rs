@@ -131,10 +131,7 @@ fn maps_tba_ir_to_plan() {
     // PlannedQuest with no warning.
     let quest_warns = warnings
         .iter()
-        .filter(|w| {
-            matches!(w.kind, ironmud::import::WarningKind::DeferredFeature)
-                && w.message.contains("quest #")
-        })
+        .filter(|w| matches!(w.kind, ironmud::import::WarningKind::DeferredFeature) && w.message.contains("quest #"))
         .count();
     assert_eq!(quest_warns, 0, "AQ_MOB_KILL translates cleanly without warns");
     assert_eq!(plan.quests.len(), 1, "fixture quest produces one PlannedQuest");
@@ -158,8 +155,7 @@ fn maps_tba_ir_to_plan() {
     // surfaced as deferred (no IronMUD analog).
     assert_eq!(plan.spawns.len(), 3);
     let dg_zone_reset = warnings.iter().any(|w| {
-        matches!(w.kind, ironmud::import::WarningKind::DeferredFeature)
-            && w.message.contains("DG trigger attachment")
+        matches!(w.kind, ironmud::import::WarningKind::DeferredFeature) && w.message.contains("DG trigger attachment")
     });
     assert!(dg_zone_reset, "zone T reset surfaced as deferred warning");
 }
@@ -191,11 +187,21 @@ fn analyzer_flags_unsupported_dg_features_during_import() {
         .iter()
         .filter(|w| w.message.contains("unsupported features"))
         .collect();
-    assert_eq!(analyzer_warnings.len(), 1, "one analyzer warning per trigger; got {warnings:?}");
+    assert_eq!(
+        analyzer_warnings.len(),
+        1,
+        "one analyzer warning per trigger; got {warnings:?}"
+    );
     let msg = &analyzer_warnings[0].message;
     assert!(msg.contains("9001"), "warning includes trigger vnum: {msg}");
-    assert!(msg.contains("bogus_command"), "warning includes the unknown verb: {msg}");
-    assert!(msg.contains("cmd.foobar"), "warning includes the unknown accessor: {msg}");
+    assert!(
+        msg.contains("bogus_command"),
+        "warning includes the unknown verb: {msg}"
+    );
+    assert!(
+        msg.contains("cmd.foobar"),
+        "warning includes the unknown accessor: {msg}"
+    );
 }
 
 #[test]

@@ -30,53 +30,41 @@ fn preset_has_tag(preset: &serde_json::Value, tag: &str) -> bool {
 pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // list_mobile_presets(tag_filter) -> Array<Map>
     // Pass an empty string to list all presets; otherwise filter by tag.
-    engine.register_fn(
-        "list_mobile_presets",
-        |tag_filter: String| -> rhai::Array {
-            let presets = load_presets();
-            let filter = tag_filter.trim().to_lowercase();
-            presets
-                .iter()
-                .filter(|p| filter.is_empty() || preset_has_tag(p, &filter))
-                .map(|p| {
-                    let mut map = rhai::Map::new();
-                    map.insert(
-                        "id".into(),
-                        rhai::Dynamic::from(
-                            p.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                        ),
-                    );
-                    map.insert(
-                        "name".into(),
-                        rhai::Dynamic::from(
-                            p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                        ),
-                    );
-                    map.insert(
-                        "description".into(),
-                        rhai::Dynamic::from(
-                            p.get("description")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string(),
-                        ),
-                    );
-                    let tags: Vec<rhai::Dynamic> = p
-                        .get("tags")
-                        .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|t| t.as_str())
-                                .map(|s| rhai::Dynamic::from(s.to_string()))
-                                .collect()
-                        })
-                        .unwrap_or_default();
-                    map.insert("tags".into(), rhai::Dynamic::from(tags));
-                    rhai::Dynamic::from(map)
-                })
-                .collect()
-        },
-    );
+    engine.register_fn("list_mobile_presets", |tag_filter: String| -> rhai::Array {
+        let presets = load_presets();
+        let filter = tag_filter.trim().to_lowercase();
+        presets
+            .iter()
+            .filter(|p| filter.is_empty() || preset_has_tag(p, &filter))
+            .map(|p| {
+                let mut map = rhai::Map::new();
+                map.insert(
+                    "id".into(),
+                    rhai::Dynamic::from(p.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string()),
+                );
+                map.insert(
+                    "name".into(),
+                    rhai::Dynamic::from(p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string()),
+                );
+                map.insert(
+                    "description".into(),
+                    rhai::Dynamic::from(p.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string()),
+                );
+                let tags: Vec<rhai::Dynamic> = p
+                    .get("tags")
+                    .and_then(|v| v.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|t| t.as_str())
+                            .map(|s| rhai::Dynamic::from(s.to_string()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                map.insert("tags".into(), rhai::Dynamic::from(tags));
+                rhai::Dynamic::from(map)
+            })
+            .collect()
+    });
 
     // apply_mobile_preset(mobile_id, preset_id) -> bool
     let cloned_db = db.clone();

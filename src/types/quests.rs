@@ -70,10 +70,7 @@ impl AchievementSetPrereq {
     /// Returns the number of `keys` currently present in `unlocked`. Used by
     /// both prereq enforcement and offer-cue rendering.
     pub fn unlocked_count<V>(&self, unlocked: &HashMap<String, V>) -> i32 {
-        self.keys
-            .iter()
-            .filter(|k| unlocked.contains_key(*k))
-            .count() as i32
+        self.keys.iter().filter(|k| unlocked.contains_key(*k)).count() as i32
     }
 
     /// Is this prereq satisfied right now? Returns true when `keys` is empty
@@ -146,16 +143,25 @@ pub enum QuestObjective {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum QuestReward {
-    Gold { amount: i64 },
+    Gold {
+        amount: i64,
+    },
     Item {
         vnum: String,
         #[serde(default = "default_qty_one")]
         qty: i32,
     },
-    SkillXp { skill: String, amount: i32 },
+    SkillXp {
+        skill: String,
+        amount: i32,
+    },
     /// Triggers `award_achievement` against the named achievement key.
-    Achievement { key: String },
-    LearnRecipe { recipe_id: String },
+    Achievement {
+        key: String,
+    },
+    LearnRecipe {
+        recipe_id: String,
+    },
     /// Grants the named clan to a thinblood vampire. Adds the matching
     /// `clan_<name>` trait, seeds 1 dot of the clan's first registered
     /// preferred discipline, and lifts the thinblood gates (max blood pool
@@ -163,7 +169,9 @@ pub enum QuestReward {
     /// tier-3 disciplines unlocked). Sire is taken from the quest's
     /// `giver_mob_vnum` prototype name when present. No-op for mortals
     /// or already-acknowledged kindred.
-    EmbraceClan { clan: String },
+    EmbraceClan {
+        clan: String,
+    },
     /// Anarch-path counterpart to `EmbraceClan`. Lifts the thinblood gates
     /// (blood pool 6 -> 10, refill, sun damage normal, humanity normal,
     /// tier-3 disciplines unlocked) without claiming a clan. Stamps the

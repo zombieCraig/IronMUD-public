@@ -129,44 +129,83 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     register_bool_flags!(engine, ItemData, board_read_admin_only, board_write_admin_only);
 
     // Read-only bool getters (computed/plain bool fields exposed without setters)
-    register_bool_ro!(engine, ItemData, two_handed, container_closed, container_locked,
-        liquid_poisoned, food_poisoned, is_prototype);
+    register_bool_ro!(
+        engine,
+        ItemData,
+        two_handed,
+        container_closed,
+        container_locked,
+        liquid_poisoned,
+        food_poisoned,
+        is_prototype
+    );
 
     // i32 fields exposed as i64 with setters
     register_i32!(engine, ItemData, weight, value);
 
     // Read-only i32 fields exposed as i64
-    register_i32_ro!(engine, ItemData,
-        damage_dice_count, damage_dice_sides,
-        container_max_items, container_max_weight,
-        liquid_current, liquid_max, food_nutrition,
+    register_i32_ro!(
+        engine,
+        ItemData,
+        damage_dice_count,
+        damage_dice_sides,
+        container_max_items,
+        container_max_weight,
+        liquid_current,
+        liquid_max,
+        food_nutrition,
         level_requirement,
-        stat_str, stat_dex, stat_con, stat_int, stat_wis, stat_cha,
-        hit_bonus, damage_bonus, max_hp_bonus, max_mana_bonus,
-        light_hours_remaining, insulation, vending_sell_rate,
-        bait_uses, quality, weight_reduction,
-        medical_tier, medical_uses, preservation_level,
-        ammo_count, ammo_damage_bonus, magazine_size, loaded_ammo, loaded_ammo_bonus,
-        ammo_effect_duration, ammo_effect_damage,
-        loaded_ammo_effect_duration, loaded_ammo_effect_damage,
-        attachment_accuracy_bonus, attachment_noise_reduction, attachment_magazine_bonus);
+        stat_str,
+        stat_dex,
+        stat_con,
+        stat_int,
+        stat_wis,
+        stat_cha,
+        hit_bonus,
+        damage_bonus,
+        max_hp_bonus,
+        max_mana_bonus,
+        light_hours_remaining,
+        insulation,
+        vending_sell_rate,
+        bait_uses,
+        quality,
+        weight_reduction,
+        medical_tier,
+        medical_uses,
+        preservation_level,
+        ammo_count,
+        ammo_damage_bonus,
+        magazine_size,
+        loaded_ammo,
+        loaded_ammo_bonus,
+        ammo_effect_duration,
+        ammo_effect_damage,
+        loaded_ammo_effect_duration,
+        loaded_ammo_effect_damage,
+        attachment_accuracy_bonus,
+        attachment_noise_reduction,
+        attachment_magazine_bonus
+    );
 
     // Read-only String getters (clone)
-    register_string_ro!(engine, ItemData,
-        fire_mode, noise_level, ammo_effect_type, loaded_ammo_effect_type,
-        attachment_slot, max_treatable_wound, treats_infestation, plant_prototype_vnum);
+    register_string_ro!(
+        engine,
+        ItemData,
+        fire_mode,
+        noise_level,
+        ammo_effect_type,
+        loaded_ammo_effect_type,
+        attachment_slot,
+        max_treatable_wound,
+        treats_infestation,
+        plant_prototype_vnum
+    );
 
     // Specials: id (uuid), Option<T> handlers, computed booleans, struct/array views.
     register_uuid_ro!(engine, ItemData, id);
     register_option_string!(engine, ItemData, note_content);
-    register_option_string_ro!(
-        engine,
-        ItemData,
-        vnum,
-        container_key_vnum,
-        caliber,
-        ranged_type
-    );
+    register_option_string_ro!(engine, ItemData, vnum, container_key_vnum, caliber, ranged_type);
     register_string_vec_ro!(
         engine,
         ItemData,
@@ -209,7 +248,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         .register_get("armor_class", |i: &mut ItemData| i.armor_class.unwrap_or(0))
         .register_get("has_armor_class", |i: &mut ItemData| i.armor_class.is_some())
         .register_get("flags", |i: &mut ItemData| i.flags.clone())
-        .register_get("world_max_count", |i: &mut ItemData| i.world_max_count.unwrap_or(0) as i64)
+        .register_get("world_max_count", |i: &mut ItemData| {
+            i.world_max_count.unwrap_or(0) as i64
+        })
         .register_get("has_world_max_count", |i: &mut ItemData| i.world_max_count.is_some())
         .register_get("damage_type", |i: &mut ItemData| {
             i.damage_type.to_display_string().to_string()
@@ -383,7 +424,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         })
         .register_get("magnitude", |a: &mut ItemAffect| a.magnitude as i64)
         .register_get("damage_type", |a: &mut ItemAffect| {
-            a.damage_type.map(|d| d.to_display_string().to_string()).unwrap_or_default()
+            a.damage_type
+                .map(|d| d.to_display_string().to_string())
+                .unwrap_or_default()
         })
         .register_get("has_damage_type", |a: &mut ItemAffect| a.damage_type.is_some())
         .register_get("vs_effect", |a: &mut ItemAffect| {
@@ -403,11 +446,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             Err(_) => return Vec::new(),
         };
         match cloned_db.get_item_data(&uuid) {
-            Ok(Some(item)) => item
-                .affects
-                .into_iter()
-                .map(rhai::Dynamic::from)
-                .collect(),
+            Ok(Some(item)) => item.affects.into_iter().map(rhai::Dynamic::from).collect(),
             _ => Vec::new(),
         }
     });
@@ -495,25 +534,22 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
 
     // item_remove_affect(item_id, index) -> bool
     let cloned_db = db.clone();
-    engine.register_fn(
-        "item_remove_affect",
-        move |item_id: String, index: i64| -> bool {
-            let uuid = match uuid::Uuid::parse_str(&item_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            let mut item = match cloned_db.get_item_data(&uuid) {
-                Ok(Some(i)) => i,
-                _ => return false,
-            };
-            let idx = index as usize;
-            if idx >= item.affects.len() {
-                return false;
-            }
-            item.affects.remove(idx);
-            cloned_db.save_item_data(item).is_ok()
-        },
-    );
+    engine.register_fn("item_remove_affect", move |item_id: String, index: i64| -> bool {
+        let uuid = match uuid::Uuid::parse_str(&item_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let mut item = match cloned_db.get_item_data(&uuid) {
+            Ok(Some(i)) => i,
+            _ => return false,
+        };
+        let idx = index as usize;
+        if idx >= item.affects.len() {
+            return false;
+        }
+        item.affects.remove(idx);
+        cloned_db.save_item_data(item).is_ok()
+    });
 
     // item_clear_affects(item_id) -> bool
     let cloned_db = db.clone();
@@ -724,24 +760,21 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // flow; the actual equip uses the same logic via the auto-pick path
     // of move_item_to_equipped.
     let cloned_db = db.clone();
-    engine.register_fn(
-        "pick_wear_slot",
-        move |char_name: String, item_id: String| -> String {
-            let uuid = match uuid::Uuid::parse_str(&item_id) {
-                Ok(u) => u,
-                Err(_) => return String::new(),
-            };
-            let item = match cloned_db.get_item_data(&uuid) {
-                Ok(Some(i)) => i,
-                _ => return String::new(),
-            };
-            cloned_db
-                .pick_free_wear_slot(&char_name, &item)
-                .unwrap_or(None)
-                .map(|slot| slot.to_display_string().to_string())
-                .unwrap_or_default()
-        },
-    );
+    engine.register_fn("pick_wear_slot", move |char_name: String, item_id: String| -> String {
+        let uuid = match uuid::Uuid::parse_str(&item_id) {
+            Ok(u) => u,
+            Err(_) => return String::new(),
+        };
+        let item = match cloned_db.get_item_data(&uuid) {
+            Ok(Some(i)) => i,
+            _ => return String::new(),
+        };
+        cloned_db
+            .pick_free_wear_slot(&char_name, &item)
+            .unwrap_or(None)
+            .map(|slot| slot.to_display_string().to_string())
+            .unwrap_or_default()
+    });
 
     // move_item_to_nowhere(item_id) -> bool
     // Removes item from any inventory/location (useful for selling, destroying, etc.)
@@ -1022,17 +1055,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
 
     // get_item_on_hit_effects(item_id) -> Array<Map>
     let cloned_db = db.clone();
-    engine.register_fn(
-        "get_item_on_hit_effects",
-        move |item_id: String| -> rhai::Array {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
-                if let Ok(Some(item)) = cloned_db.get_item_data(&uuid) {
-                    return item.on_hit_effects.iter().map(on_hit_effect_to_map).collect();
-                }
+    engine.register_fn("get_item_on_hit_effects", move |item_id: String| -> rhai::Array {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+            if let Ok(Some(item)) = cloned_db.get_item_data(&uuid) {
+                return item.on_hit_effects.iter().map(on_hit_effect_to_map).collect();
             }
-            Vec::new()
-        },
-    );
+        }
+        Vec::new()
+    });
 
     // set_item_on_hit_effects(item_id, effects_array) -> bool
     // Each entry is a Map with {effect, chance, magnitude, duration}.
@@ -2899,19 +2929,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     let cloned_db = db.clone();
     engine.register_fn(
         "set_item_cast_on_use",
-        move |item_id: String,
-              spell: String,
-              min_level: i64,
-              charges: i64,
-              cooldown_secs: i64| {
-            set_item_cast_on_use_impl(
-                &cloned_db,
-                &item_id,
-                spell,
-                min_level,
-                charges,
-                cooldown_secs,
-            )
+        move |item_id: String, spell: String, min_level: i64, charges: i64, cooldown_secs: i64| {
+            set_item_cast_on_use_impl(&cloned_db, &item_id, spell, min_level, charges, cooldown_secs)
         },
     );
 
@@ -3073,23 +3092,26 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
 
     // get_item_extra_desc(item_id, keyword) -> Gets extra description by keyword
     let cloned_db = db.clone();
-    engine.register_fn("get_item_extra_desc", move |item_id: String, keyword: String| -> String {
-        let item_uuid = match uuid::Uuid::parse_str(&item_id) {
-            Ok(u) => u,
-            Err(_) => return String::new(),
-        };
-        if let Ok(Some(item)) = cloned_db.get_item_data(&item_uuid) {
-            let keyword_lower = keyword.to_lowercase();
-            for extra in &item.extra_descs {
-                for kw in &extra.keywords {
-                    if kw.to_lowercase() == keyword_lower {
-                        return extra.description.clone();
+    engine.register_fn(
+        "get_item_extra_desc",
+        move |item_id: String, keyword: String| -> String {
+            let item_uuid = match uuid::Uuid::parse_str(&item_id) {
+                Ok(u) => u,
+                Err(_) => return String::new(),
+            };
+            if let Ok(Some(item)) = cloned_db.get_item_data(&item_uuid) {
+                let keyword_lower = keyword.to_lowercase();
+                for extra in &item.extra_descs {
+                    for kw in &extra.keywords {
+                        if kw.to_lowercase() == keyword_lower {
+                            return extra.description.clone();
+                        }
                     }
                 }
             }
-        }
-        String::new()
-    });
+            String::new()
+        },
+    );
 
     // add_item_extra_desc(item_id, keywords, description) -> bool
     // keywords is a space-separated string of keywords
@@ -3105,8 +3127,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 Err(_) => return false,
             };
             if let Ok(Some(mut item)) = cloned_db.get_item_data(&item_uuid) {
-                let keyword_vec: Vec<String> =
-                    keywords.split_whitespace().map(|s| s.to_string()).collect();
+                let keyword_vec: Vec<String> = keywords.split_whitespace().map(|s| s.to_string()).collect();
                 if keyword_vec.is_empty() {
                     return false;
                 }
@@ -3126,26 +3147,29 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
 
     // remove_item_extra_desc(item_id, keyword) -> bool
     let cloned_db = db.clone();
-    engine.register_fn("remove_item_extra_desc", move |item_id: String, keyword: String| -> bool {
-        let item_uuid = match uuid::Uuid::parse_str(&item_id) {
-            Ok(u) => u,
-            Err(_) => return false,
-        };
-        if let Ok(Some(mut item)) = cloned_db.get_item_data(&item_uuid) {
-            let keyword_lower = keyword.to_lowercase();
-            let original_len = item.extra_descs.len();
-            item.extra_descs
-                .retain(|extra| !extra.keywords.iter().any(|kw| kw.to_lowercase() == keyword_lower));
-            if item.extra_descs.len() < original_len {
-                if let Err(e) = cloned_db.save_item_data(item) {
-                    tracing::error!("Failed to save item after removing extra desc: {}", e);
-                    return false;
+    engine.register_fn(
+        "remove_item_extra_desc",
+        move |item_id: String, keyword: String| -> bool {
+            let item_uuid = match uuid::Uuid::parse_str(&item_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&item_uuid) {
+                let keyword_lower = keyword.to_lowercase();
+                let original_len = item.extra_descs.len();
+                item.extra_descs
+                    .retain(|extra| !extra.keywords.iter().any(|kw| kw.to_lowercase() == keyword_lower));
+                if item.extra_descs.len() < original_len {
+                    if let Err(e) = cloned_db.save_item_data(item) {
+                        tracing::error!("Failed to save item after removing extra desc: {}", e);
+                        return false;
+                    }
+                    return true;
                 }
-                return true;
             }
-        }
-        false
-    });
+            false
+        },
+    );
 
     // set_item_world_max_count(item_id, n) -> bool (n <= 0 clears the cap)
     let cloned_db = db.clone();

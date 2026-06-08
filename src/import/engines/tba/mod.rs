@@ -29,10 +29,8 @@ use anyhow::{Context, Result, anyhow};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use super::super::{ImportIR, IrDgTrigger, IrQuest, IrZone, MudEngine, Severity, SourceLoc, Warning, WarningKind};
 use super::circle::{shp, wld as circle_wld};
-use super::super::{
-    ImportIR, IrDgTrigger, IrQuest, IrZone, MudEngine, Severity, SourceLoc, Warning, WarningKind,
-};
 
 pub struct TbaEngine;
 
@@ -377,10 +375,7 @@ fn locate_world_root(source: &Path) -> Result<PathBuf> {
             return Ok(c);
         }
     }
-    Err(anyhow!(
-        "no wld/ + zon/ directories found under {}",
-        source.display()
-    ))
+    Err(anyhow!("no wld/ + zon/ directories found under {}", source.display()))
 }
 
 fn read_files(dir: &Path, ext: &str) -> Result<Vec<PathBuf>> {

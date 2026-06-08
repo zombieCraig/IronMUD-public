@@ -139,11 +139,7 @@ pub fn list_clan_ids() -> Vec<String> {
     if let Ok(raw) = std::fs::read_to_string("scripts/data/vampire_clans.json") {
         if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&raw) {
             if let Some(obj) = parsed.as_object() {
-                let ids: Vec<String> = obj
-                    .keys()
-                    .filter(|k| !k.starts_with('_'))
-                    .cloned()
-                    .collect();
+                let ids: Vec<String> = obj.keys().filter(|k| !k.starts_with('_')).cloned().collect();
                 if !ids.is_empty() {
                     return ids;
                 }
@@ -167,11 +163,7 @@ pub fn list_clan_ids() -> Vec<String> {
 ///
 /// Returns `true` if anything changed and the character should be saved
 /// by the caller.
-pub fn apply_clan_acknowledgment(
-    ch: &mut CharacterData,
-    clan: &str,
-    sire: Option<String>,
-) -> bool {
+pub fn apply_clan_acknowledgment(ch: &mut CharacterData, clan: &str, sire: Option<String>) -> bool {
     let v = match ch.vampire_state.as_mut() {
         Some(v) => v,
         None => return false,
@@ -266,10 +258,7 @@ pub fn apply_anarch_acknowledgment(ch: &mut CharacterData, discipline: &str) -> 
         changed = true;
     }
 
-    let entry = ch
-        .skills
-        .entry(disc_trim)
-        .or_insert(SkillProgress::default());
+    let entry = ch.skills.entry(disc_trim).or_insert(SkillProgress::default());
     if entry.level < 1 {
         entry.level = 1;
         changed = true;
@@ -315,10 +304,7 @@ fn is_pc_thinblood_state(_v: &VampireState, traits: &[String]) -> bool {
 pub enum FeedDecision {
     /// Feeding is allowed. `blood_per_hp` is the yield multiplier;
     /// `can_cost_humanity` is true only for living mortals (animals are clean).
-    Allowed {
-        blood_per_hp: i32,
-        can_cost_humanity: bool,
-    },
+    Allowed { blood_per_hp: i32, can_cost_humanity: bool },
     /// Feeding is refused; the string is the player-facing reason.
     Forbidden(&'static str),
 }
@@ -352,10 +338,9 @@ pub fn feed_outcome_for(target: &MobileData) -> FeedDecision {
             blood_per_hp: FEED_BLOOD_PER_HP_ANIMAL,
             can_cost_humanity: false,
         },
-        CreatureType::Insect
-        | CreatureType::Plant
-        | CreatureType::Construct
-        | CreatureType::Spirit => FeedDecision::Forbidden("there is no blood there worth taking"),
+        CreatureType::Insect | CreatureType::Plant | CreatureType::Construct | CreatureType::Spirit => {
+            FeedDecision::Forbidden("there is no blood there worth taking")
+        }
     }
 }
 
@@ -375,94 +360,75 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // is_mobile_masquerade_broken(mobile_id) -> bool. False for mortals.
     let cdb = db.clone();
-    engine.register_fn(
-        "is_mobile_masquerade_broken",
-        move |mobile_id: String| -> bool {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
-                if let Ok(Some(m)) = cdb.get_mobile_data(&uuid) {
-                    return m
-                        .vampire_state
-                        .as_ref()
-                        .map(|v| v.masquerade_broken)
-                        .unwrap_or(false);
-                }
+    engine.register_fn("is_mobile_masquerade_broken", move |mobile_id: String| -> bool {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+            if let Ok(Some(m)) = cdb.get_mobile_data(&uuid) {
+                return m.vampire_state.as_ref().map(|v| v.masquerade_broken).unwrap_or(false);
             }
-            false
-        },
-    );
+        }
+        false
+    });
 
     // get_mobile_blood_pool(mobile_id) -> i64. Returns 0 for mortals.
     let cdb = db.clone();
-    engine.register_fn(
-        "get_mobile_blood_pool",
-        move |mobile_id: String| -> i64 {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
-                if let Ok(Some(m)) = cdb.get_mobile_data(&uuid) {
-                    return m.vampire_state.as_ref().map(|v| v.blood_pool as i64).unwrap_or(0);
-                }
+    engine.register_fn("get_mobile_blood_pool", move |mobile_id: String| -> i64 {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+            if let Ok(Some(m)) = cdb.get_mobile_data(&uuid) {
+                return m.vampire_state.as_ref().map(|v| v.blood_pool as i64).unwrap_or(0);
             }
-            0
-        },
-    );
+        }
+        0
+    });
 
     // set_mobile_blood_pool(mobile_id, n) -> bool
     let cdb = db.clone();
-    engine.register_fn(
-        "set_mobile_blood_pool",
-        move |mobile_id: String, n: i64| -> bool {
-            let uuid = match uuid::Uuid::parse_str(&mobile_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            let mut mobile = match cdb.get_mobile_data(&uuid) {
-                Ok(Some(m)) => m,
-                _ => return false,
-            };
-            let v = match mobile.vampire_state.as_mut() {
-                Some(v) => v,
-                None => return false,
-            };
-            v.blood_pool = n.clamp(0, v.max_blood_pool as i64) as i32;
-            cdb.save_mobile_data(mobile).is_ok()
-        },
-    );
+    engine.register_fn("set_mobile_blood_pool", move |mobile_id: String, n: i64| -> bool {
+        let uuid = match uuid::Uuid::parse_str(&mobile_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let mut mobile = match cdb.get_mobile_data(&uuid) {
+            Ok(Some(m)) => m,
+            _ => return false,
+        };
+        let v = match mobile.vampire_state.as_mut() {
+            Some(v) => v,
+            None => return false,
+        };
+        v.blood_pool = n.clamp(0, v.max_blood_pool as i64) as i32;
+        cdb.save_mobile_data(mobile).is_ok()
+    });
 
     // get_mobile_humanity(mobile_id) -> i64. Returns -1 for mortals so callers
     // can distinguish "not a vampire" from "humanity = 0 (the beast wins)".
     let cdb = db.clone();
-    engine.register_fn(
-        "get_mobile_humanity",
-        move |mobile_id: String| -> i64 {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
-                if let Ok(Some(m)) = cdb.get_mobile_data(&uuid) {
-                    return m.vampire_state.as_ref().map(|v| v.humanity as i64).unwrap_or(-1);
-                }
+    engine.register_fn("get_mobile_humanity", move |mobile_id: String| -> i64 {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+            if let Ok(Some(m)) = cdb.get_mobile_data(&uuid) {
+                return m.vampire_state.as_ref().map(|v| v.humanity as i64).unwrap_or(-1);
             }
-            -1
-        },
-    );
+        }
+        -1
+    });
 
     // set_mobile_humanity(mobile_id, n) -> bool. Clamps to [0, 10].
     let cdb = db.clone();
-    engine.register_fn(
-        "set_mobile_humanity",
-        move |mobile_id: String, n: i64| -> bool {
-            let uuid = match uuid::Uuid::parse_str(&mobile_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            let mut mobile = match cdb.get_mobile_data(&uuid) {
-                Ok(Some(m)) => m,
-                _ => return false,
-            };
-            let v = match mobile.vampire_state.as_mut() {
-                Some(v) => v,
-                None => return false,
-            };
-            v.set_humanity(n as i32);
-            cdb.save_mobile_data(mobile).is_ok()
-        },
-    );
+    engine.register_fn("set_mobile_humanity", move |mobile_id: String, n: i64| -> bool {
+        let uuid = match uuid::Uuid::parse_str(&mobile_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let mut mobile = match cdb.get_mobile_data(&uuid) {
+            Ok(Some(m)) => m,
+            _ => return false,
+        };
+        let v = match mobile.vampire_state.as_mut() {
+            Some(v) => v,
+            None => return false,
+        };
+        v.set_humanity(n as i32);
+        cdb.save_mobile_data(mobile).is_ok()
+    });
 
     // embrace_mobile(mobile_id, sire_name, clan) -> bool
     //
@@ -482,11 +448,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(Some(m)) => m,
                 _ => return false,
             };
-            let sire_opt = if sire.trim().is_empty() {
-                None
-            } else {
-                Some(sire)
-            };
+            let sire_opt = if sire.trim().is_empty() { None } else { Some(sire) };
             mobile.vampire_state = Some(VampireState::newly_embraced(now_secs(), sire_opt));
             mobile.flags.vampire = true;
             mobile.flags.undead = true;
@@ -497,27 +459,24 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // revoke_mobile_vampirism(mobile_id) -> bool. Clears state + flags.
     let cdb = db.clone();
-    engine.register_fn(
-        "revoke_mobile_vampirism",
-        move |mobile_id: String| -> bool {
-            let uuid = match uuid::Uuid::parse_str(&mobile_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            let mut mobile = match cdb.get_mobile_data(&uuid) {
-                Ok(Some(m)) => m,
-                _ => return false,
-            };
-            if mobile.vampire_state.is_none() && !mobile.flags.vampire {
-                return false;
-            }
-            mobile.vampire_state = None;
-            mobile.flags.vampire = false;
-            // Leave undead/holy_vulnerable alone — they're independent flags
-            // a builder may want to keep on a non-vampire undead.
-            cdb.save_mobile_data(mobile).is_ok()
-        },
-    );
+    engine.register_fn("revoke_mobile_vampirism", move |mobile_id: String| -> bool {
+        let uuid = match uuid::Uuid::parse_str(&mobile_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let mut mobile = match cdb.get_mobile_data(&uuid) {
+            Ok(Some(m)) => m,
+            _ => return false,
+        };
+        if mobile.vampire_state.is_none() && !mobile.flags.vampire {
+            return false;
+        }
+        mobile.vampire_state = None;
+        mobile.flags.vampire = false;
+        // Leave undead/holy_vulnerable alone — they're independent flags
+        // a builder may want to keep on a non-vampire undead.
+        cdb.save_mobile_data(mobile).is_ok()
+    });
 
     // ========== PC-side ==========
 
@@ -541,102 +500,90 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // get_pc_blood_pool(connection_id) -> i64
     let conns = connections.clone();
-    engine.register_fn(
-        "get_pc_blood_pool",
-        move |connection_id: String| -> i64 {
-            let conn_id = match uuid::Uuid::parse_str(&connection_id) {
-                Ok(u) => u,
-                Err(_) => return 0,
-            };
-            let conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return 0,
-            };
-            conns_lock
-                .get(&conn_id)
-                .and_then(|s| s.character.as_ref())
-                .and_then(|c| c.vampire_state.as_ref())
-                .map(|v| v.blood_pool as i64)
-                .unwrap_or(0)
-        },
-    );
+    engine.register_fn("get_pc_blood_pool", move |connection_id: String| -> i64 {
+        let conn_id = match uuid::Uuid::parse_str(&connection_id) {
+            Ok(u) => u,
+            Err(_) => return 0,
+        };
+        let conns_lock = match conns.lock() {
+            Ok(g) => g,
+            Err(_) => return 0,
+        };
+        conns_lock
+            .get(&conn_id)
+            .and_then(|s| s.character.as_ref())
+            .and_then(|c| c.vampire_state.as_ref())
+            .map(|v| v.blood_pool as i64)
+            .unwrap_or(0)
+    });
 
     // get_pc_max_blood_pool(connection_id) -> i64. 0 for mortals.
     let conns = connections.clone();
-    engine.register_fn(
-        "get_pc_max_blood_pool",
-        move |connection_id: String| -> i64 {
-            let conn_id = match uuid::Uuid::parse_str(&connection_id) {
-                Ok(u) => u,
-                Err(_) => return 0,
-            };
-            let conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return 0,
-            };
-            conns_lock
-                .get(&conn_id)
-                .and_then(|s| s.character.as_ref())
-                .and_then(|c| c.vampire_state.as_ref())
-                .map(|v| v.max_blood_pool as i64)
-                .unwrap_or(0)
-        },
-    );
+    engine.register_fn("get_pc_max_blood_pool", move |connection_id: String| -> i64 {
+        let conn_id = match uuid::Uuid::parse_str(&connection_id) {
+            Ok(u) => u,
+            Err(_) => return 0,
+        };
+        let conns_lock = match conns.lock() {
+            Ok(g) => g,
+            Err(_) => return 0,
+        };
+        conns_lock
+            .get(&conn_id)
+            .and_then(|s| s.character.as_ref())
+            .and_then(|c| c.vampire_state.as_ref())
+            .map(|v| v.max_blood_pool as i64)
+            .unwrap_or(0)
+    });
 
     // get_pc_humanity(connection_id) -> i64. -1 for mortals.
     let conns = connections.clone();
-    engine.register_fn(
-        "get_pc_humanity",
-        move |connection_id: String| -> i64 {
-            let conn_id = match uuid::Uuid::parse_str(&connection_id) {
-                Ok(u) => u,
-                Err(_) => return -1,
-            };
-            let conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return -1,
-            };
-            conns_lock
-                .get(&conn_id)
-                .and_then(|s| s.character.as_ref())
-                .and_then(|c| c.vampire_state.as_ref())
-                .map(|v| v.humanity as i64)
-                .unwrap_or(-1)
-        },
-    );
+    engine.register_fn("get_pc_humanity", move |connection_id: String| -> i64 {
+        let conn_id = match uuid::Uuid::parse_str(&connection_id) {
+            Ok(u) => u,
+            Err(_) => return -1,
+        };
+        let conns_lock = match conns.lock() {
+            Ok(g) => g,
+            Err(_) => return -1,
+        };
+        conns_lock
+            .get(&conn_id)
+            .and_then(|s| s.character.as_ref())
+            .and_then(|c| c.vampire_state.as_ref())
+            .map(|v| v.humanity as i64)
+            .unwrap_or(-1)
+    });
 
     // change_pc_humanity(connection_id, delta) -> i64. Returns new value
     // (-1 if not a vampire). Saves the character.
     let conns = connections.clone();
     let cdb = db.clone();
-    engine.register_fn(
-        "change_pc_humanity",
-        move |connection_id: String, delta: i64| -> i64 {
-            let conn_id = match uuid::Uuid::parse_str(&connection_id) {
-                Ok(u) => u,
-                Err(_) => return -1,
-            };
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return -1,
-            };
-            let session = match conns_lock.get_mut(&conn_id) {
-                Some(s) => s,
-                None => return -1,
-            };
-            let ch = match session.character.as_mut() {
-                Some(c) => c,
-                None => return -1,
-            };
-            let v = match ch.vampire_state.as_mut() {
-                Some(v) => v,
-                None => return -1,
-            };
-            let new_val = v.change_humanity(delta as i32);
-            let _ = cdb.save_character_data(ch.clone());
-            new_val as i64
-        },
-    );
+    engine.register_fn("change_pc_humanity", move |connection_id: String, delta: i64| -> i64 {
+        let conn_id = match uuid::Uuid::parse_str(&connection_id) {
+            Ok(u) => u,
+            Err(_) => return -1,
+        };
+        let mut conns_lock = match conns.lock() {
+            Ok(g) => g,
+            Err(_) => return -1,
+        };
+        let session = match conns_lock.get_mut(&conn_id) {
+            Some(s) => s,
+            None => return -1,
+        };
+        let ch = match session.character.as_mut() {
+            Some(c) => c,
+            None => return -1,
+        };
+        let v = match ch.vampire_state.as_mut() {
+            Some(v) => v,
+            None => return -1,
+        };
+        let new_val = v.change_humanity(delta as i32);
+        let _ = cdb.save_character_data(ch.clone());
+        new_val as i64
+    });
 
     // change_pc_blood_pool(connection_id, delta) -> i64. Clamped to
     // [0, max_blood_pool]. -1 if not a vampire.
@@ -826,103 +773,94 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // set_pc_max_blood_pool(connection_id, n) -> bool
     let conns = connections.clone();
     let cdb = db.clone();
-    engine.register_fn(
-        "set_pc_max_blood_pool",
-        move |connection_id: String, n: i64| -> bool {
-            let conn_id = match uuid::Uuid::parse_str(&connection_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return false,
-            };
-            let session = match conns_lock.get_mut(&conn_id) {
-                Some(s) => s,
-                None => return false,
-            };
-            let ch = match session.character.as_mut() {
-                Some(c) => c,
-                None => return false,
-            };
-            let v = match ch.vampire_state.as_mut() {
-                Some(v) => v,
-                None => return false,
-            };
-            v.max_blood_pool = n.max(0) as i32;
-            if v.blood_pool > v.max_blood_pool {
-                v.blood_pool = v.max_blood_pool;
-            }
-            cdb.save_character_data(ch.clone()).is_ok()
-        },
-    );
+    engine.register_fn("set_pc_max_blood_pool", move |connection_id: String, n: i64| -> bool {
+        let conn_id = match uuid::Uuid::parse_str(&connection_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let mut conns_lock = match conns.lock() {
+            Ok(g) => g,
+            Err(_) => return false,
+        };
+        let session = match conns_lock.get_mut(&conn_id) {
+            Some(s) => s,
+            None => return false,
+        };
+        let ch = match session.character.as_mut() {
+            Some(c) => c,
+            None => return false,
+        };
+        let v = match ch.vampire_state.as_mut() {
+            Some(v) => v,
+            None => return false,
+        };
+        v.max_blood_pool = n.max(0) as i32;
+        if v.blood_pool > v.max_blood_pool {
+            v.blood_pool = v.max_blood_pool;
+        }
+        cdb.save_character_data(ch.clone()).is_ok()
+    });
 
     // set_pc_blood_pool(connection_id, n) -> bool
     let conns = connections.clone();
     let cdb = db.clone();
-    engine.register_fn(
-        "set_pc_blood_pool",
-        move |connection_id: String, n: i64| -> bool {
-            let conn_id = match uuid::Uuid::parse_str(&connection_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return false,
-            };
-            let session = match conns_lock.get_mut(&conn_id) {
-                Some(s) => s,
-                None => return false,
-            };
-            let ch = match session.character.as_mut() {
-                Some(c) => c,
-                None => return false,
-            };
-            let v = match ch.vampire_state.as_mut() {
-                Some(v) => v,
-                None => return false,
-            };
-            v.blood_pool = n.clamp(0, v.max_blood_pool as i64) as i32;
-            cdb.save_character_data(ch.clone()).is_ok()
-        },
-    );
+    engine.register_fn("set_pc_blood_pool", move |connection_id: String, n: i64| -> bool {
+        let conn_id = match uuid::Uuid::parse_str(&connection_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let mut conns_lock = match conns.lock() {
+            Ok(g) => g,
+            Err(_) => return false,
+        };
+        let session = match conns_lock.get_mut(&conn_id) {
+            Some(s) => s,
+            None => return false,
+        };
+        let ch = match session.character.as_mut() {
+            Some(c) => c,
+            None => return false,
+        };
+        let v = match ch.vampire_state.as_mut() {
+            Some(v) => v,
+            None => return false,
+        };
+        v.blood_pool = n.clamp(0, v.max_blood_pool as i64) as i32;
+        cdb.save_character_data(ch.clone()).is_ok()
+    });
 
     // masquerade_reset_pc(connection_id) -> bool. Clears the masquerade_broken
     // flag without otherwise modifying the character. Used by admin tooling
     // and the future masquerade-cleanup quest.
     let conns = connections.clone();
     let cdb = db.clone();
-    engine.register_fn(
-        "masquerade_reset_pc",
-        move |connection_id: String| -> bool {
-            let conn_id = match uuid::Uuid::parse_str(&connection_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return false,
-            };
-            let session = match conns_lock.get_mut(&conn_id) {
-                Some(s) => s,
-                None => return false,
-            };
-            let ch = match session.character.as_mut() {
-                Some(c) => c,
-                None => return false,
-            };
-            let v = match ch.vampire_state.as_mut() {
-                Some(v) => v,
-                None => return false,
-            };
-            if !v.masquerade_broken {
-                return false;
-            }
-            v.masquerade_broken = false;
-            cdb.save_character_data(ch.clone()).is_ok()
-        },
-    );
+    engine.register_fn("masquerade_reset_pc", move |connection_id: String| -> bool {
+        let conn_id = match uuid::Uuid::parse_str(&connection_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let mut conns_lock = match conns.lock() {
+            Ok(g) => g,
+            Err(_) => return false,
+        };
+        let session = match conns_lock.get_mut(&conn_id) {
+            Some(s) => s,
+            None => return false,
+        };
+        let ch = match session.character.as_mut() {
+            Some(c) => c,
+            None => return false,
+        };
+        let v = match ch.vampire_state.as_mut() {
+            Some(v) => v,
+            None => return false,
+        };
+        if !v.masquerade_broken {
+            return false;
+        }
+        v.masquerade_broken = false;
+        cdb.save_character_data(ch.clone()).is_ok()
+    });
 
     // vampire_feed_on_mobile(connection_id, mobile_id) -> Map
     //
@@ -1067,8 +1005,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             // half-loss pro automatically (base=1 → 0 for thinbloods).
             let mut humanity_loss = 0i64;
             if killed && can_cost_humanity && !target.flags.aggressive {
-                humanity_loss =
-                    apply_humanity_loss(ch, crate::types::FEED_HUMANITY_COST_LETHAL_MORTAL) as i64;
+                humanity_loss = apply_humanity_loss(ch, crate::types::FEED_HUMANITY_COST_LETHAL_MORTAL) as i64;
             }
 
             // Apply blood to caster.
@@ -1089,13 +1026,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 let target_vnum = target.vnum.clone();
                 let gold = crate::corpse::mobile_gold_with_variance(target.gold as i64);
                 if let Some(room_id) = target_room {
-                    let corpse = crate::corpse::CorpseBuilder::for_mobile(
-                        &target_name,
-                        room_id,
-                        gold,
-                    )
-                    .with_source_vnum(Some(target_vnum))
-                    .build();
+                    let corpse = crate::corpse::CorpseBuilder::for_mobile(&target_name, room_id, gold)
+                        .with_source_vnum(Some(target_vnum))
+                        .build();
                     let corpse_id = corpse.id;
                     if cdb.save_item_data(corpse).is_ok() {
                         if let Ok(inv) = cdb.get_items_in_mobile_inventory(&target_id) {
@@ -1135,11 +1068,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             put(&mut out, "damage", rhai::Dynamic::from(damage as i64));
             put(&mut out, "blood", rhai::Dynamic::from(blood_gained as i64));
             put(&mut out, "killed", rhai::Dynamic::from(killed));
-            put(
-                &mut out,
-                "masquerade_break",
-                rhai::Dynamic::from(masquerade_break),
-            );
+            put(&mut out, "masquerade_break", rhai::Dynamic::from(masquerade_break));
             put(&mut out, "humanity_loss", rhai::Dynamic::from(humanity_loss));
             put(&mut out, "error", rhai::Dynamic::from(String::new()));
             out
@@ -1149,30 +1078,27 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // revoke_pc_vampirism(connection_id) -> bool
     let conns = connections.clone();
     let cdb = db.clone();
-    engine.register_fn(
-        "revoke_pc_vampirism",
-        move |connection_id: String| -> bool {
-            let conn_id = match uuid::Uuid::parse_str(&connection_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            let mut conns_lock = match conns.lock() {
-                Ok(g) => g,
-                Err(_) => return false,
-            };
-            let session = match conns_lock.get_mut(&conn_id) {
-                Some(s) => s,
-                None => return false,
-            };
-            let ch = match session.character.as_mut() {
-                Some(c) => c,
-                None => return false,
-            };
-            if ch.vampire_state.is_none() {
-                return false;
-            }
-            ch.vampire_state = None;
-            cdb.save_character_data(ch.clone()).is_ok()
-        },
-    );
+    engine.register_fn("revoke_pc_vampirism", move |connection_id: String| -> bool {
+        let conn_id = match uuid::Uuid::parse_str(&connection_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let mut conns_lock = match conns.lock() {
+            Ok(g) => g,
+            Err(_) => return false,
+        };
+        let session = match conns_lock.get_mut(&conn_id) {
+            Some(s) => s,
+            None => return false,
+        };
+        let ch = match session.character.as_mut() {
+            Some(c) => c,
+            None => return false,
+        };
+        if ch.vampire_state.is_none() {
+            return false;
+        }
+        ch.vampire_state = None;
+        cdb.save_character_data(ch.clone()).is_ok()
+    });
 }

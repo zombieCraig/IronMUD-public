@@ -5,7 +5,10 @@
 //! its default-effects table), gold-pile description helpers, and the
 //! `ItemData` aggregate that ties them together.
 
-use super::{BodyPart, DamageType, EffectType, ExtraDesc, ItemAffect, ItemEffect, ItemTrigger, OnHitEffect, WeaponSkill, WearLocation};
+use super::{
+    BodyPart, DamageType, EffectType, ExtraDesc, ItemAffect, ItemEffect, ItemTrigger, OnHitEffect, WeaponSkill,
+    WearLocation,
+};
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -1075,12 +1078,7 @@ impl ItemData {
 
     pub fn sync_flag_categories(&mut self) {
         const MAGICAL: &str = "magical";
-        if self.flags.magical
-            && !self
-                .categories
-                .iter()
-                .any(|c| c.eq_ignore_ascii_case(MAGICAL))
-        {
+        if self.flags.magical && !self.categories.iter().any(|c| c.eq_ignore_ascii_case(MAGICAL)) {
             self.categories.push(MAGICAL.to_string());
         }
     }

@@ -343,10 +343,7 @@ impl Db {
     /// Body, flag, name, chance, or arglist changes all propagate uniformly
     /// because the rebuild is total. Returns the count of entities updated
     /// (not triggers).
-    pub fn refresh_attached_dg_triggers(
-        &self,
-        proto: &crate::types::DgTriggerProto,
-    ) -> Result<usize> {
+    pub fn refresh_attached_dg_triggers(&self, proto: &crate::types::DgTriggerProto) -> Result<usize> {
         use crate::import::engines::tba::trg_map;
         use crate::types::{DgAttachKind, ItemTrigger, MobileTrigger, RoomTrigger};
         let target = Some(proto.vnum.as_str());
@@ -355,11 +352,7 @@ impl Db {
         let args: Vec<String> = if proto.arglist.trim().is_empty() {
             Vec::new()
         } else {
-            proto
-                .arglist
-                .split_whitespace()
-                .map(|w| w.to_string())
-                .collect()
+            proto.arglist.split_whitespace().map(|w| w.to_string()).collect()
         };
         match proto.attach_kind {
             DgAttachKind::Mob => {
@@ -369,8 +362,7 @@ impl Db {
                         continue;
                     }
                     self.update_mobile(&mob.id, |m| {
-                        m.triggers
-                            .retain(|t| t.source_proto_vnum.as_deref() != target);
+                        m.triggers.retain(|t| t.source_proto_vnum.as_deref() != target);
                         for ttype in &new_types {
                             m.triggers.push(MobileTrigger {
                                 trigger_type: *ttype,
@@ -398,8 +390,7 @@ impl Db {
                         continue;
                     }
                     self.update_item(&item.id, |i| {
-                        i.triggers
-                            .retain(|t| t.source_proto_vnum.as_deref() != target);
+                        i.triggers.retain(|t| t.source_proto_vnum.as_deref() != target);
                         for ttype in &new_types {
                             i.triggers.push(ItemTrigger {
                                 trigger_type: *ttype,
@@ -425,8 +416,7 @@ impl Db {
                         continue;
                     }
                     self.update_room(&room.id, |r| {
-                        r.triggers
-                            .retain(|t| t.source_proto_vnum.as_deref() != target);
+                        r.triggers.retain(|t| t.source_proto_vnum.as_deref() != target);
                         for ttype in &new_types {
                             r.triggers.push(RoomTrigger {
                                 trigger_type: *ttype,
@@ -463,7 +453,7 @@ impl Db {
         &self,
         proto: &crate::types::DgTriggerProto,
     ) -> Result<(usize, Vec<String>)> {
-        use crate::script::dg::analyze::{analyze, IssueKind};
+        use crate::script::dg::analyze::{IssueKind, analyze};
         let issues = analyze(&proto.body);
         let parse_errors: Vec<&_> = issues.iter().filter(|i| i.kind == IssueKind::ParseError).collect();
         if !parse_errors.is_empty() {
@@ -601,9 +591,8 @@ impl Db {
     pub fn get_account_by_id(&self, id: &Uuid) -> Result<Option<crate::types::AccountData>> {
         match self.account_id_index.get(id.to_string().as_bytes())? {
             Some(ivec) => {
-                let lower_name = String::from_utf8(ivec.to_vec()).map_err(|e| {
-                    anyhow::anyhow!("account_id_index value not UTF-8: {}", e)
-                })?;
+                let lower_name = String::from_utf8(ivec.to_vec())
+                    .map_err(|e| anyhow::anyhow!("account_id_index value not UTF-8: {}", e))?;
                 self.get_account(&lower_name)
             }
             None => Ok(None),
@@ -622,8 +611,7 @@ impl Db {
     pub fn delete_account(&self, name: &str) -> Result<()> {
         let key = name.to_lowercase();
         if let Some(account) = self.get_account(&key)? {
-            self.account_id_index
-                .remove(account.id.to_string().as_bytes())?;
+            self.account_id_index.remove(account.id.to_string().as_bytes())?;
         }
         self.accounts.remove(key.as_bytes())?;
         Ok(())
@@ -647,11 +635,7 @@ impl Db {
     /// Apply `delta` to `account.shared_bank_gold` and save. Refuses to drop
     /// the balance below zero (returns `Ok(None)` in that case). Returns the
     /// new balance on success.
-    pub fn add_shared_bank_gold(
-        &self,
-        account_id: &Uuid,
-        delta: i64,
-    ) -> Result<Option<i64>> {
+    pub fn add_shared_bank_gold(&self, account_id: &Uuid, delta: i64) -> Result<Option<i64>> {
         let mut account = match self.get_account_by_id(account_id)? {
             Some(a) => a,
             None => return Ok(None),
@@ -668,11 +652,7 @@ impl Db {
     /// Replace `account.character_defaults` wholesale and save. The caller is
     /// expected to set `is_set = true` (or `false` for clear) on `prefs`
     /// before calling.
-    pub fn save_account_preferences(
-        &self,
-        account_id: &Uuid,
-        prefs: crate::types::AccountPreferences,
-    ) -> Result<bool> {
+    pub fn save_account_preferences(&self, account_id: &Uuid, prefs: crate::types::AccountPreferences) -> Result<bool> {
         let mut account = match self.get_account_by_id(account_id)? {
             Some(a) => a,
             None => return Ok(false),
@@ -682,11 +662,7 @@ impl Db {
         Ok(true)
     }
 
-    pub fn add_character_to_account(
-        &self,
-        account_id: &Uuid,
-        character_name: &str,
-    ) -> Result<bool> {
+    pub fn add_character_to_account(&self, account_id: &Uuid, character_name: &str) -> Result<bool> {
         let mut account = match self.get_account_by_id(account_id)? {
             Some(a) => a,
             None => return Ok(false),
@@ -702,11 +678,7 @@ impl Db {
         Ok(true)
     }
 
-    pub fn remove_character_from_account(
-        &self,
-        account_id: &Uuid,
-        character_name: &str,
-    ) -> Result<bool> {
+    pub fn remove_character_from_account(&self, account_id: &Uuid, character_name: &str) -> Result<bool> {
         let mut account = match self.get_account_by_id(account_id)? {
             Some(a) => a,
             None => return Ok(false),
@@ -742,10 +714,7 @@ impl Db {
     /// Find an account by its email address (case-insensitive). Used by the
     /// email-verification slice to refuse duplicate registrations under one
     /// inbox. Linear scan — accounts are bounded by player count.
-    pub fn find_account_by_email(
-        &self,
-        email: &str,
-    ) -> Result<Option<crate::types::AccountData>> {
+    pub fn find_account_by_email(&self, email: &str) -> Result<Option<crate::types::AccountData>> {
         let needle = email.trim().to_lowercase();
         if needle.is_empty() {
             return Ok(None);
@@ -765,10 +734,7 @@ impl Db {
     /// this canonical form so `agent.craig+spam@gmail.com` and
     /// `agentcraig@gmail.com` collide. Linear scan — same cost shape as
     /// `find_account_by_email`.
-    pub fn find_account_by_normalized_email(
-        &self,
-        normalized: &str,
-    ) -> Result<Option<crate::types::AccountData>> {
+    pub fn find_account_by_normalized_email(&self, normalized: &str) -> Result<Option<crate::types::AccountData>> {
         let needle = normalized.trim().to_lowercase();
         if needle.is_empty() {
             return Ok(None);
@@ -954,19 +920,14 @@ impl Db {
         }
         self.set_setting("accounts_normalized_email_backfilled", "true")?;
         if backfilled > 0 {
-            tracing::info!(
-                "Account normalization backfill: stamped normalized_email on {backfilled} row(s)"
-            );
+            tracing::info!("Account normalization backfill: stamped normalized_email on {backfilled} row(s)");
         }
         Ok(())
     }
 
     /// Resolve which account owns this character name (linear scan; account
     /// counts are tiny compared to characters, so this is fine for now).
-    pub fn find_account_for_character(
-        &self,
-        character_name: &str,
-    ) -> Result<Option<crate::types::AccountData>> {
+    pub fn find_account_for_character(&self, character_name: &str) -> Result<Option<crate::types::AccountData>> {
         for account in self.list_accounts()? {
             if account
                 .character_names
@@ -1742,11 +1703,7 @@ impl Db {
     /// occupied by another equipped item on the same wearer. Returns
     /// `None` when no free slot exists or the item has no wear locations.
     /// Used as the auto-pick default by [`move_item_to_equipped`].
-    pub fn pick_free_wear_slot(
-        &self,
-        char_name: &str,
-        item: &ItemData,
-    ) -> Result<Option<crate::types::WearLocation>> {
+    pub fn pick_free_wear_slot(&self, char_name: &str, item: &ItemData) -> Result<Option<crate::types::WearLocation>> {
         if item.wear_locations.is_empty() {
             return Ok(None);
         }
@@ -1896,11 +1853,7 @@ impl Db {
     /// `(short_desc, location_display)` so the caller can broadcast a flavor
     /// line. Errors if the item isn't a tattoo, has no wear_locations, or
     /// the character can't be loaded.
-    pub fn apply_tattoo_to_character(
-        &self,
-        char_name: &str,
-        item_id: &Uuid,
-    ) -> Result<(String, String)> {
+    pub fn apply_tattoo_to_character(&self, char_name: &str, item_id: &Uuid) -> Result<(String, String)> {
         let item = match self.get_item_data(item_id)? {
             Some(i) => i,
             None => return Err(anyhow::anyhow!("item not found")),
@@ -1961,11 +1914,7 @@ impl Db {
         }
         let removed = character.tattoos.remove(index);
         let vnum_tag = removed.source_vnum.as_deref().unwrap_or("-").to_string();
-        let buff_source = format!(
-            "tattoo:{}:{}",
-            vnum_tag,
-            removed.location.to_display_string()
-        );
+        let buff_source = format!("tattoo:{}:{}", vnum_tag, removed.location.to_display_string());
         character.active_buffs.retain(|b| b.source != buff_source);
         self.save_character_data(character)?;
         Ok(true)
@@ -2739,10 +2688,7 @@ impl Db {
 
     /// Find all spawn points that reference a vnum, either as the spawn's own
     /// entity (sp.vnum) or as a spawn dependency (dependency.item_vnum).
-    pub fn find_spawn_points_referencing_vnum(
-        &self,
-        vnum: &str,
-    ) -> Result<Vec<SpawnPointData>> {
+    pub fn find_spawn_points_referencing_vnum(&self, vnum: &str) -> Result<Vec<SpawnPointData>> {
         let mut spawn_points = Vec::new();
         for entry in self.spawn_points.iter() {
             let (_key, value) = entry?;

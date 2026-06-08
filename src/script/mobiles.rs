@@ -4,8 +4,8 @@
 use crate::SharedState;
 use crate::db::Db;
 use crate::{
-    ActivityState, CreatureType, DamageType, EffectType, MobileData, MobileFlags, RememberedEnemy,
-    RoutineEntry, find_active_entry,
+    ActivityState, CreatureType, DamageType, EffectType, MobileData, MobileFlags, RememberedEnemy, RoutineEntry,
+    find_active_entry,
 };
 use rhai::Engine;
 
@@ -40,11 +40,7 @@ pub fn record_mob_memory(mob: &mut MobileData, attacker_name: &str) {
         return;
     }
     let expires = now_secs() + MEMORY_DURATION_SECS;
-    if let Some(existing) = mob
-        .remembered_enemies
-        .iter_mut()
-        .find(|e| e.name.to_lowercase() == key)
-    {
+    if let Some(existing) = mob.remembered_enemies.iter_mut().find(|e| e.name.to_lowercase() == key) {
         existing.expires_at_secs = expires;
         return;
     }
@@ -66,10 +62,7 @@ pub fn check_and_prune_memory(mob: &mut MobileData, attacker_name: &str) -> (boo
     mob.remembered_enemies.retain(|e| e.expires_at_secs > now);
     let pruned = mob.remembered_enemies.len() != before;
     let key = attacker_name.to_lowercase();
-    let remembers = mob
-        .remembered_enemies
-        .iter()
-        .any(|e| e.name.to_lowercase() == key);
+    let remembers = mob.remembered_enemies.iter().any(|e| e.name.to_lowercase() == key);
     (remembers, pruned)
 }
 
@@ -194,20 +187,46 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     register_string!(engine, MobileData, name, short_desc, long_desc);
 
     // Read-only String (clone) — fields that are bare String, no Option
-    register_string_ro!(engine, MobileData,
-        vnum, damage_dice, healer_type, shop_preset_vnum,
-        pursuit_target_name, pursuit_direction);
+    register_string_ro!(
+        engine,
+        MobileData,
+        vnum,
+        damage_dice,
+        healer_type,
+        shop_preset_vnum,
+        pursuit_target_name,
+        pursuit_direction
+    );
 
     // Read-only bool getters
     register_bool_ro!(engine, MobileData, is_prototype, healing_free, pursuit_certain);
 
     // Read-only i32 fields exposed as i64
-    register_i32_ro!(engine, MobileData,
-        combat_spell_chance, level, max_hp, current_hp, max_stamina, current_stamina,
-        armor_class, hit_modifier, gold,
-        stat_str, stat_dex, stat_con, stat_int, stat_wis, stat_cha,
-        shop_buy_rate, shop_sell_rate, healing_cost_multiplier,
-        shop_min_value, shop_max_value, perception);
+    register_i32_ro!(
+        engine,
+        MobileData,
+        combat_spell_chance,
+        level,
+        max_hp,
+        current_hp,
+        max_stamina,
+        current_stamina,
+        armor_class,
+        hit_modifier,
+        gold,
+        stat_str,
+        stat_dex,
+        stat_con,
+        stat_int,
+        stat_wis,
+        stat_cha,
+        shop_buy_rate,
+        shop_sell_rate,
+        healing_cost_multiplier,
+        shop_min_value,
+        shop_max_value,
+        perception
+    );
 
     // Specials: aliases (hp/stamina), uuids, options, computed views.
     register_uuid_ro!(engine, MobileData, id);
@@ -248,15 +267,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
         .register_set("hp", |m: &mut MobileData, val: i64| m.current_hp = val as i32)
         .register_get("stamina", |m: &mut MobileData| m.current_stamina as i64)
         .register_set("stamina", |m: &mut MobileData, val: i64| m.current_stamina = val as i32)
-        .register_get("world_max_count", |m: &mut MobileData| m.world_max_count.unwrap_or(0) as i64)
+        .register_get("world_max_count", |m: &mut MobileData| {
+            m.world_max_count.unwrap_or(0) as i64
+        })
         .register_get("has_world_max_count", |m: &mut MobileData| m.world_max_count.is_some())
         .register_get("area_id", |m: &mut MobileData| {
             m.area_id.map(|u| u.to_string()).unwrap_or_default()
         })
         .register_get("has_area_id", |m: &mut MobileData| m.area_id.is_some())
-        .register_get("has_spoken_language", |m: &mut MobileData| {
-            m.spoken_language.is_some()
-        })
+        .register_get("has_spoken_language", |m: &mut MobileData| m.spoken_language.is_some())
         .register_get("damage_type", |m: &mut MobileData| {
             m.damage_type.to_display_string().to_string()
         })
@@ -421,11 +440,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
             if mobile.name.to_lowercase().contains(&lower) {
                 return rhai::Dynamic::from(mobile);
             }
-            if mobile
-                .keywords
-                .iter()
-                .any(|kw| kw.to_lowercase().starts_with(&lower))
-            {
+            if mobile.keywords.iter().any(|kw| kw.to_lowercase().starts_with(&lower)) {
                 return rhai::Dynamic::from(mobile);
             }
         }
@@ -502,41 +517,35 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // forget_player(mobile_id, player_name) -> bool
     // Removes player_name from the mobile's remembered_enemies list.
     let cloned_db = db.clone();
-    engine.register_fn(
-        "forget_player",
-        move |mobile_id: String, player_name: String| -> bool {
-            let Ok(mid) = uuid::Uuid::parse_str(&mobile_id) else {
-                return false;
-            };
-            let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&mid) else {
-                return false;
-            };
-            let before = mobile.remembered_enemies.len();
-            mobile
-                .remembered_enemies
-                .retain(|e| !e.name.eq_ignore_ascii_case(&player_name));
-            if mobile.remembered_enemies.len() == before {
-                return true;
-            }
-            cloned_db.save_mobile_data(mobile).is_ok()
-        },
-    );
+    engine.register_fn("forget_player", move |mobile_id: String, player_name: String| -> bool {
+        let Ok(mid) = uuid::Uuid::parse_str(&mobile_id) else {
+            return false;
+        };
+        let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&mid) else {
+            return false;
+        };
+        let before = mobile.remembered_enemies.len();
+        mobile
+            .remembered_enemies
+            .retain(|e| !e.name.eq_ignore_ascii_case(&player_name));
+        if mobile.remembered_enemies.len() == before {
+            return true;
+        }
+        cloned_db.save_mobile_data(mobile).is_ok()
+    });
 
     // set_charm_stay(mobile_id, value) -> bool
     let cloned_db = db.clone();
-    engine.register_fn(
-        "set_charm_stay",
-        move |mobile_id: String, value: bool| -> bool {
-            let Ok(mid) = uuid::Uuid::parse_str(&mobile_id) else {
-                return false;
-            };
-            let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&mid) else {
-                return false;
-            };
-            mobile.charm_stay = value;
-            cloned_db.save_mobile_data(mobile).is_ok()
-        },
-    );
+    engine.register_fn("set_charm_stay", move |mobile_id: String, value: bool| -> bool {
+        let Ok(mid) = uuid::Uuid::parse_str(&mobile_id) else {
+            return false;
+        };
+        let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&mid) else {
+            return false;
+        };
+        mobile.charm_stay = value;
+        cloned_db.save_mobile_data(mobile).is_ok()
+    });
 
     // set_charm_follow_player(mobile_id, name) -> bool
     // Empty `name` clears the override (mob falls back to following its master).
@@ -653,17 +662,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
             let mut map = rhai::Map::new();
             map.insert("success".into(), outcome.success.into());
             map.insert("message".into(), outcome.caster_msg.into());
-            map.insert(
-                "room_message".into(),
-                outcome.room_msg.unwrap_or_default().into(),
-            );
+            map.insert("room_message".into(), outcome.room_msg.unwrap_or_default().into());
             map.insert(
                 "minion_id".into(),
-                outcome
-                    .minion_id
-                    .map(|u| u.to_string())
-                    .unwrap_or_default()
-                    .into(),
+                outcome.minion_id.map(|u| u.to_string()).unwrap_or_default().into(),
             );
             rhai::Dynamic::from_map(map)
         },
@@ -1055,39 +1057,39 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // set_mobile_area_id(mobile_id, area_id) -> bool. Empty area_id clears
     // the assignment back to orphan. Permission gating happens in OLC.
     let cloned_db = db.clone();
-    engine.register_fn("set_mobile_area_id", move |mobile_id: String, area_id: String| -> bool {
-        let uuid = match uuid::Uuid::parse_str(&mobile_id) {
-            Ok(u) => u,
-            Err(_) => return false,
-        };
-        let new_area = if area_id.trim().is_empty() {
-            None
-        } else {
-            match uuid::Uuid::parse_str(area_id.trim()) {
-                Ok(a) => Some(a),
+    engine.register_fn(
+        "set_mobile_area_id",
+        move |mobile_id: String, area_id: String| -> bool {
+            let uuid = match uuid::Uuid::parse_str(&mobile_id) {
+                Ok(u) => u,
                 Err(_) => return false,
+            };
+            let new_area = if area_id.trim().is_empty() {
+                None
+            } else {
+                match uuid::Uuid::parse_str(area_id.trim()) {
+                    Ok(a) => Some(a),
+                    Err(_) => return false,
+                }
+            };
+            if let Ok(Some(mut mob)) = cloned_db.get_mobile_data(&uuid) {
+                mob.area_id = new_area;
+                return cloned_db.save_mobile_data(mob).is_ok();
             }
-        };
-        if let Ok(Some(mut mob)) = cloned_db.get_mobile_data(&uuid) {
-            mob.area_id = new_area;
-            return cloned_db.save_mobile_data(mob).is_ok();
-        }
-        false
-    });
+            false
+        },
+    );
 
     // get_mobile_on_hit_effects(mobile_id) -> Array<Map>
     let cloned_db = db.clone();
-    engine.register_fn(
-        "get_mobile_on_hit_effects",
-        move |mobile_id: String| -> rhai::Array {
-            if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
-                if let Ok(Some(mob)) = cloned_db.get_mobile_data(&uuid) {
-                    return mob.on_hit_effects.iter().map(on_hit_effect_to_map).collect();
-                }
+    engine.register_fn("get_mobile_on_hit_effects", move |mobile_id: String| -> rhai::Array {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+            if let Ok(Some(mob)) = cloned_db.get_mobile_data(&uuid) {
+                return mob.on_hit_effects.iter().map(on_hit_effect_to_map).collect();
             }
-            Vec::new()
-        },
-    );
+        }
+        Vec::new()
+    });
 
     // set_mobile_on_hit_effects(mobile_id, effects_array) -> bool
     let cloned_db = db.clone();
@@ -1129,22 +1131,19 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
 
     // set_mobile_position(mobile_id, "standing"|"sitting"|"sleeping") -> bool
     let cloned_db = db.clone();
-    engine.register_fn(
-        "set_mobile_position",
-        move |mobile_id: String, value: String| -> bool {
-            let pos = match crate::types::MobilePosition::parse(&value) {
-                Some(p) => p,
-                None => return false,
-            };
-            if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
-                if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
-                    mobile.position = pos;
-                    return cloned_db.save_mobile_data(mobile).is_ok();
-                }
+    engine.register_fn("set_mobile_position", move |mobile_id: String, value: String| -> bool {
+        let pos = match crate::types::MobilePosition::parse(&value) {
+            Some(p) => p,
+            None => return false,
+        };
+        if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+            if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
+                mobile.position = pos;
+                return cloned_db.save_mobile_data(mobile).is_ok();
             }
-            false
-        },
-    );
+        }
+        false
+    });
 
     // set_mobile_pet_owner(mobile_id, owner_name) -> bool. Empty string clears.
     let cloned_db = db.clone();
@@ -1195,7 +1194,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
                 Ok(Some(m)) => m,
                 _ => return String::new(),
             };
-            mobile.nickname = if cleaned.is_empty() { None } else { Some(cleaned.clone()) };
+            mobile.nickname = if cleaned.is_empty() {
+                None
+            } else {
+                Some(cleaned.clone())
+            };
             if cloned_db.save_mobile_data(mobile).is_ok() {
                 cleaned
             } else {
@@ -1210,62 +1213,56 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // age/visuals on migrants are preserved). Returns the stored value
     // ("" on clear, "" on failure).
     let cloned_db = db.clone();
-    engine.register_fn(
-        "set_mobile_gender",
-        move |mobile_id: String, value: String| -> String {
-            let cleaned: String = value
-                .chars()
-                .filter(|c| !c.is_control())
-                .collect::<String>()
-                .trim()
-                .chars()
-                .take(32)
-                .collect();
-            let uuid = match uuid::Uuid::parse_str(&mobile_id) {
-                Ok(u) => u,
-                Err(_) => return String::new(),
-            };
-            let mut mobile = match cloned_db.get_mobile_data(&uuid) {
-                Ok(Some(m)) => m,
-                _ => return String::new(),
-            };
-            // Lazy-init Characteristics for static prototypes.
-            if mobile.characteristics.is_none() && !cleaned.is_empty() {
-                mobile.characteristics = Some(crate::types::Characteristics::default());
-            }
-            if let Some(ref mut chars) = mobile.characteristics {
-                chars.gender = cleaned.clone();
-            }
-            if cloned_db.save_mobile_data(mobile).is_ok() {
-                cleaned
-            } else {
-                String::new()
-            }
-        },
-    );
+    engine.register_fn("set_mobile_gender", move |mobile_id: String, value: String| -> String {
+        let cleaned: String = value
+            .chars()
+            .filter(|c| !c.is_control())
+            .collect::<String>()
+            .trim()
+            .chars()
+            .take(32)
+            .collect();
+        let uuid = match uuid::Uuid::parse_str(&mobile_id) {
+            Ok(u) => u,
+            Err(_) => return String::new(),
+        };
+        let mut mobile = match cloned_db.get_mobile_data(&uuid) {
+            Ok(Some(m)) => m,
+            _ => return String::new(),
+        };
+        // Lazy-init Characteristics for static prototypes.
+        if mobile.characteristics.is_none() && !cleaned.is_empty() {
+            mobile.characteristics = Some(crate::types::Characteristics::default());
+        }
+        if let Some(ref mut chars) = mobile.characteristics {
+            chars.gender = cleaned.clone();
+        }
+        if cloned_db.save_mobile_data(mobile).is_ok() {
+            cleaned
+        } else {
+            String::new()
+        }
+    });
 
     // list_pets_for_player(player_name) -> Array<MobileData>
     // Lists all mobiles whose pet_owner matches the given player name.
     let cloned_db = db.clone();
-    engine.register_fn(
-        "list_pets_for_player",
-        move |player_name: String| -> rhai::Array {
-            let mut out: rhai::Array = Vec::new();
-            if let Ok(mobiles) = cloned_db.list_all_mobiles() {
-                for mob in mobiles {
-                    if mob.is_prototype {
-                        continue;
-                    }
-                    if let Some(ref owner) = mob.pet_owner {
-                        if owner.eq_ignore_ascii_case(&player_name) {
-                            out.push(rhai::Dynamic::from(mob));
-                        }
+    engine.register_fn("list_pets_for_player", move |player_name: String| -> rhai::Array {
+        let mut out: rhai::Array = Vec::new();
+        if let Ok(mobiles) = cloned_db.list_all_mobiles() {
+            for mob in mobiles {
+                if mob.is_prototype {
+                    continue;
+                }
+                if let Some(ref owner) = mob.pet_owner {
+                    if owner.eq_ignore_ascii_case(&player_name) {
+                        out.push(rhai::Dynamic::from(mob));
                     }
                 }
             }
-            out
-        },
-    );
+        }
+        out
+    });
 
     // mobile_has_buff(mobile_id, effect_type_str) -> bool
     let cloned_db = db.clone();
@@ -2060,23 +2057,24 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // `skill_set/skill_add` commands, plus builder tooling.
 
     let cloned_db = db.clone();
-    engine.register_fn(
-        "get_mobile_custom_skill",
-        move |mob_id: String, key: String| -> i64 {
-            let Ok(uuid) = uuid::Uuid::parse_str(&mob_id) else { return 0; };
-            let key_lc = key.to_lowercase();
-            match cloned_db.get_mobile_data(&uuid) {
-                Ok(Some(m)) => m.custom_skills.get(&key_lc).copied().unwrap_or(0) as i64,
-                _ => 0,
-            }
-        },
-    );
+    engine.register_fn("get_mobile_custom_skill", move |mob_id: String, key: String| -> i64 {
+        let Ok(uuid) = uuid::Uuid::parse_str(&mob_id) else {
+            return 0;
+        };
+        let key_lc = key.to_lowercase();
+        match cloned_db.get_mobile_data(&uuid) {
+            Ok(Some(m)) => m.custom_skills.get(&key_lc).copied().unwrap_or(0) as i64,
+            _ => 0,
+        }
+    });
 
     let cloned_db = db.clone();
     engine.register_fn(
         "get_effective_mobile_custom_skill",
         move |mob_id: String, key: String| -> i64 {
-            let Ok(uuid) = uuid::Uuid::parse_str(&mob_id) else { return 0; };
+            let Ok(uuid) = uuid::Uuid::parse_str(&mob_id) else {
+                return 0;
+            };
             let key_lc = key.to_lowercase();
             match cloned_db.get_mobile_data(&uuid) {
                 Ok(Some(m)) => {
@@ -2086,8 +2084,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
                         .iter()
                         .filter(|b| {
                             b.effect_type == EffectType::CustomSkillBoost
-                                && b.skill_key.as_deref().map(|s| s.eq_ignore_ascii_case(&key_lc))
-                                    == Some(true)
+                                && b.skill_key.as_deref().map(|s| s.eq_ignore_ascii_case(&key_lc)) == Some(true)
                         })
                         .map(|b| b.magnitude as i64)
                         .sum();
@@ -2103,7 +2100,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     engine.register_fn(
         "set_mobile_custom_skill",
         move |mob_id: String, key: String, value: i64| -> bool {
-            let Ok(uuid) = uuid::Uuid::parse_str(&mob_id) else { return false; };
+            let Ok(uuid) = uuid::Uuid::parse_str(&mob_id) else {
+                return false;
+            };
             let key_lc = key.to_lowercase();
             {
                 let world = state_clone.lock().unwrap();
@@ -2126,7 +2125,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     engine.register_fn(
         "modify_mobile_custom_skill",
         move |mob_id: String, key: String, delta: i64| -> i64 {
-            let Ok(uuid) = uuid::Uuid::parse_str(&mob_id) else { return 0; };
+            let Ok(uuid) = uuid::Uuid::parse_str(&mob_id) else {
+                return 0;
+            };
             let key_lc = key.to_lowercase();
             {
                 let world = state_clone.lock().unwrap();

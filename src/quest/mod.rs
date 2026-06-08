@@ -8,13 +8,13 @@
 //! etc.); per-player state lives on `CharacterData.active_quests` /
 //! `completed_quests` and rides the existing character save path.
 
+use crate::SharedConnections;
 use crate::SharedState;
 use crate::db::Db;
 use crate::types::{
     ActiveQuest, CharacterData, ItemData, ItemLocation, MobileData, QuestData, QuestObjective, QuestReward,
     SkillProgress, kill_any_key,
 };
-use crate::SharedConnections;
 
 /// Send a single line to the named character if they're online. No-op if
 /// they're offline (quest progress just persists silently).
@@ -48,12 +48,7 @@ pub fn now_secs_pub() -> i64 {
 /// Walk an online player's active quests and drop any whose
 /// duration_secs has elapsed since started_at. Sends a "[ Quest expired:
 /// X ]" line per drop. Saves once at the end if anything changed.
-pub fn expire_quests_for(
-    db: &Db,
-    connections: &SharedConnections,
-    char_name: &str,
-    now: i64,
-) {
+pub fn expire_quests_for(db: &Db, connections: &SharedConnections, char_name: &str, now: i64) {
     let mut ch = match db.get_character_data(&char_name.to_lowercase()) {
         Ok(Some(c)) => c,
         _ => return,
@@ -72,11 +67,7 @@ pub fn expire_quests_for(
             Some(d) if d > 0 => d,
             _ => continue,
         };
-        let started = ch
-            .active_quests
-            .get(qvnum)
-            .map(|aq| aq.started_at)
-            .unwrap_or(0);
+        let started = ch.active_quests.get(qvnum).map(|aq| aq.started_at).unwrap_or(0);
         if now.saturating_sub(started) >= duration {
             expired.push((quest.vnum.clone(), quest.name.clone()));
         }
@@ -156,10 +147,7 @@ pub fn offer(db: &Db, char_name: &str, vnum: &str) -> String {
     if let Some(min_total) = quest.min_player_skill_total {
         let total: i32 = ch.skills.values().map(|sp| sp.level).sum();
         if total < min_total {
-            return format!(
-                "You're not skilled enough yet ({} / {}).",
-                total, min_total
-            );
+            return format!("You're not skilled enough yet ({} / {}).", total, min_total);
         }
     }
     if let Some(set) = &quest.achievement_set_prereq {
@@ -213,9 +201,7 @@ pub fn is_completable(db: &Db, ch: &CharacterData, quest: &QuestData) -> bool {
 
 fn objective_done(db: &Db, ch: &CharacterData, progress: &ActiveQuest, obj: &QuestObjective) -> bool {
     match obj {
-        QuestObjective::KillMob { vnum, count } => {
-            progress.kill_progress.get(vnum).copied().unwrap_or(0) >= *count
-        }
+        QuestObjective::KillMob { vnum, count } => progress.kill_progress.get(vnum).copied().unwrap_or(0) >= *count,
         QuestObjective::KillAnyMob { vnums, count } => {
             let key = kill_any_key(vnums);
             progress.kill_any_progress.get(&key).copied().unwrap_or(0) >= *count
@@ -527,11 +513,7 @@ fn apply_reward(
                 );
                 return;
             }
-            if ch
-                .traits
-                .iter()
-                .any(|t| t == crate::script::vampire::ANARCH_TRAIT)
-            {
+            if ch.traits.iter().any(|t| t == crate::script::vampire::ANARCH_TRAIT) {
                 tracing::warn!(
                     char = %char_name,
                     "EmbraceAnarch reward fired on a character already walking the Anarch path — skipping",
@@ -696,12 +678,10 @@ fn credit_one_kill(
 
 fn has_only_kill_objectives(quest: &QuestData) -> bool {
     !quest.objectives.is_empty()
-        && quest.objectives.iter().all(|o| {
-            matches!(
-                o,
-                QuestObjective::KillMob { .. } | QuestObjective::KillAnyMob { .. }
-            )
-        })
+        && quest
+            .objectives
+            .iter()
+            .all(|o| matches!(o, QuestObjective::KillMob { .. } | QuestObjective::KillAnyMob { .. }))
 }
 
 /// Variant of `is_completable` that takes an owned character. Used after
@@ -792,10 +772,7 @@ pub fn handle_item_to_mob(
     let _ = db.delete_item(&item.id);
 
     let item_label = item.short_desc.clone();
-    let line = format!(
-        "[ {}: {} ({}/{}) ]",
-        quest.name, item_label, new_count, target_qty
-    );
+    let line = format!("[ {}: {} ({}/{}) ]", quest.name, item_label, new_count, target_qty);
     notify(connections, giver_name, &line);
 
     // Persist progress.
@@ -993,9 +970,7 @@ pub fn describe_quest_offers(db: &Db, viewer_name: &str, mob_vnum: &str) -> Opti
 fn has_all_returnto_bringitem(quest: &QuestData) -> bool {
     !quest.objectives.is_empty()
         && quest.objectives.iter().all(|o| match o {
-            QuestObjective::BringItem {
-                return_to_mob_vnum, ..
-            } => return_to_mob_vnum.is_some(),
+            QuestObjective::BringItem { return_to_mob_vnum, .. } => return_to_mob_vnum.is_some(),
             _ => false,
         })
 }
@@ -1106,12 +1081,7 @@ fn format_objective_line(db: &Db, ch: &CharacterData, progress: &ActiveQuest, ob
         }
         QuestObjective::DgFlag { var, value } => {
             let set = progress.flags_set.contains(var);
-            format!(
-                "  Set flag {}={}: {}",
-                var,
-                value,
-                if set { "✓" } else { "·" }
-            )
+            format!("  Set flag {}={}: {}", var, value, if set { "✓" } else { "·" })
         }
     }
 }

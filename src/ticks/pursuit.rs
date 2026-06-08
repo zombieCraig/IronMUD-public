@@ -9,7 +9,8 @@ use tokio::time::{Duration, interval};
 use tracing::{debug, error};
 
 use ironmud::{
-    CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, CombatZoneType, SharedConnections, SharedState, db,
+    CharacterPosition, CombatDistance, CombatTarget, CombatTargetType, CombatZoneType, SharedConnections, SharedState,
+    db,
 };
 
 use super::broadcast::{

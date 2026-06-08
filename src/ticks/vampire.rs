@@ -5,9 +5,7 @@
 use tokio::time::{Duration, interval};
 use tracing::error;
 
-use ironmud::vampire::{
-    BLOOD_TICK_INTERVAL_SECS, SUN_TICK_INTERVAL_SECS, process_blood_tick, process_sun_tick,
-};
+use ironmud::vampire::{BLOOD_TICK_INTERVAL_SECS, SUN_TICK_INTERVAL_SECS, process_blood_tick, process_sun_tick};
 use ironmud::{SharedConnections, db};
 
 pub async fn run_sun_tick(db: db::Db, connections: SharedConnections) {
@@ -24,16 +22,10 @@ pub async fn run_sun_tick(db: db::Db, connections: SharedConnections) {
                 for mob_id in deaths {
                     if let Ok(Some(mut mob)) = db.get_mobile_data(&mob_id) {
                         if let Some(room_id) = mob.current_room_id {
-                            if let Err(e) = crate::ticks::combat::process_mobile_death(
-                                &db,
-                                &connections,
-                                &mut mob,
-                                &room_id,
-                            ) {
-                                error!(
-                                    "Sun-death cleanup failed for {}: {}",
-                                    mob.name, e
-                                );
+                            if let Err(e) =
+                                crate::ticks::combat::process_mobile_death(&db, &connections, &mut mob, &room_id)
+                            {
+                                error!("Sun-death cleanup failed for {}: {}", mob.name, e);
                             }
                         }
                     }

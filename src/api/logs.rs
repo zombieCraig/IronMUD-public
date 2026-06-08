@@ -1,10 +1,9 @@
 //! API for retrieving server logs
 
 use axum::{
+    Extension, Json, Router,
     extract::{Query, State},
     routing::get,
-    Json, Router,
-    Extension,
 };
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -14,8 +13,7 @@ use crate::session::broadcast::get_builder_debug_lines;
 
 /// Routes for log retrieval
 pub fn routes() -> Router<Arc<ApiState>> {
-    Router::new()
-        .route("/builder-debug", get(get_builder_debug))
+    Router::new().route("/builder-debug", get(get_builder_debug))
 }
 
 #[derive(Deserialize)]
@@ -41,13 +39,13 @@ async fn get_builder_debug(
     if !user.api_key.permissions.read {
         return Err(ApiError::Unauthorized);
     }
-    
+
     // For now, let's allow anyone with a valid API key that has read permissions.
     // In a real MUD, we might want to check if the owner_character is a builder/admin.
-    
+
     let limit = query.limit.unwrap_or(50).min(100);
     let lines = get_builder_debug_lines(limit);
-    
+
     Ok(Json(LogResponse {
         success: true,
         data: lines,

@@ -103,7 +103,11 @@ pub(super) fn complete_medit(
             && words[3].to_lowercase() == "dg"
             && words[4].to_lowercase() == "proto" =>
         {
-            filter_static(TRIGGER_DG_PROTO_SUBCOMMANDS, &partial, CompletionType::TriggerDgProtoSubcommand)
+            filter_static(
+                TRIGGER_DG_PROTO_SUBCOMMANDS,
+                &partial,
+                CompletionType::TriggerDgProtoSubcommand,
+            )
         }
         // medit <vnum> trigger dg proto retype <vnum> <partial_type>
         // (one past the proto vnum slot; vnums aren't statically enumerable)
@@ -238,15 +242,11 @@ pub(super) fn complete_medit(
             filter_static(DAMAGE_TYPES, &partial, CompletionType::DamageType)
         }
         // medit <vnum> creature - show all creature types
-        3 if !completing_word
-            && (words[2].to_lowercase() == "creature" || words[2].to_lowercase() == "biology") =>
-        {
+        3 if !completing_word && (words[2].to_lowercase() == "creature" || words[2].to_lowercase() == "biology") => {
             all_static(CREATURE_TYPES, CompletionType::CreatureType)
         }
         // medit <vnum> creature <partial_type> - complete creature type
-        4 if completing_word
-            && (words[2].to_lowercase() == "creature" || words[2].to_lowercase() == "biology") =>
-        {
+        4 if completing_word && (words[2].to_lowercase() == "creature" || words[2].to_lowercase() == "biology") => {
             filter_static(CREATURE_TYPES, &partial, CompletionType::CreatureType)
         }
         // medit <vnum> simulation - show all simulation subcommands
@@ -280,9 +280,7 @@ pub(super) fn complete_medit(
             all_static(COMBAT_SPELLS_ACTIONS, CompletionType::CombatSpellsAction)
         }
         // medit <vnum> combat_spells <partial_action>
-        4 if completing_word
-            && (words[2].to_lowercase() == "combat_spells" || words[2].to_lowercase() == "spells") =>
-        {
+        4 if completing_word && (words[2].to_lowercase() == "combat_spells" || words[2].to_lowercase() == "spells") => {
             filter_static(COMBAT_SPELLS_ACTIONS, &partial, CompletionType::CombatSpellsAction)
         }
         // medit <vnum> combat_spells add | remove - show all spell names

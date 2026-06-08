@@ -320,17 +320,12 @@ fn parse_duration_to_expires_at(tok: &str, now: i64) -> Result<Option<i64>> {
 
 fn handle_site_ban_command(db: &Db, action: SiteBanAction) -> Result<()> {
     match action {
-        SiteBanAction::Add {
-            ip,
-            reason,
-            duration,
-        } => {
+        SiteBanAction::Add { ip, reason, duration } => {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0);
-            let expires_at =
-                parse_duration_to_expires_at(duration.as_deref().unwrap_or(""), now)?;
+            let expires_at = parse_duration_to_expires_at(duration.as_deref().unwrap_or(""), now)?;
             let reason_text = reason
                 .as_deref()
                 .map(str::trim)
@@ -354,10 +349,7 @@ fn handle_site_ban_command(db: &Db, action: SiteBanAction) -> Result<()> {
                     "Site ban added for {} until unix {}. Reason: {}",
                     normalized, t, reason_text
                 ),
-                None => println!(
-                    "Site ban added for {} (permanent). Reason: {}",
-                    normalized, reason_text
-                ),
+                None => println!("Site ban added for {} (permanent). Reason: {}", normalized, reason_text),
             }
         }
         SiteBanAction::Remove { ip } => {
@@ -879,10 +871,7 @@ fn handle_account_command(db: &Db, action: AccountAction) -> Result<()> {
                 println!("No accounts.");
                 return Ok(());
             }
-            println!(
-                "{:<24} {:<8} {:<8} {}",
-                "NAME", "CHARS", "BANNED", "CHARACTERS"
-            );
+            println!("{:<24} {:<8} {:<8} {}", "NAME", "CHARS", "BANNED", "CHARACTERS");
             for a in accounts {
                 let banned = if a.is_banned { "yes" } else { "no" };
                 println!(
@@ -911,10 +900,7 @@ fn handle_account_command(db: &Db, action: AccountAction) -> Result<()> {
                 }
             }
             println!("Email:         {}", a.email.as_deref().unwrap_or("(none)"));
-            println!(
-                "Normalized:    {}",
-                a.normalized_email.as_deref().unwrap_or("(none)")
-            );
+            println!("Normalized:    {}", a.normalized_email.as_deref().unwrap_or("(none)"));
             println!("Email verified: {}", a.email_verified);
             if a.email_verification_code.is_some() {
                 println!(
@@ -969,11 +955,7 @@ fn handle_account_command(db: &Db, action: AccountAction) -> Result<()> {
                 println!("  - {}", n);
             }
         }
-        AccountAction::Ban {
-            name,
-            reason,
-            duration,
-        } => {
+        AccountAction::Ban { name, reason, duration } => {
             let mut a = db
                 .get_account(&name)?
                 .context(format!("Account '{}' not found", name))?;
@@ -981,8 +963,7 @@ fn handle_account_command(db: &Db, action: AccountAction) -> Result<()> {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or(0);
-            let expires_at =
-                parse_duration_to_expires_at(duration.as_deref().unwrap_or(""), now)?;
+            let expires_at = parse_duration_to_expires_at(duration.as_deref().unwrap_or(""), now)?;
             let reason_text = reason
                 .as_deref()
                 .map(str::trim)
@@ -998,14 +979,8 @@ fn handle_account_command(db: &Db, action: AccountAction) -> Result<()> {
             });
             db.save_account(a)?;
             match expires_at {
-                Some(t) => println!(
-                    "Account '{}' suspended until unix {}. Reason: {}",
-                    name, t, reason_text
-                ),
-                None => println!(
-                    "Account '{}' suspended permanently. Reason: {}",
-                    name, reason_text
-                ),
+                Some(t) => println!("Account '{}' suspended until unix {}. Reason: {}", name, t, reason_text),
+                None => println!("Account '{}' suspended permanently. Reason: {}", name, reason_text),
             }
         }
         AccountAction::Unban { name } => {
@@ -1027,8 +1002,7 @@ fn handle_account_command(db: &Db, action: AccountAction) -> Result<()> {
                 .unwrap_or(0);
             let since = now - 30 * 24 * 3600;
             let mut hits: Vec<(String, bool, &'static str, String)> = Vec::new();
-            let mut seen: std::collections::HashSet<uuid::Uuid> =
-                std::collections::HashSet::new();
+            let mut seen: std::collections::HashSet<uuid::Uuid> = std::collections::HashSet::new();
             seen.insert(subject.id);
             for ip in [&subject.creation_ip, &subject.last_login_ip] {
                 if ip.is_empty() {
@@ -1114,7 +1088,10 @@ fn handle_account_command(db: &Db, action: AccountAction) -> Result<()> {
                 .context(format!("Account '{}' not found", name))?;
             a.email_verified = false;
             db.save_account(a)?;
-            println!("Account '{}' marked as unverified. Will need to re-verify on next login if email_verification_required is set.", name);
+            println!(
+                "Account '{}' marked as unverified. Will need to re-verify on next login if email_verification_required is set.",
+                name
+            );
         }
         AccountAction::SetEmail { name, email } => {
             let mut a = db
@@ -1140,7 +1117,10 @@ fn handle_account_command(db: &Db, action: AccountAction) -> Result<()> {
                 .context(format!("Account '{}' not found", name))?;
             let to = match a.email.clone() {
                 Some(e) if !e.trim().is_empty() => e,
-                _ => anyhow::bail!("Account '{}' has no email on file. Use `account set-email` first.", name),
+                _ => anyhow::bail!(
+                    "Account '{}' has no email on file. Use `account set-email` first.",
+                    name
+                ),
             };
             let code = ironmud::email::generate_code();
             let now = std::time::SystemTime::now()

@@ -52,11 +52,11 @@ mod tests {
     #[test]
     fn invalid_keys() {
         assert!(!is_valid_custom_skill_key(""));
-        assert!(!is_valid_custom_skill_key("a"));                  // too short
-        assert!(!is_valid_custom_skill_key("1abc"));               // starts with digit
-        assert!(!is_valid_custom_skill_key("Dancing"));            // uppercase
-        assert!(!is_valid_custom_skill_key("dance queen"));        // space
-        assert!(!is_valid_custom_skill_key("dance!"));             // punct
-        assert!(!is_valid_custom_skill_key(&"a".repeat(33)));      // too long
+        assert!(!is_valid_custom_skill_key("a")); // too short
+        assert!(!is_valid_custom_skill_key("1abc")); // starts with digit
+        assert!(!is_valid_custom_skill_key("Dancing")); // uppercase
+        assert!(!is_valid_custom_skill_key("dance queen")); // space
+        assert!(!is_valid_custom_skill_key("dance!")); // punct
+        assert!(!is_valid_custom_skill_key(&"a".repeat(33))); // too long
     }
 }

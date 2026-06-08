@@ -125,28 +125,28 @@ pub const MOB_FLAG_NAMES: &[&str] = &[
 /// permanent buffs/debuffs that don't translate cleanly to IronMUD, so
 /// the default mapping warns on each.
 pub const AFF_FLAG_NAMES: &[&str] = &[
-    "BLIND",         // 0
-    "INVISIBLE",     // 1
-    "DETECT_ALIGN",  // 2
-    "DETECT_INVIS",  // 3
-    "DETECT_MAGIC",  // 4
-    "SENSE_LIFE",    // 5
-    "WATERWALK",     // 6
-    "SANCTUARY",     // 7
-    "GROUP",         // 8  transient runtime flag
-    "CURSE",         // 9
-    "INFRAVISION",   // 10
-    "POISON",        // 11
-    "PROTECT_EVIL",  // 12
-    "PROTECT_GOOD",  // 13
-    "SLEEP",         // 14
-    "NOTRACK",       // 15
-    "UNUSED16",      // 16
-    "UNUSED17",      // 17
-    "SNEAK",         // 18
-    "HIDE",          // 19
-    "UNUSED20",      // 20
-    "CHARM",         // 21
+    "BLIND",        // 0
+    "INVISIBLE",    // 1
+    "DETECT_ALIGN", // 2
+    "DETECT_INVIS", // 3
+    "DETECT_MAGIC", // 4
+    "SENSE_LIFE",   // 5
+    "WATERWALK",    // 6
+    "SANCTUARY",    // 7
+    "GROUP",        // 8  transient runtime flag
+    "CURSE",        // 9
+    "INFRAVISION",  // 10
+    "POISON",       // 11
+    "PROTECT_EVIL", // 12
+    "PROTECT_GOOD", // 13
+    "SLEEP",        // 14
+    "NOTRACK",      // 15
+    "UNUSED16",     // 16
+    "UNUSED17",     // 17
+    "SNEAK",        // 18
+    "HIDE",         // 19
+    "UNUSED20",     // 20
+    "CHARM",        // 21
 ];
 
 pub fn decode_mob_flags(bits: u64) -> (Vec<&'static str>, Vec<String>) {

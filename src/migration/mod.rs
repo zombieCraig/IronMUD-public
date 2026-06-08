@@ -416,12 +416,7 @@ pub fn build_migrant<R: Rng>(
     let keywords: Vec<String> = full_name.split_whitespace().map(|s| s.to_lowercase()).collect();
 
     // Short desc: "Akio Tanaka is here, a young adult man."
-    let short_desc = format!(
-        "{} is here, a {} {}.",
-        full_name,
-        chars.age_label,
-        gender_noun(gender)
-    );
+    let short_desc = format!("{} is here, a {} {}.", full_name, chars.age_label, gender_noun(gender));
 
     // Simulation: inherit area defaults if set, override home_room_vnum.
     // Fall back to the immigration arrival room as an implicit "workplace" so

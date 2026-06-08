@@ -106,7 +106,10 @@ impl<'a> ObjParser<'a> {
         let header = self
             .inner
             .consume_line()
-            .ok_or_else(|| self.inner.err(&format!("obj #{vnum}: expected type/flags line, got EOF")))?
+            .ok_or_else(|| {
+                self.inner
+                    .err(&format!("obj #{vnum}: expected type/flags line, got EOF"))
+            })?
             .trim()
             .to_string();
         let mut t = header.split_whitespace();
@@ -119,9 +122,10 @@ impl<'a> ObjParser<'a> {
         let wear_token = t
             .next()
             .ok_or_else(|| self.inner.err(&format!("obj #{vnum}: missing wear_flags")))?;
-        let item_type: i32 = type_token
-            .parse()
-            .map_err(|_| self.inner.err(&format!("obj #{vnum}: non-numeric item_type {type_token:?}")))?;
+        let item_type: i32 = type_token.parse().map_err(|_| {
+            self.inner
+                .err(&format!("obj #{vnum}: non-numeric item_type {type_token:?}"))
+        })?;
         let extra_flag_bits = parse_bitvector(extra_token);
         let wear_flag_bits = parse_bitvector(wear_token);
 
@@ -142,7 +146,10 @@ impl<'a> ObjParser<'a> {
         let stats_line = self
             .inner
             .consume_line()
-            .ok_or_else(|| self.inner.err(&format!("obj #{vnum}: expected weight/cost/rent line, got EOF")))?
+            .ok_or_else(|| {
+                self.inner
+                    .err(&format!("obj #{vnum}: expected weight/cost/rent line, got EOF"))
+            })?
             .trim()
             .to_string();
         let mut t = stats_line.split_whitespace();
@@ -182,7 +189,10 @@ impl<'a> ObjParser<'a> {
                 let pair_line = self
                     .inner
                     .consume_line()
-                    .ok_or_else(|| self.inner.err(&format!("obj #{vnum}: A block missing location/modifier")))?
+                    .ok_or_else(|| {
+                        self.inner
+                            .err(&format!("obj #{vnum}: A block missing location/modifier"))
+                    })?
                     .trim()
                     .to_string();
                 let mut p = pair_line.split_whitespace();
@@ -194,9 +204,9 @@ impl<'a> ObjParser<'a> {
             // Stock Circle's parse_object accepts only E/A here, but some
             // patches add more letters. Surface as a hard error so we don't
             // silently misalign and corrupt subsequent records.
-            return Err(self
-                .inner
-                .err(&format!("obj #{vnum}: expected 'E', 'A', '#vnum', or '$' — got {trimmed:?}")));
+            return Err(self.inner.err(&format!(
+                "obj #{vnum}: expected 'E', 'A', '#vnum', or '$' — got {trimmed:?}"
+            )));
         }
 
         Ok(IrItem {

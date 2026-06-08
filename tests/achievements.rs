@@ -191,13 +191,7 @@ fn test_skill_event_unlocks_threshold() {
 
         let (state, connections) = build_state(
             db.clone(),
-            vec![make_def_skill(
-                "skilled_cook",
-                "Skilled Cook",
-                "cooking",
-                5,
-                "the Cook",
-            )],
+            vec![make_def_skill("skilled_cook", "Skilled Cook", "cooking", 5, "the Cook")],
         );
 
         // Below threshold: no unlock.
@@ -235,7 +229,13 @@ fn test_admin_toggle_disables_notify() {
 
         let (state, connections) = build_state(
             db.clone(),
-            vec![make_def_counter("first_blood", "First Blood", "kills.any", 1, "the Bloodied")],
+            vec![make_def_counter(
+                "first_blood",
+                "First Blood",
+                "kills.any",
+                1,
+                "the Bloodied",
+            )],
         );
 
         let new_v = script::achievements::notify_counter_core(&db, &connections, &state, "npc", "kills.any", 1);
@@ -302,22 +302,12 @@ fn test_manual_award_only_for_manual_criterion() {
 /// Builder-path setup: empty achievement map + engine wired up the same way
 /// the live server does, so we can call `create_achievement` / setters /
 /// `delete_achievement` and inspect what landed in the world map.
-fn setup_builder_engine() -> (
-    Engine,
-    SharedState,
-    SharedConnections,
-    tempfile::TempDir,
-) {
+fn setup_builder_engine() -> (Engine, SharedState, SharedConnections, tempfile::TempDir) {
     let temp = tempfile::tempdir().expect("temp dir");
     let db = Db::open(temp.path()).expect("open db");
     let (state, connections) = build_state(db.clone(), vec![]);
     let mut engine = Engine::new();
-    script::achievements::register(
-        &mut engine,
-        Arc::new(db),
-        connections.clone(),
-        state.clone(),
-    );
+    script::achievements::register(&mut engine, Arc::new(db), connections.clone(), state.clone());
     (engine, state, connections, temp)
 }
 
@@ -348,9 +338,7 @@ fn get_achievement_def_finds_builder_authored_entry() {
         .eval::<String>(r#"create_achievement("looker", "The Looker", "bob")"#)
         .expect("create");
     // Pre-fix this returned () because world.achievement_definitions was stale.
-    let looked_up: rhai::Dynamic = engine
-        .eval(r#"get_achievement_def("looker")"#)
-        .expect("get_def");
+    let looked_up: rhai::Dynamic = engine.eval(r#"get_achievement_def("looker")"#).expect("get_def");
     assert!(
         !looked_up.is_unit(),
         "get_achievement_def returned () for a freshly created entry"
@@ -418,9 +406,7 @@ fn delete_achievement_removes_from_world_and_index() {
         .eval::<String>(r#"set_achievement_criterion_counter("removable", "ctr", 1)"#)
         .expect("counter");
 
-    let ok: bool = engine
-        .eval(r#"delete_achievement("removable")"#)
-        .expect("delete");
+    let ok: bool = engine.eval(r#"delete_achievement("removable")"#).expect("delete");
     assert!(ok);
 
     let world = state.lock().unwrap();
@@ -428,9 +414,7 @@ fn delete_achievement_removes_from_world_and_index() {
     // Counter index must drop the now-orphaned bucket entry.
     let bucket = world.achievement_index_by_counter.get("ctr");
     assert!(
-        bucket
-            .map(|v| !v.iter().any(|k| k == "removable"))
-            .unwrap_or(true),
+        bucket.map(|v| !v.iter().any(|k| k == "removable")).unwrap_or(true),
         "deleted achievement still listed in counter index"
     );
 }

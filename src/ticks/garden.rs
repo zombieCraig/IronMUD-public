@@ -102,10 +102,7 @@ fn process_garden(db: &db::Db, connections: &SharedConnections) -> Result<()> {
             .as_ref()
             .map(|r| !r.flags.indoors && !r.flags.climate_controlled)
             .unwrap_or(false);
-        let climate = plant_room
-            .as_ref()
-            .map(|r| db.room_climate(r))
-            .unwrap_or_default();
+        let climate = plant_room.as_ref().map(|r| db.room_climate(r)).unwrap_or_default();
         let local_weather = game_time.weather_for_climate(climate);
         let local_temp = game_time.effective_temperature_for_climate(climate);
         let temp_cat = match local_temp {

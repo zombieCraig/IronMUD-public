@@ -90,17 +90,25 @@ pub enum DialogueCondition {
         value: String,
     },
     /// True when the player has the named quest in their `active_quests` map.
-    QuestActive { vnum: String },
+    QuestActive {
+        vnum: String,
+    },
     /// True when the named quest is in `completed_quests`.
-    QuestComplete { vnum: String },
+    QuestComplete {
+        vnum: String,
+    },
     /// True when the named quest is active AND every objective is satisfied
     /// (used to gate the "ready to turn in" dialogue branch).
-    QuestCompletable { vnum: String },
+    QuestCompletable {
+        vnum: String,
+    },
     /// True when the speaker is a vampire AND humanity >= threshold.
     /// Mortals fail unconditionally — there's no humanity to compare. Use
     /// for NPC reactions that should only fire for kindred above (or below,
     /// via FlagUnset gating) a certain moral standing.
-    HumanityAtLeast { threshold: i32 },
+    HumanityAtLeast {
+        threshold: i32,
+    },
     /// True when the speaker is an embraced vampire who has not yet been
     /// acknowledged by a clan (no `clan_*` trait). The classic newly-sired
     /// state — sire NPCs gate offered embrace quests on this. False for
@@ -115,7 +123,9 @@ pub enum DialogueCondition {
     /// `QuestReward::Achievement` writes to. Lets dialogue trees gate on
     /// long-term progression milestones (e.g. "met all sires") that survive
     /// quest cleanup and clan respec.
-    HasAchievement { key: String },
+    HasAchievement {
+        key: String,
+    },
     /// True when the player's `ActiveQuest.choice_vars[key]` for `quest_vnum`
     /// equals `value`. Lets dialogue branches confirm or inspect a prior
     /// choice the player made earlier in the same tree (e.g. "Casey nods —
@@ -175,12 +185,18 @@ pub enum DialogueEffect {
     },
     /// Add the quest to the player's `active_quests` if not already active and
     /// not completed (or quest is repeatable).
-    OfferQuest { vnum: String },
+    OfferQuest {
+        vnum: String,
+    },
     /// Try to complete the quest and grant rewards. No-op (with a feedback
     /// line) if objectives aren't met yet.
-    CompleteQuest { vnum: String },
+    CompleteQuest {
+        vnum: String,
+    },
     /// Drop the quest from `active_quests` (progress lost).
-    AbandonQuest { vnum: String },
+    AbandonQuest {
+        vnum: String,
+    },
     /// Write a value to the player's `ActiveQuest.choice_vars` map for the
     /// named quest. No-op (with a warn-log) if the quest isn't active —
     /// dialogue trees should `OfferQuest` first, then `SetQuestChoice`.

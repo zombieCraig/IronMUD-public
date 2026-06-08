@@ -127,12 +127,7 @@ impl SocialRegistry {
         let key = arc.lookup_key();
         // Track canonical-list membership by name so reloads don't bloat
         // the Vec when the same JSON is read twice.
-        if self
-            .canonical
-            .iter()
-            .position(|a| a.lookup_key() == key)
-            .is_none()
-        {
+        if self.canonical.iter().position(|a| a.lookup_key() == key).is_none() {
             self.canonical.push(arc.clone());
         }
         self.by_name.insert(key.clone(), arc.clone());
@@ -309,9 +304,7 @@ pub fn dispatch_player_social(
     // Snapshot actor state from connections.
     let actor_snapshot = {
         let conns = connections.lock().unwrap();
-        conns
-            .get(&connection_id)
-            .and_then(|s| s.character.as_ref().cloned())
+        conns.get(&connection_id).and_then(|s| s.character.as_ref().cloned())
     };
     let Some(actor) = actor_snapshot else {
         // Logged-out caller — the lib.rs access check should have
@@ -330,10 +323,7 @@ pub fn dispatch_player_social(
     // Position gate.
     let actor_pos = SocialPosition::from_character(actor.position);
     if !SocialPosition::permits(social.min_char_position, actor_pos) {
-        let msg = format!(
-            "You're too {} to do that.\n",
-            actor_pos.to_display_string()
-        );
+        let msg = format!("You're too {} to do that.\n", actor_pos.to_display_string());
         send_to(connections, connection_id, &msg);
         return DispatchOutcome::Handled;
     }
@@ -361,10 +351,7 @@ pub fn dispatch_player_social(
     // drives the body-part variants ("$t"), e.g. `pat bob head`.
     let mut arg_parts = trimmed.splitn(2, char::is_whitespace);
     let target_kw = arg_parts.next().unwrap_or("").trim();
-    let body_part = arg_parts
-        .next()
-        .map(sanitize_body_part)
-        .filter(|s| !s.is_empty());
+    let body_part = arg_parts.next().map(sanitize_body_part).filter(|s| !s.is_empty());
 
     // Find a target — try players in room first (case-insensitive name
     // prefix), then mobiles by keyword.
@@ -374,11 +361,7 @@ pub fn dispatch_player_social(
             // Victim position gate.
             let vict_pos = SocialPosition::from_character(t.position);
             if !SocialPosition::permits(social.min_victim_position, vict_pos) {
-                let msg = format!(
-                    "{} is too {} for that.\n",
-                    t.name,
-                    vict_pos.to_display_string()
-                );
+                let msg = format!("{} is too {} for that.\n", t.name, vict_pos.to_display_string());
                 send_to(connections, connection_id, &msg);
                 return DispatchOutcome::Handled;
             }
@@ -387,7 +370,15 @@ pub fn dispatch_player_social(
                 gender: render::parse_gender(&t.gender),
             };
             if let (Some(bp), true) = (&body_part, social_has_body_variant(&social)) {
-                emit_body(connections, &social, &actor, &actor_party, &vict_party, Some(&t.name), bp);
+                emit_body(
+                    connections,
+                    &social,
+                    &actor,
+                    &actor_party,
+                    &vict_party,
+                    Some(&t.name),
+                    bp,
+                );
             } else {
                 emit_found(connections, &social, &actor, &actor_party, &vict_party, Some(&t.name));
             }
@@ -484,11 +475,7 @@ fn resolve_target(
                     .iter()
                     .any(|k| k.to_ascii_lowercase().starts_with(&keyword_l));
             if name_match {
-                let gender = m
-                    .characteristics
-                    .as_ref()
-                    .map(|c| c.gender.clone())
-                    .unwrap_or_default();
+                let gender = m.characteristics.as_ref().map(|c| c.gender.clone()).unwrap_or_default();
                 return Some(Target::Mobile {
                     name: m.short_desc.clone(),
                     gender,
@@ -593,7 +580,13 @@ fn emit_body(
             return;
         }
         let line = render::render(t, actor_party, Some(vict_party), None, Some(body_part));
-        broadcast_excluding_two(connections, actor.current_room_id, &line, &actor.name, victim_player_name);
+        broadcast_excluding_two(
+            connections,
+            actor.current_room_id,
+            &line,
+            &actor.name,
+            victim_player_name,
+        );
     }
 }
 
@@ -606,7 +599,9 @@ fn emit_object(
     actor_party: &RenderParty<'_>,
     object_short_desc: &str,
 ) {
-    let object = RenderObject { short_desc: object_short_desc };
+    let object = RenderObject {
+        short_desc: object_short_desc,
+    };
     if let Some(t) = &social.object_char_found {
         let line = render::render(t, actor_party, None, Some(&object), None);
         send_to_actor(connections, actor, &line);
@@ -638,7 +633,9 @@ fn resolve_object(
         world.db.clone()
     };
     let matches = |item: &crate::types::ItemData| -> bool {
-        item.keywords.iter().any(|k| k.to_ascii_lowercase().starts_with(&keyword_l))
+        item.keywords
+            .iter()
+            .any(|k| k.to_ascii_lowercase().starts_with(&keyword_l))
             || item.short_desc.to_ascii_lowercase().contains(&keyword_l)
     };
     if let Ok(items) = db.get_items_in_inventory(&actor.name) {
@@ -715,10 +712,7 @@ fn broadcast_excluding_two(
                     continue;
                 }
             }
-            if matches!(
-                ch.position,
-                crate::types::CharacterPosition::Sleeping
-            ) {
+            if matches!(ch.position, crate::types::CharacterPosition::Sleeping) {
                 continue;
             }
             let rendered = render::apply_tba_color_codes(msg, sess.colors_enabled);
@@ -729,12 +723,7 @@ fn broadcast_excluding_two(
 
 /// Per-recipient awake-only room broadcast that translates tba color
 /// codes for each listener. Used by `emit_no_arg` and `emit_self`.
-fn broadcast_awake_with_color(
-    connections: &SharedConnections,
-    room_id: Uuid,
-    msg: &str,
-    exclude_name: &str,
-) {
+fn broadcast_awake_with_color(connections: &SharedConnections, room_id: Uuid, msg: &str, exclude_name: &str) {
     let conns = connections.lock().unwrap();
     for (_, sess) in conns.iter() {
         if let Some(ch) = &sess.character {
@@ -744,10 +733,7 @@ fn broadcast_awake_with_color(
             if ch.name == exclude_name {
                 continue;
             }
-            if matches!(
-                ch.position,
-                crate::types::CharacterPosition::Sleeping
-            ) {
+            if matches!(ch.position, crate::types::CharacterPosition::Sleeping) {
                 continue;
             }
             if ch.ignored.iter().any(|i| i == exclude_name) {
@@ -817,21 +803,13 @@ mod tests {
             return;
         }
         let reg = SocialRegistry::load_path(path);
-        assert!(
-            reg.len() >= 100,
-            "expected at least 100 socials, got {}",
-            reg.len()
-        );
+        assert!(reg.len() >= 100, "expected at least 100 socials, got {}", reg.len());
         // A handful of well-known names should always be present.
         // tbamud uses plural forms like `nods` and `waves` (with `nod`
         // appearing as an abbrev of `nods`); the dispatcher resolves
         // either via the same lookup so we accept both shapes.
         for name in ["smile", "bow", "grin", "sigh"] {
-            assert!(
-                reg.get(name).is_some(),
-                "stock socials.json missing `{}`",
-                name
-            );
+            assert!(reg.get(name).is_some(), "stock socials.json missing `{}`", name);
         }
         // Verify abbrev lookup resolves the plural tbamud canonical
         // names: `nod` is the abbrev for `nods`.

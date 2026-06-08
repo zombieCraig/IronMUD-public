@@ -124,14 +124,15 @@ impl<'a> MobParser<'a> {
             .ok_or_else(|| self.inner.err(&format!("mob #{vnum}: missing FORMAT (S/E)")))?;
         let mob_flag_bits = parse_bitvector(mob_token);
         let aff_flag_bits = parse_bitvector(aff_token);
-        let alignment: i32 = align_token
-            .parse()
-            .map_err(|_| self.inner.err(&format!("mob #{vnum}: non-numeric alignment {align_token}")))?;
+        let alignment: i32 = align_token.parse().map_err(|_| {
+            self.inner
+                .err(&format!("mob #{vnum}: non-numeric alignment {align_token}"))
+        })?;
         let format = format_token.chars().next().unwrap_or('S').to_ascii_uppercase();
         if format != 'S' && format != 'E' {
-            return Err(self
-                .inner
-                .err(&format!("mob #{vnum}: unknown format {format_token:?} (expected S or E)")));
+            return Err(self.inner.err(&format!(
+                "mob #{vnum}: unknown format {format_token:?} (expected S or E)"
+            )));
         }
 
         // Stat line 1: LEVEL THAC0 AC HP_DICE DAMAGE_DICE

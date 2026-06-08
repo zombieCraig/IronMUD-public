@@ -154,7 +154,10 @@ pub fn compute_map_layout(db: &Db, origin: Uuid, radius: i32, visited: &HashSet<
     let mut cells: HashMap<(i32, i32), MapCell> = HashMap::new();
 
     let origin_coord = (0_i32, 0_i32);
-    cells.insert(origin_coord, build_cell(&origin_room, Visibility::Visited, true, &shop_rooms));
+    cells.insert(
+        origin_coord,
+        build_cell(&origin_room, Visibility::Visited, true, &shop_rooms),
+    );
 
     // BFS: only Visited cells expand. We record visibility before enqueueing.
     let mut queue: VecDeque<((i32, i32), Uuid)> = VecDeque::new();
@@ -263,12 +266,7 @@ fn cardinals(room: &crate::RoomData) -> Vec<(Direction, Uuid)> {
     out
 }
 
-fn build_cell(
-    room: &crate::RoomData,
-    visibility: Visibility,
-    is_origin: bool,
-    shop_rooms: &HashSet<Uuid>,
-) -> MapCell {
+fn build_cell(room: &crate::RoomData, visibility: Visibility, is_origin: bool, shop_rooms: &HashSet<Uuid>) -> MapCell {
     // Shop glyph only reveals on Visited cells; Glimpsed cells suppress all
     // flag glyphs per slice-1 contract.
     let has_shop = matches!(visibility, Visibility::Visited) && shop_rooms.contains(&room.id);
@@ -310,12 +308,7 @@ fn collect_shop_rooms(db: &Db) -> HashSet<Uuid> {
     out
 }
 
-pub fn render_map(
-    layout: &MapLayout,
-    show_legend: bool,
-    colors_enabled: bool,
-    ascii_only: bool,
-) -> String {
+pub fn render_map(layout: &MapLayout, show_legend: bool, colors_enabled: bool, ascii_only: bool) -> String {
     let r = layout.radius;
     let grid_n = (2 * r + 1) as usize;
     // Compact layout: each cell is 1 char wide and 1 row tall. Connectors
@@ -347,8 +340,7 @@ pub fn render_map(
                 if let Some(east) = layout.cells.get(&(cx + 1, cy)) {
                     let conn_col = col + 1;
                     if conn_col < total_w
-                        && (c.linked_dirs.contains(&Direction::E)
-                            || east.linked_dirs.contains(&Direction::W))
+                        && (c.linked_dirs.contains(&Direction::E) || east.linked_dirs.contains(&Direction::W))
                     {
                         let ch = if c.closed_door_dirs.contains(&Direction::E)
                             || east.closed_door_dirs.contains(&Direction::W)
@@ -363,8 +355,7 @@ pub fn render_map(
                 if let Some(south) = layout.cells.get(&(cx, cy + 1)) {
                     let conn_row = row + 1;
                     if conn_row < total_h
-                        && (c.linked_dirs.contains(&Direction::S)
-                            || south.linked_dirs.contains(&Direction::N))
+                        && (c.linked_dirs.contains(&Direction::S) || south.linked_dirs.contains(&Direction::N))
                     {
                         let ch = if c.closed_door_dirs.contains(&Direction::S)
                             || south.closed_door_dirs.contains(&Direction::N)
@@ -699,7 +690,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
                         Ok(g) => g,
                         Err(_) => return false,
                     };
-                    match conns.get(&conn_uuid).and_then(|s| s.character.as_ref().map(|c| c.name.clone())) {
+                    match conns
+                        .get(&conn_uuid)
+                        .and_then(|s| s.character.as_ref().map(|c| c.name.clone()))
+                    {
                         Some(n) => n,
                         None => return false,
                     }
@@ -758,7 +752,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
                         Ok(g) => g,
                         Err(_) => return false,
                     };
-                    match conns.get(&conn_uuid).and_then(|s| s.character.as_ref().map(|c| c.name.clone())) {
+                    match conns
+                        .get(&conn_uuid)
+                        .and_then(|s| s.character.as_ref().map(|c| c.name.clone()))
+                    {
                         Some(n) => n,
                         None => return false,
                     }
@@ -805,38 +802,38 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
     {
         let db = db.clone();
         let connections = _connections.clone();
-        engine.register_fn(
-            "set_ascii_map_for",
-            move |connection_id: String, value: bool| -> bool {
-                let conn_uuid = match Uuid::parse_str(&connection_id) {
-                    Ok(u) => u,
+        engine.register_fn("set_ascii_map_for", move |connection_id: String, value: bool| -> bool {
+            let conn_uuid = match Uuid::parse_str(&connection_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let player_name = {
+                let conns = match connections.lock() {
+                    Ok(g) => g,
                     Err(_) => return false,
                 };
-                let player_name = {
-                    let conns = match connections.lock() {
-                        Ok(g) => g,
-                        Err(_) => return false,
-                    };
-                    match conns.get(&conn_uuid).and_then(|s| s.character.as_ref().map(|c| c.name.clone())) {
-                        Some(n) => n,
-                        None => return false,
-                    }
-                };
-                let mut ch = match db.get_character_data(&player_name) {
-                    Ok(Some(c)) => c,
-                    _ => return false,
-                };
-                ch.ascii_map = value;
-                if db.save_character_data(ch.clone()).is_err() {
-                    return false;
+                match conns
+                    .get(&conn_uuid)
+                    .and_then(|s| s.character.as_ref().map(|c| c.name.clone()))
+                {
+                    Some(n) => n,
+                    None => return false,
                 }
-                if let Ok(mut conns) = connections.lock() {
-                    if let Some(session) = conns.get_mut(&conn_uuid) {
-                        session.character = Some(ch);
-                    }
+            };
+            let mut ch = match db.get_character_data(&player_name) {
+                Ok(Some(c)) => c,
+                _ => return false,
+            };
+            ch.ascii_map = value;
+            if db.save_character_data(ch.clone()).is_err() {
+                return false;
+            }
+            if let Ok(mut conns) = connections.lock() {
+                if let Some(session) = conns.get_mut(&conn_uuid) {
+                    session.character = Some(ch);
                 }
-                true
-            },
-        );
+            }
+            true
+        });
     }
 }

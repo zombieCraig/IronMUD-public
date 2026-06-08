@@ -129,7 +129,11 @@ pub(super) fn complete_redit(words: &[&str], completing_word: bool) -> Completio
             && words[2].to_lowercase() == "dg"
             && words[3].to_lowercase() == "proto" =>
         {
-            filter_static(TRIGGER_DG_PROTO_SUBCOMMANDS, &partial, CompletionType::TriggerDgProtoSubcommand)
+            filter_static(
+                TRIGGER_DG_PROTO_SUBCOMMANDS,
+                &partial,
+                CompletionType::TriggerDgProtoSubcommand,
+            )
         }
         // redit trigger dg proto retype <vnum> <partial_type>
         7 if completing_word

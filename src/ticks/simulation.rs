@@ -1345,20 +1345,9 @@ fn emit_ambient_emotes(
         .and_then(|s| s.bereaved_until_day)
         .map(|d| d > current_game_day)
         .unwrap_or(false);
-    let gender = mobile
-        .characteristics
-        .as_ref()
-        .map(|c| c.gender.as_str())
-        .unwrap_or("");
-    let emote = pick_emote_from_socials(
-        &mobile.short_desc,
-        gender,
-        needs,
-        mood,
-        is_bereaved,
-        &mut rng,
-    )
-    .or_else(|| pick_emote(&mobile.name, needs, mood, is_bereaved, &mut rng));
+    let gender = mobile.characteristics.as_ref().map(|c| c.gender.as_str()).unwrap_or("");
+    let emote = pick_emote_from_socials(&mobile.short_desc, gender, needs, mood, is_bereaved, &mut rng)
+        .or_else(|| pick_emote(&mobile.name, needs, mood, is_bereaved, &mut rng));
 
     if let Some(msg) = emote {
         broadcast_to_room_awake(connections, &room_id, &msg);

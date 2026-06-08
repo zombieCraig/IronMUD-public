@@ -25,12 +25,7 @@ impl MailMessage {
         Self::with_attachments(sender, recipient, body, Vec::new())
     }
 
-    pub fn with_attachments(
-        sender: String,
-        recipient: String,
-        body: String,
-        attached_items: Vec<Uuid>,
-    ) -> Self {
+    pub fn with_attachments(sender: String, recipient: String, body: String, attached_items: Vec<Uuid>) -> Self {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs() as i64)

@@ -1,14 +1,10 @@
 use std::collections::HashMap;
 
 use crate::import::{
-    AttachType, IrDgTrigger,
-    IrZone, Plan, PlannedTriggerOverlay, Severity, SourceLoc,
-    TriggerMutation, Warning, WarningKind,
+    AttachType, IrDgTrigger, IrZone, Plan, PlannedTriggerOverlay, Severity, SourceLoc, TriggerMutation, Warning,
+    WarningKind,
 };
-use crate::types::{
-    ItemTrigger, MobileTrigger, RoomTrigger,
-};
-
+use crate::types::{ItemTrigger, MobileTrigger, RoomTrigger};
 
 /// Build (source-vnum → prefixed-vnum) indexes for the planned rooms /
 /// mobs / items. Used to resolve T-line trigger attachments to their

@@ -14,16 +14,17 @@ use super::{
     auth::{AuthenticatedUser, can_read, can_write},
     error::ApiError,
     notify_builders,
-    validate::{check_text_len, NAME_MAX},
+    validate::{NAME_MAX, check_text_len},
 };
-use crate::types::{
-    AchievementCategory, AchievementCriterion, AchievementDef, AchievementReward, AchievementSource,
-};
+use crate::types::{AchievementCategory, AchievementCriterion, AchievementDef, AchievementReward, AchievementSource};
 
 pub fn routes() -> Router<Arc<ApiState>> {
     Router::new()
         .route("/", get(list_achievements).post(create_achievement))
-        .route("/:key", get(get_achievement).put(update_achievement).delete(delete_achievement))
+        .route(
+            "/:key",
+            get(get_achievement).put(update_achievement).delete(delete_achievement),
+        )
 }
 
 #[derive(Serialize)]
@@ -55,7 +56,10 @@ async fn list_achievements(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    let db_defs = state.db.list_all_achievements().map_err(|e| ApiError::Internal(e.to_string()))?;
+    let db_defs = state
+        .db
+        .list_all_achievements()
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
     let mut data = Vec::new();
 
     for def in db_defs {
@@ -80,9 +84,19 @@ async fn get_achievement(
         return Err(ApiError::Forbidden("Read permission required".into()));
     }
 
-    match state.db.get_achievement(&key.to_lowercase()).map_err(|e| ApiError::Internal(e.to_string()))? {
-        Some(def) => Ok(Json(AchievementResponse { success: true, data: def })),
-        None => Err(ApiError::NotFound(format!("Achievement '{}' not found in database", key))),
+    match state
+        .db
+        .get_achievement(&key.to_lowercase())
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+    {
+        Some(def) => Ok(Json(AchievementResponse {
+            success: true,
+            data: def,
+        })),
+        None => Err(ApiError::NotFound(format!(
+            "Achievement '{}' not found in database",
+            key
+        ))),
     }
 }
 
@@ -108,7 +122,12 @@ async fn create_achievement(
     }
     check_text_len("name", &req.name, NAME_MAX)?;
 
-    if state.db.get_achievement(&key).map_err(|e| ApiError::Internal(e.to_string()))?.is_some() {
+    if state
+        .db
+        .get_achievement(&key)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+        .is_some()
+    {
         return Err(ApiError::Conflict(format!("Achievement '{}' already exists", key)));
     }
 
@@ -120,17 +139,28 @@ async fn create_achievement(
         criterion: AchievementCriterion::Manual,
         reward: AchievementReward::default(),
         hidden: false,
-        source: AchievementSource::Db { author: user.api_key.owner_character.clone() },
+        source: AchievementSource::Db {
+            author: user.api_key.owner_character.clone(),
+        },
     };
 
-    state.db.save_achievement(def.clone()).map_err(|e| ApiError::Internal(e.to_string()))?;
+    state
+        .db
+        .save_achievement(def.clone())
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
     // Mirror into the live world so the engine notify path (and player-facing
     // `achievements` list) sees it without a restart.
     crate::script::achievements::sync_world_after_save(&state.state, def.clone());
 
-    notify_builders(&state.connections, &format!("[API] {} created achievement '{}'", user.api_key.owner_character, key));
+    notify_builders(
+        &state.connections,
+        &format!("[API] {} created achievement '{}'", user.api_key.owner_character, key),
+    );
 
-    Ok(Json(AchievementResponse { success: true, data: def }))
+    Ok(Json(AchievementResponse {
+        success: true,
+        data: def,
+    }))
 }
 
 #[derive(Deserialize)]
@@ -154,7 +184,11 @@ async fn update_achievement(
     }
 
     let key = key.to_lowercase();
-    let mut def = match state.db.get_achievement(&key).map_err(|e| ApiError::Internal(e.to_string()))? {
+    let mut def = match state
+        .db
+        .get_achievement(&key)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+    {
         Some(d) => d,
         None => return Err(ApiError::NotFound(format!("Achievement '{}' not found", key))),
     };
@@ -179,14 +213,23 @@ async fn update_achievement(
         def.hidden = hidden;
     }
 
-    state.db.save_achievement(def.clone()).map_err(|e| ApiError::Internal(e.to_string()))?;
+    state
+        .db
+        .save_achievement(def.clone())
+        .map_err(|e| ApiError::Internal(e.to_string()))?;
     // Mirror the updated definition (criterion/counter index, hidden, etc.)
     // into the live world so the running engine picks it up immediately.
     crate::script::achievements::sync_world_after_save(&state.state, def.clone());
 
-    notify_builders(&state.connections, &format!("[API] {} updated achievement '{}'", user.api_key.owner_character, key));
+    notify_builders(
+        &state.connections,
+        &format!("[API] {} updated achievement '{}'", user.api_key.owner_character, key),
+    );
 
-    Ok(Json(AchievementResponse { success: true, data: def }))
+    Ok(Json(AchievementResponse {
+        success: true,
+        data: def,
+    }))
 }
 
 async fn delete_achievement(
@@ -199,9 +242,16 @@ async fn delete_achievement(
     }
 
     let key = key.to_lowercase();
-    if state.db.delete_achievement(&key).map_err(|e| ApiError::Internal(e.to_string()))? {
+    if state
+        .db
+        .delete_achievement(&key)
+        .map_err(|e| ApiError::Internal(e.to_string()))?
+    {
         crate::script::achievements::sync_world_after_delete(&state.state, &key);
-        notify_builders(&state.connections, &format!("[API] {} deleted achievement '{}'", user.api_key.owner_character, key));
+        notify_builders(
+            &state.connections,
+            &format!("[API] {} deleted achievement '{}'", user.api_key.owner_character, key),
+        );
         Ok(Json(serde_json::json!({ "success": true })))
     } else {
         Err(ApiError::NotFound(format!("Achievement '{}' not found", key)))

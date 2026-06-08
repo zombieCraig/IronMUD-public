@@ -78,10 +78,11 @@ where
             if i + vb.len() <= bytes.len() && &bytes[i..i + vb.len()] == vb {
                 let after = i + vb.len();
                 // Must be a non-ident char after.
-                let next_ok = after >= bytes.len() || !{
-                    let nb = bytes[after];
-                    nb.is_ascii_alphanumeric() || nb == b'_'
-                };
+                let next_ok = after >= bytes.len()
+                    || !{
+                        let nb = bytes[after];
+                        nb.is_ascii_alphanumeric() || nb == b'_'
+                    };
                 if next_ok {
                     matched = Some(*v);
                     break;
@@ -165,29 +166,32 @@ where
 /// (e.g. the `dts_are_dumps` `for` loop) don't match the pattern and are
 /// silently ignored.
 pub fn parse_spec_assign(path: &Path) -> Result<Vec<IrTrigger>> {
-    let text =
-        std::fs::read_to_string(path).with_context(|| format!("reading spec_assign {}", path.display()))?;
+    let text = std::fs::read_to_string(path).with_context(|| format!("reading spec_assign {}", path.display()))?;
     Ok(parse_spec_assign_str(&text, path))
 }
 
 pub fn parse_spec_assign_str(text: &str, path: &Path) -> Vec<IrTrigger> {
     let cleaned = strip_comments(text);
     let mut out = Vec::new();
-    scan_calls(&cleaned, &["ASSIGNMOB", "ASSIGNOBJ", "ASSIGNROOM"], |verb, vnum, name, line| {
-        let attach = match verb {
-            "ASSIGNMOB" => AttachType::Mob,
-            "ASSIGNOBJ" => AttachType::Obj,
-            "ASSIGNROOM" => AttachType::Room,
-            _ => unreachable!(),
-        };
-        out.push(IrTrigger {
-            source_vnum: vnum,
-            attach_type: attach,
-            specproc_name: name.to_lowercase(),
-            args: Vec::new(),
-            source: SourceLoc::file(path.to_path_buf()).with_line(line),
-        });
-    });
+    scan_calls(
+        &cleaned,
+        &["ASSIGNMOB", "ASSIGNOBJ", "ASSIGNROOM"],
+        |verb, vnum, name, line| {
+            let attach = match verb {
+                "ASSIGNMOB" => AttachType::Mob,
+                "ASSIGNOBJ" => AttachType::Obj,
+                "ASSIGNROOM" => AttachType::Room,
+                _ => unreachable!(),
+            };
+            out.push(IrTrigger {
+                source_vnum: vnum,
+                attach_type: attach,
+                specproc_name: name.to_lowercase(),
+                args: Vec::new(),
+                source: SourceLoc::file(path.to_path_buf()).with_line(line),
+            });
+        },
+    );
     out
 }
 
@@ -286,10 +290,11 @@ pub fn parse_puff_quotes_str(text: &str) -> Vec<String> {
     let mut i = 0;
     while i + 7 <= body_bytes.len() {
         if &body_bytes[i..i + 6] == b"do_say" {
-            let prev_ok = i == 0 || !{
-                let p = body_bytes[i - 1];
-                p.is_ascii_alphanumeric() || p == b'_'
-            };
+            let prev_ok = i == 0
+                || !{
+                    let p = body_bytes[i - 1];
+                    p.is_ascii_alphanumeric() || p == b'_'
+                };
             if prev_ok {
                 // Find the first `"` after `do_say(...`.
                 let mut j = i + 6;

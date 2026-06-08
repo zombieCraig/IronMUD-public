@@ -74,14 +74,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
             map.insert("xp_award".into(), rhai::Dynamic::from(spell.xp_award as i64));
             map.insert(
                 "requires_skill".into(),
-                rhai::Dynamic::from(
-                    spell.requires_skill.clone().unwrap_or_else(|| "magic".to_string()),
-                ),
+                rhai::Dynamic::from(spell.requires_skill.clone().unwrap_or_else(|| "magic".to_string())),
             );
-            map.insert(
-                "requires_vampire".into(),
-                rhai::Dynamic::from(spell.requires_vampire),
-            );
+            map.insert("requires_vampire".into(), rhai::Dynamic::from(spell.requires_vampire));
             let clans: Vec<rhai::Dynamic> = spell
                 .requires_clan
                 .iter()
@@ -135,10 +130,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
                 continue;
             }
             if !spell.requires_clan.is_empty() {
-                let has_clan = spell
-                    .requires_clan
-                    .iter()
-                    .any(|c| char.traits.iter().any(|t| t == c));
+                let has_clan = spell.requires_clan.iter().any(|c| char.traits.iter().any(|t| t == c));
                 if !has_clan {
                     continue;
                 }
@@ -349,19 +341,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
 
     // get_spell_level(char_name, spell_id) -> i64
     let cloned_db = db.clone();
-    engine.register_fn(
-        "get_spell_level",
-        move |char_name: String, spell_id: String| -> i64 {
-            match cloned_db.get_character_data(&char_name.to_lowercase()) {
-                Ok(Some(c)) => c
-                    .spell_progress
-                    .get(&spell_id)
-                    .map(|p| p.level as i64)
-                    .unwrap_or(0),
-                _ => 0,
-            }
-        },
-    );
+    engine.register_fn("get_spell_level", move |char_name: String, spell_id: String| -> i64 {
+        match cloned_db.get_character_data(&char_name.to_lowercase()) {
+            Ok(Some(c)) => c.spell_progress.get(&spell_id).map(|p| p.level as i64).unwrap_or(0),
+            _ => 0,
+        }
+    });
 
     // get_spell_experience(char_name, spell_id) -> i64
     let cloned_db = db.clone();
@@ -381,28 +366,22 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
 
     // get_all_spell_progress(char_name) -> Map of spell_id -> {level, experience, xp_to_level}
     let cloned_db = db.clone();
-    engine.register_fn(
-        "get_all_spell_progress",
-        move |char_name: String| -> rhai::Map {
-            let mut result = rhai::Map::new();
-            if let Ok(Some(c)) = cloned_db.get_character_data(&char_name.to_lowercase()) {
-                for (id, progress) in &c.spell_progress {
-                    let mut entry = rhai::Map::new();
-                    entry.insert("level".into(), rhai::Dynamic::from(progress.level as i64));
-                    entry.insert(
-                        "experience".into(),
-                        rhai::Dynamic::from(progress.experience as i64),
-                    );
-                    entry.insert(
-                        "xp_to_level".into(),
-                        rhai::Dynamic::from(crate::script::characters::xp_for_level(progress.level) as i64),
-                    );
-                    result.insert(id.clone().into(), rhai::Dynamic::from(entry));
-                }
+    engine.register_fn("get_all_spell_progress", move |char_name: String| -> rhai::Map {
+        let mut result = rhai::Map::new();
+        if let Ok(Some(c)) = cloned_db.get_character_data(&char_name.to_lowercase()) {
+            for (id, progress) in &c.spell_progress {
+                let mut entry = rhai::Map::new();
+                entry.insert("level".into(), rhai::Dynamic::from(progress.level as i64));
+                entry.insert("experience".into(), rhai::Dynamic::from(progress.experience as i64));
+                entry.insert(
+                    "xp_to_level".into(),
+                    rhai::Dynamic::from(crate::script::characters::xp_for_level(progress.level) as i64),
+                );
+                result.insert(id.clone().into(), rhai::Dynamic::from(entry));
             }
-            result
-        },
-    );
+        }
+        result
+    });
 
     // add_spell_experience(char_name, spell_id, amount) -> Map
     //   { leveled_up: bool, evolved: bool, new_spell_id: String, new_level: i64 }
@@ -473,11 +452,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
                 }
             }
 
-            let final_level = char
-                .spell_progress
-                .get(&spell_id)
-                .map(|p| p.level)
-                .unwrap_or(0);
+            let final_level = char.spell_progress.get(&spell_id).map(|p| p.level).unwrap_or(0);
 
             // Check evolution. Re-lookup the SpellDefinition each call so JSON
             // hot-reloads pick up new chains.
@@ -513,7 +488,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
                         char.spell_progress.remove(&spell_id);
                         char.spell_progress.insert(
                             new_id.clone(),
-                            crate::SpellProgress { level: 1, experience: 0 },
+                            crate::SpellProgress {
+                                level: 1,
+                                experience: 0,
+                            },
                         );
                         evolved_to = Some(new_id);
                     }

@@ -36,7 +36,13 @@ pub fn apply_on_hit_effects_to_mobile(
                 room_messages.push(format!("{}'s {} bleeds heavily!", mobile.name, body_part));
             }
             kind @ ("fire" | "poison" | "cold" | "acid" | "lightning") => {
-                push_or_extend_ongoing(&mut mobile.ongoing_effects, kind, eff.magnitude, eff.duration, body_part);
+                push_or_extend_ongoing(
+                    &mut mobile.ongoing_effects,
+                    kind,
+                    eff.magnitude,
+                    eff.duration,
+                    body_part,
+                );
                 room_messages.push(elemental_msg(kind, &mobile.name));
             }
             other => {
@@ -73,12 +79,24 @@ pub fn apply_on_hit_effects_to_character(
                 room_messages.push(format!("{}'s {} bleeds heavily!", character.name, body_part));
             }
             kind @ ("fire" | "poison" | "cold" | "acid" | "lightning") => {
-                push_or_extend_ongoing(&mut character.ongoing_effects, kind, eff.magnitude, eff.duration, body_part);
+                push_or_extend_ongoing(
+                    &mut character.ongoing_effects,
+                    kind,
+                    eff.magnitude,
+                    eff.duration,
+                    body_part,
+                );
                 room_messages.push(elemental_msg(kind, &character.name));
             }
             other => {
                 if let Some(et) = EffectType::from_str(other) {
-                    upsert_buff(&mut character.active_buffs, et, eff.magnitude, eff.duration, attacker_name);
+                    upsert_buff(
+                        &mut character.active_buffs,
+                        et,
+                        eff.magnitude,
+                        eff.duration,
+                        attacker_name,
+                    );
                     if let Some(msg) = buff_msg(et, &character.name) {
                         room_messages.push(msg);
                     }

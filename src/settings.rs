@@ -64,8 +64,5 @@ pub const KNOWN_SETTINGS: &[(&str, &str)] = &[
 
 /// Default value for a setting key, or `None` if the key is unknown.
 pub fn setting_default(key: &str) -> Option<&'static str> {
-    KNOWN_SETTINGS
-        .iter()
-        .find(|(k, _)| *k == key)
-        .map(|(_, v)| *v)
+    KNOWN_SETTINGS.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
 }

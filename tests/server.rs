@@ -1,13 +1,13 @@
 #![recursion_limit = "512"]
 
 use anyhow::Result;
-use tempfile;
-use ironmud::{World, load_command_metadata, load_game_data, load_scripts, run_server, script, watch_scripts};
 use ironmud::db::Db;
+use ironmud::{World, load_command_metadata, load_game_data, load_scripts, run_server, script, watch_scripts};
 use rhai::Engine;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
+use tempfile;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
@@ -1425,7 +1425,6 @@ fn test_seed_rooms_have_bidirectional_exits() {
         assert!(errors.is_empty(), "Non-bidirectional exits:\n  {}", errors.join("\n  "));
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -1661,8 +1660,7 @@ mod migration_tests {
 
     #[test]
     fn test_migration_spawns_when_room_available() {
-        let (db, _temp) = open_temp_db(
-"spawn");
+        let (db, _temp) = open_temp_db("spawn");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("mig_spawn");
             db.save_area_data(area.clone()).unwrap();
@@ -1706,8 +1704,7 @@ mod migration_tests {
 
     #[test]
     fn test_migration_skips_when_no_capacity() {
-        let (db, _temp) = open_temp_db(
-"nocap");
+        let (db, _temp) = open_temp_db("nocap");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("mig_nocap");
             db.save_area_data(area.clone()).unwrap();
@@ -1738,8 +1735,7 @@ mod migration_tests {
 
     #[test]
     fn test_migration_respects_max_per_check() {
-        let (db, _temp) = open_temp_db(
-"maxcheck");
+        let (db, _temp) = open_temp_db("maxcheck");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("mig_max");
             area.migration_max_per_check = 3;
@@ -1770,8 +1766,7 @@ mod migration_tests {
 
     #[test]
     fn test_migration_respects_interval() {
-        let (db, _temp) = open_temp_db(
-"interval");
+        let (db, _temp) = open_temp_db("interval");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("mig_interval");
             area.migration_interval_days = 5;
@@ -1819,8 +1814,7 @@ mod migration_tests {
 
     #[test]
     fn test_death_releases_residency() {
-        let (db, _temp) = open_temp_db(
-"death");
+        let (db, _temp) = open_temp_db("death");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("mig_death");
             db.save_area_data(area.clone()).unwrap();
@@ -1860,8 +1854,7 @@ mod migration_tests {
 
     #[test]
     fn test_guard_variation_never_when_chance_zero() {
-        let (db, _temp) = open_temp_db(
-"variation_zero");
+        let (db, _temp) = open_temp_db("variation_zero");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("mig_var0");
             // Default chances == zero — explicit for clarity.
@@ -1897,8 +1890,7 @@ mod migration_tests {
     #[test]
     fn test_guard_variation_always_when_chance_one() {
         use ironmud::types::ActivityState;
-        let (db, _temp) = open_temp_db(
-"variation_one");
+        let (db, _temp) = open_temp_db("variation_one");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("mig_var1");
             area.immigration_variation_chances.guard = 1.0;
@@ -1939,8 +1931,7 @@ mod migration_tests {
 
     #[test]
     fn test_guard_variation_keywords_include_guard() {
-        let (db, _temp) = open_temp_db(
-"variation_kw");
+        let (db, _temp) = open_temp_db("variation_kw");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("mig_varkw");
             area.immigration_variation_chances.guard = 1.0;
@@ -1975,8 +1966,7 @@ mod migration_tests {
 
     #[test]
     fn test_healer_variation_never_when_chance_zero() {
-        let (db, _temp) = open_temp_db(
-"healer_zero");
+        let (db, _temp) = open_temp_db("healer_zero");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("mig_hvar0");
             assert_eq!(area.immigration_variation_chances.healer, 0.0);
@@ -2011,8 +2001,7 @@ mod migration_tests {
     #[test]
     fn test_healer_variation_always_when_chance_one() {
         use ironmud::types::ActivityState;
-        let (db, _temp) = open_temp_db(
-"healer_one");
+        let (db, _temp) = open_temp_db("healer_one");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("mig_hvar1");
             area.immigration_variation_chances.healer = 1.0;
@@ -2052,8 +2041,7 @@ mod migration_tests {
 
     #[test]
     fn test_healer_variation_keywords_include_healer() {
-        let (db, _temp) = open_temp_db(
-"healer_kw");
+        let (db, _temp) = open_temp_db("healer_kw");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("mig_hvarkw");
             area.immigration_variation_chances.healer = 1.0;
@@ -2088,8 +2076,7 @@ mod migration_tests {
 
     #[test]
     fn test_scavenger_variation_never_when_chance_zero() {
-        let (db, _temp) = open_temp_db(
-"scav_zero");
+        let (db, _temp) = open_temp_db("scav_zero");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("mig_svar0");
             assert_eq!(area.immigration_variation_chances.scavenger, 0.0);
@@ -2124,8 +2111,7 @@ mod migration_tests {
     #[test]
     fn test_scavenger_variation_always_when_chance_one() {
         use ironmud::types::ActivityState;
-        let (db, _temp) = open_temp_db(
-"scav_one");
+        let (db, _temp) = open_temp_db("scav_one");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("mig_svar1");
             area.immigration_variation_chances.scavenger = 1.0;
@@ -2166,8 +2152,7 @@ mod migration_tests {
 
     #[test]
     fn test_scavenger_variation_keywords_include_scavenger() {
-        let (db, _temp) = open_temp_db(
-"scav_kw");
+        let (db, _temp) = open_temp_db("scav_kw");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("mig_svarkw");
             area.immigration_variation_chances.scavenger = 1.0;
@@ -2277,8 +2262,7 @@ mod migration_tests {
         use ironmud::aging::process_aging_tick;
         use ironmud::types::{Characteristics, MobileData};
 
-        let (db, _temp) = open_temp_db(
-"aging_advance");
+        let (db, _temp) = open_temp_db("aging_advance");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut m = MobileData::new("Kenji".to_string());
             m.is_prototype = false;
@@ -2335,8 +2319,7 @@ mod migration_tests {
         use ironmud::aging::process_aging_tick;
         use ironmud::types::{Characteristics, MobileData};
 
-        let (db, _temp) = open_temp_db(
-"aging_gated");
+        let (db, _temp) = open_temp_db("aging_gated");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut m = MobileData::new("Aya".to_string());
             m.is_prototype = false;
@@ -2395,8 +2378,7 @@ mod migration_tests {
         use rand::SeedableRng;
         use rand::rngs::StdRng;
 
-        let (db, _temp) = open_temp_db(
-"aging_skip_vampires");
+        let (db, _temp) = open_temp_db("aging_skip_vampires");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut flagged = MobileData::new("Lucien".to_string());
             flagged.is_prototype = false;
@@ -2427,8 +2409,7 @@ mod migration_tests {
             // stop apply_aging from rewriting the derived age.
             for day in 200..=1200i64 {
                 set_game_day(&db, day);
-                process_aging_tick_with_rng(&db, &conns, &migration_data_for_tests(), &mut rng)
-                    .expect("aging tick");
+                process_aging_tick_with_rng(&db, &conns, &migration_data_for_tests(), &mut rng).expect("aging tick");
             }
 
             let v = db
@@ -2453,8 +2434,7 @@ mod migration_tests {
         use rand::SeedableRng;
         use rand::rngs::StdRng;
 
-        let (db, _temp) = open_temp_db(
-"aging_skip_vstate_only");
+        let (db, _temp) = open_temp_db("aging_skip_vstate_only");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut m = MobileData::new("Stateful".to_string());
             m.is_prototype = false;
@@ -2481,8 +2461,7 @@ mod migration_tests {
             // Advance ten years of game days. Any normal mortal would age.
             for day in 200..=(200 + 360 * 10i64) {
                 set_game_day(&db, day);
-                process_aging_tick_with_rng(&db, &conns, &migration_data_for_tests(), &mut rng)
-                    .expect("aging tick");
+                process_aging_tick_with_rng(&db, &conns, &migration_data_for_tests(), &mut rng).expect("aging tick");
             }
             let stored = db.get_mobile_data(&mid).unwrap().unwrap();
             let chars = stored.characteristics.unwrap();
@@ -2509,8 +2488,7 @@ mod migration_tests {
         assert_eq!(death_probability_per_game_day(100), 0.05);
         assert_eq!(death_probability_per_game_day(150), 0.05);
 
-        let (db, _temp) = open_temp_db(
-"aging_death");
+        let (db, _temp) = open_temp_db("aging_death");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             // Spawn a 105-year-old Elderly mobile. At 5%/day, 1000 rolls is
             // basically certain to kill them.
@@ -2591,8 +2569,7 @@ mod migration_tests {
         );
 
         // Full cascade: deletes a parent, confirms the child mourns.
-        let (db, _temp) = open_temp_db(
-"grief_family");
+        let (db, _temp) = open_temp_db("grief_family");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut parent = MobileData::new("Akio".to_string());
             parent.is_prototype = false;
@@ -2652,8 +2629,7 @@ mod migration_tests {
     fn test_hated_parent_death_skips_grief() {
         use ironmud::types::{MobileData, Relationship, RelationshipKind, SocialState};
 
-        let (db, _temp) = open_temp_db(
-"grief_hated");
+        let (db, _temp) = open_temp_db("grief_hated");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut parent = MobileData::new("Cruel Mother".to_string());
             parent.is_prototype = false;
@@ -2694,8 +2670,7 @@ mod migration_tests {
         use ironmud::social::{FamilyError, set_family_relationship};
         use ironmud::types::{MobileData, RelationshipKind};
 
-        let (db, _temp) = open_temp_db(
-"family_set");
+        let (db, _temp) = open_temp_db("family_set");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut p = MobileData::new("Parent".to_string());
             p.is_prototype = false;
@@ -2744,8 +2719,7 @@ mod migration_tests {
         use ironmud::social::{FamilyError, set_family_relationship};
         use ironmud::types::MobileData;
 
-        let (db, _temp) = open_temp_db(
-"monogamy");
+        let (db, _temp) = open_temp_db("monogamy");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut a = MobileData::new("A".to_string());
             a.is_prototype = false;
@@ -2785,8 +2759,7 @@ mod migration_tests {
         use ironmud::migration::process_pair_housing;
         use ironmud::types::{Characteristics, MobileData, Relationship, RelationshipKind, SocialState};
 
-        let (db, _temp) = open_temp_db(
-"cohab_household");
+        let (db, _temp) = open_temp_db("cohab_household");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("cohab");
             db.save_area_data(area.clone()).unwrap();
@@ -2875,8 +2848,7 @@ mod migration_tests {
         use rand::SeedableRng;
         use rand::rngs::StdRng;
 
-        let (db, _temp) = open_temp_db(
-"pregnancy");
+        let (db, _temp) = open_temp_db("pregnancy");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             // Use a real area so spawn_child can resolve visual/name pools.
             let area = new_area("preg");
@@ -3009,8 +2981,7 @@ mod migration_tests {
         use rand::SeedableRng;
         use rand::rngs::StdRng;
 
-        let (db, _temp) = open_temp_db(
-"no_conceive");
+        let (db, _temp) = open_temp_db("no_conceive");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("same");
             db.save_area_data(area.clone()).unwrap();
@@ -3080,8 +3051,7 @@ mod migration_tests {
     fn test_orphan_flagged_on_last_parent_death() {
         use ironmud::types::{Characteristics, MobileData, Relationship, RelationshipKind, SocialState};
 
-        let (db, _temp) = open_temp_db(
-"orphan_flag");
+        let (db, _temp) = open_temp_db("orphan_flag");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mk = |name: &str, age: i32, gender: &str| {
                 let mut m = MobileData::new(name.to_string());
@@ -3165,8 +3135,7 @@ mod migration_tests {
         // An adult child who loses a parent doesn't need an adopter.
         use ironmud::types::{Characteristics, MobileData, Relationship, RelationshipKind, SocialState};
 
-        let (db, _temp) = open_temp_db(
-"orphan_adult");
+        let (db, _temp) = open_temp_db("orphan_adult");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mk_adult = |name: &str| {
                 let mut m = MobileData::new(name.to_string());
@@ -3223,8 +3192,7 @@ mod migration_tests {
         use rand::SeedableRng;
         use rand::rngs::StdRng;
 
-        let (db, _temp) = open_temp_db(
-"orphan_adopt");
+        let (db, _temp) = open_temp_db("orphan_adopt");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let area = new_area("orph");
             db.save_area_data(area.clone()).unwrap();
@@ -3309,8 +3277,7 @@ mod migration_tests {
         };
         use ironmud::types::{Characteristics, MobileData, Relationship, RelationshipKind, SocialState};
 
-        let (db, _temp) = open_temp_db(
-"adopt_weight");
+        let (db, _temp) = open_temp_db("adopt_weight");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mk = |name: &str, gender: &str| {
                 let mut m = MobileData::new(name.to_string());
@@ -3401,8 +3368,7 @@ mod migration_tests {
             BereavementNote, Characteristics, MobileData, Relationship, RelationshipKind, SocialState,
         };
 
-        let (db, _temp) = open_temp_db(
-"examine_cues");
+        let (db, _temp) = open_temp_db("examine_cues");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             // Room with both mobiles in it.
             let room = new_room(Uuid::new_v4(), "examine:test", false, 0);
@@ -3522,8 +3488,7 @@ mod migration_tests {
     fn test_migration_spawns_parent_child_family() {
         use ironmud::types::{ImmigrationFamilyChance, RelationshipKind};
 
-        let (db, _temp) = open_temp_db(
-"family_spawn_pc");
+        let (db, _temp) = open_temp_db("family_spawn_pc");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("fam_pc");
             // Force the family roll to always hit parent_child.
@@ -3609,8 +3574,7 @@ mod migration_tests {
     fn test_migration_spawns_sibling_pair() {
         use ironmud::types::{ImmigrationFamilyChance, RelationshipKind};
 
-        let (db, _temp) = open_temp_db(
-"family_spawn_sibs");
+        let (db, _temp) = open_temp_db("family_spawn_sibs");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut area = new_area("fam_sib");
             area.immigration_family_chance = ImmigrationFamilyChance {
@@ -3691,8 +3655,7 @@ mod migration_tests {
         use ironmud::aging::process_aging_tick;
         use ironmud::types::{BereavementNote, Characteristics, MobileData, RelationshipKind, SocialState};
 
-        let (db, _temp) = open_temp_db(
-"grief_prune");
+        let (db, _temp) = open_temp_db("grief_prune");
         let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
             let mut m = MobileData::new("Mourner".to_string());
             m.is_prototype = false;
@@ -3771,7 +3734,7 @@ mod migration_tests {
 #[test]
 fn test_item_extra_descs_persist() {
     use ironmud::ItemData;
-    
+
     use ironmud::types::ExtraDesc;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -3811,7 +3774,6 @@ fn test_item_extra_descs_persist() {
         assert_eq!(loaded2.extra_descs[0].keywords, vec!["letters", "inscription"]);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -3820,7 +3782,6 @@ fn test_item_extra_descs_persist() {
 #[test]
 fn test_item_hit_damage_bonus_persist() {
     use ironmud::ItemData;
-    
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -3855,7 +3816,6 @@ fn test_item_hit_damage_bonus_persist() {
         assert_eq!(loaded2.damage_bonus, 5);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -3864,7 +3824,6 @@ fn test_item_hit_damage_bonus_persist() {
 #[test]
 fn test_item_light_hours_remaining_persists() {
     use ironmud::ItemData;
-    
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -3904,7 +3863,6 @@ fn test_item_light_hours_remaining_persists() {
         assert!(!final_state.flags.provides_light, "burnout clears provides_light");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -3914,7 +3872,7 @@ fn test_item_light_hours_remaining_persists() {
 fn test_item_cast_on_use_persists() {
     use ironmud::ItemData;
     use ironmud::ItemType;
-    
+
     use ironmud::types::CastOnUse;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -3959,7 +3917,6 @@ fn test_item_cast_on_use_persists() {
         assert_eq!(reloaded.cast_on_use.as_ref().unwrap().max_charges, 5);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -3968,7 +3925,6 @@ fn test_item_cast_on_use_persists() {
 #[test]
 fn test_item_max_hp_mana_bonus_persists() {
     use ironmud::ItemData;
-    
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -3991,7 +3947,6 @@ fn test_item_max_hp_mana_bonus_persists() {
         assert_eq!(loaded.max_mana_bonus, 10);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4000,7 +3955,6 @@ fn test_item_max_hp_mana_bonus_persists() {
 #[test]
 fn test_item_magical_flag_auto_adds_category() {
     use ironmud::ItemData;
-    
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -4041,7 +3995,6 @@ fn test_item_magical_flag_auto_adds_category() {
         assert!(again.categories.iter().any(|c| c == "magical"));
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4052,10 +4005,10 @@ fn test_area_caps_persist_and_count_helpers_match() {
     // Persistence round-trip for the new max_* cap fields, plus a check
     // that the per-area count helpers used by F6's create-time gate
     // distinguish in-area, orphan, and other-area entities correctly.
-    
+
     use ironmud::types::{
-        AreaData, AreaFlags, AreaPermission, ClimateProfile, CombatZoneType, GoldRange,
-        ImmigrationFamilyChance, ImmigrationVariationChances, RoomFlags,
+        AreaData, AreaFlags, AreaPermission, ClimateProfile, CombatZoneType, GoldRange, ImmigrationFamilyChance,
+        ImmigrationVariationChances, RoomFlags,
     };
     use ironmud::{ItemData, MobileData};
     use uuid::Uuid;
@@ -4154,7 +4107,6 @@ fn test_area_caps_persist_and_count_helpers_match() {
         assert_eq!(db.count_spawn_points_in_area(&area_id).expect("count"), 0);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4162,7 +4114,6 @@ fn test_area_caps_persist_and_count_helpers_match() {
 
 #[test]
 fn test_item_and_mobile_area_id_persists() {
-    
     use ironmud::{ItemData, MobileData};
     use uuid::Uuid;
 
@@ -4198,7 +4149,6 @@ fn test_item_and_mobile_area_id_persists() {
         assert_eq!(loaded_mob.area_id, Some(area_uuid), "mobile area_id round-trips");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4213,13 +4163,11 @@ fn test_total_seconds_played_persists() {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
-        let mut character: ironmud::types::CharacterData = serde_json::from_value(
-            serde_json::json!({
-                "name": "Timekeeper",
-                "password_hash": "",
-                "current_room_id": uuid::Uuid::new_v4().to_string(),
-            }),
-        )
+        let mut character: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "Timekeeper",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::new_v4().to_string(),
+        }))
         .expect("build character");
 
         assert_eq!(
@@ -4230,10 +4178,7 @@ fn test_total_seconds_played_persists() {
         character.total_seconds_played = 4_321;
         db.save_character_data(character).expect("save");
 
-        let loaded = db
-            .get_character_data("Timekeeper")
-            .expect("get")
-            .expect("present");
+        let loaded = db.get_character_data("Timekeeper").expect("get").expect("present");
         assert_eq!(
             loaded.total_seconds_played, 4_321,
             "total_seconds_played survives save/load"
@@ -4248,7 +4193,6 @@ fn test_total_seconds_played_persists() {
 #[test]
 fn test_item_note_content_persists() {
     use ironmud::ItemData;
-    
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -4281,7 +4225,6 @@ fn test_item_note_content_persists() {
         assert!(loaded2.note_content.is_none(), "None persists");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4289,7 +4232,6 @@ fn test_item_note_content_persists() {
 
 #[test]
 fn test_item_on_hit_effects_persist() {
-    
     use ironmud::{ItemData, OnHitEffect};
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -4330,7 +4272,6 @@ fn test_item_on_hit_effects_persist() {
         assert_eq!(loaded.on_hit_effects[1].duration, 5);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4338,7 +4279,6 @@ fn test_item_on_hit_effects_persist() {
 
 #[test]
 fn test_mobile_on_hit_effects_persist() {
-    
     use ironmud::{MobileData, OnHitEffect};
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -4364,7 +4304,6 @@ fn test_mobile_on_hit_effects_persist() {
         assert_eq!(loaded.on_hit_effects[0].magnitude, 4);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4373,7 +4312,7 @@ fn test_mobile_on_hit_effects_persist() {
 #[test]
 fn test_item_type_note_and_pen_round_trip() {
     use ironmud::ItemData;
-    
+
     use ironmud::types::ItemType;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -4412,7 +4351,6 @@ fn test_item_type_note_and_pen_round_trip() {
         assert_eq!(ItemType::from_str("pen"), Some(ItemType::Pen));
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4421,7 +4359,7 @@ fn test_item_type_note_and_pen_round_trip() {
 #[test]
 fn test_donation_fields_round_trip() {
     use ironmud::ItemData;
-    
+
     use ironmud::types::AreaPermission;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -4499,7 +4437,6 @@ fn test_donation_fields_round_trip() {
         );
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4595,7 +4532,6 @@ fn test_donation_decay_pass_deletes_expired_items_only() {
         );
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4657,7 +4593,6 @@ fn test_spawn_crafted_item_copies_liquid_ammo_and_note_fields() {
 
 #[test]
 fn test_area_default_room_flags_apply_to_new_rooms() {
-    
     use ironmud::types::{
         AreaData, AreaFlags, AreaPermission, CombatZoneType, ImmigrationFamilyChance, ImmigrationVariationChances,
         RoomData, RoomExits, RoomFlags, WaterType,
@@ -4794,7 +4729,6 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
         assert!(loaded.flags.dark);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4826,7 +4760,6 @@ fn test_exit_delays_round_trip_through_db() {
         assert_eq!(loaded.exit_delays.get("south"), None);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4856,10 +4789,7 @@ fn test_pending_slow_move_round_trip_through_db() {
         });
         db.save_character_data(char.clone()).expect("save");
 
-        let loaded = db
-            .get_character_data("tunnelwalker")
-            .expect("get")
-            .expect("present");
+        let loaded = db.get_character_data("tunnelwalker").expect("get").expect("present");
         let psm = loaded.pending_slow_move.clone().expect("pending preserved");
         assert_eq!(psm.direction, "north");
         assert_eq!(psm.source_room_id, room_id);
@@ -4869,14 +4799,10 @@ fn test_pending_slow_move_round_trip_through_db() {
         let mut updated = loaded;
         updated.pending_slow_move = None;
         db.save_character_data(updated).expect("save cleared");
-        let reloaded = db
-            .get_character_data("tunnelwalker")
-            .expect("get")
-            .expect("present");
+        let reloaded = db.get_character_data("tunnelwalker").expect("get").expect("present");
         assert!(reloaded.pending_slow_move.is_none());
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -4986,7 +4912,6 @@ fn test_climate_temperature_offset_applies() {
 
 #[test]
 fn test_area_climate_persists() {
-    
     use ironmud::types::{
         AreaData, AreaFlags, AreaPermission, ClimateProfile, CombatZoneType, ImmigrationFamilyChance,
         ImmigrationVariationChances, RoomFlags,
@@ -5048,10 +4973,7 @@ fn test_area_climate_persists() {
         // with the Temperate default — verify by stripping the field from the
         // JSON and round-tripping.
         let mut value = serde_json::to_value(&reloaded).expect("to_value");
-        value
-            .as_object_mut()
-            .expect("object")
-            .remove("climate");
+        value.as_object_mut().expect("object").remove("climate");
         let downgraded: AreaData = serde_json::from_value(value).expect("legacy load");
         assert_eq!(
             downgraded.climate,
@@ -5060,7 +4982,6 @@ fn test_area_climate_persists() {
         );
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5068,7 +4989,6 @@ fn test_area_climate_persists() {
 
 #[test]
 fn test_area_combat_zone_persists_and_parses() {
-    
     use ironmud::types::{
         AreaData, AreaFlags, AreaPermission, ClimateProfile, CombatZoneType, ImmigrationFamilyChance,
         ImmigrationVariationChances, RoomFlags,
@@ -5136,10 +5056,7 @@ fn test_area_combat_zone_persists_and_parses() {
 
         // Legacy areas serialized before this field roundtrip with the Pve default.
         let mut value = serde_json::to_value(&reloaded).expect("to_value");
-        value
-            .as_object_mut()
-            .expect("object")
-            .remove("combat_zone");
+        value.as_object_mut().expect("object").remove("combat_zone");
         let downgraded: AreaData = serde_json::from_value(value).expect("legacy load");
         assert_eq!(
             downgraded.combat_zone,
@@ -5148,7 +5065,6 @@ fn test_area_combat_zone_persists_and_parses() {
         );
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5158,8 +5074,7 @@ fn test_area_combat_zone_persists_and_parses() {
 fn test_area_update_request_deserializes_combat_zone() {
     use ironmud::api::areas::UpdateAreaRequest;
 
-    let req: UpdateAreaRequest =
-        serde_json::from_str(r#"{"combat_zone": "safe"}"#).expect("parse update request");
+    let req: UpdateAreaRequest = serde_json::from_str(r#"{"combat_zone": "safe"}"#).expect("parse update request");
     assert_eq!(req.combat_zone.as_deref(), Some("safe"));
 
     let empty: UpdateAreaRequest = serde_json::from_str("{}").expect("parse empty update");
@@ -5236,7 +5151,7 @@ fn test_mobile_dot_flags_apply_on_hit() {
 #[test]
 fn test_buried_flag_and_lock_vnums_round_trip() {
     use ironmud::ItemData;
-    
+
     use ironmud::types::DoorState;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -5316,7 +5231,6 @@ fn test_buried_flag_and_lock_vnums_round_trip() {
         assert!(legacy_door.key_vnum.is_none(), "missing key_vnum defaults to None");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5324,7 +5238,6 @@ fn test_buried_flag_and_lock_vnums_round_trip() {
 
 #[test]
 fn test_spawn_point_bury_on_spawn_field_persists() {
-    
     use ironmud::types::{SpawnEntityType, SpawnPointData};
     use uuid::Uuid;
 
@@ -5376,7 +5289,6 @@ fn test_spawn_point_bury_on_spawn_field_persists() {
         assert!(!loaded_no.bury_on_spawn, "bury_on_spawn=false persists",);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5385,7 +5297,6 @@ fn test_spawn_point_bury_on_spawn_field_persists() {
 #[test]
 fn test_item_unique_flag_caps_spawn_at_one() {
     use ironmud::ItemData;
-    
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -5421,7 +5332,6 @@ fn test_item_unique_flag_caps_spawn_at_one() {
         assert!(third.is_some(), "deletion frees the cap");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5429,7 +5339,6 @@ fn test_item_unique_flag_caps_spawn_at_one() {
 
 #[test]
 fn test_class_loadout_round_trip_through_db() {
-    
     use ironmud::types::ClassLoadout;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -5474,7 +5383,6 @@ fn test_class_loadout_round_trip_through_db() {
         assert!(missing.is_none());
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5486,7 +5394,6 @@ fn test_class_loadout_skips_missing_item_vnum_at_spawn() {
     // vnum the DB has never seen returns Ok(None) without panicking. The
     // create.rhai loop relies on this to emit a builderdebug warning and
     // continue on bad vnums.
-    
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -5498,7 +5405,6 @@ fn test_class_loadout_skips_missing_item_vnum_at_spawn() {
         assert!(spawn.is_none(), "missing vnum yields None, not panic");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5506,7 +5412,6 @@ fn test_class_loadout_skips_missing_item_vnum_at_spawn() {
 
 #[test]
 fn test_mobile_world_max_count_caps_spawn() {
-    
     use ironmud::types::MobileData;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -5542,11 +5447,12 @@ fn test_mobile_world_max_count_caps_spawn() {
         db.save_mobile_data(proto2).expect("save warden proto");
         let w1 = db.spawn_mobile_from_prototype("test:warden_unique").expect("warden 1");
         assert!(w1.is_some(), "first warden spawns");
-        let w2 = db.spawn_mobile_from_prototype("test:warden_unique").expect("warden 2 call");
+        let w2 = db
+            .spawn_mobile_from_prototype("test:warden_unique")
+            .expect("warden 2 call");
         assert!(w2.is_none(), "second warden refused under unique flag");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5554,10 +5460,10 @@ fn test_mobile_world_max_count_caps_spawn() {
 
 #[test]
 fn test_spawn_dependencies_apply_inventory_equip_container() {
-    
     use ironmud::spawn::apply_spawn_dependencies;
     use ironmud::types::{
-        ItemData, ItemType, MobileData, SpawnDependency, SpawnDestination, SpawnEntityType, SpawnPointData, WearLocation,
+        ItemData, ItemType, MobileData, SpawnDependency, SpawnDestination, SpawnEntityType, SpawnPointData,
+        WearLocation,
     };
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
@@ -5669,7 +5575,10 @@ fn test_spawn_dependencies_apply_inventory_equip_container() {
         };
 
         // Spawn the mob and apply its deps.
-        let mob = db.spawn_mobile_from_prototype("test:guard").expect("spawn mob").expect("mob present");
+        let mob = db
+            .spawn_mobile_from_prototype("test:guard")
+            .expect("spawn mob")
+            .expect("mob present");
         let placed = apply_spawn_dependencies(&db, &connections, &mob_sp, &mob.id);
         assert_eq!(placed, 2, "both Inventory and Equipped deps placed");
 
@@ -5682,7 +5591,10 @@ fn test_spawn_dependencies_apply_inventory_equip_container() {
         assert_eq!(equipped[0].vnum.as_deref(), Some("test:helm"));
 
         // Spawn the chest and apply its container dep.
-        let chest = db.spawn_item_from_prototype("test:chest").expect("spawn chest").expect("chest present");
+        let chest = db
+            .spawn_item_from_prototype("test:chest")
+            .expect("spawn chest")
+            .expect("chest present");
         let placed_chest = apply_spawn_dependencies(&db, &connections, &chest_sp, &chest.id);
         assert_eq!(placed_chest, 1, "coin placed in container");
 
@@ -5691,7 +5603,6 @@ fn test_spawn_dependencies_apply_inventory_equip_container() {
         assert_eq!(contents[0].vnum.as_deref(), Some("test:coin"));
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5699,7 +5610,6 @@ fn test_spawn_dependencies_apply_inventory_equip_container() {
 
 #[test]
 fn test_spawn_dependencies_skip_equip_when_wear_locations_mismatch() {
-    
     use ironmud::spawn::apply_spawn_dependencies;
     use ironmud::types::{
         ItemData, MobileData, SpawnDependency, SpawnDestination, SpawnEntityType, SpawnPointData, WearLocation,
@@ -5750,7 +5660,10 @@ fn test_spawn_dependencies_skip_equip_when_wear_locations_mismatch() {
             replace_on_respawn: false,
         };
 
-        let mob = db.spawn_mobile_from_prototype("test:sentry").expect("spawn mob").expect("mob present");
+        let mob = db
+            .spawn_mobile_from_prototype("test:sentry")
+            .expect("spawn mob")
+            .expect("mob present");
         let placed = apply_spawn_dependencies(&db, &connections, &sp, &mob.id);
         assert_eq!(placed, 0, "wear_locations mismatch refuses the equip");
 
@@ -5761,7 +5674,6 @@ fn test_spawn_dependencies_skip_equip_when_wear_locations_mismatch() {
         assert!(equipped.is_empty(), "mismatched item is not equipped");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5769,7 +5681,6 @@ fn test_spawn_dependencies_skip_equip_when_wear_locations_mismatch() {
 
 #[test]
 fn test_sanctuary_buff_on_prototype_carries_to_spawn() {
-    
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -5807,7 +5718,6 @@ fn test_sanctuary_buff_on_prototype_carries_to_spawn() {
         assert_eq!(buff.source, "innate sanctuary");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5841,10 +5751,16 @@ fn test_sanctuary_spell_definition_loads() {
         .as_object()
         .expect("sanctuary is an object");
 
-    assert_eq!(spell.get("buff_effect").and_then(|v| v.as_str()), Some("damage_reduction"));
+    assert_eq!(
+        spell.get("buff_effect").and_then(|v| v.as_str()),
+        Some("damage_reduction")
+    );
     assert_eq!(spell.get("buff_magnitude").and_then(|v| v.as_i64()), Some(50));
     assert_eq!(spell.get("buff_duration_secs").and_then(|v| v.as_i64()), Some(120));
-    assert_eq!(spell.get("target_type").and_then(|v| v.as_str()), Some("self_or_friendly"));
+    assert_eq!(
+        spell.get("target_type").and_then(|v| v.as_str()),
+        Some("self_or_friendly")
+    );
 }
 
 fn stay_zone_test_room(area_id: Option<uuid::Uuid>) -> ironmud::types::RoomData {
@@ -5888,7 +5804,6 @@ fn stay_zone_test_room(area_id: Option<uuid::Uuid>) -> ironmud::types::RoomData 
 
 #[test]
 fn test_home_area_id_is_stamped_on_first_room_placement() {
-    
     use ironmud::types::MobileData;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -5926,7 +5841,6 @@ fn test_home_area_id_is_stamped_on_first_room_placement() {
         );
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -5934,7 +5848,6 @@ fn test_home_area_id_is_stamped_on_first_room_placement() {
 
 #[test]
 fn test_memory_resets_on_mob_respawn() {
-    
     use ironmud::types::{MobileData, RememberedEnemy};
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -5976,7 +5889,6 @@ fn test_memory_resets_on_mob_respawn() {
         assert_eq!(still.remembered_enemies.len(), 1);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6016,7 +5928,6 @@ fn test_record_mob_memory_caps_at_ten_and_decays() {
 
 #[test]
 fn test_aff_buffs_carry_from_prototype_to_spawn() {
-    
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -6062,7 +5973,6 @@ fn test_aff_buffs_carry_from_prototype_to_spawn() {
         }
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6072,14 +5982,8 @@ fn test_aff_buffs_carry_from_prototype_to_spawn() {
 fn test_detect_magic_effect_type_roundtrip() {
     use ironmud::types::EffectType;
 
-    assert_eq!(
-        EffectType::from_str("detect_magic"),
-        Some(EffectType::DetectMagic)
-    );
-    assert_eq!(
-        EffectType::from_str("detectmagic"),
-        Some(EffectType::DetectMagic)
-    );
+    assert_eq!(EffectType::from_str("detect_magic"), Some(EffectType::DetectMagic));
+    assert_eq!(EffectType::from_str("detectmagic"), Some(EffectType::DetectMagic));
     assert_eq!(EffectType::DetectMagic.to_display_string(), "detect_magic");
     assert!(EffectType::all().contains(&"detect_magic"));
 }
@@ -6129,26 +6033,16 @@ fn test_mob_with_detect_invisible_buff_sees_invisible_pc() {
 fn test_night_vision_effect_type_roundtrip() {
     use ironmud::types::EffectType;
 
-    assert_eq!(
-        EffectType::from_str("night_vision"),
-        Some(EffectType::NightVision)
-    );
-    assert_eq!(
-        EffectType::from_str("nightvision"),
-        Some(EffectType::NightVision)
-    );
+    assert_eq!(EffectType::from_str("night_vision"), Some(EffectType::NightVision));
+    assert_eq!(EffectType::from_str("nightvision"), Some(EffectType::NightVision));
     // CircleMUD AFF_INFRAVISION ⇒ night_vision
-    assert_eq!(
-        EffectType::from_str("infravision"),
-        Some(EffectType::NightVision)
-    );
+    assert_eq!(EffectType::from_str("infravision"), Some(EffectType::NightVision));
     assert_eq!(EffectType::NightVision.to_display_string(), "night_vision");
     assert!(EffectType::all().contains(&"night_vision"));
 }
 
 #[test]
 fn test_aff_infravision_imports_as_night_vision_buff() {
-    
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -6184,7 +6078,6 @@ fn test_aff_infravision_imports_as_night_vision_buff() {
         );
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6206,7 +6099,6 @@ fn test_sleep_blind_effect_type_roundtrip() {
 
 #[test]
 fn test_no_sleep_no_blind_no_bash_flags_persist() {
-    
     use ironmud::types::MobileData;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -6227,7 +6119,6 @@ fn test_no_sleep_no_blind_no_bash_flags_persist() {
         assert!(loaded.flags.no_bash);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6235,7 +6126,6 @@ fn test_no_sleep_no_blind_no_bash_flags_persist() {
 
 #[test]
 fn test_sleep_buff_persists_on_mobile() {
-    
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -6258,15 +6148,11 @@ fn test_sleep_buff_persists_on_mobile() {
 
         let loaded = db.get_mobile_data(&id).expect("read").expect("present");
         assert!(
-            loaded
-                .active_buffs
-                .iter()
-                .any(|b| b.effect_type == EffectType::Sleep),
+            loaded.active_buffs.iter().any(|b| b.effect_type == EffectType::Sleep),
             "Sleep buff missing after roundtrip"
         );
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6326,7 +6212,6 @@ fn test_summon_spell_definition_loads() {
 
 #[test]
 fn test_no_summon_flag_persists() {
-    
     use ironmud::types::MobileData;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -6343,7 +6228,6 @@ fn test_no_summon_flag_persists() {
         assert!(loaded.flags.no_summon);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6351,8 +6235,6 @@ fn test_no_summon_flag_persists() {
 
 #[test]
 fn test_summonable_field_defaults_off_and_persists() {
-    
-
     let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -6360,26 +6242,21 @@ fn test_summonable_field_defaults_off_and_persists() {
 
         // Build a CharacterData via serde so missing fields take their
         // serde defaults — proves `summonable` defaults to false.
-        let mut char: ironmud::types::CharacterData =
-            serde_json::from_value(serde_json::json!({
-                "name": "TestSummonee",
-                "password_hash": "",
-                "current_room_id": uuid::Uuid::nil(),
-            }))
-            .expect("build character");
+        let mut char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "TestSummonee",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
         assert!(!char.summonable, "summonable defaults to false");
 
         char.summonable = true;
         db.save_character_data(char.clone()).expect("save");
 
-        let loaded = db
-            .get_character_data(&char.name)
-            .expect("read")
-            .expect("present");
+        let loaded = db.get_character_data(&char.name).expect("read").expect("present");
         assert!(loaded.summonable, "summonable persists across roundtrip");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6394,22 +6271,18 @@ fn test_morality_field_defaults_zero_and_persists() {
 
         // Build a CharacterData via serde so missing fields take serde
         // defaults — proves `morality` defaults to 0.
-        let mut char: ironmud::types::CharacterData =
-            serde_json::from_value(serde_json::json!({
-                "name": "TestMorality",
-                "password_hash": "",
-                "current_room_id": uuid::Uuid::nil(),
-            }))
-            .expect("build character");
+        let mut char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "TestMorality",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
         assert_eq!(char.morality, 0, "morality defaults to 0");
 
         char.morality = -75;
         db.save_character_data(char.clone()).expect("save");
 
-        let loaded = db
-            .get_character_data(&char.name)
-            .expect("read")
-            .expect("present");
+        let loaded = db.get_character_data(&char.name).expect("read").expect("present");
         assert_eq!(loaded.morality, -75, "morality persists across roundtrip");
     }));
 
@@ -6427,29 +6300,25 @@ fn test_spell_progress_field_defaults_empty_and_persists() {
 
         // Pre-feature character JSON (no `spell_progress` field) loads with
         // an empty map via serde default.
-        let mut char: ironmud::types::CharacterData =
-            serde_json::from_value(serde_json::json!({
-                "name": "TestSpellProgress",
-                "password_hash": "",
-                "current_room_id": uuid::Uuid::nil(),
-            }))
-            .expect("build character");
+        let mut char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "TestSpellProgress",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
         assert!(char.spell_progress.is_empty(), "spell_progress defaults to empty map");
 
         char.spell_progress.insert(
             "magic_missile".to_string(),
-            ironmud::types::SpellProgress { level: 4, experience: 250 },
+            ironmud::types::SpellProgress {
+                level: 4,
+                experience: 250,
+            },
         );
         db.save_character_data(char.clone()).expect("save");
 
-        let loaded = db
-            .get_character_data(&char.name)
-            .expect("read")
-            .expect("present");
-        let entry = loaded
-            .spell_progress
-            .get("magic_missile")
-            .expect("entry present");
+        let loaded = db.get_character_data(&char.name).expect("read").expect("present");
+        let entry = loaded.spell_progress.get("magic_missile").expect("entry present");
         assert_eq!(entry.level, 4);
         assert_eq!(entry.experience, 250);
     }));
@@ -6467,10 +6336,9 @@ fn test_achievement_morality_delta_default_is_zero_and_round_trips() {
         serde_json::from_value(serde_json::json!({ "title": "the Brave" })).expect("bare parses");
     assert_eq!(bare.morality_delta, 0);
 
-    let evil: ironmud::types::AchievementReward = serde_json::from_value(
-        serde_json::json!({ "title": "the Cruel", "morality_delta": -50 }),
-    )
-    .expect("evil parses");
+    let evil: ironmud::types::AchievementReward =
+        serde_json::from_value(serde_json::json!({ "title": "the Cruel", "morality_delta": -50 }))
+            .expect("evil parses");
     assert_eq!(evil.morality_delta, -50);
 
     // Zero is skipped from serialization to keep JSON files clean.
@@ -6523,12 +6391,7 @@ fn test_achievement_unlock_applies_morality_delta_clamped() {
         // No live session — sync/send become no-ops. That's fine here.
         let conns: ironmud::SharedConnections = Arc::new(Mutex::new(HashMap::new()));
 
-        let unlocked = ironmud::script::achievements::award_manual_via_db(
-            &db,
-            &conns,
-            "TestEvil",
-            "dark_deed",
-        );
+        let unlocked = ironmud::script::achievements::award_manual_via_db(&db, &conns, "TestEvil", "dark_deed");
         assert!(unlocked, "first manual award returns true");
 
         let after = db.get_character_data("testevil").expect("read").expect("present");
@@ -6536,12 +6399,7 @@ fn test_achievement_unlock_applies_morality_delta_clamped() {
         assert!(after.achievements_unlocked.contains_key("dark_deed"));
 
         // Second award is a no-op (already unlocked); morality unchanged.
-        let again = ironmud::script::achievements::award_manual_via_db(
-            &db,
-            &conns,
-            "TestEvil",
-            "dark_deed",
-        );
+        let again = ironmud::script::achievements::award_manual_via_db(&db, &conns, "TestEvil", "dark_deed");
         assert!(!again, "second award returns false (already unlocked)");
         let after2 = db.get_character_data("testevil").expect("read").expect("present");
         assert_eq!(after2.morality, -40, "second award does not re-apply delta");
@@ -6639,8 +6497,7 @@ fn test_spell_definition_evolves_to_and_new_scaling_fields() {
 #[test]
 fn test_magic_missile_evolves_to_arcane_lance_in_stock_json() {
     // Anchor the stock evolution chain so renames/regressions surface in CI.
-    let raw = std::fs::read_to_string("scripts/data/spells_fantasy.json")
-        .expect("read spells_fantasy.json");
+    let raw = std::fs::read_to_string("scripts/data/spells_fantasy.json").expect("read spells_fantasy.json");
     let parsed: std::collections::HashMap<String, ironmud::types::SpellDefinition> =
         serde_json::from_str(&raw).expect("parse spells_fantasy.json");
 
@@ -6677,11 +6534,7 @@ fn test_morality_tier_thresholds_exhaustive() {
         (200, MoralityTier::GoodPure),
     ];
     for (v, expected) in cases {
-        assert_eq!(
-            MoralityTier::from_value(v),
-            expected,
-            "morality {v} -> wrong tier"
-        );
+        assert_eq!(MoralityTier::from_value(v), expected, "morality {v} -> wrong tier");
     }
 }
 
@@ -6762,43 +6615,33 @@ fn test_aggro_mobile_flags_persist() {
 
 #[test]
 fn test_character_gender_persists_and_accepts_free_strings() {
-    
-
     let temp = tempfile::tempdir().expect("create temp dir");
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
-        let mut char: ironmud::types::CharacterData =
-            serde_json::from_value(serde_json::json!({
-                "name": "TestGender",
-                "password_hash": "",
-                "current_room_id": uuid::Uuid::nil(),
-            }))
-            .expect("build character");
+        let mut char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "TestGender",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
         assert_eq!(char.gender, "", "missing gender field defaults to empty");
 
         // Canonical chargen value.
         char.gender = "nonbinary".to_string();
         db.save_character_data(char.clone()).expect("save");
-        let loaded = db
-            .get_character_data(&char.name)
-            .expect("read")
-            .expect("present");
+        let loaded = db.get_character_data(&char.name).expect("read").expect("present");
         assert_eq!(loaded.gender, "nonbinary");
 
         // Free-text post-creation override (DG falls back to neuter pronouns
         // for unrecognised values via parse_gender's default arm).
         char.gender = "starfolk".to_string();
         db.save_character_data(char.clone()).expect("save");
-        let loaded = db
-            .get_character_data(&char.name)
-            .expect("read")
-            .expect("present");
+        let loaded = db.get_character_data(&char.name).expect("read").expect("present");
         assert_eq!(loaded.gender, "starfolk");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6854,11 +6697,7 @@ fn test_safe_zone_gate_present_in_offensive_cast_handlers() {
     let src = fs::read_to_string("scripts/commands/cast.rhai").expect("read cast.rhai");
 
     for handler in ["cast_damage", "cast_debuff", "cast_charm"] {
-        let body_re = Regex::new(&format!(
-            r"(?ms)fn {}\([^)]*\)\s*\{{(.*?)\n\}}",
-            regex::escape(handler)
-        ))
-        .unwrap();
+        let body_re = Regex::new(&format!(r"(?ms)fn {}\([^)]*\)\s*\{{(.*?)\n\}}", regex::escape(handler))).unwrap();
         let captures = body_re
             .captures(&src)
             .unwrap_or_else(|| panic!("could not locate {handler} body in cast.rhai"));
@@ -6901,7 +6740,6 @@ fn test_redit_flag_safe_alias_routes_to_combat_zone() {
 
 #[test]
 fn test_no_charm_flag_persists() {
-    
     use ironmud::types::MobileData;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -6918,7 +6756,6 @@ fn test_no_charm_flag_persists() {
         assert!(loaded.flags.no_charm);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6926,7 +6763,6 @@ fn test_no_charm_flag_persists() {
 
 #[test]
 fn test_charmed_buff_persists_with_master_source() {
-    
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -6957,7 +6793,6 @@ fn test_charmed_buff_persists_with_master_source() {
         assert_eq!(loaded.charm_master(), Some("Wizard"));
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -6966,7 +6801,7 @@ fn test_charmed_buff_persists_with_master_source() {
 #[test]
 fn test_break_all_charms_by_player_clears_only_matching_buffs() {
     use ironmud::break_all_charms_by_player;
-    
+
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -7008,7 +6843,6 @@ fn test_break_all_charms_by_player_clears_only_matching_buffs() {
         assert!(c.is_charmed_by("Cleric"), "Cleric's charm should remain");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7016,7 +6850,6 @@ fn test_break_all_charms_by_player_clears_only_matching_buffs() {
 
 #[test]
 fn test_tameable_flag_persists() {
-    
     use ironmud::types::MobileData;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -7036,7 +6869,6 @@ fn test_tameable_flag_persists() {
         assert!(!plain.flags.tameable);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7044,7 +6876,6 @@ fn test_tameable_flag_persists() {
 
 #[test]
 fn test_pet_owner_field_persists() {
-    
     use ironmud::types::MobileData;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -7066,7 +6897,6 @@ fn test_pet_owner_field_persists() {
         assert!(plain.pet_owner.is_none());
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7075,7 +6905,7 @@ fn test_pet_owner_field_persists() {
 #[test]
 fn test_break_all_charms_skips_pets_of_quitting_player() {
     use ironmud::break_all_charms_by_player;
-    
+
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -7117,25 +6947,18 @@ fn test_break_all_charms_skips_pets_of_quitting_player() {
 
         break_all_charms_by_player(&db, "Alice");
 
-        let charmed_after = db
-            .get_mobile_data(&charmed_id)
-            .expect("read")
-            .expect("present");
+        let charmed_after = db.get_mobile_data(&charmed_id).expect("read").expect("present");
         assert!(
             charmed_after.active_buffs.is_empty(),
             "regular charm should be cleared on quit"
         );
 
-        let pet_after = db
-            .get_mobile_data(&pet_id)
-            .expect("read")
-            .expect("present");
+        let pet_after = db.get_mobile_data(&pet_id).expect("read").expect("present");
         assert_eq!(pet_after.pet_owner.as_deref(), Some("Alice"));
         assert_eq!(pet_after.active_buffs.len(), 1, "pet keeps its bond on quit");
         assert!(pet_after.charm_stay, "pet retains stay/follow overrides");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7143,7 +6966,6 @@ fn test_break_all_charms_skips_pets_of_quitting_player() {
 
 #[test]
 fn test_mobile_position_default_and_persists() {
-    
     use ironmud::types::{MobileData, MobilePosition};
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -7164,7 +6986,6 @@ fn test_mobile_position_default_and_persists() {
         assert_eq!(loaded.position, MobilePosition::Sleeping);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7186,7 +7007,6 @@ fn test_mobile_position_parse_handles_aliases() {
 
 #[test]
 fn test_mobile_nickname_field_defaults_none_and_persists() {
-    
     use ironmud::types::MobileData;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -7208,7 +7028,6 @@ fn test_mobile_nickname_field_defaults_none_and_persists() {
         assert_eq!(loaded.display_name(), "Fido", "display_name prefers nickname");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7234,7 +7053,6 @@ fn test_mobile_display_name_treats_empty_nickname_as_unset() {
 
 #[test]
 fn test_mailbox_purged_on_character_delete() {
-    
     use ironmud::types::MailMessage;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -7276,7 +7094,6 @@ fn test_mailbox_purged_on_character_delete() {
         );
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7295,8 +7112,7 @@ fn test_mail_attachment_serde_default() {
         "sent_at": 0i64,
         "read": false
     });
-    let msg: MailMessage =
-        serde_json::from_value(legacy).expect("legacy mail row should deserialize");
+    let msg: MailMessage = serde_json::from_value(legacy).expect("legacy mail row should deserialize");
     assert!(msg.attached_items.is_empty());
 }
 
@@ -7337,21 +7153,14 @@ fn test_mail_attachment_round_trip() {
         assert!(matches!(parked.location, ItemLocation::Nowhere));
 
         // Claim path: move item to recipient's inventory and clear attachments.
-        let stored = db
-            .get_mail_by_id(&msg_id)
-            .expect("get mail")
-            .expect("present");
+        let stored = db.get_mail_by_id(&msg_id).expect("get mail").expect("present");
         assert_eq!(stored.attached_items, vec![item_id]);
-        db.move_item_to_inventory(&item_id, "bob")
-            .expect("claim move");
+        db.move_item_to_inventory(&item_id, "bob").expect("claim move");
         let mut cleared = stored.clone();
         cleared.attached_items.clear();
         db.store_mail(cleared).expect("re-store");
 
-        let after = db
-            .get_mail_by_id(&msg_id)
-            .expect("get mail")
-            .expect("present");
+        let after = db.get_mail_by_id(&msg_id).expect("get mail").expect("present");
         assert!(after.attached_items.is_empty());
         let delivered = db.get_item_data(&item_id).expect("get").expect("present");
         match delivered.location {
@@ -7424,12 +7233,7 @@ fn test_mail_oldest_purge_destroys_attachments() {
         db.save_item_data(item).expect("save");
 
         let mut old =
-            MailMessage::with_attachments(
-                "alice".to_string(),
-                "bob".to_string(),
-                "old".to_string(),
-                vec![item_id],
-            );
+            MailMessage::with_attachments("alice".to_string(), "bob".to_string(), "old".to_string(), vec![item_id]);
         old.read = true;
         old.sent_at = 1; // ensure oldest
         db.store_mail(old).expect("store");
@@ -7440,8 +7244,7 @@ fn test_mail_oldest_purge_destroys_attachments() {
         db.store_mail(newer).expect("store");
 
         assert!(
-            db.delete_oldest_read_mail("bob")
-                .expect("evict"),
+            db.delete_oldest_read_mail("bob").expect("evict"),
             "expected the older read message to be evicted"
         );
         assert!(
@@ -7483,9 +7286,7 @@ fn test_character_delete_destroys_mail_attachments() {
         // Purging Carol's mailbox (called from delete_character_data) must
         // also destroy attached items, since the message rows are about to
         // become unreachable.
-        let removed = db
-            .delete_mail_for_recipient("Carol")
-            .expect("purge");
+        let removed = db.delete_mail_for_recipient("Carol").expect("purge");
         assert_eq!(removed, 1);
         assert!(
             db.get_item_data(&item_id).expect("get").is_none(),
@@ -7501,7 +7302,6 @@ fn test_character_delete_destroys_mail_attachments() {
 
 #[test]
 fn test_board_post_persists_and_lists_oldest_first() {
-    
     use ironmud::types::BoardPost;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -7511,9 +7311,24 @@ fn test_board_post_persists_and_lists_oldest_first() {
 
         // Insert three posts with explicit posted_at to verify oldest-first
         // listing regardless of insertion order.
-        let mut p1 = BoardPost::new("3098".to_string(), "Alice".to_string(), "first".to_string(), "body 1".to_string());
-        let mut p2 = BoardPost::new("3098".to_string(), "Bob".to_string(), "second".to_string(), "body 2".to_string());
-        let mut p3 = BoardPost::new("3098".to_string(), "Carol".to_string(), "third".to_string(), "body 3".to_string());
+        let mut p1 = BoardPost::new(
+            "3098".to_string(),
+            "Alice".to_string(),
+            "first".to_string(),
+            "body 1".to_string(),
+        );
+        let mut p2 = BoardPost::new(
+            "3098".to_string(),
+            "Bob".to_string(),
+            "second".to_string(),
+            "body 2".to_string(),
+        );
+        let mut p3 = BoardPost::new(
+            "3098".to_string(),
+            "Carol".to_string(),
+            "third".to_string(),
+            "body 3".to_string(),
+        );
         p1.posted_at = 100;
         p2.posted_at = 200;
         p3.posted_at = 300;
@@ -7532,7 +7347,6 @@ fn test_board_post_persists_and_lists_oldest_first() {
         assert_eq!(db.count_board_posts("3099").expect("count"), 0);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7540,7 +7354,6 @@ fn test_board_post_persists_and_lists_oldest_first() {
 
 #[test]
 fn test_board_max_messages_evicts_oldest() {
-    
     use ironmud::types::BoardPost;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -7565,7 +7378,6 @@ fn test_board_max_messages_evicts_oldest() {
         assert_eq!(listed[1].subject, "three");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7573,7 +7385,6 @@ fn test_board_max_messages_evicts_oldest() {
 
 #[test]
 fn test_board_posts_purged_on_character_delete() {
-    
     use ironmud::types::BoardPost;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -7612,7 +7423,6 @@ fn test_board_posts_purged_on_character_delete() {
         assert_eq!(db.count_board_posts("3098").expect("count after"), 0);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7647,7 +7457,6 @@ fn test_board_default_cap_uses_engine_constant() {
         assert_eq!(listed[0].subject, "post 1");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7866,7 +7675,6 @@ fn test_curse_effect_type_round_trips_via_serde() {
 
 #[test]
 fn test_permanent_aff_buffs_persist_on_mobile() {
-    
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -7876,11 +7684,7 @@ fn test_permanent_aff_buffs_persist_on_mobile() {
 
         let mut mob = MobileData::new("a cursed sleeper".to_string());
         mob.is_prototype = false;
-        for (et, mag) in [
-            (EffectType::Blind, 50),
-            (EffectType::Sleep, 0),
-            (EffectType::Curse, 10),
-        ] {
+        for (et, mag) in [(EffectType::Blind, 50), (EffectType::Sleep, 0), (EffectType::Curse, 10)] {
             mob.active_buffs.push(ActiveBuff {
                 effect_type: et,
                 magnitude: mag,
@@ -7917,7 +7721,6 @@ fn test_permanent_aff_buffs_persist_on_mobile() {
         assert_eq!(curse.remaining_secs, -1);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7925,7 +7728,6 @@ fn test_permanent_aff_buffs_persist_on_mobile() {
 
 #[test]
 fn test_charm_stay_and_follow_persist() {
-    
     use ironmud::types::MobileData;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -7948,7 +7750,6 @@ fn test_charm_stay_and_follow_persist() {
         assert_eq!(loaded.charm_follow_player.as_deref(), Some("Other"));
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -7957,7 +7758,7 @@ fn test_charm_stay_and_follow_persist() {
 #[test]
 fn test_break_all_charms_clears_stay_follow_and_dangling_follow_targets() {
     use ironmud::break_all_charms_by_player;
-    
+
     use ironmud::types::{ActiveBuff, EffectType, MobileData};
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -8012,7 +7813,6 @@ fn test_break_all_charms_clears_stay_follow_and_dangling_follow_targets() {
         );
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8022,7 +7822,6 @@ fn test_break_all_charms_clears_stay_follow_and_dangling_follow_targets() {
 /// Default chance is 50, default list is empty.
 #[test]
 fn test_mobile_combat_spells_persist() {
-    
     use ironmud::types::MobileData;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -8044,7 +7843,6 @@ fn test_mobile_combat_spells_persist() {
         assert_eq!(loaded.combat_spell_chance, 75);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8078,8 +7876,8 @@ fn test_frost_bolt_spell_definition_loads() {
 fn test_magic_user_trigger_mapping_sets_combat_spells() {
     use std::fs;
 
-    let json = fs::read_to_string("scripts/data/import/circle_trigger_mapping.json")
-        .expect("read circle_trigger_mapping");
+    let json =
+        fs::read_to_string("scripts/data/import/circle_trigger_mapping.json").expect("read circle_trigger_mapping");
     let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
     let entry = parsed
         .get("trigger_actions")
@@ -8258,7 +8056,10 @@ fn test_animate_dead_spell_definition_loads() {
         .expect("animate_dead is an object");
 
     assert_eq!(spell.get("spell_type").and_then(|v| v.as_str()), Some("animate_dead"));
-    assert_eq!(spell.get("target_type").and_then(|v| v.as_str()), Some("corpse_in_room"));
+    assert_eq!(
+        spell.get("target_type").and_then(|v| v.as_str()),
+        Some("corpse_in_room")
+    );
     assert_eq!(spell.get("skill_required").and_then(|v| v.as_i64()), Some(5));
 }
 
@@ -8274,14 +8075,16 @@ fn test_control_weather_spell_definition_loads() {
         .as_object()
         .expect("control_weather is an object");
 
-    assert_eq!(spell.get("spell_type").and_then(|v| v.as_str()), Some("control_weather"));
+    assert_eq!(
+        spell.get("spell_type").and_then(|v| v.as_str()),
+        Some("control_weather")
+    );
     assert_eq!(spell.get("target_type").and_then(|v| v.as_str()), Some("self"));
     assert_eq!(spell.get("skill_required").and_then(|v| v.as_i64()), Some(4));
 }
 
 #[test]
 fn test_corpse_source_vnum_persists() {
-    
     use ironmud::types::{ItemData, ItemFlags, ItemLocation};
     use uuid::Uuid;
 
@@ -8308,13 +8111,9 @@ fn test_corpse_source_vnum_persists() {
         db.save_item_data(item).expect("save corpse");
 
         let loaded = db.get_item_data(&id).expect("read").expect("present");
-        assert_eq!(
-            loaded.flags.corpse_source_vnum.as_deref(),
-            Some("goblin_warrior")
-        );
+        assert_eq!(loaded.flags.corpse_source_vnum.as_deref(), Some("goblin_warrior"));
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8324,7 +8123,6 @@ fn test_corpse_source_vnum_persists() {
 
 #[test]
 fn test_cast_on_use_cooldown_secs_round_trips() {
-    
     use ironmud::{CastOnUse, ItemData};
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -8347,10 +8145,7 @@ fn test_cast_on_use_cooldown_secs_round_trips() {
         let item_id = item.id;
         db.save_item_data(item).expect("save");
 
-        let loaded = db
-            .get_item_data(&item_id)
-            .expect("get")
-            .expect("present");
+        let loaded = db.get_item_data(&item_id).expect("get").expect("present");
         let cou = loaded.cast_on_use.expect("cast_on_use present");
         assert_eq!(cou.cooldown_secs, Some(60), "override survives round-trip");
 
@@ -8376,7 +8171,6 @@ fn test_cast_on_use_cooldown_secs_round_trips() {
         );
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8507,7 +8301,6 @@ fn test_lookup_effect_cross_ref_uses_buff_effect_match() {
 
 #[test]
 fn test_contextual_commands_round_trip() {
-    
     use ironmud::types::{ContextualCommand, RoomData, RoomExits, RoomFlags, WaterType};
     use std::collections::HashMap;
 
@@ -8563,11 +8356,7 @@ fn test_contextual_commands_round_trip() {
         db.save_room_data(room).expect("save");
 
         let loaded = db.get_room_data(&room_id).expect("get").expect("present");
-        assert_eq!(
-            loaded.contextual_commands.len(),
-            2,
-            "both entries persist"
-        );
+        assert_eq!(loaded.contextual_commands.len(), 2, "both entries persist");
         assert_eq!(loaded.contextual_commands[0].verb, "pull");
         assert_eq!(
             loaded.contextual_commands[0].hint.as_deref(),
@@ -8575,13 +8364,9 @@ fn test_contextual_commands_round_trip() {
             "hint round-trips"
         );
         assert_eq!(loaded.contextual_commands[1].verb, "examine");
-        assert!(
-            loaded.contextual_commands[1].hint.is_none(),
-            "missing hint stays None"
-        );
+        assert!(loaded.contextual_commands[1].hint.is_none(), "missing hint stays None");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8603,10 +8388,7 @@ fn test_contextual_commands_field_default_empty_on_old_room_json() {
         }
     }"#;
     let room: RoomData = serde_json::from_str(raw).expect("old shape deserializes");
-    assert!(
-        room.contextual_commands.is_empty(),
-        "default empty Vec when key absent"
-    );
+    assert!(room.contextual_commands.is_empty(), "default empty Vec when key absent");
 }
 
 #[test]
@@ -8677,7 +8459,6 @@ fn test_account_migration_creates_one_to_one_account() {
     let db_path = temp.path();
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-
         // Seed two pre-feature characters BEFORE migration runs. We do that by
         // opening the DB once (which seeds an empty `accounts` tree and stamps
         // accounts_migrated=true), then writing characters, then resetting the
@@ -8714,17 +8495,11 @@ fn test_account_migration_creates_one_to_one_account() {
             accounts.len()
         );
 
-        let alice_account = db
-            .get_account("Alice")
-            .unwrap()
-            .expect("Alice account exists");
+        let alice_account = db.get_account("Alice").unwrap().expect("Alice account exists");
         assert_eq!(alice_account.password_hash, "hash-alice");
         assert_eq!(alice_account.character_names, vec!["Alice".to_string()]);
 
-        let bob_account = db
-            .get_account("Bob")
-            .unwrap()
-            .expect("Bob account exists");
+        let bob_account = db.get_account("Bob").unwrap().expect("Bob account exists");
         assert_eq!(bob_account.password_hash, "hash-bob");
         assert_eq!(bob_account.character_names, vec!["Bob".to_string()]);
 
@@ -8734,14 +8509,9 @@ fn test_account_migration_creates_one_to_one_account() {
         drop(db);
         let db2 = Db::open(&db_path).expect("re-open DB 2");
         let accounts2 = db2.list_accounts().unwrap();
-        assert_eq!(
-            accounts2.len(),
-            accounts.len(),
-            "migration must be idempotent"
-        );
+        assert_eq!(accounts2.len(), accounts.len(), "migration must be idempotent");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8764,24 +8534,17 @@ fn test_account_password_round_trip() {
         let id = account.id;
         db.save_account(account).expect("save");
 
-        let loaded = db
-            .get_account("Roundtrip")
-            .expect("get")
-            .expect("present");
+        let loaded = db.get_account("Roundtrip").expect("get").expect("present");
         assert_eq!(loaded.id, id);
         assert_eq!(loaded.password_hash, "hash-rt");
         assert_eq!(loaded.email.as_deref(), Some("a@b"));
         assert_eq!(loaded.character_names, vec!["Roundtrip", "Sidekick"]);
 
         // ID index must resolve back to the same row.
-        let by_id = db
-            .get_account_by_id(&id)
-            .expect("by id")
-            .expect("present");
+        let by_id = db.get_account_by_id(&id).expect("by id").expect("present");
         assert_eq!(by_id.name, loaded.name);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8830,7 +8593,6 @@ fn test_add_and_remove_character_from_account_roundtrips() {
         assert_eq!(found.unwrap().id, id);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -8974,7 +8736,6 @@ fn test_account_email_field_persists_when_set() {
 
     let temp = tempfile::tempdir().expect("create temp dir");
     let db_path = temp.path();
-    
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = Db::open(db_path).expect("open DB");
@@ -8986,7 +8747,6 @@ fn test_account_email_field_persists_when_set() {
         assert_eq!(loaded.email.as_deref(), Some("verified@example.com"));
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9078,7 +8838,6 @@ fn test_delete_character_clears_account_roster_pointer() {
 
     let temp = tempfile::tempdir().expect("create temp dir");
     let db_path = temp.path();
-    
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = Db::open(db_path).expect("open DB");
@@ -9107,7 +8866,6 @@ fn test_delete_character_clears_account_roster_pointer() {
         );
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9149,7 +8907,6 @@ fn test_email_verification_fields_round_trip() {
     let temp = tempfile::tempdir().expect("create temp dir");
     let db_path = temp.path();
 
-
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = Db::open(db_path).expect("open DB");
         let mut account = AccountData::new("Codey".into(), "h".into());
@@ -9168,13 +8925,9 @@ fn test_email_verification_fields_round_trip() {
         assert_eq!(loaded.email_verification_code_expires_at, 1_700_000_000);
         assert_eq!(loaded.email_verification_last_sent_at, 1_699_999_900);
         assert_eq!(loaded.email_verification_resend_count, 3);
-        assert_eq!(
-            loaded.email_verification_resend_window_started_at,
-            1_699_999_500
-        );
+        assert_eq!(loaded.email_verification_resend_window_started_at, 1_699_999_500);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9186,7 +8939,6 @@ fn test_find_account_by_email() {
 
     let temp = tempfile::tempdir().expect("create temp dir");
     let db_path = temp.path();
-
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = Db::open(db_path).expect("open DB");
@@ -9220,7 +8972,6 @@ fn test_find_account_by_email() {
         assert!(empty.is_none());
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9295,8 +9046,7 @@ fn test_email_template_has_code_placeholder() {
     // verification.txt. It must contain the {{code}} placeholder, otherwise
     // the user receives a code-less email.
     use std::fs;
-    let body = fs::read_to_string("scripts/data/email/verification.txt")
-        .expect("verification template exists");
+    let body = fs::read_to_string("scripts/data/email/verification.txt").expect("verification template exists");
     assert!(
         body.contains("{{code}}"),
         "email template must contain {{code}} placeholder"
@@ -9326,18 +9076,13 @@ fn test_email_verification_disabled_by_default() {
 
     let temp = tempfile::tempdir().expect("create temp dir");
     let db_path = temp.path();
-    
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = Db::open(db_path).expect("open DB");
         let v = db.get_setting("email_verification_required").unwrap();
-        assert!(
-            v.is_none(),
-            "fresh DB must not have email_verification_required preset"
-        );
+        assert!(v.is_none(), "fresh DB must not have email_verification_required preset");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9369,7 +9114,7 @@ fn test_ban_record_round_trips() {
     use ironmud::types::{AccountData, BanRecord};
 
     let temp = tempfile::tempdir().expect("create temp dir");
-    
+
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = Db::open(temp.path()).expect("open DB");
         let mut a = AccountData::new("BanRT".into(), "h".into());
@@ -9389,7 +9134,7 @@ fn test_ban_record_round_trips() {
         assert_eq!(r.banned_at, 1_700_000_000);
         assert_eq!(r.expires_at, Some(1_900_000_000));
     }));
-    
+
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9424,13 +9169,10 @@ fn test_site_ban_round_trips_and_lazy_expires() {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let temp = tempfile::tempdir().expect("create temp dir");
-    
+
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = Db::open(temp.path()).expect("open DB");
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
 
         // Permanent ban round-trips.
         db.put_site_ban(&SiteBanRecord {
@@ -9441,10 +9183,7 @@ fn test_site_ban_round_trips_and_lazy_expires() {
             expires_at: None,
         })
         .unwrap();
-        let r = db
-            .get_site_ban("10.0.0.1")
-            .unwrap()
-            .expect("permanent ban present");
+        let r = db.get_site_ban("10.0.0.1").unwrap().expect("permanent ban present");
         assert_eq!(r.reason, "scrape");
         assert!(r.expires_at.is_none());
 
@@ -9471,7 +9210,7 @@ fn test_site_ban_round_trips_and_lazy_expires() {
         assert!(db.remove_site_ban("10.0.0.1").unwrap());
         assert!(!db.remove_site_ban("10.0.0.1").unwrap());
     }));
-    
+
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9484,7 +9223,7 @@ fn test_record_account_ip_seen_and_lookup() {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let temp = tempfile::tempdir().expect("create temp dir");
-    
+
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = Db::open(temp.path()).expect("open DB");
         let alpha = AccountData::new("Alpha".into(), "h".into());
@@ -9498,10 +9237,7 @@ fn test_record_account_ip_seen_and_lookup() {
         db.record_account_ip_seen(beta_id, "192.168.1.42").unwrap();
         db.record_account_ip_seen(beta_id, "10.0.0.1").unwrap();
 
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_secs() as i64;
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
         let since = now - 30 * 24 * 3600;
 
         let mut shared = db.list_accounts_by_ip("192.168.1.42", since).unwrap();
@@ -9516,7 +9252,7 @@ fn test_record_account_ip_seen_and_lookup() {
         let none = db.list_accounts_by_ip("10.0.0.99", since).unwrap();
         assert!(none.is_empty());
     }));
-    
+
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9558,7 +9294,7 @@ fn test_find_account_by_normalized_email() {
     use ironmud::types::AccountData;
 
     let temp = tempfile::tempdir().expect("create temp dir");
-    
+
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = Db::open(temp.path()).expect("open DB");
         let mut a = AccountData::new("Alpha".into(), "h".into());
@@ -9578,7 +9314,7 @@ fn test_find_account_by_normalized_email() {
         let other = normalize_email("someone-else@gmail.com").unwrap();
         assert!(db.find_account_by_normalized_email(&other).unwrap().is_none());
     }));
-    
+
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9709,7 +9445,7 @@ fn test_shared_bank_gold_round_trips() {
     use ironmud::types::AccountData;
 
     let temp = tempfile::tempdir().expect("create temp dir");
-    
+
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = Db::open(temp.path()).expect("open DB");
         let mut a = AccountData::new("Vault".into(), "h".into());
@@ -9718,7 +9454,7 @@ fn test_shared_bank_gold_round_trips() {
         let reloaded = db.get_account("vault").unwrap().expect("account");
         assert_eq!(reloaded.shared_bank_gold, 12345);
     }));
-    
+
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9730,7 +9466,7 @@ fn test_add_shared_bank_gold_refuses_negative_balance() {
     use ironmud::types::AccountData;
 
     let temp = tempfile::tempdir().expect("create temp dir");
-    
+
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = Db::open(temp.path()).expect("open DB");
         let mut a = AccountData::new("Coffers".into(), "h".into());
@@ -9750,7 +9486,7 @@ fn test_add_shared_bank_gold_refuses_negative_balance() {
         let after = db.get_account_by_id(&id).unwrap().expect("account");
         assert_eq!(after.shared_bank_gold, 150);
     }));
-    
+
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9762,7 +9498,7 @@ fn test_save_account_preferences_marks_is_set() {
     use ironmud::types::{AccountData, AccountPreferences};
 
     let temp = tempfile::tempdir().expect("create temp dir");
-    
+
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = Db::open(temp.path()).expect("open DB");
         let a = AccountData::new("Prefs".into(), "h".into());
@@ -9786,7 +9522,7 @@ fn test_save_account_preferences_marks_is_set() {
         assert_eq!(d.automap_radius, 5);
         assert!(d.helpline_enabled);
     }));
-    
+
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9798,7 +9534,7 @@ fn test_clear_account_preferences_resets_is_set() {
     use ironmud::types::{AccountData, AccountPreferences};
 
     let temp = tempfile::tempdir().expect("create temp dir");
-    
+
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let db = Db::open(temp.path()).expect("open DB");
         let a = AccountData::new("Prefs2".into(), "h".into());
@@ -9811,13 +9547,12 @@ fn test_clear_account_preferences_resets_is_set() {
         db.save_account_preferences(&id, p).unwrap();
 
         // Clear by saving the engine default (is_set=false).
-        db.save_account_preferences(&id, AccountPreferences::default())
-            .unwrap();
+        db.save_account_preferences(&id, AccountPreferences::default()).unwrap();
         let reloaded = db.get_account_by_id(&id).unwrap().expect("account");
         assert!(!reloaded.character_defaults.is_set);
         assert_eq!(reloaded.character_defaults.prompt_mode, "");
     }));
-    
+
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -9827,10 +9562,7 @@ fn test_clear_account_preferences_resets_is_set() {
 fn test_bank_rhai_has_shared_subcommand() {
     use std::fs;
     let src = fs::read_to_string("scripts/commands/bank.rhai").expect("read bank.rhai");
-    assert!(
-        src.contains("\"shared\""),
-        "bank.rhai must dispatch a `shared` arm"
-    );
+    assert!(src.contains("\"shared\""), "bank.rhai must dispatch a `shared` arm");
     assert!(src.contains("cmd_shared_balance"));
     assert!(src.contains("cmd_shared_deposit"));
     assert!(src.contains("cmd_shared_withdraw"));
@@ -9945,19 +9677,11 @@ fn test_apply_world_preset_switches_settings_and_reloads() {
         let bad: rhai::Map = driver
             .eval(r#"apply_world_preset("nonsense")"#)
             .expect("eval bad preset");
-        let bad_ok = bad
-            .get("ok")
-            .and_then(|d| d.clone().as_bool().ok())
-            .unwrap_or(true);
+        let bad_ok = bad.get("ok").and_then(|d| d.clone().as_bool().ok()).unwrap_or(true);
         assert!(!bad_ok, "unknown preset should fail, got {:?}", bad);
 
-        let res: rhai::Map = driver
-            .eval(r#"apply_world_preset("modern")"#)
-            .expect("eval modern");
-        let ok = res
-            .get("ok")
-            .and_then(|d| d.clone().as_bool().ok())
-            .unwrap_or(false);
+        let res: rhai::Map = driver.eval(r#"apply_world_preset("modern")"#).expect("eval modern");
+        let ok = res.get("ok").and_then(|d| d.clone().as_bool().ok()).unwrap_or(false);
         assert!(ok, "modern preset switch should succeed: {:?}", res);
 
         {
@@ -9975,9 +9699,7 @@ fn test_apply_world_preset_switches_settings_and_reloads() {
         assert!(classes_n >= 1, "modern preset loaded {} classes", classes_n);
         assert!(races_n >= 1, "modern preset loaded {} races", races_n);
 
-        let _back: rhai::Map = driver
-            .eval(r#"apply_world_preset("fantasy")"#)
-            .expect("eval fantasy");
+        let _back: rhai::Map = driver.eval(r#"apply_world_preset("fantasy")"#).expect("eval fantasy");
         let val = state
             .lock()
             .unwrap()
@@ -9988,7 +9710,6 @@ fn test_apply_world_preset_switches_settings_and_reloads() {
         assert_eq!(val, "fantasy");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -10025,7 +9746,7 @@ fn test_apply_mobile_preset_stamps_flags_and_stats() {
 #[test]
 fn test_apply_mobile_preset_persists_through_db_round_trip() {
     use ironmud::MobileData;
-    
+
     use ironmud::script::mobile_presets::{apply_preset_to_mobile, find_preset_by_id};
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -10047,7 +9768,6 @@ fn test_apply_mobile_preset_persists_through_db_round_trip() {
         assert_eq!(loaded.faction.as_deref(), Some("town_watch"));
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -10097,9 +9817,9 @@ fn vampire_test_room(title: &str, indoors: bool) -> ironmud::types::RoomData {
 #[test]
 fn test_sun_tick_burns_outdoor_vampire_mob_during_day() {
     use ironmud::MobileData;
-    
-    use ironmud::vampire::process_sun_tick;
+
     use ironmud::types::VampireState;
+    use ironmud::vampire::process_sun_tick;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
@@ -10148,7 +9868,6 @@ fn test_sun_tick_burns_outdoor_vampire_mob_during_day() {
         assert_eq!(unburned.current_hp, 100, "mortal untouched");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -10157,9 +9876,9 @@ fn test_sun_tick_burns_outdoor_vampire_mob_during_day() {
 #[test]
 fn test_sun_tick_skips_indoor_vampire() {
     use ironmud::MobileData;
-    
-    use ironmud::vampire::process_sun_tick;
+
     use ironmud::types::VampireState;
+    use ironmud::vampire::process_sun_tick;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
@@ -10193,7 +9912,6 @@ fn test_sun_tick_skips_indoor_vampire() {
         assert_eq!(after.current_hp, 100, "indoor vampire is safe");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -10202,9 +9920,9 @@ fn test_sun_tick_skips_indoor_vampire() {
 #[test]
 fn test_sun_tick_skips_at_night() {
     use ironmud::MobileData;
-    
-    use ironmud::vampire::process_sun_tick;
+
     use ironmud::types::VampireState;
+    use ironmud::vampire::process_sun_tick;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
@@ -10238,7 +9956,6 @@ fn test_sun_tick_skips_at_night() {
         assert_eq!(after.current_hp, 100, "night gives no damage");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -10251,9 +9968,7 @@ fn test_vampire_class_present_with_dominate_starter_skill() {
     let path = "scripts/data/classes_vampire.json";
     let content = std::fs::read_to_string(path).expect("classes_vampire.json present");
     let parsed: serde_json::Value = serde_json::from_str(&content).expect("valid JSON");
-    let vampire = parsed
-        .get("vampire")
-        .expect("vampire class entry present");
+    let vampire = parsed.get("vampire").expect("vampire class entry present");
     assert_eq!(
         vampire.get("available").and_then(|v| v.as_bool()),
         Some(true),
@@ -10321,17 +10036,12 @@ fn test_dialogue_humanity_at_least_evaluates_correctly() {
 
     let cond = DialogueCondition::HumanityAtLeast { threshold: 5 };
     let serialized = serde_json::to_string(&cond).expect("serialize");
-    assert!(
-        serialized.contains("humanity_at_least"),
-        "tag is humanity_at_least"
-    );
+    assert!(serialized.contains("humanity_at_least"), "tag is humanity_at_least");
     assert!(serialized.contains("5"), "threshold encoded");
 
     // Also round-trip parse to make sure the deserialize path works.
-    let parsed: DialogueCondition = serde_json::from_str(
-        r#"{"kind":"humanity_at_least","threshold":7}"#,
-    )
-    .expect("parse");
+    let parsed: DialogueCondition =
+        serde_json::from_str(r#"{"kind":"humanity_at_least","threshold":7}"#).expect("parse");
     match parsed {
         DialogueCondition::HumanityAtLeast { threshold } => assert_eq!(threshold, 7),
         _ => panic!("wrong variant"),
@@ -10358,10 +10068,7 @@ fn test_bloodfeed_willing_field_persists() {
     assert!(ch.bloodfeed_willing, "field deserializes");
 
     let serialized = serde_json::to_string(&ch).expect("serialize");
-    assert!(
-        serialized.contains("\"bloodfeed_willing\":true"),
-        "field serializes"
-    );
+    assert!(serialized.contains("\"bloodfeed_willing\":true"), "field serializes");
 }
 
 #[test]
@@ -10506,7 +10213,7 @@ fn test_vampire_spells_json_has_disciplines_with_skills() {
 #[test]
 fn test_sun_tick_first_lethal_hit_floors_at_one_hp_and_stamps_burning() {
     use ironmud::MobileData;
-    
+
     use ironmud::types::{EffectType, VampireState};
     use ironmud::vampire::process_sun_tick;
     use std::collections::HashMap;
@@ -10553,7 +10260,6 @@ fn test_sun_tick_first_lethal_hit_floors_at_one_hp_and_stamps_burning() {
         assert_eq!(after2.current_hp, 0, "second tick is lethal");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -10562,7 +10268,7 @@ fn test_sun_tick_first_lethal_hit_floors_at_one_hp_and_stamps_burning() {
 #[test]
 fn test_sun_tick_clears_burning_when_moved_indoors() {
     use ironmud::MobileData;
-    
+
     use ironmud::types::{EffectType, VampireState};
     use ironmud::vampire::process_sun_tick;
     use std::collections::HashMap;
@@ -10623,7 +10329,6 @@ fn test_sun_tick_clears_burning_when_moved_indoors() {
         assert_eq!(after.current_hp, 1, "still injured but alive");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -10664,9 +10369,9 @@ fn test_vampire_presets_load_and_apply() {
 #[test]
 fn test_blood_tick_decays_vampire_mob_pool() {
     use ironmud::MobileData;
-    
-    use ironmud::vampire::process_blood_tick;
+
     use ironmud::types::VampireState;
+    use ironmud::vampire::process_blood_tick;
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
@@ -10700,7 +10405,6 @@ fn test_blood_tick_decays_vampire_mob_pool() {
         assert!(mortal_after.vampire_state.is_none(), "mortals untouched");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -10709,7 +10413,7 @@ fn test_blood_tick_decays_vampire_mob_pool() {
 #[test]
 fn test_mobile_vampire_state_round_trips() {
     use ironmud::MobileData;
-    
+
     use ironmud::types::VampireState;
 
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -10720,7 +10424,10 @@ fn test_mobile_vampire_state_round_trips() {
         let mut mob = MobileData::new("a brujah elder".to_string());
         assert!(mob.vampire_state.is_none(), "fresh mobs are mortal");
 
-        mob.vampire_state = Some(VampireState::newly_embraced(1_700_000_000, Some("the prince".to_string())));
+        mob.vampire_state = Some(VampireState::newly_embraced(
+            1_700_000_000,
+            Some("the prince".to_string()),
+        ));
         if let Some(ref mut v) = mob.vampire_state {
             v.set_humanity(4);
             v.blood_pool = 8;
@@ -10736,7 +10443,6 @@ fn test_mobile_vampire_state_round_trips() {
         assert_eq!(state.embrace_time, Some(1_700_000_000));
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -10774,7 +10480,6 @@ fn test_vampire_state_frenzy_window() {
 #[test]
 fn test_undead_vampire_holy_vulnerable_flags_persist() {
     use ironmud::MobileData;
-    
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -10798,7 +10503,6 @@ fn test_undead_vampire_holy_vulnerable_flags_persist() {
         assert!(loaded.flags.holy_vulnerable);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -10807,7 +10511,6 @@ fn test_undead_vampire_holy_vulnerable_flags_persist() {
 #[test]
 fn test_item_holy_flag_persists() {
     use ironmud::ItemData;
-    
 
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -10828,7 +10531,6 @@ fn test_item_holy_flag_persists() {
         assert!(loaded.flags.holy);
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -10856,24 +10558,15 @@ fn test_new_damage_types_round_trip() {
 fn test_new_effect_types_round_trip() {
     use ironmud::types::EffectType;
 
-    assert_eq!(
-        EffectType::from_str("sunlight_burn"),
-        Some(EffectType::SunlightBurn)
-    );
+    assert_eq!(EffectType::from_str("sunlight_burn"), Some(EffectType::SunlightBurn));
     assert_eq!(
         EffectType::from_str("sunlight_burning"),
         Some(EffectType::SunlightBurning)
     );
     assert_eq!(EffectType::from_str("frenzy"), Some(EffectType::Frenzy));
     assert_eq!(EffectType::from_str("berserk"), Some(EffectType::Frenzy));
-    assert_eq!(
-        EffectType::from_str("dominated"),
-        Some(EffectType::Dominated)
-    );
-    assert_eq!(
-        EffectType::from_str("obfuscate"),
-        Some(EffectType::Obfuscate)
-    );
+    assert_eq!(EffectType::from_str("dominated"), Some(EffectType::Dominated));
+    assert_eq!(EffectType::from_str("obfuscate"), Some(EffectType::Obfuscate));
 
     let all = EffectType::all();
     assert!(all.contains(&"sunlight_burn"));
@@ -10883,8 +10576,8 @@ fn test_new_effect_types_round_trip() {
 
 #[test]
 fn test_apply_mobile_preset_dedupes_on_hit_effects_by_name() {
-    use ironmud::{MobileData, OnHitEffect};
     use ironmud::script::mobile_presets::{apply_preset_to_mobile, find_preset_by_id};
+    use ironmud::{MobileData, OnHitEffect};
 
     let preset = find_preset_by_id("dire_wolf").expect("preset present");
     let mut mob = MobileData::new("a wolf".to_string());
@@ -11227,10 +10920,8 @@ fn test_set_quest_choice_writes_choice_var_when_quest_active() {
     // semantics: when quest is active, write key=value to choice_vars;
     // when not active, no-op (and log a warn).
     let mut ch: CharacterData = vampire_test_pc("seeker");
-    ch.active_quests.insert(
-        "cendre:q-anarch-pact".to_string(),
-        ActiveQuest::default(),
-    );
+    ch.active_quests
+        .insert("cendre:q-anarch-pact".to_string(), ActiveQuest::default());
 
     let effect = DialogueEffect::SetQuestChoice {
         quest_vnum: "cendre:q-anarch-pact".to_string(),
@@ -11239,31 +10930,18 @@ fn test_set_quest_choice_writes_choice_var_when_quest_active() {
     };
     // Replicate the handler's read/mutate to avoid pulling in the
     // dialogue test harness (which needs a mob/db scaffold).
-    if let DialogueEffect::SetQuestChoice {
-        quest_vnum,
-        key,
-        value,
-    } = &effect
-    {
+    if let DialogueEffect::SetQuestChoice { quest_vnum, key, value } = &effect {
         if let Some(aq) = ch.active_quests.get_mut(quest_vnum) {
             aq.choice_vars.insert(key.clone(), value.clone());
         }
     }
 
-    let aq = ch
-        .active_quests
-        .get("cendre:q-anarch-pact")
-        .expect("quest active");
+    let aq = ch.active_quests.get("cendre:q-anarch-pact").expect("quest active");
     assert_eq!(aq.choice_vars.get("discipline").map(String::as_str), Some("auspex"));
 
     // No-op when quest absent.
     let mut empty = vampire_test_pc("noquest");
-    if let DialogueEffect::SetQuestChoice {
-        quest_vnum,
-        key,
-        value,
-    } = &effect
-    {
+    if let DialogueEffect::SetQuestChoice { quest_vnum, key, value } = &effect {
         if let Some(aq) = empty.active_quests.get_mut(quest_vnum) {
             aq.choice_vars.insert(key.clone(), value.clone());
         }
@@ -11304,16 +10982,13 @@ fn test_active_quest_choice_vars_default_empty_and_roundtrips() {
     assert!(json.contains("choice_vars"));
     assert!(json.contains("potence"));
     let back: ActiveQuest = serde_json::from_str(&json).expect("deserialize");
-    assert_eq!(
-        back.choice_vars.get("discipline").map(String::as_str),
-        Some("potence")
-    );
+    assert_eq!(back.choice_vars.get("discipline").map(String::as_str), Some("potence"));
 }
 
 #[test]
 fn test_thinblood_takes_half_sun_damage_via_mob() {
     use ironmud::MobileData;
-    
+
     use ironmud::types::VampireState;
     use ironmud::vampire::process_sun_tick;
     use std::collections::HashMap;
@@ -11359,7 +11034,6 @@ fn test_thinblood_takes_half_sun_damage_via_mob() {
         assert_eq!(after.current_hp, 190, "mob takes full sun damage");
     }));
 
-    
     if let Err(e) = result {
         std::panic::resume_unwind(e);
     }
@@ -11367,7 +11041,7 @@ fn test_thinblood_takes_half_sun_damage_via_mob() {
 
 #[test]
 fn test_thinblood_max_blood_uplift_via_acknowledgment() {
-    use ironmud::script::vampire::{apply_clan_acknowledgment, CLAN_BLOOD_POOL_MAX, THINBLOOD_BLOOD_POOL_MAX};
+    use ironmud::script::vampire::{CLAN_BLOOD_POOL_MAX, THINBLOOD_BLOOD_POOL_MAX, apply_clan_acknowledgment};
     use ironmud::types::VampireState;
 
     // Simulate the auto-create thinblood: VampireState::default() then
@@ -11476,10 +11150,7 @@ fn test_character_tattoos_field_defaults_empty_and_persists() {
         });
         db.save_character_data(ch.clone()).expect("save");
 
-        let loaded = db
-            .get_character_data(&ch.name)
-            .expect("read")
-            .expect("present");
+        let loaded = db.get_character_data(&ch.name).expect("read").expect("present");
         assert_eq!(loaded.tattoos.len(), 1);
         assert_eq!(loaded.tattoos[0].location, WearLocation::Back);
         assert_eq!(loaded.tattoos[0].short_desc, "a small rose");
@@ -11540,9 +11211,7 @@ fn test_apply_tattoo_consumes_item_and_stamps_permanent_buffs() {
         db.move_item_to_inventory(&inst_id, &ch.name).expect("inv");
 
         // Apply.
-        let (short, location) = db
-            .apply_tattoo_to_character(&ch.name, &inst_id)
-            .expect("apply tattoo");
+        let (short, location) = db.apply_tattoo_to_character(&ch.name, &inst_id).expect("apply tattoo");
         assert_eq!(short, "a marauder's mark");
         assert_eq!(location, "right arm");
 
@@ -11551,10 +11220,7 @@ fn test_apply_tattoo_consumes_item_and_stamps_permanent_buffs() {
         assert!(gone.is_none(), "tattoo item is consumed on apply");
 
         // Tattoo recorded on character.
-        let after = db
-            .get_character_data(&ch.name)
-            .expect("get")
-            .expect("present");
+        let after = db.get_character_data(&ch.name).expect("get").expect("present");
         assert_eq!(after.tattoos.len(), 1);
         assert_eq!(after.tattoos[0].location, WearLocation::RightArm);
         assert_eq!(after.tattoos[0].short_desc, "a marauder's mark");
@@ -11562,11 +11228,7 @@ fn test_apply_tattoo_consumes_item_and_stamps_permanent_buffs() {
 
         // Two permanent buffs stamped with the right source tag.
         let want_source = "tattoo:ink:marauder:right arm";
-        let tattoo_buffs: Vec<_> = after
-            .active_buffs
-            .iter()
-            .filter(|b| b.source == want_source)
-            .collect();
+        let tattoo_buffs: Vec<_> = after.active_buffs.iter().filter(|b| b.source == want_source).collect();
         assert_eq!(tattoo_buffs.len(), 2);
         assert!(tattoo_buffs.iter().all(|b| b.remaining_secs == -1));
         assert!(
@@ -11609,10 +11271,7 @@ fn test_apply_tattoo_rejects_non_tattoo_item() {
         let err = db.apply_tattoo_to_character(&ch.name, &id);
         assert!(err.is_err(), "non-tattoo items are rejected");
 
-        let after = db
-            .get_character_data(&ch.name)
-            .expect("get")
-            .expect("present");
+        let after = db.get_character_data(&ch.name).expect("get").expect("present");
         assert!(after.tattoos.is_empty(), "no tattoo recorded on reject");
         assert!(
             db.get_item_data(&id).expect("get").is_some(),
@@ -11690,35 +11349,24 @@ fn test_remove_tattoo_strips_matching_buffs() {
             .expect("instance");
         let inst_id = inst.id;
         db.move_item_to_inventory(&inst_id, &ch.name).expect("inv");
-        db.apply_tattoo_to_character(&ch.name, &inst_id)
-            .expect("apply");
+        db.apply_tattoo_to_character(&ch.name, &inst_id).expect("apply");
 
         // Confirm the buff is present pre-removal.
         let want_source = "tattoo:ink:wisp:left arm";
         let before = db.get_character_data(&ch.name).unwrap().unwrap();
         assert_eq!(
-            before
-                .active_buffs
-                .iter()
-                .filter(|b| b.source == want_source)
-                .count(),
+            before.active_buffs.iter().filter(|b| b.source == want_source).count(),
             1
         );
         assert_eq!(before.tattoos.len(), 1);
 
-        let removed = db
-            .remove_tattoo_from_character(&ch.name, 0)
-            .expect("remove");
+        let removed = db.remove_tattoo_from_character(&ch.name, 0).expect("remove");
         assert!(removed);
 
         let after = db.get_character_data(&ch.name).unwrap().unwrap();
         assert!(after.tattoos.is_empty(), "tattoo removed from list");
         assert_eq!(
-            after
-                .active_buffs
-                .iter()
-                .filter(|b| b.source == want_source)
-                .count(),
+            after.active_buffs.iter().filter(|b| b.source == want_source).count(),
             0,
             "matching buffs stripped"
         );
@@ -11734,10 +11382,7 @@ fn test_remove_tattoo_strips_matching_buffs() {
 
 // ===== Entry-gate tests =====
 
-fn make_test_room_with_gate(
-    db: &ironmud::db::Db,
-    gate: Option<ironmud::types::RoomEntryGate>,
-) -> uuid::Uuid {
+fn make_test_room_with_gate(db: &ironmud::db::Db, gate: Option<ironmud::types::RoomEntryGate>) -> uuid::Uuid {
     use ironmud::types::{RoomData, RoomExits, RoomFlags, WaterType};
     use std::collections::HashMap as StdHashMap;
     let room = RoomData {
@@ -11804,10 +11449,7 @@ fn test_room_entry_gate_class_blocks_wrong_class_allows_right_class() {
 
         let mut thief = make_blank_character("Stab");
         thief.class_name = "thief".into();
-        assert!(
-            evaluate_entry_gate(&db, &thief, &room).is_none(),
-            "thief allowed in"
-        );
+        assert!(evaluate_entry_gate(&db, &thief, &room).is_none(), "thief allowed in");
 
         // Case-insensitive
         let mut shout = make_blank_character("Shout");
@@ -11894,9 +11536,9 @@ fn test_room_entry_gate_skill_threshold() {
 
 #[test]
 fn test_room_entry_gate_item_inventory_and_equipped() {
+    use ironmud::ItemData;
     use ironmud::script::rooms::evaluate_entry_gate;
     use ironmud::types::{ItemLocation, RoomEntryCondition, RoomEntryGate};
-    use ironmud::ItemData;
 
     let temp = tempfile::tempdir().unwrap();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -11919,11 +11561,7 @@ fn test_room_entry_gate_item_inventory_and_equipped() {
         // Item in inventory -> allowed
         let inv_owner = make_blank_character("InvOwner");
         db.save_character_data(inv_owner.clone()).unwrap();
-        let mut inv_item = ItemData::new(
-            "keycard".into(),
-            "a keycard".into(),
-            "A plastic keycard.".into(),
-        );
+        let mut inv_item = ItemData::new("keycard".into(), "a keycard".into(), "A plastic keycard.".into());
         inv_item.vnum = Some("keep:keycard".into());
         inv_item.location = ItemLocation::Inventory(inv_owner.name.to_lowercase());
         db.save_item_data(inv_item).unwrap();
@@ -11932,11 +11570,7 @@ fn test_room_entry_gate_item_inventory_and_equipped() {
         // Item equipped -> allowed
         let eq_owner = make_blank_character("EqOwner");
         db.save_character_data(eq_owner.clone()).unwrap();
-        let mut eq_item = ItemData::new(
-            "keycard".into(),
-            "a keycard".into(),
-            "Worn on a lanyard.".into(),
-        );
+        let mut eq_item = ItemData::new("keycard".into(), "a keycard".into(), "Worn on a lanyard.".into());
         eq_item.vnum = Some("keep:keycard".into());
         eq_item.location = ItemLocation::Equipped(eq_owner.name.to_lowercase());
         db.save_item_data(eq_item).unwrap();
@@ -11945,11 +11579,7 @@ fn test_room_entry_gate_item_inventory_and_equipped() {
         // Wrong vnum -> blocked
         let wrong_owner = make_blank_character("Wrong");
         db.save_character_data(wrong_owner.clone()).unwrap();
-        let mut wrong_item = ItemData::new(
-            "wallet".into(),
-            "a wallet".into(),
-            "Not a keycard.".into(),
-        );
+        let mut wrong_item = ItemData::new("wallet".into(), "a wallet".into(), "Not a keycard.".into());
         wrong_item.vnum = Some("street:wallet".into());
         wrong_item.location = ItemLocation::Inventory(wrong_owner.name.to_lowercase());
         db.save_item_data(wrong_item).unwrap();
@@ -12268,9 +11898,7 @@ fn test_clan_room_gate_blocks_non_member_allows_member() {
         let db = ironmud::db::Db::open(temp.path()).unwrap();
 
         let gate = RoomEntryGate {
-            conditions: vec![RoomEntryCondition::IsClanMember {
-                tag: "IRON".into(),
-            }],
+            conditions: vec![RoomEntryCondition::IsClanMember { tag: "IRON".into() }],
             block_message: "Clan only.".into(),
         };
         let room_id = make_test_room_with_gate(&db, Some(gate));
@@ -12292,10 +11920,7 @@ fn test_clan_room_gate_blocks_non_member_allows_member() {
 
         let mut member = make_blank_character("Member");
         member.clan_tag = Some("IRON".into());
-        assert!(
-            evaluate_entry_gate(&db, &member, &room).is_none(),
-            "member -> allowed"
-        );
+        assert!(evaluate_entry_gate(&db, &member, &room).is_none(), "member -> allowed");
 
         let mut shouty = make_blank_character("Shouty");
         shouty.clan_tag = Some("iron".into());
@@ -12372,8 +11997,7 @@ mod creature_type_tests {
     fn test_creature_type_from_str_roundtrip() {
         // Every advertised string parses, and to_display_string is its inverse.
         for s in CreatureType::all() {
-            let parsed = CreatureType::from_str(s)
-                .unwrap_or_else(|| panic!("from_str failed for {s}"));
+            let parsed = CreatureType::from_str(s).unwrap_or_else(|| panic!("from_str failed for {s}"));
             assert_eq!(parsed.to_display_string(), s);
         }
         // A couple of aliases resolve.
@@ -12385,7 +12009,10 @@ mod creature_type_tests {
     #[test]
     fn test_feed_mortal_full_blood_and_humanity() {
         match feed_outcome_for(&mob(CreatureType::Mortal)) {
-            FeedDecision::Allowed { blood_per_hp, can_cost_humanity } => {
+            FeedDecision::Allowed {
+                blood_per_hp,
+                can_cost_humanity,
+            } => {
                 assert_eq!(blood_per_hp, 4);
                 assert!(can_cost_humanity, "mortal feed must be able to cost humanity");
             }
@@ -12396,9 +12023,15 @@ mod creature_type_tests {
     #[test]
     fn test_feed_animal_thin_blood_no_humanity() {
         match feed_outcome_for(&mob(CreatureType::Animal)) {
-            FeedDecision::Allowed { blood_per_hp, can_cost_humanity } => {
+            FeedDecision::Allowed {
+                blood_per_hp,
+                can_cost_humanity,
+            } => {
                 assert_eq!(blood_per_hp, 2, "animal blood is thinner");
-                assert!(!can_cost_humanity, "animal feed is morally clean — never costs humanity");
+                assert!(
+                    !can_cost_humanity,
+                    "animal feed is morally clean — never costs humanity"
+                );
             }
             other => panic!("expected Allowed for animal, got {other:?}"),
         }

@@ -1,12 +1,11 @@
 use std::collections::HashMap;
 
 use crate::import::{
-    AttachType, IrTrigger, MappingOptions, PlannedSpawn, PlannedTriggerOverlay, Severity, SourceLoc,
-    TriggerMutation, Warning, WarningKind,
+    AttachType, IrTrigger, MappingOptions, PlannedSpawn, PlannedTriggerOverlay, Severity, SourceLoc, TriggerMutation,
+    Warning, WarningKind,
 };
 use crate::types::{
-    ItemTrigger,
-    ItemTriggerType, MobileTrigger, MobileTriggerType, RoomTrigger, SpawnEntityType, TriggerType,
+    ItemTrigger, ItemTriggerType, MobileTrigger, MobileTriggerType, RoomTrigger, SpawnEntityType, TriggerType,
 };
 
 use super::TriggerAction;
@@ -398,7 +397,12 @@ pub(super) fn map_triggers(
 
 pub(super) fn format_specproc_warn(name: &str, message: &str, vnums: &[i32]) -> String {
     if vnums.len() <= 1 {
-        format!("specproc `{}` (vnum {}): {}", name, vnums.first().copied().unwrap_or(0), message)
+        format!(
+            "specproc `{}` (vnum {}): {}",
+            name,
+            vnums.first().copied().unwrap_or(0),
+            message
+        )
     } else {
         format!(
             "specproc `{}` ({} bindings): {} — vnums: {}",
@@ -411,7 +415,12 @@ pub(super) fn format_specproc_warn(name: &str, message: &str, vnums: &[i32]) -> 
 }
 
 pub(super) fn format_vnum_sample(vnums: &[i32]) -> String {
-    let take = vnums.iter().take(8).map(|v| v.to_string()).collect::<Vec<_>>().join(", ");
+    let take = vnums
+        .iter()
+        .take(8)
+        .map(|v| v.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
     if vnums.len() > 8 {
         format!("{take}, … ({} more)", vnums.len() - 8)
     } else {
@@ -419,7 +428,12 @@ pub(super) fn format_vnum_sample(vnums: &[i32]) -> String {
     }
 }
 
-pub(super) fn unknown_trigger_type_warning(scope: &str, trigger_type: &str, specproc: &str, source: &SourceLoc) -> Warning {
+pub(super) fn unknown_trigger_type_warning(
+    scope: &str,
+    trigger_type: &str,
+    specproc: &str,
+    source: &SourceLoc,
+) -> Warning {
     Warning::new(
         WarningKind::UnsupportedFlag,
         Severity::Warn,

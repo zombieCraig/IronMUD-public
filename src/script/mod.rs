@@ -9,42 +9,42 @@
 pub mod macros;
 
 pub mod account_prefs;
-pub mod achievements;
 pub mod accounts;
-pub mod bans;
-pub mod clan;
-pub mod email;
+pub mod achievements;
 mod ai;
 mod api_keys;
 mod areas;
+pub mod bans;
+mod boards;
 mod bugs;
 mod characters;
+pub mod clan;
 mod classes;
 mod combat;
 mod crafting;
 pub mod dg;
 pub mod dialogue;
 mod editor;
+pub mod email;
 mod fishing;
 mod garden;
 mod groups;
 mod healers;
 pub mod items;
-mod boards;
-mod mail;
 pub mod lang;
+mod lookup;
+mod mail;
 pub mod map;
 mod medical;
 pub mod mobile_presets;
 mod mobiles;
 mod property;
+mod quests;
 pub mod rooms;
 mod shop_presets;
 mod shops;
-mod lookup;
 mod simulation;
 pub mod social;
-mod quests;
 mod spawn;
 mod spells;
 mod stealth;
@@ -82,30 +82,79 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     engine.register_type_with_name::<CharacterData>("CharacterData");
 
     // Bool getter+setter pairs
-    register_bool_flags!(engine, CharacterData,
-        summonable, creation_complete, must_change_password, show_room_flags,
-        mana_enabled, is_grouped, is_wet, has_hypothermia, is_unconscious,
-        has_heat_exhaustion, has_heat_stroke, has_illness, food_sick, on_tour,
-        automap_enabled, ascii_map, new_editor_enabled);
+    register_bool_flags!(
+        engine,
+        CharacterData,
+        summonable,
+        creation_complete,
+        must_change_password,
+        show_room_flags,
+        mana_enabled,
+        is_grouped,
+        is_wet,
+        has_hypothermia,
+        is_unconscious,
+        has_heat_exhaustion,
+        has_heat_stroke,
+        has_illness,
+        food_sick,
+        on_tour,
+        automap_enabled,
+        ascii_map,
+        new_editor_enabled
+    );
 
     // Read-only bool getters
     register_bool_ro!(engine, CharacterData, is_builder, is_admin, god_mode, build_mode);
 
     // String getter+setter pairs
-    register_string!(engine, CharacterData,
-        name, race, gender, short_description, class_name, prompt_mode, current_language);
+    register_string!(
+        engine,
+        CharacterData,
+        name,
+        race,
+        gender,
+        short_description,
+        class_name,
+        prompt_mode,
+        current_language
+    );
 
     // Read-only String getter
     register_string_ro!(engine, CharacterData, password_hash);
 
     // i32 fields exposed as i64
-    register_i32!(engine, CharacterData,
-        level, gold, trait_points,
-        thirst, max_thirst, hunger, max_hunger, hp, max_hp,
-        stamina, max_stamina, mana, max_mana, breath, max_breath,
-        stat_str, stat_dex, stat_con, stat_int, stat_wis, stat_cha,
-        wet_level, cold_exposure, heat_exposure, illness_progress,
-        bleedout_rounds_remaining, morality);
+    register_i32!(
+        engine,
+        CharacterData,
+        level,
+        gold,
+        trait_points,
+        thirst,
+        max_thirst,
+        hunger,
+        max_hunger,
+        hp,
+        max_hp,
+        stamina,
+        max_stamina,
+        mana,
+        max_mana,
+        breath,
+        max_breath,
+        stat_str,
+        stat_dex,
+        stat_con,
+        stat_int,
+        stat_wis,
+        stat_cha,
+        wet_level,
+        cold_exposure,
+        heat_exposure,
+        illness_progress,
+        bleedout_rounds_remaining,
+        morality
+    );
 
     // Read-only i32 as i64
     register_i32_ro!(engine, CharacterData, gold_high_water);
@@ -637,10 +686,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 .map(|cc| {
                     let mut entry = rhai::Map::new();
                     entry.insert("verb".into(), rhai::Dynamic::from(cc.verb.clone()));
-                    entry.insert(
-                        "hint".into(),
-                        rhai::Dynamic::from(cc.hint.clone().unwrap_or_default()),
-                    );
+                    entry.insert("hint".into(), rhai::Dynamic::from(cc.hint.clone().unwrap_or_default()));
                     rhai::Dynamic::from_map(entry)
                 })
                 .collect::<Vec<_>>()
@@ -807,22 +853,25 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     // Online players read from the session; offline players fall back to the DB.
     let cloned_db = db.clone();
     let sync_conns = connections.clone();
-    engine.register_fn("refresh_dg_vars", move |mut character: CharacterData| -> CharacterData {
-        if let Ok(conns) = sync_conns.lock() {
-            for session in conns.values() {
-                if let Some(ref existing) = session.character {
-                    if existing.name.eq_ignore_ascii_case(&character.name) {
-                        character.dg_vars = existing.dg_vars.clone();
-                        return character;
+    engine.register_fn(
+        "refresh_dg_vars",
+        move |mut character: CharacterData| -> CharacterData {
+            if let Ok(conns) = sync_conns.lock() {
+                for session in conns.values() {
+                    if let Some(ref existing) = session.character {
+                        if existing.name.eq_ignore_ascii_case(&character.name) {
+                            character.dg_vars = existing.dg_vars.clone();
+                            return character;
+                        }
                     }
                 }
             }
-        }
-        if let Ok(Some(fresh)) = cloned_db.get_character_data(&character.name) {
-            character.dg_vars = fresh.dg_vars;
-        }
-        character
-    });
+            if let Ok(Some(fresh)) = cloned_db.get_character_data(&character.name) {
+                character.dg_vars = fresh.dg_vars;
+            }
+            character
+        },
+    );
 
     let cloned_db = db.clone();
     engine.register_fn("hash_password", move |password: String| {
@@ -983,8 +1032,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 //   (a) charmed by `player_name` AND has no follow-override, OR
                 //   (b) a pet of `player_name` AND has no follow-override, OR
                 //   (c) explicitly told to follow `player_name` (regardless of master).
-                let follows_master = mob.is_charmed_by(&player_name)
-                    && mob.charm_follow_player.is_none();
+                let follows_master = mob.is_charmed_by(&player_name) && mob.charm_follow_player.is_none();
                 let is_pet = mob
                     .pet_owner
                     .as_deref()
@@ -1013,7 +1061,10 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 crate::broadcast_to_room_awake(
                     &conns,
                     dst,
-                    format!("{} arrives from the {}, following {}.", mob_name, arrival_dir, player_name),
+                    format!(
+                        "{} arrives from the {}, following {}.",
+                        mob_name, arrival_dir, player_name
+                    ),
                     None,
                 );
             }
@@ -1120,8 +1171,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                             .unwrap()
                             .as_secs() as i64;
                         let delta = (now - start).max(0);
-                        character.total_seconds_played =
-                            character.total_seconds_played.saturating_add(delta);
+                        character.total_seconds_played = character.total_seconds_played.saturating_add(delta);
                     }
                 }
             }
@@ -1273,10 +1323,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 format!("scripts/data/race_suggestions_{}.json", preset_clean),
             ),
             ("spells", format!("scripts/data/spells_{}.json", preset_clean)),
-            (
-                "languages",
-                format!("scripts/data/languages_{}.json", preset_clean),
-            ),
+            ("languages", format!("scripts/data/languages_{}.json", preset_clean)),
         ] {
             if !std::path::Path::new(&path).exists() {
                 missing.push(format!("{} ({})", label, path).into());
@@ -1287,10 +1334,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
             let world = preset_state.lock().unwrap();
             for key in ["class_preset", "race_preset", "spell_preset", "language_preset"] {
                 if let Err(e) = world.db.set_setting(key, &preset_clean) {
-                    result.insert(
-                        "error".into(),
-                        format!("failed to write {}: {}", key, e).into(),
-                    );
+                    result.insert("error".into(), format!("failed to write {}: {}", key, e).into());
                     return result;
                 }
             }
@@ -1302,18 +1346,9 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         }
 
         let world = preset_state.lock().unwrap();
-        result.insert(
-            "classes_count".into(),
-            (world.class_definitions.len() as i64).into(),
-        );
-        result.insert(
-            "races_count".into(),
-            (world.race_definitions.len() as i64).into(),
-        );
-        result.insert(
-            "spells_count".into(),
-            (world.spell_definitions.len() as i64).into(),
-        );
+        result.insert("classes_count".into(), (world.class_definitions.len() as i64).into());
+        result.insert("races_count".into(), (world.race_definitions.len() as i64).into());
+        result.insert("spells_count".into(), (world.spell_definitions.len() as i64).into());
         result.insert(
             "languages_count".into(),
             (world.language_definitions.len() as i64).into(),
@@ -1432,34 +1467,29 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     let cloned_state = state.clone();
     engine.register_fn("get_available_commands", move |connection_id: String| {
         // Get login status, permissions, and skill levels (for ability gates)
-        let (is_logged_in, is_builder, is_admin, skill_levels) =
-            if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id) {
-                let conns = conns.lock().unwrap();
-                conns
-                    .get(&uuid)
-                    .map(|s| {
-                        let logged_in = s.character.is_some();
-                        let (builder, admin) = s
-                            .character
-                            .as_ref()
-                            .map(|c| (c.is_builder || c.is_admin, c.is_admin))
-                            .unwrap_or((false, false));
-                        let skills: std::collections::HashMap<String, i32> = s
-                            .character
-                            .as_ref()
-                            .map(|c| {
-                                c.skills
-                                    .iter()
-                                    .map(|(k, v)| (k.to_lowercase(), v.level))
-                                    .collect()
-                            })
-                            .unwrap_or_default();
-                        (logged_in, builder, admin, skills)
-                    })
-                    .unwrap_or((false, false, false, std::collections::HashMap::new()))
-            } else {
-                (false, false, false, std::collections::HashMap::new())
-            };
+        let (is_logged_in, is_builder, is_admin, skill_levels) = if let Ok(uuid) = uuid::Uuid::parse_str(&connection_id)
+        {
+            let conns = conns.lock().unwrap();
+            conns
+                .get(&uuid)
+                .map(|s| {
+                    let logged_in = s.character.is_some();
+                    let (builder, admin) = s
+                        .character
+                        .as_ref()
+                        .map(|c| (c.is_builder || c.is_admin, c.is_admin))
+                        .unwrap_or((false, false));
+                    let skills: std::collections::HashMap<String, i32> = s
+                        .character
+                        .as_ref()
+                        .map(|c| c.skills.iter().map(|(k, v)| (k.to_lowercase(), v.level)).collect())
+                        .unwrap_or_default();
+                    (logged_in, builder, admin, skills)
+                })
+                .unwrap_or((false, false, false, std::collections::HashMap::new()))
+        } else {
+            (false, false, false, std::collections::HashMap::new())
+        };
 
         let world = cloned_state.lock().unwrap();
         let mut commands: Vec<rhai::Dynamic> = Vec::new();
@@ -1525,10 +1555,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         let world = cloned_state2.lock().unwrap();
         let mut names: Vec<String> = world.socials.iter().map(|a| a.lookup_key()).collect();
         names.sort();
-        names
-            .into_iter()
-            .map(rhai::Dynamic::from)
-            .collect::<rhai::Array>()
+        names.into_iter().map(rhai::Dynamic::from).collect::<rhai::Array>()
     });
 
     // get_default_aliases() -> Map of default aliases
@@ -1773,40 +1800,39 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     // set_olc_edit_mobile(connection_id, mobile_id) -> mark mobile under
     // edit (used by `medit trigger dg edit/add` to anchor the dg-body editor).
     let conns = connections.clone();
-    engine.register_fn("set_olc_edit_mobile", move |connection_id: String, mobile_id: String| {
-        if let Ok(conn_uuid) = uuid::Uuid::parse_str(&connection_id) {
-            let mob_uuid = if mobile_id.is_empty() {
-                None
-            } else {
-                uuid::Uuid::parse_str(&mobile_id).ok()
-            };
-            let mut conns = conns.lock().unwrap();
-            if let Some(session) = conns.get_mut(&conn_uuid) {
-                session.olc_edit_mobile = mob_uuid;
-                return true;
-            }
-        }
-        false
-    });
-
-    // set_olc_edit_proto_vnum(connection_id, vnum) -> bind which DG trigger
-    // proto receives the next collecting_dg_proto_body save. Empty string
-    // clears. Set by `trigger dg proto edit/new` before opening the editor.
-    let conns = connections.clone();
     engine.register_fn(
-        "set_olc_edit_proto_vnum",
-        move |connection_id: String, vnum: String| {
+        "set_olc_edit_mobile",
+        move |connection_id: String, mobile_id: String| {
             if let Ok(conn_uuid) = uuid::Uuid::parse_str(&connection_id) {
+                let mob_uuid = if mobile_id.is_empty() {
+                    None
+                } else {
+                    uuid::Uuid::parse_str(&mobile_id).ok()
+                };
                 let mut conns = conns.lock().unwrap();
                 if let Some(session) = conns.get_mut(&conn_uuid) {
-                    session.olc_edit_proto_vnum =
-                        if vnum.is_empty() { None } else { Some(vnum) };
+                    session.olc_edit_mobile = mob_uuid;
                     return true;
                 }
             }
             false
         },
     );
+
+    // set_olc_edit_proto_vnum(connection_id, vnum) -> bind which DG trigger
+    // proto receives the next collecting_dg_proto_body save. Empty string
+    // clears. Set by `trigger dg proto edit/new` before opening the editor.
+    let conns = connections.clone();
+    engine.register_fn("set_olc_edit_proto_vnum", move |connection_id: String, vnum: String| {
+        if let Ok(conn_uuid) = uuid::Uuid::parse_str(&connection_id) {
+            let mut conns = conns.lock().unwrap();
+            if let Some(session) = conns.get_mut(&conn_uuid) {
+                session.olc_edit_proto_vnum = if vnum.is_empty() { None } else { Some(vnum) };
+                return true;
+            }
+        }
+        false
+    });
 
     // set_olc_dialogue_node(connection_id, node_name) -> mark which dialogue
     // node receives the next collecting_dialogue_node_text save. Pair with
@@ -1818,8 +1844,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
             if let Ok(conn_uuid) = uuid::Uuid::parse_str(&connection_id) {
                 let mut conns = conns.lock().unwrap();
                 if let Some(session) = conns.get_mut(&conn_uuid) {
-                    session.olc_dialogue_node_name =
-                        if node_name.is_empty() { None } else { Some(node_name) };
+                    session.olc_dialogue_node_name = if node_name.is_empty() { None } else { Some(node_name) };
                     return true;
                 }
             }
@@ -1837,10 +1862,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
             if let Ok(conn_uuid) = uuid::Uuid::parse_str(&connection_id) {
                 let mut conns = conns.lock().unwrap();
                 if let Some(session) = conns.get_mut(&conn_uuid) {
-                    session.olc_edit_trigger_host =
-                        if host_kind.is_empty() { None } else { Some(host_kind) };
-                    session.olc_edit_trigger_index =
-                        if index < 0 { None } else { Some(index as usize) };
+                    session.olc_edit_trigger_host = if host_kind.is_empty() { None } else { Some(host_kind) };
+                    session.olc_edit_trigger_index = if index < 0 { None } else { Some(index as usize) };
                     return true;
                 }
             }

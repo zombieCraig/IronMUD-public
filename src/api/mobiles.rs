@@ -12,10 +12,10 @@ use uuid::Uuid;
 
 use super::{
     ApiState,
-    auth::{authorize_existing_area, parse_and_authorize_area, AuthenticatedUser, can_read, can_write},
+    auth::{AuthenticatedUser, authorize_existing_area, can_read, can_write, parse_and_authorize_area},
     error::ApiError,
     notify_builders,
-    validate::{check_shop_rate, check_stat_bonus, check_text_len, LONG_DESC_MAX, NAME_MAX, SHORT_DESC_MAX},
+    validate::{LONG_DESC_MAX, NAME_MAX, SHORT_DESC_MAX, check_shop_rate, check_stat_bonus, check_text_len},
 };
 use crate::{
     ActivityState, CombatState, DamageType, MobileData, MobileFlags, MobileTrigger, MobileTriggerType, NeedsState,
@@ -42,10 +42,7 @@ pub fn routes() -> Router<Arc<ApiState>> {
             "/:id/dialogue_tree/nodes/:node_name",
             put(update_dialogue_node).delete(remove_dialogue_node),
         )
-        .route(
-            "/:id/dialogue_tree/nodes/:node_name/choices",
-            post(add_dialogue_choice),
-        )
+        .route("/:id/dialogue_tree/nodes/:node_name/choices", post(add_dialogue_choice))
         .route(
             "/:id/dialogue_tree/nodes/:node_name/choices/:index",
             put(update_dialogue_choice).delete(remove_dialogue_choice),
@@ -910,11 +907,7 @@ async fn create_mobile(
         },
         dialogue: HashMap::new(),
         dialogue_tree: None,
-        spoken_language: req
-            .spoken_language
-            .as_ref()
-            .filter(|s| !s.is_empty())
-            .cloned(),
+        spoken_language: req.spoken_language.as_ref().filter(|s| !s.is_empty()).cloned(),
         shop_stock: req.shop_stock.unwrap_or_default(),
         shop_inventory: Vec::new(),
         shop_buys_types: req.shop_buys_types.unwrap_or_default(),
@@ -1446,8 +1439,7 @@ async fn remove_dialogue(
 
 fn map_edit_err(e: crate::dialogue_edit::DialogueEditError) -> ApiError {
     match e {
-        crate::dialogue_edit::DialogueEditError::NoTree
-        | crate::dialogue_edit::DialogueEditError::NodeMissing(_) => {
+        crate::dialogue_edit::DialogueEditError::NoTree | crate::dialogue_edit::DialogueEditError::NodeMissing(_) => {
             ApiError::NotFound(e.to_string())
         }
         _ => ApiError::InvalidInput(e.to_string()),
@@ -1455,8 +1447,7 @@ fn map_edit_err(e: crate::dialogue_edit::DialogueEditError) -> ApiError {
 }
 
 async fn load_mobile(state: &Arc<ApiState>, id: &str) -> Result<MobileData, ApiError> {
-    let uuid = Uuid::parse_str(id)
-        .map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
     state
         .db
         .get_mobile_data(&uuid)
@@ -1464,10 +1455,7 @@ async fn load_mobile(state: &Arc<ApiState>, id: &str) -> Result<MobileData, ApiE
         .ok_or_else(|| ApiError::NotFound(format!("Mobile '{}' not found", id)))
 }
 
-fn save_mobile_response(
-    state: &Arc<ApiState>,
-    mobile: MobileData,
-) -> Result<Json<MobileResponse>, ApiError> {
+fn save_mobile_response(state: &Arc<ApiState>, mobile: MobileData) -> Result<Json<MobileResponse>, ApiError> {
     state
         .db
         .save_mobile_data(mobile.clone())
@@ -1491,8 +1479,7 @@ async fn set_dialogue_tree_root(
     }
     let mut mobile = load_mobile(&state, &id).await?;
     authorize_existing_area(&state.db, &user, mobile.area_id)?;
-    crate::dialogue_edit::set_root(&mut mobile.dialogue_tree, &req.node_name)
-        .map_err(map_edit_err)?;
+    crate::dialogue_edit::set_root(&mut mobile.dialogue_tree, &req.node_name).map_err(map_edit_err)?;
     save_mobile_response(&state, mobile)
 }
 
@@ -1533,8 +1520,7 @@ async fn add_dialogue_node(
         on_each_visit: req.on_each_visit,
         on_exit: req.on_exit,
     };
-    crate::dialogue_edit::add_node(&mut mobile.dialogue_tree, &req.name, node)
-        .map_err(map_edit_err)?;
+    crate::dialogue_edit::add_node(&mut mobile.dialogue_tree, &req.name, node).map_err(map_edit_err)?;
     save_mobile_response(&state, mobile)
 }
 
@@ -1555,8 +1541,7 @@ async fn update_dialogue_node(
         on_each_visit: req.on_each_visit,
         on_exit: req.on_exit,
     };
-    crate::dialogue_edit::update_node(&mut mobile.dialogue_tree, &node_name, patch)
-        .map_err(map_edit_err)?;
+    crate::dialogue_edit::update_node(&mut mobile.dialogue_tree, &node_name, patch).map_err(map_edit_err)?;
     save_mobile_response(&state, mobile)
 }
 
@@ -1570,8 +1555,7 @@ async fn remove_dialogue_node(
     }
     let mut mobile = load_mobile(&state, &id).await?;
     authorize_existing_area(&state.db, &user, mobile.area_id)?;
-    crate::dialogue_edit::remove_node(&mut mobile.dialogue_tree, &node_name)
-        .map_err(map_edit_err)?;
+    crate::dialogue_edit::remove_node(&mut mobile.dialogue_tree, &node_name).map_err(map_edit_err)?;
     save_mobile_response(&state, mobile)
 }
 
@@ -1586,8 +1570,7 @@ async fn add_dialogue_choice(
     }
     let mut mobile = load_mobile(&state, &id).await?;
     authorize_existing_area(&state.db, &user, mobile.area_id)?;
-    crate::dialogue_edit::add_choice(&mut mobile.dialogue_tree, &node_name, req.into())
-        .map_err(map_edit_err)?;
+    crate::dialogue_edit::add_choice(&mut mobile.dialogue_tree, &node_name, req.into()).map_err(map_edit_err)?;
     save_mobile_response(&state, mobile)
 }
 
@@ -1617,8 +1600,7 @@ async fn remove_dialogue_choice(
     }
     let mut mobile = load_mobile(&state, &id).await?;
     authorize_existing_area(&state.db, &user, mobile.area_id)?;
-    crate::dialogue_edit::remove_choice(&mut mobile.dialogue_tree, &node_name, index)
-        .map_err(map_edit_err)?;
+    crate::dialogue_edit::remove_choice(&mut mobile.dialogue_tree, &node_name, index).map_err(map_edit_err)?;
     save_mobile_response(&state, mobile)
 }
 
@@ -1927,19 +1909,11 @@ async fn list_mobile_presets(
         .map(|p| PresetSummary {
             id: p.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string(),
             name: p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            description: p
-                .get("description")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
+            description: p.get("description").and_then(|v| v.as_str()).unwrap_or("").to_string(),
             tags: p
                 .get("tags")
                 .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|t| t.as_str().map(|s| s.to_string()))
-                        .collect()
-                })
+                .map(|arr| arr.iter().filter_map(|t| t.as_str().map(|s| s.to_string())).collect())
                 .unwrap_or_default(),
         })
         .collect();
@@ -1960,8 +1934,7 @@ async fn apply_mobile_preset(
     if !can_write(&user) {
         return Err(ApiError::Forbidden("Write permission required".into()));
     }
-    let uuid =
-        Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
+    let uuid = Uuid::parse_str(&id).map_err(|_| ApiError::InvalidInput("Invalid UUID format".into()))?;
 
     let mut mobile = state
         .db
@@ -1972,9 +1945,8 @@ async fn apply_mobile_preset(
     // Sandbox: caller must hold edit rights on the mob's owning area.
     authorize_existing_area(&state.db, &user, mobile.area_id)?;
 
-    let preset = crate::script::mobile_presets::find_preset_by_id(&req.preset_id).ok_or_else(
-        || ApiError::NotFound(format!("Preset '{}' not found", req.preset_id)),
-    )?;
+    let preset = crate::script::mobile_presets::find_preset_by_id(&req.preset_id)
+        .ok_or_else(|| ApiError::NotFound(format!("Preset '{}' not found", req.preset_id)))?;
 
     crate::script::mobile_presets::apply_preset_to_mobile(&mut mobile, &preset);
 

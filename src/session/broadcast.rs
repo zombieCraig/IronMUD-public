@@ -20,7 +20,14 @@ fn get_builder_debug_log() -> &'static Mutex<VecDeque<String>> {
 /// Retrieve the last N lines from the builder debug log
 pub fn get_builder_debug_lines(limit: usize) -> Vec<String> {
     let log = get_builder_debug_log().lock().unwrap();
-    log.iter().rev().take(limit).cloned().collect::<Vec<_>>().into_iter().rev().collect()
+    log.iter()
+        .rev()
+        .take(limit)
+        .cloned()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect()
 }
 
 /// Get all character names in a specific room
@@ -64,11 +71,7 @@ pub fn get_characters_in_room_with_positions(
 /// per-listener language-aware garbling. Lingua-franca and admin listeners
 /// hear the raw text; everyone else hears it through `garble_for_listener`
 /// based on their skill in the mob's spoken language.
-pub fn emit_mob_speech(
-    connections: &SharedConnections,
-    state: &SharedState,
-    speech: &DialogueSayLine,
-) {
+pub fn emit_mob_speech(connections: &SharedConnections, state: &SharedState, speech: &DialogueSayLine) {
     let world = match state.lock() {
         Ok(w) => w,
         Err(_) => return,

@@ -195,26 +195,29 @@ pub enum KeyEvent {
     PageDown,
     /// Control key combinations
     CtrlA, // Beginning of line
-    CtrlC, // Cancel/interrupt
-    CtrlD, // EOF/logout
-    CtrlE, // End of line
-    CtrlK, // Kill to end of line
-    CtrlL, // Clear screen/redraw
-    CtrlQ, // Quit / exit editor
-    CtrlU, // Kill to beginning of line
-    CtrlV, // Paste from kill ring
-    CtrlT, // Transpose characters
-    CtrlW, // Delete word backward
-    CtrlX, // Exit editor (nano)
-    CtrlO, // Save (nano)
-    CtrlG, // Help (nano)
-    CtrlY, // Redo
-    CtrlZ, // Undo
-    CtrlBackslash, // Replace
+    CtrlC,          // Cancel/interrupt
+    CtrlD,          // EOF/logout
+    CtrlE,          // End of line
+    CtrlK,          // Kill to end of line
+    CtrlL,          // Clear screen/redraw
+    CtrlQ,          // Quit / exit editor
+    CtrlU,          // Kill to beginning of line
+    CtrlV,          // Paste from kill ring
+    CtrlT,          // Transpose characters
+    CtrlW,          // Delete word backward
+    CtrlX,          // Exit editor (nano)
+    CtrlO,          // Save (nano)
+    CtrlG,          // Help (nano)
+    CtrlY,          // Redo
+    CtrlZ,          // Undo
+    CtrlBackslash,  // Replace
     CtrlUnderscore, // Goto line
     /// Left-button mouse press at 1-based terminal (row, col).
     /// Only emitted while mouse tracking is enabled (DECSET 1000).
-    MouseClick { row: u16, col: u16 },
+    MouseClick {
+        row: u16,
+        col: u16,
+    },
     /// Shift-modified navigation (extends selection in the editor).
     ShiftArrowUp,
     ShiftArrowDown,
@@ -301,19 +304,35 @@ pub fn parse_key_byte(state: EscapeState, byte: u8) -> (EscapeState, Option<KeyE
                 // Final byte range for CSI sequences
                 b'A' => (
                     EscapeState::Normal,
-                    Some(if shifted { KeyEvent::ShiftArrowUp } else { KeyEvent::ArrowUp }),
+                    Some(if shifted {
+                        KeyEvent::ShiftArrowUp
+                    } else {
+                        KeyEvent::ArrowUp
+                    }),
                 ),
                 b'B' => (
                     EscapeState::Normal,
-                    Some(if shifted { KeyEvent::ShiftArrowDown } else { KeyEvent::ArrowDown }),
+                    Some(if shifted {
+                        KeyEvent::ShiftArrowDown
+                    } else {
+                        KeyEvent::ArrowDown
+                    }),
                 ),
                 b'C' => (
                     EscapeState::Normal,
-                    Some(if shifted { KeyEvent::ShiftArrowRight } else { KeyEvent::ArrowRight }),
+                    Some(if shifted {
+                        KeyEvent::ShiftArrowRight
+                    } else {
+                        KeyEvent::ArrowRight
+                    }),
                 ),
                 b'D' => (
                     EscapeState::Normal,
-                    Some(if shifted { KeyEvent::ShiftArrowLeft } else { KeyEvent::ArrowLeft }),
+                    Some(if shifted {
+                        KeyEvent::ShiftArrowLeft
+                    } else {
+                        KeyEvent::ArrowLeft
+                    }),
                 ),
                 b'H' => (
                     EscapeState::Normal,
@@ -362,10 +381,7 @@ pub fn parse_key_byte(state: EscapeState, byte: u8) -> (EscapeState, Option<KeyE
                 let cx = buf[1].saturating_sub(32) as u16;
                 let cy = buf[2].saturating_sub(32) as u16;
                 if cb & 0x3 == 0 {
-                    return (
-                        EscapeState::Normal,
-                        Some(KeyEvent::MouseClick { row: cy, col: cx }),
-                    );
+                    return (EscapeState::Normal, Some(KeyEvent::MouseClick { row: cy, col: cx }));
                 }
                 return (EscapeState::Normal, Some(KeyEvent::Unknown));
             }
@@ -1043,9 +1059,7 @@ mod tests {
         // Should contain WILL SGA, DO SGA, DO NAWS, DO TTYPE, DO MXP
         assert!(negs.len() >= 9); // At least 3 commands * 3 bytes
         // Assert that it does NOT contain WILL ECHO (255, 251, 1)
-        let contains_will_echo = negs
-            .chunks(3)
-            .any(|c| c == &[IAC, WILL, OPT_ECHO]);
+        let contains_will_echo = negs.chunks(3).any(|c| c == &[IAC, WILL, OPT_ECHO]);
         assert!(!contains_will_echo, "Initial negotiations should not contain WILL ECHO");
     }
 

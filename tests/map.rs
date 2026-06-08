@@ -110,16 +110,18 @@ fn linear_corridor_all_visited() {
         let coords: Vec<(i32, i32)> = (-2..=2).map(|x| (x, 0)).collect();
         for c in &coords {
             let cell = layout.cells.get(c).unwrap_or_else(|| panic!("missing {:?}", c));
-            assert_eq!(cell.visibility, Visibility::Visited, "cell at {:?} should be Visited", c);
+            assert_eq!(
+                cell.visibility,
+                Visibility::Visited,
+                "cell at {:?} should be Visited",
+                c
+            );
         }
 
         let rendered = ironmud::script::map::render_map(&layout, true, false, false);
         assert!(rendered.contains('@'), "must mark origin");
         // Origin row: `o─o─@─o─o` (5 cells, 4 horizontal connectors)
-        let origin_line = rendered
-            .lines()
-            .find(|l| l.contains('@'))
-            .expect("origin line");
+        let origin_line = rendered.lines().find(|l| l.contains('@')).expect("origin line");
         assert!(
             origin_line.contains("o─o─@─o─o"),
             "expected compact 5-cell row, got: {:?}",
@@ -184,7 +186,11 @@ fn glimpsed_cells_hide_flags() {
         assert_eq!(cell.visibility, Visibility::Glimpsed);
         let rendered = ironmud::script::map::render_map(&layout, true, false, false);
         let origin_line = rendered.lines().find(|l| l.contains('@')).unwrap();
-        assert!(!origin_line.contains('!'), "glimpsed trap must not show '!': {}", origin_line);
+        assert!(
+            !origin_line.contains('!'),
+            "glimpsed trap must not show '!': {}",
+            origin_line
+        );
     });
 }
 
@@ -210,7 +216,11 @@ fn closed_loop_no_collision() {
         assert_eq!(layout.cells[&(1, 1)].visibility, Visibility::Visited);
 
         for (coord, cell) in &layout.cells {
-            assert!(!cell.collision, "no collision in closed loop, but cell {:?} flagged", coord);
+            assert!(
+                !cell.collision,
+                "no collision in closed loop, but cell {:?} flagged",
+                coord
+            );
         }
     });
 }
@@ -232,7 +242,10 @@ fn non_euclidean_loop_marks_collision() {
 
         let layout = compute_map_layout(db, a, 5, &visited);
         let origin_cell = &layout.cells[&(0, 0)];
-        assert!(origin_cell.collision, "origin cell should have been flagged as collision");
+        assert!(
+            origin_cell.collision,
+            "origin cell should have been flagged as collision"
+        );
 
         let rendered = ironmud::script::map::render_map(&layout, true, false, false);
         assert!(rendered.contains('?'), "expected ? in rendered map: {}", rendered);
@@ -260,7 +273,11 @@ fn cross_area_arrow_only_when_source_visited() {
         assert!(layout.cells.get(&(1, 0)).is_none());
 
         let rendered = ironmud::script::map::render_map(&layout, true, false, false);
-        assert!(rendered.contains('→'), "east cross-area arrow should appear: {}", rendered);
+        assert!(
+            rendered.contains('→'),
+            "east cross-area arrow should appear: {}",
+            rendered
+        );
     });
 }
 
@@ -431,7 +448,11 @@ fn shop_glyph_for_visited_shop_room() {
             "expected `#` glyph in origin row: {:?}",
             origin_line
         );
-        assert!(rendered.contains("# shop"), "legend must include `# shop`: {}", rendered);
+        assert!(
+            rendered.contains("# shop"),
+            "legend must include `# shop`: {}",
+            rendered
+        );
     });
 }
 
@@ -497,7 +518,10 @@ fn legend_can_be_suppressed() {
         let with_legend = ironmud::script::map::render_map(&layout, true, false, false);
         let without = ironmud::script::map::render_map(&layout, false, false, false);
         assert!(with_legend.contains("Legend:"), "expected legend in default render");
-        assert!(!without.contains("Legend:"), "legend must be suppressed when show_legend=false");
+        assert!(
+            !without.contains("Legend:"),
+            "legend must be suppressed when show_legend=false"
+        );
     });
 }
 
@@ -549,7 +573,10 @@ fn automap_radius_default_is_three_for_legacy_chars() {
         "current_room_id": Uuid::nil(),
     }))
     .expect("build char");
-    assert_eq!(ch.automap_radius, 3, "missing field defaults to 3 (AUTOMAP_DEFAULT_RADIUS)");
+    assert_eq!(
+        ch.automap_radius, 3,
+        "missing field defaults to 3 (AUTOMAP_DEFAULT_RADIUS)"
+    );
 }
 
 #[test]
@@ -581,7 +608,11 @@ fn unicode_connectors_used_by_default() {
             "expected Unicode horizontal connectors: {:?}",
             origin_line
         );
-        assert!(!origin_line.contains('-'), "should not contain ASCII '-': {:?}", origin_line);
+        assert!(
+            !origin_line.contains('-'),
+            "should not contain ASCII '-': {:?}",
+            origin_line
+        );
     });
 }
 
@@ -638,7 +669,11 @@ fn origin_renders_as_at_sign_not_bracketed() {
         let layout = compute_map_layout(db, origin, 1, &visited);
         let rendered = ironmud::script::map::render_map(&layout, false, false, false);
         assert!(rendered.contains('@'), "expected '@' origin: {:?}", rendered);
-        assert!(!rendered.contains("[@]"), "should not contain old '[@]' marker: {:?}", rendered);
+        assert!(
+            !rendered.contains("[@]"),
+            "should not contain old '[@]' marker: {:?}",
+            rendered
+        );
     });
 }
 
@@ -803,10 +838,7 @@ fn phantom_connector_not_drawn_between_unlinked_adjacent_rooms() {
         // Find the row that contains both 1001 and 1004 (both glimpse-visited
         // so render as 'o'/'@'). The origin row contains 1002 at col=(0+r)*2
         // and 1003 at col=(1+r)*2.
-        let origin_row_idx = lines
-            .iter()
-            .position(|l| l.contains('@'))
-            .expect("origin row");
+        let origin_row_idx = lines.iter().position(|l| l.contains('@')).expect("origin row");
         // 1001/1004 row sits two rows above the origin row (cells are stacked
         // with one connector row between them, so visited 1001 is 2 lines up).
         assert!(origin_row_idx >= 2, "origin row should not be at top");

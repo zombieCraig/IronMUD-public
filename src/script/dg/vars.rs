@@ -142,13 +142,7 @@ pub fn resolve(expr: &str, ctx: &EvalCtx, state: &State) -> String {
             let Some(rid) = room_id else {
                 return String::new();
             };
-            let Some(area_id) = ctx
-                .db
-                .get_room_data(&rid)
-                .ok()
-                .flatten()
-                .and_then(|r| r.area_id)
-            else {
+            let Some(area_id) = ctx.db.get_room_data(&rid).ok().flatten().and_then(|r| r.area_id) else {
                 return String::new();
             };
             let (name, arg) = parse_field_call(inner).unwrap_or((inner, ""));
@@ -297,19 +291,13 @@ fn resolve_find(head: &str, field: &str, ctx: &EvalCtx) -> String {
         match head {
             "findmob" => ctx.db.list_all_mobiles().ok().and_then(|mobs| {
                 mobs.into_iter()
-                    .find(|m| {
-                        !m.is_prototype
-                            && m.current_room_id.is_some()
-                            && m.vnum == vnum
-                    })
+                    .find(|m| !m.is_prototype && m.current_room_id.is_some() && m.vnum == vnum)
                     .map(|m| m.id.to_string())
             }),
             "findobj" => ctx.db.list_all_items().ok().and_then(|items| {
                 items
                     .into_iter()
-                    .find(|i| {
-                        !i.is_prototype && i.vnum.as_deref().map(|v| v == vnum).unwrap_or(false)
-                    })
+                    .find(|i| !i.is_prototype && i.vnum.as_deref().map(|v| v == vnum).unwrap_or(false))
                     .map(|i| i.id.to_string())
             }),
             _ => None,
@@ -616,16 +604,15 @@ fn resolve_self_field(ctx: &EvalCtx, field: Option<&str>) -> String {
         // Direction-as-field on a mob resolves the mob's current room's
         // exit in that direction. Pattern: `if %self.east%` checks for
         // an east exit from the room the mob stands in.
-        (SelfKind::Mob, Some(f @ ("north" | "south" | "east" | "west" | "up" | "down"))) => {
-            ctx.db
-                .get_mobile_data(&ctx.self_id)
-                .ok()
-                .flatten()
-                .and_then(|m| m.current_room_id)
-                .and_then(|rid| ctx.db.get_room_data(&rid).ok().flatten())
-                .map(|r| room_field(&r, f))
-                .unwrap_or_default()
-        }
+        (SelfKind::Mob, Some(f @ ("north" | "south" | "east" | "west" | "up" | "down"))) => ctx
+            .db
+            .get_mobile_data(&ctx.self_id)
+            .ok()
+            .flatten()
+            .and_then(|m| m.current_room_id)
+            .and_then(|rid| ctx.db.get_room_data(&rid).ok().flatten())
+            .map(|r| room_field(&r, f))
+            .unwrap_or_default(),
         (SelfKind::Mob, Some("people")) => self_room_people(ctx),
         (SelfKind::Mob, Some("followers")) => self_followers(ctx),
         (SelfKind::Mob, Some(f)) => {
@@ -740,12 +727,7 @@ fn area_filter_matches(name: &str, keywords: &[String], vnum: Option<&str>, filt
 /// list (chiefly to tame area-wide mob counts), e.g. `%self.area.mobs(rat)%`.
 /// Player rows come from the same source as `list_room_people` (DB chars by
 /// `current_room_id`); mobs from `get_mobiles_in_room` per area room.
-fn list_area_people(
-    ctx: &EvalCtx,
-    area_id: &uuid::Uuid,
-    kind: AreaKind,
-    filter: Option<&str>,
-) -> String {
+fn list_area_people(ctx: &EvalCtx, area_id: &uuid::Uuid, kind: AreaKind, filter: Option<&str>) -> String {
     let Ok(rooms) = ctx.db.get_rooms_in_area(area_id) else {
         return String::new();
     };
@@ -756,9 +738,7 @@ fn list_area_people(
         for rid in &room_ids {
             if let Ok(mobs) = ctx.db.get_mobiles_in_room(rid) {
                 for m in mobs {
-                    if filter.is_none_or(|f| {
-                        area_filter_matches(&m.name, &m.keywords, Some(&m.vnum), f)
-                    }) {
+                    if filter.is_none_or(|f| area_filter_matches(&m.name, &m.keywords, Some(&m.vnum), f)) {
                         names.push(m.name);
                     }
                 }
@@ -878,8 +858,8 @@ fn resolve_text_field(s: &str, field: Option<&str>) -> String {
 }
 
 fn resolve_random(field: Option<&str>, ctx: &EvalCtx) -> String {
-    use rand::seq::SliceRandom;
     use rand::Rng;
+    use rand::seq::SliceRandom;
     let mut rng = rand::thread_rng();
     match field {
         Some("char") => {
@@ -895,10 +875,7 @@ fn resolve_random(field: Option<&str>, ctx: &EvalCtx) -> String {
                 .filter(|c| c.current_room_id == room_id)
                 .map(|c| c.name.as_str())
                 .collect();
-            candidates
-                .choose(&mut rng)
-                .map(|s| s.to_string())
-                .unwrap_or_default()
+            candidates.choose(&mut rng).map(|s| s.to_string()).unwrap_or_default()
         }
         Some("dir") => {
             // Random valid (non-None) exit direction from self_room.
@@ -909,12 +886,24 @@ fn resolve_random(field: Option<&str>, ctx: &EvalCtx) -> String {
                 return String::new();
             };
             let mut dirs: Vec<&'static str> = Vec::new();
-            if room.exits.north.is_some() { dirs.push("north"); }
-            if room.exits.east.is_some()  { dirs.push("east"); }
-            if room.exits.south.is_some() { dirs.push("south"); }
-            if room.exits.west.is_some()  { dirs.push("west"); }
-            if room.exits.up.is_some()    { dirs.push("up"); }
-            if room.exits.down.is_some()  { dirs.push("down"); }
+            if room.exits.north.is_some() {
+                dirs.push("north");
+            }
+            if room.exits.east.is_some() {
+                dirs.push("east");
+            }
+            if room.exits.south.is_some() {
+                dirs.push("south");
+            }
+            if room.exits.west.is_some() {
+                dirs.push("west");
+            }
+            if room.exits.up.is_some() {
+                dirs.push("up");
+            }
+            if room.exits.down.is_some() {
+                dirs.push("down");
+            }
             dirs.choose(&mut rng).map(|d| d.to_string()).unwrap_or_default()
         }
         Some(n) => {
@@ -1004,12 +993,7 @@ fn room_climate(ctx: &EvalCtx, room_id: Option<uuid::Uuid>) -> crate::types::Cli
     let Some(rid) = room_id else {
         return crate::types::ClimateProfile::default();
     };
-    let area_id = ctx
-        .db
-        .get_room_data(&rid)
-        .ok()
-        .flatten()
-        .and_then(|r| r.area_id);
+    let area_id = ctx.db.get_room_data(&rid).ok().flatten().and_then(|r| r.area_id);
     let Some(aid) = area_id else {
         return crate::types::ClimateProfile::default();
     };
@@ -1054,21 +1038,26 @@ fn resolve_sunlight(ctx: &EvalCtx) -> String {
         return "0".to_string();
     };
     use crate::types::TimeOfDay::*;
-    let lit = matches!(
-        gt.get_time_of_day(),
-        Dawn | Morning | Noon | Afternoon | Dusk
-    );
+    let lit = matches!(gt.get_time_of_day(), Dawn | Morning | Noon | Afternoon | Dusk);
     if lit { "1".to_string() } else { "0".to_string() }
 }
 
 fn tempcat_slug(c: i32) -> &'static str {
-    if c < 0 { "freezing" }
-    else if c < 10 { "cold" }
-    else if c < 15 { "cool" }
-    else if c < 20 { "mild" }
-    else if c < 25 { "warm" }
-    else if c < 35 { "hot" }
-    else { "sweltering" }
+    if c < 0 {
+        "freezing"
+    } else if c < 10 {
+        "cold"
+    } else if c < 15 {
+        "cool"
+    } else if c < 20 {
+        "mild"
+    } else if c < 25 {
+        "warm"
+    } else if c < 35 {
+        "hot"
+    } else {
+        "sweltering"
+    }
 }
 
 /// Returns `Some(value)` for known character fields (value may be the
@@ -1093,9 +1082,7 @@ fn try_character_field(ch: &crate::types::CharacterData, field: &str) -> Option<
         // narrower than tbamud's -1000..1000, so imported thresholds need rescaling.
         // Prefer `%actor.morality%` / `%actor.morality_tier%` in new scripts.
         "align" | "alignment" | "morality" => ch.morality.to_string(),
-        "morality_tier" => crate::morality::MoralityTier::from_value(ch.morality)
-            .key()
-            .to_string(),
+        "morality_tier" => crate::morality::MoralityTier::from_value(ch.morality).key().to_string(),
         "maxhitp" => ch.max_hp.to_string(),
         "str" | "strength" => ch.stat_str.to_string(),
         "dex" | "dexterity" => ch.stat_dex.to_string(),
@@ -1215,9 +1202,7 @@ fn parse_gender(g: &str) -> GenderKind {
         "nonbinary" | "non-binary" | "nb" | "enby" | "they" | "them" => GenderKind::Nonbinary,
         // "neuter" is the DG-canonical label; aliases cover obvious robot/
         // object framings and the bare pronoun forms.
-        "neuter" | "it" | "object" | "thing" | "robot" | "automaton" | "construct" => {
-            GenderKind::Neuter
-        }
+        "neuter" | "it" | "object" | "thing" | "robot" | "automaton" | "construct" => GenderKind::Neuter,
         _ => GenderKind::Neuter,
     }
 }
@@ -1301,11 +1286,7 @@ fn try_item_field(item: &crate::types::ItemData, field: &str) -> Option<String> 
         // Item decay timer (Phase 8e). Lives on dg_vars so we don't need
         // a struct field; otimer writes it, %self.timer% reads it. 0 when
         // unset.
-        "timer" => item
-            .dg_vars
-            .get("timer")
-            .cloned()
-            .unwrap_or_else(|| "0".to_string()),
+        "timer" => item.dg_vars.get("timer").cloned().unwrap_or_else(|| "0".to_string()),
         // tbamud value slots — not modeled per slot in IronMUD. Return 0.
         "val0" | "val1" | "val2" | "val3" => "0".to_string(),
         "cost" => item.value.to_string(),
@@ -1351,15 +1332,7 @@ fn parse_field_call(field: &str) -> Option<(&str, &str)> {
 fn is_reader_call(fn_name: &str) -> bool {
     matches!(
         fn_name,
-        "varexists"
-            | "has_item"
-            | "eq"
-            | "inventory"
-            | "equipped"
-            | "affect"
-            | "affects"
-            | "door"
-            | "skill"
+        "varexists" | "has_item" | "eq" | "inventory" | "equipped" | "affect" | "affects" | "door" | "skill"
     )
 }
 
@@ -1391,10 +1364,7 @@ fn normalize_dg_direction(dir: &str) -> &'static str {
 /// Missing-door cases return "0" for the boolean-shaped fields and the
 /// empty string for the string-shaped ones, so `if` checks compose
 /// naturally without needing a separate `exists` guard.
-fn read_door_field(
-    doors: &std::collections::HashMap<String, crate::types::DoorState>,
-    args: &str,
-) -> String {
+fn read_door_field(doors: &std::collections::HashMap<String, crate::types::DoorState>, args: &str) -> String {
     let mut it = args.splitn(2, ',');
     let dir_tok = it.next().unwrap_or("").trim();
     let field = it.next().unwrap_or("").trim().to_ascii_lowercase();
@@ -1404,9 +1374,7 @@ fn read_door_field(
     }
     let Some(door) = doors.get(dir) else {
         return match field.as_str() {
-            "exists" | "locked" | "unlocked" | "closed" | "open" | "pickproof" => {
-                "0".to_string()
-            }
+            "exists" | "locked" | "unlocked" | "closed" | "open" | "pickproof" => "0".to_string(),
             _ => String::new(),
         };
     };
@@ -1433,13 +1401,7 @@ fn is_unmodeled_mutator(fn_name: &str) -> bool {
 
 /// Call-form dispatch on `%actor.<fn>(<args>)%`. Routes to a reader
 /// (varexists/has_item/eq) or a mutator (gold/hitp/move/exp).
-fn apply_actor_call(
-    actor: Option<&ActorRef>,
-    fn_name: &str,
-    args: &str,
-    ctx: &EvalCtx,
-    state: &State,
-) -> String {
+fn apply_actor_call(actor: Option<&ActorRef>, fn_name: &str, args: &str, ctx: &EvalCtx, state: &State) -> String {
     let Some(actor) = actor else {
         return String::new();
     };
@@ -1480,13 +1442,7 @@ fn apply_self_call(fn_name: &str, args: &str, ctx: &EvalCtx, state: &State) -> S
 ///   aren't modeled on PCs/mobs in IronMUD beyond Equipped(owner), so
 ///   `eq(*)` returns the first equipped item's name. `eq(wield)` and
 ///   `eq(hold)` are common — both fall through here.
-fn read_actor_call(
-    actor: &ActorRef,
-    fn_name: &str,
-    args: &str,
-    ctx: &EvalCtx,
-    state: &State,
-) -> String {
+fn read_actor_call(actor: &ActorRef, fn_name: &str, args: &str, ctx: &EvalCtx, state: &State) -> String {
     let arg = args.trim();
     match fn_name {
         "varexists" => {
@@ -1527,12 +1483,8 @@ fn read_actor_call(
         }
         "eq" => {
             let equipped = match actor {
-                ActorRef::Player { name, .. } => {
-                    ctx.db.get_equipped_items(name).unwrap_or_default()
-                }
-                ActorRef::Mob { mobile_id, .. } => {
-                    ctx.db.get_items_equipped_on_mobile(mobile_id).unwrap_or_default()
-                }
+                ActorRef::Player { name, .. } => ctx.db.get_equipped_items(name).unwrap_or_default(),
+                ActorRef::Mob { mobile_id, .. } => ctx.db.get_items_equipped_on_mobile(mobile_id).unwrap_or_default(),
             };
             // Slot semantics: parse arg via WearLocation::from_str. If the
             // slot is recognised, return the equipped item whose
@@ -1556,21 +1508,11 @@ fn read_actor_call(
         // string so > 0 is truthy.
         "inventory" => {
             let inv = match actor {
-                ActorRef::Player { name, .. } => {
-                    ctx.db.get_items_in_inventory(name).unwrap_or_default()
-                }
-                ActorRef::Mob { mobile_id, .. } => ctx
-                    .db
-                    .get_items_in_mobile_inventory(mobile_id)
-                    .unwrap_or_default(),
+                ActorRef::Player { name, .. } => ctx.db.get_items_in_inventory(name).unwrap_or_default(),
+                ActorRef::Mob { mobile_id, .. } => ctx.db.get_items_in_mobile_inventory(mobile_id).unwrap_or_default(),
             };
             inv.iter()
-                .filter(|i| {
-                    i.vnum
-                        .as_deref()
-                        .map(|v| v.eq_ignore_ascii_case(arg))
-                        .unwrap_or(false)
-                })
+                .filter(|i| i.vnum.as_deref().map(|v| v.eq_ignore_ascii_case(arg)).unwrap_or(false))
                 .count()
                 .to_string()
         }
@@ -1580,21 +1522,11 @@ fn read_actor_call(
         // `if %actor.equipped(3010)% >= 2` (matching gloves bonus).
         "equipped" => {
             let eq = match actor {
-                ActorRef::Player { name, .. } => {
-                    ctx.db.get_equipped_items(name).unwrap_or_default()
-                }
-                ActorRef::Mob { mobile_id, .. } => ctx
-                    .db
-                    .get_items_equipped_on_mobile(mobile_id)
-                    .unwrap_or_default(),
+                ActorRef::Player { name, .. } => ctx.db.get_equipped_items(name).unwrap_or_default(),
+                ActorRef::Mob { mobile_id, .. } => ctx.db.get_items_equipped_on_mobile(mobile_id).unwrap_or_default(),
             };
             eq.iter()
-                .filter(|i| {
-                    i.vnum
-                        .as_deref()
-                        .map(|v| v.eq_ignore_ascii_case(arg))
-                        .unwrap_or(false)
-                })
+                .filter(|i| i.vnum.as_deref().map(|v| v.eq_ignore_ascii_case(arg)).unwrap_or(false))
                 .count()
                 .to_string()
         }
@@ -1610,32 +1542,21 @@ fn read_actor_call(
                     .get_character_data(name)
                     .ok()
                     .flatten()
-                    .map(|c| {
-                        (
-                            c.custom_skills.get(&key).copied().unwrap_or(0),
-                            c.active_buffs.clone(),
-                        )
-                    })
+                    .map(|c| (c.custom_skills.get(&key).copied().unwrap_or(0), c.active_buffs.clone()))
                     .unwrap_or((0, Vec::new())),
                 ActorRef::Mob { mobile_id, .. } => ctx
                     .db
                     .get_mobile_data(mobile_id)
                     .ok()
                     .flatten()
-                    .map(|m| {
-                        (
-                            m.custom_skills.get(&key).copied().unwrap_or(0),
-                            m.active_buffs.clone(),
-                        )
-                    })
+                    .map(|m| (m.custom_skills.get(&key).copied().unwrap_or(0), m.active_buffs.clone()))
                     .unwrap_or((0, Vec::new())),
             };
             let bonus: i32 = buffs
                 .iter()
                 .filter(|b| {
                     b.effect_type == crate::types::EffectType::CustomSkillBoost
-                        && b.skill_key.as_deref().map(|s| s.eq_ignore_ascii_case(&key))
-                            == Some(true)
+                        && b.skill_key.as_deref().map(|s| s.eq_ignore_ascii_case(&key)) == Some(true)
                 })
                 .map(|b| b.magnitude)
                 .sum();
@@ -1729,10 +1650,7 @@ fn read_self_call(fn_name: &str, args: &str, ctx: &EvalCtx, state: &State) -> St
             }
         }
         (SelfKind::Mob, "eq") => {
-            let equipped = ctx
-                .db
-                .get_items_equipped_on_mobile(&ctx.self_id)
-                .unwrap_or_default();
+            let equipped = ctx.db.get_items_equipped_on_mobile(&ctx.self_id).unwrap_or_default();
             // Mirror of actor-side eq(slot): slot-aware when arg parses
             // as a WearLocation; otherwise first-equipped fallback.
             match crate::types::WearLocation::from_str(arg) {
@@ -1753,12 +1671,7 @@ fn read_self_call(fn_name: &str, args: &str, ctx: &EvalCtx, state: &State) -> St
             .get_items_equipped_on_mobile(&ctx.self_id)
             .unwrap_or_default()
             .iter()
-            .filter(|i| {
-                i.vnum
-                    .as_deref()
-                    .map(|v| v.eq_ignore_ascii_case(arg))
-                    .unwrap_or(false)
-            })
+            .filter(|i| i.vnum.as_deref().map(|v| v.eq_ignore_ascii_case(arg)).unwrap_or(false))
             .count()
             .to_string(),
         // `%self.door(<dir>, <field>)%` — inspect the door on self's room
@@ -1790,19 +1703,13 @@ fn read_self_call(fn_name: &str, args: &str, ctx: &EvalCtx, state: &State) -> St
                 .get_mobile_data(&ctx.self_id)
                 .ok()
                 .flatten()
-                .map(|m| {
-                    (
-                        m.custom_skills.get(&key).copied().unwrap_or(0),
-                        m.active_buffs.clone(),
-                    )
-                })
+                .map(|m| (m.custom_skills.get(&key).copied().unwrap_or(0), m.active_buffs.clone()))
                 .unwrap_or((0, Vec::new()));
             let bonus: i32 = buffs
                 .iter()
                 .filter(|b| {
                     b.effect_type == crate::types::EffectType::CustomSkillBoost
-                        && b.skill_key.as_deref().map(|s| s.eq_ignore_ascii_case(&key))
-                            == Some(true)
+                        && b.skill_key.as_deref().map(|s| s.eq_ignore_ascii_case(&key)) == Some(true)
                 })
                 .map(|b| b.magnitude)
                 .sum();
@@ -1816,12 +1723,7 @@ fn read_self_call(fn_name: &str, args: &str, ctx: &EvalCtx, state: &State) -> St
 /// `vnum_or_keyword` (string equality, case-insensitive). Stock tbamud
 /// passes integer vnums; callers can also pass keywords if they want a
 /// looser match — we don't currently do keyword-fallback.
-fn actor_has_item_with_vnum(
-    ctx: &EvalCtx,
-    actor: &ActorRef,
-    owner_id: &str,
-    vnum_or_keyword: &str,
-) -> bool {
+fn actor_has_item_with_vnum(ctx: &EvalCtx, actor: &ActorRef, owner_id: &str, vnum_or_keyword: &str) -> bool {
     let needle = vnum_or_keyword.trim();
     if needle.is_empty() {
         return false;
@@ -1837,26 +1739,16 @@ fn actor_has_item_with_vnum(
                     .unwrap_or(false)
             })
         }
-        ActorRef::Mob { mobile_id, .. } => {
-            mobile_has_item_with_vnum(ctx, mobile_id, owner_id, needle)
-        }
+        ActorRef::Mob { mobile_id, .. } => mobile_has_item_with_vnum(ctx, mobile_id, owner_id, needle),
     }
 }
 
-fn mobile_has_item_with_vnum(
-    ctx: &EvalCtx,
-    mobile_id: &uuid::Uuid,
-    _owner_id: &str,
-    vnum: &str,
-) -> bool {
+fn mobile_has_item_with_vnum(ctx: &EvalCtx, mobile_id: &uuid::Uuid, _owner_id: &str, vnum: &str) -> bool {
     let inv = ctx.db.get_items_in_mobile_inventory(mobile_id).unwrap_or_default();
     let eq = ctx.db.get_items_equipped_on_mobile(mobile_id).unwrap_or_default();
-    inv.iter().chain(eq.iter()).any(|i| {
-        i.vnum
-            .as_deref()
-            .map(|v| v.eq_ignore_ascii_case(vnum))
-            .unwrap_or(false)
-    })
+    inv.iter()
+        .chain(eq.iter())
+        .any(|i| i.vnum.as_deref().map(|v| v.eq_ignore_ascii_case(vnum)).unwrap_or(false))
 }
 
 fn mutate_character(ctx: &EvalCtx, name: &str, fn_name: &str, n: i32) -> String {
@@ -2003,9 +1895,7 @@ mod tests {
         }
     }
 
-    fn doors_with_east(d: crate::types::DoorState)
-        -> std::collections::HashMap<String, crate::types::DoorState>
-    {
+    fn doors_with_east(d: crate::types::DoorState) -> std::collections::HashMap<String, crate::types::DoorState> {
         let mut m = std::collections::HashMap::new();
         m.insert("east".into(), d);
         m
@@ -2057,8 +1947,7 @@ mod tests {
 
     #[test]
     fn read_door_field_missing_door_returns_zero_for_bools() {
-        let doors: std::collections::HashMap<String, crate::types::DoorState> =
-            std::collections::HashMap::new();
+        let doors: std::collections::HashMap<String, crate::types::DoorState> = std::collections::HashMap::new();
         assert_eq!(read_door_field(&doors, "east, exists"), "0");
         assert_eq!(read_door_field(&doors, "east, locked"), "0");
         assert_eq!(read_door_field(&doors, "east, closed"), "0");
@@ -2069,8 +1958,7 @@ mod tests {
 
     #[test]
     fn read_door_field_bad_input_returns_empty() {
-        let mut doors: std::collections::HashMap<String, crate::types::DoorState> =
-            std::collections::HashMap::new();
+        let mut doors: std::collections::HashMap<String, crate::types::DoorState> = std::collections::HashMap::new();
         // Missing field.
         assert_eq!(read_door_field(&doors, "east"), "");
         assert_eq!(read_door_field(&doors, "east,"), "");

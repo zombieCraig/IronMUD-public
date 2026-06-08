@@ -33,7 +33,11 @@ impl CommandThrottle {
             if elapsed < cooldown {
                 let remaining = cooldown - elapsed;
                 let secs = remaining.as_secs();
-                return if remaining.subsec_nanos() > 0 { secs + 1 } else { secs.max(1) };
+                return if remaining.subsec_nanos() > 0 {
+                    secs + 1
+                } else {
+                    secs.max(1)
+                };
             }
         }
         map.insert(key, now);
@@ -87,6 +91,10 @@ mod tests {
         let t = CommandThrottle::new();
         assert_eq!(t.try_consume("Alice", "shout", Duration::from_secs(5)), 0);
         let remaining = t.try_consume("alice", "shout", Duration::from_secs(5));
-        assert!(remaining >= 1, "case-insensitive match should engage throttle (got {})", remaining);
+        assert!(
+            remaining >= 1,
+            "case-insensitive match should engage throttle (got {})",
+            remaining
+        );
     }
 }

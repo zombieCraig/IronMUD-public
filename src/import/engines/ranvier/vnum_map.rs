@@ -74,8 +74,7 @@ impl VnumMap {
             return Ok(Self::default());
         }
         let text = fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
-        let map: VnumMap =
-            serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
+        let map: VnumMap = serde_json::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
         Ok(map)
     }
 

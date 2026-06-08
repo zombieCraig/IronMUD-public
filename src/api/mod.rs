@@ -3,23 +3,23 @@
 //! This module provides a REST API for creating and modifying MUD content,
 //! designed for integration with Claude Code via MCP (Model Context Protocol).
 
+pub mod achievements;
 pub mod areas;
 pub mod auth;
-pub mod achievements;
 pub mod bugs;
 pub mod dg_protos;
 pub mod error;
 pub mod items;
+pub mod logs;
 pub mod mobiles;
 pub mod plants;
 pub mod quests;
+pub mod quotas;
 pub mod recipes;
 pub mod rooms;
 pub mod spawn;
-pub mod quotas;
 pub mod transports;
 pub mod validate;
-pub mod logs;
 
 use axum::{Json, Router, middleware, routing::get};
 use std::sync::Arc;

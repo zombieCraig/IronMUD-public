@@ -32,10 +32,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         })
         .register_get("duration_secs", |q: &mut QuestData| q.duration_secs.unwrap_or(0))
         .register_get("keywords", |q: &mut QuestData| {
-            q.keywords
-                .iter()
-                .map(|s| Dynamic::from(s.clone()))
-                .collect::<Array>()
+            q.keywords.iter().map(|s| Dynamic::from(s.clone())).collect::<Array>()
         });
 
     // get_quest_data(vnum) -> QuestData | ()
@@ -196,10 +193,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 Ok(Some(q)) => q,
                 _ => return format!("no such quest `{}`", vnum),
             };
-            q.keywords = kws
-                .split_whitespace()
-                .map(|s| s.to_string())
-                .collect();
+            q.keywords = kws.split_whitespace().map(|s| s.to_string()).collect();
             if let Err(e) = cloned_db.save_quest_data(&q) {
                 return format!("save error: {}", e);
             }
@@ -210,47 +204,41 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // set_quest_prereq(vnum, prereq_vnum) -> String — empty/clear/none clears.
     {
         let cloned_db = db.clone();
-        engine.register_fn(
-            "set_quest_prereq",
-            move |vnum: String, prereq_vnum: String| -> String {
-                let mut q = match cloned_db.get_quest_data(&vnum) {
-                    Ok(Some(q)) => q,
-                    _ => return format!("no such quest `{}`", vnum),
-                };
-                let trimmed = prereq_vnum.trim();
-                q.prereq_quest_vnum = if trimmed.is_empty()
-                    || trimmed.eq_ignore_ascii_case("clear")
-                    || trimmed.eq_ignore_ascii_case("none")
-                {
-                    None
-                } else {
-                    Some(trimmed.to_string())
-                };
-                if let Err(e) = cloned_db.save_quest_data(&q) {
-                    return format!("save error: {}", e);
-                }
-                String::new()
-            },
-        );
+        engine.register_fn("set_quest_prereq", move |vnum: String, prereq_vnum: String| -> String {
+            let mut q = match cloned_db.get_quest_data(&vnum) {
+                Ok(Some(q)) => q,
+                _ => return format!("no such quest `{}`", vnum),
+            };
+            let trimmed = prereq_vnum.trim();
+            q.prereq_quest_vnum = if trimmed.is_empty()
+                || trimmed.eq_ignore_ascii_case("clear")
+                || trimmed.eq_ignore_ascii_case("none")
+            {
+                None
+            } else {
+                Some(trimmed.to_string())
+            };
+            if let Err(e) = cloned_db.save_quest_data(&q) {
+                return format!("save error: {}", e);
+            }
+            String::new()
+        });
     }
 
     // set_quest_min_skill(vnum, n) -> String — 0 or negative clears.
     {
         let cloned_db = db.clone();
-        engine.register_fn(
-            "set_quest_min_skill",
-            move |vnum: String, n: i64| -> String {
-                let mut q = match cloned_db.get_quest_data(&vnum) {
-                    Ok(Some(q)) => q,
-                    _ => return format!("no such quest `{}`", vnum),
-                };
-                q.min_player_skill_total = if n <= 0 { None } else { Some(n as i32) };
-                if let Err(e) = cloned_db.save_quest_data(&q) {
-                    return format!("save error: {}", e);
-                }
-                String::new()
-            },
-        );
+        engine.register_fn("set_quest_min_skill", move |vnum: String, n: i64| -> String {
+            let mut q = match cloned_db.get_quest_data(&vnum) {
+                Ok(Some(q)) => q,
+                _ => return format!("no such quest `{}`", vnum),
+            };
+            q.min_player_skill_total = if n <= 0 { None } else { Some(n as i32) };
+            if let Err(e) = cloned_db.save_quest_data(&q) {
+                return format!("save error: {}", e);
+            }
+            String::new()
+        });
     }
 
     // set_quest_achievement_set_prereq(vnum, keys, min_count) -> String.
@@ -289,20 +277,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // set_quest_duration(vnum, secs) -> String — 0 or negative clears (no expiry).
     {
         let cloned_db = db.clone();
-        engine.register_fn(
-            "set_quest_duration",
-            move |vnum: String, secs: i64| -> String {
-                let mut q = match cloned_db.get_quest_data(&vnum) {
-                    Ok(Some(q)) => q,
-                    _ => return format!("no such quest `{}`", vnum),
-                };
-                q.duration_secs = if secs <= 0 { None } else { Some(secs) };
-                if let Err(e) = cloned_db.save_quest_data(&q) {
-                    return format!("save error: {}", e);
-                }
-                String::new()
-            },
-        );
+        engine.register_fn("set_quest_duration", move |vnum: String, secs: i64| -> String {
+            let mut q = match cloned_db.get_quest_data(&vnum) {
+                Ok(Some(q)) => q,
+                _ => return format!("no such quest `{}`", vnum),
+            };
+            q.duration_secs = if secs <= 0 { None } else { Some(secs) };
+            if let Err(e) = cloned_db.save_quest_data(&q) {
+                return format!("save error: {}", e);
+            }
+            String::new()
+        });
     }
 
     // === Objective add/remove ===
@@ -311,10 +296,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         engine.register_fn(
             "add_quest_objective_kill",
             move |vnum: String, mob_vnum: String, count: i64| -> String {
-                push_objective(&cloned_db, &vnum, QuestObjective::KillMob {
-                    vnum: mob_vnum,
-                    count: count.max(1) as i32,
-                })
+                push_objective(
+                    &cloned_db,
+                    &vnum,
+                    QuestObjective::KillMob {
+                        vnum: mob_vnum,
+                        count: count.max(1) as i32,
+                    },
+                )
             },
         );
     }
@@ -328,11 +317,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 } else {
                     Some(return_mob)
                 };
-                push_objective(&cloned_db, &vnum, QuestObjective::BringItem {
-                    vnum: item_vnum,
-                    qty: qty.max(1) as i32,
-                    return_to_mob_vnum: return_to,
-                })
+                push_objective(
+                    &cloned_db,
+                    &vnum,
+                    QuestObjective::BringItem {
+                        vnum: item_vnum,
+                        qty: qty.max(1) as i32,
+                        return_to_mob_vnum: return_to,
+                    },
+                )
             },
         );
     }
@@ -350,10 +343,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 if vnums.is_empty() {
                     return "add_quest_objective_kill_any requires at least one vnum".to_string();
                 }
-                push_objective(&cloned_db, &vnum, QuestObjective::KillAnyMob {
-                    vnums,
-                    count: count.max(1) as i32,
-                })
+                push_objective(
+                    &cloned_db,
+                    &vnum,
+                    QuestObjective::KillAnyMob {
+                        vnums,
+                        count: count.max(1) as i32,
+                    },
+                )
             },
         );
     }
@@ -377,44 +374,42 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     }
     {
         let cloned_db = db.clone();
-        engine.register_fn(
-            "remove_quest_objective",
-            move |vnum: String, idx: i64| -> String {
-                let mut q = match cloned_db.get_quest_data(&vnum) {
-                    Ok(Some(q)) => q,
-                    _ => return format!("no such quest `{}`", vnum),
-                };
-                if idx < 0 || (idx as usize) >= q.objectives.len() {
-                    return format!("objective index out of range: {}", idx);
-                }
-                q.objectives.remove(idx as usize);
-                if let Err(e) = cloned_db.save_quest_data(&q) {
-                    return format!("save error: {}", e);
-                }
-                String::new()
-            },
-        );
+        engine.register_fn("remove_quest_objective", move |vnum: String, idx: i64| -> String {
+            let mut q = match cloned_db.get_quest_data(&vnum) {
+                Ok(Some(q)) => q,
+                _ => return format!("no such quest `{}`", vnum),
+            };
+            if idx < 0 || (idx as usize) >= q.objectives.len() {
+                return format!("objective index out of range: {}", idx);
+            }
+            q.objectives.remove(idx as usize);
+            if let Err(e) = cloned_db.save_quest_data(&q) {
+                return format!("save error: {}", e);
+            }
+            String::new()
+        });
     }
 
     // === Reward add/remove ===
     {
         let cloned_db = db.clone();
-        engine.register_fn(
-            "add_quest_reward_gold",
-            move |vnum: String, amount: i64| -> String {
-                push_reward(&cloned_db, &vnum, QuestReward::Gold { amount })
-            },
-        );
+        engine.register_fn("add_quest_reward_gold", move |vnum: String, amount: i64| -> String {
+            push_reward(&cloned_db, &vnum, QuestReward::Gold { amount })
+        });
     }
     {
         let cloned_db = db.clone();
         engine.register_fn(
             "add_quest_reward_item",
             move |vnum: String, item_vnum: String, qty: i64| -> String {
-                push_reward(&cloned_db, &vnum, QuestReward::Item {
-                    vnum: item_vnum,
-                    qty: qty.max(1) as i32,
-                })
+                push_reward(
+                    &cloned_db,
+                    &vnum,
+                    QuestReward::Item {
+                        vnum: item_vnum,
+                        qty: qty.max(1) as i32,
+                    },
+                )
             },
         );
     }
@@ -423,10 +418,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         engine.register_fn(
             "add_quest_reward_skill",
             move |vnum: String, skill: String, amount: i64| -> String {
-                push_reward(&cloned_db, &vnum, QuestReward::SkillXp {
-                    skill,
-                    amount: amount as i32,
-                })
+                push_reward(
+                    &cloned_db,
+                    &vnum,
+                    QuestReward::SkillXp {
+                        skill,
+                        amount: amount as i32,
+                    },
+                )
             },
         );
     }
@@ -480,33 +479,26 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     }
                     Some(trimmed)
                 };
-                push_reward(
-                    &cloned_db,
-                    &vnum,
-                    QuestReward::EmbraceAnarch { discipline },
-                )
+                push_reward(&cloned_db, &vnum, QuestReward::EmbraceAnarch { discipline })
             },
         );
     }
     {
         let cloned_db = db.clone();
-        engine.register_fn(
-            "remove_quest_reward",
-            move |vnum: String, idx: i64| -> String {
-                let mut q = match cloned_db.get_quest_data(&vnum) {
-                    Ok(Some(q)) => q,
-                    _ => return format!("no such quest `{}`", vnum),
-                };
-                if idx < 0 || (idx as usize) >= q.rewards.len() {
-                    return format!("reward index out of range: {}", idx);
-                }
-                q.rewards.remove(idx as usize);
-                if let Err(e) = cloned_db.save_quest_data(&q) {
-                    return format!("save error: {}", e);
-                }
-                String::new()
-            },
-        );
+        engine.register_fn("remove_quest_reward", move |vnum: String, idx: i64| -> String {
+            let mut q = match cloned_db.get_quest_data(&vnum) {
+                Ok(Some(q)) => q,
+                _ => return format!("no such quest `{}`", vnum),
+            };
+            if idx < 0 || (idx as usize) >= q.rewards.len() {
+                return format!("reward index out of range: {}", idx);
+            }
+            q.rewards.remove(idx as usize);
+            if let Err(e) = cloned_db.save_quest_data(&q) {
+                return format!("save error: {}", e);
+            }
+            String::new()
+        });
     }
 
     // === Player-facing ops ===
@@ -514,23 +506,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // quest_offer(player_name, vnum) -> String ("" success, error otherwise)
     {
         let cloned_db = db.clone();
-        engine.register_fn(
-            "quest_offer",
-            move |player_name: String, vnum: String| -> String {
-                crate::quest::offer(&cloned_db, &player_name, &vnum)
-            },
-        );
+        engine.register_fn("quest_offer", move |player_name: String, vnum: String| -> String {
+            crate::quest::offer(&cloned_db, &player_name, &vnum)
+        });
     }
 
     // quest_abandon(player_name, vnum) -> String
     {
         let cloned_db = db.clone();
-        engine.register_fn(
-            "quest_abandon",
-            move |player_name: String, vnum: String| -> String {
-                crate::quest::abandon(&cloned_db, &player_name, &vnum)
-            },
-        );
+        engine.register_fn("quest_abandon", move |player_name: String, vnum: String| -> String {
+            crate::quest::abandon(&cloned_db, &player_name, &vnum)
+        });
     }
 
     // quest_try_complete(player_name, vnum) -> bool — used by player's
@@ -539,18 +525,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let cloned_db = db.clone();
         let cloned_conns = connections.clone();
         let cloned_state = state.clone();
-        engine.register_fn(
-            "quest_try_complete",
-            move |player_name: String, vnum: String| -> bool {
-                crate::quest::try_complete(
-                    &cloned_db,
-                    &cloned_conns,
-                    &cloned_state,
-                    &player_name,
-                    &vnum,
-                )
-            },
-        );
+        engine.register_fn("quest_try_complete", move |player_name: String, vnum: String| -> bool {
+            crate::quest::try_complete(&cloned_db, &cloned_conns, &cloned_state, &player_name, &vnum)
+        });
     }
 
     // quest_handle_item_to_mob(giver_name, mob_id, item_id) -> bool
@@ -580,14 +557,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     Ok(Some(i)) => i,
                     _ => return false,
                 };
-                crate::quest::handle_item_to_mob(
-                    &cloned_db,
-                    &cloned_conns,
-                    &cloned_state,
-                    &giver_name,
-                    &mob,
-                    &item,
-                )
+                crate::quest::handle_item_to_mob(&cloned_db, &cloned_conns, &cloned_state, &giver_name, &mob, &item)
             },
         );
     }
@@ -612,10 +582,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     Ok(Some(m)) => m,
                     _ => return false,
                 };
-                *mob.combat
-                    .damaged_by
-                    .entry(char_name.to_lowercase())
-                    .or_insert(0) += dmg as i32;
+                *mob.combat.damaged_by.entry(char_name.to_lowercase()).or_insert(0) += dmg as i32;
                 cloned_db.save_mobile_data(mob).is_ok()
             },
         );
@@ -632,8 +599,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         engine.register_fn(
             "quest_credit_mob_kill",
             move |killer_name: String, mob_proto_vnum: String| -> bool {
-                let damaged_by: std::collections::HashMap<String, i32> =
-                    std::collections::HashMap::new();
+                let damaged_by: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
                 crate::quest::handle_mob_kill(
                     &cloned_db,
                     &cloned_conns,
@@ -659,13 +625,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         engine.register_fn(
             "quest_handle_room_visit",
             move |player_name: String, room_vnum: String| -> bool {
-                crate::quest::handle_room_visit(
-                    &cloned_db,
-                    &cloned_conns,
-                    &cloned_state,
-                    &player_name,
-                    &room_vnum,
-                )
+                crate::quest::handle_room_visit(&cloned_db, &cloned_conns, &cloned_state, &player_name, &room_vnum)
             },
         );
     }
@@ -681,14 +641,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         engine.register_fn(
             "quest_handle_dg_flag_set",
             move |player_name: String, var: String, value: String| -> bool {
-                crate::quest::handle_dg_flag_set(
-                    &cloned_db,
-                    &cloned_conns,
-                    &cloned_state,
-                    &player_name,
-                    &var,
-                    &value,
-                )
+                crate::quest::handle_dg_flag_set(&cloned_db, &cloned_conns, &cloned_state, &player_name, &var, &value)
             },
         );
     }
@@ -701,8 +654,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         engine.register_fn(
             "describe_quest_offers",
             move |viewer_name: String, mob_vnum: String| -> String {
-                crate::quest::describe_quest_offers(&cloned_db, &viewer_name, &mob_vnum)
-                    .unwrap_or_default()
+                crate::quest::describe_quest_offers(&cloned_db, &viewer_name, &mob_vnum).unwrap_or_default()
             },
         );
     }
@@ -711,27 +663,20 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // Each map: { vnum, name, summary, lines: [ String, ... ] }
     {
         let cloned_db = db.clone();
-        engine.register_fn(
-            "quest_format_progress",
-            move |player_name: String| -> Array {
-                crate::quest::format_progress(&cloned_db, &player_name)
-                    .into_iter()
-                    .map(|view| {
-                        let mut m = Map::new();
-                        m.insert("vnum".into(), Dynamic::from(view.vnum));
-                        m.insert("name".into(), Dynamic::from(view.name));
-                        m.insert("summary".into(), Dynamic::from(view.summary));
-                        let lines: Array = view
-                            .objective_lines
-                            .into_iter()
-                            .map(Dynamic::from)
-                            .collect();
-                        m.insert("lines".into(), Dynamic::from(lines));
-                        Dynamic::from(m)
-                    })
-                    .collect()
-            },
-        );
+        engine.register_fn("quest_format_progress", move |player_name: String| -> Array {
+            crate::quest::format_progress(&cloned_db, &player_name)
+                .into_iter()
+                .map(|view| {
+                    let mut m = Map::new();
+                    m.insert("vnum".into(), Dynamic::from(view.vnum));
+                    m.insert("name".into(), Dynamic::from(view.name));
+                    m.insert("summary".into(), Dynamic::from(view.summary));
+                    let lines: Array = view.objective_lines.into_iter().map(Dynamic::from).collect();
+                    m.insert("lines".into(), Dynamic::from(lines));
+                    Dynamic::from(m)
+                })
+                .collect()
+        });
     }
 
     // quest_show_detail(player_name, quest_vnum) -> Map (empty when no match).
@@ -777,11 +722,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 m.insert("progress".into(), Dynamic::from(progress));
 
                 // Reward summaries.
-                let rewards: Array = quest
-                    .rewards
-                    .iter()
-                    .map(|r| Dynamic::from(format_reward(r)))
-                    .collect();
+                let rewards: Array = quest.rewards.iter().map(|r| Dynamic::from(format_reward(r))).collect();
                 m.insert("rewards".into(), Dynamic::from(rewards));
                 m
             },
@@ -802,37 +743,28 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // Builder-side rendering used by `quedit show`.
     {
         let cloned_db = db.clone();
-        engine.register_fn(
-            "describe_quest_objectives",
-            move |vnum: String| -> Array {
-                let q = match cloned_db.get_quest_data(&vnum) {
-                    Ok(Some(q)) => q,
-                    _ => return Array::new(),
-                };
-                q.objectives
-                    .iter()
-                    .map(|o| Dynamic::from(format_objective_summary(o)))
-                    .collect()
-            },
-        );
+        engine.register_fn("describe_quest_objectives", move |vnum: String| -> Array {
+            let q = match cloned_db.get_quest_data(&vnum) {
+                Ok(Some(q)) => q,
+                _ => return Array::new(),
+            };
+            q.objectives
+                .iter()
+                .map(|o| Dynamic::from(format_objective_summary(o)))
+                .collect()
+        });
     }
 
     // describe_quest_rewards(vnum) -> Array<String>
     {
         let cloned_db = db.clone();
-        engine.register_fn(
-            "describe_quest_rewards",
-            move |vnum: String| -> Array {
-                let q = match cloned_db.get_quest_data(&vnum) {
-                    Ok(Some(q)) => q,
-                    _ => return Array::new(),
-                };
-                q.rewards
-                    .iter()
-                    .map(|r| Dynamic::from(format_reward(r)))
-                    .collect()
-            },
-        );
+        engine.register_fn("describe_quest_rewards", move |vnum: String| -> Array {
+            let q = match cloned_db.get_quest_data(&vnum) {
+                Ok(Some(q)) => q,
+                _ => return Array::new(),
+            };
+            q.rewards.iter().map(|r| Dynamic::from(format_reward(r))).collect()
+        });
     }
 }
 

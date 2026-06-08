@@ -43,9 +43,7 @@ impl ClassDefinition {
             return true;
         }
         let race = race_id.to_lowercase();
-        if !self.allowed_races.is_empty()
-            && !self.allowed_races.iter().any(|r| r.to_lowercase() == race)
-        {
+        if !self.allowed_races.is_empty() && !self.allowed_races.iter().any(|r| r.to_lowercase() == race) {
             return false;
         }
         if self.incompatible_races.iter().any(|r| r.to_lowercase() == race) {

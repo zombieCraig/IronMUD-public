@@ -3,8 +3,8 @@
 
 use super::serde_defaults::default_stat;
 use super::{
-    AchievementUnlock, ActiveBuff, ActiveQuest, BodyPart, CombatState, DialoguePairState,
-    ItemAffect, OngoingEffect, SkillProgress, WearLocation, Wound,
+    AchievementUnlock, ActiveBuff, ActiveQuest, BodyPart, CombatState, DialoguePairState, ItemAffect, OngoingEffect,
+    SkillProgress, WearLocation, Wound,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

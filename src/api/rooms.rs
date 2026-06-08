@@ -15,10 +15,11 @@ use super::{
     auth::{AuthenticatedUser, can_edit_area, can_read, can_write},
     error::ApiError,
     notify_builders,
-    validate::{check_text_len, DESCRIPTION_MAX, TITLE_MAX},
+    validate::{DESCRIPTION_MAX, TITLE_MAX, check_text_len},
 };
 use crate::{
-    CombatZoneType, ContextualCommand, DoorState, ExtraDesc, RoomData, RoomEntryGate, RoomExits, RoomFlags, RoomTrigger, TriggerType, WaterType,
+    CombatZoneType, ContextualCommand, DoorState, ExtraDesc, RoomData, RoomEntryGate, RoomExits, RoomFlags,
+    RoomTrigger, TriggerType, WaterType,
 };
 
 pub fn routes() -> Router<Arc<ApiState>> {
@@ -548,11 +549,7 @@ async fn create_room(
                         if verb.is_empty() || verb.contains(char::is_whitespace) {
                             return None;
                         }
-                        let hint = c
-                            .hint
-                            .as_ref()
-                            .map(|s| s.trim().to_string())
-                            .filter(|s| !s.is_empty());
+                        let hint = c.hint.as_ref().map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
                         Some(ContextualCommand { verb, hint })
                     })
                     .collect()
@@ -737,10 +734,7 @@ async fn update_room(
                 if verb.is_empty() || verb.contains(char::is_whitespace) {
                     return None;
                 }
-                let hint = c
-                    .hint
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty());
+                let hint = c.hint.map(|s| s.trim().to_string()).filter(|s| !s.is_empty());
                 Some(ContextualCommand { verb, hint })
             })
             .collect();

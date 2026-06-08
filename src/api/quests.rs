@@ -15,7 +15,7 @@ use super::{
     auth::{AuthenticatedUser, can_read, can_write},
     error::ApiError,
     notify_builders,
-    validate::{check_text_len, DESCRIPTION_MAX, NAME_MAX, SHORT_DESC_MAX},
+    validate::{DESCRIPTION_MAX, NAME_MAX, SHORT_DESC_MAX, check_text_len},
 };
 use crate::types::{QuestData, QuestObjective, QuestReward};
 
@@ -142,9 +142,7 @@ pub struct AchievementSetPrereqRequest {
     pub min_count: i32,
 }
 
-fn convert_achievement_set(
-    req: &AchievementSetPrereqRequest,
-) -> Option<crate::types::AchievementSetPrereq> {
+fn convert_achievement_set(req: &AchievementSetPrereqRequest) -> Option<crate::types::AchievementSetPrereq> {
     let cleaned: Vec<String> = req
         .keys
         .iter()
@@ -194,9 +192,7 @@ fn convert_objective(req: &ObjectiveRequest) -> Result<QuestObjective, ApiError>
                 .filter(|v| !v.is_empty())
                 .collect();
             if cleaned.is_empty() {
-                return Err(ApiError::InvalidInput(
-                    "KillAnyMob requires at least one vnum".into(),
-                ));
+                return Err(ApiError::InvalidInput("KillAnyMob requires at least one vnum".into()));
             }
             Ok(QuestObjective::KillAnyMob {
                 vnums: cleaned,
@@ -294,9 +290,7 @@ fn convert_reward(req: &RewardRequest) -> Result<QuestReward, ApiError> {
                     )));
                 }
             }
-            Ok(QuestReward::EmbraceAnarch {
-                discipline: normalized,
-            })
+            Ok(QuestReward::EmbraceAnarch { discipline: normalized })
         }
     }
 }
@@ -312,7 +306,10 @@ async fn list_quests(
         .db
         .list_all_quests()
         .map_err(|e| ApiError::Internal(e.to_string()))?;
-    Ok(Json(QuestListResponse { success: true, data: quests }))
+    Ok(Json(QuestListResponse {
+        success: true,
+        data: quests,
+    }))
 }
 
 async fn get_quest(
@@ -328,7 +325,10 @@ async fn get_quest(
         .get_quest_data(&vnum)
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound(format!("Quest '{}' not found", vnum)))?;
-    Ok(Json(QuestResponse { success: true, data: quest }))
+    Ok(Json(QuestResponse {
+        success: true,
+        data: quest,
+    }))
 }
 
 async fn create_quest(
@@ -362,11 +362,7 @@ async fn create_quest(
         .iter()
         .map(convert_objective)
         .collect::<Result<Vec<_>, _>>()?;
-    let rewards = req
-        .rewards
-        .iter()
-        .map(convert_reward)
-        .collect::<Result<Vec<_>, _>>()?;
+    let rewards = req.rewards.iter().map(convert_reward).collect::<Result<Vec<_>, _>>()?;
 
     let quest = QuestData {
         vnum: req.vnum,
@@ -399,7 +395,10 @@ async fn create_quest(
         &format!("[API] Quest '{}' created by {}", quest.name, user.api_key.name),
     );
 
-    Ok(Json(QuestResponse { success: true, data: quest }))
+    Ok(Json(QuestResponse {
+        success: true,
+        data: quest,
+    }))
 }
 
 async fn update_quest(
@@ -475,7 +474,10 @@ async fn update_quest(
         &format!("[API] Quest '{}' updated by {}", quest.name, user.api_key.name),
     );
 
-    Ok(Json(QuestResponse { success: true, data: quest }))
+    Ok(Json(QuestResponse {
+        success: true,
+        data: quest,
+    }))
 }
 
 async fn delete_quest(

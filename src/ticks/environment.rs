@@ -351,49 +351,38 @@ fn fire_environmental_triggers(
         // with climate info, project per-area and skip rooms whose local
         // condition didn't actually change.
         let local_context: std::collections::HashMap<String, String>;
-        let context_ref: &std::collections::HashMap<String, String> = if trigger_type
-            == TriggerType::OnWeatherChange
-            && weather_change.is_some()
-        {
-            let (old_global, new_global) = weather_change.unwrap();
-            let climate = db.room_climate(&room);
-            let local_old = climate.project(old_global);
-            let local_new = climate.project(new_global);
-            if local_old == local_new {
-                continue;
-            }
-            let is_raining = matches!(
-                local_new,
-                WeatherCondition::LightRain
-                    | WeatherCondition::Rain
-                    | WeatherCondition::HeavyRain
-                    | WeatherCondition::Thunderstorm
-            );
-            let is_snowing = matches!(
-                local_new,
-                WeatherCondition::LightSnow | WeatherCondition::Snow | WeatherCondition::Blizzard
-            );
-            let is_clear = matches!(
-                local_new,
-                WeatherCondition::Clear | WeatherCondition::PartlyCloudy
-            );
-            local_context = std::collections::HashMap::from([
-                (
-                    "old_weather".to_string(),
-                    format!("{:?}", local_old).to_lowercase(),
-                ),
-                (
-                    "new_weather".to_string(),
-                    format!("{:?}", local_new).to_lowercase(),
-                ),
-                ("is_raining".to_string(), is_raining.to_string()),
-                ("is_snowing".to_string(), is_snowing.to_string()),
-                ("is_clear".to_string(), is_clear.to_string()),
-            ]);
-            &local_context
-        } else {
-            context
-        };
+        let context_ref: &std::collections::HashMap<String, String> =
+            if trigger_type == TriggerType::OnWeatherChange && weather_change.is_some() {
+                let (old_global, new_global) = weather_change.unwrap();
+                let climate = db.room_climate(&room);
+                let local_old = climate.project(old_global);
+                let local_new = climate.project(new_global);
+                if local_old == local_new {
+                    continue;
+                }
+                let is_raining = matches!(
+                    local_new,
+                    WeatherCondition::LightRain
+                        | WeatherCondition::Rain
+                        | WeatherCondition::HeavyRain
+                        | WeatherCondition::Thunderstorm
+                );
+                let is_snowing = matches!(
+                    local_new,
+                    WeatherCondition::LightSnow | WeatherCondition::Snow | WeatherCondition::Blizzard
+                );
+                let is_clear = matches!(local_new, WeatherCondition::Clear | WeatherCondition::PartlyCloudy);
+                local_context = std::collections::HashMap::from([
+                    ("old_weather".to_string(), format!("{:?}", local_old).to_lowercase()),
+                    ("new_weather".to_string(), format!("{:?}", local_new).to_lowercase()),
+                    ("is_raining".to_string(), is_raining.to_string()),
+                    ("is_snowing".to_string(), is_snowing.to_string()),
+                    ("is_clear".to_string(), is_clear.to_string()),
+                ]);
+                &local_context
+            } else {
+                context
+            };
         // Use `context_ref` for the rest of the body.
         let context = context_ref;
 

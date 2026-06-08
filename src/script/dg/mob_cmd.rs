@@ -79,10 +79,7 @@ pub fn try_dispatch(verb: &str, rest: &str, ctx: &EvalCtx) -> bool {
                 "wake" => "wakes up",
                 _ => return false,
             };
-            broadcast(
-                ctx,
-                &format!("{} {}.", capitalize_first(&ctx.self_name), act),
-            );
+            broadcast(ctx, &format!("{} {}.", capitalize_first(&ctx.self_name), act));
             true
         }
         // Extract is purge with a different name.
@@ -137,7 +134,7 @@ pub fn try_dispatch(verb: &str, rest: &str, ctx: &EvalCtx) -> bool {
             do_flee(ctx);
             true
         }
-        "look" => true, // info-only; mobs see via internal state already
+        "look" => true,     // info-only; mobs see via internal state already
         "consider" => true, // info-only — mob ponders silently
         "wear" => {
             do_wear(rest, ctx, crate::types::ItemTriggerType::OnWear);
@@ -218,33 +215,140 @@ pub fn try_dispatch(verb: &str, rest: &str, ctx: &EvalCtx) -> bool {
 /// trigger body that does `say "hi"` doesn't get flagged as unknown.
 pub fn known_verbs() -> &'static [&'static str] {
     &[
-        "say", "tell", "emote", "gemote", "pemote", "give", "drop", "get",
-        "kill", "hit", "attack", "mkill", "open", "close", "lock", "unlock",
-        "goto", "flee", "look",
+        "say",
+        "tell",
+        "emote",
+        "gemote",
+        "pemote",
+        "give",
+        "drop",
+        "get",
+        "kill",
+        "hit",
+        "attack",
+        "mkill",
+        "open",
+        "close",
+        "lock",
+        "unlock",
+        "goto",
+        "flee",
+        "look",
         // Phase 6d: equipment + consumables
-        "wear", "wield", "remove", "quaff", "consider", "hold",
+        "wear",
+        "wield",
+        "remove",
+        "quaff",
+        "consider",
+        "hold",
         // Phase 6d follow-up: posture + lifecycle + grouping
-        "stand", "sit", "rest", "sleep", "wake",
-        "extract", "follow", "fol", "mfollow", "assist", "take", "junk",
+        "stand",
+        "sit",
+        "rest",
+        "sleep",
+        "wake",
+        "extract",
+        "follow",
+        "fol",
+        "mfollow",
+        "assist",
+        "take",
+        "junk",
         // Ambient + movement
         "asound",
-        "north", "south", "east", "west", "up", "down",
+        "north",
+        "south",
+        "east",
+        "west",
+        "up",
+        "down",
         // socials
-        "smile", "nod", "grin", "bow", "cry", "wave", "frown", "wink",
-        "shake", "laugh", "growl", "dance", "clap", "sigh", "poke",
-        "roll", "hug", "chuckle", "yawn", "whisper", "sing", "lick",
-        "kiss", "cackle", "smirk", "slap", "snarl", "strut", "hum",
-        "ponder", "sniff", "spit", "scream",
+        "smile",
+        "nod",
+        "grin",
+        "bow",
+        "cry",
+        "wave",
+        "frown",
+        "wink",
+        "shake",
+        "laugh",
+        "growl",
+        "dance",
+        "clap",
+        "sigh",
+        "poke",
+        "roll",
+        "hug",
+        "chuckle",
+        "yawn",
+        "whisper",
+        "sing",
+        "lick",
+        "kiss",
+        "cackle",
+        "smirk",
+        "slap",
+        "snarl",
+        "strut",
+        "hum",
+        "ponder",
+        "sniff",
+        "spit",
+        "scream",
         // Phase 8f socials + accepted combat-flavour verbs
-        "shout", "beam", "em", "flex", "giggle", "glare", "grumble",
-        "mumble", "peer", "pout", "ogle", "ruffle", "drool", "shiver",
-        "sneeze", "hiss", "grimace", "eyebrow", "gaze", "caress", "pet",
-        "bounce", "squeeze", "think", "welcome", "great", "mua", "muah",
-        "play", "sac", "sacrifice", "rem",
-        "rescue", "disarm", "bash", "passdown",
+        "shout",
+        "beam",
+        "em",
+        "flex",
+        "giggle",
+        "glare",
+        "grumble",
+        "mumble",
+        "peer",
+        "pout",
+        "ogle",
+        "ruffle",
+        "drool",
+        "shiver",
+        "sneeze",
+        "hiss",
+        "grimace",
+        "eyebrow",
+        "gaze",
+        "caress",
+        "pet",
+        "bounce",
+        "squeeze",
+        "think",
+        "welcome",
+        "great",
+        "mua",
+        "muah",
+        "play",
+        "sac",
+        "sacrifice",
+        "rem",
+        "rescue",
+        "disarm",
+        "bash",
+        "passdown",
         // Phase 9b: stock CircleMUD verb stubs (no-op accepted)
-        "light", "drink", "eat", "sell", "value", "buy", "list",
-        "time", "date", "order", "oset", "adjust", "use", "pat", "snd",
+        "light",
+        "drink",
+        "eat",
+        "sell",
+        "value",
+        "buy",
+        "list",
+        "time",
+        "date",
+        "order",
+        "oset",
+        "adjust",
+        "use",
+        "pat",
+        "snd",
     ]
 }
 
@@ -311,11 +415,7 @@ fn do_give(rest: &str, ctx: &EvalCtx) {
         if let Some((player_name, player_room)) = name_opt {
             if Some(player_room) == ctx.self_room {
                 let _ = ctx.db.move_item_to_inventory(&item.id, &player_name);
-                let line = format!(
-                    "{} gives you {}.\n",
-                    capitalize_first(&ctx.self_name),
-                    item.name
-                );
+                let line = format!("{} gives you {}.\n", capitalize_first(&ctx.self_name), item.name);
                 crate::send_client_message(&ctx.connections, cid.to_string(), line);
                 let bcast = format!(
                     "{} gives {} to {}.",
@@ -341,11 +441,7 @@ fn do_drop(rest: &str, ctx: &EvalCtx) {
         return;
     };
     let _ = ctx.db.move_item_to_room(&item.id, &room_id);
-    let line = format!(
-        "{} drops {}.",
-        capitalize_first(&ctx.self_name),
-        item.name
-    );
+    let line = format!("{} drops {}.", capitalize_first(&ctx.self_name), item.name);
     broadcast(ctx, &line);
 }
 
@@ -366,11 +462,7 @@ fn do_get(rest: &str, ctx: &EvalCtx) {
         return;
     };
     let _ = ctx.db.move_item_to_mobile_inventory(&item.id, &ctx.self_id);
-    let line = format!(
-        "{} picks up {}.",
-        capitalize_first(&ctx.self_name),
-        item.name
-    );
+    let line = format!("{} picks up {}.", capitalize_first(&ctx.self_name), item.name);
     broadcast(ctx, &line);
 }
 
@@ -413,22 +505,12 @@ fn do_wear(rest: &str, ctx: &EvalCtx, fire_type: crate::types::ItemTriggerType) 
         return;
     };
     let _ = ctx.db.move_item_to_mobile_equipped(&item.id, &ctx.self_id);
-    let line = format!(
-        "{} equips {}.",
-        capitalize_first(&ctx.self_name),
-        item.name
-    );
+    let line = format!("{} equips {}.", capitalize_first(&ctx.self_name), item.name);
     broadcast(ctx, &line);
     // Fire any equip-side DG triggers on the item itself (buff stamping is
     // automatic via the db layer). `fire_type` is OnWear for `wear` and
     // OnWield for `wield`.
-    super::fire_item_dg_triggers(
-        &ctx.db,
-        &ctx.connections,
-        &item,
-        fire_type,
-        "",
-    );
+    super::fire_item_dg_triggers(&ctx.db, &ctx.connections, &item, fire_type, "");
 }
 
 /// `remove <item>` — move the named item from the mob's equipped set
@@ -444,18 +526,12 @@ fn do_remove(rest: &str, ctx: &EvalCtx) {
     };
     let Some(item) = equipped.into_iter().find(|i| {
         i.name.to_ascii_lowercase().contains(&lower)
-            || i.keywords
-                .iter()
-                .any(|k| k.to_ascii_lowercase().starts_with(&lower))
+            || i.keywords.iter().any(|k| k.to_ascii_lowercase().starts_with(&lower))
     }) else {
         return;
     };
     let _ = ctx.db.move_item_to_mobile_inventory(&item.id, &ctx.self_id);
-    let line = format!(
-        "{} removes {}.",
-        capitalize_first(&ctx.self_name),
-        item.name
-    );
+    let line = format!("{} removes {}.", capitalize_first(&ctx.self_name), item.name);
     broadcast(ctx, &line);
     super::fire_item_dg_triggers(
         &ctx.db,
@@ -478,11 +554,7 @@ fn do_quaff(rest: &str, ctx: &EvalCtx) {
     let Some(item) = find_item_in_mob_inventory(item_tok, ctx) else {
         return;
     };
-    let line = format!(
-        "{} quaffs {}.",
-        capitalize_first(&ctx.self_name),
-        item.name
-    );
+    let line = format!("{} quaffs {}.", capitalize_first(&ctx.self_name), item.name);
     broadcast(ctx, &line);
     let _ = ctx.db.delete_item(&item.id);
 }
@@ -512,7 +584,9 @@ fn do_asound(rest: &str, ctx: &EvalCtx) {
         text.push('\n');
     }
     let Some(room_id) = ctx.self_room else { return };
-    let Ok(Some(room)) = ctx.db.get_room_data(&room_id) else { return };
+    let Ok(Some(room)) = ctx.db.get_room_data(&room_id) else {
+        return;
+    };
     let neighbors = [
         room.exits.north,
         room.exits.south,
@@ -529,7 +603,9 @@ fn do_asound(rest: &str, ctx: &EvalCtx) {
 /// Direction-as-verb movement: walk the mob through the named exit.
 fn do_walk(dir: &str, ctx: &EvalCtx) {
     let Some(room_id) = ctx.self_room else { return };
-    let Ok(Some(room)) = ctx.db.get_room_data(&room_id) else { return };
+    let Ok(Some(room)) = ctx.db.get_room_data(&room_id) else {
+        return;
+    };
     let dest = match dir {
         "north" => room.exits.north,
         "south" => room.exits.south,
@@ -629,7 +705,9 @@ fn do_flee(ctx: &EvalCtx) {
 /// `list` — shopkeeper-mob broadcasts a "displays their wares" line
 /// listing items from `shop_stock`. No-op for non-shopkeepers.
 fn do_shop_list(ctx: &EvalCtx) {
-    let Ok(Some(mob)) = ctx.db.get_mobile_data(&ctx.self_id) else { return };
+    let Ok(Some(mob)) = ctx.db.get_mobile_data(&ctx.self_id) else {
+        return;
+    };
     if !mob.flags.shopkeeper || mob.shop_stock.is_empty() {
         return;
     }
@@ -657,7 +735,9 @@ fn do_shop_value(rest: &str, ctx: &EvalCtx) {
     if item_tok.is_empty() {
         return;
     }
-    let Ok(Some(mob)) = ctx.db.get_mobile_data(&ctx.self_id) else { return };
+    let Ok(Some(mob)) = ctx.db.get_mobile_data(&ctx.self_id) else {
+        return;
+    };
     if !mob.flags.shopkeeper {
         return;
     }
@@ -699,15 +779,12 @@ fn do_light(rest: &str, ctx: &EvalCtx) {
     if item_tok.is_empty() {
         return;
     }
-    let Some(mut item) = find_item_in_mob_inventory(item_tok, ctx) else { return };
+    let Some(mut item) = find_item_in_mob_inventory(item_tok, ctx) else {
+        return;
+    };
     item.flags.provides_light = !item.flags.provides_light;
     let action = if item.flags.provides_light { "lights" } else { "snuffs" };
-    let line = format!(
-        "{} {} {}.",
-        capitalize_first(&ctx.self_name),
-        action,
-        item.name
-    );
+    let line = format!("{} {} {}.", capitalize_first(&ctx.self_name), action, item.name);
     let _ = ctx.db.save_item_data(item);
     broadcast(ctx, &line);
 }
@@ -719,12 +796,10 @@ fn do_consume(rest: &str, ctx: &EvalCtx) {
     if item_tok.is_empty() {
         return;
     }
-    let Some(item) = find_item_in_mob_inventory(item_tok, ctx) else { return };
-    let line = format!(
-        "{} consumes {}.",
-        capitalize_first(&ctx.self_name),
-        item.name
-    );
+    let Some(item) = find_item_in_mob_inventory(item_tok, ctx) else {
+        return;
+    };
+    let line = format!("{} consumes {}.", capitalize_first(&ctx.self_name), item.name);
     broadcast(ctx, &line);
     let _ = ctx.db.delete_item(&item.id);
 }
@@ -737,7 +812,9 @@ fn do_use(rest: &str, ctx: &EvalCtx) {
     if item_tok.is_empty() {
         return;
     }
-    let Some(mut item) = find_item_in_mob_inventory(item_tok, ctx) else { return };
+    let Some(mut item) = find_item_in_mob_inventory(item_tok, ctx) else {
+        return;
+    };
     let line = format!(
         "{} brandishes {} and triggers it.",
         capitalize_first(&ctx.self_name),
@@ -763,7 +840,9 @@ fn do_order(rest: &str, ctx: &EvalCtx) {
         return;
     }
     let Some(room_id) = ctx.self_room else { return };
-    let Ok(mobs) = ctx.db.get_mobiles_in_room(&room_id) else { return };
+    let Ok(mobs) = ctx.db.get_mobiles_in_room(&room_id) else {
+        return;
+    };
     let lower = target_tok.to_ascii_lowercase();
     let self_name_lower = ctx.self_name.to_ascii_lowercase();
     let target = mobs.into_iter().find(|m| {
@@ -823,9 +902,7 @@ fn find_item_in_mob_inventory(keyword: &str, ctx: &EvalCtx) -> Option<crate::typ
     let items = ctx.db.get_items_in_mobile_inventory(&ctx.self_id).ok()?;
     items.into_iter().find(|i| {
         i.name.to_ascii_lowercase().contains(&lower)
-            || i.keywords
-                .iter()
-                .any(|k| k.to_ascii_lowercase().starts_with(&lower))
+            || i.keywords.iter().any(|k| k.to_ascii_lowercase().starts_with(&lower))
     })
 }
 
@@ -836,7 +913,10 @@ fn resolve_target_for_combat(tok: &str, ctx: &EvalCtx) -> Option<ActorRef> {
     }
     if let Ok(uid) = Uuid::parse_str(tok) {
         if let Ok(Some(mob)) = ctx.db.get_mobile_data(&uid) {
-            return Some(ActorRef::Mob { mobile_id: uid, name: mob.name });
+            return Some(ActorRef::Mob {
+                mobile_id: uid,
+                name: mob.name,
+            });
         }
         for cand in [&ctx.actor, &ctx.victim].into_iter().flatten() {
             if let ActorRef::Player { char_id, .. } = cand {
@@ -869,7 +949,10 @@ fn resolve_target_for_combat(tok: &str, ctx: &EvalCtx) -> Option<ActorRef> {
                 if m.name.to_ascii_lowercase().contains(&lower)
                     || m.keywords.iter().any(|k| k.to_ascii_lowercase().starts_with(&lower))
                 {
-                    return Some(ActorRef::Mob { mobile_id: m.id, name: m.name });
+                    return Some(ActorRef::Mob {
+                        mobile_id: m.id,
+                        name: m.name,
+                    });
                 }
             }
         }

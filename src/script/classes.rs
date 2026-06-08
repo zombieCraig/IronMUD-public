@@ -67,62 +67,71 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // set_class_starting_gold(class_id, amount) -> bool
     let cloned_db = db.clone();
     let cloned_state = state.clone();
-    engine.register_fn("set_class_starting_gold", move |class_id: String, amount: i64| -> bool {
-        if amount < 0 {
-            return false;
-        }
-        {
-            let mut world = cloned_state.lock().unwrap();
-            let Some(def) = world.class_definitions.get_mut(&class_id) else {
+    engine.register_fn(
+        "set_class_starting_gold",
+        move |class_id: String, amount: i64| -> bool {
+            if amount < 0 {
                 return false;
-            };
-            def.starting_gold = amount as i32;
-        }
-        persist_loadout(&cloned_db, &cloned_state, &class_id)
-    });
+            }
+            {
+                let mut world = cloned_state.lock().unwrap();
+                let Some(def) = world.class_definitions.get_mut(&class_id) else {
+                    return false;
+                };
+                def.starting_gold = amount as i32;
+            }
+            persist_loadout(&cloned_db, &cloned_state, &class_id)
+        },
+    );
 
     // add_class_starting_item(class_id, vnum) -> bool
     // Caller is expected to have validated the vnum (cedit does so via
     // item_vnum_exists). The setter still rejects empty strings and dupes.
     let cloned_db = db.clone();
     let cloned_state = state.clone();
-    engine.register_fn("add_class_starting_item", move |class_id: String, vnum: String| -> bool {
-        let vnum = vnum.trim().to_string();
-        if vnum.is_empty() {
-            return false;
-        }
-        {
-            let mut world = cloned_state.lock().unwrap();
-            let Some(def) = world.class_definitions.get_mut(&class_id) else {
+    engine.register_fn(
+        "add_class_starting_item",
+        move |class_id: String, vnum: String| -> bool {
+            let vnum = vnum.trim().to_string();
+            if vnum.is_empty() {
                 return false;
-            };
-            if def.starting_items.iter().any(|v| v == &vnum) {
-                return false; // already present
             }
-            def.starting_items.push(vnum);
-        }
-        persist_loadout(&cloned_db, &cloned_state, &class_id)
-    });
+            {
+                let mut world = cloned_state.lock().unwrap();
+                let Some(def) = world.class_definitions.get_mut(&class_id) else {
+                    return false;
+                };
+                if def.starting_items.iter().any(|v| v == &vnum) {
+                    return false; // already present
+                }
+                def.starting_items.push(vnum);
+            }
+            persist_loadout(&cloned_db, &cloned_state, &class_id)
+        },
+    );
 
     // remove_class_starting_item(class_id, vnum) -> bool
     let cloned_db = db.clone();
     let cloned_state = state.clone();
-    engine.register_fn("remove_class_starting_item", move |class_id: String, vnum: String| -> bool {
-        let vnum_lower = vnum.to_lowercase();
-        let removed = {
-            let mut world = cloned_state.lock().unwrap();
-            let Some(def) = world.class_definitions.get_mut(&class_id) else {
-                return false;
+    engine.register_fn(
+        "remove_class_starting_item",
+        move |class_id: String, vnum: String| -> bool {
+            let vnum_lower = vnum.to_lowercase();
+            let removed = {
+                let mut world = cloned_state.lock().unwrap();
+                let Some(def) = world.class_definitions.get_mut(&class_id) else {
+                    return false;
+                };
+                let before = def.starting_items.len();
+                def.starting_items.retain(|v| v.to_lowercase() != vnum_lower);
+                before != def.starting_items.len()
             };
-            let before = def.starting_items.len();
-            def.starting_items.retain(|v| v.to_lowercase() != vnum_lower);
-            before != def.starting_items.len()
-        };
-        if !removed {
-            return false;
-        }
-        persist_loadout(&cloned_db, &cloned_state, &class_id)
-    });
+            if !removed {
+                return false;
+            }
+            persist_loadout(&cloned_db, &cloned_state, &class_id)
+        },
+    );
 
     // clear_class_starting_items(class_id) -> bool
     let cloned_db = db.clone();

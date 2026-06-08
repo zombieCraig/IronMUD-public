@@ -17,10 +17,11 @@ pub mod chat;
 pub mod claude;
 pub mod completion;
 pub mod control;
+pub mod corpse;
 pub mod db;
 pub mod dialogue_edit;
-pub mod editor;
 pub mod discord;
+pub mod editor;
 pub mod email;
 pub mod game;
 pub mod gemini;
@@ -33,15 +34,14 @@ pub mod necromancy;
 pub mod quest;
 pub mod ratelimit;
 pub mod readline;
-pub mod throttle;
 pub mod script;
-pub mod settings;
-pub mod corpse;
 pub mod seed;
 pub mod session;
+pub mod settings;
 pub mod social;
 pub mod spawn;
 pub mod telnet;
+pub mod throttle;
 pub mod types;
 pub mod vampire;
 
@@ -49,15 +49,14 @@ pub use types::*;
 
 // Re-export session and init functions for backward compatibility
 pub use init::{
-    load_command_metadata, load_game_data, load_scripts, register_socials_in_command_metadata,
-    watch_scripts,
+    load_command_metadata, load_game_data, load_scripts, register_socials_in_command_metadata, watch_scripts,
 };
 use readline::*;
 pub use script::check_build_mode;
 pub use session::{
     break_all_charms_by_player, broadcast_to_all_players, broadcast_to_builders, broadcast_to_outdoor_players,
-    broadcast_to_room, broadcast_to_room_awake, broadcast_to_room_dreaming, clear_player_character,
-    disconnect_client, find_player_connection_by_name, get_character_for_connection, get_characters_in_room,
+    broadcast_to_room, broadcast_to_room_awake, broadcast_to_room_dreaming, clear_player_character, disconnect_client,
+    find_player_connection_by_name, get_character_for_connection, get_characters_in_room,
     get_characters_in_room_with_positions, send_client_message, set_character_for_connection,
 };
 
@@ -912,11 +911,7 @@ pub fn session_is_writing(session: &PlayerSession) -> bool {
     if session.modern_editor.is_some() {
         return true;
     }
-    session
-        .olc_mode
-        .as_deref()
-        .map(is_text_editor_mode)
-        .unwrap_or(false)
+    session.olc_mode.as_deref().map(is_text_editor_mode).unwrap_or(false)
 }
 
 /// Persist `body` onto DG trigger proto `vnum` and refresh all attached
@@ -934,7 +929,11 @@ pub fn save_dg_proto_body_msg(db: &crate::db::Db, vnum: &str, body: String) -> S
         Ok((refreshed, warnings)) => {
             let mut msg = format!(
                 "Proto '{}' saved ({} attached instance{} refreshed).\n",
-                if proto.name.is_empty() { proto.vnum.as_str() } else { proto.name.as_str() },
+                if proto.name.is_empty() {
+                    proto.vnum.as_str()
+                } else {
+                    proto.name.as_str()
+                },
                 refreshed,
                 if refreshed == 1 { "" } else { "s" },
             );
@@ -979,11 +978,7 @@ pub fn session_in_modern_editor(session: &PlayerSession) -> bool {
 /// rip the player out of the editor without losing buffered work. Buffers over
 /// their per-mode size cap are truncated rather than refused — the alternative
 /// is silent data loss.
-pub fn force_save_editor(
-    connection_id: ConnectionId,
-    connections: &SharedConnections,
-    state: &SharedState,
-) -> bool {
+pub fn force_save_editor(connection_id: ConnectionId, connections: &SharedConnections, state: &SharedState) -> bool {
     struct Snapshot {
         mode: String,
         content: String,
@@ -1489,11 +1484,7 @@ pub fn save_modern_editor(
 /// force-save their buffer, clear the writing state, and inform them. No-op
 /// for players who aren't currently writing. Lives in lib.rs so combat ticks,
 /// script-side combat, and environmental damage paths can all call it.
-pub fn interrupt_writer_by_name(
-    connections: &SharedConnections,
-    state: &SharedState,
-    char_name: &str,
-) {
+pub fn interrupt_writer_by_name(connections: &SharedConnections, state: &SharedState, char_name: &str) {
     let Some(conn_id) = find_player_connection_by_name(connections, char_name) else {
         return;
     };
@@ -1736,8 +1727,18 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
 
     let base_prompt = format!(
         "[{}HP:{}/{}{}] [{}ST:{}/{}{}] {}{}{}{}",
-        hp_color, hp, max_hp, reset, st_color, stamina, max_stamina, reset,
-        mana_segment, blood_segment, breath_segment, burning_segment
+        hp_color,
+        hp,
+        max_hp,
+        reset,
+        st_color,
+        stamina,
+        max_stamina,
+        reset,
+        mana_segment,
+        blood_segment,
+        breath_segment,
+        burning_segment
     );
 
     // Distance indicator for combat prompt
@@ -1831,7 +1832,10 @@ impl PlayerSession {
             let _ = tx_raw.send(telnet::build_msdp_var("STAMINA", &char_data.stamina.to_string()));
         }
         if reported.contains("STAMINA_MAX") {
-            let _ = tx_raw.send(telnet::build_msdp_var("STAMINA_MAX", &char_data.max_stamina.to_string()));
+            let _ = tx_raw.send(telnet::build_msdp_var(
+                "STAMINA_MAX",
+                &char_data.max_stamina.to_string(),
+            ));
         }
         if reported.contains("MANA") {
             let _ = tx_raw.send(telnet::build_msdp_var("MANA", &char_data.mana.to_string()));
@@ -1863,7 +1867,13 @@ impl PlayerSession {
                     let primary = &char.combat.targets[0];
                     if reported.contains("OPPONENT_NAME") {
                         let target_name = match primary.target_type {
-                            CombatTargetType::Mobile => world.db.get_mobile_data(&primary.target_id).ok().flatten().map(|m| m.name.clone()).unwrap_or_else(|| "opponent".to_string()),
+                            CombatTargetType::Mobile => world
+                                .db
+                                .get_mobile_data(&primary.target_id)
+                                .ok()
+                                .flatten()
+                                .map(|m| m.name.clone())
+                                .unwrap_or_else(|| "opponent".to_string()),
                             CombatTargetType::Player => primary
                                 .target_name
                                 .clone()
@@ -1873,7 +1883,13 @@ impl PlayerSession {
                     }
                     if reported.contains("OPPONENT_HEALTH") {
                         let (hp, max_hp) = match primary.target_type {
-                            CombatTargetType::Mobile => world.db.get_mobile_data(&primary.target_id).ok().flatten().map(|m| (m.current_hp, m.max_hp)).unwrap_or((0, 1)),
+                            CombatTargetType::Mobile => world
+                                .db
+                                .get_mobile_data(&primary.target_id)
+                                .ok()
+                                .flatten()
+                                .map(|m| (m.current_hp, m.max_hp))
+                                .unwrap_or((0, 1)),
                             CombatTargetType::Player => primary
                                 .target_name
                                 .as_deref()
@@ -2296,8 +2312,7 @@ pub async fn handle_connection(
 
                 let spell_names: Vec<String> = world.spell_definitions.values().map(|s| s.name.clone()).collect();
 
-                let language_keys: Vec<String> =
-                    world.language_definitions.keys().cloned().collect();
+                let language_keys: Vec<String> = world.language_definitions.keys().cloned().collect();
 
                 // Get online player names
                 let online_players: Vec<String> = {
@@ -2343,8 +2358,7 @@ pub async fn handle_connection(
 
                 let class_ids: Vec<String> = world.class_definitions.keys().cloned().collect();
                 let achievement_keys: Vec<String> = world.achievement_definitions.keys().cloned().collect();
-                let custom_skill_keys: Vec<String> =
-                    world.custom_skill_definitions.keys().cloned().collect();
+                let custom_skill_keys: Vec<String> = world.custom_skill_definitions.keys().cloned().collect();
 
                 (
                     available_commands,
@@ -2503,9 +2517,7 @@ pub async fn handle_connection(
                 // legacy prompt lands on a clean line.
                 if let Some(raw) = {
                     let conns = connections.lock().unwrap();
-                    conns
-                        .get(&connection_id)
-                        .and_then(|s| s.raw_sender.clone())
+                    conns.get(&connection_id).and_then(|s| s.raw_sender.clone())
                 } {
                     let _ = raw.send(b"\x1b[?2004l\x1b[?1000l\x1b[2J\x1b[H".to_vec());
                 }
@@ -2517,9 +2529,7 @@ pub async fn handle_connection(
             InputEvent::ModernEditorSave(content) => {
                 let mode = {
                     let conns = connections.lock().unwrap();
-                    conns
-                        .get(&connection_id)
-                        .and_then(|s| s.olc_mode.clone())
+                    conns.get(&connection_id).and_then(|s| s.olc_mode.clone())
                 };
                 let bytes = content.len();
                 let result = save_modern_editor(connection_id, &connections, &state, content.clone());
@@ -2531,9 +2541,7 @@ pub async fn handle_connection(
                 }
                 if let Some(raw) = {
                     let conns = connections.lock().unwrap();
-                    conns
-                        .get(&connection_id)
-                        .and_then(|s| s.raw_sender.clone())
+                    conns.get(&connection_id).and_then(|s| s.raw_sender.clone())
                 } {
                     let _ = raw.send(b"\x1b[?2004l\x1b[?1000l\x1b[2J\x1b[H".to_vec());
                 }
@@ -2558,12 +2566,8 @@ pub async fn handle_connection(
                     // Proto save sends its own detailed report (refresh count + warnings)
                     // from save_modern_editor's "collecting_dg_proto_body" branch.
                     (Some(_), Some("collecting_dg_proto_body")) => String::new(),
-                    (Some(_), Some("collecting_dialogue_node_text")) => {
-                        "Dialogue node text saved.\n".to_string()
-                    }
-                    (Some(_), Some("collecting_extra_desc")) => {
-                        "Extra description saved.\n".to_string()
-                    }
+                    (Some(_), Some("collecting_dialogue_node_text")) => "Dialogue node text saved.\n".to_string(),
+                    (Some(_), Some("collecting_extra_desc")) => "Extra description saved.\n".to_string(),
                     (Some(_), Some("collecting_motd")) => "MOTD saved.\n".to_string(),
                     (Some(_), _) => "Saved.\n".to_string(),
                     (None, _) => format!(
@@ -2886,9 +2890,8 @@ pub async fn handle_connection(
                             MAX_POST_BYTES
                         ));
                     } else if content.is_empty() {
-                        let _ = tx_client.send(
-                            "Empty post not saved. Type some text or .cancel to abort.\n".to_string(),
-                        );
+                        let _ =
+                            tx_client.send("Empty post not saved. Type some text or .cancel to abort.\n".to_string());
                     } else {
                         let (board_vnum, subject, author) = {
                             let conns = connections.lock().unwrap();
@@ -3009,9 +3012,7 @@ pub async fn handle_connection(
                         }
                         let warnings: Vec<String> = issues
                             .into_iter()
-                            .filter(|i| {
-                                i.kind != crate::script::dg::analyze::IssueKind::ParseError
-                            })
+                            .filter(|i| i.kind != crate::script::dg::analyze::IssueKind::ParseError)
                             .map(|i| format!("  warning: {:?}: {}", i.kind, i.detail))
                             .collect();
 
@@ -3178,16 +3179,13 @@ pub async fn handle_connection(
                     } else {
                         let proto_vnum = {
                             let conns = connections.lock().unwrap();
-                            conns
-                                .get(&connection_id)
-                                .and_then(|s| s.olc_edit_proto_vnum.clone())
+                            conns.get(&connection_id).and_then(|s| s.olc_edit_proto_vnum.clone())
                         };
                         let msg = if let Some(vnum) = proto_vnum {
                             let world = state.lock().unwrap();
                             save_dg_proto_body_msg(&world.db, &vnum, content)
                         } else {
-                            "Proto save failed: no proto vnum bound to this editor session.\n"
-                                .to_string()
+                            "Proto save failed: no proto vnum bound to this editor session.\n".to_string()
                         };
                         let _ = tx_client.send(msg);
                         {
@@ -3697,12 +3695,7 @@ pub async fn handle_connection(
                         let _ = tx_client.send(format!("{}\n", line));
                     }
                     for (room_id, msg) in room_broadcasts {
-                        crate::session::broadcast_to_room(
-                            &connections,
-                            room_id,
-                            msg,
-                            actor_name.as_deref(),
-                        );
+                        crate::session::broadcast_to_room(&connections, room_id, msg, actor_name.as_deref());
                     }
                     let prompt = build_prompt(&connection_id, &connections, &state);
                     let _ = tx_client.send(prompt);
@@ -3726,12 +3719,7 @@ pub async fn handle_connection(
                         let _ = tx_client.send(format!("{}\n", line));
                     }
                     for (room_id, msg) in room_broadcasts {
-                        crate::session::broadcast_to_room(
-                            &connections,
-                            room_id,
-                            msg,
-                            actor_name.as_deref(),
-                        );
+                        crate::session::broadcast_to_room(&connections, room_id, msg, actor_name.as_deref());
                     }
                     // Fall through to normal command parsing with the same input.
                 }
@@ -3939,15 +3927,13 @@ pub async fn handle_connection(
             // the resolved verb is in it we render and broadcast here,
             // then short-circuit past the rhai dispatch.
             if is_logged_in {
-                if let crate::social::actions::DispatchOutcome::Handled =
-                    crate::social::actions::dispatch_player_social(
-                        &state,
-                        &connections,
-                        connection_id,
-                        &resolved_command,
-                        args,
-                    )
-                {
+                if let crate::social::actions::DispatchOutcome::Handled = crate::social::actions::dispatch_player_social(
+                    &state,
+                    &connections,
+                    connection_id,
+                    &resolved_command,
+                    args,
+                ) {
                     let prompt = build_prompt(&connection_id, &connections, &state);
                     let _ = tx_client.send(prompt);
                     continue;
@@ -4013,10 +3999,7 @@ pub async fn handle_connection(
             // visible remnant until the user redraws with ^L.
             let suppress_prompt = {
                 let conns = connections.lock().unwrap();
-                conns
-                    .get(&connection_id)
-                    .map(session_in_modern_editor)
-                    .unwrap_or(false)
+                conns.get(&connection_id).map(session_in_modern_editor).unwrap_or(false)
             };
             if !suppress_prompt {
                 let prompt = build_prompt(&connection_id, &connections, &state);
@@ -4091,8 +4074,7 @@ pub async fn handle_connection(
                                     .unwrap()
                                     .as_secs() as i64;
                                 let delta = (now - start).max(0);
-                                character.total_seconds_played =
-                                    character.total_seconds_played.saturating_add(delta);
+                                character.total_seconds_played = character.total_seconds_played.saturating_add(delta);
                             }
                             let room_id = character.current_room_id;
                             let info = Some((character, room_id));
@@ -4305,7 +4287,6 @@ async fn handle_read_char_mode(
                                         session.telnet_state.msdp_supported = true;
                                     }
                                     _ => {
-
                                         // Send standard response for other options
                                         let _ = tx_raw.send(respond_to_will(opt));
                                     }
@@ -4337,7 +4318,6 @@ async fn handle_read_char_mode(
                                         session.telnet_state.msdp_supported = true;
                                     }
                                     _ => {}
-
                                 }
                             }
                         }
@@ -4424,7 +4404,10 @@ async fn handle_read_char_mode(
                                                 session.telnet_state.msdp_reported_variables.insert(val.to_uppercase());
                                             } else if var == "UNREPORT" {
                                                 debug!("MSDP Client {} requested UNREPORT for {}", connection_id, val);
-                                                session.telnet_state.msdp_reported_variables.remove(&val.to_uppercase());
+                                                session
+                                                    .telnet_state
+                                                    .msdp_reported_variables
+                                                    .remove(&val.to_uppercase());
                                             }
                                         }
                                     }
@@ -4509,8 +4492,7 @@ async fn handle_read_char_mode(
                                                 .map(|e| e.take_text())
                                                 .unwrap_or_default()
                                         };
-                                        let _ = tx_input
-                                            .try_send(InputEvent::ModernEditorSave(content));
+                                        let _ = tx_input.try_send(InputEvent::ModernEditorSave(content));
                                     }
                                     EditorAction::Cancel => {
                                         {

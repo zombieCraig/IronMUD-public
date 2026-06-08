@@ -26,14 +26,14 @@ pub fn extract_trigger_attachments(text: &str, out: &mut HashMap<i32, Vec<i32>>)
             continue;
         }
         if let Some(rest) = trimmed.strip_prefix('#') {
-            current_vnum = rest
-                .split_whitespace()
-                .next()
-                .and_then(|s| s.parse::<i32>().ok());
+            current_vnum = rest.split_whitespace().next().and_then(|s| s.parse::<i32>().ok());
             continue;
         }
         if let Some(rest) = trimmed.strip_prefix("T ") {
-            if let (Some(vnum), Some(trig)) = (current_vnum, rest.split_whitespace().next().and_then(|s| s.parse::<i32>().ok())) {
+            if let (Some(vnum), Some(trig)) = (
+                current_vnum,
+                rest.split_whitespace().next().and_then(|s| s.parse::<i32>().ok()),
+            ) {
                 out.entry(vnum).or_default().push(trig);
             }
             continue;

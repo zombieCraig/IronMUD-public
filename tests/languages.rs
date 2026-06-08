@@ -8,9 +8,7 @@
 #![recursion_limit = "256"]
 
 use ironmud::script::lang::{garble_for_listener, garble_text};
-use ironmud::types::{
-    CharacterData, ClassDefinition, LanguageDefinition, MobileData, RaceDefinition,
-};
+use ironmud::types::{CharacterData, ClassDefinition, LanguageDefinition, MobileData, RaceDefinition};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -105,9 +103,7 @@ fn linguist_and_tongue_tied_traits_present() {
     use ironmud::types::TraitDefinition;
     let traits: HashMap<String, TraitDefinition> = read_json("scripts/data/traits.json");
     let linguist = traits.get("linguist").expect("linguist trait must exist");
-    let tongue_tied = traits
-        .get("tongue_tied")
-        .expect("tongue_tied trait must exist");
+    let tongue_tied = traits.get("tongue_tied").expect("tongue_tied trait must exist");
     assert!(
         linguist.conflicts_with.iter().any(|c| c == "tongue_tied"),
         "linguist must conflict with tongue_tied"
@@ -150,10 +146,7 @@ fn mobile_spoken_language_round_trips_through_json() {
     m.vnum = "9100".into();
     assert!(m.spoken_language.is_none());
     let json = serde_json::to_string(&m).expect("serialize default");
-    assert!(
-        !json.contains("spoken_language"),
-        "absent field should not serialize"
-    );
+    assert!(!json.contains("spoken_language"), "absent field should not serialize");
     let back: MobileData = serde_json::from_str(&json).expect("deserialize default");
     assert!(back.spoken_language.is_none());
 

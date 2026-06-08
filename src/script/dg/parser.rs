@@ -17,12 +17,8 @@ use super::ast::{Block, Stmt, SwitchCase};
 /// syntax highlighter and tab-completion source. Keep this in sync with
 /// the dispatcher in `parse_block` below.
 pub const KEYWORDS: &[&str] = &[
-    "if", "elseif", "else", "end",
-    "while", "done",
-    "switch", "case", "default", "break",
-    "set", "eval", "halt", "return",
-    "wait", "context", "global", "unset",
-    "remote", "rdelete",
+    "if", "elseif", "else", "end", "while", "done", "switch", "case", "default", "break", "set", "eval", "halt",
+    "return", "wait", "context", "global", "unset", "remote", "rdelete",
 ];
 
 /// Common DG variable substitutions / fields. Used by tab completion
@@ -30,16 +26,46 @@ pub const KEYWORDS: &[&str] = &[
 /// — DG variables are open-ended (any UUID prefix works), so completion
 /// only knows the common ones.
 pub const VARIABLES: &[&str] = &[
-    "actor", "victim", "self", "arg", "cmd", "speech",
-    "actor.name", "actor.level", "actor.hitp", "actor.maxhp",
-    "actor.gold", "actor.move", "actor.vnum", "actor.is_pc",
-    "actor.room", "actor.fighting", "actor.heshe", "actor.himher",
-    "actor.hisher", "actor.str", "actor.dex", "actor.con",
-    "actor.int", "actor.wis", "actor.cha", "actor.class", "actor.race",
-    "self.name", "self.vnum", "self.room", "self.hitp", "self.maxhp",
-    "self.fighting", "self.is_pc",
-    "victim.name", "victim.vnum", "victim.hitp",
-    "random.10", "random.100", "random.6",
+    "actor",
+    "victim",
+    "self",
+    "arg",
+    "cmd",
+    "speech",
+    "actor.name",
+    "actor.level",
+    "actor.hitp",
+    "actor.maxhp",
+    "actor.gold",
+    "actor.move",
+    "actor.vnum",
+    "actor.is_pc",
+    "actor.room",
+    "actor.fighting",
+    "actor.heshe",
+    "actor.himher",
+    "actor.hisher",
+    "actor.str",
+    "actor.dex",
+    "actor.con",
+    "actor.int",
+    "actor.wis",
+    "actor.cha",
+    "actor.class",
+    "actor.race",
+    "self.name",
+    "self.vnum",
+    "self.room",
+    "self.hitp",
+    "self.maxhp",
+    "self.fighting",
+    "self.is_pc",
+    "victim.name",
+    "victim.vnum",
+    "victim.hitp",
+    "random.10",
+    "random.100",
+    "random.6",
 ];
 
 #[derive(Debug)]
@@ -66,8 +92,8 @@ pub fn parse(body: &str) -> Result<Block, ParseError> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum BlockEnd {
     Eof,
-    EndKw,    // `end`
-    DoneKw,   // `done`
+    EndKw,  // `end`
+    DoneKw, // `done`
     /// Switch case body — terminates on `case`, `default`, `break`,
     /// or `done`. The terminator stays unconsumed so the outer loop
     /// can decide what to do with it.
@@ -195,7 +221,10 @@ impl<'a> Parser<'a> {
                     let trig = tok.next().unwrap_or("").to_string();
                     let target = tok.next().unwrap_or("").to_string();
                     self.idx += 1;
-                    out.push(Stmt::Attach { trig_vnum: trig, target });
+                    out.push(Stmt::Attach {
+                        trig_vnum: trig,
+                        target,
+                    });
                 }
                 "detach" => {
                     let rest = trimmed["detach".len()..].trim();
@@ -203,7 +232,10 @@ impl<'a> Parser<'a> {
                     let trig = tok.next().unwrap_or("").to_string();
                     let target = tok.next().unwrap_or("").to_string();
                     self.idx += 1;
-                    out.push(Stmt::Detach { trig_vnum: trig, target });
+                    out.push(Stmt::Detach {
+                        trig_vnum: trig,
+                        target,
+                    });
                 }
                 "remote" => {
                     let rest = trimmed["remote".len()..].trim();
@@ -287,7 +319,12 @@ impl<'a> Parser<'a> {
                 }
                 "end" => {
                     self.idx += 1;
-                    return Ok(Stmt::If { cond, then_body, elif_branches, else_body });
+                    return Ok(Stmt::If {
+                        cond,
+                        then_body,
+                        elif_branches,
+                        else_body,
+                    });
                 }
                 _ => {
                     return Err(ParseError {
@@ -303,7 +340,12 @@ impl<'a> Parser<'a> {
             let t = raw.trim();
             if t.eq_ignore_ascii_case("end") {
                 self.idx += 1;
-                return Ok(Stmt::If { cond, then_body, elif_branches, else_body });
+                return Ok(Stmt::If {
+                    cond,
+                    then_body,
+                    elif_branches,
+                    else_body,
+                });
             }
         }
         Err(ParseError {
@@ -356,7 +398,11 @@ impl<'a> Parser<'a> {
                             // Patterns without a body before `default`:
                             // they're an empty fall-through case. Push a
                             // case with empty body + fall_through=true.
-                            cases.push(SwitchCase { patterns: std::mem::take(&mut patterns), body: Vec::new(), fall_through: true });
+                            cases.push(SwitchCase {
+                                patterns: std::mem::take(&mut patterns),
+                                body: Vec::new(),
+                                fall_through: true,
+                            });
                         }
                         self.idx += 1;
                         let body = self.parse_block(BlockEnd::DoneKw)?;
@@ -371,7 +417,11 @@ impl<'a> Parser<'a> {
                     }
                     "done" => {
                         if !patterns.is_empty() {
-                            cases.push(SwitchCase { patterns: std::mem::take(&mut patterns), body: Vec::new(), fall_through: false });
+                            cases.push(SwitchCase {
+                                patterns: std::mem::take(&mut patterns),
+                                body: Vec::new(),
+                                fall_through: false,
+                            });
                         }
                         self.idx += 1;
                         return Ok(Stmt::Switch { value, cases, default });
@@ -397,7 +447,11 @@ impl<'a> Parser<'a> {
             if matches!(body_trimmed.last(), Some(Stmt::Break)) {
                 body_trimmed.pop();
             }
-            cases.push(SwitchCase { patterns, body: body_trimmed, fall_through });
+            cases.push(SwitchCase {
+                patterns,
+                body: body_trimmed,
+                fall_through,
+            });
         }
     }
 
@@ -407,7 +461,10 @@ impl<'a> Parser<'a> {
         let rest = line["set".len()..].trim_start();
         let (var, value) = split_kw(rest);
         self.idx += 1;
-        Ok(Stmt::Set { var: var.to_string(), value: value.trim_start().to_string() })
+        Ok(Stmt::Set {
+            var: var.to_string(),
+            value: value.trim_start().to_string(),
+        })
     }
 
     fn parse_eval(&mut self) -> Result<Stmt, ParseError> {
@@ -415,7 +472,10 @@ impl<'a> Parser<'a> {
         let rest = line["eval".len()..].trim_start();
         let (var, expr) = split_kw(rest);
         self.idx += 1;
-        Ok(Stmt::Eval { var: var.to_string(), expr: expr.trim_start().to_string() })
+        Ok(Stmt::Eval {
+            var: var.to_string(),
+            expr: expr.trim_start().to_string(),
+        })
     }
 }
 
@@ -450,7 +510,12 @@ end";
         let b = parse(body).unwrap();
         assert_eq!(b.len(), 1);
         match &b[0] {
-            Stmt::If { cond, then_body, else_body, .. } => {
+            Stmt::If {
+                cond,
+                then_body,
+                else_body,
+                ..
+            } => {
                 assert_eq!(cond, "%actor.level% > 5");
                 assert_eq!(then_body.len(), 1);
                 assert!(matches!(&then_body[0], Stmt::Cmd(s) if s.starts_with("%send%")));
@@ -474,7 +539,11 @@ else
 end";
         let b = parse(body).unwrap();
         match &b[0] {
-            Stmt::If { elif_branches, else_body, .. } => {
+            Stmt::If {
+                elif_branches,
+                else_body,
+                ..
+            } => {
                 assert_eq!(elif_branches.len(), 2);
                 assert!(else_body.is_some());
             }

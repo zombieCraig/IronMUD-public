@@ -179,11 +179,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
                     Some(d) => d,
                     None => return text,
                 };
-                let skill_level = ch
-                    .skills
-                    .get(&lang_lc)
-                    .map(|p| p.level)
-                    .unwrap_or(0);
+                let skill_level = ch.skills.get(&lang_lc).map(|p| p.level).unwrap_or(0);
                 garble_text(&text, lang, skill_level)
             },
         );
@@ -228,21 +224,18 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // get_mobile_spoken_language(mobile_id) -> String (empty if None)
     {
         let cloned_db = db.clone();
-        engine.register_fn(
-            "get_mobile_spoken_language",
-            move |mobile_id: String| -> String {
-                let mob_uuid = match Uuid::parse_str(&mobile_id) {
-                    Ok(u) => u,
-                    Err(_) => return String::new(),
-                };
-                cloned_db
-                    .get_mobile_data(&mob_uuid)
-                    .ok()
-                    .flatten()
-                    .and_then(|m| m.spoken_language)
-                    .unwrap_or_default()
-            },
-        );
+        engine.register_fn("get_mobile_spoken_language", move |mobile_id: String| -> String {
+            let mob_uuid = match Uuid::parse_str(&mobile_id) {
+                Ok(u) => u,
+                Err(_) => return String::new(),
+            };
+            cloned_db
+                .get_mobile_data(&mob_uuid)
+                .ok()
+                .flatten()
+                .and_then(|m| m.spoken_language)
+                .unwrap_or_default()
+        });
     }
 
     // get_languages_known(char_name) -> Array<Map>
@@ -253,53 +246,38 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     {
         let state_clone = state.clone();
         let cloned_db = db.clone();
-        engine.register_fn(
-            "get_languages_known",
-            move |char_name: String| -> rhai::Array {
-                let ch = match cloned_db.get_character_data(&char_name.to_lowercase()) {
-                    Ok(Some(c)) => c,
-                    _ => return rhai::Array::new(),
-                };
-                let world = state_clone.lock().unwrap();
-                let mut entries: Vec<rhai::Dynamic> = Vec::new();
-                for (key, def) in world.language_definitions.iter() {
-                    let progress = ch.skills.get(key);
-                    let level = progress.map(|p| p.level as i64).unwrap_or(0);
-                    let xp = progress.map(|p| p.experience as i64).unwrap_or(0);
-                    if level <= 0 && !def.is_lingua_franca {
-                        continue;
-                    }
-                    let mut m = rhai::Map::new();
-                    m.insert("key".into(), rhai::Dynamic::from(def.key.clone()));
-                    m.insert(
-                        "display_name".into(),
-                        rhai::Dynamic::from(def.display_name.clone()),
-                    );
-                    m.insert("level".into(), rhai::Dynamic::from(level));
-                    m.insert("experience".into(), rhai::Dynamic::from(xp));
-                    m.insert(
-                        "is_lingua_franca".into(),
-                        rhai::Dynamic::from(def.is_lingua_franca),
-                    );
-                    m.insert(
-                        "is_current".into(),
-                        rhai::Dynamic::from(ch.current_language == def.key),
-                    );
-                    entries.push(rhai::Dynamic::from(m));
+        engine.register_fn("get_languages_known", move |char_name: String| -> rhai::Array {
+            let ch = match cloned_db.get_character_data(&char_name.to_lowercase()) {
+                Ok(Some(c)) => c,
+                _ => return rhai::Array::new(),
+            };
+            let world = state_clone.lock().unwrap();
+            let mut entries: Vec<rhai::Dynamic> = Vec::new();
+            for (key, def) in world.language_definitions.iter() {
+                let progress = ch.skills.get(key);
+                let level = progress.map(|p| p.level as i64).unwrap_or(0);
+                let xp = progress.map(|p| p.experience as i64).unwrap_or(0);
+                if level <= 0 && !def.is_lingua_franca {
+                    continue;
                 }
-                entries
-            },
-        );
+                let mut m = rhai::Map::new();
+                m.insert("key".into(), rhai::Dynamic::from(def.key.clone()));
+                m.insert("display_name".into(), rhai::Dynamic::from(def.display_name.clone()));
+                m.insert("level".into(), rhai::Dynamic::from(level));
+                m.insert("experience".into(), rhai::Dynamic::from(xp));
+                m.insert("is_lingua_franca".into(), rhai::Dynamic::from(def.is_lingua_franca));
+                m.insert("is_current".into(), rhai::Dynamic::from(ch.current_language == def.key));
+                entries.push(rhai::Dynamic::from(m));
+            }
+            entries
+        });
     }
 }
 
 fn garble_one_word(word: &str, pool: &[String], rng: &mut impl Rng) -> String {
     // Strip leading/trailing ASCII punctuation; remember it.
     let chars: Vec<char> = word.chars().collect();
-    let leading_punct: String = chars
-        .iter()
-        .take_while(|c| !c.is_alphanumeric())
-        .collect();
+    let leading_punct: String = chars.iter().take_while(|c| !c.is_alphanumeric()).collect();
     let trailing_punct: String = chars
         .iter()
         .rev()

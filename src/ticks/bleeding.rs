@@ -80,7 +80,6 @@ fn process_bleeding_tick(db: &db::Db, connections: &SharedConnections, state: &S
 
 /// Phase A: Process bleeding for all logged-in player characters
 fn process_character_bleeding(db: &db::Db, connections: &SharedConnections, state: &SharedState) -> Result<()> {
-
     // Collect player names outside the lock
     let player_names: Vec<String> = {
         let conns = connections.lock().unwrap();

@@ -6,8 +6,7 @@ use crate::SharedConnections;
 use crate::db::Db;
 use crate::script::items::character_has_item_vnum;
 use crate::{
-    CharacterData, CombatZoneType, DoorState, RoomData, RoomEntryCondition, RoomEntryGate,
-    RoomExits, RoomFlags,
+    CharacterData, CombatZoneType, DoorState, RoomData, RoomEntryCondition, RoomEntryGate, RoomExits, RoomFlags,
 };
 use rhai::Engine;
 use std::sync::Arc;
@@ -23,10 +22,7 @@ pub fn evaluate_entry_gate(db: &Db, character: &CharacterData, room: &RoomData) 
     if gate.conditions.is_empty() {
         return None;
     }
-    let all_pass = gate
-        .conditions
-        .iter()
-        .all(|cond| condition_passes(db, character, cond));
+    let all_pass = gate.conditions.iter().all(|cond| condition_passes(db, character, cond));
     if all_pass {
         None
     } else {
@@ -55,9 +51,7 @@ fn condition_passes(db: &Db, ch: &CharacterData, cond: &RoomEntryCondition) -> b
                 .any(|t| t.keywords.iter().any(|k| k.to_lowercase() == kw))
         }
         RoomEntryCondition::DgVarSet { key } => ch.dg_vars.contains_key(key),
-        RoomEntryCondition::DgVarEquals { key, value } => {
-            ch.dg_vars.get(key).map(|v| v == value).unwrap_or(false)
-        }
+        RoomEntryCondition::DgVarEquals { key, value } => ch.dg_vars.get(key).map(|v| v == value).unwrap_or(false),
         RoomEntryCondition::IsClanMember { tag } => ch
             .clan_tag
             .as_deref()
@@ -998,16 +992,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     }
                 }
                 if !found {
-                    room.contextual_commands.push(crate::ContextualCommand {
-                        verb,
-                        hint: hint_opt,
-                    });
+                    room.contextual_commands
+                        .push(crate::ContextualCommand { verb, hint: hint_opt });
                 }
                 if let Err(e) = cloned_db.save_room_data(room) {
-                    tracing::error!(
-                        "Failed to save room after adding contextual command: {}",
-                        e
-                    );
+                    tracing::error!("Failed to save room after adding contextual command: {}", e);
                     return false;
                 }
                 return true;
@@ -1031,10 +1020,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 room.contextual_commands.retain(|cc| cc.verb != verb);
                 if room.contextual_commands.len() < original_len {
                     if let Err(e) = cloned_db.save_room_data(room) {
-                        tracing::error!(
-                            "Failed to save room after removing contextual command: {}",
-                            e
-                        );
+                        tracing::error!("Failed to save room after removing contextual command: {}", e);
                         return false;
                     }
                     return true;
@@ -1057,10 +1043,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             }
             room.contextual_commands.clear();
             if let Err(e) = cloned_db.save_room_data(room) {
-                tracing::error!(
-                    "Failed to save room after clearing contextual commands: {}",
-                    e
-                );
+                tracing::error!("Failed to save room after clearing contextual commands: {}", e);
                 return false;
             }
             return true;
@@ -1158,9 +1141,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             {
                 let already = {
                     let conns_guard = conns.lock().unwrap();
-                    conns_guard
-                        .get(&conn_uuid)
-                        .and_then(|s| s.character.as_ref().map(|c| (c.name.clone(), c.rooms_visited.contains(&room_uuid))))
+                    conns_guard.get(&conn_uuid).and_then(|s| {
+                        s.character
+                            .as_ref()
+                            .map(|c| (c.name.clone(), c.rooms_visited.contains(&room_uuid)))
+                    })
                 };
                 if let Some((player_name, already_visited)) = already {
                     if !already_visited {
@@ -1471,13 +1456,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                             output.push_str(&color("Someone is here.", ANSI_GREEN));
                         } else {
                             let display = mobile.display_name();
-                            let has_nickname = mobile
-                                .nickname
-                                .as_deref()
-                                .filter(|s| !s.is_empty())
-                                .is_some();
-                            let mut line = if mobile.current_activity
-                                == crate::ActivityState::Sleeping
+                            let has_nickname = mobile.nickname.as_deref().filter(|s| !s.is_empty()).is_some();
+                            let mut line = if mobile.current_activity == crate::ActivityState::Sleeping
                                 || mobile.position == crate::types::MobilePosition::Sleeping
                             {
                                 format!("{} is here, sleeping.", display)
@@ -1503,11 +1483,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                                 line.push_str(" (invisible)");
                             }
                             if !mobile.vnum.is_empty() {
-                                if let Some(cue) = crate::quest::describe_quest_offers(
-                                    &cloned_db,
-                                    &exclude_char_name,
-                                    &mobile.vnum,
-                                ) {
+                                if let Some(cue) =
+                                    crate::quest::describe_quest_offers(&cloned_db, &exclude_char_name, &mobile.vnum)
+                                {
                                     line.push(' ');
                                     line.push_str(&cue);
                                 }
@@ -1915,10 +1893,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                                 c.automap_enabled,
                                 !s.map_legend_shown,
                                 s.colors_enabled,
-                                c.automap_radius.clamp(
-                                    crate::script::map::MIN_RADIUS,
-                                    crate::script::map::MAX_RADIUS,
-                                ),
+                                c.automap_radius
+                                    .clamp(crate::script::map::MIN_RADIUS, crate::script::map::MAX_RADIUS),
                                 c.ascii_map,
                             ),
                             None => (
@@ -1940,10 +1916,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         ),
                     }
                 };
-                if automap_on
-                    && !player_name.is_empty()
-                    && crate::script::map::enabled(&cloned_db)
-                {
+                if automap_on && !player_name.is_empty() && crate::script::map::enabled(&cloned_db) {
                     let rendered = crate::script::map::render_map_for_player_with_options(
                         &cloned_db,
                         &player_name.to_lowercase(),
@@ -1978,12 +1951,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 let final_output = if session.mxp_enabled {
                     format!("{}{}\x1b[1z{}\n", title_str, map_prefix, output)
                 } else {
-                    format!(
-                        "{}{}{}\n",
-                        title_str,
-                        map_prefix,
-                        utilities::strip_mxp_tags(&output)
-                    )
+                    format!("{}{}{}\n", title_str, map_prefix, utilities::strip_mxp_tags(&output))
                 };
                 let _ = session.sender.send(final_output);
                 if map_legend_was_shown {
@@ -2140,22 +2108,16 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // get_room_entry_gate_message(room_id) -> String
     let cloned_db = db.clone();
-    engine.register_fn(
-        "get_room_entry_gate_message",
-        move |room_id: String| -> String {
-            let room_uuid = match uuid::Uuid::parse_str(&room_id) {
-                Ok(u) => u,
-                Err(_) => return String::new(),
-            };
-            match cloned_db.get_room_data(&room_uuid) {
-                Ok(Some(r)) => r
-                    .entry_gate
-                    .map(|g| g.block_message)
-                    .unwrap_or_default(),
-                _ => String::new(),
-            }
-        },
-    );
+    engine.register_fn("get_room_entry_gate_message", move |room_id: String| -> String {
+        let room_uuid = match uuid::Uuid::parse_str(&room_id) {
+            Ok(u) => u,
+            Err(_) => return String::new(),
+        };
+        match cloned_db.get_room_data(&room_uuid) {
+            Ok(Some(r)) => r.entry_gate.map(|g| g.block_message).unwrap_or_default(),
+            _ => String::new(),
+        }
+    });
 
     // add_room_entry_condition_class(room_id, name) -> bool
     let cloned_db = db.clone();
@@ -2304,29 +2266,26 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // list_room_entry_conditions(room_id) -> Array of #{kind, summary}
     let cloned_db = db.clone();
-    engine.register_fn(
-        "list_room_entry_conditions",
-        move |room_id: String| -> rhai::Array {
-            let mut out = rhai::Array::new();
-            let room_uuid = match uuid::Uuid::parse_str(&room_id) {
-                Ok(u) => u,
-                Err(_) => return out,
-            };
-            let room = match cloned_db.get_room_data(&room_uuid) {
-                Ok(Some(r)) => r,
-                _ => return out,
-            };
-            if let Some(gate) = room.entry_gate {
-                for cond in &gate.conditions {
-                    let mut m = rhai::Map::new();
-                    m.insert("kind".into(), condition_kind(cond).to_string().into());
-                    m.insert("summary".into(), summarize_condition(cond).into());
-                    out.push(rhai::Dynamic::from(m));
-                }
+    engine.register_fn("list_room_entry_conditions", move |room_id: String| -> rhai::Array {
+        let mut out = rhai::Array::new();
+        let room_uuid = match uuid::Uuid::parse_str(&room_id) {
+            Ok(u) => u,
+            Err(_) => return out,
+        };
+        let room = match cloned_db.get_room_data(&room_uuid) {
+            Ok(Some(r)) => r,
+            _ => return out,
+        };
+        if let Some(gate) = room.entry_gate {
+            for cond in &gate.conditions {
+                let mut m = rhai::Map::new();
+                m.insert("kind".into(), condition_kind(cond).to_string().into());
+                m.insert("summary".into(), summarize_condition(cond).into());
+                out.push(rhai::Dynamic::from(m));
             }
-            out
-        },
-    );
+        }
+        out
+    });
 }
 
 /// Load → mutate → save helper for the entry-gate mutators.

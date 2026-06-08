@@ -1,12 +1,5 @@
-
-use crate::import::{
-    IrQuest, PlannedQuest, Severity, Warning, WarningKind,
-};
-use crate::types::{
-    QuestData, QuestObjective,
-    QuestReward,
-};
-
+use crate::import::{IrQuest, PlannedQuest, Severity, Warning, WarningKind};
+use crate::types::{QuestData, QuestObjective, QuestReward};
 
 /// Translate a tbamud `.qst` IR record into a [`PlannedQuest`]. Returns
 /// `None` for quest types we can't model yet (MOB_FIND / MOB_SAVE /
@@ -18,11 +11,7 @@ pub(super) fn translate_quest(q: &IrQuest, warnings: &mut Vec<Warning>) -> Optio
     } else {
         q.name.clone()
     };
-    let keywords: Vec<String> = q
-        .keywords
-        .split_whitespace()
-        .map(|s| s.to_string())
-        .collect();
+    let keywords: Vec<String> = q.keywords.split_whitespace().map(|s| s.to_string()).collect();
 
     let summary = first_line_compact(&q.accept_msg, 80);
     let description = clean_msg(&q.accept_msg);
@@ -47,14 +36,9 @@ pub(super) fn translate_quest(q: &IrQuest, warnings: &mut Vec<Warning>) -> Optio
                     WarningKind::DeferredFeature,
                     Severity::Warn,
                     q.source.clone(),
-                    format!(
-                        "quest #{} ({}): AQ_MOB_FIND not modelled; skipped",
-                        q.vnum, name
-                    ),
+                    format!("quest #{} ({}): AQ_MOB_FIND not modelled; skipped", q.vnum, name),
                 )
-                .with_suggestion(
-                    "re-author as a kill / fetch quest, or wait for slice 3 'find alive' tracker",
-                ),
+                .with_suggestion("re-author as a kill / fetch quest, or wait for slice 3 'find alive' tracker"),
             );
             return None;
         }
@@ -93,10 +77,7 @@ pub(super) fn translate_quest(q: &IrQuest, warnings: &mut Vec<Warning>) -> Optio
                     WarningKind::DeferredFeature,
                     Severity::Warn,
                     q.source.clone(),
-                    format!(
-                        "quest #{} ({}): AQ_ROOM_CLEAR not modelled; skipped",
-                        q.vnum, name
-                    ),
+                    format!("quest #{} ({}): AQ_ROOM_CLEAR not modelled; skipped", q.vnum, name),
                 )
                 .with_suggestion("clear-all-mobs-from-room mechanic deferred"),
             );
@@ -107,10 +88,7 @@ pub(super) fn translate_quest(q: &IrQuest, warnings: &mut Vec<Warning>) -> Optio
                 WarningKind::DeferredFeature,
                 Severity::Warn,
                 q.source.clone(),
-                format!(
-                    "quest #{} ({}): unknown AQ type {} — skipped",
-                    q.vnum, name, other
-                ),
+                format!("quest #{} ({}): unknown AQ type {} — skipped", q.vnum, name, other),
             ));
             return None;
         }

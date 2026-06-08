@@ -25,11 +25,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_db = db.clone();
     engine.register_fn(
         "ban_account",
-        move |account_id: String,
-              reason: String,
-              banned_by: String,
-              expires_at_or_zero: i64|
-              -> bool {
+        move |account_id: String, reason: String, banned_by: String, expires_at_or_zero: i64| -> bool {
             let uuid = match Uuid::parse_str(&account_id) {
                 Ok(u) => u,
                 Err(_) => return false,
@@ -139,9 +135,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             .get("reason")
             .and_then(|d| d.clone().into_string().ok())
             .unwrap_or_default();
-        let expires_at = ban_map
-            .get("expires_at")
-            .and_then(|d| d.as_int().ok());
+        let expires_at = ban_map.get("expires_at").and_then(|d| d.as_int().ok());
         let mut msg = "This account is suspended".to_string();
         if !reason.is_empty() {
             msg.push_str(": ");
@@ -228,59 +222,49 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // Stamps both `last_login_ip` on the account row AND a row in the
     // `ip_account_history` reverse index so `admin alts` can find it.
     let cloned_db = db.clone();
-    engine.register_fn(
-        "record_account_ip",
-        move |account_id: String, ip: String| -> bool {
-            let uuid = match Uuid::parse_str(&account_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            let trimmed_ip = ip.trim().to_lowercase();
-            if trimmed_ip.is_empty() {
-                return false;
-            }
-            let mut account = match cloned_db.get_account_by_id(&uuid) {
-                Ok(Some(a)) => a,
-                _ => return false,
-            };
-            account.last_login_ip = trimmed_ip.clone();
-            if cloned_db.save_account(account).is_err() {
-                return false;
-            }
-            cloned_db
-                .record_account_ip_seen(uuid, &trimmed_ip)
-                .is_ok()
-        },
-    );
+    engine.register_fn("record_account_ip", move |account_id: String, ip: String| -> bool {
+        let uuid = match Uuid::parse_str(&account_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let trimmed_ip = ip.trim().to_lowercase();
+        if trimmed_ip.is_empty() {
+            return false;
+        }
+        let mut account = match cloned_db.get_account_by_id(&uuid) {
+            Ok(Some(a)) => a,
+            _ => return false,
+        };
+        account.last_login_ip = trimmed_ip.clone();
+        if cloned_db.save_account(account).is_err() {
+            return false;
+        }
+        cloned_db.record_account_ip_seen(uuid, &trimmed_ip).is_ok()
+    });
 
     // record_creation_ip(account_id_str, ip) -> bool
     let cloned_db = db.clone();
-    engine.register_fn(
-        "record_creation_ip",
-        move |account_id: String, ip: String| -> bool {
-            let uuid = match Uuid::parse_str(&account_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            let trimmed_ip = ip.trim().to_lowercase();
-            if trimmed_ip.is_empty() {
-                return false;
-            }
-            let mut account = match cloned_db.get_account_by_id(&uuid) {
-                Ok(Some(a)) => a,
-                _ => return false,
-            };
-            account.creation_ip = trimmed_ip.clone();
-            if cloned_db.save_account(account).is_err() {
-                return false;
-            }
-            // Stamp into the reverse index too — creation is a meaningful
-            // signal even before the account ever logs in.
-            cloned_db
-                .record_account_ip_seen(uuid, &trimmed_ip)
-                .is_ok()
-        },
-    );
+    engine.register_fn("record_creation_ip", move |account_id: String, ip: String| -> bool {
+        let uuid = match Uuid::parse_str(&account_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let trimmed_ip = ip.trim().to_lowercase();
+        if trimmed_ip.is_empty() {
+            return false;
+        }
+        let mut account = match cloned_db.get_account_by_id(&uuid) {
+            Ok(Some(a)) => a,
+            _ => return false,
+        };
+        account.creation_ip = trimmed_ip.clone();
+        if cloned_db.save_account(account).is_err() {
+            return false;
+        }
+        // Stamp into the reverse index too — creation is a meaningful
+        // signal even before the account ever logs in.
+        cloned_db.record_account_ip_seen(uuid, &trimmed_ip).is_ok()
+    });
 
     // find_alts_by_account(account_id_str) -> Array of Map
     //   Returns sibling accounts that share the subject's
@@ -288,61 +272,56 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     //   Each entry: #{ name, account_id, banned, match_type, match_value }.
     //   match_type: "ip" | "email".
     let cloned_db = db.clone();
-    engine.register_fn(
-        "find_alts_by_account",
-        move |account_id: String| -> Array {
-            let mut out = Array::new();
-            let uuid = match Uuid::parse_str(&account_id) {
-                Ok(u) => u,
-                Err(_) => return out,
-            };
-            let subject = match cloned_db.get_account_by_id(&uuid) {
-                Ok(Some(a)) => a,
-                _ => return out,
-            };
-            let now = now_secs();
-            let since = now - ALTS_IP_LOOKBACK_SECS;
-            let mut seen: std::collections::HashSet<Uuid> = std::collections::HashSet::new();
-            seen.insert(subject.id);
+    engine.register_fn("find_alts_by_account", move |account_id: String| -> Array {
+        let mut out = Array::new();
+        let uuid = match Uuid::parse_str(&account_id) {
+            Ok(u) => u,
+            Err(_) => return out,
+        };
+        let subject = match cloned_db.get_account_by_id(&uuid) {
+            Ok(Some(a)) => a,
+            _ => return out,
+        };
+        let now = now_secs();
+        let since = now - ALTS_IP_LOOKBACK_SECS;
+        let mut seen: std::collections::HashSet<Uuid> = std::collections::HashSet::new();
+        seen.insert(subject.id);
 
-            // IP correlation: scan both creation_ip and last_login_ip.
-            for ip in [&subject.creation_ip, &subject.last_login_ip] {
-                if ip.is_empty() {
+        // IP correlation: scan both creation_ip and last_login_ip.
+        for ip in [&subject.creation_ip, &subject.last_login_ip] {
+            if ip.is_empty() {
+                continue;
+            }
+            let ids = match cloned_db.list_accounts_by_ip(ip, since) {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            for other_id in ids {
+                if !seen.insert(other_id) {
                     continue;
                 }
-                let ids = match cloned_db.list_accounts_by_ip(ip, since) {
-                    Ok(v) => v,
-                    Err(_) => continue,
-                };
-                for other_id in ids {
-                    if !seen.insert(other_id) {
+                if let Ok(Some(other)) = cloned_db.get_account_by_id(&other_id) {
+                    out.push(Dynamic::from_map(alt_entry_map(&other, "ip", ip)));
+                }
+            }
+        }
+
+        // Normalized-email correlation.
+        if let Some(canonical) = &subject.normalized_email {
+            if let Ok(accounts) = cloned_db.list_accounts() {
+                for other in accounts {
+                    if !seen.insert(other.id) {
                         continue;
                     }
-                    if let Ok(Some(other)) = cloned_db.get_account_by_id(&other_id) {
-                        out.push(Dynamic::from_map(alt_entry_map(&other, "ip", ip)));
+                    if other.normalized_email.as_deref() == Some(canonical.as_str()) {
+                        out.push(Dynamic::from_map(alt_entry_map(&other, "email", canonical)));
                     }
                 }
             }
+        }
 
-            // Normalized-email correlation.
-            if let Some(canonical) = &subject.normalized_email {
-                if let Ok(accounts) = cloned_db.list_accounts() {
-                    for other in accounts {
-                        if !seen.insert(other.id) {
-                            continue;
-                        }
-                        if other.normalized_email.as_deref() == Some(canonical.as_str()) {
-                            out.push(Dynamic::from_map(alt_entry_map(
-                                &other, "email", canonical,
-                            )));
-                        }
-                    }
-                }
-            }
-
-            out
-        },
-    );
+        out
+    });
 
     // now_unix_secs() -> i64
     // Convenience for admin.rhai's duration parsing — Rhai doesn't expose a
@@ -399,11 +378,7 @@ fn site_ban_to_map(record: &SiteBanRecord) -> Map {
     m
 }
 
-fn alt_entry_map(
-    other: &crate::types::AccountData,
-    match_type: &str,
-    match_value: &str,
-) -> Map {
+fn alt_entry_map(other: &crate::types::AccountData, match_type: &str, match_value: &str) -> Map {
     let mut m = Map::new();
     m.insert("name".into(), Dynamic::from(other.name.clone()));
     m.insert("account_id".into(), Dynamic::from(other.id.to_string()));

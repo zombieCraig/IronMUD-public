@@ -20,11 +20,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         .register_get("short_desc", |t: &mut CharacterTattoo| t.short_desc.clone())
         .register_get("long_desc", |t: &mut CharacterTattoo| t.long_desc.clone())
         .register_get("keywords", |t: &mut CharacterTattoo| {
-            t.keywords
-                .iter()
-                .cloned()
-                .map(Dynamic::from)
-                .collect::<Vec<_>>()
+            t.keywords.iter().cloned().map(Dynamic::from).collect::<Vec<_>>()
         })
         .register_get("source_vnum", |t: &mut CharacterTattoo| {
             t.source_vnum.clone().unwrap_or_default()
@@ -79,14 +75,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 }
             };
 
-            let (short_desc, location) =
-                match cloned_db.apply_tattoo_to_character(&char_name, &item_uuid) {
-                    Ok(pair) => pair,
-                    Err(e) => {
-                        out.insert("message".into(), format!("{}", e).into());
-                        return out;
-                    }
-                };
+            let (short_desc, location) = match cloned_db.apply_tattoo_to_character(&char_name, &item_uuid) {
+                Ok(pair) => pair,
+                Err(e) => {
+                    out.insert("message".into(), format!("{}", e).into());
+                    return out;
+                }
+            };
 
             // Sync session cache with the freshly-saved character.
             let key = char_name.to_lowercase();
@@ -106,16 +101,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // get_character_tattoos(char_name) -> Array<CharacterTattoo>
     let cloned_db = db.clone();
-    engine.register_fn(
-        "get_character_tattoos",
-        move |char_name: String| -> Vec<Dynamic> {
-            let key = char_name.to_lowercase();
-            match cloned_db.get_character_data(&key) {
-                Ok(Some(c)) => c.tattoos.into_iter().map(Dynamic::from).collect(),
-                _ => Vec::new(),
-            }
-        },
-    );
+    engine.register_fn("get_character_tattoos", move |char_name: String| -> Vec<Dynamic> {
+        let key = char_name.to_lowercase();
+        match cloned_db.get_character_data(&key) {
+            Ok(Some(c)) => c.tattoos.into_iter().map(Dynamic::from).collect(),
+            _ => Vec::new(),
+        }
+    });
 
     // find_self_tattoo_by_keyword(char_name, keyword) -> CharacterTattoo or ()
     let cloned_db = db.clone();
@@ -151,33 +143,30 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // every ActiveBuff with the matching `tattoo:<vnum>:<location>` source.
     let cloned_db = db.clone();
     let cloned_conns = connections.clone();
-    engine.register_fn(
-        "admin_remove_tattoo",
-        move |char_name: String, index: i64| -> bool {
-            if index < 0 {
-                return false;
-            }
-            let removed = match cloned_db.remove_tattoo_from_character(&char_name, index as usize) {
-                Ok(b) => b,
-                Err(_) => return false,
-            };
-            if !removed {
-                return false;
-            }
-            // Sync any live session for this character.
-            let key = char_name.to_lowercase();
-            if let Ok(Some(updated)) = cloned_db.get_character_data(&key) {
-                let mut conns_lock = cloned_conns.lock().unwrap();
-                for session in conns_lock.values_mut() {
-                    if let Some(ref ch) = session.character {
-                        if ch.name.eq_ignore_ascii_case(&char_name) {
-                            session.character = Some(updated.clone());
-                            break;
-                        }
+    engine.register_fn("admin_remove_tattoo", move |char_name: String, index: i64| -> bool {
+        if index < 0 {
+            return false;
+        }
+        let removed = match cloned_db.remove_tattoo_from_character(&char_name, index as usize) {
+            Ok(b) => b,
+            Err(_) => return false,
+        };
+        if !removed {
+            return false;
+        }
+        // Sync any live session for this character.
+        let key = char_name.to_lowercase();
+        if let Ok(Some(updated)) = cloned_db.get_character_data(&key) {
+            let mut conns_lock = cloned_conns.lock().unwrap();
+            for session in conns_lock.values_mut() {
+                if let Some(ref ch) = session.character {
+                    if ch.name.eq_ignore_ascii_case(&char_name) {
+                        session.character = Some(updated.clone());
+                        break;
                     }
                 }
             }
-            true
-        },
-    );
+        }
+        true
+    });
 }

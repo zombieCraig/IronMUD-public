@@ -210,10 +210,7 @@ fn prune_window_with(q: &mut VecDeque<Instant>, window: Duration) {
 /// longer window) and check the shorter window via a count.
 fn count_in_window(q: &VecDeque<Instant>, window: Duration) -> usize {
     let now = Instant::now();
-    q.iter()
-        .rev()
-        .take_while(|&&t| now.duration_since(t) <= window)
-        .count()
+    q.iter().rev().take_while(|&&t| now.duration_since(t) <= window).count()
 }
 
 #[cfg(test)]
@@ -253,17 +250,26 @@ mod tests {
             for _ in 0..(MAX_FAILED_AUTH_PER_WINDOW * 2) {
                 lim.record_auth_failure(ip);
             }
-            assert!(!lim.is_login_throttled(ip), "loopback should never throttle login: {ip}");
+            assert!(
+                !lim.is_login_throttled(ip),
+                "loopback should never throttle login: {ip}"
+            );
             // Creations.
             for _ in 0..(MAX_CREATIONS_PER_WINDOW * 2) {
                 lim.record_creation(ip);
             }
-            assert!(!lim.is_creation_throttled(ip), "loopback should never throttle creation: {ip}");
+            assert!(
+                !lim.is_creation_throttled(ip),
+                "loopback should never throttle creation: {ip}"
+            );
             // Email sends.
             for _ in 0..(MAX_EMAIL_SENDS_PER_DAY * 2) {
                 lim.record_email_send(ip);
             }
-            assert!(!lim.is_email_send_throttled(ip), "loopback should never throttle email: {ip}");
+            assert!(
+                !lim.is_email_send_throttled(ip),
+                "loopback should never throttle email: {ip}"
+            );
         }
     }
 

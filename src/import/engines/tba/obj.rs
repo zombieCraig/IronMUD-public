@@ -20,9 +20,9 @@
 use anyhow::{Context, Result};
 use std::path::Path;
 
-use crate::import::{IrExtraDesc, IrItem};
 use crate::import::engines::circle::flags::parse_bitvector;
 use crate::import::engines::circle::parser::LineParser;
+use crate::import::{IrExtraDesc, IrItem};
 
 pub fn parse_file(path: &Path) -> Result<Vec<IrItem>> {
     let text = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
@@ -99,15 +99,19 @@ impl<'a> ObjParser<'a> {
         let header = self
             .inner
             .consume_line()
-            .ok_or_else(|| self.inner.err(&format!("obj #{vnum}: expected type/flags line, got EOF")))?
+            .ok_or_else(|| {
+                self.inner
+                    .err(&format!("obj #{vnum}: expected type/flags line, got EOF"))
+            })?
             .trim()
             .to_string();
         let parts: Vec<&str> = header.split_whitespace().collect();
         let (item_type, extra_flag_bits, wear_flag_bits) = match parts.len() {
             13 => {
-                let item_type: i32 = parts[0]
-                    .parse()
-                    .map_err(|_| self.inner.err(&format!("obj #{vnum}: non-numeric item_type {:?}", parts[0])))?;
+                let item_type: i32 = parts[0].parse().map_err(|_| {
+                    self.inner
+                        .err(&format!("obj #{vnum}: non-numeric item_type {:?}", parts[0]))
+                })?;
                 // extra1 = parts[1] (bits 0..31 = stock ITEM_*)
                 // wear1 = parts[5] (bits 0..31 = stock WEAR_*)
                 let extra_flag_bits = parse_bitvector(parts[1]);
@@ -118,9 +122,10 @@ impl<'a> ObjParser<'a> {
                 (item_type, extra_flag_bits, wear_flag_bits)
             }
             n if n >= 3 => {
-                let item_type: i32 = parts[0]
-                    .parse()
-                    .map_err(|_| self.inner.err(&format!("obj #{vnum}: non-numeric item_type {:?}", parts[0])))?;
+                let item_type: i32 = parts[0].parse().map_err(|_| {
+                    self.inner
+                        .err(&format!("obj #{vnum}: non-numeric item_type {:?}", parts[0]))
+                })?;
                 let extra_flag_bits = parse_bitvector(parts[1]);
                 let wear_flag_bits = parse_bitvector(parts[2]);
                 (item_type, extra_flag_bits, wear_flag_bits)
@@ -150,7 +155,10 @@ impl<'a> ObjParser<'a> {
         let stats_line = self
             .inner
             .consume_line()
-            .ok_or_else(|| self.inner.err(&format!("obj #{vnum}: expected weight/cost/rent line, got EOF")))?
+            .ok_or_else(|| {
+                self.inner
+                    .err(&format!("obj #{vnum}: expected weight/cost/rent line, got EOF"))
+            })?
             .trim()
             .to_string();
         let mut t = stats_line.split_whitespace();
@@ -194,7 +202,10 @@ impl<'a> ObjParser<'a> {
                 let pair_line = self
                     .inner
                     .consume_line()
-                    .ok_or_else(|| self.inner.err(&format!("obj #{vnum}: A block missing location/modifier")))?
+                    .ok_or_else(|| {
+                        self.inner
+                            .err(&format!("obj #{vnum}: A block missing location/modifier"))
+                    })?
                     .trim()
                     .to_string();
                 let mut pp = pair_line.split_whitespace();
@@ -217,9 +228,9 @@ impl<'a> ObjParser<'a> {
                 }
                 continue;
             }
-            return Err(self
-                .inner
-                .err(&format!("obj #{vnum}: expected 'E', 'A', 'T <vnum>', '#vnum', or '$' — got {trimmed:?}")));
+            return Err(self.inner.err(&format!(
+                "obj #{vnum}: expected 'E', 'A', 'T <vnum>', '#vnum', or '$' — got {trimmed:?}"
+            )));
         }
 
         Ok(IrItem {

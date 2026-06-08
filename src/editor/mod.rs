@@ -86,13 +86,22 @@ enum EditorMode {
     /// Ctrl-G help screen — any key dismisses.
     Help,
     /// Ctrl-W incremental search prompt.
-    Search { query: String },
+    Search {
+        query: String,
+    },
     /// Ctrl-\ replace, stage 1 — collect the search term.
-    ReplaceQuery { query: String },
+    ReplaceQuery {
+        query: String,
+    },
     /// Ctrl-\ replace, stage 2 — collect the replacement.
-    ReplaceWith { query: String, replacement: String },
+    ReplaceWith {
+        query: String,
+        replacement: String,
+    },
     /// Ctrl-_ goto line prompt.
-    GotoLine { input: String },
+    GotoLine {
+        input: String,
+    },
 }
 
 /// Tags consecutive edits so undo coalesces the "type a sentence then undo"
@@ -178,7 +187,7 @@ pub struct EditorSession {
 struct DgTabState {
     cursor_row: usize,
     cursor_col: usize,
-    word_start_col: usize,     // char index of the word we're replacing
+    word_start_col: usize, // char index of the word we're replacing
     candidates: Vec<String>,
     next_idx: usize,
 }
@@ -305,17 +314,14 @@ impl EditorSession {
     pub fn handle_key(&mut self, key: &KeyEvent) -> EditorAction {
         // Track whether this key was a kill (Ctrl-K), so consecutive kills
         // accumulate. Anything else resets the run.
-        let was_kill = matches!(key, KeyEvent::CtrlK)
-            && matches!(self.mode, EditorMode::Editing);
+        let was_kill = matches!(key, KeyEvent::CtrlK) && matches!(self.mode, EditorMode::Editing);
 
         let action = match self.mode.clone() {
             EditorMode::ConfirmExitSaveOrDiscard => self.key_confirm_save_or_discard(key),
             EditorMode::Help => self.key_help_overlay(key),
             EditorMode::Search { query } => self.key_search(key, query),
             EditorMode::ReplaceQuery { query } => self.key_replace_query(key, query),
-            EditorMode::ReplaceWith { query, replacement } => {
-                self.key_replace_with(key, query, replacement)
-            }
+            EditorMode::ReplaceWith { query, replacement } => self.key_replace_with(key, query, replacement),
             EditorMode::GotoLine { input } => self.key_goto_line(key, input),
             EditorMode::Editing => self.key_editing(key),
         };
@@ -577,9 +583,7 @@ impl EditorSession {
             KeyEvent::MouseClick { row, col } => {
                 self.close_batch();
                 self.selection_anchor = None;
-                if let Some((logical_row, logical_col)) =
-                    self.click_to_logical(*row, *col)
-                {
+                if let Some((logical_row, logical_col)) = self.click_to_logical(*row, *col) {
                     self.cursor_row = logical_row;
                     self.cursor_col = logical_col;
                     self.render();
@@ -734,12 +738,7 @@ impl EditorSession {
         }
     }
 
-    fn key_replace_with(
-        &mut self,
-        key: &KeyEvent,
-        query: String,
-        mut replacement: String,
-    ) -> EditorAction {
+    fn key_replace_with(&mut self, key: &KeyEvent, query: String, mut replacement: String) -> EditorAction {
         match key {
             KeyEvent::CtrlQ => {
                 self.mode = EditorMode::Editing;
@@ -839,10 +838,7 @@ impl EditorSession {
     // ============================================================
 
     fn current_line_chars(&self) -> usize {
-        self.lines
-            .get(self.cursor_row)
-            .map(|s| s.chars().count())
-            .unwrap_or(0)
+        self.lines.get(self.cursor_row).map(|s| s.chars().count()).unwrap_or(0)
     }
 
     fn move_left(&mut self) {
@@ -914,10 +910,7 @@ impl EditorSession {
     }
 
     fn insert_newline(&mut self) {
-        let line = self
-            .lines
-            .get_mut(self.cursor_row)
-            .expect("cursor_row in bounds");
+        let line = self.lines.get_mut(self.cursor_row).expect("cursor_row in bounds");
         let byte_idx = char_index_to_byte(line, self.cursor_col);
         let tail = line.split_off(byte_idx);
         self.lines.insert(self.cursor_row + 1, tail);
@@ -930,10 +923,7 @@ impl EditorSession {
         if self.cursor_col > 0 {
             self.push_undo(BatchKind::Delete);
             let col = self.cursor_col - 1;
-            let line = self
-                .lines
-                .get_mut(self.cursor_row)
-                .expect("cursor_row in bounds");
+            let line = self.lines.get_mut(self.cursor_row).expect("cursor_row in bounds");
             let byte_idx = char_index_to_byte(line, col);
             line.remove(byte_idx);
             self.cursor_col = col;
@@ -957,10 +947,7 @@ impl EditorSession {
         let line_len = self.current_line_chars();
         if self.cursor_col < line_len {
             self.push_undo(BatchKind::Delete);
-            let line = self
-                .lines
-                .get_mut(self.cursor_row)
-                .expect("cursor_row in bounds");
+            let line = self.lines.get_mut(self.cursor_row).expect("cursor_row in bounds");
             let byte_idx = char_index_to_byte(line, self.cursor_col);
             line.remove(byte_idx);
             self.dirty = true;
@@ -1568,11 +1555,7 @@ impl EditorSession {
                     }
                     let s = line_sel_start.saturating_sub(seg_start).min(seg_len);
                     let e = line_sel_end.saturating_sub(seg_start).min(seg_len);
-                    if s == e {
-                        None
-                    } else {
-                        Some((s, e))
-                    }
+                    if s == e { None } else { Some((s, e)) }
                 });
 
                 if let Some((s, e)) = sel_in_seg {
@@ -1626,9 +1609,7 @@ impl EditorSession {
 
         // Key-hint row, varies by mode.
         let hints = match self.mode {
-            EditorMode::ConfirmExitSaveOrDiscard => {
-                "Y Yes (save)   N No (discard)   ^Q Cancel (back to editing)"
-            }
+            EditorMode::ConfirmExitSaveOrDiscard => "Y Yes (save)   N No (discard)   ^Q Cancel (back to editing)",
             EditorMode::Search { .. } => "Enter Find   ^Q Cancel",
             EditorMode::ReplaceQuery { .. } => "Enter Next stage   ^Q Cancel",
             EditorMode::ReplaceWith { .. } => "Enter Apply replace-all   ^Q Cancel",
@@ -1685,9 +1666,7 @@ impl EditorSession {
         out.extend_from_slice(b"\x1b[2J\x1b[H");
 
         out.extend_from_slice(b"\x1b[7m");
-        out.extend_from_slice(
-            pad_to_width("[BETA EDITOR] Help — press any key to return", w).as_bytes(),
-        );
+        out.extend_from_slice(pad_to_width("[BETA EDITOR] Help — press any key to return", w).as_bytes());
         out.extend_from_slice(b"\x1b[0m\r\n\r\n");
 
         let lines = [
@@ -1727,9 +1706,7 @@ impl EditorSession {
         }
 
         // Parking cursor at the bottom corner so it's out of the way.
-        out.extend_from_slice(
-            format!("\x1b[{};1H", self.height as usize).as_bytes(),
-        );
+        out.extend_from_slice(format!("\x1b[{};1H", self.height as usize).as_bytes());
         self.pending_output = out;
     }
 }
@@ -1758,11 +1735,7 @@ fn dg_auto_indent_for(current_line: &str, cursor_col: usize) -> String {
         "if" | "elseif" | "else" | "while" | "switch" | "case" | "default"
     );
 
-    if opens_block {
-        format!("{}  ", leading)
-    } else {
-        leading
-    }
+    if opens_block { format!("{}  ", leading) } else { leading }
 }
 
 /// Word-wrap a single logical line into visual segments that each fit
@@ -1838,24 +1811,16 @@ fn compute_word_start(prefix_before_cursor: &str) -> usize {
             return byte_to_char_index(prefix_before_cursor, pct_byte);
         }
     }
-    let trimmed_chars = prefix_before_cursor
-        .chars()
-        .take_while(|c| c.is_whitespace())
-        .count();
+    let trimmed_chars = prefix_before_cursor.chars().take_while(|c| c.is_whitespace()).count();
     trimmed_chars
 }
 
 fn char_index_to_byte(s: &str, char_idx: usize) -> usize {
-    s.char_indices()
-        .nth(char_idx)
-        .map(|(b, _)| b)
-        .unwrap_or(s.len())
+    s.char_indices().nth(char_idx).map(|(b, _)| b).unwrap_or(s.len())
 }
 
 fn byte_to_char_index(s: &str, byte_idx: usize) -> usize {
-    s.char_indices()
-        .take_while(|(b, _)| *b < byte_idx)
-        .count()
+    s.char_indices().take_while(|(b, _)| *b < byte_idx).count()
 }
 
 fn pad_to_width(s: &str, width: usize) -> String {
@@ -2023,8 +1988,7 @@ mod tests {
 
     #[test]
     fn replace_all_replaces_every_occurrence() {
-        let mut s =
-            EditorSession::new(EditorKind::ItemNote, "foo bar foo\nbaz foo qux", 80, 24);
+        let mut s = EditorSession::new(EditorKind::ItemNote, "foo bar foo\nbaz foo qux", 80, 24);
         s.handle_key(&KeyEvent::CtrlBackslash);
         for c in "foo".chars() {
             s.handle_key(&KeyEvent::Char(c));
@@ -2287,7 +2251,10 @@ mod tests {
         let out = String::from_utf8_lossy(&s.pending_output).into_owned();
         // The dim '>' marker comes from the legacy clip path; word wrap
         // should never emit it.
-        assert!(!out.contains("\x1b[2m>\x1b[0m"), "found truncation marker in wrapped render");
+        assert!(
+            !out.contains("\x1b[2m>\x1b[0m"),
+            "found truncation marker in wrapped render"
+        );
     }
 
     #[test]

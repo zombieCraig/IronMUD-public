@@ -29,24 +29,15 @@ fn clan_to_map(clan: &ClanData) -> Map {
     m.insert("name".into(), Dynamic::from(clan.name.clone()));
     m.insert("description".into(), Dynamic::from(clan.description.clone()));
     m.insert("motd".into(), Dynamic::from(clan.motd.clone()));
-    m.insert(
-        "color".into(),
-        Dynamic::from(clan.display_color().to_string()),
-    );
+    m.insert("color".into(), Dynamic::from(clan.display_color().to_string()));
     m.insert("founded_day".into(), Dynamic::from(clan.founded_day as i64));
     m.insert("founder".into(), Dynamic::from(clan.founder.clone()));
-    m.insert(
-        "member_count".into(),
-        Dynamic::from(clan.members.len() as i64),
-    );
+    m.insert("member_count".into(), Dynamic::from(clan.members.len() as i64));
     let mut members = Array::new();
     for mem in &clan.members {
         let mut entry = Map::new();
         entry.insert("name".into(), Dynamic::from(mem.name.clone()));
-        entry.insert(
-            "rank".into(),
-            Dynamic::from(mem.rank.as_str().to_string()),
-        );
+        entry.insert("rank".into(), Dynamic::from(mem.rank.as_str().to_string()));
         entry.insert("joined_day".into(), Dynamic::from(mem.joined_day as i64));
         members.push(Dynamic::from(entry));
     }
@@ -80,10 +71,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_db = db.clone();
     engine.register_fn("list_clans", move || -> Array {
         match cloned_db.list_clans() {
-            Ok(list) => list
-                .into_iter()
-                .map(|c| Dynamic::from(clan_to_map(&c)))
-                .collect(),
+            Ok(list) => list.into_iter().map(|c| Dynamic::from(clan_to_map(&c))).collect(),
             Err(_) => Array::new(),
         }
     });
@@ -144,11 +132,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let online = crate::get_online_players(&conns);
         let mut out = Array::new();
         for player in online {
-            if clan
-                .members
-                .iter()
-                .any(|m| m.name.eq_ignore_ascii_case(&player.name))
-            {
+            if clan.members.iter().any(|m| m.name.eq_ignore_ascii_case(&player.name)) {
                 out.push(Dynamic::from(player.name));
             }
         }
@@ -159,28 +143,25 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // create_clan(tag, name) -> String ("" on success)
     let cloned_db = db.clone();
-    engine.register_fn(
-        "create_clan",
-        move |tag: String, name: String| -> String {
-            let tag_up = tag.trim().to_ascii_uppercase();
-            if !ClanData::valid_tag(&tag_up) {
-                return "Tag must be 2-6 letters or digits.".to_string();
-            }
-            if name.trim().is_empty() {
-                return "Clan name cannot be blank.".to_string();
-            }
-            if matches!(cloned_db.get_clan(&tag_up), Ok(Some(_))) {
-                return format!("A clan tagged [{}] already exists.", tag_up);
-            }
-            let day = current_game_day(&cloned_db);
-            let mut clan = ClanData::new(&tag_up, name.trim(), day);
-            clan.color = String::new(); // use default
-            if cloned_db.save_clan(&clan).is_err() {
-                return "Failed to save clan.".to_string();
-            }
-            String::new()
-        },
-    );
+    engine.register_fn("create_clan", move |tag: String, name: String| -> String {
+        let tag_up = tag.trim().to_ascii_uppercase();
+        if !ClanData::valid_tag(&tag_up) {
+            return "Tag must be 2-6 letters or digits.".to_string();
+        }
+        if name.trim().is_empty() {
+            return "Clan name cannot be blank.".to_string();
+        }
+        if matches!(cloned_db.get_clan(&tag_up), Ok(Some(_))) {
+            return format!("A clan tagged [{}] already exists.", tag_up);
+        }
+        let day = current_game_day(&cloned_db);
+        let mut clan = ClanData::new(&tag_up, name.trim(), day);
+        clan.color = String::new(); // use default
+        if cloned_db.save_clan(&clan).is_err() {
+            return "Failed to save clan.".to_string();
+        }
+        String::new()
+    });
 
     // delete_clan_full(tag) -> String  — also clears clan_tag on all members.
     let cloned_db = db.clone();
@@ -200,54 +181,45 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // clan_set_color(tag, ansi) -> String. Empty string clears (reverts to default).
     let cloned_db = db.clone();
-    engine.register_fn(
-        "clan_set_color",
-        move |tag: String, ansi: String| -> String {
-            let tag_up = tag.trim().to_ascii_uppercase();
-            let Ok(Some(mut clan)) = cloned_db.get_clan(&tag_up) else {
-                return format!("No clan tagged [{}].", tag_up);
-            };
-            clan.color = ansi;
-            if cloned_db.save_clan(&clan).is_err() {
-                return "Failed to save clan.".to_string();
-            }
-            String::new()
-        },
-    );
+    engine.register_fn("clan_set_color", move |tag: String, ansi: String| -> String {
+        let tag_up = tag.trim().to_ascii_uppercase();
+        let Ok(Some(mut clan)) = cloned_db.get_clan(&tag_up) else {
+            return format!("No clan tagged [{}].", tag_up);
+        };
+        clan.color = ansi;
+        if cloned_db.save_clan(&clan).is_err() {
+            return "Failed to save clan.".to_string();
+        }
+        String::new()
+    });
 
     // clan_set_motd(tag, body) -> String
     let cloned_db = db.clone();
-    engine.register_fn(
-        "clan_set_motd",
-        move |tag: String, body: String| -> String {
-            let tag_up = tag.trim().to_ascii_uppercase();
-            let Ok(Some(mut clan)) = cloned_db.get_clan(&tag_up) else {
-                return format!("No clan tagged [{}].", tag_up);
-            };
-            clan.motd = body;
-            if cloned_db.save_clan(&clan).is_err() {
-                return "Failed to save clan.".to_string();
-            }
-            String::new()
-        },
-    );
+    engine.register_fn("clan_set_motd", move |tag: String, body: String| -> String {
+        let tag_up = tag.trim().to_ascii_uppercase();
+        let Ok(Some(mut clan)) = cloned_db.get_clan(&tag_up) else {
+            return format!("No clan tagged [{}].", tag_up);
+        };
+        clan.motd = body;
+        if cloned_db.save_clan(&clan).is_err() {
+            return "Failed to save clan.".to_string();
+        }
+        String::new()
+    });
 
     // clan_set_description(tag, body) -> String
     let cloned_db = db.clone();
-    engine.register_fn(
-        "clan_set_description",
-        move |tag: String, body: String| -> String {
-            let tag_up = tag.trim().to_ascii_uppercase();
-            let Ok(Some(mut clan)) = cloned_db.get_clan(&tag_up) else {
-                return format!("No clan tagged [{}].", tag_up);
-            };
-            clan.description = body;
-            if cloned_db.save_clan(&clan).is_err() {
-                return "Failed to save clan.".to_string();
-            }
-            String::new()
-        },
-    );
+    engine.register_fn("clan_set_description", move |tag: String, body: String| -> String {
+        let tag_up = tag.trim().to_ascii_uppercase();
+        let Ok(Some(mut clan)) = cloned_db.get_clan(&tag_up) else {
+            return format!("No clan tagged [{}].", tag_up);
+        };
+        clan.description = body;
+        if cloned_db.save_clan(&clan).is_err() {
+            return "Failed to save clan.".to_string();
+        }
+        String::new()
+    });
 
     // ===== Roster mutations (caller verifies rank) =====
 
@@ -302,38 +274,34 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // clan_remove_member(tag, char_name) -> String
     // Blocks removing the sole leader; caller must promote a successor first.
     let cloned_db = db.clone();
-    engine.register_fn(
-        "clan_remove_member",
-        move |tag: String, char_name: String| -> String {
-            let tag_up = tag.trim().to_ascii_uppercase();
-            let Ok(Some(mut clan)) = cloned_db.get_clan(&tag_up) else {
-                return format!("No clan tagged [{}].", tag_up);
-            };
-            let Some(mem) = clan.member(&char_name) else {
-                return format!("{} is not in [{}].", char_name, tag_up);
-            };
-            if mem.rank == ClanRank::Leader && clan.leader_count() <= 1 {
-                return "Cannot remove the sole leader. Promote a successor first."
-                    .to_string();
+    engine.register_fn("clan_remove_member", move |tag: String, char_name: String| -> String {
+        let tag_up = tag.trim().to_ascii_uppercase();
+        let Ok(Some(mut clan)) = cloned_db.get_clan(&tag_up) else {
+            return format!("No clan tagged [{}].", tag_up);
+        };
+        let Some(mem) = clan.member(&char_name) else {
+            return format!("{} is not in [{}].", char_name, tag_up);
+        };
+        if mem.rank == ClanRank::Leader && clan.leader_count() <= 1 {
+            return "Cannot remove the sole leader. Promote a successor first.".to_string();
+        }
+        let canon = mem.name.clone();
+        clan.members.retain(|m| !m.name.eq_ignore_ascii_case(&canon));
+        if cloned_db.save_clan(&clan).is_err() {
+            return "Failed to save clan.".to_string();
+        }
+        // Clear the mirror only if it still points at this clan.
+        let _ = cloned_db.update_character(&canon, |c| {
+            if c.clan_tag
+                .as_deref()
+                .map(|t| t.eq_ignore_ascii_case(&tag_up))
+                .unwrap_or(false)
+            {
+                c.clan_tag = None;
             }
-            let canon = mem.name.clone();
-            clan.members.retain(|m| !m.name.eq_ignore_ascii_case(&canon));
-            if cloned_db.save_clan(&clan).is_err() {
-                return "Failed to save clan.".to_string();
-            }
-            // Clear the mirror only if it still points at this clan.
-            let _ = cloned_db.update_character(&canon, |c| {
-                if c.clan_tag
-                    .as_deref()
-                    .map(|t| t.eq_ignore_ascii_case(&tag_up))
-                    .unwrap_or(false)
-                {
-                    c.clan_tag = None;
-                }
-            });
-            String::new()
-        },
-    );
+        });
+        String::new()
+    });
 
     // clan_set_rank(tag, char_name, rank_str) -> String
     // Prevents demoting the sole leader (would leave clan leaderless).
@@ -355,12 +323,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if old_rank == new_rank {
                 return format!("{} is already {}.", canon, new_rank.as_str());
             }
-            if old_rank == ClanRank::Leader
-                && new_rank != ClanRank::Leader
-                && clan.leader_count() <= 1
-            {
-                return "Cannot demote the sole leader. Promote a successor first."
-                    .to_string();
+            if old_rank == ClanRank::Leader && new_rank != ClanRank::Leader && clan.leader_count() <= 1 {
+                return "Cannot demote the sole leader. Promote a successor first.".to_string();
             }
             if let Some(m) = clan.member_mut(&canon) {
                 m.rank = new_rank;

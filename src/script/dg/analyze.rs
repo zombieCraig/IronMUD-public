@@ -100,7 +100,12 @@ fn walk_stmt(stmt: &Stmt, out: &mut Vec<Issue>) {
             }
         }
 
-        Stmt::If { cond, then_body, elif_branches, else_body } => {
+        Stmt::If {
+            cond,
+            then_body,
+            elif_branches,
+            else_body,
+        } => {
             check_interps(cond, out);
             check_cond_for_bare_eq(cond, out);
             walk_block(then_body, out);
@@ -210,10 +215,7 @@ fn parse_dg_cast_spell(line: &str) -> Option<String> {
     if let Some(rest) = after_verb.strip_prefix('"') {
         return rest.find('"').map(|i| rest[..i].to_string());
     }
-    after_verb
-        .split_whitespace()
-        .next()
-        .map(|s| s.to_string())
+    after_verb.split_whitespace().next().map(|s| s.to_string())
 }
 
 fn is_known_dg_cast_spell(spell: &str) -> bool {
@@ -628,8 +630,11 @@ mod tests {
     fn flags_unknown_command() {
         let issues = analyze("nonexistent_cmd whatever\nhalt");
         assert!(
-            issues.iter().any(|i| i.kind == IssueKind::UnknownCommand && i.detail == "nonexistent_cmd"),
-            "expected UnknownCommand for 'nonexistent_cmd', got {:?}", issues
+            issues
+                .iter()
+                .any(|i| i.kind == IssueKind::UnknownCommand && i.detail == "nonexistent_cmd"),
+            "expected UnknownCommand for 'nonexistent_cmd', got {:?}",
+            issues
         );
     }
 
@@ -648,9 +653,7 @@ mod tests {
 
     #[test]
     fn flags_bare_equals_in_elseif_and_while() {
-        let issues = analyze(
-            "if %actor.level% == 1\n  halt\nelseif %actor.class% = mage\n  halt\nend",
-        );
+        let issues = analyze("if %actor.level% == 1\n  halt\nelseif %actor.class% = mage\n  halt\nend");
         assert!(
             issues.iter().any(|i| i.kind == IssueKind::SuspiciousAssignInCondition),
             "expected SuspiciousAssignInCondition for elseif, got {:?}",
@@ -659,9 +662,7 @@ mod tests {
 
         let issues2 = analyze("while %self.gold% = 0\n  wait 1\ndone");
         assert!(
-            issues2
-                .iter()
-                .any(|i| i.kind == IssueKind::SuspiciousAssignInCondition),
+            issues2.iter().any(|i| i.kind == IssueKind::SuspiciousAssignInCondition),
             "expected SuspiciousAssignInCondition for while, got {:?}",
             issues2
         );
@@ -682,9 +683,7 @@ mod tests {
         ] {
             let issues = analyze(cond);
             assert!(
-                !issues
-                    .iter()
-                    .any(|i| i.kind == IssueKind::SuspiciousAssignInCondition),
+                !issues.iter().any(|i| i.kind == IssueKind::SuspiciousAssignInCondition),
                 "false positive for `{cond}`: {issues:?}"
             );
         }
@@ -693,12 +692,11 @@ mod tests {
     #[test]
     fn known_commands_pass() {
         // mecho is registered. msend, mload, dg_cast (with known spell) too.
-        let issues = analyze(
-            "mecho hello world\nmsend %actor% hi\nmload mob 1234\ndg_cast 'sleep' victim",
-        );
+        let issues = analyze("mecho hello world\nmsend %actor% hi\nmload mob 1234\ndg_cast 'sleep' victim");
         assert!(
             !issues.iter().any(|i| i.kind == IssueKind::UnknownCommand),
-            "no UnknownCommand expected, got {:?}", issues
+            "no UnknownCommand expected, got {:?}",
+            issues
         );
     }
 
@@ -711,7 +709,8 @@ mod tests {
         let issues = analyze("if %actor.zn118_blindquest% == 1\n  halt\nend");
         assert!(
             !issues.iter().any(|i| i.kind == IssueKind::UnknownVariable),
-            "no UnknownVariable expected (dg_var read), got {:?}", issues
+            "no UnknownVariable expected (dg_var read), got {:?}",
+            issues
         );
     }
 
@@ -720,7 +719,8 @@ mod tests {
         let issues = analyze("if %actor.level% < 10\n  msend %actor% hello\nend");
         assert!(
             !issues.iter().any(|i| i.kind == IssueKind::UnknownVariable),
-            "no UnknownVariable expected, got {:?}", issues
+            "no UnknownVariable expected, got {:?}",
+            issues
         );
     }
 
@@ -728,8 +728,11 @@ mod tests {
     fn flags_unknown_dg_cast_spell() {
         let issues = analyze("dg_cast 'foobazblort' victim");
         assert!(
-            issues.iter().any(|i| i.kind == IssueKind::UnknownDgCastSpell && i.detail == "foobazblort"),
-            "expected UnknownDgCastSpell, got {:?}", issues
+            issues
+                .iter()
+                .any(|i| i.kind == IssueKind::UnknownDgCastSpell && i.detail == "foobazblort"),
+            "expected UnknownDgCastSpell, got {:?}",
+            issues
         );
     }
 
@@ -739,7 +742,8 @@ mod tests {
         let issues = analyze("dg_cast 'fireball' victim\ndg_cast 'sleep' victim");
         assert!(
             !issues.iter().any(|i| i.kind == IssueKind::UnknownDgCastSpell),
-            "expected no UnknownDgCastSpell, got {:?}", issues
+            "expected no UnknownDgCastSpell, got {:?}",
+            issues
         );
     }
 
@@ -749,7 +753,8 @@ mod tests {
         let issues = analyze("eval x (1 + 2)");
         assert!(
             !issues.iter().any(|i| i.kind == IssueKind::ComplexEvalExpression),
-            "no ComplexEvalExpression expected for parens, got {:?}", issues
+            "no ComplexEvalExpression expected for parens, got {:?}",
+            issues
         );
     }
 
@@ -759,7 +764,8 @@ mod tests {
         let issues = analyze("eval x 1 + 2 * 3");
         assert!(
             !issues.iter().any(|i| i.kind == IssueKind::ComplexEvalExpression),
-            "no ComplexEvalExpression expected for multi-op, got {:?}", issues
+            "no ComplexEvalExpression expected for multi-op, got {:?}",
+            issues
         );
     }
 
@@ -768,7 +774,8 @@ mod tests {
         let issues = analyze("eval x %i% + 1");
         assert!(
             !issues.iter().any(|i| i.kind == IssueKind::ComplexEvalExpression),
-            "expected no ComplexEvalExpression for simple eval, got {:?}", issues
+            "expected no ComplexEvalExpression for simple eval, got {:?}",
+            issues
         );
     }
 
@@ -778,7 +785,8 @@ mod tests {
         let issues = analyze("eval x ((10 - (%foo% / 10)) * 2) + %random.101%");
         assert!(
             !issues.iter().any(|i| i.kind == IssueKind::ComplexEvalExpression),
-            "no ComplexEvalExpression expected, got {:?}", issues
+            "no ComplexEvalExpression expected, got {:?}",
+            issues
         );
     }
 
@@ -788,7 +796,8 @@ mod tests {
         let issues = analyze("eval x ((1 + 2)");
         assert!(
             issues.iter().any(|i| i.kind == IssueKind::ComplexEvalExpression),
-            "expected ComplexEvalExpression for malformed expr, got {:?}", issues
+            "expected ComplexEvalExpression for malformed expr, got {:?}",
+            issues
         );
     }
 
@@ -796,9 +805,7 @@ mod tests {
     fn dedupe_collapses_repeats() {
         // Two trigger lines both call an unknown command — analyzer should
         // collapse them to one issue rather than emitting one per call site.
-        let issues = analyze(
-            "foobarcmd 1\nfoobarcmd 2",
-        );
+        let issues = analyze("foobarcmd 1\nfoobarcmd 2");
         let foobar_count = issues
             .iter()
             .filter(|i| i.kind == IssueKind::UnknownCommand && i.detail == "foobarcmd")
@@ -809,9 +816,18 @@ mod tests {
     #[test]
     fn summarize_groups_by_kind() {
         let issues = vec![
-            Issue { kind: IssueKind::UnknownCommand, detail: "foo".into() },
-            Issue { kind: IssueKind::UnknownCommand, detail: "bar".into() },
-            Issue { kind: IssueKind::UnknownVariable, detail: "%self.zip%".into() },
+            Issue {
+                kind: IssueKind::UnknownCommand,
+                detail: "foo".into(),
+            },
+            Issue {
+                kind: IssueKind::UnknownCommand,
+                detail: "bar".into(),
+            },
+            Issue {
+                kind: IssueKind::UnknownVariable,
+                detail: "%self.zip%".into(),
+            },
         ];
         let s = summarize(&issues);
         assert!(s.contains("unknown cmds: bar, foo"), "groups + alpha sort, got {}", s);
@@ -873,9 +889,7 @@ mod tests {
 
     #[test]
     fn chained_room_field_passes() {
-        let issues = analyze(
-            "if %self.room.vnum% == 3001\n  msend %actor% home\nend\nnop %actor.room.name%",
-        );
+        let issues = analyze("if %self.room.vnum% == 3001\n  msend %actor% home\nend\nnop %actor.room.name%");
         assert!(
             !issues.iter().any(|i| i.kind == IssueKind::UnknownVariable),
             "no UnknownVariable expected, got {:?}",
@@ -917,9 +931,8 @@ mod tests {
 
     #[test]
     fn varexists_and_has_item_call_pass() {
-        let issues = analyze(
-            "if %actor.varexists(quest_done)% == 1\n  msend %actor% hi\nend\nnop %actor.has_item(3001)%",
-        );
+        let issues =
+            analyze("if %actor.varexists(quest_done)% == 1\n  msend %actor% hi\nend\nnop %actor.has_item(3001)%");
         assert!(
             !issues.iter().any(|i| i.kind == IssueKind::UnknownVariable),
             "no UnknownVariable expected, got {:?}",

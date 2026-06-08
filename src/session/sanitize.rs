@@ -15,9 +15,7 @@
 /// whitespace; CR / LF are not present at this point because they are
 /// line terminators consumed by the read loop.
 pub fn sanitize_player_text(s: &str) -> String {
-    s.chars()
-        .filter(|c| !c.is_control() || *c == '\t')
-        .collect()
+    s.chars().filter(|c| !c.is_control() || *c == '\t').collect()
 }
 
 #[cfg(test)]

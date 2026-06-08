@@ -9,8 +9,8 @@
 
 use ironmud::dialogue_edit;
 use ironmud::types::{
-    CharacterData, DgScope, DialogueChoice, DialogueCondition, DialogueEffect, DialogueNode,
-    DialoguePairState, DialogueTarget, DialogueTree, FlagScope, MobileData,
+    CharacterData, DgScope, DialogueChoice, DialogueCondition, DialogueEffect, DialogueNode, DialoguePairState,
+    DialogueTarget, DialogueTree, FlagScope, MobileData,
 };
 use std::collections::HashMap;
 use tempfile;
@@ -104,9 +104,7 @@ fn dialogue_tree_round_trips_through_json() {
 
 #[test]
 fn dialogue_target_kinds_serialize_with_tag_field() {
-    let goto = DialogueTarget::Goto {
-        node: "next".into(),
-    };
+    let goto = DialogueTarget::Goto { node: "next".into() };
     let exit = DialogueTarget::Exit;
     let repeat = DialogueTarget::Repeat;
     assert_eq!(
@@ -228,10 +226,7 @@ fn character_data_dialogue_fields_default_empty() {
         "current_room_id": Uuid::nil(),
     }))
     .expect("build legacy character");
-    assert!(
-        ch.dialogue_pair_state.is_empty(),
-        "missing field must default empty"
-    );
+    assert!(ch.dialogue_pair_state.is_empty(), "missing field must default empty");
     assert!(ch.dialogue_flags.is_empty());
 }
 
@@ -242,10 +237,7 @@ fn mobile_data_dialogue_tree_is_optional_and_defaults_none() {
     // Round-trip through JSON drops the field via skip_serializing_if; missing
     // field deserializes back to None.
     let json = serde_json::to_string(&m).expect("serialize");
-    assert!(
-        !json.contains("dialogue_tree"),
-        "default tree should be omitted"
-    );
+    assert!(!json.contains("dialogue_tree"), "default tree should be omitted");
     let back: MobileData = serde_json::from_str(&json).expect("deserialize");
     assert!(back.dialogue_tree.is_none());
 }
@@ -262,7 +254,10 @@ fn dialogue_choice_round_trips_slice3_fields() {
         "once_per_player": true,
     });
     let c: DialogueChoice = serde_json::from_value(json).expect("deserialize");
-    assert_eq!(c.hint.as_deref(), Some("You sense she might say more if you'd ever sailed."));
+    assert_eq!(
+        c.hint.as_deref(),
+        Some("You sense she might say more if you'd ever sailed.")
+    );
     assert_eq!(c.cooldown_secs, Some(90));
     assert!(c.once_per_player);
     let back = serde_json::to_value(&c).expect("serialize");
@@ -389,10 +384,7 @@ fn granular_helpers_compose_a_full_tree_via_db() {
         {
             let mut m = db.get_mobile_data(&mob_id).unwrap().unwrap();
             let err = dialogue_edit::remove_node(&mut m.dialogue_tree, "shop").unwrap_err();
-            assert!(matches!(
-                err,
-                dialogue_edit::DialogueEditError::NodeReferenced(_, _)
-            ));
+            assert!(matches!(err, dialogue_edit::DialogueEditError::NodeReferenced(_, _)));
         }
 
         // 5. Patch the greet node's on_exit to set a flag.

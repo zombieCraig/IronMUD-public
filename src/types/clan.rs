@@ -86,15 +86,11 @@ impl ClanData {
 
     /// Case-insensitive member lookup.
     pub fn member(&self, name: &str) -> Option<&ClanMember> {
-        self.members
-            .iter()
-            .find(|m| m.name.eq_ignore_ascii_case(name))
+        self.members.iter().find(|m| m.name.eq_ignore_ascii_case(name))
     }
 
     pub fn member_mut(&mut self, name: &str) -> Option<&mut ClanMember> {
-        self.members
-            .iter_mut()
-            .find(|m| m.name.eq_ignore_ascii_case(name))
+        self.members.iter_mut().find(|m| m.name.eq_ignore_ascii_case(name))
     }
 
     pub fn rank_of(&self, name: &str) -> Option<ClanRank> {
@@ -102,10 +98,7 @@ impl ClanData {
     }
 
     pub fn leader_count(&self) -> usize {
-        self.members
-            .iter()
-            .filter(|m| m.rank == ClanRank::Leader)
-            .count()
+        self.members.iter().filter(|m| m.rank == ClanRank::Leader).count()
     }
 
     /// Validate a tag: 2..=6 chars, each [A-Z0-9] after uppercasing.

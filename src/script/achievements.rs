@@ -190,10 +190,7 @@ pub fn award_manual_via_db(db: &Db, connections: &SharedConnections, player_name
         }
     };
     if !matches!(def.criterion, AchievementCriterion::Manual) {
-        tracing::warn!(
-            "achievements: DG award refused for engine-criterion key '{}'",
-            key_lc
-        );
+        tracing::warn!("achievements: DG award refused for engine-criterion key '{}'", key_lc);
         return false;
     }
     unlock_with_def(db, connections, &def, player_name)
@@ -216,7 +213,9 @@ fn unlock_with_def(db: &Db, connections: &SharedConnections, def: &AchievementDe
 
         ch.achievements_unlocked.insert(
             key_lc.clone(),
-            crate::types::AchievementUnlock { unlocked_at: now_secs() },
+            crate::types::AchievementUnlock {
+                unlocked_at: now_secs(),
+            },
         );
 
         if ch.active_title.is_none() {
@@ -293,19 +292,19 @@ fn deliver_item_reward(db: &Db, connections: &SharedConnections, player_name: &s
                     .unwrap_or_else(|| format!("item {}", vnum));
                 send_to_player(connections, player_name, &format!("You receive {}.", label));
             } else {
-                tracing::warn!(
-                    "achievement item reward '{}' failed to save for {}",
-                    vnum, player_name
-                );
+                tracing::warn!("achievement item reward '{}' failed to save for {}", vnum, player_name);
             }
         }
         Ok(None) => tracing::warn!(
             "achievement item reward '{}' not delivered to {}: unknown prototype or world cap reached",
-            vnum, player_name
+            vnum,
+            player_name
         ),
         Err(e) => tracing::warn!(
             "achievement item reward '{}' spawn error for {}: {}",
-            vnum, player_name, e
+            vnum,
+            player_name,
+            e
         ),
     }
 }
@@ -475,12 +474,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let db = db.clone();
         let connections = connections.clone();
         let state = state.clone();
-        engine.register_fn(
-            "award_achievement",
-            move |player_name: String, key: String| -> bool {
-                award_core(&db, &connections, &state, &player_name, &key, true)
-            },
-        );
+        engine.register_fn("award_achievement", move |player_name: String, key: String| -> bool {
+            award_core(&db, &connections, &state, &player_name, &key, true)
+        });
     }
 
     // get_achievement_def(key) -> Map | ()
@@ -531,8 +527,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 out.push(m);
             }
             out.sort_by(|a, b| {
-                let ak = a.get("key").and_then(|d| d.clone().into_string().ok()).unwrap_or_default();
-                let bk = b.get("key").and_then(|d| d.clone().into_string().ok()).unwrap_or_default();
+                let ak = a
+                    .get("key")
+                    .and_then(|d| d.clone().into_string().ok())
+                    .unwrap_or_default();
+                let bk = b
+                    .get("key")
+                    .and_then(|d| d.clone().into_string().ok())
+                    .unwrap_or_default();
                 ak.cmp(&bk)
             });
             out.into_iter().map(Dynamic::from).collect()
@@ -568,33 +570,30 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     {
         let db = db.clone();
         let connections = connections.clone();
-        engine.register_fn(
-            "set_active_title",
-            move |player_name: String, key: String| -> bool {
-                let mut ch = match db.get_character_data(&player_name.to_lowercase()) {
-                    Ok(Some(c)) => c,
-                    _ => return false,
-                };
-                if key.is_empty() {
-                    ch.active_title = None;
-                    let ok = db.save_character_data(ch.clone()).is_ok();
-                    if ok {
-                        sync_to_session(&connections, &ch);
-                    }
-                    return ok;
-                }
-                let key_lc = key.to_lowercase();
-                if !ch.achievements_unlocked.contains_key(&key_lc) {
-                    return false;
-                }
-                ch.active_title = Some(key_lc);
+        engine.register_fn("set_active_title", move |player_name: String, key: String| -> bool {
+            let mut ch = match db.get_character_data(&player_name.to_lowercase()) {
+                Ok(Some(c)) => c,
+                _ => return false,
+            };
+            if key.is_empty() {
+                ch.active_title = None;
                 let ok = db.save_character_data(ch.clone()).is_ok();
                 if ok {
                     sync_to_session(&connections, &ch);
                 }
-                ok
-            },
-        );
+                return ok;
+            }
+            let key_lc = key.to_lowercase();
+            if !ch.achievements_unlocked.contains_key(&key_lc) {
+                return false;
+            }
+            ch.active_title = Some(key_lc);
+            let ok = db.save_character_data(ch.clone()).is_ok();
+            if ok {
+                sync_to_session(&connections, &ch);
+            }
+            ok
+        });
     }
 
     // achievements_enabled() -> bool
@@ -616,8 +615,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 out.push(achievement_to_map(def));
             }
             out.sort_by(|a, b| {
-                let ak = a.get("key").and_then(|d| d.clone().into_string().ok()).unwrap_or_default();
-                let bk = b.get("key").and_then(|d| d.clone().into_string().ok()).unwrap_or_default();
+                let ak = a
+                    .get("key")
+                    .and_then(|d| d.clone().into_string().ok())
+                    .unwrap_or_default();
+                let bk = b
+                    .get("key")
+                    .and_then(|d| d.clone().into_string().ok())
+                    .unwrap_or_default();
                 ak.cmp(&bk)
             });
             out.into_iter().map(Dynamic::from).collect()
@@ -694,9 +699,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     {
         let db = db.clone();
         let state = state.clone();
-        engine.register_fn("set_achievement_description", move |key: String, desc: String| -> String {
-            update_def(&db, &state, &key, |d| d.description = desc.clone())
-        });
+        engine.register_fn(
+            "set_achievement_description",
+            move |key: String, desc: String| -> String {
+                update_def(&db, &state, &key, |d| d.description = desc.clone())
+            },
+        );
     }
 
     // set_achievement_category(key, category) -> String
@@ -731,9 +739,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     {
         let db = db.clone();
         let state = state.clone();
-        engine.register_fn("set_achievement_reward_title", move |key: String, title: String| -> String {
-            update_def(&db, &state, &key, |d| d.reward.title = title.clone())
-        });
+        engine.register_fn(
+            "set_achievement_reward_title",
+            move |key: String, title: String| -> String {
+                update_def(&db, &state, &key, |d| d.reward.title = title.clone())
+            },
+        );
     }
 
     // set_achievement_reward_gold(key, gold) -> String (0 clears)
@@ -741,7 +752,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let db = db.clone();
         let state = state.clone();
         engine.register_fn("set_achievement_reward_gold", move |key: String, gold: i64| -> String {
-            update_def(&db, &state, &key, |d| d.reward.gold = if gold <= 0 { None } else { Some(gold as i32) })
+            update_def(&db, &state, &key, |d| {
+                d.reward.gold = if gold <= 0 { None } else { Some(gold as i32) }
+            })
         });
     }
 
@@ -749,9 +762,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     {
         let db = db.clone();
         let state = state.clone();
-        engine.register_fn("set_achievement_reward_item", move |key: String, vnum: String| -> String {
-            update_def(&db, &state, &key, |d| d.reward.item_vnum = if vnum.is_empty() { None } else { Some(vnum.clone()) })
-        });
+        engine.register_fn(
+            "set_achievement_reward_item",
+            move |key: String, vnum: String| -> String {
+                update_def(&db, &state, &key, |d| {
+                    d.reward.item_vnum = if vnum.is_empty() { None } else { Some(vnum.clone()) }
+                })
+            },
+        );
     }
 
     // set_achievement_reward_morality(key, delta) -> String
@@ -759,11 +777,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     {
         let db = db.clone();
         let state = state.clone();
-        engine.register_fn("set_achievement_reward_morality", move |key: String, delta: i64| -> String {
-            update_def(&db, &state, &key, |d| {
-                d.reward.morality_delta = (delta as i32).clamp(crate::morality::MORALITY_MIN, crate::morality::MORALITY_MAX);
-            })
-        });
+        engine.register_fn(
+            "set_achievement_reward_morality",
+            move |key: String, delta: i64| -> String {
+                update_def(&db, &state, &key, |d| {
+                    d.reward.morality_delta =
+                        (delta as i32).clamp(crate::morality::MORALITY_MIN, crate::morality::MORALITY_MAX);
+                })
+            },
+        );
     }
 
     // set_achievement_criterion_manual(key) -> String
@@ -779,57 +801,84 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     {
         let db = db.clone();
         let state = state.clone();
-        engine.register_fn("set_achievement_criterion_counter", move |key: String, counter: String, threshold: i64| -> String {
-            update_def(&db, &state, &key, |d| d.criterion = AchievementCriterion::Counter {
-                counter: counter.clone(),
-                threshold: threshold.max(1) as u32,
-            })
-        });
+        engine.register_fn(
+            "set_achievement_criterion_counter",
+            move |key: String, counter: String, threshold: i64| -> String {
+                update_def(&db, &state, &key, |d| {
+                    d.criterion = AchievementCriterion::Counter {
+                        counter: counter.clone(),
+                        threshold: threshold.max(1) as u32,
+                    }
+                })
+            },
+        );
     }
 
     // set_achievement_criterion_skill(key, skill, level) -> String
     {
         let db = db.clone();
         let state = state.clone();
-        engine.register_fn("set_achievement_criterion_skill", move |key: String, skill: String, level: i64| -> String {
-            update_def(&db, &state, &key, |d| d.criterion = AchievementCriterion::SkillReached {
-                skill: skill.clone(),
-                level: level as i32,
-            })
-        });
+        engine.register_fn(
+            "set_achievement_criterion_skill",
+            move |key: String, skill: String, level: i64| -> String {
+                update_def(&db, &state, &key, |d| {
+                    d.criterion = AchievementCriterion::SkillReached {
+                        skill: skill.clone(),
+                        level: level as i32,
+                    }
+                })
+            },
+        );
     }
 
     // set_achievement_criterion_recipe(key, recipe_key) -> String
     {
         let db = db.clone();
         let state = state.clone();
-        engine.register_fn("set_achievement_criterion_recipe", move |key: String, recipe_key: String| -> String {
-            update_def(&db, &state, &key, |d| d.criterion = AchievementCriterion::LearnedRecipe {
-                recipe_key: recipe_key.clone(),
-            })
-        });
+        engine.register_fn(
+            "set_achievement_criterion_recipe",
+            move |key: String, recipe_key: String| -> String {
+                update_def(&db, &state, &key, |d| {
+                    d.criterion = AchievementCriterion::LearnedRecipe {
+                        recipe_key: recipe_key.clone(),
+                    }
+                })
+            },
+        );
     }
 
     // set_achievement_criterion_lease(key, area_vnum) -> String (empty area_vnum for any)
     {
         let db = db.clone();
         let state = state.clone();
-        engine.register_fn("set_achievement_criterion_lease", move |key: String, area_vnum: String| -> String {
-            update_def(&db, &state, &key, |d| d.criterion = AchievementCriterion::OwnedLease {
-                area_vnum: if area_vnum.is_empty() { None } else { Some(area_vnum.clone()) },
-            })
-        });
+        engine.register_fn(
+            "set_achievement_criterion_lease",
+            move |key: String, area_vnum: String| -> String {
+                update_def(&db, &state, &key, |d| {
+                    d.criterion = AchievementCriterion::OwnedLease {
+                        area_vnum: if area_vnum.is_empty() {
+                            None
+                        } else {
+                            Some(area_vnum.clone())
+                        },
+                    }
+                })
+            },
+        );
     }
 
     // set_achievement_criterion_gold(key, amount) -> String
     {
         let db = db.clone();
         let state = state.clone();
-        engine.register_fn("set_achievement_criterion_gold", move |key: String, amount: i64| -> String {
-            update_def(&db, &state, &key, |d| d.criterion = AchievementCriterion::GoldHeld {
-                amount: amount as i32,
-            })
-        });
+        engine.register_fn(
+            "set_achievement_criterion_gold",
+            move |key: String, amount: i64| -> String {
+                update_def(&db, &state, &key, |d| {
+                    d.criterion = AchievementCriterion::GoldHeld { amount: amount as i32 }
+                })
+            },
+        );
     }
 }
 
@@ -848,7 +897,10 @@ where
                 String::new()
             }
         }
-        Ok(None) => format!("achievement '{}' not found in database (or it's a JSON-only definition)", key_lc),
+        Ok(None) => format!(
+            "achievement '{}' not found in database (or it's a JSON-only definition)",
+            key_lc
+        ),
         Err(e) => format!("db error: {}", e),
     }
 }
@@ -898,7 +950,10 @@ fn achievement_to_map(def: &AchievementDef) -> Map {
     let mut r = Map::new();
     r.insert("title".into(), Dynamic::from(def.reward.title.clone()));
     r.insert("gold".into(), Dynamic::from(def.reward.gold.unwrap_or(0) as i64));
-    r.insert("item_vnum".into(), Dynamic::from(def.reward.item_vnum.clone().unwrap_or_default()));
+    r.insert(
+        "item_vnum".into(),
+        Dynamic::from(def.reward.item_vnum.clone().unwrap_or_default()),
+    );
     r.insert("morality_delta".into(), Dynamic::from(def.reward.morality_delta as i64));
     m.insert("reward".into(), Dynamic::from(r));
     m.insert("title".into(), Dynamic::from(def.reward.title.clone())); // Legacy compat for achievements.rhai

@@ -6,9 +6,8 @@ use crate::SharedConnections;
 use crate::SharedState;
 use crate::db::Db;
 use crate::{
-    ActiveBuff, BodyPart, EffectType, WeaponSkill, broadcast_to_all_players,
-    broadcast_to_outdoor_players, fire_environmental_triggers_impl, get_season_transition_message,
-    get_time_transition_message,
+    ActiveBuff, BodyPart, EffectType, WeaponSkill, broadcast_to_all_players, broadcast_to_outdoor_players,
+    fire_environmental_triggers_impl, get_season_transition_message, get_time_transition_message,
 };
 use rhai::Engine;
 use std::sync::Arc;
@@ -40,10 +39,7 @@ fn sum_stat_with_boost(
 /// Build the rhai::Map shape that `get_game_time()` returns, projecting
 /// weather and effective temperature through the supplied climate. Pass
 /// `ClimateProfile::Temperate` for the unprojected (global) view.
-pub(crate) fn build_game_time_map(
-    gt: &crate::types::GameTime,
-    climate: crate::types::ClimateProfile,
-) -> rhai::Map {
+pub(crate) fn build_game_time_map(gt: &crate::types::GameTime, climate: crate::types::ClimateProfile) -> rhai::Map {
     let local_weather = gt.weather_for_climate(climate);
     let local_temp = gt.effective_temperature_for_climate(climate);
     let mut map = rhai::Map::new();
@@ -68,10 +64,7 @@ pub(crate) fn build_game_time_map(
         "time_of_day_desc".into(),
         rhai::Dynamic::from(format!("{}", gt.get_time_of_day())),
     );
-    map.insert(
-        "weather_desc".into(),
-        rhai::Dynamic::from(format!("{}", local_weather)),
-    );
+    map.insert("weather_desc".into(), rhai::Dynamic::from(format!("{}", local_weather)));
     let temp_cat = match local_temp {
         t if t < 0 => crate::types::TemperatureCategory::Freezing,
         t if t < 10 => crate::types::TemperatureCategory::Cold,
@@ -81,10 +74,7 @@ pub(crate) fn build_game_time_map(
         t if t < 35 => crate::types::TemperatureCategory::Hot,
         _ => crate::types::TemperatureCategory::Sweltering,
     };
-    map.insert(
-        "temperature_desc".into(),
-        rhai::Dynamic::from(format!("{}", temp_cat)),
-    );
+    map.insert("temperature_desc".into(), rhai::Dynamic::from(format!("{}", temp_cat)));
     map.insert("is_daytime".into(), rhai::Dynamic::from(gt.is_daytime()));
     map
 }
@@ -181,27 +171,24 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // race filter applied). Used by create.rhai/login.rhai so e.g. modern
     // synthetic races (synth, bioroid, clone) can't pick "vampire".
     let state_clone = state.clone();
-    engine.register_fn(
-        "get_class_list_for_race",
-        move |race_id: String| -> rhai::Array {
-            let world = state_clone.lock().unwrap();
-            let vampire_enabled = world
-                .db
-                .get_setting("enable_vampire_creation")
-                .ok()
-                .flatten()
-                .map(|s| s.to_lowercase() == "on" || s == "true")
-                .unwrap_or(false);
-            world
-                .class_definitions
-                .iter()
-                .filter(|(_, c)| c.available)
-                .filter(|(id, _)| id.as_str() != "vampire" || vampire_enabled)
-                .filter(|(_, c)| c.allowed_for_race(&race_id))
-                .map(|(id, _)| rhai::Dynamic::from(id.clone()))
-                .collect()
-        },
-    );
+    engine.register_fn("get_class_list_for_race", move |race_id: String| -> rhai::Array {
+        let world = state_clone.lock().unwrap();
+        let vampire_enabled = world
+            .db
+            .get_setting("enable_vampire_creation")
+            .ok()
+            .flatten()
+            .map(|s| s.to_lowercase() == "on" || s == "true")
+            .unwrap_or(false);
+        world
+            .class_definitions
+            .iter()
+            .filter(|(_, c)| c.available)
+            .filter(|(id, _)| id.as_str() != "vampire" || vampire_enabled)
+            .filter(|(_, c)| c.allowed_for_race(&race_id))
+            .map(|(id, _)| rhai::Dynamic::from(id.clone()))
+            .collect()
+    });
 
     // is_class_allowed_for_race(race_id, class_id) -> bool. Mirrors the
     // race-filter applied by get_class_list_for_race. Does NOT consult the
@@ -297,31 +284,25 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // not an appropriate random pick). Falls back to "unemployed" when no
     // class survives the race filter.
     let state_clone = state.clone();
-    engine.register_fn(
-        "get_random_class_for_race",
-        move |race_id: String| -> String {
-            let world = state_clone.lock().unwrap();
-            let available: Vec<&String> = world
-                .class_definitions
-                .iter()
-                .filter(|(id, c)| {
-                    c.available
-                        && id.as_str() != "unemployed"
-                        && id.as_str() != "vampire"
-                        && c.allowed_for_race(&race_id)
-                })
-                .map(|(id, _)| id)
-                .collect();
-            if available.is_empty() {
-                return "unemployed".to_string();
-            }
-            use rand::seq::SliceRandom;
-            available
-                .choose(&mut rand::thread_rng())
-                .map(|id| (*id).clone())
-                .unwrap_or_else(|| "unemployed".to_string())
-        },
-    );
+    engine.register_fn("get_random_class_for_race", move |race_id: String| -> String {
+        let world = state_clone.lock().unwrap();
+        let available: Vec<&String> = world
+            .class_definitions
+            .iter()
+            .filter(|(id, c)| {
+                c.available && id.as_str() != "unemployed" && id.as_str() != "vampire" && c.allowed_for_race(&race_id)
+            })
+            .map(|(id, _)| id)
+            .collect();
+        if available.is_empty() {
+            return "unemployed".to_string();
+        }
+        use rand::seq::SliceRandom;
+        available
+            .choose(&mut rand::thread_rng())
+            .map(|id| (*id).clone())
+            .unwrap_or_else(|| "unemployed".to_string())
+    });
 
     // get_trait_list() -> Array of available trait IDs
     let state_clone = state.clone();
@@ -738,9 +719,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_setting_default(key) -> String — the built-in default for a known
     // setting (empty string if the key has no registered default).
     engine.register_fn("get_setting_default", move |key: String| -> String {
-        crate::settings::setting_default(&key)
-            .unwrap_or("")
-            .to_string()
+        crate::settings::setting_default(&key).unwrap_or("").to_string()
     });
 
     // set_setting(key, value) -> bool
@@ -1056,15 +1035,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             Err(_) => return result,
         };
         let old_weather = game_time.weather;
-        let scale_pos: i32 = SCALE.iter().position(|&w| w == old_weather).map(|p| p as i32).unwrap_or_else(
-            || match old_weather {
-                WeatherCondition::Fog => 2,           // ~Cloudy
-                WeatherCondition::LightSnow => 4,     // ~LightRain
-                WeatherCondition::Snow => 5,          // ~Rain
-                WeatherCondition::Blizzard => 7,      // ~Thunderstorm
+        let scale_pos: i32 = SCALE
+            .iter()
+            .position(|&w| w == old_weather)
+            .map(|p| p as i32)
+            .unwrap_or_else(|| match old_weather {
+                WeatherCondition::Fog => 2,       // ~Cloudy
+                WeatherCondition::LightSnow => 4, // ~LightRain
+                WeatherCondition::Snow => 5,      // ~Rain
+                WeatherCondition::Blizzard => 7,  // ~Thunderstorm
                 _ => 0,
-            },
-        );
+            });
 
         let next_pos: i32 = match direction.to_lowercase().as_str() {
             "better" | "clearer" | "calm" => scale_pos - 1,
@@ -1112,28 +1093,23 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         // Fire OnWeatherChange triggers, mirroring the natural-tick context.
         let is_raining = matches!(
             new_weather,
-            WeatherCondition::LightRain | WeatherCondition::Rain | WeatherCondition::HeavyRain | WeatherCondition::Thunderstorm
+            WeatherCondition::LightRain
+                | WeatherCondition::Rain
+                | WeatherCondition::HeavyRain
+                | WeatherCondition::Thunderstorm
         );
         let is_snowing = matches!(
             new_weather,
             WeatherCondition::LightSnow | WeatherCondition::Snow | WeatherCondition::Blizzard
         );
-        let is_clear = matches!(
-            new_weather,
-            WeatherCondition::Clear | WeatherCondition::PartlyCloudy
-        );
+        let is_clear = matches!(new_weather, WeatherCondition::Clear | WeatherCondition::PartlyCloudy);
         let mut ctx: std::collections::HashMap<String, String> = std::collections::HashMap::new();
         ctx.insert("old_weather".to_string(), format!("{:?}", old_weather).to_lowercase());
         ctx.insert("new_weather".to_string(), format!("{:?}", new_weather).to_lowercase());
         ctx.insert("is_raining".to_string(), is_raining.to_string());
         ctx.insert("is_snowing".to_string(), is_snowing.to_string());
         ctx.insert("is_clear".to_string(), is_clear.to_string());
-        let _ = fire_environmental_triggers_impl(
-            &cloned_db,
-            &conns,
-            crate::TriggerType::OnWeatherChange,
-            &ctx,
-        );
+        let _ = fire_environmental_triggers_impl(&cloned_db, &conns, crate::TriggerType::OnWeatherChange, &ctx);
 
         result.insert("changed".into(), rhai::Dynamic::from(true));
         result.insert(
@@ -1563,10 +1539,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 if let Some(ref char) = session.character {
                     // Check if they have the blindness trait or a Blind buff
                     let blind = char.traits.iter().any(|t| t == "blindness")
-                        || char
-                            .active_buffs
-                            .iter()
-                            .any(|b| b.effect_type == EffectType::Blind);
+                        || char.active_buffs.iter().any(|b| b.effect_type == EffectType::Blind);
                     return !blind;
                 }
             }
@@ -1787,10 +1760,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
             // Check blindness trait or active Blind buff first - severe penalty
             if char.traits.iter().any(|t| t == "blindness")
-                || char
-                    .active_buffs
-                    .iter()
-                    .any(|b| b.effect_type == EffectType::Blind)
+                || char.active_buffs.iter().any(|b| b.effect_type == EffectType::Blind)
             {
                 return 100;
             }
@@ -1809,8 +1779,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
                     let hour = game_time.hour;
 
-                    let local_weather =
-                        game_time.weather_for_climate(cloned_db.room_climate(&room));
+                    let local_weather = game_time.weather_for_climate(cloned_db.room_climate(&room));
                     let is_overcast = matches!(
                         local_weather,
                         crate::WeatherCondition::Overcast
@@ -2181,7 +2150,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             match cloned_db.get_character_data(&char_name.to_lowercase()) {
                 Ok(Some(mut char)) => {
                     let skill_key = skill_name.to_lowercase();
-                    let entry = char.skills.entry(skill_key.clone()).or_insert(crate::SkillProgress::default());
+                    let entry = char
+                        .skills
+                        .entry(skill_key.clone())
+                        .or_insert(crate::SkillProgress::default());
                     entry.level = level;
                     entry.experience = 0; // Reset XP when setting level directly
                     let saved = cloned_db.save_character_data(char).is_ok();
@@ -2224,7 +2196,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             match cloned_db.get_character_data(&char_name.to_lowercase()) {
                 Ok(Some(mut char)) => {
                     let skill_key = skill_name.to_lowercase();
-                    let entry = char.skills.entry(skill_key.clone()).or_insert(crate::SkillProgress::default());
+                    let entry = char
+                        .skills
+                        .entry(skill_key.clone())
+                        .or_insert(crate::SkillProgress::default());
 
                     // Don't add XP if already at max level
                     if entry.level >= 10 {
@@ -2506,9 +2481,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         if !chars[0].is_alphabetic() {
             return false;
         }
-        chars
-            .iter()
-            .all(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+        chars.iter().all(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
     });
 
     // ========== Per-IP Login Throttle ==========
@@ -2619,27 +2592,24 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // crate::email so a single IP can't drive the budget on its own.
     let st = state.clone();
     let conns = connections.clone();
-    engine.register_fn(
-        "is_email_send_throttled",
-        move |connection_id: String| -> bool {
-            let cid = match uuid::Uuid::parse_str(&connection_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            let ip = {
-                let conns_guard = conns.lock().unwrap();
-                match conns_guard.get(&cid) {
-                    Some(s) => s.addr.ip(),
-                    None => return false,
-                }
-            };
-            let lim = {
-                let world = st.lock().unwrap();
-                world.ip_limiter.clone()
-            };
-            lim.is_email_send_throttled(ip)
-        },
-    );
+    engine.register_fn("is_email_send_throttled", move |connection_id: String| -> bool {
+        let cid = match uuid::Uuid::parse_str(&connection_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let ip = {
+            let conns_guard = conns.lock().unwrap();
+            match conns_guard.get(&cid) {
+                Some(s) => s.addr.ip(),
+                None => return false,
+            }
+        };
+        let lim = {
+            let world = st.lock().unwrap();
+            world.ip_limiter.clone()
+        };
+        lim.is_email_send_throttled(ip)
+    });
 
     // record_email_send(connection_id) -> bool
     // Stamps a successful send against the connection's source IP. Callers
@@ -2647,28 +2617,25 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // sends should not count against the per-IP budget.
     let st = state.clone();
     let conns = connections.clone();
-    engine.register_fn(
-        "record_email_send",
-        move |connection_id: String| -> bool {
-            let cid = match uuid::Uuid::parse_str(&connection_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            let ip = {
-                let conns_guard = conns.lock().unwrap();
-                match conns_guard.get(&cid) {
-                    Some(s) => s.addr.ip(),
-                    None => return false,
-                }
-            };
-            let lim = {
-                let world = st.lock().unwrap();
-                world.ip_limiter.clone()
-            };
-            lim.record_email_send(ip);
-            true
-        },
-    );
+    engine.register_fn("record_email_send", move |connection_id: String| -> bool {
+        let cid = match uuid::Uuid::parse_str(&connection_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        let ip = {
+            let conns_guard = conns.lock().unwrap();
+            match conns_guard.get(&cid) {
+                Some(s) => s.addr.ip(),
+                None => return false,
+            }
+        };
+        let lim = {
+            let world = st.lock().unwrap();
+            world.ip_limiter.clone()
+        };
+        lim.record_email_send(ip);
+        true
+    });
 
     // max_characters() -> i64
     // Returns the configured global account cap so create.rhai can compare
@@ -2935,8 +2902,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         .iter()
                         .filter(|b| {
                             b.effect_type == EffectType::CustomSkillBoost
-                                && b.skill_key.as_deref().map(|s| s.eq_ignore_ascii_case(&key_lc))
-                                    == Some(true)
+                                && b.skill_key.as_deref().map(|s| s.eq_ignore_ascii_case(&key_lc)) == Some(true)
                         })
                         .map(|b| b.magnitude as i64)
                         .sum();
@@ -3184,100 +3150,82 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // Clamps to [MORALITY_MIN, MORALITY_MAX] (-200..=+200). Returns the new value (or 0 if char missing).
     let cloned_db = db.clone();
     let conns = connections.clone();
-    engine.register_fn(
-        "adjust_morality",
-        move |char_name: String, delta: i64| -> i64 {
-            let name_lower = char_name.to_lowercase();
-            if let Ok(Some(mut character)) = cloned_db.get_character_data(&name_lower) {
-                let new_val = crate::morality::clamp(
-                    (character.morality as i64).saturating_add(delta).clamp(
-                        crate::morality::MORALITY_MIN as i64,
-                        crate::morality::MORALITY_MAX as i64,
-                    ) as i32,
-                );
-                character.morality = new_val;
-                if cloned_db.save_character_data(character.clone()).is_err() {
-                    return 0;
-                }
-                let mut conns_guard = conns.lock().unwrap();
-                for (_id, session) in conns_guard.iter_mut() {
-                    if let Some(ref mut sc) = session.character {
-                        if sc.name.eq_ignore_ascii_case(&char_name) {
-                            sc.morality = new_val;
-                            break;
-                        }
+    engine.register_fn("adjust_morality", move |char_name: String, delta: i64| -> i64 {
+        let name_lower = char_name.to_lowercase();
+        if let Ok(Some(mut character)) = cloned_db.get_character_data(&name_lower) {
+            let new_val = crate::morality::clamp((character.morality as i64).saturating_add(delta).clamp(
+                crate::morality::MORALITY_MIN as i64,
+                crate::morality::MORALITY_MAX as i64,
+            ) as i32);
+            character.morality = new_val;
+            if cloned_db.save_character_data(character.clone()).is_err() {
+                return 0;
+            }
+            let mut conns_guard = conns.lock().unwrap();
+            for (_id, session) in conns_guard.iter_mut() {
+                if let Some(ref mut sc) = session.character {
+                    if sc.name.eq_ignore_ascii_case(&char_name) {
+                        sc.morality = new_val;
+                        break;
                     }
                 }
-                new_val as i64
-            } else {
-                0
             }
-        },
-    );
+            new_val as i64
+        } else {
+            0
+        }
+    });
 
     // set_morality(char_name, value) -> bool — admin/quest direct set with clamp.
     let cloned_db = db.clone();
     let conns = connections.clone();
-    engine.register_fn(
-        "set_morality",
-        move |char_name: String, value: i64| -> bool {
-            let name_lower = char_name.to_lowercase();
-            if let Ok(Some(mut character)) = cloned_db.get_character_data(&name_lower) {
-                let new_val = crate::morality::clamp(value.clamp(
-                    crate::morality::MORALITY_MIN as i64,
-                    crate::morality::MORALITY_MAX as i64,
-                ) as i32);
-                character.morality = new_val;
-                if cloned_db.save_character_data(character.clone()).is_err() {
-                    return false;
-                }
-                let mut conns_guard = conns.lock().unwrap();
-                for (_id, session) in conns_guard.iter_mut() {
-                    if let Some(ref mut sc) = session.character {
-                        if sc.name.eq_ignore_ascii_case(&char_name) {
-                            sc.morality = new_val;
-                            break;
-                        }
+    engine.register_fn("set_morality", move |char_name: String, value: i64| -> bool {
+        let name_lower = char_name.to_lowercase();
+        if let Ok(Some(mut character)) = cloned_db.get_character_data(&name_lower) {
+            let new_val = crate::morality::clamp(value.clamp(
+                crate::morality::MORALITY_MIN as i64,
+                crate::morality::MORALITY_MAX as i64,
+            ) as i32);
+            character.morality = new_val;
+            if cloned_db.save_character_data(character.clone()).is_err() {
+                return false;
+            }
+            let mut conns_guard = conns.lock().unwrap();
+            for (_id, session) in conns_guard.iter_mut() {
+                if let Some(ref mut sc) = session.character {
+                    if sc.name.eq_ignore_ascii_case(&char_name) {
+                        sc.morality = new_val;
+                        break;
                     }
                 }
-                true
-            } else {
-                false
             }
-        },
-    );
+            true
+        } else {
+            false
+        }
+    });
 
     // get_morality_tier(char_name) -> String — returns tier key (e.g. "evil_2", "neutral", "good_pure").
     let cloned_db = db.clone();
-    engine.register_fn(
-        "get_morality_tier",
-        move |char_name: String| -> String {
-            let name_lower = char_name.to_lowercase();
-            if let Ok(Some(ch)) = cloned_db.get_character_data(&name_lower) {
-                crate::morality::MoralityTier::from_value(ch.morality)
-                    .key()
-                    .to_string()
-            } else {
-                String::new()
-            }
-        },
-    );
+    engine.register_fn("get_morality_tier", move |char_name: String| -> String {
+        let name_lower = char_name.to_lowercase();
+        if let Ok(Some(ch)) = cloned_db.get_character_data(&name_lower) {
+            crate::morality::MoralityTier::from_value(ch.morality).key().to_string()
+        } else {
+            String::new()
+        }
+    });
 
     // get_morality_feel(char_name) -> String — status-line "feel" sentence, "" for Neutral.
     let cloned_db = db.clone();
-    engine.register_fn(
-        "get_morality_feel",
-        move |char_name: String| -> String {
-            let name_lower = char_name.to_lowercase();
-            if let Ok(Some(ch)) = cloned_db.get_character_data(&name_lower) {
-                crate::morality::feel_message(ch.morality)
-                    .unwrap_or("")
-                    .to_string()
-            } else {
-                String::new()
-            }
-        },
-    );
+    engine.register_fn("get_morality_feel", move |char_name: String| -> String {
+        let name_lower = char_name.to_lowercase();
+        if let Ok(Some(ch)) = cloned_db.get_character_data(&name_lower) {
+            crate::morality::feel_message(ch.morality).unwrap_or("").to_string()
+        } else {
+            String::new()
+        }
+    });
 
     // remove_buff_from_mobile(mobile_id, effect_type_str) -> bool
     let cloned_db = db.clone();
@@ -3642,8 +3590,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     engine.register_fn(
         "start_slow_move",
         move |connection_id: String, direction: String, source_room_id: String, complete_at: i64| -> bool {
-            let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) else { return false; };
-            let Ok(src_uuid) = uuid::Uuid::parse_str(&source_room_id) else { return false; };
+            let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) else {
+                return false;
+            };
+            let Ok(src_uuid) = uuid::Uuid::parse_str(&source_room_id) else {
+                return false;
+            };
             let mut conns_lock = conns.lock().unwrap();
             if let Some(session) = conns_lock.get_mut(&conn_id) {
                 if let Some(ref mut char) = session.character {
@@ -3664,7 +3616,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let conns = connections.clone();
     let cloned_db = db.clone();
     engine.register_fn("clear_slow_move", move |connection_id: String| -> bool {
-        let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) else { return false; };
+        let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) else {
+            return false;
+        };
         let mut conns_lock = conns.lock().unwrap();
         if let Some(session) = conns_lock.get_mut(&conn_id) {
             if let Some(ref mut char) = session.character {
@@ -3684,7 +3638,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // by the slow-move tick and should bypass the exit-delay check).
     let conns = connections.clone();
     engine.register_fn("take_slow_move_completing", move |connection_id: String| -> bool {
-        let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) else { return false; };
+        let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) else {
+            return false;
+        };
         let mut conns_lock = conns.lock().unwrap();
         if let Some(session) = conns_lock.get_mut(&conn_id) {
             if session.slow_move_completing {

@@ -1,8 +1,8 @@
 // src/script/utilities.rs
 // MXP, ANSI colors, AFK, terminal size, and text formatting functions
 
-use crate::{SharedConnections, SharedState};
 use crate::db::Db;
+use crate::{SharedConnections, SharedState};
 use rhai::Engine;
 use std::sync::Arc;
 
@@ -341,15 +341,22 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         if let Ok(all_chars) = world.db.list_all_characters() {
             let conns = conns.lock().unwrap();
             for char_data in all_chars {
-                if char_data.friends.iter().any(|f: &String| f.eq_ignore_ascii_case(&char_name)) {
-                    if char_data.ignored.iter().all(|i: &String| !i.eq_ignore_ascii_case(&char_name)) {
+                if char_data
+                    .friends
+                    .iter()
+                    .any(|f: &String| f.eq_ignore_ascii_case(&char_name))
+                {
+                    if char_data
+                        .ignored
+                        .iter()
+                        .all(|i: &String| !i.eq_ignore_ascii_case(&char_name))
+                    {
                         for session in conns.values() {
                             if let Some(ref c) = session.character {
                                 if c.name == char_data.name && session.disconnected_at.is_none() {
-                                    let _ = session.sender.send(format!(
-                                        "\x1b[1;31m[Friend] {} has left the realm.\x1b[0m\n",
-                                        char_name
-                                    ));
+                                    let _ = session
+                                        .sender
+                                        .send(format!("\x1b[1;31m[Friend] {} has left the realm.\x1b[0m\n", char_name));
                                 }
                             }
                         }
@@ -368,10 +375,18 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         if let Ok(all_chars) = world.db.list_all_characters() {
             let conns = conns.lock().unwrap();
             for char_data in all_chars {
-                if char_data.friends.iter().any(|f: &String| f.eq_ignore_ascii_case(&char_name)) {
+                if char_data
+                    .friends
+                    .iter()
+                    .any(|f: &String| f.eq_ignore_ascii_case(&char_name))
+                {
                     // This character has char_name as a friend.
                     // If they are online and NOT ignoring char_name, notify them.
-                    if char_data.ignored.iter().all(|i: &String| !i.eq_ignore_ascii_case(&char_name)) {
+                    if char_data
+                        .ignored
+                        .iter()
+                        .all(|i: &String| !i.eq_ignore_ascii_case(&char_name))
+                    {
                         for session in conns.values() {
                             if let Some(ref c) = session.character {
                                 if c.name == char_data.name && session.disconnected_at.is_none() {
@@ -393,7 +408,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     engine.register_fn("is_ignoring", move |player_name: String, target_name: String| {
         let world = state_clone.lock().unwrap();
         if let Ok(Some(char_data)) = world.db.get_character_data(&player_name) {
-            return char_data.ignored.iter().any(|i: &String| i.eq_ignore_ascii_case(&target_name));
+            return char_data
+                .ignored
+                .iter()
+                .any(|i: &String| i.eq_ignore_ascii_case(&target_name));
         }
         false
     });
@@ -562,9 +580,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // trim_str(text) -> string - strip leading/trailing whitespace.
     // Rhai 1.17 has no `.trim()` method, so scripts call this as a free fn.
-    engine.register_fn("trim_str", |text: String| -> String {
-        text.trim().to_string()
-    });
+    engine.register_fn("trim_str", |text: String| -> String { text.trim().to_string() });
 
     // strip_ansi(text) -> string - removes all ANSI escape sequences
     engine.register_fn("strip_ansi", |text: String| -> String {
@@ -626,15 +642,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 map.insert("rooms".into(), rhai::Dynamic::from(stats.rooms as i64));
                 map.insert("items".into(), rhai::Dynamic::from(stats.items as i64));
                 map.insert("mobiles".into(), rhai::Dynamic::from(stats.mobiles as i64));
-                map.insert(
-                    "spawn_points".into(),
-                    rhai::Dynamic::from(stats.spawn_points as i64),
-                );
+                map.insert("spawn_points".into(), rhai::Dynamic::from(stats.spawn_points as i64));
                 map.insert("recipes".into(), rhai::Dynamic::from(stats.recipes as i64));
-                map.insert(
-                    "transports".into(),
-                    rhai::Dynamic::from(stats.transports as i64),
-                );
+                map.insert("transports".into(), rhai::Dynamic::from(stats.transports as i64));
                 map.insert(
                     "property_templates".into(),
                     rhai::Dynamic::from(stats.property_templates as i64),
@@ -645,10 +655,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     rhai::Dynamic::from(stats.plant_prototypes as i64),
                 );
                 map.insert("plants".into(), rhai::Dynamic::from(stats.plants as i64));
-                map.insert(
-                    "characters".into(),
-                    rhai::Dynamic::from(stats.characters as i64),
-                );
+                map.insert("characters".into(), rhai::Dynamic::from(stats.characters as i64));
                 map
             }
             Err(_) => rhai::Map::new(),

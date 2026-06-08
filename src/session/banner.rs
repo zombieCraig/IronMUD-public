@@ -8,8 +8,7 @@ use crate::db::Db;
 const BANNER_PATH: &str = "assets/banner.txt";
 
 /// ANSI-formatted banner line for `create [name] [password] - New account`.
-const CREATE_LINE_NO_EMAIL: &str =
-    "\x1b[93m     create\x1b[0m [name] [password] \x1b[90m- New account\x1b[0m\n";
+const CREATE_LINE_NO_EMAIL: &str = "\x1b[93m     create\x1b[0m [name] [password] \x1b[90m- New account\x1b[0m\n";
 
 /// ANSI-formatted banner line for `create [name] [password] [email] - New account`.
 const CREATE_LINE_WITH_EMAIL: &str =
@@ -76,8 +75,7 @@ mod tests {
     #[test]
     fn banner_with_verification_shows_three_arg_create_and_forgot() {
         let t = open_temp("on");
-        t.db.set_setting("email_verification_required", "true")
-            .expect("set");
+        t.db.set_setting("email_verification_required", "true").expect("set");
         let banner = render_login_banner(&t.db);
         assert!(banner.contains("[name] [password] [email]"));
         assert!(banner.contains("forgot"));

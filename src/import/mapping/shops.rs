@@ -1,11 +1,7 @@
 use std::collections::HashMap;
 
-use crate::import::{
-    IrShop, MappingOptions, PlannedShopOverlay, Severity, Warning, WarningKind,
-};
-use crate::types::{
-    ActivityState, RoutineEntry,
-};
+use crate::import::{IrShop, MappingOptions, PlannedShopOverlay, Severity, Warning, WarningKind};
+use crate::types::{ActivityState, RoutineEntry};
 
 use super::FlagAction;
 
@@ -129,7 +125,10 @@ pub(super) fn map_shop(
             WarningKind::UnsupportedFlag,
             Severity::Info,
             shop.source.clone(),
-            format!("shop #{} temper={} dropped (no IronMUD analogue)", shop.vnum, shop.temper),
+            format!(
+                "shop #{} temper={} dropped (no IronMUD analogue)",
+                shop.vnum, shop.temper
+            ),
         ));
     }
     // CircleMUD shop bitvector: bit 0 = WILL_START_FIGHT (translated),

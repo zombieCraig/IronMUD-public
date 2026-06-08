@@ -52,13 +52,19 @@ pub fn parse_str(text: &str, path: &Path) -> Result<Vec<IrMob>> {
             // Trigger attachment for the most recently parsed mob. Last mob
             // owns it; we look it up by mutable index.
             p.inner.consume_line();
-            if let Some(vnum) = trimmed[2..].split_whitespace().next().and_then(|s| s.parse::<i32>().ok()) {
+            if let Some(vnum) = trimmed[2..]
+                .split_whitespace()
+                .next()
+                .and_then(|s| s.parse::<i32>().ok())
+            {
                 if let Some(last) = mobs.last_mut() {
                     last.trigger_vnums.push(vnum);
                 }
             }
         } else {
-            return Err(p.inner.err(&format!("expected '#vnum', 'T <vnum>', or '$', got: {trimmed:?}")));
+            return Err(p
+                .inner
+                .err(&format!("expected '#vnum', 'T <vnum>', or '$', got: {trimmed:?}")));
         }
     }
     Ok(mobs)
@@ -112,9 +118,10 @@ impl<'a> MobParser<'a> {
                 // tbaMUD format. f1 = MOB bits 0..31; high banks dropped.
                 let mob_flag_bits = parse_bitvector(parts[0]);
                 let aff_flag_bits = parse_bitvector(parts[4]);
-                let alignment: i32 = parts[8]
-                    .parse()
-                    .map_err(|_| self.inner.err(&format!("mob #{vnum}: non-numeric alignment {:?}", parts[8])))?;
+                let alignment: i32 = parts[8].parse().map_err(|_| {
+                    self.inner
+                        .err(&format!("mob #{vnum}: non-numeric alignment {:?}", parts[8]))
+                })?;
                 (mob_flag_bits, aff_flag_bits, alignment, parts[9])
             }
             n if n >= 4 => {
@@ -122,9 +129,10 @@ impl<'a> MobParser<'a> {
                 // the extension — rare but present in some patches).
                 let mob_flag_bits = parse_bitvector(parts[0]);
                 let aff_flag_bits = parse_bitvector(parts[1]);
-                let alignment: i32 = parts[2]
-                    .parse()
-                    .map_err(|_| self.inner.err(&format!("mob #{vnum}: non-numeric alignment {:?}", parts[2])))?;
+                let alignment: i32 = parts[2].parse().map_err(|_| {
+                    self.inner
+                        .err(&format!("mob #{vnum}: non-numeric alignment {:?}", parts[2]))
+                })?;
                 (mob_flag_bits, aff_flag_bits, alignment, parts[3])
             }
             other => {
@@ -135,9 +143,9 @@ impl<'a> MobParser<'a> {
         };
         let format = format_token.chars().next().unwrap_or('S').to_ascii_uppercase();
         if format != 'S' && format != 'E' {
-            return Err(self
-                .inner
-                .err(&format!("mob #{vnum}: unknown format {format_token:?} (expected S or E)")));
+            return Err(self.inner.err(&format!(
+                "mob #{vnum}: unknown format {format_token:?} (expected S or E)"
+            )));
         }
 
         // Stat line 1: LEVEL THAC0 AC HP_DICE DAMAGE_DICE

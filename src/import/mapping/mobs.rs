@@ -1,9 +1,6 @@
 use std::collections::HashSet;
 
-use crate::import::{
-    IrMob,
-    IrZone, MappingOptions, PlannedMobile, Severity, Warning, WarningKind,
-};
+use crate::import::{IrMob, IrZone, MappingOptions, PlannedMobile, Severity, Warning, WarningKind};
 use crate::types::MobileFlags;
 
 use super::FlagAction;
@@ -203,10 +200,7 @@ pub(super) fn map_mob(
             WarningKind::Info,
             Severity::Info,
             mob.source.clone(),
-            format!(
-                "alignment {} dropped (IronMUD has no alignment system)",
-                mob.alignment
-            ),
+            format!("alignment {} dropped (IronMUD has no alignment system)", mob.alignment),
         ));
     }
     // CircleMUD SEX field: 1 → male, 2 → female, 0/other → unset.

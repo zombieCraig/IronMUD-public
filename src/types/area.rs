@@ -1,7 +1,7 @@
 //! Area-level types: builder permissions, area-wide flags, immigration
 //! configuration, and the `AreaData` aggregate itself.
 
-use super::{CombatZoneType, ClimateProfile, ForageEntry, RoomFlags, SimulationConfig};
+use super::{ClimateProfile, CombatZoneType, ForageEntry, RoomFlags, SimulationConfig};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

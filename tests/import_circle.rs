@@ -250,10 +250,7 @@ fn parses_mobiles_into_plan() {
     // BareHandAttack should warn exactly once across the import (the beast
     // is the only carrier in this fixture, but we still exercise the
     // dedup path).
-    let bare_warns = warnings
-        .iter()
-        .filter(|w| w.message.contains("BareHandAttack"))
-        .count();
+    let bare_warns = warnings.iter().filter(|w| w.message.contains("BareHandAttack")).count();
     assert_eq!(bare_warns, 1);
 
     // No Block warnings expected (no vnum collisions in a fresh tmp DB).
@@ -349,11 +346,7 @@ fn parses_items_into_plan() {
     assert!(sword.data.flags.glow);
     assert!(sword.data.flags.magical);
     assert!(
-        sword
-            .data
-            .categories
-            .iter()
-            .any(|c| c.eq_ignore_ascii_case("magical")),
+        sword.data.categories.iter().any(|c| c.eq_ignore_ascii_case("magical")),
         "ITEM_MAGIC bit should auto-tag categories with \"magical\""
     );
     assert!(sword.data.wear_locations.contains(&WearLocation::Wielded));
@@ -368,9 +361,7 @@ fn parses_items_into_plan() {
         .find(|a| a.effect_type == ironmud::EffectType::DamageBonus)
         .expect("APPLY_DAMROLL +2 lands as a DamageBonus affect");
     assert_eq!(dam_affect.magnitude, 2);
-    let damroll_warn = warnings
-        .iter()
-        .find(|w| w.message.contains("APPLY_DAMROLL"));
+    let damroll_warn = warnings.iter().find(|w| w.message.contains("APPLY_DAMROLL"));
     assert!(damroll_warn.is_none(), "APPLY_DAMROLL warn should be gone");
 
     // Armor: AC value v0=3 → armor_class +3 (no apply blocks bumping it
@@ -417,8 +408,7 @@ fn parses_items_into_plan() {
     assert!(!food.data.extra_descs[0].description.is_empty());
     // The DeferredFeature warning for item E-blocks should no longer fire.
     let extra_warn = warnings.iter().find(|w| {
-        matches!(w.kind, ironmud::import::WarningKind::DeferredFeature)
-            && w.message.contains("extra description")
+        matches!(w.kind, ironmud::import::WarningKind::DeferredFeature) && w.message.contains("extra description")
     });
     assert!(extra_warn.is_none(), "item E-block deferred warning should be gone");
 
@@ -486,8 +476,9 @@ fn parses_items_into_plan() {
         .expect("APPLY_MAXMANA +15 lands as a MaxManaBonus affect");
     assert_eq!(max_mana_affect.magnitude, 15);
     assert!(
-        !warnings.iter().any(|w| w.message.contains("APPLY_MAXHIT")
-            || w.message.contains("APPLY_MAXMANA")),
+        !warnings
+            .iter()
+            .any(|w| w.message.contains("APPLY_MAXHIT") || w.message.contains("APPLY_MAXMANA")),
         "APPLY_MAXHIT/MAXMANA should no longer warn"
     );
 
@@ -499,7 +490,9 @@ fn parses_items_into_plan() {
     let pen = plan.items.iter().find(|i| i.source_vnum == 9022).expect("pen");
     assert_eq!(pen.data.item_type, ItemType::Pen);
     assert!(
-        !warnings.iter().any(|w| w.message.contains("ITEM_NOTE") || w.message.contains("ITEM_PEN")),
+        !warnings
+            .iter()
+            .any(|w| w.message.contains("ITEM_NOTE") || w.message.contains("ITEM_PEN")),
         "ITEM_NOTE/PEN should no longer warn"
     );
 
@@ -519,7 +512,9 @@ fn parses_items_into_plan() {
     assert!(amulet.data.flags.anti_good, "ANTI_GOOD → flags.anti_good");
     assert!(amulet.data.wear_locations.contains(&WearLocation::Neck));
     assert!(
-        !warnings.iter().any(|w| w.message.contains("ITEM_ANTI_GOOD") || w.message.contains("ANTI_GOOD")),
+        !warnings
+            .iter()
+            .any(|w| w.message.contains("ITEM_ANTI_GOOD") || w.message.contains("ANTI_GOOD")),
         "ANTI_GOOD should no longer surface as a warning"
     );
 
@@ -527,8 +522,14 @@ fn parses_items_into_plan() {
     // public defaults + an Info warning steering the builder to oedit.
     let board = plan.items.iter().find(|i| i.source_vnum == 9024).expect("board");
     assert_eq!(board.data.item_type, ItemType::Board);
-    assert!(!board.data.board_read_admin_only, "non-stock board defaults to public read");
-    assert!(!board.data.board_write_admin_only, "non-stock board defaults to public write");
+    assert!(
+        !board.data.board_read_admin_only,
+        "non-stock board defaults to public read"
+    );
+    assert!(
+        !board.data.board_write_admin_only,
+        "non-stock board defaults to public write"
+    );
     assert_eq!(board.data.board_max_messages, Some(60));
     let board_info = warnings
         .iter()
@@ -540,7 +541,6 @@ fn parses_items_into_plan() {
     let blocks = warnings.iter().filter(|w| w.severity == Severity::Block).count();
     assert_eq!(blocks, 0);
 }
-
 
 #[test]
 fn applies_items_to_tmp_db() {
@@ -579,10 +579,7 @@ fn applies_items_to_tmp_db() {
             .unwrap()
             .expect("chest saved");
         assert!(chest.container_locked);
-        assert_eq!(
-            chest.container_key_vnum.as_deref(),
-            Some("test_fixture_village_9013")
-        );
+        assert_eq!(chest.container_key_vnum.as_deref(), Some("test_fixture_village_9013"));
         // Sibling key prototype exists at the rewritten vnum.
         let key = db
             .get_item_by_vnum("test_fixture_village_9013")
@@ -620,10 +617,7 @@ fn parses_shops_into_plan() {
     assert_eq!(s1.keeper_vnum, "test_fixture_village_9001");
     assert_eq!(s1.sell_rate, 200);
     assert_eq!(s1.buy_rate, 40);
-    assert_eq!(
-        s1.buys_types,
-        vec!["weapon".to_string(), "armor".to_string()]
-    );
+    assert_eq!(s1.buys_types, vec!["weapon".to_string(), "armor".to_string()]);
     // Producing list is rewritten to prefixed item vnums.
     assert_eq!(
         s1.stock_vnums,
@@ -693,11 +687,10 @@ fn parses_shops_into_plan() {
     // bitvector=3 = WILL_START_FIGHT (translated) + WILL_BANK_MONEY (still warn).
     let bank_warn = shop_warns.iter().any(|w| w.message.contains("WILL_BANK_MONEY"));
     assert!(bank_warn, "WILL_BANK_MONEY warn surfaced");
-    let stale_combined = shop_warns.iter().any(|w| w.message.contains("WILL_START_FIGHT/WILL_BANK_MONEY"));
-    assert!(
-        !stale_combined,
-        "WILL_START_FIGHT should be translated, not warned"
-    );
+    let stale_combined = shop_warns
+        .iter()
+        .any(|w| w.message.contains("WILL_START_FIGHT/WILL_BANK_MONEY"));
+    assert!(!stale_combined, "WILL_START_FIGHT should be translated, not warned");
     // Shop #9002 has bitvector=3 → bit 0 → hostile_on_steal=true.
     assert!(s2.hostile_on_steal, "WILL_START_FIGHT decoded onto overlay");
     assert!(!s1.hostile_on_steal, "shop without WILL_START_FIGHT stays passive");
@@ -790,10 +783,7 @@ fn translates_zon_resets() {
     let (ir, parse_warnings) = CircleEngine.parse(&root).expect("parse");
     // Synthetic root has no `src/` directory, so the engine emits a single
     // Info noting spec_assign.c was skipped — that's expected.
-    let non_info: Vec<_> = parse_warnings
-        .iter()
-        .filter(|w| w.severity != Severity::Info)
-        .collect();
+    let non_info: Vec<_> = parse_warnings.iter().filter(|w| w.severity != Severity::Info).collect();
     assert!(
         non_info.is_empty(),
         "fixture should parse without warn/block warnings; got: {non_info:?}"
@@ -867,9 +857,7 @@ fn translates_zon_resets() {
         .spawns
         .iter()
         .find(|s| {
-            matches!(s.entity_type, SpawnEntityType::Item)
-                && s.vnum.ends_with("_8060")
-                && !s.dependencies.is_empty()
+            matches!(s.entity_type, SpawnEntityType::Item) && s.vnum.ends_with("_8060") && !s.dependencies.is_empty()
         })
         .expect("first chest with container dep");
     assert_eq!(chest_with_dep.dependencies.len(), 1);
@@ -896,33 +884,26 @@ fn translates_zon_resets() {
     // resolves via the per-zone vnum→spawn-index map and emits an Info note.
     let cross_block_info = warnings
         .iter()
-        .filter(|w| {
-            matches!(w.kind, ironmud::import::WarningKind::Info)
-                && w.message.contains("resolved cross-block")
-        })
+        .filter(|w| matches!(w.kind, ironmud::import::WarningKind::Info) && w.message.contains("resolved cross-block"))
         .count();
     assert_eq!(cross_block_info, 1, "one cross-block P resolves with an Info");
     // The cross-block dep landed on the second chest (most-recent 8060).
     let chest_8060_with_8052 = plan
         .spawns
         .iter()
-        .filter(|s| {
-            matches!(s.entity_type, SpawnEntityType::Item) && s.vnum.ends_with("_8060")
-        })
-        .filter(|s| {
-            s.dependencies
-                .iter()
-                .any(|d| d.item_vnum == "reset_test_zone_8052")
-        })
+        .filter(|s| matches!(s.entity_type, SpawnEntityType::Item) && s.vnum.ends_with("_8060"))
+        .filter(|s| s.dependencies.iter().any(|d| d.item_vnum == "reset_test_zone_8052"))
         .count();
-    assert_eq!(chest_8060_with_8052, 1, "cross-block sword landed in exactly one 8060 spawn");
+    assert_eq!(
+        chest_8060_with_8052, 1,
+        "cross-block sword landed in exactly one 8060 spawn"
+    );
 
     // G with if=0 (no anchor) → warn.
     let g_if_zero = warnings
         .iter()
         .filter(|w| {
-            matches!(w.kind, ironmud::import::WarningKind::DeferredFeature)
-                && w.message.contains("G reset with if=0")
+            matches!(w.kind, ironmud::import::WarningKind::DeferredFeature) && w.message.contains("G reset with if=0")
         })
         .count();
     assert_eq!(g_if_zero, 1);
@@ -930,9 +911,7 @@ fn translates_zon_resets() {
     // R reset → warn.
     let r_warn = warnings
         .iter()
-        .filter(|w| {
-            matches!(w.kind, ironmud::import::WarningKind::DeferredFeature) && w.message.starts_with("R reset")
-        })
+        .filter(|w| matches!(w.kind, ironmud::import::WarningKind::DeferredFeature) && w.message.starts_with("R reset"))
         .count();
     assert_eq!(r_warn, 1);
 
@@ -953,8 +932,7 @@ fn translates_zon_resets() {
     let no_door_warn = warnings
         .iter()
         .filter(|w| {
-            matches!(w.kind, ironmud::import::WarningKind::DeferredFeature)
-                && w.message.contains("no matching door")
+            matches!(w.kind, ironmud::import::WarningKind::DeferredFeature) && w.message.contains("no matching door")
         })
         .count();
     assert_eq!(no_door_warn, 1);
@@ -1249,10 +1227,7 @@ fn applies_specprocs_to_tmp_db() {
             .get_mobile_by_vnum("test_fixture_village_9003")
             .unwrap()
             .expect("magic_user mob");
-        assert!(
-            !mage.combat_spells.is_empty(),
-            "magic_user → combat_spells populated"
-        );
+        assert!(!mage.combat_spells.is_empty(), "magic_user → combat_spells populated");
         assert!(mage.combat_spells.contains(&"magic_missile".to_string()));
         assert!(mage.combat_spell_chance > 0 && mage.combat_spell_chance <= 100);
 
@@ -1298,15 +1273,8 @@ fn magic_user_imports_combat_spell_list() {
 
     // No more warn-only collapse for magic_user — it now translates to a
     // SetMobCombatSpells overlay so imported mobs cast in combat.
-    let magic_warns: Vec<_> = warnings
-        .iter()
-        .filter(|w| w.message.contains("magic_user"))
-        .collect();
-    assert!(
-        magic_warns.is_empty(),
-        "magic_user no longer warns: {:?}",
-        magic_warns
-    );
+    let magic_warns: Vec<_> = warnings.iter().filter(|w| w.message.contains("magic_user")).collect();
+    assert!(magic_warns.is_empty(), "magic_user no longer warns: {:?}", magic_warns);
 
     let magic_overlays: Vec<_> = plan
         .trigger_overlays
@@ -1334,10 +1302,7 @@ fn postmaster_imports_post_office_flag() {
 
     // No more warn-only collapse for postmaster — it now fans out into a
     // SetRoomFlag overlay on each room the postmaster is M-reset into.
-    let postmaster_warns: Vec<_> = warnings
-        .iter()
-        .filter(|w| w.message.contains("postmaster"))
-        .collect();
+    let postmaster_warns: Vec<_> = warnings.iter().filter(|w| w.message.contains("postmaster")).collect();
     assert!(
         postmaster_warns.is_empty(),
         "postmaster no longer warns: {:?}",
@@ -1403,8 +1368,7 @@ fn postmaster_with_no_spawn_warns() {
     .unwrap();
     // spec_assign binding the orphan mob to postmaster.
     std::fs::write(
-        dir.path().join(
-"src").join("spec_assign.c"),
+        dir.path().join("src").join("spec_assign.c"),
         "void assign_mobiles(void) {\n  ASSIGNMOB(9100, postmaster);\n}\n",
     )
     .unwrap();
@@ -1475,15 +1439,11 @@ fn castle_binding_warns() {
     // it shares vnum 9002 with the puff binding (which DOES overlay).
     // Because the overlay was for puff, the king_welmar binding bucket
     // produces a warn and no overlay is added for it.
-    let castle = warnings
-        .iter()
-        .find(|w| w.message.contains("king_welmar"));
+    let castle = warnings.iter().find(|w| w.message.contains("king_welmar"));
     assert!(castle.is_some(), "castle binding warns: {:?}", warnings);
     // The puff overlay still lands.
     assert!(
-        plan.trigger_overlays
-            .iter()
-            .any(|o| o.specproc_name == "puff"),
+        plan.trigger_overlays.iter().any(|o| o.specproc_name == "puff"),
         "puff overlay still applied"
     );
 }
@@ -1509,15 +1469,8 @@ fn missing_spec_assign_is_info_only() {
         .iter()
         .filter(|w| w.severity == Severity::Info && w.message.contains("spec_assign"))
         .collect();
-    assert_eq!(
-        infos.len(),
-        1,
-        "missing spec_assign.c surfaces a single Info warning"
-    );
-    let non_info: Vec<_> = parse_warnings
-        .iter()
-        .filter(|w| w.severity != Severity::Info)
-        .collect();
+    assert_eq!(infos.len(), 1, "missing spec_assign.c surfaces a single Info warning");
+    let non_info: Vec<_> = parse_warnings.iter().filter(|w| w.severity != Severity::Info).collect();
     assert!(non_info.is_empty(), "no Warn/Block from missing src/");
 }
 
@@ -1748,9 +1701,7 @@ fn imports_pickproof_doors() {
 
     let pickproof_warns: Vec<_> = warnings
         .iter()
-        .filter(|w| {
-            w.severity != ironmud::import::Severity::Info && w.message.contains("pickproof")
-        })
+        .filter(|w| w.severity != ironmud::import::Severity::Info && w.message.contains("pickproof"))
         .collect();
     assert!(
         pickproof_warns.is_empty(),

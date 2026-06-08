@@ -3,7 +3,11 @@ use super::helpers::*;
 use super::types::*;
 
 /// Context-aware completion for bpredit command
-pub(super) fn complete_bpredit(words: &[&str], completing_word: bool, shop_preset_vnums: &[String]) -> CompletionResult {
+pub(super) fn complete_bpredit(
+    words: &[&str],
+    completing_word: bool,
+    shop_preset_vnums: &[String],
+) -> CompletionResult {
     let partial = get_partial(words, completing_word);
 
     match words.len() {

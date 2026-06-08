@@ -11,10 +11,7 @@ pub(super) fn complete_achedit(words: &[&str], completing_word: bool, achievemen
         // subcommand and every existing achievement key. split_whitespace drops
         // the trailing space, so this case lands as words.len() == 1, not 2.
         1 if !completing_word => {
-            let mut combined: Vec<String> = ACHEDIT_SUBCOMMANDS
-                .iter()
-                .map(|s| s.to_string())
-                .collect();
+            let mut combined: Vec<String> = ACHEDIT_SUBCOMMANDS.iter().map(|s| s.to_string()).collect();
             combined.extend(achievement_keys.iter().cloned());
             CompletionResult::new(combined, "", CompletionType::AcheditSubcommand)
         }
@@ -45,7 +42,10 @@ pub(super) fn complete_achedit(words: &[&str], completing_word: bool, achievemen
             } else if p == "reward" {
                 all_static(ACHIEVEMENT_REWARD_ACTIONS, CompletionType::AchievementRewardAction)
             } else if p == "criterion" {
-                all_static(ACHIEVEMENT_CRITERION_ACTIONS, CompletionType::AchievementCriterionAction)
+                all_static(
+                    ACHIEVEMENT_CRITERION_ACTIONS,
+                    CompletionType::AchievementCriterionAction,
+                )
             } else {
                 filter_static(ACHEDIT_SUBCOMMANDS, &partial, CompletionType::AcheditSubcommand)
             }
@@ -59,21 +59,26 @@ pub(super) fn complete_achedit(words: &[&str], completing_word: bool, achievemen
             all_static(ACHIEVEMENT_CATEGORIES, CompletionType::AchievementCategory)
         }
         // achedit <key> reward <partial_action>
-        4 if completing_word && words[2].to_lowercase() == "reward" => {
-            filter_static(ACHIEVEMENT_REWARD_ACTIONS, &partial, CompletionType::AchievementRewardAction)
-        }
+        4 if completing_word && words[2].to_lowercase() == "reward" => filter_static(
+            ACHIEVEMENT_REWARD_ACTIONS,
+            &partial,
+            CompletionType::AchievementRewardAction,
+        ),
         // achedit <key> reward - show reward actions
         3 if !completing_word && words[2].to_lowercase() == "reward" => {
             all_static(ACHIEVEMENT_REWARD_ACTIONS, CompletionType::AchievementRewardAction)
         }
         // achedit <key> criterion <partial_action>
-        4 if completing_word && words[2].to_lowercase() == "criterion" => {
-            filter_static(ACHIEVEMENT_CRITERION_ACTIONS, &partial, CompletionType::AchievementCriterionAction)
-        }
+        4 if completing_word && words[2].to_lowercase() == "criterion" => filter_static(
+            ACHIEVEMENT_CRITERION_ACTIONS,
+            &partial,
+            CompletionType::AchievementCriterionAction,
+        ),
         // achedit <key> criterion - show criterion actions
-        3 if !completing_word && words[2].to_lowercase() == "criterion" => {
-            all_static(ACHIEVEMENT_CRITERION_ACTIONS, CompletionType::AchievementCriterionAction)
-        }
+        3 if !completing_word && words[2].to_lowercase() == "criterion" => all_static(
+            ACHIEVEMENT_CRITERION_ACTIONS,
+            CompletionType::AchievementCriterionAction,
+        ),
         // achedit <key> criterion skill <partial_skill>
         5 if completing_word && words[2].to_lowercase() == "criterion" && words[3].to_lowercase() == "skill" => {
             // We don't have skill list here easily, but we can filter by SKILL_NAMES

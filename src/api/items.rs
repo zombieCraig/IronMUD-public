@@ -11,13 +11,15 @@ use uuid::Uuid;
 
 use super::{
     ApiState,
-    auth::{authorize_existing_area, parse_and_authorize_area, AuthenticatedUser, can_read, can_write},
+    auth::{AuthenticatedUser, authorize_existing_area, can_read, can_write, parse_and_authorize_area},
     error::ApiError,
     notify_builders,
-    validate::{check_dice_dim, check_stat_bonus, check_text_len, LONG_DESC_MAX, NAME_MAX, SHORT_DESC_MAX},
+    validate::{LONG_DESC_MAX, NAME_MAX, SHORT_DESC_MAX, check_dice_dim, check_stat_bonus, check_text_len},
 };
 use crate::types::{CastOnUse, EffectType, ExtraDesc, ItemEffect, ItemTrigger, ItemTriggerType};
-use crate::{DamageType, ItemData, ItemFlags, ItemLocation, ItemType, LiquidType, OnHitEffect, WeaponSkill, WearLocation};
+use crate::{
+    DamageType, ItemData, ItemFlags, ItemLocation, ItemType, LiquidType, OnHitEffect, WeaponSkill, WearLocation,
+};
 
 use super::rooms::AddExtraDescRequest;
 
@@ -332,8 +334,7 @@ impl ItemAffectRequest {
                     .damage_type
                     .as_deref()
                     .ok_or_else(|| "damage_resistance requires damage_type".to_string())?;
-                let dt = DamageType::from_str(tag)
-                    .ok_or_else(|| format!("Unknown damage_type '{}'", tag))?;
+                let dt = DamageType::from_str(tag).ok_or_else(|| format!("Unknown damage_type '{}'", tag))?;
                 if self.vs_effect.is_some() {
                     return Err("damage_resistance does not accept vs_effect".to_string());
                 }
@@ -899,7 +900,10 @@ async fn create_item(
         location: ItemLocation::Nowhere,
         currently_worn_at: None,
         wear_locations,
-        armor_class: req.armor_class.map(|v| check_stat_bonus("armor_class", v)).transpose()?,
+        armor_class: req
+            .armor_class
+            .map(|v| check_stat_bonus("armor_class", v))
+            .transpose()?,
         hit_bonus: 0,
         damage_bonus: 0,
         max_hp_bonus: 0,

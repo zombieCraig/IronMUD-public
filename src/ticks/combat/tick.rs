@@ -12,9 +12,9 @@ use ironmud::{
     SkillProgress, WeaponSkill, WearLocation, WoundLevel, WoundType, break_all_charms_by_player, db,
 };
 
-use ironmud::corpse::{CorpseBuilder, mobile_gold_with_variance};
 use super::on_hit::{apply_on_hit_effects_to_character, apply_on_hit_effects_to_mobile};
 use super::wounds::{add_wound_bleeding, escalate_wound_to_severe};
+use ironmud::corpse::{CorpseBuilder, mobile_gold_with_variance};
 
 use crate::ticks::broadcast::{
     broadcast_to_room_awake, broadcast_to_room_except, broadcast_to_room_except_awake,
@@ -26,7 +26,6 @@ use crate::ticks::mobile::{
 
 /// Combat tick interval in seconds (5 second rounds)
 pub const COMBAT_TICK_INTERVAL_SECS: u64 = 5;
-
 
 /// Background task that processes combat rounds periodically (5 second rounds)
 pub async fn run_combat_tick(db: db::Db, connections: SharedConnections, state: SharedState) {
@@ -514,13 +513,7 @@ mod tests {
         char
     }
 
-    fn mk_mobile(
-        db: &db::Db,
-        name: &str,
-        room: Uuid,
-        helper: bool,
-        faction: Option<&str>,
-    ) -> MobileData {
+    fn mk_mobile(db: &db::Db, name: &str, room: Uuid, helper: bool, faction: Option<&str>) -> MobileData {
         let mut m = MobileData::new(name.to_string());
         m.is_prototype = false;
         m.current_room_id = Some(room);
@@ -637,10 +630,7 @@ mod tests {
             process_helper_joins(db, &empty_connections(), &attacker, &room).expect("scan ok");
 
             let after_no_flag = db.get_mobile_data(&no_flag.id).unwrap().unwrap();
-            assert!(
-                !after_no_flag.combat.in_combat,
-                "mob without helper flag must not join"
-            );
+            assert!(!after_no_flag.combat.in_combat, "mob without helper flag must not join");
 
             let after_dead = db.get_mobile_data(&dead.id).unwrap().unwrap();
             assert!(!after_dead.combat.in_combat, "dead helper must not join");
@@ -939,7 +929,8 @@ fn process_character_attacks_mobile(
     let target_dex_mod = (mobile.stat_dex as i32 + mob_eq_dex_bonus - 10) / 2;
     let target_ac = mobile.armor_class;
 
-    let mut base_hit_chance = (50 + skill * 5 + attacker_dex_mod - target_dex_mod - target_ac + eq_hit_bonus).clamp(5, 95);
+    let mut base_hit_chance =
+        (50 + skill * 5 + attacker_dex_mod - target_dex_mod - target_ac + eq_hit_bonus).clamp(5, 95);
 
     // Invisible-target penalty: -30 to-hit when the attacker can't see
     // their target (mob has Invisibility buff and the PC lacks
@@ -972,45 +963,25 @@ fn process_character_attacks_mobile(
     }
 
     // Blind buff slashes accuracy. Magnitude is the percentage points to subtract.
-    if let Some(blind) = char
-        .active_buffs
-        .iter()
-        .find(|b| b.effect_type == EffectType::Blind)
-    {
+    if let Some(blind) = char.active_buffs.iter().find(|b| b.effect_type == EffectType::Blind) {
         base_hit_chance = (base_hit_chance - blind.magnitude).clamp(5, 95);
     }
 
-    if let Some(curse) = char
-        .active_buffs
-        .iter()
-        .find(|b| b.effect_type == EffectType::Curse)
-    {
+    if let Some(curse) = char.active_buffs.iter().find(|b| b.effect_type == EffectType::Curse) {
         base_hit_chance = (base_hit_chance - curse.magnitude).clamp(5, 95);
     }
 
     // Bless buff — magnitude*3 % to hit chance.
-    if let Some(bless) = char
-        .active_buffs
-        .iter()
-        .find(|b| b.effect_type == EffectType::Bless)
-    {
+    if let Some(bless) = char.active_buffs.iter().find(|b| b.effect_type == EffectType::Bless) {
         base_hit_chance = (base_hit_chance + bless.magnitude * 3).clamp(5, 95);
     }
 
     // Haste / Slow — affect hit chance. Stock D&D haste is "extra attack per
     // round"; without per-attack timing we approximate as +/- hit accuracy.
-    if let Some(haste) = char
-        .active_buffs
-        .iter()
-        .find(|b| b.effect_type == EffectType::Haste)
-    {
+    if let Some(haste) = char.active_buffs.iter().find(|b| b.effect_type == EffectType::Haste) {
         base_hit_chance = (base_hit_chance + haste.magnitude * 2).clamp(5, 95);
     }
-    if let Some(slow) = char
-        .active_buffs
-        .iter()
-        .find(|b| b.effect_type == EffectType::Slow)
-    {
+    if let Some(slow) = char.active_buffs.iter().find(|b| b.effect_type == EffectType::Slow) {
         base_hit_chance = (base_hit_chance - slow.magnitude * 2).clamp(5, 95);
     }
 
@@ -1064,37 +1035,27 @@ fn process_character_attacks_mobile(
                     &char.name,
                     &format!("You fire at {} but miss!", mobile.name),
                 );
-                broadcast_to_room_except_awake_per_viewer(
-                    connections,
-                    &room_id,
-                    &char.name,
-                    |viewer| {
-                        format!(
-                            "{} {} {} but misses!",
-                            char.name,
-                            ranged_miss_verb,
-                            mob_display_name_for(viewer, &mobile, true)
-                        )
-                    },
-                );
+                broadcast_to_room_except_awake_per_viewer(connections, &room_id, &char.name, |viewer| {
+                    format!(
+                        "{} {} {} but misses!",
+                        char.name,
+                        ranged_miss_verb,
+                        mob_display_name_for(viewer, &mobile, true)
+                    )
+                });
             } else {
                 send_message_to_character(
                     connections,
                     &char.name,
                     &format!("You swing at {} but miss!", mobile.name),
                 );
-                broadcast_to_room_except_awake_per_viewer(
-                    connections,
-                    &room_id,
-                    &char.name,
-                    |viewer| {
-                        format!(
-                            "{} swings at {} but misses!",
-                            char.name,
-                            mob_display_name_for(viewer, &mobile, true)
-                        )
-                    },
-                );
+                broadcast_to_room_except_awake_per_viewer(connections, &room_id, &char.name, |viewer| {
+                    format!(
+                        "{} swings at {} but misses!",
+                        char.name,
+                        mob_display_name_for(viewer, &mobile, true)
+                    )
+                });
             }
             // For single shot, return after miss
             if shots_to_fire == 1 {
@@ -1107,22 +1068,14 @@ fn process_character_attacks_mobile(
         let mut damage = roll_dice(dice_count, dice_sides) + damage_bonus + ammo_bonus + eq_dam_bonus;
 
         // Bless adds (magnitude+1)/2 to damage. Default magnitude=1 → +1.
-        if let Some(bless) = char
-            .active_buffs
-            .iter()
-            .find(|b| b.effect_type == EffectType::Bless)
-        {
+        if let Some(bless) = char.active_buffs.iter().find(|b| b.effect_type == EffectType::Bless) {
             damage += (bless.magnitude + 1) / 2;
         }
 
         // Frenzy adds magnitude to damage. Default magnitude=4 → +4.
         // Berserk strength is the central reason a kindred would *want*
         // to frenzy; flee.rhai also blocks fleeing while frenzying.
-        if let Some(frenzy) = char
-            .active_buffs
-            .iter()
-            .find(|b| b.effect_type == EffectType::Frenzy)
-        {
+        if let Some(frenzy) = char.active_buffs.iter().find(|b| b.effect_type == EffectType::Frenzy) {
             damage += frenzy.magnitude;
         }
 
@@ -1238,11 +1191,7 @@ fn process_character_attacks_mobile(
         // Slice 3c: party kill credit. Track every player that contributed
         // damage so handle_mob_kill can credit each one's quest progress.
         if damage > 0 {
-            *mobile
-                .combat
-                .damaged_by
-                .entry(char.name.to_lowercase())
-                .or_insert(0) += damage;
+            *mobile.combat.damaged_by.entry(char.name.to_lowercase()).or_insert(0) += damage;
         }
         // Magical sleep breaks on any damage taken.
         let was_sleeping = mobile
@@ -1257,28 +1206,19 @@ fn process_character_attacks_mobile(
         // Physical stance wake-on-damage: Sleeping → Sitting (mob fights
         // from sitting next round). Resting CircleMUD imports flow through
         // here too.
-        let was_position_sleeping =
-            mobile.position == ironmud::types::MobilePosition::Sleeping;
+        let was_position_sleeping = mobile.position == ironmud::types::MobilePosition::Sleeping;
         if was_position_sleeping {
             mobile.position = ironmud::types::MobilePosition::Sitting;
         }
         ironmud::script::record_mob_memory(&mut mobile, &char.name);
 
         // Roll on-hit effects from wielded weapon (bleeding/elemental DOTs/status buffs)
-        let on_hit_messages = apply_weapon_on_hit_to_mobile(
-            db,
-            char,
-            &mut mobile,
-            roll_random_body_part(&mut rng).as_str(),
-        );
+        let on_hit_messages =
+            apply_weapon_on_hit_to_mobile(db, char, &mut mobile, roll_random_body_part(&mut rng).as_str());
 
         db.save_mobile_data(mobile.clone())?;
         if was_sleeping {
-            broadcast_to_room_awake(
-                connections,
-                &room_id,
-                &format!("{} jolts awake!", mobile.name),
-            );
+            broadcast_to_room_awake(connections, &room_id, &format!("{} jolts awake!", mobile.name));
         }
         if was_position_sleeping && !was_sleeping {
             broadcast_to_room_awake(
@@ -1313,41 +1253,31 @@ fn process_character_attacks_mobile(
                     projectile, verb, mobile.name, body_part, damage, crit_text
                 ),
             );
-            broadcast_to_room_except_awake_per_viewer(
-                connections,
-                &room_id,
-                &char.name,
-                |viewer| {
-                    format!(
-                        "{}'s {} {} {}'s {} for {} damage!",
-                        char.name,
-                        projectile,
-                        verb,
-                        mob_display_name_for(viewer, &mobile, true),
-                        body_part,
-                        damage
-                    )
-                },
-            );
+            broadcast_to_room_except_awake_per_viewer(connections, &room_id, &char.name, |viewer| {
+                format!(
+                    "{}'s {} {} {}'s {} for {} damage!",
+                    char.name,
+                    projectile,
+                    verb,
+                    mob_display_name_for(viewer, &mobile, true),
+                    body_part,
+                    damage
+                )
+            });
         } else {
             send_message_to_character(
                 connections,
                 &char.name,
                 &format!("You hit {} for {} damage!{}", mobile.name, damage, crit_text),
             );
-            broadcast_to_room_except_awake_per_viewer(
-                connections,
-                &room_id,
-                &char.name,
-                |viewer| {
-                    format!(
-                        "{} hits {} for {} damage!",
-                        char.name,
-                        mob_display_name_for(viewer, &mobile, true),
-                        damage
-                    )
-                },
-            );
+            broadcast_to_room_except_awake_per_viewer(connections, &room_id, &char.name, |viewer| {
+                format!(
+                    "{} hits {} for {} damage!",
+                    char.name,
+                    mob_display_name_for(viewer, &mobile, true),
+                    damage
+                )
+            });
         }
 
         // Broadcast any on-hit effect lines (bleeding/elemental/status)
@@ -1380,7 +1310,10 @@ fn process_character_attacks_mobile(
             // them here would write the award out-of-band, then the caller's
             // wholesale `char` save would clobber it (vanished first-kill
             // achievement). See `MobKill`.
-            *kill_out = Some(MobKill { killed_vnum, damaged_by });
+            *kill_out = Some(MobKill {
+                killed_vnum,
+                damaged_by,
+            });
 
             char.combat.targets.retain(|t| t.target_id != *target_id);
             if char.combat.targets.is_empty() {
@@ -1419,7 +1352,9 @@ fn process_character_attacks_player(
     let target_name = match target.target_name.as_deref() {
         Some(n) => n.to_string(),
         None => {
-            char.combat.targets.retain(|t| t.target_type != CombatTargetType::Player);
+            char.combat
+                .targets
+                .retain(|t| t.target_type != CombatTargetType::Player);
             if char.combat.targets.is_empty() {
                 char.combat.in_combat = false;
             }
@@ -1504,7 +1439,11 @@ fn process_character_attacks_player(
 
     let roll = rng.gen_range(1..=100);
     if !was_sleeping && roll > hit_chance {
-        send_message_to_character(connections, &char.name, &format!("You attack {} but miss!", victim.name));
+        send_message_to_character(
+            connections,
+            &char.name,
+            &format!("You attack {} but miss!", victim.name),
+        );
         let victim_name = victim.name.clone();
         let attacker_name = char.name.clone();
         broadcast_to_room_except_awake_per_viewer(connections, &room_id, &attacker_name, |viewer| {
@@ -1552,7 +1491,11 @@ fn process_character_attacks_player(
         victim.hp = 0;
         victim.is_unconscious = true;
         victim.bleedout_rounds_remaining = 5;
-        send_message_to_character(connections, &char.name, &format!("{} collapses, unconscious!", victim.name));
+        send_message_to_character(
+            connections,
+            &char.name,
+            &format!("{} collapses, unconscious!", victim.name),
+        );
         let victim_name = victim.name.clone();
         let attacker_name = char.name.clone();
         broadcast_to_room_except_awake_per_viewer(connections, &room_id, &attacker_name, |viewer| {
@@ -1571,7 +1514,12 @@ fn process_character_attacks_player(
 
 /// Attempt to have a mobile flee from combat
 /// Returns Some(true) if successfully fled, Some(false) if failed, None if couldn't attempt
-fn attempt_mobile_flee(db: &db::Db, connections: &SharedConnections, mobile: &mut MobileData, state: &SharedState) -> Option<bool> {
+fn attempt_mobile_flee(
+    db: &db::Db,
+    connections: &SharedConnections,
+    mobile: &mut MobileData,
+    state: &SharedState,
+) -> Option<bool> {
     use rand::Rng;
     use rand::seq::SliceRandom;
 
@@ -1764,11 +1712,7 @@ fn process_mobile_combat_round(
         .any(|b| b.effect_type == ironmud::EffectType::Sleep)
     {
         let mobile_name = mobile.name.clone();
-        broadcast_to_room_awake(
-            connections,
-            &room_id,
-            &format!("{} sleeps peacefully.", mobile_name),
-        );
+        broadcast_to_room_awake(connections, &room_id, &format!("{} sleeps peacefully.", mobile_name));
         return Ok(());
     }
 
@@ -1777,11 +1721,7 @@ fn process_mobile_combat_round(
     // them to Sitting before this round runs again.
     if mobile.position == ironmud::types::MobilePosition::Sleeping {
         let mobile_name = mobile.name.clone();
-        broadcast_to_room_awake(
-            connections,
-            &room_id,
-            &format!("{} sleeps soundly.", mobile_name),
-        );
+        broadcast_to_room_awake(connections, &room_id, &format!("{} sleeps soundly.", mobile_name));
         return Ok(());
     }
 
@@ -2154,8 +2094,7 @@ fn process_mobile_attacks_player(
 
     // Calculate hit chance (automatic hit if target was sleeping)
     let (_, _, char_eq_dex_bonus) = sum_combat_buff_bonuses(&char.active_buffs);
-    let (mob_eq_hit_bonus, mob_eq_dam_bonus, mob_eq_dex_bonus) =
-        sum_combat_buff_bonuses(&mobile.active_buffs);
+    let (mob_eq_hit_bonus, mob_eq_dam_bonus, mob_eq_dex_bonus) = sum_combat_buff_bonuses(&mobile.active_buffs);
     let attacker_dex_mod = (mobile.stat_dex as i32 + mob_eq_dex_bonus - 10) / 2;
     let target_dex_mod = (char.stat_dex as i32 + char_eq_dex_bonus - 10) / 2;
     // Calculate player AC from armor + ArmorClassBoost buffs
@@ -2168,7 +2107,8 @@ fn process_mobile_attacks_player(
     let target_ac = ac_buff_bonus;
     let skill = mobile.hit_modifier; // Mobile skill level based on difficulty
 
-    let mut hit_chance = (50 + skill * 5 + attacker_dex_mod - target_dex_mod - target_ac + mob_eq_hit_bonus).clamp(5, 95);
+    let mut hit_chance =
+        (50 + skill * 5 + attacker_dex_mod - target_dex_mod - target_ac + mob_eq_hit_bonus).clamp(5, 95);
 
     // Invisible-target penalty: -30 to-hit when the mobile can't see
     // its target (PC has Invisibility and the mob lacks DetectInvisible
@@ -2201,42 +2141,22 @@ fn process_mobile_attacks_player(
     }
 
     // Blind buff slashes mob accuracy too. Magnitude is the percentage points to subtract.
-    if let Some(blind) = mobile
-        .active_buffs
-        .iter()
-        .find(|b| b.effect_type == EffectType::Blind)
-    {
+    if let Some(blind) = mobile.active_buffs.iter().find(|b| b.effect_type == EffectType::Blind) {
         hit_chance = (hit_chance - blind.magnitude).clamp(5, 95);
     }
 
-    if let Some(curse) = mobile
-        .active_buffs
-        .iter()
-        .find(|b| b.effect_type == EffectType::Curse)
-    {
+    if let Some(curse) = mobile.active_buffs.iter().find(|b| b.effect_type == EffectType::Curse) {
         hit_chance = (hit_chance - curse.magnitude).clamp(5, 95);
     }
 
-    if let Some(bless) = mobile
-        .active_buffs
-        .iter()
-        .find(|b| b.effect_type == EffectType::Bless)
-    {
+    if let Some(bless) = mobile.active_buffs.iter().find(|b| b.effect_type == EffectType::Bless) {
         hit_chance = (hit_chance + bless.magnitude * 3).clamp(5, 95);
     }
 
-    if let Some(haste) = mobile
-        .active_buffs
-        .iter()
-        .find(|b| b.effect_type == EffectType::Haste)
-    {
+    if let Some(haste) = mobile.active_buffs.iter().find(|b| b.effect_type == EffectType::Haste) {
         hit_chance = (hit_chance + haste.magnitude * 2).clamp(5, 95);
     }
-    if let Some(slow) = mobile
-        .active_buffs
-        .iter()
-        .find(|b| b.effect_type == EffectType::Slow)
-    {
+    if let Some(slow) = mobile.active_buffs.iter().find(|b| b.effect_type == EffectType::Slow) {
         hit_chance = (hit_chance - slow.magnitude * 2).clamp(5, 95);
     }
 
@@ -2252,30 +2172,21 @@ fn process_mobile_attacks_player(
             player_name,
             &format!("{} {} you but misses!", target_attacker_name, miss_verb),
         );
-        broadcast_to_room_except_awake_per_viewer(
-            connections,
-            room_id,
-            player_name,
-            |viewer| {
-                format!(
-                    "{} {} {} but misses!",
-                    mob_display_name_for(viewer, mobile, false),
-                    miss_verb,
-                    char.name
-                )
-            },
-        );
+        broadcast_to_room_except_awake_per_viewer(connections, room_id, player_name, |viewer| {
+            format!(
+                "{} {} {} but misses!",
+                mob_display_name_for(viewer, mobile, false),
+                miss_verb,
+                char.name
+            )
+        });
         return Ok(());
     }
 
     // Hit - calculate damage (includes APPLY_DAMROLL bonuses from equipped items)
     let mut damage = roll_dice(count, sides) + bonus + mob_eq_dam_bonus;
 
-    if let Some(bless) = mobile
-        .active_buffs
-        .iter()
-        .find(|b| b.effect_type == EffectType::Bless)
-    {
+    if let Some(bless) = mobile.active_buffs.iter().find(|b| b.effect_type == EffectType::Bless) {
         damage += (bless.magnitude + 1) / 2;
     }
 
@@ -2494,20 +2405,15 @@ fn process_mobile_attacks_player(
             target_attacker_name, hit_verb, damage, crit_text
         ),
     );
-    broadcast_to_room_except_awake_per_viewer(
-        connections,
-        room_id,
-        player_name,
-        |viewer| {
-            format!(
-                "{} {} {} for {} damage!",
-                mob_display_name_for(viewer, mobile, false),
-                hit_verb,
-                char.name,
-                damage
-            )
-        },
-    );
+    broadcast_to_room_except_awake_per_viewer(connections, room_id, player_name, |viewer| {
+        format!(
+            "{} {} {} for {} damage!",
+            mob_display_name_for(viewer, mobile, false),
+            hit_verb,
+            char.name,
+            damage
+        )
+    });
 
     // Broadcast on-hit effect lines (bleeding/elemental/status from mobile.on_hit_effects)
     for line in &mob_on_hit_messages {
@@ -2605,7 +2511,10 @@ fn mob_cast_spell_at_player(
     send_message_to_character(
         connections,
         player_name,
-        &format!("\x1b[1;35m{} chants softly, weaving a spell at you!\x1b[0m", mobile.name),
+        &format!(
+            "\x1b[1;35m{} chants softly, weaving a spell at you!\x1b[0m",
+            mobile.name
+        ),
     );
     broadcast_to_room_except_awake(
         connections,
@@ -2651,8 +2560,7 @@ fn mob_cast_spell_at_player(
                     .active_buffs
                     .iter()
                     .filter(|b| {
-                        b.effect_type == ironmud::EffectType::DamageResistance
-                            && b.damage_type == Some(damage_type)
+                        b.effect_type == ironmud::EffectType::DamageResistance && b.damage_type == Some(damage_type)
                     })
                     .map(|b| b.magnitude)
                     .sum();
@@ -2776,10 +2684,7 @@ fn mob_cast_spell_at_player(
             send_message_to_character(
                 connections,
                 player_name,
-                &format!(
-                    "\x1b[1;35m{}'s {} washes over you!\x1b[0m",
-                    mobile.name, spell.name
-                ),
+                &format!("\x1b[1;35m{}'s {} washes over you!\x1b[0m", mobile.name, spell.name),
             );
             broadcast_to_room_except_awake(
                 connections,
@@ -3438,9 +3343,7 @@ pub fn process_player_death(
     char.gold = 0;
 
     // Respawn character
-    let spawn_room = char
-        .spawn_room_id
-        .unwrap_or_else(|| db.resolve_starting_room_id());
+    let spawn_room = char.spawn_room_id.unwrap_or_else(|| db.resolve_starting_room_id());
 
     char.current_room_id = spawn_room;
     char.hp = char.max_hp / 4;
@@ -3506,10 +3409,7 @@ pub fn process_mobile_death(
             send_message_to_character(
                 connections,
                 owner,
-                &format!(
-                    "\x1b[1;31mYou feel a chill — {} has died.\x1b[0m",
-                    mobile_display
-                ),
+                &format!("\x1b[1;31mYou feel a chill — {} has died.\x1b[0m", mobile_display),
             );
         }
     }

@@ -6,8 +6,8 @@
 use ironmud::db::Db;
 use ironmud::script::{roll_status_application, status_resistance_total};
 use ironmud::types::{ActiveBuff, CharacterData, DamageType, EffectType, ItemAffect, ItemData, MobileData};
-use rand::rngs::StdRng;
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 
 fn fresh_db(tag: &str) -> (Db, tempfile::TempDir) {
     let temp = tempfile::tempdir().expect("create temp dir");
@@ -226,7 +226,11 @@ fn migration_promotes_legacy_fields() {
     // Second run should be a no-op (idempotency guard via setting key).
     db.migrate_item_legacy_bonuses_to_affects().unwrap();
     let unchanged = db.get_item_data(&item.id).unwrap().unwrap();
-    assert_eq!(unchanged.affects.len(), migrated.affects.len(), "second migration is no-op");
+    assert_eq!(
+        unchanged.affects.len(),
+        migrated.affects.len(),
+        "second migration is no-op"
+    );
 }
 
 #[test]
@@ -304,10 +308,7 @@ fn status_resistance_clamps_to_window() {
         }
     }
     // 80 - 100 = -20, clamps to 5%. Expect ~100 hits over 2000 rolls.
-    assert!(
-        hits > 30 && hits < 200,
-        "expected ~5% floor (≈100/2000), got {hits}"
-    );
+    assert!(hits > 30 && hits < 200, "expected ~5% floor (≈100/2000), got {hits}");
 }
 
 #[test]
@@ -368,7 +369,10 @@ fn delete_item_strips_equipped_buffs() {
 
     let after = db.get_character_data(&char.name).unwrap().unwrap();
     assert!(
-        !after.active_buffs.iter().any(|b| b.source == format!("item:{}", item_id)),
+        !after
+            .active_buffs
+            .iter()
+            .any(|b| b.source == format!("item:{}", item_id)),
         "destroyed equipped item must leave no orphan buffs"
     );
 }

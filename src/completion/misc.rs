@@ -91,7 +91,11 @@ pub(super) fn complete_press(words: &[&str], completing_word: bool) -> Completio
 }
 
 /// Context-aware completion for pedit command
-pub(super) fn complete_pedit(words: &[&str], completing_word: bool, property_template_vnums: &[String]) -> CompletionResult {
+pub(super) fn complete_pedit(
+    words: &[&str],
+    completing_word: bool,
+    property_template_vnums: &[String],
+) -> CompletionResult {
     let partial = get_partial(words, completing_word);
 
     match words.len() {

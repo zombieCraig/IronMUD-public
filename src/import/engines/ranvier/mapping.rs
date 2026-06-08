@@ -100,15 +100,15 @@ fn default_behavior_table() -> BehaviorMapping {
     behaviors.insert(
         "ranvier-wander".to_string(),
         BehaviorAction::Info {
-            message: Some(
-                "wander interval/restrictTo not preserved; IronMUD wander is area-scoped".to_string(),
-            ),
+            message: Some("wander interval/restrictTo not preserved; IronMUD wander is area-scoped".to_string()),
         },
     );
     behaviors.insert(
         "lootable".to_string(),
         BehaviorAction::Info {
-            message: Some("lootable currencies/pools handled inline; behavior entry itself is informational".to_string()),
+            message: Some(
+                "lootable currencies/pools handled inline; behavior entry itself is informational".to_string(),
+            ),
         },
     );
     behaviors.insert(
@@ -270,7 +270,9 @@ fn emit_area(
             WarningKind::PrefixCollision,
             Severity::Warn,
             SourceLoc::file(&area.source_dir),
-            format!("area prefix '{prefix}' already exists in target DB; rooms/items will upsert into the existing area"),
+            format!(
+                "area prefix '{prefix}' already exists in target DB; rooms/items will upsert into the existing area"
+            ),
         ));
     }
 
@@ -295,7 +297,10 @@ fn emit_area(
                 WarningKind::DuplicateVnum,
                 Severity::Block,
                 SourceLoc::file(&area.source_dir),
-                format!("room sub-range exhausted for area '{}': skipping room {}", area.name, room.id),
+                format!(
+                    "room sub-range exhausted for area '{}': skipping room {}",
+                    area.name, room.id
+                ),
             ));
             continue;
         };
@@ -308,7 +313,10 @@ fn emit_area(
                 WarningKind::DuplicateVnum,
                 Severity::Block,
                 SourceLoc::file(&area.source_dir),
-                format!("mobile sub-range exhausted for area '{}': skipping npc {}", area.name, npc.id),
+                format!(
+                    "mobile sub-range exhausted for area '{}': skipping npc {}",
+                    area.name, npc.id
+                ),
             ));
             continue;
         };
@@ -321,7 +329,10 @@ fn emit_area(
                 WarningKind::DuplicateVnum,
                 Severity::Block,
                 SourceLoc::file(&area.source_dir),
-                format!("item sub-range exhausted for area '{}': skipping item {}", area.name, item.id),
+                format!(
+                    "item sub-range exhausted for area '{}': skipping item {}",
+                    area.name, item.id
+                ),
             ));
             continue;
         };
@@ -353,14 +364,7 @@ fn emit_area(
                 format!("room {vnum} already present; will be overwritten"),
             ));
         }
-        emit_room(
-            room,
-            &prefix,
-            vnum_int,
-            &vnum,
-            &area.source_dir,
-            plan,
-        );
+        emit_room(room, &prefix, vnum_int, &vnum, &area.source_dir, plan);
         // Embedded npc spawns
         for spawn_ref in &room.npcs {
             emit_spawn(
@@ -419,7 +423,10 @@ fn emit_area(
                     WarningKind::DanglingExit,
                     Severity::Warn,
                     SourceLoc::file(&area.source_dir),
-                    format!("exit {} -> {} from room {} unresolved", ex.direction, ex.room_id, room.id),
+                    format!(
+                        "exit {} -> {} from room {} unresolved",
+                        ex.direction, ex.room_id, room.id
+                    ),
                 )),
             }
         }
@@ -487,14 +494,7 @@ fn emit_area(
 
 // ================================ Rooms ====================================
 
-fn emit_room(
-    room: &IrRoom,
-    prefix: &str,
-    source_vnum: i32,
-    vnum: &str,
-    source_dir: &std::path::Path,
-    plan: &mut Plan,
-) {
+fn emit_room(room: &IrRoom, prefix: &str, source_vnum: i32, vnum: &str, source_dir: &std::path::Path, plan: &mut Plan) {
     let mut flags = RoomFlags::default();
     // Ranvier doesn't carry IronMUD-style RoomFlags; rooms come in plain.
     let _ = &mut flags;
@@ -683,14 +683,8 @@ fn emit_mobile(
                         None => continue,
                     };
                     if name.eq_ignore_ascii_case("gold") {
-                        let max = cmap
-                            .get("max")
-                            .and_then(|v| v.as_i64())
-                            .unwrap_or(0) as i32;
-                        let min = cmap
-                            .get("min")
-                            .and_then(|v| v.as_i64())
-                            .unwrap_or(0) as i32;
+                        let max = cmap.get("max").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
+                        let min = cmap.get("min").and_then(|v| v.as_i64()).unwrap_or(0) as i32;
                         // Take midpoint as the prototype's representative gold.
                         gold = (min + max) / 2;
                     } else {
@@ -758,7 +752,11 @@ fn emit_mobile(
             WarningKind::DeferredFeature,
             Severity::Info,
             SourceLoc::file(source_dir),
-            format!("npc '{}' has JS script reference: {} (skipped)", npc.id, npc.script.as_deref().unwrap_or("")),
+            format!(
+                "npc '{}' has JS script reference: {} (skipped)",
+                npc.id,
+                npc.script.as_deref().unwrap_or("")
+            ),
         ));
     }
 
@@ -857,14 +855,22 @@ fn emit_item(
     warnings: &mut Vec<Warning>,
 ) {
     let mut data = ItemData::new(
-        if item.name.is_empty() { capitalize(&item.id) } else { item.name.clone() },
+        if item.name.is_empty() {
+            capitalize(&item.id)
+        } else {
+            item.name.clone()
+        },
         item.room_desc.clone(),
         item.description.clone(),
     );
     data.id = Uuid::new_v4();
     data.is_prototype = true;
     data.vnum = Some(vnum.to_string());
-    data.keywords = if item.keywords.is_empty() { vec![item.id.clone()] } else { item.keywords.clone() };
+    data.keywords = if item.keywords.is_empty() {
+        vec![item.id.clone()]
+    } else {
+        item.keywords.clone()
+    };
 
     // Item type
     if let Some(t) = &item.item_type {
@@ -910,7 +916,8 @@ fn emit_item(
                 SourceLoc::file(source_dir),
                 format!(
                     "container '{}' has {} starting items; attach to room spawn dependencies manually for now",
-                    item.id, item.items.len()
+                    item.id,
+                    item.items.len()
                 ),
             ));
         }
@@ -1014,7 +1021,10 @@ fn emit_item(
             WarningKind::UnsupportedValueSemantic,
             Severity::Warn,
             SourceLoc::file(source_dir),
-            format!("metadata.usable on '{}' not modeled (potion/scroll spell binding deferred)", item.id),
+            format!(
+                "metadata.usable on '{}' not modeled (potion/scroll spell binding deferred)",
+                item.id
+            ),
         ));
     }
 
@@ -1056,11 +1066,14 @@ fn emit_quest(
     quest_data.repeatable = quest.repeatable;
 
     for goal in &quest.goals {
-        let kind = quest_goal_table().goals.get(&goal.goal_type).copied().unwrap_or(GoalKind::Warn);
+        let kind = quest_goal_table()
+            .goals
+            .get(&goal.goal_type)
+            .copied()
+            .unwrap_or(GoalKind::Warn);
         match kind {
             GoalKind::KillMob => {
-                let target = lookup_yaml_str(&goal.config, "npc")
-                    .or_else(|| lookup_yaml_str(&goal.config, "mob"));
+                let target = lookup_yaml_str(&goal.config, "npc").or_else(|| lookup_yaml_str(&goal.config, "mob"));
                 let count = lookup_yaml_i64(&goal.config, "count").unwrap_or(1) as i32;
                 if let Some(npc_id) = target {
                     let (a, bare) = parse_scoped_id(npc_id, &area.name);
@@ -1110,7 +1123,11 @@ fn emit_quest(
     }
 
     for reward in &quest.rewards {
-        let kind = quest_goal_table().rewards.get(&reward.reward_type).copied().unwrap_or(RewardKind::Warn);
+        let kind = quest_goal_table()
+            .rewards
+            .get(&reward.reward_type)
+            .copied()
+            .unwrap_or(RewardKind::Warn);
         match kind {
             RewardKind::Gold => {
                 let amount = lookup_yaml_i64(&reward.config, "amount").unwrap_or(0);
@@ -1122,10 +1139,7 @@ fn emit_quest(
                         WarningKind::UnsupportedFlag,
                         Severity::Warn,
                         SourceLoc::file(&area.source_dir),
-                        format!(
-                            "quest '{}' currency '{currency}' not gold; reward skipped",
-                            quest.id
-                        ),
+                        format!("quest '{}' currency '{currency}' not gold; reward skipped", quest.id),
                     ));
                 }
             }
@@ -1163,7 +1177,10 @@ fn parse_scoped_id(scoped: &str, default_area: &str) -> (String, String) {
 }
 
 fn strip_area_prefix(scoped: &str) -> String {
-    scoped.split_once(':').map(|(_, b)| b.to_string()).unwrap_or_else(|| scoped.to_string())
+    scoped
+        .split_once(':')
+        .map(|(_, b)| b.to_string())
+        .unwrap_or_else(|| scoped.to_string())
 }
 
 fn capitalize(s: &str) -> String {
@@ -1175,7 +1192,8 @@ fn capitalize(s: &str) -> String {
 }
 
 fn lookup_metadata<'a>(v: &'a serde_yaml::Value, key: &str) -> Option<&'a serde_yaml::Value> {
-    v.as_mapping().and_then(|m| m.get(serde_yaml::Value::String(key.to_string())))
+    v.as_mapping()
+        .and_then(|m| m.get(serde_yaml::Value::String(key.to_string())))
 }
 
 fn lookup_metadata_i64(v: &serde_yaml::Value, key: &str) -> Option<i64> {
@@ -1205,4 +1223,3 @@ fn lookup_yaml_str<'a>(v: &'a serde_yaml::Value, key: &str) -> Option<&'a str> {
 fn lookup_yaml_i64(v: &serde_yaml::Value, key: &str) -> Option<i64> {
     lookup_metadata_i64(v, key)
 }
-

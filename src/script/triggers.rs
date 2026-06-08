@@ -1573,60 +1573,50 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 // global blizzard text.
                 let db_for_local = cloned_db.clone();
                 let conns_for_local = cloned_conns.clone();
-                trigger_engine.register_fn(
-                    "get_local_game_time",
-                    move |connection_id: String| -> rhai::Dynamic {
-                        let conn_uuid = match uuid::Uuid::parse_str(&connection_id) {
-                            Ok(u) => u,
+                trigger_engine.register_fn("get_local_game_time", move |connection_id: String| -> rhai::Dynamic {
+                    let conn_uuid = match uuid::Uuid::parse_str(&connection_id) {
+                        Ok(u) => u,
+                        Err(_) => return rhai::Dynamic::UNIT,
+                    };
+                    let room_id = {
+                        let conns_guard = match conns_for_local.lock() {
+                            Ok(g) => g,
                             Err(_) => return rhai::Dynamic::UNIT,
                         };
-                        let room_id = {
-                            let conns_guard = match conns_for_local.lock() {
-                                Ok(g) => g,
-                                Err(_) => return rhai::Dynamic::UNIT,
-                            };
-                            match conns_guard.get(&conn_uuid).and_then(|s| s.character.as_ref()) {
-                                Some(c) => c.current_room_id,
-                                None => return rhai::Dynamic::UNIT,
-                            }
-                        };
-                        let climate = match db_for_local.get_room_data(&room_id) {
-                            Ok(Some(room)) => db_for_local.room_climate(&room),
-                            _ => crate::types::ClimateProfile::default(),
-                        };
-                        match db_for_local.get_game_time() {
-                            Ok(gt) => rhai::Dynamic::from(
-                                crate::script::characters::build_game_time_map(&gt, climate),
-                            ),
-                            Err(_) => rhai::Dynamic::UNIT,
+                        match conns_guard.get(&conn_uuid).and_then(|s| s.character.as_ref()) {
+                            Some(c) => c.current_room_id,
+                            None => return rhai::Dynamic::UNIT,
                         }
-                    },
-                );
+                    };
+                    let climate = match db_for_local.get_room_data(&room_id) {
+                        Ok(Some(room)) => db_for_local.room_climate(&room),
+                        _ => crate::types::ClimateProfile::default(),
+                    };
+                    match db_for_local.get_game_time() {
+                        Ok(gt) => rhai::Dynamic::from(crate::script::characters::build_game_time_map(&gt, climate)),
+                        Err(_) => rhai::Dynamic::UNIT,
+                    }
+                });
 
                 // get_room_game_time(room_id): same map shape, projected
                 // through the given room's area climate. Use from
                 // environmental triggers (on_weather_change, on_time_change)
                 // where a room_id is in scope but no specific player is.
                 let db_for_room = cloned_db.clone();
-                trigger_engine.register_fn(
-                    "get_room_game_time",
-                    move |room_id: String| -> rhai::Dynamic {
-                        let room_uuid = match uuid::Uuid::parse_str(&room_id) {
-                            Ok(u) => u,
-                            Err(_) => return rhai::Dynamic::UNIT,
-                        };
-                        let climate = match db_for_room.get_room_data(&room_uuid) {
-                            Ok(Some(room)) => db_for_room.room_climate(&room),
-                            _ => crate::types::ClimateProfile::default(),
-                        };
-                        match db_for_room.get_game_time() {
-                            Ok(gt) => rhai::Dynamic::from(
-                                crate::script::characters::build_game_time_map(&gt, climate),
-                            ),
-                            Err(_) => rhai::Dynamic::UNIT,
-                        }
-                    },
-                );
+                trigger_engine.register_fn("get_room_game_time", move |room_id: String| -> rhai::Dynamic {
+                    let room_uuid = match uuid::Uuid::parse_str(&room_id) {
+                        Ok(u) => u,
+                        Err(_) => return rhai::Dynamic::UNIT,
+                    };
+                    let climate = match db_for_room.get_room_data(&room_uuid) {
+                        Ok(Some(room)) => db_for_room.room_climate(&room),
+                        _ => crate::types::ClimateProfile::default(),
+                    };
+                    match db_for_room.get_game_time() {
+                        Ok(gt) => rhai::Dynamic::from(crate::script::characters::build_game_time_map(&gt, climate)),
+                        Err(_) => rhai::Dynamic::UNIT,
+                    }
+                });
 
                 // Register get_character_thirst for trigger scripts
                 let conns_for_thirst = cloned_conns.clone();
@@ -2421,25 +2411,46 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_mobile_trigger_dg_body(mobile_id, index) -> body string ("" when none).
     let cloned_db = db.clone();
     engine.register_fn("get_mobile_trigger_dg_body", move |id: String, index: i64| {
-        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        let uid = match uuid::Uuid::parse_str(&id) {
+            Ok(u) => u,
+            Err(_) => return String::new(),
+        };
         match cloned_db.get_mobile_data(&uid) {
-            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.dg_body.clone()).unwrap_or_default(),
+            Ok(Some(host)) => host
+                .triggers
+                .get(index as usize)
+                .and_then(|t| t.dg_body.clone())
+                .unwrap_or_default(),
             _ => String::new(),
         }
     });
     let cloned_db = db.clone();
     engine.register_fn("get_item_trigger_dg_body", move |id: String, index: i64| {
-        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        let uid = match uuid::Uuid::parse_str(&id) {
+            Ok(u) => u,
+            Err(_) => return String::new(),
+        };
         match cloned_db.get_item_data(&uid) {
-            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.dg_body.clone()).unwrap_or_default(),
+            Ok(Some(host)) => host
+                .triggers
+                .get(index as usize)
+                .and_then(|t| t.dg_body.clone())
+                .unwrap_or_default(),
             _ => String::new(),
         }
     });
     let cloned_db = db.clone();
     engine.register_fn("get_room_trigger_dg_body", move |id: String, index: i64| {
-        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        let uid = match uuid::Uuid::parse_str(&id) {
+            Ok(u) => u,
+            Err(_) => return String::new(),
+        };
         match cloned_db.get_room_data(&uid) {
-            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.dg_body.clone()).unwrap_or_default(),
+            Ok(Some(host)) => host
+                .triggers
+                .get(index as usize)
+                .and_then(|t| t.dg_body.clone())
+                .unwrap_or_default(),
             _ => String::new(),
         }
     });
@@ -2447,25 +2458,46 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_*_trigger_dg_name -> human-readable name (used in `trigger dg list`).
     let cloned_db = db.clone();
     engine.register_fn("get_mobile_trigger_dg_name", move |id: String, index: i64| {
-        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        let uid = match uuid::Uuid::parse_str(&id) {
+            Ok(u) => u,
+            Err(_) => return String::new(),
+        };
         match cloned_db.get_mobile_data(&uid) {
-            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.dg_name.clone()).unwrap_or_default(),
+            Ok(Some(host)) => host
+                .triggers
+                .get(index as usize)
+                .and_then(|t| t.dg_name.clone())
+                .unwrap_or_default(),
             _ => String::new(),
         }
     });
     let cloned_db = db.clone();
     engine.register_fn("get_item_trigger_dg_name", move |id: String, index: i64| {
-        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        let uid = match uuid::Uuid::parse_str(&id) {
+            Ok(u) => u,
+            Err(_) => return String::new(),
+        };
         match cloned_db.get_item_data(&uid) {
-            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.dg_name.clone()).unwrap_or_default(),
+            Ok(Some(host)) => host
+                .triggers
+                .get(index as usize)
+                .and_then(|t| t.dg_name.clone())
+                .unwrap_or_default(),
             _ => String::new(),
         }
     });
     let cloned_db = db.clone();
     engine.register_fn("get_room_trigger_dg_name", move |id: String, index: i64| {
-        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        let uid = match uuid::Uuid::parse_str(&id) {
+            Ok(u) => u,
+            Err(_) => return String::new(),
+        };
         match cloned_db.get_room_data(&uid) {
-            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.dg_name.clone()).unwrap_or_default(),
+            Ok(Some(host)) => host
+                .triggers
+                .get(index as usize)
+                .and_then(|t| t.dg_name.clone())
+                .unwrap_or_default(),
             _ => String::new(),
         }
     });
@@ -2473,25 +2505,46 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_*_trigger_authored_by(host_id, index) -> author name ("" when None).
     let cloned_db = db.clone();
     engine.register_fn("get_mobile_trigger_authored_by", move |id: String, index: i64| {
-        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        let uid = match uuid::Uuid::parse_str(&id) {
+            Ok(u) => u,
+            Err(_) => return String::new(),
+        };
         match cloned_db.get_mobile_data(&uid) {
-            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.authored_by.clone()).unwrap_or_default(),
+            Ok(Some(host)) => host
+                .triggers
+                .get(index as usize)
+                .and_then(|t| t.authored_by.clone())
+                .unwrap_or_default(),
             _ => String::new(),
         }
     });
     let cloned_db = db.clone();
     engine.register_fn("get_item_trigger_authored_by", move |id: String, index: i64| {
-        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        let uid = match uuid::Uuid::parse_str(&id) {
+            Ok(u) => u,
+            Err(_) => return String::new(),
+        };
         match cloned_db.get_item_data(&uid) {
-            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.authored_by.clone()).unwrap_or_default(),
+            Ok(Some(host)) => host
+                .triggers
+                .get(index as usize)
+                .and_then(|t| t.authored_by.clone())
+                .unwrap_or_default(),
             _ => String::new(),
         }
     });
     let cloned_db = db.clone();
     engine.register_fn("get_room_trigger_authored_by", move |id: String, index: i64| {
-        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return String::new() };
+        let uid = match uuid::Uuid::parse_str(&id) {
+            Ok(u) => u,
+            Err(_) => return String::new(),
+        };
         match cloned_db.get_room_data(&uid) {
-            Ok(Some(host)) => host.triggers.get(index as usize).and_then(|t| t.authored_by.clone()).unwrap_or_default(),
+            Ok(Some(host)) => host
+                .triggers
+                .get(index as usize)
+                .and_then(|t| t.authored_by.clone())
+                .unwrap_or_default(),
             _ => String::new(),
         }
     });
@@ -2501,7 +2554,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // DG opcodes (force/at/purge/load/teleport).
     let cloned_db = db.clone();
     engine.register_fn("get_mobile_trigger_elevated", move |id: String, index: i64| -> bool {
-        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return false };
+        let uid = match uuid::Uuid::parse_str(&id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
         match cloned_db.get_mobile_data(&uid) {
             Ok(Some(host)) => host.triggers.get(index as usize).map(|t| t.elevated).unwrap_or(false),
             _ => false,
@@ -2509,7 +2565,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     });
     let cloned_db = db.clone();
     engine.register_fn("get_item_trigger_elevated", move |id: String, index: i64| -> bool {
-        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return false };
+        let uid = match uuid::Uuid::parse_str(&id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
         match cloned_db.get_item_data(&uid) {
             Ok(Some(host)) => host.triggers.get(index as usize).map(|t| t.elevated).unwrap_or(false),
             _ => false,
@@ -2517,7 +2576,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     });
     let cloned_db = db.clone();
     engine.register_fn("get_room_trigger_elevated", move |id: String, index: i64| -> bool {
-        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return false };
+        let uid = match uuid::Uuid::parse_str(&id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
         match cloned_db.get_room_data(&uid) {
             Ok(Some(host)) => host.triggers.get(index as usize).map(|t| t.elevated).unwrap_or(false),
             _ => false,
@@ -2529,41 +2591,59 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // the field. The `trigger dg elevate` subcommand checks `is_admin`
     // before invoking these.
     let cloned_db = db.clone();
-    engine.register_fn("set_mobile_trigger_elevated", move |id: String, index: i64, on: bool| -> bool {
-        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return false };
-        let mut ok = false;
-        let _ = cloned_db.update_mobile(&uid, |m| {
-            if let Some(t) = m.triggers.get_mut(index as usize) {
-                t.elevated = on;
-                ok = true;
-            }
-        });
-        ok
-    });
+    engine.register_fn(
+        "set_mobile_trigger_elevated",
+        move |id: String, index: i64, on: bool| -> bool {
+            let uid = match uuid::Uuid::parse_str(&id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let mut ok = false;
+            let _ = cloned_db.update_mobile(&uid, |m| {
+                if let Some(t) = m.triggers.get_mut(index as usize) {
+                    t.elevated = on;
+                    ok = true;
+                }
+            });
+            ok
+        },
+    );
     let cloned_db = db.clone();
-    engine.register_fn("set_item_trigger_elevated", move |id: String, index: i64, on: bool| -> bool {
-        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return false };
-        let mut ok = false;
-        let _ = cloned_db.update_item(&uid, |it| {
-            if let Some(t) = it.triggers.get_mut(index as usize) {
-                t.elevated = on;
-                ok = true;
-            }
-        });
-        ok
-    });
+    engine.register_fn(
+        "set_item_trigger_elevated",
+        move |id: String, index: i64, on: bool| -> bool {
+            let uid = match uuid::Uuid::parse_str(&id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let mut ok = false;
+            let _ = cloned_db.update_item(&uid, |it| {
+                if let Some(t) = it.triggers.get_mut(index as usize) {
+                    t.elevated = on;
+                    ok = true;
+                }
+            });
+            ok
+        },
+    );
     let cloned_db = db.clone();
-    engine.register_fn("set_room_trigger_elevated", move |id: String, index: i64, on: bool| -> bool {
-        let uid = match uuid::Uuid::parse_str(&id) { Ok(u) => u, Err(_) => return false };
-        let mut ok = false;
-        let _ = cloned_db.update_room(&uid, |r| {
-            if let Some(t) = r.triggers.get_mut(index as usize) {
-                t.elevated = on;
-                ok = true;
-            }
-        });
-        ok
-    });
+    engine.register_fn(
+        "set_room_trigger_elevated",
+        move |id: String, index: i64, on: bool| -> bool {
+            let uid = match uuid::Uuid::parse_str(&id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let mut ok = false;
+            let _ = cloned_db.update_room(&uid, |r| {
+                if let Some(t) = r.triggers.get_mut(index as usize) {
+                    t.elevated = on;
+                    ok = true;
+                }
+            });
+            ok
+        },
+    );
 
     // Append a new dg-bodied trigger and return its index (-1 on failure).
     let cloned_db = db.clone();
@@ -2687,7 +2767,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     return;
                 };
                 if t.dg_body.is_none() {
-                    err = "trigger at that index has no DG body (use trigger remove + re-add for template triggers)".to_string();
+                    err = "trigger at that index has no DG body (use trigger remove + re-add for template triggers)"
+                        .to_string();
                     return;
                 }
                 if let Some(proto) = &t.source_proto_vnum {
@@ -2721,7 +2802,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     return;
                 };
                 if t.dg_body.is_none() {
-                    err = "trigger at that index has no DG body (use trigger remove + re-add for template triggers)".to_string();
+                    err = "trigger at that index has no DG body (use trigger remove + re-add for template triggers)"
+                        .to_string();
                     return;
                 }
                 if let Some(proto) = &t.source_proto_vnum {
@@ -2755,7 +2837,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     return;
                 };
                 if t.dg_body.is_none() {
-                    err = "trigger at that index has no DG body (use trigger remove + re-add for template triggers)".to_string();
+                    err = "trigger at that index has no DG body (use trigger remove + re-add for template triggers)"
+                        .to_string();
                     return;
                 }
                 if let Some(proto) = &t.source_proto_vnum {
@@ -2776,48 +2859,45 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // pushes a fully-bodied trigger onto the target's triggers list.
     let cloned_db = db.clone();
     let cloned_conns = connections.clone();
-    engine.register_fn(
-        "attach_dg_trigger_proto",
-        move |target_id: String, vnum: String| {
-            let uid = match uuid::Uuid::parse_str(&target_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            // Build a minimal EvalCtx — host kind comes from the proto.
-            let proto = match cloned_db.get_dg_trigger_proto(vnum.trim()) {
-                Ok(Some(p)) => p,
-                _ => return false,
-            };
-            let (kind, name) = (proto.attach_kind, target_id.clone());
-            let self_kind = match kind {
-                crate::types::DgAttachKind::Mob => crate::script::dg::SelfKind::Mob,
-                crate::types::DgAttachKind::Obj => crate::script::dg::SelfKind::Obj,
-                crate::types::DgAttachKind::Room => crate::script::dg::SelfKind::Room,
-            };
-            let ctx = crate::script::dg::EvalCtx {
-                db: cloned_db.clone(),
-                connections: cloned_conns.clone(),
-                self_kind,
-                self_id: uid,
-                self_name: String::new(),
-                self_vnum: String::new(),
-                self_room: None,
-                actor: None,
-                victim: None,
-                arg: String::new(),
-                cmd: String::new(),
-                cmd_canonical: String::new(),
-                context_vars: std::collections::HashMap::new(),
-                authored_by: None,
-                elevated: false,
-                #[cfg(test)]
-                test_temp_dir: None,
-            };
-            let _ = name;
-            crate::script::dg::cmds::attach_trigger_proto(&proto.vnum, &uid.to_string(), &ctx);
-            true
-        },
-    );
+    engine.register_fn("attach_dg_trigger_proto", move |target_id: String, vnum: String| {
+        let uid = match uuid::Uuid::parse_str(&target_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        // Build a minimal EvalCtx — host kind comes from the proto.
+        let proto = match cloned_db.get_dg_trigger_proto(vnum.trim()) {
+            Ok(Some(p)) => p,
+            _ => return false,
+        };
+        let (kind, name) = (proto.attach_kind, target_id.clone());
+        let self_kind = match kind {
+            crate::types::DgAttachKind::Mob => crate::script::dg::SelfKind::Mob,
+            crate::types::DgAttachKind::Obj => crate::script::dg::SelfKind::Obj,
+            crate::types::DgAttachKind::Room => crate::script::dg::SelfKind::Room,
+        };
+        let ctx = crate::script::dg::EvalCtx {
+            db: cloned_db.clone(),
+            connections: cloned_conns.clone(),
+            self_kind,
+            self_id: uid,
+            self_name: String::new(),
+            self_vnum: String::new(),
+            self_room: None,
+            actor: None,
+            victim: None,
+            arg: String::new(),
+            cmd: String::new(),
+            cmd_canonical: String::new(),
+            context_vars: std::collections::HashMap::new(),
+            authored_by: None,
+            elevated: false,
+            #[cfg(test)]
+            test_temp_dir: None,
+        };
+        let _ = name;
+        crate::script::dg::cmds::attach_trigger_proto(&proto.vnum, &uid.to_string(), &ctx);
+        true
+    });
 
     // list_dg_trigger_protos() -> Array of map { vnum, name, kind, flags }.
     let cloned_db = db.clone();
@@ -2944,40 +3024,36 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     //   Non-fatal issues come back as warnings. Used by the
     //   collecting_dg_proto_body OLC mode on .save.
     let cloned_db = db.clone();
-    engine.register_fn(
-        "dg_proto_save_body",
-        move |vnum: String, body: String| -> rhai::Map {
-            let mut result = rhai::Map::new();
-            let mut proto = match cloned_db.get_dg_trigger_proto(vnum.trim()) {
-                Ok(Some(p)) => p,
-                _ => {
-                    result.insert("ok".into(), false.into());
-                    result.insert("error".into(), "unknown proto vnum".to_string().into());
-                    result.insert("refreshed".into(), 0i64.into());
-                    result.insert("warnings".into(), rhai::Array::new().into());
-                    return result;
-                }
-            };
-            proto.body = body;
-            match cloned_db.save_dg_trigger_proto_with_refresh(&proto) {
-                Ok((refreshed, warnings)) => {
-                    let warn_arr: rhai::Array =
-                        warnings.into_iter().map(rhai::Dynamic::from).collect();
-                    result.insert("ok".into(), true.into());
-                    result.insert("error".into(), "".to_string().into());
-                    result.insert("refreshed".into(), (refreshed as i64).into());
-                    result.insert("warnings".into(), warn_arr.into());
-                }
-                Err(e) => {
-                    result.insert("ok".into(), false.into());
-                    result.insert("error".into(), e.to_string().into());
-                    result.insert("refreshed".into(), 0i64.into());
-                    result.insert("warnings".into(), rhai::Array::new().into());
-                }
+    engine.register_fn("dg_proto_save_body", move |vnum: String, body: String| -> rhai::Map {
+        let mut result = rhai::Map::new();
+        let mut proto = match cloned_db.get_dg_trigger_proto(vnum.trim()) {
+            Ok(Some(p)) => p,
+            _ => {
+                result.insert("ok".into(), false.into());
+                result.insert("error".into(), "unknown proto vnum".to_string().into());
+                result.insert("refreshed".into(), 0i64.into());
+                result.insert("warnings".into(), rhai::Array::new().into());
+                return result;
             }
-            result
-        },
-    );
+        };
+        proto.body = body;
+        match cloned_db.save_dg_trigger_proto_with_refresh(&proto) {
+            Ok((refreshed, warnings)) => {
+                let warn_arr: rhai::Array = warnings.into_iter().map(rhai::Dynamic::from).collect();
+                result.insert("ok".into(), true.into());
+                result.insert("error".into(), "".to_string().into());
+                result.insert("refreshed".into(), (refreshed as i64).into());
+                result.insert("warnings".into(), warn_arr.into());
+            }
+            Err(e) => {
+                result.insert("ok".into(), false.into());
+                result.insert("error".into(), e.to_string().into());
+                result.insert("refreshed".into(), 0i64.into());
+                result.insert("warnings".into(), rhai::Array::new().into());
+            }
+        }
+        result
+    });
 
     // dg_proto_set_meta(vnum, name, flags) -> bool
     //   Update proto name and/or flags without touching the body. Flag
@@ -3058,21 +3134,21 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 let mut buf = String::new();
                 for tok in &tokens {
                     let letter = match proto.attach_kind {
-                        crate::types::DgAttachKind::Mob => parse_mobile_trigger_type(tok)
-                            .map(trg_map::flags_for_mobile_trigger),
-                        crate::types::DgAttachKind::Obj => parse_item_trigger_type(tok)
-                            .map(trg_map::flags_for_item_trigger),
-                        crate::types::DgAttachKind::Room => parse_room_trigger_type(tok)
-                            .map(trg_map::flags_for_room_trigger),
+                        crate::types::DgAttachKind::Mob => {
+                            parse_mobile_trigger_type(tok).map(trg_map::flags_for_mobile_trigger)
+                        }
+                        crate::types::DgAttachKind::Obj => {
+                            parse_item_trigger_type(tok).map(trg_map::flags_for_item_trigger)
+                        }
+                        crate::types::DgAttachKind::Room => {
+                            parse_room_trigger_type(tok).map(trg_map::flags_for_room_trigger)
+                        }
                     };
                     match letter {
                         Some(l) => buf.push_str(&l),
                         None => {
                             result.insert("ok".into(), false.into());
-                            result.insert(
-                                "error".into(),
-                                format!("unknown trigger type name '{}'", tok).into(),
-                            );
+                            result.insert("error".into(), format!("unknown trigger type name '{}'", tok).into());
                             return result;
                         }
                     }
@@ -3083,21 +3159,19 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             };
             // Validate the resulting flag string maps to at least one type.
             let valid = match proto.attach_kind {
-                crate::types::DgAttachKind::Mob => {
-                    !trg_map::mobile_trigger_types(&canonical_flags).is_empty()
-                }
-                crate::types::DgAttachKind::Obj => {
-                    !trg_map::item_trigger_types(&canonical_flags).is_empty()
-                }
-                crate::types::DgAttachKind::Room => {
-                    !trg_map::room_trigger_types(&canonical_flags).is_empty()
-                }
+                crate::types::DgAttachKind::Mob => !trg_map::mobile_trigger_types(&canonical_flags).is_empty(),
+                crate::types::DgAttachKind::Obj => !trg_map::item_trigger_types(&canonical_flags).is_empty(),
+                crate::types::DgAttachKind::Room => !trg_map::room_trigger_types(&canonical_flags).is_empty(),
             };
             if !valid {
                 result.insert("ok".into(), false.into());
                 result.insert(
                     "error".into(),
-                    format!("flags '{}' don't map to any valid trigger type for this kind", canonical_flags).into(),
+                    format!(
+                        "flags '{}' don't map to any valid trigger type for this kind",
+                        canonical_flags
+                    )
+                    .into(),
                 );
                 return result;
             }
@@ -3107,9 +3181,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 result.insert("error".into(), "save failed".to_string().into());
                 return result;
             }
-            let refreshed = cloned_db
-                .refresh_attached_dg_triggers(&proto)
-                .unwrap_or(0);
+            let refreshed = cloned_db.refresh_attached_dg_triggers(&proto).unwrap_or(0);
             result.insert("ok".into(), true.into());
             result.insert("refreshed".into(), (refreshed as i64).into());
             result
@@ -3125,9 +3197,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         if matches!(cloned_db.get_dg_trigger_proto(vnum.trim()), Ok(None)) {
             return -1;
         }
-        let orphaned = cloned_db
-            .orphan_attached_dg_triggers(vnum.trim())
-            .unwrap_or(0);
+        let orphaned = cloned_db.orphan_attached_dg_triggers(vnum.trim()).unwrap_or(0);
         let _ = cloned_db.delete_dg_trigger_proto(vnum.trim());
         orphaned as i64
     });
@@ -3157,8 +3227,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 _ => return false,
             };
             let i = idx as usize;
-            let Some(t) = mob.triggers.get(i) else { return false; };
-            let Some(body) = t.dg_body.clone() else { return false; };
+            let Some(t) = mob.triggers.get(i) else {
+                return false;
+            };
+            let Some(body) = t.dg_body.clone() else {
+                return false;
+            };
             let flags = crate::import::engines::tba::trg_map::flags_for_mobile_trigger(t.trigger_type);
             let proto = crate::types::DgTriggerProto {
                 vnum: v.to_string(),
@@ -3199,8 +3273,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 _ => return false,
             };
             let i = idx as usize;
-            let Some(t) = item.triggers.get(i) else { return false; };
-            let Some(body) = t.dg_body.clone() else { return false; };
+            let Some(t) = item.triggers.get(i) else {
+                return false;
+            };
+            let Some(body) = t.dg_body.clone() else {
+                return false;
+            };
             let flags = crate::import::engines::tba::trg_map::flags_for_item_trigger(t.trigger_type);
             let proto = crate::types::DgTriggerProto {
                 vnum: v.to_string(),
@@ -3241,8 +3319,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 _ => return false,
             };
             let i = idx as usize;
-            let Some(t) = room.triggers.get(i) else { return false; };
-            let Some(body) = t.dg_body.clone() else { return false; };
+            let Some(t) = room.triggers.get(i) else {
+                return false;
+            };
+            let Some(body) = t.dg_body.clone() else {
+                return false;
+            };
             let flags = crate::import::engines::tba::trg_map::flags_for_room_trigger(t.trigger_type);
             let proto = crate::types::DgTriggerProto {
                 vnum: v.to_string(),
@@ -3272,58 +3354,49 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     //   preserved.
 
     let cloned_db = db.clone();
-    engine.register_fn(
-        "dg_detach_mobile_trigger",
-        move |mob_id: String, idx: i64| -> bool {
-            let uid = match uuid::Uuid::parse_str(&mob_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            cloned_db
-                .update_mobile(&uid, |m| {
-                    if let Some(t) = m.triggers.get_mut(idx as usize) {
-                        t.source_proto_vnum = None;
-                    }
-                })
-                .is_ok()
-        },
-    );
+    engine.register_fn("dg_detach_mobile_trigger", move |mob_id: String, idx: i64| -> bool {
+        let uid = match uuid::Uuid::parse_str(&mob_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        cloned_db
+            .update_mobile(&uid, |m| {
+                if let Some(t) = m.triggers.get_mut(idx as usize) {
+                    t.source_proto_vnum = None;
+                }
+            })
+            .is_ok()
+    });
 
     let cloned_db = db.clone();
-    engine.register_fn(
-        "dg_detach_item_trigger",
-        move |item_id: String, idx: i64| -> bool {
-            let uid = match uuid::Uuid::parse_str(&item_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            cloned_db
-                .update_item(&uid, |i| {
-                    if let Some(t) = i.triggers.get_mut(idx as usize) {
-                        t.source_proto_vnum = None;
-                    }
-                })
-                .is_ok()
-        },
-    );
+    engine.register_fn("dg_detach_item_trigger", move |item_id: String, idx: i64| -> bool {
+        let uid = match uuid::Uuid::parse_str(&item_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        cloned_db
+            .update_item(&uid, |i| {
+                if let Some(t) = i.triggers.get_mut(idx as usize) {
+                    t.source_proto_vnum = None;
+                }
+            })
+            .is_ok()
+    });
 
     let cloned_db = db.clone();
-    engine.register_fn(
-        "dg_detach_room_trigger",
-        move |room_id: String, idx: i64| -> bool {
-            let uid = match uuid::Uuid::parse_str(&room_id) {
-                Ok(u) => u,
-                Err(_) => return false,
-            };
-            cloned_db
-                .update_room(&uid, |r| {
-                    if let Some(t) = r.triggers.get_mut(idx as usize) {
-                        t.source_proto_vnum = None;
-                    }
-                })
-                .is_ok()
-        },
-    );
+    engine.register_fn("dg_detach_room_trigger", move |room_id: String, idx: i64| -> bool {
+        let uid = match uuid::Uuid::parse_str(&room_id) {
+            Ok(u) => u,
+            Err(_) => return false,
+        };
+        cloned_db
+            .update_room(&uid, |r| {
+                if let Some(t) = r.triggers.get_mut(idx as usize) {
+                    t.source_proto_vnum = None;
+                }
+            })
+            .is_ok()
+    });
 
     // get_<kind>_trigger_source_proto(host_id, idx) -> String
     //   Returns the source_proto_vnum on an attached trigger (empty when

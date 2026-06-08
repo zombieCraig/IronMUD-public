@@ -17,10 +17,11 @@ pub use types::{ArgumentContext, CompletionResult, CompletionType};
 
 use consts::DIRECTIONS;
 use consts::SKILL_NAMES;
-use helpers::get_argument_context;
 #[cfg(test)]
 use helpers::find_common_prefix;
+use helpers::get_argument_context;
 
+mod achedit;
 mod admin;
 mod aedit;
 mod bpredit;
@@ -35,23 +36,25 @@ mod spedit;
 mod summon;
 mod tedit;
 mod treat;
-mod achedit;
 
+use achedit::complete_achedit;
 use admin::complete_admin;
 use aedit::complete_aedit;
 use bpredit::complete_bpredit;
 use cedit::complete_cedit;
 use medit::complete_medit;
-use misc::{complete_set, complete_motd, complete_bugs, complete_press, complete_pedit, complete_property, complete_mail, complete_bank, complete_escrow};
+use misc::{
+    complete_bank, complete_bugs, complete_escrow, complete_mail, complete_motd, complete_pedit, complete_press,
+    complete_property, complete_set,
+};
 use oedit::complete_oedit;
 use plantedit::complete_plantedit;
 use recedit::{complete_recedit, complete_reclist};
-use redit::{complete_redit, complete_rcopy};
+use redit::{complete_rcopy, complete_redit};
 use spedit::complete_spedit;
 use summon::complete_summon;
 use tedit::complete_tedit;
 use treat::complete_treat;
-use achedit::complete_achedit;
 
 pub fn complete(
     input: &str,

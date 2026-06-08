@@ -80,14 +80,19 @@ struct WldParser<'a> {
 impl<'a> WldParser<'a> {
     fn parse_room(&mut self, vnum: i32) -> Result<IrRoom> {
         let source = self.inner.loc().with_room(vnum);
-        let name = self.inner.read_string().with_context(|| format!("room #{vnum}: name"))?;
+        let name = self
+            .inner
+            .read_string()
+            .with_context(|| format!("room #{vnum}: name"))?;
         let description = self
-            .inner.read_string()
+            .inner
+            .read_string()
             .with_context(|| format!("room #{vnum}: description"))?;
 
         // Flag line: ZONE_NUM ROOM_FLAGS SECTOR_TYPE
         let flag_line = self
-            .inner.consume_line()
+            .inner
+            .consume_line()
             .ok_or_else(|| self.inner.err(&format!("room #{vnum}: expected flag line, got EOF")))?
             .trim()
             .to_string();
@@ -100,9 +105,10 @@ impl<'a> WldParser<'a> {
             .next()
             .ok_or_else(|| self.inner.err(&format!("room #{vnum}: missing sector type")))?;
         let flag_bits = parse_bitvector(flag_token);
-        let sector: i32 = sector_token
-            .parse()
-            .map_err(|_| self.inner.err(&format!("room #{vnum}: non-numeric sector {sector_token}")))?;
+        let sector: i32 = sector_token.parse().map_err(|_| {
+            self.inner
+                .err(&format!("room #{vnum}: non-numeric sector {sector_token}"))
+        })?;
 
         let mut exits = Vec::new();
         let mut extras = Vec::new();
@@ -127,19 +133,27 @@ impl<'a> WldParser<'a> {
                 }
                 let dir_idx = (dir_char - b'0') as usize;
                 if dir_idx >= DIRECTIONS.len() {
-                    return Err(self.inner.err(&format!("room #{vnum}: direction {dir_idx} out of range (0..=5)")));
+                    return Err(self
+                        .inner
+                        .err(&format!("room #{vnum}: direction {dir_idx} out of range (0..=5)")));
                 }
                 self.inner.consume_line();
                 let direction = DIRECTIONS[dir_idx].to_string();
                 let general = self
-                    .inner.read_string()
+                    .inner
+                    .read_string()
                     .with_context(|| format!("room #{vnum}: D{dir_idx} general desc"))?;
                 let keyword = self
-                    .inner.read_string()
+                    .inner
+                    .read_string()
                     .with_context(|| format!("room #{vnum}: D{dir_idx} keyword"))?;
                 let stats_line = self
-                    .inner.consume_line()
-                    .ok_or_else(|| self.inner.err(&format!("room #{vnum}: D{dir_idx} EOF before stats line")))?
+                    .inner
+                    .consume_line()
+                    .ok_or_else(|| {
+                        self.inner
+                            .err(&format!("room #{vnum}: D{dir_idx} EOF before stats line"))
+                    })?
                     .trim()
                     .to_string();
                 let mut t = stats_line.split_whitespace();
@@ -172,10 +186,12 @@ impl<'a> WldParser<'a> {
             if trimmed == "E" {
                 self.inner.consume_line();
                 let kw_line = self
-                    .inner.read_string()
+                    .inner
+                    .read_string()
                     .with_context(|| format!("room #{vnum}: E keyword line"))?;
                 let desc = self
-                    .inner.read_string()
+                    .inner
+                    .read_string()
                     .with_context(|| format!("room #{vnum}: E description"))?;
                 let keywords: Vec<String> = kw_line.split_whitespace().map(str::to_string).collect();
                 extras.push(IrExtraDesc {

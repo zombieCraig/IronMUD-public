@@ -49,9 +49,7 @@ pub fn collect_post_patches(bundle: &IrBundle, vnum_map: &VnumMap) -> PostPatche
                     continue;
                 };
                 let entity_vnum = format!("{}_{ev}", scoped.0.to_lowercase());
-                patches
-                    .replace_on_respawn
-                    .push((room_vnum.clone(), entity_vnum));
+                patches.replace_on_respawn.push((room_vnum.clone(), entity_vnum));
             }
         }
     }

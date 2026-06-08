@@ -89,9 +89,7 @@ pub fn status_resistance_total(buffs: &[ActiveBuff], effect: EffectType) -> i32 
     buffs
         .iter()
         .filter(|b| b.effect_type == EffectType::StatusResistance)
-        .filter(|b| {
-            b.vs_effect.as_deref() == Some(effect_key) || b.vs_effect.as_deref() == Some("*")
-        })
+        .filter(|b| b.vs_effect.as_deref() == Some(effect_key) || b.vs_effect.as_deref() == Some("*"))
         .map(|b| b.magnitude)
         .sum()
 }
@@ -1579,10 +1577,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "unknown".to_string()
                     }
                 }
-                CombatTargetType::Player => target
-                    .target_name
-                    .clone()
-                    .unwrap_or_else(|| "a player".to_string()),
+                CombatTargetType::Player => target.target_name.clone().unwrap_or_else(|| "a player".to_string()),
             };
             map.insert("target_name".into(), Dynamic::from(target_name));
 
@@ -2703,7 +2698,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 fertilizer_duration: 0,
                 treats_infestation: String::new(),
                 dg_vars: std::collections::HashMap::new(),
-            affects: Vec::new(),
+                affects: Vec::new(),
             };
 
             let corpse_id = corpse.id.to_string();

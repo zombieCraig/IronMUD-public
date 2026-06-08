@@ -83,61 +83,52 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // `#{id_or_vnum, name, skill_required}` for entries that gate on this skill.
     let cloned_db = db.clone();
     let state_clone = state.clone();
-    engine.register_fn(
-        "get_skill_references",
-        move |skill_name: String| -> rhai::Map {
-            let mut map = rhai::Map::new();
-            let lower = skill_name.to_lowercase();
-            map.insert("name".into(), rhai::Dynamic::from(lower.clone()));
+    engine.register_fn("get_skill_references", move |skill_name: String| -> rhai::Map {
+        let mut map = rhai::Map::new();
+        let lower = skill_name.to_lowercase();
+        map.insert("name".into(), rhai::Dynamic::from(lower.clone()));
 
-            // Spells: scan world.spell_definitions. The "magic" skill is the
-            // implicit gate for all spells with `skill_required > 0`; other
-            // combat skills (melee/ranged/stealth) don't gate spells in v1.
-            let spells: rhai::Array = if lower == "magic" {
-                let world = state_clone.lock().unwrap();
-                world
-                    .spell_definitions
-                    .values()
-                    .filter(|s| s.skill_required > 0)
-                    .map(|s| {
-                        let mut entry = rhai::Map::new();
-                        entry.insert("id".into(), rhai::Dynamic::from(s.id.clone()));
-                        entry.insert("name".into(), rhai::Dynamic::from(s.name.clone()));
-                        entry.insert(
-                            "skill_required".into(),
-                            rhai::Dynamic::from(s.skill_required as i64),
-                        );
-                        rhai::Dynamic::from_map(entry)
-                    })
-                    .collect()
-            } else {
-                rhai::Array::new()
-            };
-            map.insert("spells".into(), rhai::Dynamic::from(spells));
+        // Spells: scan world.spell_definitions. The "magic" skill is the
+        // implicit gate for all spells with `skill_required > 0`; other
+        // combat skills (melee/ranged/stealth) don't gate spells in v1.
+        let spells: rhai::Array = if lower == "magic" {
+            let world = state_clone.lock().unwrap();
+            world
+                .spell_definitions
+                .values()
+                .filter(|s| s.skill_required > 0)
+                .map(|s| {
+                    let mut entry = rhai::Map::new();
+                    entry.insert("id".into(), rhai::Dynamic::from(s.id.clone()));
+                    entry.insert("name".into(), rhai::Dynamic::from(s.name.clone()));
+                    entry.insert("skill_required".into(), rhai::Dynamic::from(s.skill_required as i64));
+                    rhai::Dynamic::from_map(entry)
+                })
+                .collect()
+        } else {
+            rhai::Array::new()
+        };
+        map.insert("spells".into(), rhai::Dynamic::from(spells));
 
-            // Recipes: filter by `Recipe.skill == skill_name`.
-            let recipes: rhai::Array = match cloned_db.list_all_recipes() {
-                Ok(list) => list
-                    .into_iter()
-                    .filter(|r| r.skill.to_lowercase() == lower)
-                    .map(|r| {
-                        let mut entry = rhai::Map::new();
-                        entry.insert("id".into(), rhai::Dynamic::from(r.id.clone()));
-                        entry.insert("name".into(), rhai::Dynamic::from(r.name.clone()));
-                        entry.insert(
-                            "skill_required".into(),
-                            rhai::Dynamic::from(r.skill_required as i64),
-                        );
-                        rhai::Dynamic::from_map(entry)
-                    })
-                    .collect(),
-                Err(_) => rhai::Array::new(),
-            };
-            map.insert("recipes".into(), rhai::Dynamic::from(recipes));
+        // Recipes: filter by `Recipe.skill == skill_name`.
+        let recipes: rhai::Array = match cloned_db.list_all_recipes() {
+            Ok(list) => list
+                .into_iter()
+                .filter(|r| r.skill.to_lowercase() == lower)
+                .map(|r| {
+                    let mut entry = rhai::Map::new();
+                    entry.insert("id".into(), rhai::Dynamic::from(r.id.clone()));
+                    entry.insert("name".into(), rhai::Dynamic::from(r.name.clone()));
+                    entry.insert("skill_required".into(), rhai::Dynamic::from(r.skill_required as i64));
+                    rhai::Dynamic::from_map(entry)
+                })
+                .collect(),
+            Err(_) => rhai::Array::new(),
+        };
+        map.insert("recipes".into(), rhai::Dynamic::from(recipes));
 
-            map
-        },
-    );
+        map
+    });
 
     // ========== Custom skill registry ==========
 

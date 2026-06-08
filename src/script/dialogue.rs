@@ -20,12 +20,12 @@ use std::sync::Arc;
 use rhai::{Engine, Map};
 use uuid::Uuid;
 
-use crate::{SharedConnections, SharedState};
 use crate::db::Db;
 use crate::types::{
-    CharacterData, DgScope, DialogueChoice, DialogueCondition, DialogueEffect, DialogueNode,
-    DialoguePairState, DialogueTarget, DialogueTree, FlagScope, MobileData, MobileTriggerType,
+    CharacterData, DgScope, DialogueChoice, DialogueCondition, DialogueEffect, DialogueNode, DialoguePairState,
+    DialogueTarget, DialogueTree, FlagScope, MobileData, MobileTriggerType,
 };
+use crate::{SharedConnections, SharedState};
 
 // ===== Public Rhai-callable API =====
 
@@ -61,47 +61,41 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let cloned_db = db.clone();
         let conns = connections.clone();
         let st = state.clone();
-        engine.register_fn(
-            "start_talk",
-            move |connection_id: String, mob_keyword: String| -> Map {
-                let mut out = empty_result();
-                let conn_uuid = match Uuid::parse_str(&connection_id) {
-                    Ok(u) => u,
-                    Err(_) => return err(out, "invalid connection id"),
-                };
-                let ch = match get_character_for_conn(&conns, conn_uuid) {
-                    Some(c) => c,
-                    None => return err(out, "not logged in"),
-                };
-                let room_id = match ch.current_room_id {
-                    rid if rid != Uuid::nil() => rid,
-                    _ => return err(out, "no current room"),
-                };
-                // Find mobs in room with a tree, match keyword.
-                let mob = match find_mob_in_room_with_tree(&cloned_db, room_id, &mob_keyword) {
-                    Some(m) => m,
-                    None => return err(out, "no such mob with dialogue here"),
-                };
-                set_session_dialogue_partner(&conns, conn_uuid, Some(mob.id));
-                let mut ch_mut = ch;
-                let view = enter_root_or_keep(&cloned_db, &conns, &st, &mut ch_mut, &mob);
-                save_character_and_sync(&cloned_db, &conns, conn_uuid, ch_mut);
-                out.insert("ok".into(), rhai::Dynamic::from(true));
-                out.insert("mob_id".into(), rhai::Dynamic::from(mob.id.to_string()));
-                out.insert(
-                    "mob_short_desc".into(),
-                    rhai::Dynamic::from(mob.short_desc.clone()),
-                );
-                out.insert(
-                    "mob_room_id".into(),
-                    rhai::Dynamic::from(mob.current_room_id.unwrap_or(Uuid::nil()).to_string()),
-                );
-                out.insert("response".into(), rhai::Dynamic::from(view.response));
-                out.insert("menu".into(), rhai::Dynamic::from(view.menu));
-                out.insert("finished".into(), rhai::Dynamic::from(view.finished));
-                out
-            },
-        );
+        engine.register_fn("start_talk", move |connection_id: String, mob_keyword: String| -> Map {
+            let mut out = empty_result();
+            let conn_uuid = match Uuid::parse_str(&connection_id) {
+                Ok(u) => u,
+                Err(_) => return err(out, "invalid connection id"),
+            };
+            let ch = match get_character_for_conn(&conns, conn_uuid) {
+                Some(c) => c,
+                None => return err(out, "not logged in"),
+            };
+            let room_id = match ch.current_room_id {
+                rid if rid != Uuid::nil() => rid,
+                _ => return err(out, "no current room"),
+            };
+            // Find mobs in room with a tree, match keyword.
+            let mob = match find_mob_in_room_with_tree(&cloned_db, room_id, &mob_keyword) {
+                Some(m) => m,
+                None => return err(out, "no such mob with dialogue here"),
+            };
+            set_session_dialogue_partner(&conns, conn_uuid, Some(mob.id));
+            let mut ch_mut = ch;
+            let view = enter_root_or_keep(&cloned_db, &conns, &st, &mut ch_mut, &mob);
+            save_character_and_sync(&cloned_db, &conns, conn_uuid, ch_mut);
+            out.insert("ok".into(), rhai::Dynamic::from(true));
+            out.insert("mob_id".into(), rhai::Dynamic::from(mob.id.to_string()));
+            out.insert("mob_short_desc".into(), rhai::Dynamic::from(mob.short_desc.clone()));
+            out.insert(
+                "mob_room_id".into(),
+                rhai::Dynamic::from(mob.current_room_id.unwrap_or(Uuid::nil()).to_string()),
+            );
+            out.insert("response".into(), rhai::Dynamic::from(view.response));
+            out.insert("menu".into(), rhai::Dynamic::from(view.menu));
+            out.insert("finished".into(), rhai::Dynamic::from(view.finished));
+            out
+        });
     }
 
     // walk_dialogue_keyword(connection_id, keyword) -> Map (same shape).
@@ -154,14 +148,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         Some(n) => n,
                         None => continue,
                     };
-                    let classified = classify_choices(
-                        &cur_node,
-                        node,
-                        &ch_mut,
-                        &mob,
-                        &cloned_db,
-                        now_epoch_secs(),
-                    );
+                    let classified = classify_choices(&cur_node, node, &ch_mut, &mob, &cloned_db, now_epoch_secs());
                     let entry = classified
                         .iter()
                         .find(|e| e.choice.keyword.eq_ignore_ascii_case(&needle));
@@ -169,15 +156,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         continue;
                     };
                     let (response, menu, finished) = match &entry.visibility {
-                        ChoiceVisibility::Available => take_choice_at_node(
-                            &cloned_db,
-                            &conns,
-                            &st,
-                            &mut ch_mut,
-                            &mob,
-                            &cur_node,
-                            &entry.choice,
-                        ),
+                        ChoiceVisibility::Available => {
+                            take_choice_at_node(&cloned_db, &conns, &st, &mut ch_mut, &mob, &cur_node, &entry.choice)
+                        }
                         ChoiceVisibility::Locked { .. } => (
                             "That doesn't seem available right now.".to_string(),
                             render_classified_menu(&classified),
@@ -195,15 +176,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     }
                     out.insert("ok".into(), rhai::Dynamic::from(true));
                     out.insert("mob_id".into(), rhai::Dynamic::from(mob.id.to_string()));
-                    out.insert(
-                        "mob_short_desc".into(),
-                        rhai::Dynamic::from(mob.short_desc.clone()),
-                    );
+                    out.insert("mob_short_desc".into(), rhai::Dynamic::from(mob.short_desc.clone()));
                     out.insert(
                         "mob_room_id".into(),
-                        rhai::Dynamic::from(
-                            mob.current_room_id.unwrap_or(Uuid::nil()).to_string(),
-                        ),
+                        rhai::Dynamic::from(mob.current_room_id.unwrap_or(Uuid::nil()).to_string()),
                     );
                     out.insert("response".into(), rhai::Dynamic::from(response));
                     out.insert("menu".into(), rhai::Dynamic::from(menu));
@@ -221,86 +197,67 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let cloned_db = db.clone();
         let conns = connections.clone();
         let st = state.clone();
-        engine.register_fn(
-            "walk_dialogue_choice",
-            move |connection_id: String, idx: i64| -> Map {
-                let mut out = empty_result();
-                let conn_uuid = match Uuid::parse_str(&connection_id) {
-                    Ok(u) => u,
-                    Err(_) => return err(out, "invalid connection id"),
-                };
-                let ch = match get_character_for_conn(&conns, conn_uuid) {
-                    Some(c) => c,
-                    None => return err(out, "not logged in"),
-                };
-                let partner_id = match session_dialogue_partner(&conns, &connection_id) {
-                    Some(p) => p,
-                    None => return err(out, "not in a dialogue"),
-                };
-                let mob = match cloned_db.get_mobile_data(&partner_id).ok().flatten() {
-                    Some(m) if m.dialogue_tree.is_some() => m,
-                    _ => return err(out, "partner gone"),
-                };
-                let mut ch_mut = ch;
-                let cur_node = current_node_for(&ch_mut, &mob);
-                let tree = mob.dialogue_tree.as_ref().unwrap();
-                let node = match tree.nodes.get(&cur_node) {
-                    Some(n) => n,
-                    None => return err(out, "node missing"),
-                };
-                let classified = classify_choices(
-                    &cur_node,
-                    node,
-                    &ch_mut,
-                    &mob,
-                    &cloned_db,
-                    now_epoch_secs(),
-                );
-                if idx < 1 || (idx as usize) > classified.len() {
-                    return err(out, "invalid choice");
+        engine.register_fn("walk_dialogue_choice", move |connection_id: String, idx: i64| -> Map {
+            let mut out = empty_result();
+            let conn_uuid = match Uuid::parse_str(&connection_id) {
+                Ok(u) => u,
+                Err(_) => return err(out, "invalid connection id"),
+            };
+            let ch = match get_character_for_conn(&conns, conn_uuid) {
+                Some(c) => c,
+                None => return err(out, "not logged in"),
+            };
+            let partner_id = match session_dialogue_partner(&conns, &connection_id) {
+                Some(p) => p,
+                None => return err(out, "not in a dialogue"),
+            };
+            let mob = match cloned_db.get_mobile_data(&partner_id).ok().flatten() {
+                Some(m) if m.dialogue_tree.is_some() => m,
+                _ => return err(out, "partner gone"),
+            };
+            let mut ch_mut = ch;
+            let cur_node = current_node_for(&ch_mut, &mob);
+            let tree = mob.dialogue_tree.as_ref().unwrap();
+            let node = match tree.nodes.get(&cur_node) {
+                Some(n) => n,
+                None => return err(out, "node missing"),
+            };
+            let classified = classify_choices(&cur_node, node, &ch_mut, &mob, &cloned_db, now_epoch_secs());
+            if idx < 1 || (idx as usize) > classified.len() {
+                return err(out, "invalid choice");
+            }
+            let entry = classified[(idx as usize) - 1].clone();
+            let (response, menu, finished) = match &entry.visibility {
+                ChoiceVisibility::Available => {
+                    take_choice_at_node(&cloned_db, &conns, &st, &mut ch_mut, &mob, &cur_node, &entry.choice)
                 }
-                let entry = classified[(idx as usize) - 1].clone();
-                let (response, menu, finished) = match &entry.visibility {
-                    ChoiceVisibility::Available => take_choice_at_node(
-                        &cloned_db,
-                        &conns,
-                        &st,
-                        &mut ch_mut,
-                        &mob,
-                        &cur_node,
-                        &entry.choice,
-                    ),
-                    ChoiceVisibility::Locked { .. } => (
-                        "That doesn't seem available right now.".to_string(),
-                        render_classified_menu(&classified),
-                        false,
-                    ),
-                    ChoiceVisibility::Cooldown { .. } => (
-                        "You'll need to wait before raising that again.".to_string(),
-                        render_classified_menu(&classified),
-                        false,
-                    ),
-                };
-                save_character_and_sync(&cloned_db, &conns, conn_uuid, ch_mut);
-                if finished {
-                    set_session_dialogue_partner(&conns, conn_uuid, None);
-                }
-                out.insert("ok".into(), rhai::Dynamic::from(true));
-                out.insert("mob_id".into(), rhai::Dynamic::from(mob.id.to_string()));
-                out.insert(
-                    "mob_short_desc".into(),
-                    rhai::Dynamic::from(mob.short_desc.clone()),
-                );
-                out.insert(
-                    "mob_room_id".into(),
-                    rhai::Dynamic::from(mob.current_room_id.unwrap_or(Uuid::nil()).to_string()),
-                );
-                out.insert("response".into(), rhai::Dynamic::from(response));
-                out.insert("menu".into(), rhai::Dynamic::from(menu));
-                out.insert("finished".into(), rhai::Dynamic::from(finished));
-                out
-            },
-        );
+                ChoiceVisibility::Locked { .. } => (
+                    "That doesn't seem available right now.".to_string(),
+                    render_classified_menu(&classified),
+                    false,
+                ),
+                ChoiceVisibility::Cooldown { .. } => (
+                    "You'll need to wait before raising that again.".to_string(),
+                    render_classified_menu(&classified),
+                    false,
+                ),
+            };
+            save_character_and_sync(&cloned_db, &conns, conn_uuid, ch_mut);
+            if finished {
+                set_session_dialogue_partner(&conns, conn_uuid, None);
+            }
+            out.insert("ok".into(), rhai::Dynamic::from(true));
+            out.insert("mob_id".into(), rhai::Dynamic::from(mob.id.to_string()));
+            out.insert("mob_short_desc".into(), rhai::Dynamic::from(mob.short_desc.clone()));
+            out.insert(
+                "mob_room_id".into(),
+                rhai::Dynamic::from(mob.current_room_id.unwrap_or(Uuid::nil()).to_string()),
+            );
+            out.insert("response".into(), rhai::Dynamic::from(response));
+            out.insert("menu".into(), rhai::Dynamic::from(menu));
+            out.insert("finished".into(), rhai::Dynamic::from(finished));
+            out
+        });
     }
 
     // exit_dialogue(connection_id) -> Map { ok, mob_id, mob_short_desc, mob_room_id }
@@ -332,10 +289,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 }
                 out.insert("ok".into(), rhai::Dynamic::from(true));
                 out.insert("mob_id".into(), rhai::Dynamic::from(mob.id.to_string()));
-                out.insert(
-                    "mob_short_desc".into(),
-                    rhai::Dynamic::from(mob.short_desc.clone()),
-                );
+                out.insert("mob_short_desc".into(), rhai::Dynamic::from(mob.short_desc.clone()));
                 out.insert(
                     "mob_room_id".into(),
                     rhai::Dynamic::from(mob.current_room_id.unwrap_or(Uuid::nil()).to_string()),
@@ -350,39 +304,29 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     {
         let cloned_db = db.clone();
         let conns = connections.clone();
-        engine.register_fn(
-            "render_dialogue_menu",
-            move |connection_id: String| -> String {
-                let conn_uuid = match Uuid::parse_str(&connection_id) {
-                    Ok(u) => u,
-                    Err(_) => return String::new(),
-                };
-                let Some(partner_id) = session_dialogue_partner(&conns, &connection_id) else {
-                    return String::new();
-                };
-                let Some(ch) = get_character_for_conn(&conns, conn_uuid) else {
-                    return String::new();
-                };
-                let Some(mob) = cloned_db.get_mobile_data(&partner_id).ok().flatten() else {
-                    return String::new();
-                };
-                let cur = current_node_for(&ch, &mob);
-                let Some(tree) = mob.dialogue_tree.as_ref() else {
-                    return String::new();
-                };
-                let Some(node) = tree.nodes.get(&cur) else {
-                    return String::new();
-                };
-                render_classified_menu(&classify_choices(
-                    &cur,
-                    node,
-                    &ch,
-                    &mob,
-                    &cloned_db,
-                    now_epoch_secs(),
-                ))
-            },
-        );
+        engine.register_fn("render_dialogue_menu", move |connection_id: String| -> String {
+            let conn_uuid = match Uuid::parse_str(&connection_id) {
+                Ok(u) => u,
+                Err(_) => return String::new(),
+            };
+            let Some(partner_id) = session_dialogue_partner(&conns, &connection_id) else {
+                return String::new();
+            };
+            let Some(ch) = get_character_for_conn(&conns, conn_uuid) else {
+                return String::new();
+            };
+            let Some(mob) = cloned_db.get_mobile_data(&partner_id).ok().flatten() else {
+                return String::new();
+            };
+            let cur = current_node_for(&ch, &mob);
+            let Some(tree) = mob.dialogue_tree.as_ref() else {
+                return String::new();
+            };
+            let Some(node) = tree.nodes.get(&cur) else {
+                return String::new();
+            };
+            render_classified_menu(&classify_choices(&cur, node, &ch, &mob, &cloned_db, now_epoch_secs()))
+        });
     }
 
     // set_mobile_dialogue_tree_json(mobile_id, json) -> String (empty=ok, error msg otherwise).
@@ -424,23 +368,20 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_mobile_dialogue_tree_json(mobile_id) -> String (pretty-printed; empty if no tree)
     {
         let cloned_db = db.clone();
-        engine.register_fn(
-            "get_mobile_dialogue_tree_json",
-            move |mobile_id: String| -> String {
-                let mob_uuid = match Uuid::parse_str(&mobile_id) {
-                    Ok(u) => u,
-                    Err(_) => return String::new(),
-                };
-                let mob = match cloned_db.get_mobile_data(&mob_uuid).ok().flatten() {
-                    Some(m) => m,
-                    None => return String::new(),
-                };
-                match mob.dialogue_tree {
-                    Some(t) => serde_json::to_string_pretty(&t).unwrap_or_default(),
-                    None => String::new(),
-                }
-            },
-        );
+        engine.register_fn("get_mobile_dialogue_tree_json", move |mobile_id: String| -> String {
+            let mob_uuid = match Uuid::parse_str(&mobile_id) {
+                Ok(u) => u,
+                Err(_) => return String::new(),
+            };
+            let mob = match cloned_db.get_mobile_data(&mob_uuid).ok().flatten() {
+                Some(m) => m,
+                None => return String::new(),
+            };
+            match mob.dialogue_tree {
+                Some(t) => serde_json::to_string_pretty(&t).unwrap_or_default(),
+                None => String::new(),
+            }
+        });
     }
 
     // clear_mobile_dialogue_tree(mobile_id) -> bool
@@ -526,9 +467,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         on_each_visit: vec![],
                         on_exit: vec![],
                     };
-                    if let Err(e) =
-                        crate::dialogue_edit::add_node(&mut mob.dialogue_tree, &name, node)
-                    {
+                    if let Err(e) = crate::dialogue_edit::add_node(&mut mob.dialogue_tree, &name, node) {
                         return e.to_string();
                     }
                 }
@@ -631,12 +570,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let cloned_db = db.clone();
         engine.register_fn(
             "olc_set_dialogue_choice_field",
-            move |mobile_id: String,
-                  node_name: String,
-                  index: i64,
-                  field: String,
-                  value: String|
-                  -> String {
+            move |mobile_id: String, node_name: String, index: i64, field: String, value: String| -> String {
                 if index < 0 {
                     return "index must be >= 0".to_string();
                 }
@@ -649,28 +583,18 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     };
                     let node = match tree.nodes.get_mut(&node_name) {
                         Some(n) => n,
-                        None => {
-                            return Err(crate::dialogue_edit::DialogueEditError::NodeMissing(
-                                node_name.clone(),
-                            ))
-                        }
+                        None => return Err(crate::dialogue_edit::DialogueEditError::NodeMissing(node_name.clone())),
                     };
                     if idx >= node.choices.len() {
-                        return Err(
-                            crate::dialogue_edit::DialogueEditError::ChoiceIndexOutOfRange(
-                                idx,
-                                node.choices.len(),
-                            ),
-                        );
+                        return Err(crate::dialogue_edit::DialogueEditError::ChoiceIndexOutOfRange(
+                            idx,
+                            node.choices.len(),
+                        ));
                     }
                     let choice = &mut node.choices[idx];
                     match field_lc.as_str() {
                         "hint" => {
-                            choice.hint = if value.is_empty() {
-                                None
-                            } else {
-                                Some(value.clone())
-                            };
+                            choice.hint = if value.is_empty() { None } else { Some(value.clone()) };
                         }
                         "cooldown" | "cooldown_secs" => {
                             let secs: i64 = value.trim().parse().unwrap_or(-1);
@@ -683,8 +607,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         }
                         "once" | "once_per_player" => {
                             let v = value.trim().to_lowercase();
-                            choice.once_per_player =
-                                matches!(v.as_str(), "1" | "on" | "true" | "yes");
+                            choice.once_per_player = matches!(v.as_str(), "1" | "on" | "true" | "yes");
                         }
                         other => {
                             return Err(crate::dialogue_edit::DialogueEditError::Invalid(format!(
@@ -705,12 +628,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let cloned_db = db.clone();
         engine.register_fn(
             "olc_add_choice_condition",
-            move |mobile_id: String,
-                  node_name: String,
-                  choice_index: i64,
-                  kind: String,
-                  args: String|
-                  -> String {
+            move |mobile_id: String, node_name: String, choice_index: i64, kind: String, args: String| -> String {
                 if choice_index < 0 {
                     return "choice index must be >= 0".to_string();
                 }
@@ -719,12 +637,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     Err(msg) => return msg,
                 };
                 mutate_tree(&cloned_db, &mobile_id, |slot| {
-                    crate::dialogue_edit::add_choice_condition(
-                        slot,
-                        &node_name,
-                        choice_index as usize,
-                        condition,
-                    )
+                    crate::dialogue_edit::add_choice_condition(slot, &node_name, choice_index as usize, condition)
                 })
             },
         );
@@ -734,11 +647,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let cloned_db = db.clone();
         engine.register_fn(
             "olc_remove_choice_condition",
-            move |mobile_id: String,
-                  node_name: String,
-                  choice_index: i64,
-                  cond_index: i64|
-                  -> String {
+            move |mobile_id: String, node_name: String, choice_index: i64, cond_index: i64| -> String {
                 if choice_index < 0 || cond_index < 0 {
                     return "indices must be >= 0".to_string();
                 }
@@ -758,12 +667,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let cloned_db = db.clone();
         engine.register_fn(
             "olc_add_choice_effect",
-            move |mobile_id: String,
-                  node_name: String,
-                  choice_index: i64,
-                  kind: String,
-                  args: String|
-                  -> String {
+            move |mobile_id: String, node_name: String, choice_index: i64, kind: String, args: String| -> String {
                 if choice_index < 0 {
                     return "choice index must be >= 0".to_string();
                 }
@@ -772,12 +676,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     Err(msg) => return msg,
                 };
                 mutate_tree(&cloned_db, &mobile_id, |slot| {
-                    crate::dialogue_edit::add_choice_effect(
-                        slot,
-                        &node_name,
-                        choice_index as usize,
-                        effect,
-                    )
+                    crate::dialogue_edit::add_choice_effect(slot, &node_name, choice_index as usize, effect)
                 })
             },
         );
@@ -787,11 +686,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let cloned_db = db.clone();
         engine.register_fn(
             "olc_remove_choice_effect",
-            move |mobile_id: String,
-                  node_name: String,
-                  choice_index: i64,
-                  effect_index: i64|
-                  -> String {
+            move |mobile_id: String, node_name: String, choice_index: i64, effect_index: i64| -> String {
                 if choice_index < 0 || effect_index < 0 {
                     return "indices must be >= 0".to_string();
                 }
@@ -810,25 +705,22 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // List node names as a comma-joined string for medit display.
     {
         let cloned_db = db.clone();
-        engine.register_fn(
-            "list_dialogue_node_names",
-            move |mobile_id: String| -> String {
-                let mob_uuid = match Uuid::parse_str(&mobile_id) {
-                    Ok(u) => u,
-                    Err(_) => return String::new(),
-                };
-                let mob = match cloned_db.get_mobile_data(&mob_uuid).ok().flatten() {
-                    Some(m) => m,
-                    None => return String::new(),
-                };
-                let Some(tree) = mob.dialogue_tree else {
-                    return String::new();
-                };
-                let mut names: Vec<&String> = tree.nodes.keys().collect();
-                names.sort();
-                names.into_iter().cloned().collect::<Vec<_>>().join(", ")
-            },
-        );
+        engine.register_fn("list_dialogue_node_names", move |mobile_id: String| -> String {
+            let mob_uuid = match Uuid::parse_str(&mobile_id) {
+                Ok(u) => u,
+                Err(_) => return String::new(),
+            };
+            let mob = match cloned_db.get_mobile_data(&mob_uuid).ok().flatten() {
+                Some(m) => m,
+                None => return String::new(),
+            };
+            let Some(tree) = mob.dialogue_tree else {
+                return String::new();
+            };
+            let mut names: Vec<&String> = tree.nodes.keys().collect();
+            names.sort();
+            names.into_iter().cloned().collect::<Vec<_>>().join(", ")
+        });
     }
 
     // Render one node for medit: text + numbered choice list with target tags.
@@ -879,29 +771,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                             i, c.keyword, c.label, target_tag, slice3_tags
                         ));
                         for (ci, cond) in c.conditions.iter().enumerate() {
-                            out.push_str(&format!(
-                                "         if [{}] {}\n",
-                                ci,
-                                summarize_condition(cond)
-                            ));
+                            out.push_str(&format!("         if [{}] {}\n", ci, summarize_condition(cond)));
                         }
                         for (ei, eff) in c.effects.iter().enumerate() {
-                            out.push_str(&format!(
-                                "         do [{}] {}\n",
-                                ei,
-                                summarize_effect(eff)
-                            ));
+                            out.push_str(&format!("         do [{}] {}\n", ei, summarize_effect(eff)));
                         }
                         if let Some(hint) = c.hint.as_ref().filter(|s| !s.is_empty()) {
                             out.push_str(&format!("         hint: {}\n", hint));
                         }
                     }
                 }
-                let counts = (
-                    node.on_enter.len(),
-                    node.on_each_visit.len(),
-                    node.on_exit.len(),
-                );
+                let counts = (node.on_enter.len(), node.on_each_visit.len(), node.on_exit.len());
                 if counts.0 + counts.1 + counts.2 > 0 {
                     out.push_str(&format!(
                         "  triggers: on_enter={}, on_each_visit={}, on_exit={}\n",
@@ -945,9 +825,7 @@ fn parse_target(kind: &str, node: &str) -> Result<DialogueTarget, String> {
             if node.is_empty() {
                 Err("goto target requires node name".into())
             } else {
-                Ok(DialogueTarget::Goto {
-                    node: node.to_string(),
-                })
+                Ok(DialogueTarget::Goto { node: node.to_string() })
             }
         }
         "exit" => Ok(DialogueTarget::Exit),
@@ -958,12 +836,8 @@ fn parse_target(kind: &str, node: &str) -> Result<DialogueTarget, String> {
 
 fn summarize_condition(c: &DialogueCondition) -> String {
     match c {
-        DialogueCondition::FlagSet { name, scope } => {
-            format!("flag_set {} ({:?})", name, scope).to_lowercase()
-        }
-        DialogueCondition::FlagUnset { name, scope } => {
-            format!("flag_unset {} ({:?})", name, scope).to_lowercase()
-        }
+        DialogueCondition::FlagSet { name, scope } => format!("flag_set {} ({:?})", name, scope).to_lowercase(),
+        DialogueCondition::FlagUnset { name, scope } => format!("flag_unset {} ({:?})", name, scope).to_lowercase(),
         DialogueCondition::HasItem { vnum, qty } => format!("has_item {} x{}", vnum, qty),
         DialogueCondition::SkillAtLeast { key, level } => {
             format!("skill_at_least {} {}", key, level)
@@ -983,22 +857,16 @@ fn summarize_condition(c: &DialogueCondition) -> String {
         DialogueCondition::IsThinblood => "is_thinblood".into(),
         DialogueCondition::IsClanAcknowledged => "is_clan_acknowledged".into(),
         DialogueCondition::HasAchievement { key } => format!("has_achievement {}", key),
-        DialogueCondition::QuestChoiceEquals {
-            quest_vnum,
-            key,
-            value,
-        } => format!("quest_choice_equals {}:{} == {}", quest_vnum, key, value),
+        DialogueCondition::QuestChoiceEquals { quest_vnum, key, value } => {
+            format!("quest_choice_equals {}:{} == {}", quest_vnum, key, value)
+        }
     }
 }
 
 fn summarize_effect(e: &DialogueEffect) -> String {
     match e {
-        DialogueEffect::SetFlag { name, scope } => {
-            format!("set_flag {} ({:?})", name, scope).to_lowercase()
-        }
-        DialogueEffect::ClearFlag { name, scope } => {
-            format!("clear_flag {} ({:?})", name, scope).to_lowercase()
-        }
+        DialogueEffect::SetFlag { name, scope } => format!("set_flag {} ({:?})", name, scope).to_lowercase(),
+        DialogueEffect::ClearFlag { name, scope } => format!("clear_flag {} ({:?})", name, scope).to_lowercase(),
         DialogueEffect::GiveItem { vnum, qty } => format!("give_item {} x{}", vnum, qty),
         DialogueEffect::TakeItem { vnum, qty } => format!("take_item {} x{}", vnum, qty),
         DialogueEffect::AwardSkillXp { skill, amount } => {
@@ -1017,11 +885,9 @@ fn summarize_effect(e: &DialogueEffect) -> String {
         DialogueEffect::OfferQuest { vnum } => format!("offer_quest {}", vnum),
         DialogueEffect::CompleteQuest { vnum } => format!("complete_quest {}", vnum),
         DialogueEffect::AbandonQuest { vnum } => format!("abandon_quest {}", vnum),
-        DialogueEffect::SetQuestChoice {
-            quest_vnum,
-            key,
-            value,
-        } => format!("set_quest_choice {}:{} = {}", quest_vnum, key, value),
+        DialogueEffect::SetQuestChoice { quest_vnum, key, value } => {
+            format!("set_quest_choice {}:{} = {}", quest_vnum, key, value)
+        }
     }
 }
 
@@ -1064,10 +930,7 @@ fn parse_choice_condition(kind: &str, args: &str) -> Result<DialogueCondition, S
         }
         "has_item" | "hasitem" => {
             need(1, "<vnum> [qty]")?;
-            let qty = parts
-                .get(1)
-                .and_then(|s| s.parse::<i32>().ok())
-                .unwrap_or(1);
+            let qty = parts.get(1).and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
             Ok(DialogueCondition::HasItem {
                 vnum: parts[0].to_string(),
                 qty,
@@ -1153,10 +1016,7 @@ fn parse_choice_effect(kind: &str, args: &str) -> Result<DialogueEffect, String>
         }
         "give_item" | "giveitem" => {
             need(1, "<vnum> [qty]")?;
-            let qty = parts
-                .get(1)
-                .and_then(|s| s.parse::<i32>().ok())
-                .unwrap_or(1);
+            let qty = parts.get(1).and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
             Ok(DialogueEffect::GiveItem {
                 vnum: parts[0].to_string(),
                 qty,
@@ -1164,10 +1024,7 @@ fn parse_choice_effect(kind: &str, args: &str) -> Result<DialogueEffect, String>
         }
         "take_item" | "takeitem" => {
             need(1, "<vnum> [qty]")?;
-            let qty = parts
-                .get(1)
-                .and_then(|s| s.parse::<i32>().ok())
-                .unwrap_or(1);
+            let qty = parts.get(1).and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
             Ok(DialogueEffect::TakeItem {
                 vnum: parts[0].to_string(),
                 qty,
@@ -1195,10 +1052,7 @@ fn parse_choice_effect(kind: &str, args: &str) -> Result<DialogueEffect, String>
         }
         "increment_counter" | "incrementcounter" | "inc_counter" => {
             need(1, "<counter_key> [by]")?;
-            let by = parts
-                .get(1)
-                .and_then(|s| s.parse::<i32>().ok())
-                .unwrap_or(1);
+            let by = parts.get(1).and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
             Ok(DialogueEffect::IncrementCounter {
                 key: parts[0].to_string(),
                 by,
@@ -1396,9 +1250,7 @@ fn walk_choice_internal(
     }
     let entry = classified[(idx as usize) - 1].clone();
     let (response, menu, finished) = match &entry.visibility {
-        ChoiceVisibility::Available => {
-            take_choice_at_node(db, connections, state, &mut ch, &mob, &cur, &entry.choice)
-        }
+        ChoiceVisibility::Available => take_choice_at_node(db, connections, state, &mut ch, &mob, &cur, &entry.choice),
         ChoiceVisibility::Locked { .. } => (
             "That doesn't seem available right now.".to_string(),
             render_classified_menu(&classified),
@@ -1477,9 +1329,7 @@ fn walk_keyword_internal(
     };
     let entry = entry.clone();
     let (response, menu, finished) = match &entry.visibility {
-        ChoiceVisibility::Available => {
-            take_choice_at_node(db, connections, state, &mut ch, &mob, &cur, &entry.choice)
-        }
+        ChoiceVisibility::Available => take_choice_at_node(db, connections, state, &mut ch, &mob, &cur, &entry.choice),
         ChoiceVisibility::Locked { .. } => (
             "That doesn't seem available right now.".to_string(),
             render_classified_menu(&classified),
@@ -1622,11 +1472,7 @@ fn session_dialogue_partner(connections: &SharedConnections, conn_id_str: &str) 
     conns.get(&uuid).and_then(|s| s.dialogue_partner_id)
 }
 
-fn set_session_dialogue_partner(
-    connections: &SharedConnections,
-    conn_id: Uuid,
-    partner: Option<Uuid>,
-) {
+fn set_session_dialogue_partner(connections: &SharedConnections, conn_id: Uuid, partner: Option<Uuid>) {
     let mut conns = connections.lock().unwrap();
     if let Some(s) = conns.get_mut(&conn_id) {
         s.dialogue_partner_id = partner;
@@ -1642,12 +1488,7 @@ fn get_character_for_conn(connections: &SharedConnections, conn_id: Uuid) -> Opt
 /// Dialogue walks mutate `dialogue_pair_state.current_node` on a clone of the
 /// session character; without syncing the session, the next input clones the
 /// stale pre-walk view and the player gets stuck on the root node.
-fn save_character_and_sync(
-    db: &Db,
-    connections: &SharedConnections,
-    conn_id: Uuid,
-    ch: CharacterData,
-) {
+fn save_character_and_sync(db: &Db, connections: &SharedConnections, conn_id: Uuid, ch: CharacterData) {
     let _ = db.save_character_data(ch.clone());
     if let Ok(mut conns) = connections.lock() {
         if let Some(session) = conns.get_mut(&conn_id) {
@@ -1746,14 +1587,7 @@ fn enter_root_or_keep(
     };
     let tree = mob.dialogue_tree.as_ref().unwrap();
     let node = tree.nodes.get(&cur).unwrap();
-    let menu = render_classified_menu(&classify_choices(
-        &cur,
-        node,
-        ch,
-        mob,
-        db,
-        now_epoch_secs(),
-    ));
+    let menu = render_classified_menu(&classify_choices(&cur, node, ch, mob, db, now_epoch_secs()));
     let response = if extra.is_empty() {
         node.text.clone()
     } else {
@@ -1892,11 +1726,7 @@ fn take_choice_at_node(
             let tree = mob.dialogue_tree.as_ref().unwrap();
             if !tree.nodes.contains_key(node) {
                 set_current_node(ch, &mob.vnum, None);
-                return (
-                    format!("(broken target: node `{}`)", node),
-                    String::new(),
-                    true,
-                );
+                return (format!("(broken target: node `{}`)", node), String::new(), true);
             }
             // Fire on_exit for the source node before moving.
             let exit_msg = exit_node(db, connections, state, ch, mob, src_node_name);
@@ -1906,14 +1736,7 @@ fn take_choice_at_node(
             append_msg(&mut effect_messages, &entry_msg);
             let tree = mob.dialogue_tree.as_ref().unwrap();
             let target = tree.nodes.get(node).unwrap();
-            let menu = render_classified_menu(&classify_choices(
-                node,
-                target,
-                ch,
-                mob,
-                db,
-                now_epoch_secs(),
-            ));
+            let menu = render_classified_menu(&classify_choices(node, target, ch, mob, db, now_epoch_secs()));
             let response = if effect_messages.is_empty() {
                 target.text.clone()
             } else {
@@ -1925,14 +1748,7 @@ fn take_choice_at_node(
             // Repeat is a refresh — no exit/enter triggers fire.
             let tree = mob.dialogue_tree.as_ref().unwrap();
             let node = tree.nodes.get(src_node_name).unwrap();
-            let menu = render_classified_menu(&classify_choices(
-                src_node_name,
-                node,
-                ch,
-                mob,
-                db,
-                now_epoch_secs(),
-            ));
+            let menu = render_classified_menu(&classify_choices(src_node_name, node, ch, mob, db, now_epoch_secs()));
             let response = if effect_messages.is_empty() {
                 node.text.clone()
             } else {
@@ -1944,12 +1760,7 @@ fn take_choice_at_node(
 }
 
 /// Record cooldown timestamp and once-per-player marker on a successful pick.
-fn record_choice_pick(
-    ch: &mut CharacterData,
-    vnum: &str,
-    node_name: &str,
-    choice: &DialogueChoice,
-) {
+fn record_choice_pick(ch: &mut CharacterData, vnum: &str, node_name: &str, choice: &DialogueChoice) {
     if choice.cooldown_secs.unwrap_or(0) <= 0 && !choice.once_per_player {
         return;
     }
@@ -2032,17 +1843,10 @@ fn classify_choices(
     for c in node.choices.iter() {
         let key = cooldown_key(node_name, &c.keyword);
         // once_per_player wins outright when already picked.
-        if c.once_per_player
-            && pair
-                .map(|s| s.choices_picked_once.contains(&key))
-                .unwrap_or(false)
-        {
+        if c.once_per_player && pair.map(|s| s.choices_picked_once.contains(&key)).unwrap_or(false) {
             continue;
         }
-        let conditions_ok = c
-            .conditions
-            .iter()
-            .all(|cond| evaluate_condition(cond, ch, mob, db));
+        let conditions_ok = c.conditions.iter().all(|cond| evaluate_condition(cond, ch, mob, db));
         if !conditions_ok {
             if let Some(hint) = c.hint.as_ref().filter(|s| !s.is_empty()) {
                 out.push(ClassifiedChoice {
@@ -2055,9 +1859,7 @@ fn classify_choices(
         }
         // Conditions pass. Check cooldown.
         if let Some(cd) = c.cooldown_secs.filter(|n| *n > 0) {
-            let last = pair
-                .and_then(|s| s.choice_cooldowns.get(&key).copied())
-                .unwrap_or(0);
+            let last = pair.and_then(|s| s.choice_cooldowns.get(&key).copied()).unwrap_or(0);
             let elapsed = now_secs.saturating_sub(last);
             if elapsed < cd {
                 let remaining = cd - elapsed;
@@ -2124,12 +1926,7 @@ fn render_classified_menu(entries: &[ClassifiedChoice]) -> String {
 /// Back-compat wrapper for the in-file test that only needs the pickable
 /// subset of choices.
 #[cfg(test)]
-fn visible_choices<'a>(
-    node: &'a DialogueNode,
-    ch: &CharacterData,
-    mob: &MobileData,
-    db: &Db,
-) -> Vec<DialogueChoice> {
+fn visible_choices<'a>(node: &'a DialogueNode, ch: &CharacterData, mob: &MobileData, db: &Db) -> Vec<DialogueChoice> {
     let cur = current_node_for(ch, mob);
     classify_choices(&cur, node, ch, mob, db, now_epoch_secs())
         .into_iter()
@@ -2175,15 +1972,10 @@ fn evaluate_condition(cond: &DialogueCondition, ch: &CharacterData, mob: &Mobile
             .unwrap_or(false),
         DialogueCondition::IsThinblood => crate::script::vampire::is_pc_thinblood(ch),
         DialogueCondition::IsClanAcknowledged => {
-            ch.vampire_state.is_some()
-                && crate::script::vampire::pc_clan_from_traits(ch).is_some()
+            ch.vampire_state.is_some() && crate::script::vampire::pc_clan_from_traits(ch).is_some()
         }
         DialogueCondition::HasAchievement { key } => ch.achievements_unlocked.contains_key(key),
-        DialogueCondition::QuestChoiceEquals {
-            quest_vnum,
-            key,
-            value,
-        } => ch
+        DialogueCondition::QuestChoiceEquals { quest_vnum, key, value } => ch
             .active_quests
             .get(quest_vnum)
             .and_then(|aq| aq.choice_vars.get(key))
@@ -2198,16 +1990,9 @@ fn evaluate_condition(cond: &DialogueCondition, ch: &CharacterData, mob: &Mobile
 /// and the DG Scripts command of the same name — both must route through
 /// here rather than mutate `ch.skills` directly so the level-up cadence
 /// stays consistent across content paths.
-pub(crate) fn award_skill_xp(
-    ch: &mut CharacterData,
-    skill: &str,
-    amount: i32,
-) -> Option<String> {
+pub(crate) fn award_skill_xp(ch: &mut CharacterData, skill: &str, amount: i32) -> Option<String> {
     let key = skill.to_lowercase();
-    let entry = ch
-        .skills
-        .entry(key.clone())
-        .or_insert(crate::SkillProgress::default());
+    let entry = ch.skills.entry(key.clone()).or_insert(crate::SkillProgress::default());
     if entry.level >= 10 {
         return None;
     }
@@ -2252,8 +2037,7 @@ fn apply_effect(
 ) -> Option<String> {
     match effect {
         DialogueEffect::SetFlag { name, scope } => {
-            ch.dialogue_flags
-                .insert(flag_key(name, *scope, &mob.vnum), true);
+            ch.dialogue_flags.insert(flag_key(name, *scope, &mob.vnum), true);
             None
         }
         DialogueEffect::ClearFlag { name, scope } => {
@@ -2314,16 +2098,12 @@ fn apply_effect(
                     .unwrap_or_else(|| format!("item {}", vnum));
                 Some(format!("[ You hand over: {} ]", label))
             } else {
-                Some(format!(
-                    "[ Tried to take {} {}; only {} taken ]",
-                    qty, vnum, taken
-                ))
+                Some(format!("[ Tried to take {} {}; only {} taken ]", qty, vnum, taken))
             }
         }
         DialogueEffect::AwardSkillXp { skill, amount } => award_skill_xp(ch, skill, *amount),
         DialogueEffect::SetCounter { key, value } => {
-            ch.achievement_counters
-                .insert(key.clone(), (*value).max(0) as u32);
+            ch.achievement_counters.insert(key.clone(), (*value).max(0) as u32);
             None
         }
         DialogueEffect::IncrementCounter { key, by } => {
@@ -2386,11 +2166,7 @@ fn apply_effect(
                 Some(format!("[ Not on quest {} ]", vnum))
             }
         }
-        DialogueEffect::SetQuestChoice {
-            quest_vnum,
-            key,
-            value,
-        } => {
+        DialogueEffect::SetQuestChoice { quest_vnum, key, value } => {
             match ch.active_quests.get_mut(quest_vnum) {
                 Some(aq) => {
                     aq.choice_vars.insert(key.clone(), value.clone());
@@ -2441,8 +2217,7 @@ fn apply_effect(
             if let Some(mob_now) = db.get_mobile_data(&mob.id).ok().flatten() {
                 let conn_str = String::new();
                 let db_arc = std::sync::Arc::new(db.clone());
-                let conns_dummy: SharedConnections =
-                    Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+                let conns_dummy: SharedConnections = Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
                 crate::script::dg::fire_mobile_dg_triggers(
                     &db_arc,
                     &conns_dummy,
@@ -2480,9 +2255,7 @@ fn parse_mob_trigger_type(s: &str) -> Option<MobileTriggerType> {
 }
 
 fn is_flag_set(ch: &CharacterData, name: &str, scope: FlagScope, vnum: &str) -> bool {
-    *ch.dialogue_flags
-        .get(&flag_key(name, scope, vnum))
-        .unwrap_or(&false)
+    *ch.dialogue_flags.get(&flag_key(name, scope, vnum)).unwrap_or(&false)
 }
 
 fn flag_key(name: &str, scope: FlagScope, vnum: &str) -> String {
@@ -2544,10 +2317,7 @@ fn validate_tree(tree: &DialogueTree) -> Result<(), String> {
         return Err("tree has no nodes".to_string());
     }
     if !tree.nodes.contains_key(&tree.root_node) {
-        return Err(format!(
-            "root_node `{}` is not in nodes map",
-            tree.root_node
-        ));
+        return Err(format!("root_node `{}` is not in nodes map", tree.root_node));
     }
     for (id, node) in &tree.nodes {
         for (ci, c) in node.choices.iter().enumerate() {
@@ -2563,11 +2333,7 @@ fn validate_tree(tree: &DialogueTree) -> Result<(), String> {
                 }
             }
             if c.keyword.trim().is_empty() {
-                return Err(format!(
-                    "node `{}` choice {} has empty keyword",
-                    id,
-                    ci + 1
-                ));
+                return Err(format!("node `{}` choice {} has empty keyword", id, ci + 1));
             }
         }
     }
@@ -2675,7 +2441,10 @@ mod tests {
         let mut ch = make_character("test");
         ch.skills.insert(
             "medical".to_string(),
-            crate::SkillProgress { level: 10, experience: 0 },
+            crate::SkillProgress {
+                level: 10,
+                experience: 0,
+            },
         );
         let msg = award_skill_xp(&mut ch, "medical", 500);
         assert!(msg.is_none(), "no announce at level cap");
@@ -3152,9 +2921,7 @@ mod tests {
                     DialogueChoice {
                         keyword: "shop".into(),
                         label: "Visit the shop".into(),
-                        target: DialogueTarget::Goto {
-                            node: "shop".into(),
-                        },
+                        target: DialogueTarget::Goto { node: "shop".into() },
                         conditions: vec![],
                         effects: vec![],
                         hint: None,
@@ -3164,9 +2931,7 @@ mod tests {
                     DialogueChoice {
                         keyword: "leave".into(),
                         label: "Back".into(),
-                        target: DialogueTarget::Goto {
-                            node: "root".into(),
-                        },
+                        target: DialogueTarget::Goto { node: "root".into() },
                         conditions: vec![],
                         effects: vec![],
                         hint: None,
@@ -3186,9 +2951,7 @@ mod tests {
                 choices: vec![DialogueChoice {
                     keyword: "back".into(),
                     label: "Back".into(),
-                    target: DialogueTarget::Goto {
-                        node: "root".into(),
-                    },
+                    target: DialogueTarget::Goto { node: "root".into() },
                     conditions: vec![],
                     effects: vec![],
                     hint: None,
@@ -3448,8 +3211,7 @@ mod tests {
                 once_per_player: false,
             }],
         );
-        let (db, _temp) = open_temp_db(
-"classify_locked_hint");
+        let (db, _temp) = open_temp_db("classify_locked_hint");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let node = mob.dialogue_tree.as_ref().unwrap().nodes.get("root").unwrap();
             let classified = classify_choices("root", node, &ch, &mob, &db, 1_000);
@@ -3486,15 +3248,11 @@ mod tests {
                 once_per_player: false,
             }],
         );
-        let (db, _temp) = open_temp_db(
-"classify_no_hint_hidden");
+        let (db, _temp) = open_temp_db("classify_no_hint_hidden");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let node = mob.dialogue_tree.as_ref().unwrap().nodes.get("root").unwrap();
             let classified = classify_choices("root", node, &ch, &mob, &db, 1_000);
-            assert!(
-                classified.is_empty(),
-                "no-hint locked choice must drop from output"
-            );
+            assert!(classified.is_empty(), "no-hint locked choice must drop from output");
             let menu = render_classified_menu(&classified);
             assert_eq!(menu, "  bye. (leave)");
         }));
@@ -3517,24 +3275,15 @@ mod tests {
                 once_per_player: false,
             }],
         );
-        let (db, _temp) = open_temp_db(
-"classify_cd_blocks");
+        let (db, _temp) = open_temp_db("classify_cd_blocks");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let node = mob
-                .dialogue_tree
-                .as_ref()
-                .unwrap()
-                .nodes
-                .get("root")
-                .unwrap()
-                .clone();
+            let node = mob.dialogue_tree.as_ref().unwrap().nodes.get("root").unwrap().clone();
             // Stamp last-pick at t=1000 directly to avoid time skew on take_choice.
             let pair = ch
                 .dialogue_pair_state
                 .entry(mob.vnum.clone())
                 .or_insert_with(DialoguePairState::default);
-            pair.choice_cooldowns
-                .insert(cooldown_key("root", "rumor"), 1_000);
+            pair.choice_cooldowns.insert(cooldown_key("root", "rumor"), 1_000);
 
             // 30s later — still cooling.
             let classified = classify_choices("root", &node, &ch, &mob, &db, 1_030);
@@ -3572,17 +3321,9 @@ mod tests {
                 once_per_player: true,
             }],
         );
-        let (db, _temp) = open_temp_db(
-"classify_once");
+        let (db, _temp) = open_temp_db("classify_once");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            let node = mob
-                .dialogue_tree
-                .as_ref()
-                .unwrap()
-                .nodes
-                .get("root")
-                .unwrap()
-                .clone();
+            let node = mob.dialogue_tree.as_ref().unwrap().nodes.get("root").unwrap().clone();
             // First classify: visible, available.
             let classified = classify_choices("root", &node, &ch, &mob, &db, 100);
             assert_eq!(classified.len(), 1);
@@ -3591,19 +3332,17 @@ mod tests {
             // Simulate the pick by recording it.
             record_choice_pick(&mut ch, &mob.vnum, "root", &node.choices[0]);
             let key = cooldown_key("root", "gift");
-            assert!(ch
-                .dialogue_pair_state
-                .get(&mob.vnum)
-                .unwrap()
-                .choices_picked_once
-                .contains(&key));
+            assert!(
+                ch.dialogue_pair_state
+                    .get(&mob.vnum)
+                    .unwrap()
+                    .choices_picked_once
+                    .contains(&key)
+            );
 
             // Second classify: gone from output.
             let classified = classify_choices("root", &node, &ch, &mob, &db, 100);
-            assert!(
-                classified.is_empty(),
-                "once-picked choice must drop from output"
-            );
+            assert!(classified.is_empty(), "once-picked choice must drop from output");
         }));
         result.unwrap();
     }

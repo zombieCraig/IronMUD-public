@@ -66,11 +66,7 @@ pub fn process_donation_decay(db: &db::Db, connections: &SharedConnections) -> R
             _ => continue,
         };
 
-        broadcast_to_room(
-            connections,
-            &room_id,
-            &format!("{} crumbles to dust.", item.short_desc),
-        );
+        broadcast_to_room(connections, &room_id, &format!("{} crumbles to dust.", item.short_desc));
         let _ = db.delete_item(&item.id);
         debug!("Donated item {} decayed", item.name);
     }

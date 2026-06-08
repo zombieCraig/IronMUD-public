@@ -56,16 +56,9 @@ impl QuotaKind {
 /// Refuse a create if the target area has a non-None cap and the current
 /// count already meets or exceeds it. `None` area_id (orphan) is not
 /// quota-checked — orphans don't belong to an area, so there's no cap.
-pub fn check_area_quota(
-    db: &Db,
-    area_id: Option<Uuid>,
-    kind: QuotaKind,
-) -> Result<(), ApiError> {
+pub fn check_area_quota(db: &Db, area_id: Option<Uuid>, kind: QuotaKind) -> Result<(), ApiError> {
     let Some(uuid) = area_id else { return Ok(()) };
-    let area = match db
-        .get_area_data(&uuid)
-        .map_err(|e| ApiError::Internal(e.to_string()))?
-    {
+    let area = match db.get_area_data(&uuid).map_err(|e| ApiError::Internal(e.to_string()))? {
         Some(a) => a,
         // Dangling area_id: caller already passed authorize_existing_area;
         // skip the quota check rather than block on a missing record.

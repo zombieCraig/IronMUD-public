@@ -1,11 +1,5 @@
-
-use crate::import::{
-    IrItem,
-    IrZone, MappingOptions, PlannedItem, Severity, Warning, WarningKind,
-};
-use crate::types::{
-    CastOnUse, DamageType, ExtraDesc, ItemData, ItemFlags, ItemType, LiquidType, WearLocation,
-};
+use crate::import::{IrItem, IrZone, MappingOptions, PlannedItem, Severity, Warning, WarningKind};
+use crate::types::{CastOnUse, DamageType, ExtraDesc, ItemData, ItemFlags, ItemType, LiquidType, WearLocation};
 
 use super::{FlagAction, lookup_circle_spell};
 
@@ -18,7 +12,12 @@ use super::{FlagAction, lookup_circle_spell};
 ///   4. ITEM_WEAR_* decode (hard-coded; the right-hand side is a Vec)
 ///   5. APPLY_* affect decode via the JSON action table
 ///   6. extra descriptions surface as a single `DeferredFeature` warning
-pub(super) fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &MappingOptions) -> (PlannedItem, Vec<Warning>) {
+pub(super) fn map_item(
+    zone: &IrZone,
+    area_prefix: &str,
+    item: &IrItem,
+    opts: &MappingOptions,
+) -> (PlannedItem, Vec<Warning>) {
     let _ = zone;
     let mut warnings = Vec::new();
 
@@ -87,9 +86,7 @@ pub(super) fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &M
                     WarningKind::UnsupportedFlag,
                     Severity::Warn,
                     item.source.clone(),
-                    format!(
-                        "mapping uses an action that doesn't apply to extra-bits (ITEM_{flag}); ignored"
-                    ),
+                    format!("mapping uses an action that doesn't apply to extra-bits (ITEM_{flag}); ignored"),
                 ));
             }
             None => warnings.push(Warning::new(
@@ -167,8 +164,7 @@ pub(super) fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &M
             WarningKind::Info,
             Severity::Info,
             item.source.clone(),
-            "ITEM_WEAR_TAKE absent — IronMUD has no immovable-item flag; imported as takeable"
-                .to_string(),
+            "ITEM_WEAR_TAKE absent — IronMUD has no immovable-item flag; imported as takeable".to_string(),
         ));
     }
     data.wear_locations = wear_locations;
@@ -299,9 +295,7 @@ pub(super) fn map_item(zone: &IrZone, area_prefix: &str, item: &IrItem, opts: &M
                     WarningKind::UnsupportedFlag,
                     Severity::Warn,
                     item.source.clone(),
-                    format!(
-                        "mapping uses an action that doesn't apply to APPLY_* (APPLY_{name}); ignored"
-                    ),
+                    format!("mapping uses an action that doesn't apply to APPLY_* (APPLY_{name}); ignored"),
                 ));
             }
             None => warnings.push(Warning::new(
@@ -384,7 +378,11 @@ pub(super) fn apply_item_type(item: &IrItem, data: &mut ItemData, warnings: &mut
         // ITEM_WAND / STAFF — single-spell, charge-based items. v[0]=min level,
         // v[1]=spell number, v[2]=max charges, v[3]=current charges.
         3 | 4 => {
-            data.item_type = if item.item_type == 3 { ItemType::Wand } else { ItemType::Staff };
+            data.item_type = if item.item_type == 3 {
+                ItemType::Wand
+            } else {
+                ItemType::Staff
+            };
             if let Some(mapped) = lookup_circle_spell(v[1]) {
                 let max_charges = v[2].max(0);
                 let charges = v[3].max(0).min(max_charges.max(0));
@@ -454,7 +452,10 @@ pub(super) fn apply_item_type(item: &IrItem, data: &mut ItemData, warnings: &mut
                     WarningKind::UnsupportedValueSemantic,
                     Severity::Warn,
                     item.source.clone(),
-                    format!("ITEM_POTION references unmapped Circle spell #{}; cast_on_use left empty", v[1]),
+                    format!(
+                        "ITEM_POTION references unmapped Circle spell #{}; cast_on_use left empty",
+                        v[1]
+                    ),
                 ));
             }
             for (slot, num) in [(2, v[2]), (3, v[3])] {
@@ -620,7 +621,10 @@ pub(super) fn apply_item_type(item: &IrItem, data: &mut ItemData, warnings: &mut
                 WarningKind::UnsupportedValueSemantic,
                 Severity::Warn,
                 item.source.clone(),
-                format!("unknown CircleMUD item_type {} ({type_name}); imported as Misc", item.item_type),
+                format!(
+                    "unknown CircleMUD item_type {} ({type_name}); imported as Misc",
+                    item.item_type
+                ),
             ));
         }
     }
@@ -684,10 +688,10 @@ pub(super) fn stock_board_preset(vnum: i32) -> StockBoardPreset {
 pub(super) fn circle_weapon_damage_type(v3: i32) -> DamageType {
     match v3 {
         0 | 5 | 6 | 7 | 9 | 10 | 13 => DamageType::Bludgeoning, // hit, bludgeon, crush, pound, maul, thrash, punch
-        2 | 3 | 8 => DamageType::Slashing,                       // whip, slash, claw
-        1 | 11 | 14 => DamageType::Piercing,                     // sting, pierce, stab
-        4 => DamageType::Bite,                                    // bite
-        12 => DamageType::Lightning,                              // blast (lossy)
+        2 | 3 | 8 => DamageType::Slashing,                      // whip, slash, claw
+        1 | 11 | 14 => DamageType::Piercing,                    // sting, pierce, stab
+        4 => DamageType::Bite,                                  // bite
+        12 => DamageType::Lightning,                            // blast (lossy)
         _ => DamageType::Bludgeoning,
     }
 }
@@ -701,12 +705,24 @@ pub(super) fn circle_liquid_index_to_type(idx: i32) -> (LiquidType, Option<Strin
         1 => (LiquidType::Beer, None),
         2 => (LiquidType::Wine, None),
         3 => (LiquidType::Ale, None),
-        4 => (LiquidType::Ale, Some("Circle 'dark ale' folded into Ale (no distinct IronMUD type)".into())),
+        4 => (
+            LiquidType::Ale,
+            Some("Circle 'dark ale' folded into Ale (no distinct IronMUD type)".into()),
+        ),
         5 => (LiquidType::Spirits, None),
         6 => (LiquidType::Juice, Some("Circle 'lemonade' folded into Juice".into())),
-        7 => (LiquidType::Spirits, Some("Circle 'firebreather' folded into Spirits".into())),
-        8 => (LiquidType::Ale, Some("Circle 'local speciality' folded into Ale".into())),
-        9 => (LiquidType::Juice, Some("Circle 'slime mold juice' folded into Juice".into())),
+        7 => (
+            LiquidType::Spirits,
+            Some("Circle 'firebreather' folded into Spirits".into()),
+        ),
+        8 => (
+            LiquidType::Ale,
+            Some("Circle 'local speciality' folded into Ale".into()),
+        ),
+        9 => (
+            LiquidType::Juice,
+            Some("Circle 'slime mold juice' folded into Juice".into()),
+        ),
         10 => (LiquidType::Milk, None),
         11 => (LiquidType::Tea, None),
         12 => (LiquidType::Coffee, None),

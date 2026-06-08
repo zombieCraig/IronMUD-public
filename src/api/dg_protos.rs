@@ -24,10 +24,7 @@ use crate::types::{DgAttachKind, DgTriggerProto};
 pub fn routes() -> Router<Arc<ApiState>> {
     Router::new()
         .route("/", get(list_protos).post(create_proto))
-        .route(
-            "/:vnum",
-            get(get_proto).put(update_proto).delete(delete_proto),
-        )
+        .route("/:vnum", get(get_proto).put(update_proto).delete(delete_proto))
 }
 
 #[derive(Serialize)]
@@ -146,10 +143,7 @@ async fn get_proto(
             warnings: Vec::new(),
             refreshed_instances: 0,
         })),
-        None => Err(ApiError::NotFound(format!(
-            "DG proto '{}' not found",
-            vnum
-        ))),
+        None => Err(ApiError::NotFound(format!("DG proto '{}' not found", vnum))),
     }
 }
 
@@ -187,10 +181,7 @@ async fn create_proto(
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .is_some()
     {
-        return Err(ApiError::Conflict(format!(
-            "DG proto '{}' already exists",
-            vnum
-        )));
+        return Err(ApiError::Conflict(format!("DG proto '{}' already exists", vnum)));
     }
     let kind = parse_kind(&req.kind)?;
     let proto = DgTriggerProto {
@@ -210,10 +201,7 @@ async fn create_proto(
         .map_err(|e| ApiError::InvalidInput(e.to_string()))?;
     notify_builders(
         &state.connections,
-        &format!(
-            "[API] {} created DG proto '{}'",
-            user.api_key.owner_character, vnum
-        ),
+        &format!("[API] {} created DG proto '{}'", user.api_key.owner_character, vnum),
     );
     Ok(Json(DgProtoResponse {
         success: true,
@@ -250,10 +238,7 @@ async fn update_proto(
     {
         Some(p) => p,
         None => {
-            return Err(ApiError::NotFound(format!(
-                "DG proto '{}' not found",
-                vnum
-            )));
+            return Err(ApiError::NotFound(format!("DG proto '{}' not found", vnum)));
         }
     };
     if let Some(name) = req.name {
@@ -308,10 +293,7 @@ async fn delete_proto(
         .map_err(|e| ApiError::Internal(e.to_string()))?
         .is_some();
     if !existed {
-        return Err(ApiError::NotFound(format!(
-            "DG proto '{}' not found",
-            vnum
-        )));
+        return Err(ApiError::NotFound(format!("DG proto '{}' not found", vnum)));
     }
     state
         .db
@@ -319,10 +301,7 @@ async fn delete_proto(
         .map_err(|e| ApiError::Internal(e.to_string()))?;
     notify_builders(
         &state.connections,
-        &format!(
-            "[API] {} deleted DG proto '{}'",
-            user.api_key.owner_character, vnum
-        ),
+        &format!("[API] {} deleted DG proto '{}'", user.api_key.owner_character, vnum),
     );
     Ok(Json(serde_json::json!({ "success": true })))
 }

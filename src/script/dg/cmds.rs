@@ -146,28 +146,79 @@ fn strip_pct(s: &str) -> &str {
 /// spellings (`echaround`, `wmtimer`, etc.) are intentionally omitted
 /// from the surfaced list — keep them in `is_known_dg_verb` only.
 pub const COMMANDS: &[&str] = &[
-    "send", "msend", "osend", "wsend",
-    "echo", "mecho", "oecho", "wecho", "recho", "mrecho", "orecho", "wrecho",
-    "echoaround", "mechoaround", "oechoaround", "wechoaround",
-    "zoneecho", "zecho",
-    "damage", "mdamage", "odamage", "wdamage",
+    "send",
+    "msend",
+    "osend",
+    "wsend",
+    "echo",
+    "mecho",
+    "oecho",
+    "wecho",
+    "recho",
+    "mrecho",
+    "orecho",
+    "wrecho",
+    "echoaround",
+    "mechoaround",
+    "oechoaround",
+    "wechoaround",
+    "zoneecho",
+    "zecho",
+    "damage",
+    "mdamage",
+    "odamage",
+    "wdamage",
     "award_skill_xp",
-    "teleport", "mteleport", "oteleport", "wteleport",
-    "purge", "mpurge", "opurge", "wpurge",
-    "load", "mload", "oload", "wload",
-    "log", "mlog", "olog", "wlog",
-    "dg_cast", "dg_affect",
-    "morality", "dg_morality",
+    "teleport",
+    "mteleport",
+    "oteleport",
+    "wteleport",
+    "purge",
+    "mpurge",
+    "opurge",
+    "wpurge",
+    "load",
+    "mload",
+    "oload",
+    "wload",
+    "log",
+    "mlog",
+    "olog",
+    "wlog",
+    "dg_cast",
+    "dg_affect",
+    "morality",
+    "dg_morality",
     "raise_dead",
-    "force", "mforce", "oforce", "wforce",
-    "mremember", "mforget", "mhunt",
-    "at", "mat", "oat", "wat",
-    "mdoor", "odoor", "wdoor", "door",
-    "otimer", "mtimer", "wtimer", "timer",
-    "transform", "mtransform", "otransform",
+    "force",
+    "mforce",
+    "oforce",
+    "wforce",
+    "mremember",
+    "mforget",
+    "mhunt",
+    "at",
+    "mat",
+    "oat",
+    "wat",
+    "mdoor",
+    "odoor",
+    "wdoor",
+    "door",
+    "otimer",
+    "mtimer",
+    "wtimer",
+    "timer",
+    "transform",
+    "mtransform",
+    "otransform",
     "award_achievement",
-    "social", "msocial", "osocial", "wsocial",
-    "skill_set", "skill_add",
+    "social",
+    "msocial",
+    "osocial",
+    "wsocial",
+    "skill_set",
+    "skill_add",
 ];
 
 /// Return `true` when `verb` (already lowercased + `%`-stripped) is a
@@ -179,28 +230,83 @@ pub const COMMANDS: &[&str] = &[
 pub(super) fn is_known_dg_verb(verb: &str) -> bool {
     matches!(
         verb,
-        "send" | "msend" | "osend" | "wsend"
-        | "echo" | "mecho" | "oecho" | "wecho" | "recho" | "mrecho" | "orecho" | "wrecho"
-        | "echoaround" | "mechoaround" | "oechoaround" | "wechoaround"
-        | "echaround" | "echoround" | "echround"
-        | "zoneecho" | "zecho" | "wzoneecho" | "mzoneecho" | "ozoneecho"
-        | "damage" | "mdamage" | "odamage" | "wdamage"
-        | "award_skill_xp"
-        | "teleport" | "mteleport" | "oteleport" | "wteleport"
-        | "purge" | "mpurge" | "opurge" | "wpurge"
-        | "load" | "mload" | "oload" | "wload"
-        | "log" | "mlog" | "olog" | "wlog"
-        | "dg_cast" | "dg_affect"
-        | "morality" | "dg_morality"
-        | "raise_dead"
-        | "force" | "mforce" | "oforce" | "wforce"
-        | "mremember" | "mforget" | "mhunt"
-        | "at" | "mat" | "oat" | "wat"
-        | "mdoor" | "odoor" | "wdoor" | "door"
-        | "otimer" | "mtimer" | "wtimer" | "timer"
-        | "transform" | "mtransform" | "otransform"
-        | "award_achievement"
-        | "social" | "msocial" | "osocial" | "wsocial"
+        "send"
+            | "msend"
+            | "osend"
+            | "wsend"
+            | "echo"
+            | "mecho"
+            | "oecho"
+            | "wecho"
+            | "recho"
+            | "mrecho"
+            | "orecho"
+            | "wrecho"
+            | "echoaround"
+            | "mechoaround"
+            | "oechoaround"
+            | "wechoaround"
+            | "echaround"
+            | "echoround"
+            | "echround"
+            | "zoneecho"
+            | "zecho"
+            | "wzoneecho"
+            | "mzoneecho"
+            | "ozoneecho"
+            | "damage"
+            | "mdamage"
+            | "odamage"
+            | "wdamage"
+            | "award_skill_xp"
+            | "teleport"
+            | "mteleport"
+            | "oteleport"
+            | "wteleport"
+            | "purge"
+            | "mpurge"
+            | "opurge"
+            | "wpurge"
+            | "load"
+            | "mload"
+            | "oload"
+            | "wload"
+            | "log"
+            | "mlog"
+            | "olog"
+            | "wlog"
+            | "dg_cast"
+            | "dg_affect"
+            | "morality"
+            | "dg_morality"
+            | "raise_dead"
+            | "force"
+            | "mforce"
+            | "oforce"
+            | "wforce"
+            | "mremember"
+            | "mforget"
+            | "mhunt"
+            | "at"
+            | "mat"
+            | "oat"
+            | "wat"
+            | "mdoor"
+            | "odoor"
+            | "wdoor"
+            | "door"
+            | "otimer"
+            | "mtimer"
+            | "wtimer"
+            | "timer"
+            | "transform"
+            | "mtransform"
+            | "otransform"
+            | "award_achievement"
+            | "social"
+            | "msocial"
+            | "osocial"
+            | "wsocial"
     )
 }
 
@@ -237,12 +343,10 @@ fn cmd_echo(msg: &str, ctx: &EvalCtx, exclude: Option<&str>) -> Result<(), Strin
     if !text.ends_with('\n') {
         text.push('\n');
     }
-    let exclude_name = exclude
-        .and_then(|t| resolve_target(t, ctx))
-        .and_then(|a| match a {
-            ActorRef::Player { name, .. } => Some(name),
-            ActorRef::Mob { .. } => None,
-        });
+    let exclude_name = exclude.and_then(|t| resolve_target(t, ctx)).and_then(|a| match a {
+        ActorRef::Player { name, .. } => Some(name),
+        ActorRef::Mob { .. } => None,
+    });
     crate::broadcast_to_room(&ctx.connections, room_id, text, exclude_name.as_deref());
     Ok(())
 }
@@ -325,14 +429,19 @@ fn cmd_award_skill_xp(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
         }
     };
     if target_tok.is_empty() || skill_tok.is_empty() {
-        super::warn_builder(ctx, "award_skill_xp: usage is `award_skill_xp <target> <skill_key> <amount>`");
+        super::warn_builder(
+            ctx,
+            "award_skill_xp: usage is `award_skill_xp <target> <skill_key> <amount>`",
+        );
         return Ok(());
     }
     let Some(actor) = resolve_target(&target_tok, ctx) else {
         return Ok(());
     };
     let (connection_id, player_name) = match actor {
-        ActorRef::Player { connection_id, name, .. } if !name.is_empty() => (connection_id, name),
+        ActorRef::Player {
+            connection_id, name, ..
+        } if !name.is_empty() => (connection_id, name),
         _ => return Ok(()),
     };
     let Ok(Some(mut ch)) = ctx.db.get_character_data(&player_name) else {
@@ -371,12 +480,7 @@ fn cmd_teleport(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     };
     // F3 gate: teleport crosses area boundaries trivially. Authorize
     // against the destination room's area.
-    let dest_area = ctx
-        .db
-        .get_room_data(&dest_id)
-        .ok()
-        .flatten()
-        .and_then(|r| r.area_id);
+    let dest_area = ctx.db.get_room_data(&dest_id).ok().flatten().and_then(|r| r.area_id);
     if !ctx.opcode_authorized("teleport", dest_area) {
         super::warn_builder(ctx, "teleport blocked: author lacks permission for destination area");
         return Ok(());
@@ -466,12 +570,7 @@ fn cmd_load(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     // F3 gate: load lands content in `room_id`. Authorize against
     // that room's area (which is the host's room for plain load /
     // host's location for items in inventory).
-    let target_area = ctx
-        .db
-        .get_room_data(&room_id)
-        .ok()
-        .flatten()
-        .and_then(|r| r.area_id);
+    let target_area = ctx.db.get_room_data(&room_id).ok().flatten().and_then(|r| r.area_id);
     if !ctx.opcode_authorized("load", target_area) {
         super::warn_builder(ctx, "load blocked: author lacks permission for host area");
         return Ok(());
@@ -483,18 +582,12 @@ fn cmd_load(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
                 let _ = ctx.db.save_mobile_data(spawned);
             }
             _ => {
-                super::warn_builder(
-                    ctx,
-                    &format!("load: unknown mob vnum '{vnum}' (or world-max cap hit)"),
-                );
+                super::warn_builder(ctx, &format!("load: unknown mob vnum '{vnum}' (or world-max cap hit)"));
             }
         },
         "o" | "obj" | "object" | "item" => {
             let Ok(Some(mut spawned)) = ctx.db.spawn_item_from_prototype(&vnum) else {
-                super::warn_builder(
-                    ctx,
-                    &format!("load: unknown obj vnum '{vnum}' (or world-max cap hit)"),
-                );
+                super::warn_builder(ctx, &format!("load: unknown obj vnum '{vnum}' (or world-max cap hit)"));
                 return Ok(());
             };
             if dest.is_empty() {
@@ -728,9 +821,7 @@ fn cmd_dg_affect(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     let magnitude: i32 = tok.next().and_then(|s| s.parse().ok()).unwrap_or(1);
     let remaining: Vec<&str> = tok.collect();
     let noresist = remaining.iter().any(|s| s.eq_ignore_ascii_case("noresist"));
-    let duration: i32 = remaining.iter()
-        .find_map(|s| s.parse().ok())
-        .unwrap_or(60);
+    let duration: i32 = remaining.iter().find_map(|s| s.parse().ok()).unwrap_or(60);
     if target_tok.is_empty() || effect.is_empty() {
         super::warn_builder(ctx, "dg_affect: needs target and effect");
         return Ok(());
@@ -765,12 +856,10 @@ fn cmd_dg_morality(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     match actor {
         ActorRef::Player { name, .. } => {
             if let Ok(Some(mut ch)) = ctx.db.get_character_data(&name) {
-                let new_val = (ch.morality as i64)
-                    .saturating_add(delta as i64)
-                    .clamp(
-                        crate::morality::MORALITY_MIN as i64,
-                        crate::morality::MORALITY_MAX as i64,
-                    ) as i32;
+                let new_val = (ch.morality as i64).saturating_add(delta as i64).clamp(
+                    crate::morality::MORALITY_MIN as i64,
+                    crate::morality::MORALITY_MAX as i64,
+                ) as i32;
                 ch.morality = new_val;
                 let _ = ctx.db.save_character_data(ch);
             }
@@ -797,7 +886,10 @@ fn cmd_raise_dead(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     let mastery_xp: i32 = tok.next().and_then(|s| s.parse().ok()).unwrap_or(25);
 
     // Only a player can raise the dead; %actor% is the one who spoke the word.
-    let Some(ActorRef::Player { connection_id, name, .. }) = ctx.actor.clone() else {
+    let Some(ActorRef::Player {
+        connection_id, name, ..
+    }) = ctx.actor.clone()
+    else {
         return Ok(());
     };
     if name.is_empty() {
@@ -808,7 +900,11 @@ fn cmd_raise_dead(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
         &ctx.db,
         &name,
         &corpse_kw,
-        crate::necromancy::RaiseParams { mana_cost, morality_cost, mastery_xp },
+        crate::necromancy::RaiseParams {
+            mana_cost,
+            morality_cost,
+            mastery_xp,
+        },
     );
 
     if !outcome.caster_msg.is_empty() && !connection_id.is_empty() {
@@ -842,7 +938,8 @@ fn apply_dg_effect(
         None => {
             tracing::debug!(
                 "DG: unknown effect '{}' on dg_cast/dg_affect (target={})",
-                effect_name, target_tok
+                effect_name,
+                target_tok
             );
             super::warn_builder(ctx, &format!("dg_cast/dg_affect: unknown effect '{effect_name}'"));
             return Ok(());
@@ -901,21 +998,33 @@ fn apply_dg_stun(target_tok: &str, rounds: i32, base_chance: i32, noresist: bool
     match actor {
         ActorRef::Mob { mobile_id, .. } => {
             if let Ok(Some(mut mob)) = ctx.db.get_mobile_data(&mobile_id) {
-                if !noresist && !crate::script::combat::roll_status_application(&mob.active_buffs, crate::EffectType::Stun, base_chance, &mut rng) {
+                if !noresist
+                    && !crate::script::combat::roll_status_application(
+                        &mob.active_buffs,
+                        crate::EffectType::Stun,
+                        base_chance,
+                        &mut rng,
+                    )
+                {
                     return Ok(());
                 }
-                mob.combat.stun_rounds_remaining =
-                    (mob.combat.stun_rounds_remaining + rounds).min(5);
+                mob.combat.stun_rounds_remaining = (mob.combat.stun_rounds_remaining + rounds).min(5);
                 let _ = ctx.db.save_mobile_data(mob);
             }
         }
         ActorRef::Player { name, .. } => {
             if let Ok(Some(mut ch)) = ctx.db.get_character_data(&name) {
-                if !noresist && !crate::script::combat::roll_status_application(&ch.active_buffs, crate::EffectType::Stun, base_chance, &mut rng) {
+                if !noresist
+                    && !crate::script::combat::roll_status_application(
+                        &ch.active_buffs,
+                        crate::EffectType::Stun,
+                        base_chance,
+                        &mut rng,
+                    )
+                {
                     return Ok(());
                 }
-                ch.combat.stun_rounds_remaining =
-                    (ch.combat.stun_rounds_remaining + rounds).min(5);
+                ch.combat.stun_rounds_remaining = (ch.combat.stun_rounds_remaining + rounds).min(5);
                 let _ = ctx.db.save_character_data(ch);
             }
         }
@@ -934,7 +1043,10 @@ fn cmd_force(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     let Some(actor) = resolve_target(&target_tok, ctx) else {
         return Ok(());
     };
-    if let ActorRef::Player { connection_id, name, .. } = actor {
+    if let ActorRef::Player {
+        connection_id, name, ..
+    } = actor
+    {
         if connection_id.is_empty() {
             return Ok(());
         }
@@ -1004,7 +1116,11 @@ fn cmd_mremember(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
         ActorRef::Mob { .. } => return Ok(()),
     };
     if let Ok(Some(mut mob)) = ctx.db.get_mobile_data(&ctx.self_id) {
-        if !mob.remembered_enemies.iter().any(|e| e.name.eq_ignore_ascii_case(&name)) {
+        if !mob
+            .remembered_enemies
+            .iter()
+            .any(|e| e.name.eq_ignore_ascii_case(&name))
+        {
             // Default 1-hour expiry — caller can override via dg_affect-style
             // direct manipulation if longer durations are needed.
             let now = std::time::SystemTime::now()
@@ -1103,12 +1219,7 @@ fn cmd_at(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     // against the destination room's area before running the inner
     // command. Inner commands also re-authorize themselves, but this
     // catches the rebind itself (echo/load to a foreign room).
-    let dest_area = ctx
-        .db
-        .get_room_data(&dest_id)
-        .ok()
-        .flatten()
-        .and_then(|r| r.area_id);
+    let dest_area = ctx.db.get_room_data(&dest_id).ok().flatten().and_then(|r| r.area_id);
     if !ctx.opcode_authorized("at", dest_area) {
         super::warn_builder(ctx, "at blocked: author lacks permission for destination area");
         return Ok(());
@@ -1293,14 +1404,17 @@ fn apply_attach(proto: &DgTriggerProto, target_tok: &str, ctx: &EvalCtx) {
         _ => {
             tracing::debug!(
                 "DG: attach: kind mismatch (proto={:?} target_tok={})",
-                proto.attach_kind, target_tok
+                proto.attach_kind,
+                target_tok
             );
         }
     }
 }
 
 fn apply_detach(proto: &DgTriggerProto, target_tok: &str, ctx: &EvalCtx) {
-    let Some(host) = resolve_host_uuid(target_tok, ctx) else { return };
+    let Some(host) = resolve_host_uuid(target_tok, ctx) else {
+        return;
+    };
     // Match by source_proto_vnum first (set since Part 3); fall back to
     // dg_name for legacy un-tagged instances from earlier imports.
     let matches_proto = |source: Option<&str>, name: Option<&str>| -> bool {
@@ -1506,10 +1620,7 @@ fn write_custom_skill_via(
         return Ok(());
     }
     let Some(actor) = resolve_target(target_tok, ctx) else {
-        super::warn_builder(
-            ctx,
-            &format!("{verb_for_diag}: target '{target_tok}' not found"),
-        );
+        super::warn_builder(ctx, &format!("{verb_for_diag}: target '{target_tok}' not found"));
         return Ok(());
     };
     match actor {
@@ -1590,11 +1701,7 @@ fn cmd_social(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     let Ok(Some(mob)) = ctx.db.get_mobile_data(&ctx.self_id) else {
         return Ok(());
     };
-    let gender = mob
-        .characteristics
-        .as_ref()
-        .map(|c| c.gender.as_str())
-        .unwrap_or("");
+    let gender = mob.characteristics.as_ref().map(|c| c.gender.as_str()).unwrap_or("");
 
     use crate::social::render::{self, RenderParty};
     let actor = RenderParty {
@@ -1670,12 +1777,7 @@ fn cmd_social(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
                     if !msg.ends_with('\n') {
                         msg.push('\n');
                     }
-                    crate::broadcast_to_room(
-                        &ctx.connections,
-                        room_id,
-                        msg,
-                        Some(&mob.short_desc),
-                    );
+                    crate::broadcast_to_room(&ctx.connections, room_id, msg, Some(&mob.short_desc));
                     // broadcast_to_room only excludes one name. The
                     // victim_player_name (if present) will see the
                     // others_found line in addition to vict_found.
@@ -1722,7 +1824,10 @@ fn resolve_target(tok: &str, ctx: &EvalCtx) -> Option<ActorRef> {
     }
     if let Ok(uid) = Uuid::parse_str(tok) {
         if let Ok(Some(mob)) = ctx.db.get_mobile_data(&uid) {
-            return Some(ActorRef::Mob { mobile_id: uid, name: mob.name });
+            return Some(ActorRef::Mob {
+                mobile_id: uid,
+                name: mob.name,
+            });
         }
         // Match against bound actor/victim by char_id.
         for cand in [&ctx.actor, &ctx.victim].into_iter().flatten() {

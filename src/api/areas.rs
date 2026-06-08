@@ -17,7 +17,7 @@ use super::{
     auth::{AuthenticatedUser, can_edit_area, can_read, can_write},
     error::ApiError,
     notify_builders,
-    validate::{check_text_len, DESCRIPTION_MAX, NAME_MAX},
+    validate::{DESCRIPTION_MAX, NAME_MAX, check_text_len},
 };
 use crate::spawn::apply_spawn_dependencies;
 use crate::{AreaData, AreaFlags, AreaPermission, CombatZoneType, ForageEntry, RoomData, RoomFlags, SpawnEntityType};
@@ -338,8 +338,8 @@ async fn create_area(
         migrant_starting_gold: crate::types::GoldRange::default(),
         guard_wage_per_hour: 0,
         healer_wage_per_hour: 0,
-            donation_room_vnum: None,
-            starting_room_vnum: None,
+        donation_room_vnum: None,
+        starting_room_vnum: None,
         scavenger_wage_per_hour: 0,
         max_rooms: None,
         max_items: None,

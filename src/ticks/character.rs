@@ -6,7 +6,10 @@ use anyhow::Result;
 use tokio::time::{Duration, interval};
 use tracing::error;
 
-use ironmud::{BodyPart, CharacterData, CharacterPosition, EffectType, InputEvent, SharedConnections, SharedState, TemperatureCategory, db};
+use ironmud::{
+    BodyPart, CharacterData, CharacterPosition, EffectType, InputEvent, SharedConnections, SharedState,
+    TemperatureCategory, db,
+};
 
 /// Thirst tick interval in seconds (check thirst every minute)
 pub const THIRST_TICK_INTERVAL_SECS: u64 = 60;
@@ -289,7 +292,6 @@ pub async fn run_regen_tick(db: db::Db, connections: SharedConnections, state: S
 
 /// Process stamina and HP regeneration for all logged-in players
 fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &SharedState) -> Result<()> {
-
     let stamina_regen_standing: i32 = db
         .get_setting_or_default("stamina_regen_standing", "1")
         .unwrap_or_else(|_| "1".to_string())
@@ -1135,9 +1137,15 @@ fn process_slow_move_tick(db: &db::Db, connections: &SharedConnections) -> Resul
 
     let mut conns = connections.lock().unwrap();
     for (_conn_id, session) in conns.iter_mut() {
-        let Some(ref mut char) = session.character else { continue; };
-        let Some(psm) = char.pending_slow_move.as_ref() else { continue; };
-        if now < psm.complete_at { continue; }
+        let Some(ref mut char) = session.character else {
+            continue;
+        };
+        let Some(psm) = char.pending_slow_move.as_ref() else {
+            continue;
+        };
+        if now < psm.complete_at {
+            continue;
+        }
 
         let direction = psm.direction.clone();
         char.pending_slow_move = None;

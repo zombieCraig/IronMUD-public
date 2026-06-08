@@ -10,10 +10,10 @@
 //! Keeping the routing logic here means all three reset entry points
 //! produce the same equipment/inventory/container state.
 
+use crate::SharedConnections;
 use crate::db::Db;
 use crate::session::broadcast::broadcast_to_builders;
 use crate::types::{SpawnDestination, SpawnPointData};
-use crate::SharedConnections;
 use uuid::Uuid;
 
 /// Apply a spawn point's dependencies to a just-spawned entity.
@@ -93,7 +93,10 @@ pub fn apply_spawn_dependencies(
                 Ok(None) => {
                     broadcast_to_builders(
                         connections,
-                        &format!("Spawn warning: Item prototype '{}' not found for spawn point {}", dep.item_vnum, sp.id),
+                        &format!(
+                            "Spawn warning: Item prototype '{}' not found for spawn point {}",
+                            dep.item_vnum, sp.id
+                        ),
                     );
                 }
                 Err(e) => {

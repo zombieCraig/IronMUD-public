@@ -36,8 +36,7 @@ use crate::types::{SocialAction, SocialPosition};
 /// and are skipped — the parser favours partial progress over hard
 /// failures, matching the rest of the CircleMUD importer.
 pub fn parse_file(path: &Path) -> Result<(Vec<SocialAction>, Vec<String>)> {
-    let raw = fs::read_to_string(path)
-        .with_context(|| format!("read socials file {}", path.display()))?;
+    let raw = fs::read_to_string(path).with_context(|| format!("read socials file {}", path.display()))?;
     Ok(parse_str(&raw))
 }
 
@@ -118,9 +117,7 @@ fn build_record(header: &str, body: &[String]) -> Result<SocialAction> {
     let min_char_raw = parts.next();
     let min_level_raw = parts.next();
 
-    let abbrev = abbrev_raw
-        .filter(|s| !s.is_empty() && *s != "0")
-        .map(|s| s.to_string());
+    let abbrev = abbrev_raw.filter(|s| !s.is_empty() && *s != "0").map(|s| s.to_string());
     let hide = hide_raw
         .and_then(|s| s.parse::<i32>().ok())
         .map(|n| n != 0)
@@ -133,20 +130,16 @@ fn build_record(header: &str, body: &[String]) -> Result<SocialAction> {
         .and_then(|s| s.parse::<u8>().ok())
         .map(SocialPosition::from_circle)
         .unwrap_or_default();
-    let min_level = min_level_raw
-        .and_then(|s| s.parse::<u8>().ok())
-        .unwrap_or(0);
+    let min_level = min_level_raw.and_then(|s| s.parse::<u8>().ok()).unwrap_or(0);
 
     let g = |idx: usize| -> Option<String> {
-        body.get(idx)
-            .map(|s| s.trim_end_matches('\r'))
-            .and_then(|s| {
-                if s.trim() == "#" || s.trim().is_empty() {
-                    None
-                } else {
-                    Some(s.to_string())
-                }
-            })
+        body.get(idx).map(|s| s.trim_end_matches('\r')).and_then(|s| {
+            if s.trim() == "#" || s.trim().is_empty() {
+                None
+            } else {
+                Some(s.to_string())
+            }
+        })
     };
 
     Ok(SocialAction {
@@ -221,7 +214,10 @@ $
         assert_eq!(accuse.abbrev.as_deref(), Some("accuse"));
         assert!(!accuse.hide);
         assert_eq!(accuse.char_no_arg.as_deref(), Some("Accuse who??"));
-        assert_eq!(accuse.body_others_found.as_deref(), Some("$n looks accusingly at $N's $t."));
+        assert_eq!(
+            accuse.body_others_found.as_deref(),
+            Some("$n looks accusingly at $N's $t.")
+        );
         assert_eq!(accuse.object_char_found.as_deref(), Some("You look accusingly at $p."));
 
         let wave = &socials[1];

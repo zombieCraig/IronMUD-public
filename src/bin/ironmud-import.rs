@@ -394,10 +394,7 @@ fn run_engine<E: MudEngine>(
 /// resolved relative to the current working directory — same convention
 /// as the rest of the script-data loaders. Existing files are
 /// overwritten; the importer is the source of truth.
-fn write_socials_json(
-    socials: &[ironmud::types::SocialAction],
-    source: &std::path::Path,
-) -> Result<()> {
+fn write_socials_json(socials: &[ironmud::types::SocialAction], source: &std::path::Path) -> Result<()> {
     let out_path = std::path::Path::new("scripts/data/socials.json");
     if let Some(parent) = out_path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -408,11 +405,7 @@ fn write_socials_json(
     };
     let json = serde_json::to_string_pretty(&file)?;
     std::fs::write(out_path, json)?;
-    println!(
-        "socials: wrote {} entries to {}",
-        socials.len(),
-        out_path.display()
-    );
+    println!("socials: wrote {} entries to {}", socials.len(), out_path.display());
     Ok(())
 }
 

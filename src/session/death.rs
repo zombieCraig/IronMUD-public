@@ -51,8 +51,7 @@ pub fn break_all_charms_by_player(db: &Db, player_name: &str) {
             // vampire Dominate discipline; semantics mirror Charmed for
             // lifecycle purposes.
             mobile.active_buffs.retain(|b| {
-                !((b.effect_type == EffectType::Charmed
-                    || b.effect_type == EffectType::Dominated)
+                !((b.effect_type == EffectType::Charmed || b.effect_type == EffectType::Dominated)
                     && b.source.eq_ignore_ascii_case(player_name))
             });
             if mobile.active_buffs.len() != before {
@@ -190,7 +189,7 @@ fn build_player_corpse(name: &str, room_id: Uuid, gold: i64) -> ItemData {
         fertilizer_duration: 0,
         treats_infestation: String::new(),
         dg_vars: std::collections::HashMap::new(),
-            affects: Vec::new(),
+        affects: Vec::new(),
     }
 }
 
@@ -212,7 +211,12 @@ pub fn kill_player_at_room(
     break_all_charms_by_player(db, &char_name);
 
     send_client_message(connections, connection_id_str.to_string(), "You have died!".to_string());
-    broadcast_to_room(connections, *room_id, format!("{} has died!", char_name), Some(&char_name));
+    broadcast_to_room(
+        connections,
+        *room_id,
+        format!("{} has died!", char_name),
+        Some(&char_name),
+    );
 
     let mut corpse = build_player_corpse(&char_name, *room_id, char.gold as i64);
     let corpse_id = corpse.id;
@@ -239,9 +243,7 @@ pub fn kill_player_at_room(
 
     char.gold = 0;
 
-    let spawn_room = char
-        .spawn_room_id
-        .unwrap_or_else(|| db.resolve_starting_room_id());
+    let spawn_room = char.spawn_room_id.unwrap_or_else(|| db.resolve_starting_room_id());
 
     char.current_room_id = spawn_room;
     char.hp = (char.max_hp / 4).max(1);

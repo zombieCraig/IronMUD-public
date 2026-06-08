@@ -5,12 +5,12 @@
 //! population. Both are public so integration tests in `tests/` can drive
 //! them directly without spinning up the runtime loop.
 
-use anyhow::Result;
+use crate::SharedConnections;
+use crate::db;
 use crate::types::ActiveBuff;
 use crate::types::EffectType;
 use crate::types::MobileData;
-use crate::SharedConnections;
-use crate::db;
+use anyhow::Result;
 
 /// Sun-exposure tick interval. 30s — fast enough that vampires can't sneak a
 /// quick errand outdoors without consequence, slow enough that the tick scan
@@ -38,10 +38,7 @@ const BLOOD_DECAY_PER_TICK: i32 = 1;
 /// expected to finish the death pipeline (corpse, inventory drop, spawn
 /// cleanup) via `process_mobile_death` — which lives bin-side and can't
 /// be called from here.
-pub fn process_sun_tick(
-    db: &db::Db,
-    connections: &SharedConnections,
-) -> Result<Vec<uuid::Uuid>> {
+pub fn process_sun_tick(db: &db::Db, connections: &SharedConnections) -> Result<Vec<uuid::Uuid>> {
     let mut mob_deaths: Vec<uuid::Uuid> = Vec::new();
     let game_time = db.get_game_time()?;
     if !game_time.is_daytime() {
@@ -87,17 +84,10 @@ pub fn process_sun_tick(
             if dmg <= 0 {
                 continue;
             }
-            apply_sun_damage_with_rescue(
-                &mut ch.hp,
-                &mut ch.active_buffs,
-                dmg,
-                already_burning,
-            );
+            apply_sun_damage_with_rescue(&mut ch.hp, &mut ch.active_buffs, dmg, already_burning);
             let now_burning = has_buff(&ch.active_buffs, EffectType::SunlightBurning);
             let msg = if ch.hp == 0 {
-                format!(
-                    "\n\x1b[1;31mThe sunlight finishes you. Your unliving flesh blackens, splits, ends.\x1b[0m\n"
-                )
+                format!("\n\x1b[1;31mThe sunlight finishes you. Your unliving flesh blackens, splits, ends.\x1b[0m\n")
             } else if now_burning && !already_burning {
                 format!(
                     "\n\x1b[1;31mThe sun ignites your dead flesh! You collapse, smoke pouring from your skin. ONE MORE MOMENT IN THE LIGHT AND YOU END. ({} dmg)\x1b[0m\n",
@@ -136,12 +126,7 @@ pub fn process_sun_tick(
             continue;
         }
         let dmg = sun_damage_amount(mob.max_hp);
-        apply_sun_damage_with_rescue(
-            &mut mob.current_hp,
-            &mut mob.active_buffs,
-            dmg,
-            already_burning,
-        );
+        apply_sun_damage_with_rescue(&mut mob.current_hp, &mut mob.active_buffs, dmg, already_burning);
         let died = mob.current_hp == 0;
         let mob_id = mob.id;
         let _ = db.save_mobile_data(mob);
@@ -191,12 +176,7 @@ fn clear_burning_when_safe(db: &db::Db, connections: &SharedConnections) -> Resu
 /// Compute the rescue outcome when a sun-damage hit would land. Returns the
 /// new HP and whether SunlightBurning should be set. Damage that wouldn't
 /// drop the target to 0 leaves the rescue state alone.
-fn apply_sun_damage_with_rescue(
-    hp: &mut i32,
-    buffs: &mut Vec<ActiveBuff>,
-    dmg: i32,
-    already_burning: bool,
-) {
+fn apply_sun_damage_with_rescue(hp: &mut i32, buffs: &mut Vec<ActiveBuff>, dmg: i32, already_burning: bool) {
     push_or_refresh_buff(buffs, EffectType::SunlightBurn, dmg, "sunlight");
 
     let raw = *hp - dmg;
@@ -289,12 +269,7 @@ fn remove_buff(buffs: &mut Vec<ActiveBuff>, effect_type: EffectType) {
     buffs.retain(|b| b.effect_type != effect_type);
 }
 
-fn push_or_refresh_buff(
-    buffs: &mut Vec<ActiveBuff>,
-    effect_type: EffectType,
-    magnitude: i32,
-    source: &str,
-) {
+fn push_or_refresh_buff(buffs: &mut Vec<ActiveBuff>, effect_type: EffectType, magnitude: i32, source: &str) {
     if let Some(existing) = buffs.iter_mut().find(|b| b.effect_type == effect_type) {
         existing.magnitude = magnitude;
         existing.remaining_secs = (SUN_TICK_INTERVAL_SECS * 2) as i32;
