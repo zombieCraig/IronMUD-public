@@ -735,6 +735,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         cloned_db.get_setting_or_default(&key, &default).unwrap_or(default)
     });
 
+    // get_setting_default(key) -> String — the built-in default for a known
+    // setting (empty string if the key has no registered default).
+    engine.register_fn("get_setting_default", move |key: String| -> String {
+        crate::settings::setting_default(&key)
+            .unwrap_or("")
+            .to_string()
+    });
+
     // set_setting(key, value) -> bool
     let cloned_db = db.clone();
     engine.register_fn("set_setting", move |key: String, value: String| {

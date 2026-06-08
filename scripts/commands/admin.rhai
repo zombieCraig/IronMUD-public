@@ -361,12 +361,18 @@ fn handle_config(connection_id, args, admin_char) {
         let configured = list_all_settings();
         
         for k in allowed_keys {
-            let val = "(not set)";
+            let val = "";
+            let found = false;
             for entry in configured {
                 if entry.key == k {
                     val = entry.value;
+                    found = true;
                     break;
                 }
+            }
+            if !found {
+                let def = get_setting_default(k);
+                val = if def == "" { "(not set)" } else { "(not set) [" + def + "]" };
             }
             output += "  " + pad_right(k, 35) + " " + val + "\n";
         }
@@ -395,7 +401,12 @@ fn handle_config(connection_id, args, admin_char) {
     if parts.len() < 3 {
         let current = get_setting(key);
         if current == "" {
-            send_client_message(connection_id, key + " is not set.");
+            let def = get_setting_default(key);
+            if def == "" {
+                send_client_message(connection_id, key + " is not set.");
+            } else {
+                send_client_message(connection_id, key + " is not set (default: " + def + ").");
+            }
         } else {
             send_client_message(connection_id, key + " is currently: " + current);
         }
