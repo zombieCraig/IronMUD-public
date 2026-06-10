@@ -1129,6 +1129,102 @@ end";
     }
 
     #[test]
+    fn area_roster_name_in_local_resolves_character_field() {
+        // Powers the area-leaderboard idiom: iterate %self.area.players% with
+        // .car/.cdr into a local, then read %who.level% off the roster name —
+        // even though the player stands in a *different* room of the area and
+        // the .car token carries the roster's trailing comma.
+        let mut ctx = make_ctx(SelfKind::Obj, Uuid::new_v4(), "beacon");
+        let area_a = Uuid::new_v4();
+        let area_b = Uuid::new_v4();
+        let room_a1 = build_room_in_area(&ctx.db, area_a);
+        let room_a2 = build_room_in_area(&ctx.db, area_a);
+        let room_b1 = build_room_in_area(&ctx.db, area_b);
+        ctx.self_room = Some(room_a1); // item sits here; player is elsewhere
+
+        let pc: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "Aldous",
+            "password_hash": "",
+            "current_room_id": room_a2,
+            "level": 7,
+        }))
+        .expect("build pc");
+        ctx.db.save_character_data(pc).expect("save pc");
+
+        // A same-named player in another area must NOT shadow the match.
+        let other: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "Brigid",
+            "password_hash": "",
+            "current_room_id": room_b1,
+            "level": 99,
+        }))
+        .expect("build other pc");
+        ctx.db.save_character_data(other).expect("save other pc");
+
+        let mut state = crate::script::dg::eval::State::new();
+        // Simulate `set who %list.car%` — `.car` keeps the trailing comma.
+        state.locals.insert("who".to_string(), "Aldous,".to_string());
+
+        // Comma-suffixed roster name still resolves to the area player's field.
+        assert_eq!(vars::resolve("who.level", &ctx, &state), "7");
+        // `.name` returns the canonical (cased) name, cleaning the comma.
+        assert_eq!(vars::resolve("who.name", &ctx, &state), "Aldous");
+
+        // A name outside self's area does not resolve (None → text-field "").
+        state.locals.insert("who".to_string(), "Brigid,".to_string());
+        assert_eq!(vars::resolve("who.level", &ctx, &state), "");
+
+        // Text-field accessors still win over entity coercion.
+        state.locals.insert("phrase".to_string(), "hello world".to_string());
+        assert_eq!(vars::resolve("phrase.car", &ctx, &state), "hello");
+    }
+
+    #[test]
+    fn area_mob_ids_roster_iterates_and_reads_fields() {
+        // The mob counterpart to the player-name leaderboard: `%self.area.mob_ids%`
+        // yields space-free UUIDs that `.car`/`.cdr` can tokenise, and a uuid
+        // in a local resolves typed fields (`%m.level%`) across the area —
+        // even with the roster's trailing comma left by `.car`.
+        let mut ctx = make_ctx(SelfKind::Obj, Uuid::new_v4(), "beacon");
+        let area_a = Uuid::new_v4();
+        let area_b = Uuid::new_v4();
+        let room_a1 = build_room_in_area(&ctx.db, area_a);
+        let room_a2 = build_room_in_area(&ctx.db, area_a);
+        let room_b1 = build_room_in_area(&ctx.db, area_b);
+        ctx.self_room = Some(room_a1); // item sits here; mob is elsewhere in area
+
+        let mut mob = crate::types::MobileData::new("a grizzled guard".to_string());
+        mob.is_prototype = false;
+        mob.vnum = "3001".to_string();
+        mob.keywords = vec!["guard".to_string()];
+        mob.level = 5;
+        mob.current_room_id = Some(room_a2);
+        let mob_id = mob.id;
+        ctx.db.save_mobile_data(mob).expect("save mob");
+
+        // A same-vnum mob in another area must NOT appear in the roster.
+        place_mob(&ctx.db, "a grizzled guard", "3001", room_b1);
+
+        let state = crate::script::dg::eval::State::new();
+
+        // The roster is exactly our one area mob's id.
+        assert_eq!(vars::resolve("self.area.mob_ids", &ctx, &state), mob_id.to_string());
+        // Filter still applies on the id variant.
+        assert_eq!(
+            vars::resolve("self.area.mob_ids(guard)", &ctx, &state),
+            mob_id.to_string()
+        );
+        assert_eq!(vars::resolve("self.area.mob_ids(dragon)", &ctx, &state), "");
+
+        // Simulate `set m %list.car%` — id carries the roster's trailing comma.
+        let mut state = state;
+        state.locals.insert("m".to_string(), format!("{mob_id},"));
+        assert_eq!(vars::resolve("m.level", &ctx, &state), "5");
+        assert_eq!(vars::resolve("m.name", &ctx, &state), "a grizzled guard");
+        assert_eq!(vars::resolve("m.vnum", &ctx, &state), "3001");
+    }
+
+    #[test]
     fn victim_resolves_mob_kind_from_db() {
         let mob = crate::types::MobileData::new("kobold".to_string());
         let mob_id = mob.id;

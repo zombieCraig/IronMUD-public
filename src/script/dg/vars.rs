@@ -148,9 +148,13 @@ pub fn resolve(expr: &str, ctx: &EvalCtx, state: &State) -> String {
             let (name, arg) = parse_field_call(inner).unwrap_or((inner, ""));
             let filter = (!arg.is_empty()).then_some(arg);
             return match name {
-                "people" => list_area_people(ctx, &area_id, AreaKind::Both, filter),
-                "players" | "pcs" => list_area_people(ctx, &area_id, AreaKind::Players, filter),
-                "mobs" => list_area_people(ctx, &area_id, AreaKind::Mobs, filter),
+                "people" => list_area_people(ctx, &area_id, AreaKind::Both, filter, false),
+                "players" | "pcs" => list_area_people(ctx, &area_id, AreaKind::Players, filter, false),
+                "mobs" => list_area_people(ctx, &area_id, AreaKind::Mobs, filter, false),
+                // Mob UUIDs (filterable) — the iterable counterpart to `.mobs`.
+                // Players have no stable UUID in IronMUD, so there is no
+                // `player_ids`; iterate players by name via `.players`.
+                "mob_ids" => list_area_people(ctx, &area_id, AreaKind::Mobs, filter, true),
                 _ => String::new(),
             };
         }
@@ -263,12 +267,31 @@ pub fn resolve(expr: &str, ctx: &EvalCtx, state: &State) -> String {
         // the text-field reader on the resolved bare-name value. Stock
         // tbamud uses this idiom for string locals (`set s "foo bar"`
         // then `if %s.contains(foo)%`).
+        //
+        // For a non-text field (anything but car/cdr/strlen/contains(...))
+        // first try to coerce the resolved value as a *player name* anywhere
+        // in self's area — this lets a roster name pulled out of
+        // `%self.area.players%` with `.car` be read for `.level`/`.class`/etc.
+        // (`set who %list.car%` then `%who.level%`). Falls back to the
+        // text-field reader when no player matches.
         _ => {
             let value = resolve_bare_name(head, ctx, state);
-            if field.is_none() {
-                value
-            } else {
-                resolve_text_field(&value, field)
+            match field {
+                None => value,
+                Some(f) if !matches!(f, "car" | "cdr" | "strlen") && parse_field_call(f).is_none() => {
+                    // A roster id pulled out with `.car` carries the `", "`
+                    // separator's trailing comma — strip non-uuid chars before
+                    // parsing. UUID value → remote entity field (mob/item/room
+                    // by id, e.g. iterating `%self.area.mob_ids%`); otherwise a
+                    // player name in self's area; otherwise plain text.
+                    let cleaned = value.trim_matches(|c: char| !c.is_ascii_hexdigit() && c != '-');
+                    if let Ok(uid) = uuid::Uuid::parse_str(cleaned) {
+                        remote_entity_var(ctx, &uid, f)
+                    } else {
+                        name_field_in_self_area(&value, f, ctx).unwrap_or_else(|| resolve_text_field(&value, field))
+                    }
+                }
+                Some(_) => resolve_text_field(&value, field),
             }
         }
     }
@@ -374,6 +397,52 @@ fn arg_as_actor_field(text: &str, field: &str, ctx: &EvalCtx) -> Option<String> 
     None
 }
 
+/// Coerce a roster name held in a local/global var to a character field.
+/// Powers `%who.level%` where `who` came from iterating `%self.area.players%`
+/// with `.car`/`.cdr` — so the raw value may carry the roster's `", "`
+/// punctuation (`"Alice,"`). The first whitespace token is stripped of any
+/// surrounding non-alphanumerics, then matched (case-insensitively) against
+/// every player standing anywhere in self's area. Player names are unique, so
+/// no room-precedence is needed. Mobs are intentionally NOT resolved here:
+/// their names embed spaces that `.car` can't tokenise and aren't unique.
+/// Returns None when self has no area or no player matches, so the caller
+/// falls back to the plain text-field reader.
+fn name_field_in_self_area(value: &str, field: &str, ctx: &EvalCtx) -> Option<String> {
+    let needle = value
+        .split_whitespace()
+        .next()?
+        .trim_matches(|c: char| !c.is_alphanumeric())
+        .to_ascii_lowercase();
+    if needle.is_empty() {
+        return None;
+    }
+    let self_room = ctx.self_room?;
+    let area_id = ctx
+        .db
+        .get_room_data(&self_room)
+        .ok()
+        .flatten()
+        .and_then(|r| r.area_id)?;
+    let rooms = ctx.db.get_rooms_in_area(&area_id).ok()?;
+    let room_ids: std::collections::HashSet<uuid::Uuid> = rooms.iter().map(|r| r.id).collect();
+    let chars = ctx.db.list_all_characters().ok()?;
+    for c in chars {
+        if room_ids.contains(&c.current_room_id) && c.name.to_ascii_lowercase() == needle {
+            return Some(match field {
+                "name" => c.name,
+                "is_pc" => "1".to_string(),
+                // PCs are keyed by name in IronMUD; `%who.id%` mirrors arg-as-
+                // actor and yields the name as a best-effort handle.
+                "id" => c.name,
+                _ => {
+                    try_character_field(&c, field).unwrap_or_else(|| c.dg_vars.get(field).cloned().unwrap_or_default())
+                }
+            });
+        }
+    }
+    None
+}
+
 fn resolve_bare_name(name: &str, ctx: &EvalCtx, state: &State) -> String {
     // If declared global, durable lookup wins (and there may not even
     // be a local entry yet — e.g. a sibling trigger set the global).
@@ -428,14 +497,31 @@ fn remote_entity_var(ctx: &EvalCtx, uid: &uuid::Uuid, field: &str) -> String {
 }
 
 fn remote_entity_var_opt(ctx: &EvalCtx, uid: &uuid::Uuid, field: &str) -> Option<String> {
+    // Script-set `dg_vars` win (a builder may shadow a typed field on
+    // purpose), then fall back to the typed struct readers so `%<uuid>.level%`
+    // / `.hp` / `.vnum` resolve a real mob/item/room field — not just vars set
+    // via `remote`. This is what lets an id pulled from `%self.area.mob_ids%`
+    // be read for any field (`set m %list.car%` then `%m.level%`).
     if let Ok(Some(mob)) = ctx.db.get_mobile_data(uid) {
-        return mob.dg_vars.get(field).cloned();
+        return mob
+            .dg_vars
+            .get(field)
+            .cloned()
+            .or_else(|| try_mobile_field(&mob, field));
     }
     if let Ok(Some(item)) = ctx.db.get_item_data(uid) {
-        return item.dg_vars.get(field).cloned();
+        return item
+            .dg_vars
+            .get(field)
+            .cloned()
+            .or_else(|| try_item_field(&item, field));
     }
     if let Ok(Some(room)) = ctx.db.get_room_data(uid) {
-        return room.dg_vars.get(field).cloned();
+        return room
+            .dg_vars
+            .get(field)
+            .cloned()
+            .or_else(|| try_room_field(&room, field));
     }
     None
 }
@@ -727,7 +813,7 @@ fn area_filter_matches(name: &str, keywords: &[String], vnum: Option<&str>, filt
 /// list (chiefly to tame area-wide mob counts), e.g. `%self.area.mobs(rat)%`.
 /// Player rows come from the same source as `list_room_people` (DB chars by
 /// `current_room_id`); mobs from `get_mobiles_in_room` per area room.
-fn list_area_people(ctx: &EvalCtx, area_id: &uuid::Uuid, kind: AreaKind, filter: Option<&str>) -> String {
+fn list_area_people(ctx: &EvalCtx, area_id: &uuid::Uuid, kind: AreaKind, filter: Option<&str>, as_ids: bool) -> String {
     let Ok(rooms) = ctx.db.get_rooms_in_area(area_id) else {
         return String::new();
     };
@@ -739,7 +825,10 @@ fn list_area_people(ctx: &EvalCtx, area_id: &uuid::Uuid, kind: AreaKind, filter:
             if let Ok(mobs) = ctx.db.get_mobiles_in_room(rid) {
                 for m in mobs {
                     if filter.is_none_or(|f| area_filter_matches(&m.name, &m.keywords, Some(&m.vnum), f)) {
-                        names.push(m.name);
+                        // Ids give space-free, unique tokens so the roster can
+                        // be iterated with `.car`/`.cdr` and each mob read/acted
+                        // on by id — mob *names* embed spaces and can't.
+                        names.push(if as_ids { m.id.to_string() } else { m.name });
                     }
                 }
             }

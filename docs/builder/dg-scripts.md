@@ -266,6 +266,63 @@ splitting the result on commas; test presence with a substring `if` check.
 osend %actor% Rats nearby: %self.area.mobs(rat)%
 ```
 
+##### Reading fields off a roster name
+
+A **player** name pulled out of `%self.area.players%` (or `.people`/`.pcs`)
+can be read for any character field — even though that player stands in a
+different room of the area. Assign the name to a local with `.car`, then
+access the field on the local (`%who.level%`, `%who.class%`, `%who.name%`).
+The lookup matches by name across every room in self's area, and tolerates
+the trailing comma that `.car` leaves on each token. It resolves **players
+only** — mob names embed spaces and aren't unique, so they don't coerce.
+
+```
+* item OnExamine: a leaderboard of everyone crawling this zone
+set list %self.area.players%
+osend %actor% Crawlers
+osend %actor% =======
+while %list.strlen% > 0
+  set who %list.car%
+  osend %actor% %who.name% Level: %who.level%
+  set list %list.cdr%
+done
+halt
+```
+
+`%who.name%` returns the canonical (cased) name with the comma stripped, so
+the display stays clean. A name that resolves to no player in self's area
+falls through to the plain text-field reader (empty for fields like `level`).
+
+##### Iterating mobs by id — `%head.area.mob_ids%`
+
+Mob *names* can't be iterated — they embed spaces (`a rat`) and aren't unique,
+so `.car` can't pull a usable token out of `%self.area.mobs%`. Use
+`%head.area.mob_ids%` instead: it returns the mobs' **UUIDs** (space-free,
+unique, and filterable just like `.mobs`). A UUID held in a local resolves any
+field via the remote-entity reader (`%m.level%`, `%m.hp%`, `%m.vnum%`, …), and
+DG commands accept a UUID as a target — so you can both **read** and **act on**
+each mob. There is no `player_ids` (PCs have no stable UUID); iterate players by
+name with `.players`.
+
+```
+* item OnExamine: report every guard above level 10 in the zone, and weaken them
+set list %self.area.mob_ids(guard)%
+while %list.strlen% > 0
+  set m %list.car%
+  if %m.level% > 10
+    osend %actor% %m.name% (level %m.level%) shudders as the beacon flares.
+    mdamage %m% 5
+  end
+  set list %list.cdr%
+done
+halt
+```
+
+The trailing comma `.car` leaves on each id is stripped before the lookup, so
+no manual cleanup is needed. `mob_ids(<f>)` takes the same filter as `.mobs`
+(name-contains / keyword-starts-with / vnum-equals) — there is no level filter,
+so test level (or any other field) inside the loop as shown.
+
 #### Door state — `%self.door(<dir>, <field>)%`
 
 Call-form accessor for inspecting the door on self's room (Mob self resolves to the mob's current room; Room self is the room). Direction accepts long names (`east`) or one-letter shortcuts (`e`, `n`, `s`, `w`, `u`, `d`).
