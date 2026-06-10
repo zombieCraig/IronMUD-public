@@ -1062,11 +1062,16 @@ end";
     }
 
     /// Register `ch` as an online player on `ctx.connections` so the people
-    /// rosters (which list connected players only) surface them. Channels are
-    /// stubbed — nothing reads them in these unit tests.
-    fn register_online_player(ctx: &EvalCtx, ch: &crate::types::CharacterData) {
+    /// rosters (which list connected players only) surface them. Returns the
+    /// connection id (for binding an `%actor%`) and the client receiver (to
+    /// assert on sent text). The input channel is stubbed.
+    fn register_online_player(
+        ctx: &EvalCtx,
+        ch: &crate::types::CharacterData,
+    ) -> (String, tokio::sync::mpsc::UnboundedReceiver<String>) {
         use std::collections::VecDeque;
-        let (tx_client, _rx_client) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let conn_id = Uuid::new_v4();
+        let (tx_client, rx_client) = tokio::sync::mpsc::unbounded_channel::<String>();
         let (tx_input, _rx_input) = tokio::sync::mpsc::channel::<crate::InputEvent>(1);
         let session = crate::PlayerSession {
             character: Some(ch.clone()),
@@ -1114,10 +1119,8 @@ end";
             session_started_at: None,
             modern_editor: None,
         };
-        ctx.connections
-            .lock()
-            .expect("lock conns")
-            .insert(Uuid::new_v4(), session);
+        ctx.connections.lock().expect("lock conns").insert(conn_id, session);
+        (conn_id.to_string(), rx_client)
     }
 
     fn place_mob(db: &Db, name: &str, vnum: &str, room: Uuid) {
@@ -1293,6 +1296,59 @@ end";
         assert_eq!(vars::resolve("m.level", &ctx, &state), "5");
         assert_eq!(vars::resolve("m.name", &ctx, &state), "a grizzled guard");
         assert_eq!(vars::resolve("m.vnum", &ctx, &state), "3001");
+    }
+
+    #[test]
+    fn osend_emits_single_newline_per_line() {
+        // Regression: cmd_send must not append its own '\n' — send_client_message
+        // already adds exactly one. Two newlines double-space leaderboard output.
+        let mut ctx = make_ctx(SelfKind::Obj, Uuid::new_v4(), "tv");
+        let area = Uuid::new_v4();
+        let room = build_room_in_area(&ctx.db, area);
+        ctx.self_room = Some(room);
+
+        let pc: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "zombieCraig",
+            "password_hash": "",
+            "current_room_id": room,
+        }))
+        .expect("build pc");
+        ctx.db.save_character_data(pc.clone()).expect("save pc");
+        let (conn_id, mut rx) = register_online_player(&ctx, &pc);
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: conn_id,
+            char_id: Uuid::new_v4(),
+            name: "zombieCraig".to_string(),
+        });
+
+        assert_eq!(fire_dg("osend %actor% Crawlers", &ctx), Outcome::Done);
+        assert_eq!(rx.try_recv().expect("one message"), "Crawlers\n");
+        assert!(rx.try_recv().is_err(), "no second (blank) message");
+    }
+
+    #[test]
+    fn room_broadcast_emits_single_newline_per_line() {
+        // Regression for the other transport: broadcast_to_room also appends one
+        // '\n', so the echo/say/social family must not pre-add their own. Covers
+        // cmd_echo, mob_cmd::broadcast/broadcast_except, do_asound, and socials.
+        let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "guard");
+        let area = Uuid::new_v4();
+        let room = build_room_in_area(&ctx.db, area);
+        let mut ctx = ctx;
+        ctx.self_room = Some(room);
+
+        let pc: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "zombieCraig",
+            "password_hash": "",
+            "current_room_id": room,
+        }))
+        .expect("build pc");
+        ctx.db.save_character_data(pc.clone()).expect("save pc");
+        let (_conn_id, mut rx) = register_online_player(&ctx, &pc);
+
+        assert_eq!(fire_dg("echo The lights flicker.", &ctx), Outcome::Done);
+        assert_eq!(rx.try_recv().expect("one message"), "The lights flicker.\n");
+        assert!(rx.try_recv().is_err(), "no second (blank) message");
     }
 
     #[test]

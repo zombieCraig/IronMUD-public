@@ -356,10 +356,8 @@ fn broadcast(ctx: &EvalCtx, text: &str) {
     let Some(room_id) = ctx.self_room else {
         return;
     };
-    let mut t = text.to_string();
-    if !t.ends_with('\n') {
-        t.push('\n');
-    }
+    // broadcast_to_room appends exactly one '\n'; pre-adding doubles it.
+    let t = text.strip_suffix('\n').unwrap_or(text).to_string();
     crate::broadcast_to_room(&ctx.connections, room_id, t, None);
 }
 
@@ -388,7 +386,7 @@ fn do_tell(rest: &str, ctx: &EvalCtx) {
     }
     // Resolve target by name → connection lookup.
     if let Some(cid) = crate::session::find_player_connection_by_name(&ctx.connections, &target_tok) {
-        let line = format!("{} tells you, \"{}\"\n", capitalize_first(&ctx.self_name), msg);
+        let line = format!("{} tells you, \"{}\"", capitalize_first(&ctx.self_name), msg);
         crate::send_client_message(&ctx.connections, cid.to_string(), line);
     }
 }
@@ -415,7 +413,7 @@ fn do_give(rest: &str, ctx: &EvalCtx) {
         if let Some((player_name, player_room)) = name_opt {
             if Some(player_room) == ctx.self_room {
                 let _ = ctx.db.move_item_to_inventory(&item.id, &player_name);
-                let line = format!("{} gives you {}.\n", capitalize_first(&ctx.self_name), item.name);
+                let line = format!("{} gives you {}.", capitalize_first(&ctx.self_name), item.name);
                 crate::send_client_message(&ctx.connections, cid.to_string(), line);
                 let bcast = format!(
                     "{} gives {} to {}.",
@@ -576,12 +574,10 @@ fn do_junk(rest: &str, ctx: &EvalCtx) {
 /// the mob's room in one exit step (excluding self_room). Doesn't recurse,
 /// doesn't follow doors. Stock uses for ambient distant sounds.
 fn do_asound(rest: &str, ctx: &EvalCtx) {
-    let mut text = rest.trim().to_string();
+    // broadcast_to_room appends exactly one '\n'; pre-adding doubles it.
+    let text = rest.trim().to_string();
     if text.is_empty() {
         return;
-    }
-    if !text.ends_with('\n') {
-        text.push('\n');
     }
     let Some(room_id) = ctx.self_room else { return };
     let Ok(Some(room)) = ctx.db.get_room_data(&room_id) else {
@@ -980,10 +976,8 @@ fn broadcast_except(ctx: &EvalCtx, text: &str, exclude_name: Option<&str>) {
     let Some(room_id) = ctx.self_room else {
         return;
     };
-    let mut t = text.to_string();
-    if !t.ends_with('\n') {
-        t.push('\n');
-    }
+    // broadcast_to_room appends exactly one '\n'; pre-adding doubles it.
+    let t = text.strip_suffix('\n').unwrap_or(text).to_string();
     crate::broadcast_to_room(&ctx.connections, room_id, t, exclude_name);
 }
 

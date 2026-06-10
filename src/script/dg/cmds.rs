@@ -322,10 +322,10 @@ fn cmd_send(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     };
     if let ActorRef::Player { connection_id, .. } = actor {
         if !connection_id.is_empty() {
-            let mut text = msg.to_string();
-            if !text.ends_with('\n') {
-                text.push('\n');
-            }
+            // send_client_message appends exactly one '\n'; don't add our own
+            // or every line prints double-spaced. Strip any trailing newline
+            // the script may have included so the line break count stays at one.
+            let text = msg.strip_suffix('\n').unwrap_or(msg).to_string();
             crate::send_client_message(&ctx.connections, connection_id, text);
         }
     }
@@ -336,12 +336,10 @@ fn cmd_echo(msg: &str, ctx: &EvalCtx, exclude: Option<&str>) -> Result<(), Strin
     let Some(room_id) = ctx.self_room else {
         return Ok(());
     };
-    let mut text = msg.trim().to_string();
+    // broadcast_to_room appends exactly one '\n'; pre-adding doubles it.
+    let text = msg.trim().to_string();
     if text.is_empty() {
         return Ok(());
-    }
-    if !text.ends_with('\n') {
-        text.push('\n');
     }
     let exclude_name = exclude.and_then(|t| resolve_target(t, ctx)).and_then(|a| match a {
         ActorRef::Player { name, .. } => Some(name),
@@ -356,12 +354,10 @@ fn cmd_echo(msg: &str, ctx: &EvalCtx, exclude: Option<&str>) -> Result<(), Strin
 /// Players in any of those rooms see the line; no exclude support
 /// (matches tbamud's `zoneecho` semantics).
 fn cmd_zoneecho(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
-    let mut text = rest.trim().to_string();
+    // broadcast_to_room appends exactly one '\n'; pre-adding doubles it.
+    let text = rest.trim().to_string();
     if text.is_empty() {
         return Ok(());
-    }
-    if !text.ends_with('\n') {
-        text.push('\n');
     }
     let Some(room_id) = ctx.self_room else {
         return Ok(());
@@ -449,11 +445,9 @@ fn cmd_award_skill_xp(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     };
     let msg = crate::script::dialogue::award_skill_xp(&mut ch, &skill_tok, amount);
     let _ = ctx.db.save_character_data(ch);
-    if let Some(mut text) = msg {
+    if let Some(text) = msg {
         if !connection_id.is_empty() {
-            if !text.ends_with('\n') {
-                text.push('\n');
-            }
+            // send_client_message appends the newline; don't add our own.
             crate::send_client_message(&ctx.connections, connection_id, text);
         }
     }
@@ -1752,10 +1746,8 @@ fn cmd_social(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
                 // DG broadcasts go to many recipients with mixed color
                 // settings; strip tba @-codes to plain text rather than
                 // emit raw codes to color-off clients.
-                let mut msg = render::apply_tba_color_codes(&line, false);
-                if !msg.ends_with('\n') {
-                    msg.push('\n');
-                }
+                // broadcast_to_room appends the newline; don't pre-add.
+                let msg = render::apply_tba_color_codes(&line, false);
                 crate::broadcast_to_room(&ctx.connections, room_id, msg, Some(&mob.short_desc));
             }
         }
@@ -1773,10 +1765,8 @@ fn cmd_social(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
             if !social.hide {
                 if let Some(t) = &social.others_found {
                     let line = render::render(t, &actor, Some(&vict), None, None);
-                    let mut msg = render::apply_tba_color_codes(&line, false);
-                    if !msg.ends_with('\n') {
-                        msg.push('\n');
-                    }
+                    // broadcast_to_room appends the newline; don't pre-add.
+                    let msg = render::apply_tba_color_codes(&line, false);
                     crate::broadcast_to_room(&ctx.connections, room_id, msg, Some(&mob.short_desc));
                     // broadcast_to_room only excludes one name. The
                     // victim_player_name (if present) will see the
