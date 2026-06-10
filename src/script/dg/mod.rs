@@ -1061,6 +1061,65 @@ end";
         id
     }
 
+    /// Register `ch` as an online player on `ctx.connections` so the people
+    /// rosters (which list connected players only) surface them. Channels are
+    /// stubbed — nothing reads them in these unit tests.
+    fn register_online_player(ctx: &EvalCtx, ch: &crate::types::CharacterData) {
+        use std::collections::VecDeque;
+        let (tx_client, _rx_client) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let (tx_input, _rx_input) = tokio::sync::mpsc::channel::<crate::InputEvent>(1);
+        let session = crate::PlayerSession {
+            character: Some(ch.clone()),
+            sender: tx_client,
+            raw_sender: None,
+            input_sender: tx_input,
+            addr: "127.0.0.1:0".parse().expect("addr"),
+            olc_mode: None,
+            olc_buffer: Vec::new(),
+            olc_edit_room: None,
+            olc_edit_item: None,
+            olc_edit_board_vnum: None,
+            olc_board_subject: None,
+            olc_edit_mobile: None,
+            olc_edit_trigger_host: None,
+            olc_edit_trigger_index: None,
+            olc_edit_proto_vnum: None,
+            olc_dialogue_node_name: None,
+            olc_extra_keywords: Vec::new(),
+            olc_undo_buffer: None,
+            wizard_data: None,
+            mxp_enabled: false,
+            colors_enabled: true,
+            show_room_flags: false,
+            telnet_state: crate::telnet::TelnetState::new(),
+            input_buffer: String::new(),
+            cursor_pos: 0,
+            command_history: VecDeque::new(),
+            history_index: None,
+            saved_input: String::new(),
+            escape_state: crate::telnet::EscapeState::Normal,
+            pending_ai_request: None,
+            pending_ai_response: None,
+            pending_ai_target: None,
+            fishing_state: None,
+            afk: false,
+            last_activity_time: 0,
+            abbrev_enabled: true,
+            map_legend_shown: false,
+            dialogue_partner_id: None,
+            account_id: None,
+            account_name: None,
+            slow_move_completing: false,
+            disconnected_at: None,
+            session_started_at: None,
+            modern_editor: None,
+        };
+        ctx.connections
+            .lock()
+            .expect("lock conns")
+            .insert(Uuid::new_v4(), session);
+    }
+
     fn place_mob(db: &Db, name: &str, vnum: &str, room: Uuid) {
         let mut mob = crate::types::MobileData::new(name.to_string());
         mob.is_prototype = false;
@@ -1096,11 +1155,22 @@ end";
             "current_room_id": room_a2,
         }))
         .expect("build pc");
-        ctx.db.save_character_data(pc).expect("save pc");
+        ctx.db.save_character_data(pc.clone()).expect("save pc");
+        register_online_player(&ctx, &pc); // rosters list connected players only
+
+        // An offline alt sitting in the same area must NOT appear — its
+        // current_room_id persists in the DB but it has no live session.
+        let offline: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "Yumiko",
+            "password_hash": "",
+            "current_room_id": room_a2,
+        }))
+        .expect("build offline pc");
+        ctx.db.save_character_data(offline).expect("save offline pc");
 
         let state = crate::script::dg::eval::State::new();
 
-        // players-only — just the PC, no mobs.
+        // players-only — just the online PC, no mobs, no offline alt.
         assert_eq!(vars::resolve("self.area.players", &ctx, &state), "Aldous");
         assert_eq!(vars::resolve("self.area.pcs", &ctx, &state), "Aldous");
 
@@ -1112,12 +1182,13 @@ end";
         assert!(mobs.contains("a rat") && mobs.contains("a goblin"), "got {mobs}");
         assert!(!mobs.contains("Aldous"), "mobs must not list players: {mobs}");
 
-        // people — players AND mobs together.
+        // people — players AND mobs together; offline alt still excluded.
         let people = vars::resolve("self.area.people", &ctx, &state);
         assert!(
             people.contains("Aldous") && people.contains("a rat") && people.contains("a goblin"),
             "got {people}"
         );
+        assert!(!people.contains("Yumiko"), "offline alt must not appear: {people}");
 
         // bare %self.area% — the area UUID.
         assert_eq!(vars::resolve("self.area", &ctx, &state), area_a.to_string());

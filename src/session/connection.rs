@@ -137,3 +137,20 @@ pub fn find_player_connection_by_name(connections: &SharedConnections, player_na
     }
     None
 }
+
+/// Lowercased names of every player currently connected with a character in
+/// play. The source of truth for "who is actually online" — a character whose
+/// `CharacterData.current_room_id` still points into a room (because it
+/// persists across logout) is NOT present unless their name is in this set.
+/// Used by the DG people rosters so they don't list logged-off characters.
+pub fn online_character_names(connections: &SharedConnections) -> std::collections::HashSet<String> {
+    let mut names = std::collections::HashSet::new();
+    if let Ok(conns) = connections.lock() {
+        for session in conns.values() {
+            if let Some(ref character) = session.character {
+                names.insert(character.name.to_ascii_lowercase());
+            }
+        }
+    }
+    names
+}

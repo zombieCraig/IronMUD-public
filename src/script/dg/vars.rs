@@ -767,9 +767,12 @@ fn list_room_people(ctx: &EvalCtx, room_id: &uuid::Uuid, exclude: Option<uuid::U
             names.push(m.name);
         }
     }
+    let online = crate::session::online_character_names(&ctx.connections);
     if let Ok(chars) = ctx.db.list_all_characters() {
         for c in chars {
-            if c.current_room_id == *room_id {
+            // Skip logged-off characters lingering in the room (offline alts) —
+            // only connected players are actually present. See online_character_names.
+            if c.current_room_id == *room_id && online.contains(&c.name.to_ascii_lowercase()) {
                 names.push(c.name);
             }
         }
@@ -836,9 +839,13 @@ fn list_area_people(ctx: &EvalCtx, area_id: &uuid::Uuid, kind: AreaKind, filter:
     }
 
     if matches!(kind, AreaKind::Both | AreaKind::Players) {
+        // Only players who are actually connected — a logged-off character's
+        // `current_room_id` still points into the area, but it isn't present.
+        let online = crate::session::online_character_names(&ctx.connections);
         if let Ok(chars) = ctx.db.list_all_characters() {
             for c in chars {
                 if room_ids.contains(&c.current_room_id)
+                    && online.contains(&c.name.to_ascii_lowercase())
                     && filter.is_none_or(|f| area_filter_matches(&c.name, &[], None, f))
                 {
                     names.push(c.name);

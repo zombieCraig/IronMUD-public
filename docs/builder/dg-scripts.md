@@ -276,8 +276,14 @@ The lookup matches by name across every room in self's area, and tolerates
 the trailing comma that `.car` leaves on each token. It resolves **players
 only** — mob names embed spaces and aren't unique, so they don't coerce.
 
+The player rosters (`.people`, `.players`, `.pcs`) list **connected players
+only** — a character who logged off in the area still has its `current_room_id`
+stored there, but it isn't present, so it never appears. (Mobs are always
+listed; they don't log off.)
+
 ```
-* item OnExamine: a leaderboard of everyone crawling this zone
+* item OnExamine: a leaderboard of everyone crawling this zone.
+* return 0 suppresses the item's own description so only the board shows.
 set list %self.area.players%
 osend %actor% Crawlers
 osend %actor% =======
@@ -286,12 +292,19 @@ while %list.strlen% > 0
   osend %actor% %who.name% Level: %who.level%
   set list %list.cdr%
 done
-halt
+return 0
 ```
 
 `%who.name%` returns the canonical (cased) name with the comma stripped, so
 the display stays clean. A name that resolves to no player in self's area
 falls through to the plain text-field reader (empty for fields like `level`).
+
+**`halt` vs `return 0`.** `halt` ends the script but the engine still prints
+the item's default description afterward. `return 0` ends it *and* cancels
+that default output — use it when the trigger fully replaces the description.
+`examine <item>` and `look <item>` fire **different** item triggers
+(`on_examine` vs `on_look`), so to intercept both, put the script on **both**
+trigger types; each cancels its own default output with `return 0`.
 
 ##### Iterating mobs by id — `%head.area.mob_ids%`
 
