@@ -40,6 +40,7 @@ pub mod mobile_presets;
 mod mobiles;
 mod property;
 mod quests;
+mod races;
 pub mod replicant;
 pub mod rooms;
 mod shop_presets;
@@ -2179,6 +2180,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     crafting::register(engine, db.clone(), state.clone());
     characters::register(engine, db.clone(), connections.clone(), state.clone());
     classes::register(engine, db.clone(), state.clone());
+    races::register(engine, db.clone(), state.clone());
     groups::register(engine, db.clone(), connections.clone());
     property::register(engine, db.clone(), connections.clone());
     mail::register(engine, db.clone(), connections.clone());

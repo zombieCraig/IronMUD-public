@@ -166,7 +166,257 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "loadout" {
+        handle_loadout(connection_id, args, char);
+        return;
+    }
+
     send_client_message(connection_id, "Unknown subcommand. Type 'admin help' for commands.");
+}
+
+// `admin loadout` — admin-only editor for class + race starting kits (gold +
+// item vnums granted at character creation). Replaces the old builder-facing
+// `cedit`; starting equipment is admin policy, not world-building. Class and
+// race kits STACK at creation: a new character receives the union of both item
+// lists and the sum of both gold values.
+// Usage:
+//   admin loadout list                              — all classes + races with summary
+//   admin loadout <class|race> <id>                 — show one kit
+//   admin loadout <class|race> <id> gold <amount>   — set starting gold (>= 0)
+//   admin loadout <class|race> <id> items add <vnum>
+//   admin loadout <class|race> <id> items remove <vnum>
+//   admin loadout <class|race> <id> items clear
+fn handle_loadout(connection_id, args, admin_char) {
+    let parts = args.split(" ");
+    let kind = if parts.len() > 1 && parts[1] != "" {
+        parts[1].to_lower()
+    } else {
+        ""
+    };
+
+    if kind == "" || kind == "help" {
+        show_loadout_usage(connection_id);
+        return;
+    }
+
+    if kind == "list" {
+        handle_loadout_list(connection_id);
+        return;
+    }
+
+    if kind == "class" || kind == "race" {
+        loadout_target(kind, parts, connection_id);
+        return;
+    }
+
+    send_client_message(connection_id, "Unknown loadout target: " + kind + " (expected class, race, or list)");
+}
+
+fn show_loadout_usage(connection_id) {
+    send_client_message(connection_id, "Usage:");
+    send_client_message(connection_id, "  admin loadout list                              List all class + race kits");
+    send_client_message(connection_id, "  admin loadout <class|race> <id>                 Show one kit");
+    send_client_message(connection_id, "  admin loadout <class|race> <id> gold <amount>   Set starting gold");
+    send_client_message(connection_id, "  admin loadout <class|race> <id> items add <vnum>");
+    send_client_message(connection_id, "  admin loadout <class|race> <id> items remove <vnum>");
+    send_client_message(connection_id, "  admin loadout <class|race> <id> items clear");
+    send_client_message(connection_id, "Class and race kits stack: a new character gets both item lists and the sum of both gold values.");
+}
+
+fn handle_loadout_list(connection_id) {
+    send_client_message(connection_id, "=== Class Starting Kits ===");
+    loadout_list_kind("class", connection_id);
+    send_client_message(connection_id, "=== Race Starting Kits ===");
+    loadout_list_kind("race", connection_id);
+}
+
+fn loadout_list_kind(kind, connection_id) {
+    let ids = kit_ids(kind);
+    if ids.len() == 0 {
+        send_client_message(connection_id, "  (none loaded)");
+        return;
+    }
+    for id in ids {
+        let gold = kit_gold(kind, id);
+        let items = kit_items(kind, id);
+        let item_str = "(none)";
+        if items.len() > 0 {
+            item_str = join_loadout_items(items);
+        }
+        send_client_message(connection_id, "  " + id + " — gold=" + gold + ", items=" + item_str);
+    }
+}
+
+fn join_loadout_items(items) {
+    let out = "";
+    let first = true;
+    for v in items {
+        if first {
+            out = v;
+            first = false;
+        } else {
+            out += ", " + v;
+        }
+    }
+    return out;
+}
+
+fn loadout_target(kind, parts, connection_id) {
+    if parts.len() < 3 || parts[2] == "" {
+        send_client_message(connection_id, "Usage: admin loadout " + kind + " <id> [show | gold <n> | items add|remove|clear <vnum>]");
+        return;
+    }
+    let id = parts[2].to_lower();
+    if !kit_exists(kind, id) {
+        send_client_message(connection_id, "No such " + kind + ": " + id);
+        send_client_message(connection_id, "Use 'admin loadout list' to see available entries.");
+        return;
+    }
+
+    let subcommand = "";
+    if parts.len() >= 4 {
+        subcommand = parts[3].to_lower();
+    }
+
+    if subcommand == "" || subcommand == "show" {
+        show_loadout_kit(kind, id, connection_id);
+        return;
+    }
+
+    if subcommand == "gold" {
+        loadout_handle_gold(kind, id, parts, connection_id);
+        return;
+    }
+
+    if subcommand == "items" {
+        loadout_handle_items(kind, id, parts, connection_id);
+        return;
+    }
+
+    send_client_message(connection_id, "Unknown subcommand: " + subcommand);
+    send_client_message(connection_id, "Use 'admin loadout " + kind + " " + id + "' to see the kit.");
+}
+
+fn show_loadout_kit(kind, id, connection_id) {
+    let gold = kit_gold(kind, id);
+    let items = kit_items(kind, id);
+    send_client_message(connection_id, "Starting kit for " + kind + " " + id + ":");
+    send_client_message(connection_id, "  gold:  " + gold);
+    if items.len() == 0 {
+        send_client_message(connection_id, "  items: (none)");
+    } else {
+        send_client_message(connection_id, "  items:");
+        for v in items {
+            send_client_message(connection_id, "    - " + v);
+        }
+    }
+}
+
+fn loadout_handle_gold(kind, id, parts, connection_id) {
+    if parts.len() < 5 {
+        send_client_message(connection_id, "Usage: admin loadout " + kind + " " + id + " gold <amount>");
+        return;
+    }
+    let amount = try_parse_int(parts[4]);
+    if amount == () {
+        send_client_message(connection_id, "Amount must be a non-negative integer.");
+        return;
+    }
+    if amount < 0 {
+        send_client_message(connection_id, "Amount must be non-negative.");
+        return;
+    }
+    if kit_set_gold(kind, id, amount) {
+        send_client_message(connection_id, kind + " " + id + " starting gold set to " + amount + ".");
+    } else {
+        send_client_message(connection_id, "Failed to set starting gold.");
+    }
+}
+
+fn loadout_handle_items(kind, id, parts, connection_id) {
+    if parts.len() < 5 {
+        send_client_message(connection_id, "Usage: admin loadout " + kind + " " + id + " items <add|remove|clear> [vnum]");
+        return;
+    }
+    let action = parts[4].to_lower();
+    if action == "clear" {
+        if kit_clear(kind, id) {
+            send_client_message(connection_id, kind + " " + id + " starting items cleared.");
+        } else {
+            send_client_message(connection_id, "Failed to clear starting items.");
+        }
+        return;
+    }
+    if action != "add" && action != "remove" {
+        send_client_message(connection_id, "Unknown items action: " + action + " (expected add, remove, or clear)");
+        return;
+    }
+    if parts.len() < 6 {
+        send_client_message(connection_id, "Usage: admin loadout " + kind + " " + id + " items " + action + " <vnum>");
+        return;
+    }
+    let vnum = parts[5];
+    if action == "add" {
+        if !item_vnum_exists(vnum) {
+            send_client_message(connection_id, "No item prototype with vnum: " + vnum);
+            return;
+        }
+        if kit_add_item(kind, id, vnum) {
+            send_client_message(connection_id, "Added " + vnum + " to " + kind + " " + id + " starting kit.");
+        } else {
+            send_client_message(connection_id, "Failed to add item (already in kit?).");
+        }
+        return;
+    }
+    // remove
+    if kit_remove_item(kind, id, vnum) {
+        send_client_message(connection_id, "Removed " + vnum + " from " + kind + " " + id + " starting kit.");
+    } else {
+        send_client_message(connection_id, vnum + " is not in " + kind + " " + id + " starting kit.");
+    }
+}
+
+// kit_* helpers dispatch each kit operation to the class or race Rhai binding
+// based on `kind`. Keeps loadout_target/handlers kind-agnostic and each fn
+// well under Rhai's branch-complexity limit.
+fn kit_exists(kind, id) {
+    if kind == "class" { return class_exists(id); }
+    return race_exists(id);
+}
+
+fn kit_ids(kind) {
+    if kind == "class" { return list_class_ids(); }
+    return list_race_ids();
+}
+
+fn kit_gold(kind, id) {
+    if kind == "class" { return get_class_starting_gold(id); }
+    return get_race_starting_gold(id);
+}
+
+fn kit_items(kind, id) {
+    if kind == "class" { return get_class_starting_items(id); }
+    return get_race_starting_items(id);
+}
+
+fn kit_set_gold(kind, id, amount) {
+    if kind == "class" { return set_class_starting_gold(id, amount); }
+    return set_race_starting_gold(id, amount);
+}
+
+fn kit_add_item(kind, id, vnum) {
+    if kind == "class" { return add_class_starting_item(id, vnum); }
+    return add_race_starting_item(id, vnum);
+}
+
+fn kit_remove_item(kind, id, vnum) {
+    if kind == "class" { return remove_class_starting_item(id, vnum); }
+    return remove_race_starting_item(id, vnum);
+}
+
+fn kit_clear(kind, id) {
+    if kind == "class" { return clear_class_starting_items(id); }
+    return clear_race_starting_items(id);
 }
 
 // `admin morality <player> <delta-or-set>` — adjust a player's morality slider.
@@ -505,6 +755,7 @@ fn show_help(connection_id) {
     help += "  admin morality <player> [<delta>|set <v>] - Show or adjust a player's morality slider (-200..+200)\n";
     help += "  admin account ...                 - Account management (type 'admin account' for help)\n";
     help += "  admin world ...                   - World statistics and management (type 'admin world' for help)\n";
+    help += "  admin loadout ...                 - Edit class/race starting kits (type 'admin loadout' for help)\n";
     help += "  admin help                        - Show this help\n";
     send_client_message(connection_id, help);
 }

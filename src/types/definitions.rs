@@ -66,6 +66,20 @@ pub struct ClassLoadout {
     pub starting_gold: i32,
 }
 
+/// Admin-authored override for a race's starting kit. Persisted in the
+/// `race_loadouts` sled tree (key = lowercase race id) and overlaid onto
+/// `RaceDefinition` after JSON load. The race kit stacks with the class kit at
+/// character creation: the new character receives the union of both item lists
+/// and the sum of both gold values. Mirrors `ClassLoadout`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RaceLoadout {
+    pub race_id: String,
+    #[serde(default)]
+    pub starting_items: Vec<String>,
+    #[serde(default)]
+    pub starting_gold: i32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TraitCategory {
@@ -182,6 +196,15 @@ pub struct RaceDefinition {
     pub available: bool,
     #[serde(default)]
     pub starting_languages: HashMap<String, i32>,
+    /// Admin-authored starting items granted at character creation (item
+    /// vnums). Stacks with the chosen class's `starting_items`. Edited via
+    /// `admin loadout race <race> items …`; overlaid from `RaceLoadout`.
+    #[serde(default)]
+    pub starting_items: Vec<String>,
+    /// Admin-authored starting gold, added on top of the class's
+    /// `starting_gold` at character creation.
+    #[serde(default)]
+    pub starting_gold: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,7 +1,7 @@
 // src/script/classes.rs
-// Rhai bindings for the cedit class loadout editor. Mutates in-memory
-// ClassDefinition fields AND persists a ClassLoadout override row in the
-// `class_loadouts` sled tree so edits survive restart.
+// Rhai bindings for the `admin loadout class` class loadout editor. Mutates
+// in-memory ClassDefinition fields AND persists a ClassLoadout override row in
+// the `class_loadouts` sled tree so edits survive restart.
 
 use crate::SharedState;
 use crate::db::Db;
@@ -85,7 +85,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     );
 
     // add_class_starting_item(class_id, vnum) -> bool
-    // Caller is expected to have validated the vnum (cedit does so via
+    // Caller is expected to have validated the vnum (admin loadout does so via
     // item_vnum_exists). The setter still rejects empty strings and dupes.
     let cloned_db = db.clone();
     let cloned_state = state.clone();
@@ -147,9 +147,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
         persist_loadout(&cloned_db, &cloned_state, &class_id)
     });
 
-    // item_vnum_exists(vnum) -> bool — cedit uses this to validate before
-    // accepting an `items add` operation. Reads the items tree directly so
-    // we don't depend on world state.
+    // item_vnum_exists(vnum) -> bool — `admin loadout` uses this to validate
+    // before accepting an `items add` operation (shared by the race editor too).
+    // Reads the items tree directly so we don't depend on world state.
     let cloned_db = db.clone();
     engine.register_fn("item_vnum_exists", move |vnum: String| -> bool {
         cloned_db

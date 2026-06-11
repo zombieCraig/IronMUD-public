@@ -399,10 +399,6 @@
     "access": "builder",
     "description": "Create and manage spawn points in an area"
   },
-  "cedit": {
-    "access": "builder",
-    "description": "Edit per-class starting kit (gold + items granted at character creation)"
-  },
   "bpredit": {
     "access": "builder",
     "description": "Create and manage shop buy presets"

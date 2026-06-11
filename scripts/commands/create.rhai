@@ -1115,7 +1115,29 @@ fn finalize_character(connection_id) {
         for vnum in starting_items {
             let spawned = spawn_item_to_inventory(vnum, char_name);
             if spawned == () {
-                broadcast_to_builders("[cedit] " + char_data.class_name + " starting_items references missing vnum: " + vnum);
+                broadcast_to_builders("[loadout] class " + char_data.class_name + " starting_items references missing vnum: " + vnum);
+            }
+        }
+    }
+
+    // Apply race starting kit (gold + items) on top of the class kit. Authored
+    // via `admin loadout race`. Race gold ADDS to the class gold above (class
+    // used set_character_gold, which already ran); items stack with the class
+    // list. Missing vnums warn rather than block creation, mirroring the class
+    // path.
+    if char_data.race != "" {
+        let race_kit = get_race_info(char_data.race);
+        let race_gold = race_kit["starting_gold"];
+        if race_gold != () && race_gold > 0 {
+            add_character_gold(char_name, race_gold);
+        }
+        let race_items = race_kit["starting_items"];
+        if race_items != () {
+            for vnum in race_items {
+                let spawned = spawn_item_to_inventory(vnum, char_name);
+                if spawned == () {
+                    broadcast_to_builders("[loadout] race " + char_data.race + " starting_items references missing vnum: " + vnum);
+                }
             }
         }
     }

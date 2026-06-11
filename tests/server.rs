@@ -5389,6 +5389,57 @@ fn test_class_loadout_round_trip_through_db() {
 }
 
 #[test]
+fn test_race_loadout_round_trip_through_db() {
+    use ironmud::types::RaceLoadout;
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        let loadout = RaceLoadout {
+            race_id: "replicant".to_string(),
+            starting_items: vec!["iron:replicant_manual".to_string(), "iron:badge".to_string()],
+            starting_gold: 10,
+        };
+        db.save_race_loadout(loadout.clone()).expect("save loadout");
+
+        let fetched = db
+            .get_race_loadout("replicant")
+            .expect("get ok")
+            .expect("loadout present");
+        assert_eq!(fetched.race_id, "replicant");
+        assert_eq!(fetched.starting_gold, 10);
+        assert_eq!(fetched.starting_items.len(), 2);
+        assert_eq!(fetched.starting_items[0], "iron:replicant_manual");
+
+        // Overwriting replaces the row rather than appending.
+        let updated = RaceLoadout {
+            race_id: "replicant".to_string(),
+            starting_items: vec!["iron:manual_v2".to_string()],
+            starting_gold: 25,
+        };
+        db.save_race_loadout(updated).expect("overwrite ok");
+        let after = db.get_race_loadout("replicant").expect("get ok").expect("present");
+        assert_eq!(after.starting_gold, 25);
+        assert_eq!(after.starting_items, vec!["iron:manual_v2".to_string()]);
+
+        // list_all_race_loadouts returns the single (latest) row.
+        let all = db.list_all_race_loadouts().expect("list ok");
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].starting_gold, 25);
+
+        // Missing race id returns None.
+        let missing = db.get_race_loadout("does_not_exist").expect("get ok");
+        assert!(missing.is_none());
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_class_loadout_skips_missing_item_vnum_at_spawn() {
     // Sanity check the Rhai-side miss path: spawn_item_from_prototype on a
     // vnum the DB has never seen returns Ok(None) without panicking. The

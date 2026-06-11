@@ -25,7 +25,6 @@ mod achedit;
 mod admin;
 mod aedit;
 mod bpredit;
-mod cedit;
 mod medit;
 mod misc;
 mod oedit;
@@ -41,7 +40,6 @@ use achedit::complete_achedit;
 use admin::complete_admin;
 use aedit::complete_aedit;
 use bpredit::complete_bpredit;
-use cedit::complete_cedit;
 use medit::complete_medit;
 use misc::{
     complete_bank, complete_bugs, complete_escrow, complete_mail, complete_motd, complete_pedit, complete_press,
@@ -73,7 +71,10 @@ pub fn complete(
     language_keys: &[String],
     online_players: &[String],
     mobs_in_room: &[String],
-    class_ids: &[String],
+    // class_ids was consumed by the removed `cedit` completion (now `admin
+    // loadout`, which has no dedicated completion). Kept in the signature so
+    // every positional caller stays unchanged.
+    _class_ids: &[String],
     achievement_keys: &[String],
     custom_skill_keys: &[String],
     is_builder: bool,
@@ -332,10 +333,6 @@ pub fn complete(
                     // Handle summon command
                     if command.to_lowercase() == "summon" {
                         return complete_summon(&words, completing_word, mobile_vnums, online_players, room_vnums);
-                    }
-                    // Handle cedit (class kit editor)
-                    if command.to_lowercase() == "cedit" {
-                        return complete_cedit(&words, completing_word, class_ids, item_vnums);
                     }
                     // Handle achedit (achievement editor)
                     if command.to_lowercase() == "achedit" {
@@ -1750,38 +1747,6 @@ mod tests {
         assert!(result.completions.contains(&"town".to_string()));
         assert!(result.completions.contains(&"forest".to_string()));
         assert!(result.completions.contains(&"permission".to_string()));
-    }
-
-    #[test]
-    fn test_cedit_bare_completion() {
-        let commands = vec!["cedit".to_string()];
-        let class_ids = vec!["fighter".to_string(), "mage".to_string()];
-        let result = complete(
-            "cedit ",
-            6,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &class_ids,
-            &[],
-            &[],
-            false,
-        );
-        assert!(result.completions.contains(&"fighter".to_string()));
-        assert!(result.completions.contains(&"mage".to_string()));
-        assert!(result.completions.contains(&"list".to_string()));
-        assert_eq!(result.completion_type, CompletionType::ClassId);
     }
 
     #[test]

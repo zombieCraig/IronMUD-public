@@ -159,8 +159,8 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
         }
     }
 
-    // Overlay builder-authored starting kit overrides (cedit) on top of the
-    // JSON-loaded class definitions. Loadouts for class ids that are no
+    // Overlay admin-authored starting kit overrides (admin loadout class) on
+    // top of the JSON-loaded class definitions. Loadouts for class ids that are no
     // longer present in JSON are skipped (and stay in the tree until the
     // class returns).
     match world.db.list_all_class_loadouts() {
@@ -255,9 +255,32 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
                     active_abilities: Vec::new(),
                     available: true,
                     starting_languages: HashMap::new(),
+                    starting_items: Vec::new(),
+                    starting_gold: 0,
                 },
             );
         }
+    }
+
+    // Overlay admin-authored starting kit overrides (admin loadout race) on top
+    // of the JSON-loaded race definitions. Loadouts for race ids no longer
+    // present in JSON are skipped (and stay in the tree until the race returns).
+    // Mirrors the class loadout overlay above.
+    match world.db.list_all_race_loadouts() {
+        Ok(loadouts) => {
+            let mut applied = 0usize;
+            for loadout in loadouts {
+                if let Some(def) = world.race_definitions.get_mut(&loadout.race_id) {
+                    def.starting_items = loadout.starting_items;
+                    def.starting_gold = loadout.starting_gold;
+                    applied += 1;
+                }
+            }
+            if applied > 0 {
+                info!("Applied {} race loadout override(s) from database", applied);
+            }
+        }
+        Err(e) => error!("Failed to load race loadouts from database: {}", e),
     }
 
     // Load spell definitions

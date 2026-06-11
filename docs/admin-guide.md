@@ -34,6 +34,7 @@ Type `admin help` for the live list. Highlights:
 | `admin god` | Toggle invulnerability for the admin character |
 | `admin preset <name>` | Switch world preset (`fantasy`/`modern`/...) and hot-reload class/race/spell/language definitions |
 | `admin reload` | Re-read class/race/spell/language definitions from the current preset (no setting change) |
+| `admin loadout [class\|race] <id> …` | Edit per-class and per-race starting kits (gold + items granted at character creation). Kits stack. See [Starting Kits](builder/classes.md). |
 | `admin ticks` | Show liveness of every background tick task. Stale entries point at a panicked tokio task that needs a server restart. |
 
 Bans are honored everywhere: account bans gate `login.rhai`, site bans gate

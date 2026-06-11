@@ -589,12 +589,6 @@ pub const RCOPY_CATEGORIES: &[&str] = &[
     "all", "flags", "desc", "seasonal", "triggers", "water", "catch", "doors", "extra",
 ];
 
-/// Cedit (class kit editor) subcommands
-pub const CEDIT_SUBCOMMANDS: &[&str] = &["show", "gold", "items"];
-
-/// Cedit items sub-actions
-pub const CEDIT_ITEMS_ACTIONS: &[&str] = &["add", "remove", "clear"];
-
 /// Recedit subcommands
 pub const RECEDIT_SUBCOMMANDS: &[&str] = &[
     "name",
