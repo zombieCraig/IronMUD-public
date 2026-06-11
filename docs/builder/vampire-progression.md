@@ -76,6 +76,33 @@ the quest's `giver_mob_vnum`. On completion:
 The reward is a no-op (with a warning logged) if the player is mortal or
 already clan-acknowledged when the quest completes.
 
+## Frenzy (the Beast)
+
+Kindred frenzy stamps the **Frenzy + Rage** buff pair for 30s: bonus
+damage, no fleeing, and the rage effect forces attacks on whoever is in
+the room (any mobile outside safe zones, players in PvP zones — the
+combat tick's rage pass picks targets each round).
+
+Two triggers:
+
+- **Voluntary**: the `frenzy` command — the player looses the beast on
+  purpose and accepts the loss of control.
+- **Hunger**: each blood tick (60s) while the blood pool sits at 0, the
+  kindred rolls against `(10 − humanity − frenzy_dc_modifier) × 10`
+  percent. Humanity 0 always slips; humanity 10 never does (clan banes
+  aside). The `frenzy_dc_modifier` trait effect from
+  `scripts/data/traits.json` is live: Brujah (−2) frenzy at +20 points,
+  Gangrel (−1) at +10.
+
+Builder notes:
+
+- Vampire **mobs** hunger-frenzy too once their pool decays to 0 (mobs
+  never feed), making long-starved kindred NPCs periodically hostile.
+  Keep plot/shop kindred safe with `flags.no_attack` (never frenzies) or
+  humanity 10, or top up `blood_pool` from a script.
+- `vampire_state.frenzy_until` mirrors the buff window for scripts; the
+  buffs are the operative mechanism.
+
 ## Admin escape hatch
 
 Staff can short-circuit the progression with

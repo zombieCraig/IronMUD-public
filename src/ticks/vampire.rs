@@ -6,7 +6,7 @@ use tokio::time::{Duration, interval};
 use tracing::error;
 
 use ironmud::vampire::{BLOOD_TICK_INTERVAL_SECS, SUN_TICK_INTERVAL_SECS, process_blood_tick, process_sun_tick};
-use ironmud::{SharedConnections, db};
+use ironmud::{SharedConnections, SharedState, db};
 
 pub async fn run_sun_tick(db: db::Db, connections: SharedConnections) {
     let mut ticker = interval(Duration::from_secs(SUN_TICK_INTERVAL_SECS));
@@ -36,12 +36,23 @@ pub async fn run_sun_tick(db: db::Db, connections: SharedConnections) {
     }
 }
 
-pub async fn run_blood_tick(db: db::Db, connections: SharedConnections) {
+pub async fn run_blood_tick(db: db::Db, connections: SharedConnections, state: SharedState) {
     let mut ticker = interval(Duration::from_secs(BLOOD_TICK_INTERVAL_SECS));
     loop {
         ticker.tick().await;
         crate::ticks::heartbeat::beat("blood");
-        if let Err(e) = process_blood_tick(&db, &connections) {
+        // Clan banes: trait name -> frenzy_dc_modifier, re-read each tick so
+        // trait hot-reloads apply. World lock is released before the tick
+        // body touches the connections lock (deadlock rule).
+        let clan_frenzy_mods: std::collections::HashMap<String, i32> = {
+            let world = state.lock().unwrap();
+            world
+                .trait_definitions
+                .iter()
+                .filter_map(|(name, def)| def.effects.get("frenzy_dc_modifier").map(|m| (name.clone(), *m)))
+                .collect()
+        };
+        if let Err(e) = process_blood_tick(&db, &connections, &clan_frenzy_mods) {
             error!("Blood tick error: {}", e);
         }
     }

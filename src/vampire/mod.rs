@@ -10,7 +10,9 @@ use crate::db;
 use crate::types::ActiveBuff;
 use crate::types::EffectType;
 use crate::types::MobileData;
+use crate::types::{HUMANITY_MAX, HUMANITY_MIN, VampireState};
 use anyhow::Result;
+use std::collections::HashMap;
 
 /// Sun-exposure tick interval. 30s — fast enough that vampires can't sneak a
 /// quick errand outdoors without consequence, slow enough that the tick scan
@@ -24,6 +26,12 @@ pub const BLOOD_TICK_INTERVAL_SECS: u64 = 60;
 const SUN_BURN_HP_DIVISOR: i32 = 20;
 const MIN_SUN_BURN_DAMAGE: i32 = 1;
 const BLOOD_DECAY_PER_TICK: i32 = 1;
+
+/// Hunger-frenzy buff numbers. Duration/damage match the voluntary
+/// `frenzy` command (scripts/commands/frenzy.rhai) so the involuntary
+/// version is the same beast, just off its chain.
+pub const HUNGER_FRENZY_DURATION_SECS: i32 = 30;
+pub const HUNGER_FRENZY_DAMAGE_BONUS: i32 = 4;
 
 /// Apply sun damage to every exposed kindred (PC + mob).
 ///
@@ -196,12 +204,70 @@ fn apply_sun_damage_with_rescue(hp: &mut i32, buffs: &mut Vec<ActiveBuff>, dmg: 
     push_or_refresh_buff(buffs, EffectType::SunlightBurning, 1, "sunlight");
 }
 
-/// Decay blood pool by 1 per tick on every kindred (PC + mob).
-pub fn process_blood_tick(db: &db::Db, connections: &SharedConnections) -> Result<()> {
+/// Chance (0-100) that an empty blood pool tips a kindred into hunger
+/// frenzy on a given blood tick. Scales inversely with humanity — at 0
+/// humanity the Beast always wins ("below 1 forces frenzy on low blood");
+/// at 10 a clanless saint never slips. `dc_modifier` is the summed
+/// `frenzy_dc_modifier` trait effect (Brujah −2, Gangrel −1): a negative
+/// modifier lowers the threshold, raising the chance.
+pub fn hunger_frenzy_chance(humanity: i32, dc_modifier: i32) -> i32 {
+    (((HUMANITY_MAX - humanity.clamp(HUMANITY_MIN, HUMANITY_MAX)) - dc_modifier) * 10).clamp(0, 100)
+}
+
+/// Roll the hunger-frenzy check for a starving kindred and stamp the
+/// Frenzy + Rage buff pair (source "bloodlust") on a failure to resist.
+/// Rage is what makes the frenzy genuinely uncontrolled — the combat
+/// tick's rage pass forces attacks on whoever is in the room. No-op
+/// unless the blood pool is empty, and never stacks onto an active
+/// frenzy/rage. `roll_1d100` is injected so tests are deterministic;
+/// live callers roll. Returns true when the frenzy fired. Caller saves
+/// and messages.
+pub fn maybe_hunger_frenzy(
+    v: &mut VampireState,
+    buffs: &mut Vec<ActiveBuff>,
+    dc_modifier: i32,
+    now: i64,
+    roll_1d100: i32,
+) -> bool {
+    if v.blood_pool > 0 {
+        return false;
+    }
+    if has_buff(buffs, EffectType::Frenzy) || has_buff(buffs, EffectType::Rage) {
+        return false;
+    }
+    if roll_1d100 > hunger_frenzy_chance(v.humanity, dc_modifier) {
+        return false;
+    }
+    push_or_refresh_buff_secs(
+        buffs,
+        EffectType::Frenzy,
+        HUNGER_FRENZY_DAMAGE_BONUS,
+        "bloodlust",
+        HUNGER_FRENZY_DURATION_SECS,
+    );
+    push_or_refresh_buff_secs(buffs, EffectType::Rage, 1, "bloodlust", HUNGER_FRENZY_DURATION_SECS);
+    v.frenzy_until = Some(now + HUNGER_FRENZY_DURATION_SECS as i64);
+    true
+}
+
+/// Decay blood pool by 1 per tick on every kindred (PC + mob), then roll
+/// hunger frenzy for anyone running on empty. `clan_frenzy_mods` maps
+/// trait name → `frenzy_dc_modifier` (extracted from trait_definitions by
+/// the tick wrapper; pass an empty map to ignore clan banes).
+pub fn process_blood_tick(
+    db: &db::Db,
+    connections: &SharedConnections,
+    clan_frenzy_mods: &HashMap<String, i32>,
+) -> Result<()> {
+    use rand::Rng;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
+
+    // (room_id, name) pairs whose frenzy needs a room broadcast after the
+    // connections lock below is released.
+    let mut frenzy_events: Vec<(uuid::Uuid, String)> = Vec::new();
 
     {
         let mut conns = connections.lock().unwrap();
@@ -213,12 +279,25 @@ pub fn process_blood_tick(db: &db::Db, connections: &SharedConnections) -> Resul
             if !ch.creation_complete || ch.god_mode {
                 continue;
             }
-            let v = match ch.vampire_state.as_mut() {
-                Some(v) => v,
-                None => continue,
+            if ch.vampire_state.is_none() {
+                continue;
+            }
+            let dc_modifier: i32 = ch.traits.iter().filter_map(|t| clan_frenzy_mods.get(t)).sum();
+            let roll = rand::thread_rng().gen_range(1..=100);
+            let frenzied = match ch.vampire_state.as_mut() {
+                Some(v) => {
+                    v.blood_pool = (v.blood_pool - BLOOD_DECAY_PER_TICK).max(0);
+                    v.last_blood_tick = now;
+                    maybe_hunger_frenzy(v, &mut ch.active_buffs, dc_modifier, now, roll)
+                }
+                None => false,
             };
-            v.blood_pool = (v.blood_pool - BLOOD_DECAY_PER_TICK).max(0);
-            v.last_blood_tick = now;
+            if frenzied {
+                let _ = session
+                    .sender
+                    .send("\n\x1b[1;31mYour veins are dust. The Beast slips its chain — HUNGER.\x1b[0m\n".to_string());
+                frenzy_events.push((ch.current_room_id, ch.name.clone()));
+            }
             let _ = db.save_character_data(ch.clone());
         }
     }
@@ -231,14 +310,51 @@ pub fn process_blood_tick(db: &db::Db, connections: &SharedConnections) -> Resul
             continue;
         }
         let mut mob: MobileData = mob;
+        let roll = rand::thread_rng().gen_range(1..=100);
+        // no_attack kindred (shopkeepers, plot NPCs) can't be fought back,
+        // so the Beast stays leashed on them.
+        let can_frenzy = !mob.flags.no_attack && mob.current_hp > 0;
+        let mut frenzied = false;
         if let Some(v) = mob.vampire_state.as_mut() {
             v.blood_pool = (v.blood_pool - BLOOD_DECAY_PER_TICK).max(0);
             v.last_blood_tick = now;
+            if can_frenzy {
+                frenzied = maybe_hunger_frenzy(v, &mut mob.active_buffs, 0, now, roll);
+            }
+        }
+        if frenzied {
+            if let Some(room_id) = mob.current_room_id {
+                frenzy_events.push((room_id, mob.name.clone()));
+            }
         }
         let _ = db.save_mobile_data(mob);
     }
 
+    for (room_id, name) in frenzy_events {
+        broadcast_frenzy_to_room(connections, &room_id, &name);
+    }
+
     Ok(())
+}
+
+/// Tell everyone else in the room that a kindred just lost it.
+fn broadcast_frenzy_to_room(connections: &SharedConnections, room_id: &uuid::Uuid, frenzied_name: &str) {
+    let conns = match connections.lock() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    for session in conns.values() {
+        let Some(ch) = session.character.as_ref() else {
+            continue;
+        };
+        if ch.current_room_id != *room_id || ch.name.eq_ignore_ascii_case(frenzied_name) {
+            continue;
+        }
+        let _ = session.sender.send(format!(
+            "\n\x1b[1;31m{}'s eyes go black with hunger — the Beast is driving.\x1b[0m\n",
+            frenzied_name
+        ));
+    }
 }
 
 fn sun_damage_amount(max_hp: i32) -> i32 {
@@ -270,16 +386,32 @@ fn remove_buff(buffs: &mut Vec<ActiveBuff>, effect_type: EffectType) {
 }
 
 fn push_or_refresh_buff(buffs: &mut Vec<ActiveBuff>, effect_type: EffectType, magnitude: i32, source: &str) {
+    push_or_refresh_buff_secs(
+        buffs,
+        effect_type,
+        magnitude,
+        source,
+        (SUN_TICK_INTERVAL_SECS * 2) as i32,
+    );
+}
+
+fn push_or_refresh_buff_secs(
+    buffs: &mut Vec<ActiveBuff>,
+    effect_type: EffectType,
+    magnitude: i32,
+    source: &str,
+    secs: i32,
+) {
     if let Some(existing) = buffs.iter_mut().find(|b| b.effect_type == effect_type) {
         existing.magnitude = magnitude;
-        existing.remaining_secs = (SUN_TICK_INTERVAL_SECS * 2) as i32;
+        existing.remaining_secs = secs;
         existing.source = source.to_string();
         return;
     }
     buffs.push(ActiveBuff {
         effect_type,
         magnitude,
-        remaining_secs: (SUN_TICK_INTERVAL_SECS * 2) as i32,
+        remaining_secs: secs,
         source: source.to_string(),
         damage_type: None,
         vs_effect: None,

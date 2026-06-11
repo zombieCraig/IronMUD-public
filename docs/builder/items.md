@@ -361,6 +361,16 @@ Magnitude is unused; multiple sources stack noiselessly (one Loud buff is
 as loud as five). Use it for bells, glowing runes, an aura of dread —
 anything that should make stealth impossible.
 
+The `rage` variant is uncontrolled violence: while the buff is held, a
+player attacks whoever they can see — each combat round they force-engage
+a random mobile in the room (any non-safe zone), or another player where
+PvP is allowed. On a mobile it acts like the `aggressive` flag (and
+overrides charm — a raging charmed mob will turn on its master). It adds
+no damage bonus; combine with a timed `frenzy` source for a full berserk
+package. Usable as a cursed equip-affect, a potion/food effect, or from
+scripts via `apply_buff`/`apply_buff_to_mobile` with effect `"rage"`.
+Magnitude is unused.
+
 Use `oedit <id> affect [list]` to inspect, `affect rm <index>` to remove,
 `affect clear` to wipe.
 

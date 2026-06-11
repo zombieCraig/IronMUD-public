@@ -1440,7 +1440,7 @@ fn known_default_room_flags() {
         "dark", "no_mob", "indoors", "underwater",
         "climate_controlled", "always_hot", "always_cold", "city", "no_windows",
         "difficult_terrain", "dirt_floor",
-        "property_storage", "post_office", "bank", "garden", "spawn_point",
+        "property_storage", "post_office", "baseline_office", "bank", "garden", "spawn_point",
         "shallow_water", "deep_water", "liveable",
         "private_room", "tunnel", "death", "no_magic",
         "soundproof", "notrack", "no_recall",

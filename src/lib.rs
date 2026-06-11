@@ -34,6 +34,7 @@ pub mod necromancy;
 pub mod quest;
 pub mod ratelimit;
 pub mod readline;
+pub mod replicant;
 pub mod script;
 pub mod seed;
 pub mod session;
@@ -1526,6 +1527,9 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
         blood_pool,
         max_blood_pool,
         sunlight_burning,
+        resolve,
+        max_resolve,
+        in_breakdown,
     ) = {
         let conns = connections.lock().unwrap();
         let session = match conns.get(connection_id) {
@@ -1572,6 +1576,14 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
                     Some(v) => (Some(v.blood_pool), Some(v.max_blood_pool)),
                     None => (None, None),
                 };
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                let (resolve, max_resolve, breakdown) = match c.replicant_state.as_ref() {
+                    Some(r) => (Some(r.resolve), Some(r.max_resolve), r.is_breaking_down(now)),
+                    None => (None, None, false),
+                };
                 let burning = c
                     .active_buffs
                     .iter()
@@ -1593,6 +1605,9 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
                     blood,
                     max_blood,
                     burning,
+                    resolve,
+                    max_resolve,
+                    breakdown,
                 )
             }
             None => return "> ".to_string(), // Not logged in = simple prompt
@@ -1713,6 +1728,34 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
         _ => String::new(),
     };
 
+    // Resolve segment (replicants only) — replaces the stamina segment,
+    // since a replicant's body never tires; their mind is the gauge.
+    let resolve_segment = match (resolve, max_resolve) {
+        (Some(res), Some(max_res)) if max_res > 0 => {
+            let pct = (res * 100) / max_res;
+            let res_color = if colors_enabled {
+                if pct >= 70 {
+                    "\x1b[36m" // Cyan: steady
+                } else if pct >= 30 {
+                    "\x1b[33m" // Yellow: fraying
+                } else {
+                    "\x1b[1;31m" // Bright red: breakdown risk
+                }
+            } else {
+                ""
+            };
+            format!("[{}RES:{}/{}{}] ", res_color, res, max_res, reset)
+        }
+        _ => String::new(),
+    };
+
+    // Stamina segment — hidden for replicants (tireless), replaced by RES.
+    let stamina_segment = if resolve_segment.is_empty() {
+        format!("[{}ST:{}/{}{}] ", st_color, stamina, max_stamina, reset)
+    } else {
+        resolve_segment
+    };
+
     // SunlightBurning indicator — one more tick (or one blow) and the player
     // ends. Loud, unmissable.
     let burning_segment = if sunlight_burning {
@@ -1725,20 +1768,29 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
         String::new()
     };
 
+    // Active replicant breakdown — same loudness as BURNING.
+    let breakdown_segment = if in_breakdown {
+        if colors_enabled {
+            "\x1b[1;31m[BREAKDOWN]\x1b[0m ".to_string()
+        } else {
+            "[BREAKDOWN] ".to_string()
+        }
+    } else {
+        String::new()
+    };
+
     let base_prompt = format!(
-        "[{}HP:{}/{}{}] [{}ST:{}/{}{}] {}{}{}{}",
+        "[{}HP:{}/{}{}] {}{}{}{}{}{}",
         hp_color,
         hp,
         max_hp,
         reset,
-        st_color,
-        stamina,
-        max_stamina,
-        reset,
+        stamina_segment,
         mana_segment,
         blood_segment,
         breath_segment,
-        burning_segment
+        burning_segment,
+        breakdown_segment
     );
 
     // Distance indicator for combat prompt

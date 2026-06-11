@@ -227,6 +227,11 @@ pub struct CharacterData {
     /// creation). See `crate::types::VampireState`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vampire_state: Option<crate::types::VampireState>,
+    /// Replicant state. None = baseline human (default). Some = replicant
+    /// (race "replicant"): tireless body, Resolve mental-stress track.
+    /// See `crate::types::ReplicantState`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub replicant_state: Option<crate::types::ReplicantState>,
     // Property rental system
     #[serde(default)]
     pub active_leases: HashMap<Uuid, Uuid>, // area_id -> lease_id (one per area)

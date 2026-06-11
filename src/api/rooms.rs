@@ -101,6 +101,8 @@ pub struct RoomFlagsRequest {
     #[serde(default)]
     pub post_office: Option<bool>,
     #[serde(default)]
+    pub baseline_office: Option<bool>,
+    #[serde(default)]
     pub bank: Option<bool>,
     #[serde(default)]
     pub garden: Option<bool>,
@@ -501,6 +503,7 @@ async fn create_room(
             dirt_floor: req.flags.dirt_floor.unwrap_or(area_defaults.dirt_floor),
             property_storage: req.flags.property_storage.unwrap_or(area_defaults.property_storage),
             post_office: req.flags.post_office.unwrap_or(area_defaults.post_office),
+            baseline_office: req.flags.baseline_office.unwrap_or(area_defaults.baseline_office),
             bank: req.flags.bank.unwrap_or(area_defaults.bank),
             garden: req.flags.garden.unwrap_or(area_defaults.garden),
             spawn_point: req.flags.spawn_point.unwrap_or(area_defaults.spawn_point),
@@ -679,6 +682,9 @@ async fn update_room(
         }
         if let Some(v) = flags.post_office {
             room.flags.post_office = v;
+        }
+        if let Some(v) = flags.baseline_office {
+            room.flags.baseline_office = v;
         }
         if let Some(v) = flags.bank {
             room.flags.bank = v;

@@ -700,6 +700,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     "difficult_terrain" => room.flags.difficult_terrain = value,
                     "dirt_floor" => room.flags.dirt_floor = value,
                     "post_office" => room.flags.post_office = value,
+                    "baseline_office" => room.flags.baseline_office = value,
                     "bank" => room.flags.bank = value,
                     "garden" => room.flags.garden = value,
                     "spawn_point" => room.flags.spawn_point = value,
@@ -748,6 +749,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 "difficult_terrain" => room.flags.difficult_terrain,
                 "dirt_floor" => room.flags.dirt_floor,
                 "post_office" => room.flags.post_office,
+                "baseline_office" => room.flags.baseline_office,
                 "bank" => room.flags.bank,
                 "garden" => room.flags.garden,
                 "spawn_point" => room.flags.spawn_point,
@@ -1366,6 +1368,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 }
                 if room.flags.post_office {
                     info_parts.push("post_office".to_string());
+                }
+                if room.flags.baseline_office {
+                    info_parts.push("baseline_office".to_string());
                 }
                 if room.flags.bank {
                     info_parts.push("bank".to_string());

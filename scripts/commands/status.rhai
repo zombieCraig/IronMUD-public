@@ -286,14 +286,27 @@ fn show_basic_status(char, connection_id) {
     let hp_str = "HP: " + hp_bar + " " + char.hp + "/" + eff_max_hp;
     let hp_colored = get_hp_colored(hp_str, hp_pct, connection_id);
 
-    // Stamina bar with color based on percentage
-    let stamina_pct = 100;
-    if char.max_stamina > 0 {
-        stamina_pct = (char.stamina * 100) / char.max_stamina;
+    // Stamina bar with color based on percentage. Replicants are tireless —
+    // they track Resolve (mental stress) in its place.
+    let is_replicant = is_pc_replicant(connection_id);
+    let stamina_colored = "";
+    if is_replicant {
+        let res = get_pc_resolve(connection_id);
+        let res_max = get_pc_max_resolve(connection_id);
+        let res_bar = build_bar(res, res_max, 10);
+        let res_str = "Resolve: " + res_bar + " " + res + "/" + res_max;
+        let res_pct = 100;
+        if res_max > 0 { res_pct = (res * 100) / res_max; }
+        stamina_colored = get_stamina_colored(res_str, res_pct, connection_id);
+    } else {
+        let stamina_pct = 100;
+        if char.max_stamina > 0 {
+            stamina_pct = (char.stamina * 100) / char.max_stamina;
+        }
+        let stamina_bar = build_bar(char.stamina, char.max_stamina, 10);
+        let stamina_str = "Stamina: " + stamina_bar + " " + char.stamina + "/" + char.max_stamina;
+        stamina_colored = get_stamina_colored(stamina_str, stamina_pct, connection_id);
     }
-    let stamina_bar = build_bar(char.stamina, char.max_stamina, 10);
-    let stamina_str = "Stamina: " + stamina_bar + " " + char.stamina + "/" + char.max_stamina;
-    let stamina_colored = get_stamina_colored(stamina_str, stamina_pct, connection_id);
 
     // Thirst / Hunger — or, for the undead, blood pool in their place.
     let is_vampire = is_pc_vampire(connection_id);
@@ -504,13 +517,23 @@ fn show_detailed_status(char, connection_id) {
     let hp_str = "HP: " + hp_bar + " " + char.hp + "/" + eff_max_hp;
     output += get_hp_colored(hp_str, hp_pct, connection_id) + "\n";
 
-    let stamina_pct = 100;
-    if char.max_stamina > 0 {
-        stamina_pct = (char.stamina * 100) / char.max_stamina;
+    if is_pc_replicant(connection_id) {
+        let res = get_pc_resolve(connection_id);
+        let res_max = get_pc_max_resolve(connection_id);
+        let res_pct = 100;
+        if res_max > 0 { res_pct = (res * 100) / res_max; }
+        let res_bar = build_bar(res, res_max, 10);
+        let res_str = "Resolve: " + res_bar + " " + res + "/" + res_max;
+        output += get_stamina_colored(res_str, res_pct, connection_id) + "\n";
+    } else {
+        let stamina_pct = 100;
+        if char.max_stamina > 0 {
+            stamina_pct = (char.stamina * 100) / char.max_stamina;
+        }
+        let stamina_bar = build_bar(char.stamina, char.max_stamina, 10);
+        let stamina_str = "Stamina: " + stamina_bar + " " + char.stamina + "/" + char.max_stamina;
+        output += get_stamina_colored(stamina_str, stamina_pct, connection_id) + "\n";
     }
-    let stamina_bar = build_bar(char.stamina, char.max_stamina, 10);
-    let stamina_str = "Stamina: " + stamina_bar + " " + char.stamina + "/" + char.max_stamina;
-    output += get_stamina_colored(stamina_str, stamina_pct, connection_id) + "\n";
 
     // Mana bar (only if mana is enabled for this character)
     if char.mana_enabled {
@@ -594,6 +617,33 @@ fn show_detailed_status(char, connection_id) {
             // Capitalize first letter of clan id for display (brujah -> Brujah).
             let display = clan.sub_string(0, 1).to_upper() + clan.sub_string(1);
             output += "Kindred: " + display + "\n";
+        }
+    }
+
+    // Replicant status — strikes, signature item, active breakdown,
+    // outstanding retirement order.
+    if is_pc_replicant(connection_id) {
+        output += "Baseline strikes: " + get_pc_baseline_strikes(connection_id) + "/3\n";
+        let sig = get_pc_signature_item_id(connection_id);
+        if sig == "" {
+            output += "Signature item: (none — use 'attune <item>')\n";
+        } else {
+            let sig_item = get_item_data(sig);
+            let sig_name = "(lost)";
+            if sig_item != () { sig_name = sig_item.name; }
+            if is_signature_item_bonded(connection_id) {
+                output += "Signature item: " + sig_name + "\n";
+            } else {
+                output += "Signature item: " + sig_name + " (bond still settling)\n";
+            }
+        }
+        if is_pc_in_breakdown(connection_id) {
+            let bd_str = "Status: BREAKDOWN (" + get_pc_breakdown_kind(connection_id) + ")";
+            output += color_or(ansi_red(bd_str), bd_str, connection_id) + "\n";
+        }
+        if char.traits.contains("retirement_order") {
+            let ro_str = "RETIREMENT ORDER ON RECORD";
+            output += color_or(ansi_red(ro_str), ro_str, connection_id) + "\n";
         }
     }
 

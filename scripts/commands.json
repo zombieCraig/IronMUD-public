@@ -51,6 +51,22 @@
     "access": "user",
     "description": "Vampire only — voluntarily enter frenzy (combat lock + strength bonus; humanity gates the resist)"
   },
+  "push": {
+    "access": "user",
+    "description": "Replicant only — push past engineered limits for a 30s combat surge; always costs Resolve, never the body"
+  },
+  "attune": {
+    "access": "user",
+    "description": "Replicant only — designate a carried memento as your signature item (replacing one costs Resolve in grief)"
+  },
+  "focus": {
+    "access": "user",
+    "description": "Replicant only — hold your bonded signature item in a safe zone to restore Resolve (downtime ritual)"
+  },
+  "baseline": {
+    "access": "user",
+    "description": "Replicant only — take a baseline test at a baseline office: pass restores full Resolve, fail adds a strike"
+  },
   "say": {
     "access": "user",
     "description": "Say something to others in the room"

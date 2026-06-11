@@ -9987,7 +9987,7 @@ fn test_vampire_class_present_with_dominate_starter_skill() {
         .and_then(|v| v.as_array())
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
         .unwrap_or_default();
-    for race in &["synth", "bioroid", "clone"] {
+    for race in &["synth", "bioroid", "replicant"] {
         assert!(
             incompat.iter().any(|r| r == race),
             "modern synthetic race '{}' should be blocked from the vampire class",
@@ -10012,13 +10012,13 @@ fn test_class_allowed_for_race_filters() {
         starting_items: Vec::new(),
         starting_gold: 0,
         allowed_races: Vec::new(),
-        incompatible_races: vec!["synth".into(), "bioroid".into(), "clone".into()],
+        incompatible_races: vec!["synth".into(), "bioroid".into(), "replicant".into()],
     };
     assert!(vampire.allowed_for_race("human"));
     assert!(vampire.allowed_for_race("orc"));
     assert!(!vampire.allowed_for_race("synth"));
     assert!(!vampire.allowed_for_race("SYNTH"), "case-insensitive");
-    assert!(!vampire.allowed_for_race("clone"));
+    assert!(!vampire.allowed_for_race("replicant"));
     // Empty race id (pre-pick) leaves the class visible.
     assert!(vampire.allowed_for_race(""));
 
@@ -10395,7 +10395,7 @@ fn test_blood_tick_decays_vampire_mob_pool() {
         db.save_mobile_data(mortal).expect("save mortal");
 
         let connections: ironmud::SharedConnections = Arc::new(Mutex::new(HashMap::new()));
-        process_blood_tick(&db, &connections).expect("tick");
+        process_blood_tick(&db, &connections, &HashMap::new()).expect("tick");
 
         let after = db.get_mobile_data(&id).unwrap().unwrap();
         let v = after.vampire_state.expect("still a vampire");
@@ -10403,6 +10403,134 @@ fn test_blood_tick_decays_vampire_mob_pool() {
 
         let mortal_after = db.get_mobile_data(&mortal_id).unwrap().unwrap();
         assert!(mortal_after.vampire_state.is_none(), "mortals untouched");
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_hunger_frenzy_roll_and_buffs() {
+    use ironmud::types::{EffectType, VampireState};
+    use ironmud::vampire::{HUNGER_FRENZY_DURATION_SECS, hunger_frenzy_chance, maybe_hunger_frenzy};
+
+    // Chance scaling: humanity 0 always frenzies, 10 never (without banes),
+    // and a Brujah-style -2 bane raises the chance by 20 points.
+    assert_eq!(hunger_frenzy_chance(0, 0), 100);
+    assert_eq!(hunger_frenzy_chance(10, 0), 0);
+    assert_eq!(hunger_frenzy_chance(7, 0), 30);
+    assert_eq!(hunger_frenzy_chance(7, -2), 50);
+    assert_eq!(hunger_frenzy_chance(0, 1), 90);
+
+    let now = 9_000;
+
+    // Blood remaining: never fires regardless of roll.
+    let mut v = VampireState::default();
+    v.blood_pool = 1;
+    v.humanity = 0;
+    let mut buffs = Vec::new();
+    assert!(!maybe_hunger_frenzy(&mut v, &mut buffs, 0, now, 1));
+    assert!(buffs.is_empty());
+
+    // Empty pool + humanity 0: guaranteed. Frenzy + Rage stamped, source
+    // "bloodlust", frenzy_until set.
+    v.blood_pool = 0;
+    assert!(maybe_hunger_frenzy(&mut v, &mut buffs, 0, now, 100));
+    let frenzy = buffs
+        .iter()
+        .find(|b| b.effect_type == EffectType::Frenzy)
+        .expect("frenzy stamped");
+    assert_eq!(frenzy.source, "bloodlust");
+    assert!(
+        buffs.iter().any(|b| b.effect_type == EffectType::Rage),
+        "rage stamped so the combat tick forces attacks"
+    );
+    assert_eq!(v.frenzy_until, Some(now + HUNGER_FRENZY_DURATION_SECS as i64));
+
+    // Already frenzying: no re-stamp/extension.
+    assert!(!maybe_hunger_frenzy(&mut v, &mut buffs, 0, now + 10, 1));
+
+    // High humanity resists: chance 0, roll 1 still misses.
+    let mut saint = VampireState::default();
+    saint.blood_pool = 0;
+    saint.humanity = 10;
+    let mut saint_buffs = Vec::new();
+    assert!(!maybe_hunger_frenzy(&mut saint, &mut saint_buffs, 0, now, 1));
+    assert!(saint_buffs.is_empty());
+}
+
+#[test]
+fn test_blood_tick_hunger_frenzy_on_starving_mob() {
+    use ironmud::MobileData;
+    use ironmud::types::{EffectType, VampireState};
+    use ironmud::vampire::process_blood_tick;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        // Humanity 0 + last blood point: this tick empties the pool and the
+        // frenzy roll is guaranteed.
+        let mut starving = MobileData::new("a feral fledgling".to_string());
+        starving.is_prototype = false;
+        starving.current_hp = 50;
+        let mut vs = VampireState::default();
+        vs.blood_pool = 1;
+        vs.humanity = 0;
+        starving.vampire_state = Some(vs);
+        let starving_id = starving.id;
+        db.save_mobile_data(starving).expect("save");
+
+        // Humanity 10 control: starves but never slips.
+        let mut composed = MobileData::new("an ancient ascetic".to_string());
+        composed.is_prototype = false;
+        composed.current_hp = 50;
+        let mut vs2 = VampireState::default();
+        vs2.blood_pool = 1;
+        vs2.humanity = 10;
+        composed.vampire_state = Some(vs2);
+        let composed_id = composed.id;
+        db.save_mobile_data(composed).expect("save");
+
+        // no_attack kindred can't be fought back — the Beast stays leashed.
+        let mut shopkeep = MobileData::new("a kindred broker".to_string());
+        shopkeep.is_prototype = false;
+        shopkeep.current_hp = 50;
+        shopkeep.flags.no_attack = true;
+        let mut vs3 = VampireState::default();
+        vs3.blood_pool = 1;
+        vs3.humanity = 0;
+        shopkeep.vampire_state = Some(vs3);
+        let shopkeep_id = shopkeep.id;
+        db.save_mobile_data(shopkeep).expect("save");
+
+        let connections: ironmud::SharedConnections = Arc::new(Mutex::new(HashMap::new()));
+        process_blood_tick(&db, &connections, &HashMap::new()).expect("tick");
+
+        let frenzied = db.get_mobile_data(&starving_id).unwrap().unwrap();
+        assert_eq!(frenzied.vampire_state.as_ref().unwrap().blood_pool, 0);
+        assert!(
+            frenzied
+                .active_buffs
+                .iter()
+                .any(|b| b.effect_type == EffectType::Frenzy),
+            "starving humanity-0 mob frenzies"
+        );
+        assert!(
+            frenzied.active_buffs.iter().any(|b| b.effect_type == EffectType::Rage),
+            "hunger frenzy includes rage"
+        );
+        assert!(frenzied.vampire_state.as_ref().unwrap().frenzy_until.is_some());
+
+        let calm = db.get_mobile_data(&composed_id).unwrap().unwrap();
+        assert!(calm.active_buffs.is_empty(), "humanity 10 resists");
+
+        let leashed = db.get_mobile_data(&shopkeep_id).unwrap().unwrap();
+        assert!(leashed.active_buffs.is_empty(), "no_attack kindred never frenzy");
     }));
 
     if let Err(e) = result {
@@ -12087,5 +12215,353 @@ mod creature_type_tests {
             "FEED_ALLOW_UNDEAD changed — feeding on the dead diverges from VtM canon; \
              update the feed tests intentionally if this is desired."
         );
+    }
+}
+
+// ============================================================
+// Replicant race (Blade Runner-style Resolve mechanics)
+// ============================================================
+
+#[test]
+fn test_replicant_state_defaults_and_persists() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        // Built via serde so missing fields take serde defaults — proves
+        // replicant_state defaults to None on legacy saves.
+        let mut char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "TestReplicant",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        assert!(char.replicant_state.is_none(), "replicant_state defaults to None");
+
+        let state = ironmud::types::ReplicantState::newly_incepted(1_000);
+        assert_eq!(state.resolve, 10, "fresh resolve is full");
+        assert_eq!(state.max_resolve, 10);
+        assert_eq!(state.baseline_strikes, 0);
+        assert!(state.signature_item_id.is_none());
+        assert_eq!(state.inception_time, Some(1_000));
+
+        char.replicant_state = Some(state);
+        db.save_character_data(char.clone()).expect("save");
+
+        let loaded = db.get_character_data(&char.name).expect("read").expect("present");
+        let r = loaded.replicant_state.expect("state persists");
+        assert_eq!(r.resolve, 10);
+        assert_eq!(r.max_resolve, 10);
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_races_modern_replicant_replaces_clone() {
+    let raw = std::fs::read_to_string("scripts/data/races_modern.json").expect("read races_modern.json");
+    let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse races_modern.json");
+    let obj = parsed.as_object().expect("object root");
+
+    assert!(!obj.contains_key("clone"), "clone race renamed to replicant");
+    let replicant = obj.get("replicant").expect("replicant race present");
+
+    // The whole file must still deserialize into RaceDefinitions (catches
+    // schema drift like the new resolve_cost field breaking parsing).
+    let races: std::collections::HashMap<String, ironmud::types::RaceDefinition> =
+        serde_json::from_str(&raw).expect("races deserialize into RaceDefinition");
+    let def = races.get("replicant").expect("replicant definition");
+    assert!(def.available, "replicant selectable at creation");
+
+    let purge = def
+        .active_abilities
+        .iter()
+        .find(|a| a.id == "system_purge")
+        .expect("system_purge active ability");
+    assert_eq!(purge.resolve_cost, 2, "system_purge costs resolve");
+    assert_eq!(purge.stamina_cost, 0, "replicant abilities never cost stamina");
+
+    // Lore guard: physically superior, mentally fragile.
+    let mods = replicant
+        .get("stat_modifiers")
+        .and_then(|v| v.as_object())
+        .expect("stat_modifiers");
+    assert!(mods.get("str").and_then(|v| v.as_i64()).unwrap_or(0) > 0);
+    assert!(mods.get("wis").and_then(|v| v.as_i64()).unwrap_or(0) < 0);
+}
+
+#[test]
+fn test_replicant_resolve_helpers() {
+    use ironmud::types::{ReplicantState, roll_breakdown};
+
+    let mut r = ReplicantState::default();
+
+    // Clamping.
+    assert_eq!(r.change_resolve(-3), 7);
+    assert_eq!(r.change_resolve(-100), 0);
+    assert_eq!(r.change_resolve(5), 5);
+    assert_eq!(r.change_resolve(100), 10, "clamped to max_resolve");
+
+    // Baseline chance: full resolve, no breakdowns → 40 + 60 → clamped 95.
+    r.resolve = 10;
+    r.breakdowns_since_baseline = 0;
+    assert_eq!(r.baseline_success_chance(), 95);
+    // Worst case floors at 5.
+    r.resolve = 0;
+    r.breakdowns_since_baseline = 5;
+    assert_eq!(r.baseline_success_chance(), 5);
+    // Mid: resolve 5, 1 breakdown → 40 + 30 - 15 = 55.
+    r.resolve = 5;
+    r.breakdowns_since_baseline = 1;
+    assert_eq!(r.baseline_success_chance(), 55);
+
+    // Breakdown table mapping.
+    assert_eq!(roll_breakdown(1), "panic");
+    assert_eq!(roll_breakdown(2), "panic");
+    assert_eq!(roll_breakdown(3), "lockup");
+    assert_eq!(roll_breakdown(4), "lockup");
+    assert_eq!(roll_breakdown(5), "berserk");
+    assert_eq!(roll_breakdown(6), "berserk");
+
+    // Signature bond: needs an item AND 24h.
+    let now = 1_000_000;
+    assert!(!r.is_signature_bonded(now), "no item, no bond");
+    r.signature_item_id = Some(uuid::Uuid::new_v4());
+    r.attuned_at = now;
+    assert!(!r.is_signature_bonded(now + 100), "bond not matured");
+    assert!(
+        r.is_signature_bonded(now + ironmud::types::ATTUNE_BOND_SECS),
+        "bond matured at 24h"
+    );
+
+    // Breakdown window.
+    assert!(!r.is_breaking_down(now));
+    r.breakdown_until = Some(now + 60);
+    assert!(r.is_breaking_down(now));
+    assert!(!r.is_breaking_down(now + 61));
+}
+
+#[test]
+fn test_replicant_trigger_breakdown_effects() {
+    use ironmud::types::{EffectType, ReplicantState};
+
+    let mut char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+        "name": "TestBreakdown",
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+    }))
+    .expect("build character");
+    let mut state = ReplicantState::default();
+    state.resolve = 0;
+    char.replicant_state = Some(state);
+
+    let now = 5_000;
+
+    // Berserk (roll 6): frenzy + rage buffs + state stamped + resolve snaps to 3.
+    let outcome = ironmud::replicant::trigger_breakdown(&mut char, now, 6);
+    assert_eq!(outcome.kind, "berserk");
+    assert!(
+        char.active_buffs.iter().any(|b| b.effect_type == EffectType::Frenzy),
+        "berserk stamps the Frenzy buff"
+    );
+    assert!(
+        char.active_buffs.iter().any(|b| b.effect_type == EffectType::Rage),
+        "berserk stamps the Rage buff so the combat tick forces attacks"
+    );
+    let r = char.replicant_state.as_ref().unwrap();
+    assert_eq!(r.breakdown_kind.as_deref(), Some("berserk"));
+    assert!(r.is_breaking_down(now));
+    assert_eq!(r.resolve, 3, "resolve snaps back so the player isn't chain-broken");
+    assert_eq!(r.breakdowns_since_baseline, 1);
+
+    // Lockup (roll 3): stun rounds via the existing combat gate.
+    let mut char2 = char.clone();
+    char2.active_buffs.clear();
+    char2.combat.stun_rounds_remaining = 0;
+    char2.replicant_state.as_mut().unwrap().breakdown_until = None;
+    let outcome2 = ironmud::replicant::trigger_breakdown(&mut char2, now, 3);
+    assert_eq!(outcome2.kind, "lockup");
+    assert_eq!(char2.combat.stun_rounds_remaining, 2);
+
+    // Panic (roll 1): Luck penalty + Slow.
+    let mut char3 = char.clone();
+    char3.active_buffs.clear();
+    char3.replicant_state.as_mut().unwrap().breakdown_until = None;
+    let outcome3 = ironmud::replicant::trigger_breakdown(&mut char3, now, 1);
+    assert_eq!(outcome3.kind, "panic");
+    let luck = char3
+        .active_buffs
+        .iter()
+        .find(|b| b.effect_type == EffectType::Luck)
+        .expect("panic stamps a Luck debuff");
+    assert!(luck.magnitude < 0, "luck debuff is negative");
+    assert!(char3.active_buffs.iter().any(|b| b.effect_type == EffectType::Slow));
+}
+
+#[test]
+fn test_replicant_retirement_applies_recalibration() {
+    use ironmud::types::{EffectType, ReplicantState};
+
+    let mut char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+        "name": "TestRetiree",
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+    }))
+    .expect("build character");
+    let mut state = ReplicantState::default();
+    state.baseline_strikes = 3;
+    state.breakdowns_since_baseline = 2;
+    char.replicant_state = Some(state);
+
+    ironmud::replicant::apply_retirement(&mut char);
+
+    assert!(
+        char.traits.iter().any(|t| t == "retirement_order"),
+        "retirement_order trait stamped"
+    );
+    // All six stats debuffed by -2 for 24h.
+    for effect in [
+        EffectType::StrengthBoost,
+        EffectType::DexterityBoost,
+        EffectType::ConstitutionBoost,
+        EffectType::IntelligenceBoost,
+        EffectType::WisdomBoost,
+        EffectType::CharismaBoost,
+    ] {
+        let buff = char
+            .active_buffs
+            .iter()
+            .find(|b| b.effect_type == effect && b.source == "recalibration")
+            .expect("recalibration debuff present");
+        assert_eq!(buff.magnitude, -2);
+        assert_eq!(buff.remaining_secs, 86_400);
+    }
+    let r = char.replicant_state.as_ref().unwrap();
+    assert_eq!(r.baseline_strikes, 0, "strikes reset after retirement");
+    assert_eq!(r.breakdowns_since_baseline, 0);
+    assert_eq!(r.retirement_count, 1);
+
+    // Idempotent trait stamping.
+    ironmud::replicant::apply_retirement(&mut char);
+    let count = char.traits.iter().filter(|t| *t == "retirement_order").count();
+    assert_eq!(count, 1, "trait not duplicated on repeat retirement");
+}
+
+#[test]
+fn test_replicant_resolve_tick_core() {
+    use ironmud::CharacterPosition;
+    use ironmud::replicant::apply_resolve_tick_to_character;
+    use ironmud::types::ReplicantState;
+
+    let mut char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+        "name": "TestTick",
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+    }))
+    .expect("build character");
+    char.stamina = 20; // pre-migration save with drained stamina
+    char.max_stamina = 100;
+    let mut state = ReplicantState::default();
+    state.resolve = 4;
+    char.replicant_state = Some(state);
+
+    // Standing: no resolve regen, but stamina gets pinned to max.
+    char.position = CharacterPosition::Standing;
+    let (modified, msg) = apply_resolve_tick_to_character(&mut char, 1_000);
+    assert!(modified, "stamina pin counts as a change");
+    assert!(msg.is_none());
+    assert_eq!(char.stamina, 100, "tireless invariant repaired");
+    assert_eq!(
+        char.replicant_state.as_ref().unwrap().resolve,
+        4,
+        "no regen while standing"
+    );
+
+    // Sleeping: +1 per tick.
+    char.position = CharacterPosition::Sleeping;
+    let (modified, _) = apply_resolve_tick_to_character(&mut char, 2_000);
+    assert!(modified);
+    assert_eq!(char.replicant_state.as_ref().unwrap().resolve, 5, "sleep trickle");
+
+    // Active breakdown: no sleep regen; expiry clears state + messages.
+    char.replicant_state.as_mut().unwrap().breakdown_until = Some(3_000);
+    char.replicant_state.as_mut().unwrap().breakdown_kind = Some("panic".to_string());
+    let (_, msg) = apply_resolve_tick_to_character(&mut char, 2_500);
+    assert!(msg.is_none(), "no expiry message while still breaking down");
+    assert_eq!(
+        char.replicant_state.as_ref().unwrap().resolve,
+        5,
+        "no regen during breakdown"
+    );
+
+    let (modified, msg) = apply_resolve_tick_to_character(&mut char, 3_000);
+    assert!(modified);
+    assert!(msg.is_some(), "expiry message sent");
+    let r = char.replicant_state.as_ref().unwrap();
+    assert!(r.breakdown_until.is_none(), "breakdown cleared");
+    assert!(r.breakdown_kind.is_none());
+
+    // Non-replicant: untouched.
+    let mut mortal: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+        "name": "TestMortal",
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+    }))
+    .expect("build character");
+    mortal.stamina = 20;
+    mortal.max_stamina = 100;
+    let (modified, _) = apply_resolve_tick_to_character(&mut mortal, 1_000);
+    assert!(!modified, "non-replicants are not touched");
+    assert_eq!(mortal.stamina, 20, "mortal stamina untouched by the resolve tick");
+}
+
+#[test]
+fn test_comfort_social_still_registered() {
+    // The comfort SOCIAL stays — the replicant restore is layered onto the
+    // social dispatcher, not a separate command. Guard against an
+    // accidental removal that would orphan the dispatcher hook.
+    let raw = std::fs::read_to_string("scripts/data/socials.json").expect("read socials.json");
+    let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse socials.json");
+    let socials = parsed
+        .get("socials")
+        .and_then(|v| v.as_array())
+        .or_else(|| parsed.as_array())
+        .expect("socials array");
+    assert!(
+        socials
+            .iter()
+            .any(|s| s.get("name").and_then(|n| n.as_str()) == Some("comfort")),
+        "comfort social present (replicant resolve restore hooks into it)"
+    );
+}
+
+#[test]
+fn test_replicant_room_flag_baseline_office_persists() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        // Default proof: rooms start with the flag off (serde per-field
+        // defaults mirror RoomFlags::default for legacy saves).
+        assert!(
+            !ironmud::types::RoomFlags::default().baseline_office,
+            "baseline_office defaults off"
+        );
+        let mut room = vampire_test_room("Precinct Annex", true);
+
+        room.flags.baseline_office = true;
+        let room_id = room.id;
+        db.save_room_data(room).expect("save room");
+
+        let loaded = db.get_room_data(&room_id).expect("read").expect("present");
+        assert!(loaded.flags.baseline_office, "baseline_office persists");
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
     }
 }

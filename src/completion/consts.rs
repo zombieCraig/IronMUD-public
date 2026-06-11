@@ -357,6 +357,7 @@ pub const AFFECT_EFFECT_TYPES: &[&str] = &[
     "sleep",
     "curse",
     "invisibility",
+    "rage",
 ];
 
 /// Valid `vs_effect` tags after `oedit <vnum> affect add status_resistance ...`.
@@ -372,6 +373,7 @@ pub const STATUS_RESISTANCE_VS_EFFECTS: &[&str] = &[
     "slow",
     "frenzy",
     "dominated",
+    "rage",
 ];
 
 /// Item types
@@ -451,6 +453,7 @@ pub const ROOM_FLAGS: &[&str] = &[
     "dirt_floor",
     "property_storage",
     "post_office",
+    "baseline_office",
     "bank",
     "garden",
     "spawn_point",

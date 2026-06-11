@@ -71,6 +71,10 @@ fn format_ability_costs(a) {
         if cost_parts != "" { cost_parts += ", "; }
         cost_parts += a["mana_cost"] + " mana";
     }
+    if a["resolve_cost"] > 0 {
+        if cost_parts != "" { cost_parts += ", "; }
+        cost_parts += a["resolve_cost"] + " resolve";
+    }
     if cost_parts != "" {
         return "    Cost: " + cost_parts + "\n";
     }
@@ -131,6 +135,20 @@ fn use_ability(connection_id, char, ability) {
         }
     }
 
+    // Check resolve cost (replicant mental-stress pool). Unlike stamina/mana,
+    // spending down to 0 is ALLOWED — pushing the engineered mind past its
+    // limit is the racial tradeoff. The handler triggers the breakdown.
+    if ability["resolve_cost"] > 0 {
+        if !is_pc_replicant(connection_id) {
+            send_client_message(connection_id, ability["name"] + " draws on Resolve — only replicants have it.");
+            return;
+        }
+        if get_pc_resolve(connection_id) <= 0 {
+            send_client_message(connection_id, "Your mind has nothing left to give.");
+            return;
+        }
+    }
+
     // Dispatch to specific ability handler
     if aid == "breath_weapon" {
         use_breath_weapon(connection_id, char, ability);
@@ -146,6 +164,10 @@ fn use_ability(connection_id, char, ability) {
     }
     if aid == "regenerate" {
         use_regenerate(connection_id, char, ability);
+        return;
+    }
+    if aid == "system_purge" {
+        use_system_purge(connection_id, char, ability);
         return;
     }
 
@@ -239,6 +261,36 @@ fn use_regenerate(connection_id, char, ability) {
     let room_id = char.current_room_id;
     send_client_message(connection_id, "\x1b[1;32mYour mutated cells surge into overdrive, knitting wounds closed with unnatural speed!\x1b[0m");
     broadcast_to_room(room_id, char.name + "'s wounds begin closing visibly as their body regenerates at an alarming rate.", char.name);
+}
+
+fn use_system_purge(connection_id, char, ability) {
+    let now = get_current_time();
+
+    // Set cooldown
+    let cooldowns = char.racial_cooldowns;
+    cooldowns[ability["id"]] = now + ability["cooldown_secs"];
+    char.racial_cooldowns = cooldowns;
+    save_character_data(char);
+
+    // Pay in stress, never sweat. Hitting 0 breaks the mind.
+    let new_resolve = change_pc_resolve(connection_id, -ability["resolve_cost"]);
+
+    cure_character_poison(connection_id);
+    stop_character_bleeding(connection_id);
+
+    let room_id = char.current_room_id;
+    send_client_message(connection_id, "\x1b[1;32mYour engineered metabolism surges — toxins neutralize, torn vessels seal themselves.\x1b[0m");
+    broadcast_to_room(room_id, char.name + "'s skin flushes as something beneath it rapidly sets itself right.", char.name);
+
+    if new_resolve == 0 {
+        let bd = trigger_pc_breakdown(connection_id);
+        if bd["success"] {
+            send_client_message(connection_id, "\x1b[1;31m" + bd["message"] + "\x1b[0m");
+            let room_msg = bd["room_message"];
+            room_msg.replace("{name}", char.name);
+            broadcast_to_room(room_id, room_msg, char.name);
+        }
+    }
 }
 
 fn use_neural_spike(connection_id, char, ability) {

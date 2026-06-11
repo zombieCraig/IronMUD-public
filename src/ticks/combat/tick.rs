@@ -46,6 +46,12 @@ fn process_combat_round(db: &db::Db, connections: &SharedConnections, state: &Sh
     use std::time::Instant;
     let round_start = Instant::now();
 
+    // Raging players acquire targets before the round list is built so a
+    // fresh engagement swings this round, not next.
+    if let Err(e) = super::rage::process_rage_acquisitions(db, connections, state) {
+        debug!("Rage acquisition error: {}", e);
+    }
+
     tracing::trace!("Combat tick: getting characters in combat");
     // Get all characters in combat
     let char_names = db.get_all_characters_in_combat()?;
@@ -297,21 +303,24 @@ fn process_character_combat_round(
     const COMBAT_STAMINA_COST: i32 = 5;
     const MIN_STAMINA_RESTORE: i32 = 5;
 
-    if char.stamina <= 0 {
-        // Too exhausted - skip turn but restore minimum stamina
-        char.stamina = MIN_STAMINA_RESTORE;
-        db.save_character_data(char.clone())?;
-        sync_character_to_session(connections, &char, state);
-        send_message_to_character(
-            connections,
-            char_name,
-            "You are too exhausted to attack! You catch your breath...",
-        );
-        return Ok(());
-    }
+    // Replicants are tireless: no exhaustion, no stamina cost.
+    if char.replicant_state.is_none() {
+        if char.stamina <= 0 {
+            // Too exhausted - skip turn but restore minimum stamina
+            char.stamina = MIN_STAMINA_RESTORE;
+            db.save_character_data(char.clone())?;
+            sync_character_to_session(connections, &char, state);
+            send_message_to_character(
+                connections,
+                char_name,
+                "You are too exhausted to attack! You catch your breath...",
+            );
+            return Ok(());
+        }
 
-    // Consume stamina for attack
-    char.stamina = (char.stamina - COMBAT_STAMINA_COST).max(0);
+        // Consume stamina for attack
+        char.stamina = (char.stamina - COMBAT_STAMINA_COST).max(0);
+    }
 
     // Get primary target
     let target = match char.combat.targets.first() {
@@ -1507,6 +1516,9 @@ fn process_character_attacks_player(
         });
     }
 
+    // Replicants: big hits stress the engineered mind (PvP path).
+    apply_replicant_combat_stress(connections, &mut victim, damage, &room_id);
+
     db.save_character_data(victim.clone())?;
     sync_character_to_session(connections, &victim, state);
     Ok(())
@@ -2014,6 +2026,56 @@ fn fire_combat_dg_triggers(db: &db::Db, connections: &SharedConnections, mobile:
     }
 }
 
+/// Replicant combat stress: a single hit at or above
+/// `BIG_HIT_RESOLVE_THRESHOLD_PCT`% of max HP drains 1 Resolve; hitting 0
+/// triggers a breakdown on the critical-stress table. Call after damage is
+/// applied and BEFORE the caller saves the character — the mutation rides
+/// the caller's save/sync. No-op for non-replicants, the already-broken,
+/// and the dying (hp <= 0 hands off to the death pipeline instead).
+fn apply_replicant_combat_stress(
+    connections: &SharedConnections,
+    char: &mut ironmud::CharacterData,
+    damage: i32,
+    room_id: &uuid::Uuid,
+) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let threshold = (char.max_hp * ironmud::types::BIG_HIT_RESOLVE_THRESHOLD_PCT / 100).max(1);
+    let stressed = match char.replicant_state.as_ref() {
+        Some(r) if char.hp > 0 && damage >= threshold && !r.is_breaking_down(now) => true,
+        _ => false,
+    };
+    if !stressed {
+        return;
+    }
+    let new_resolve = char
+        .replicant_state
+        .as_mut()
+        .map(|r| r.change_resolve(-1))
+        .unwrap_or(-1);
+    send_message_to_character(
+        connections,
+        &char.name,
+        "\x1b[35mThe hit rattles something deep in your engineered mind. (-1 Resolve)\x1b[0m",
+    );
+    if new_resolve == 0 {
+        let outcome = ironmud::replicant::trigger_breakdown_rolled(char, now);
+        send_message_to_character(
+            connections,
+            &char.name,
+            &format!("\x1b[1;31m{}\x1b[0m", outcome.message),
+        );
+        broadcast_to_room_except_awake(
+            connections,
+            room_id,
+            &outcome.room_message.replace("{name}", &char.name),
+            &char.name,
+        );
+    }
+}
+
 /// Process a mobile attacking a player
 fn process_mobile_attacks_player(
     db: &db::Db,
@@ -2377,6 +2439,9 @@ fn process_mobile_attacks_player(
             .retain(|b| b.effect_type != ironmud::EffectType::Sleep);
     }
 
+    // Replicants: big hits stress the engineered mind.
+    apply_replicant_combat_stress(connections, &mut char, damage, room_id);
+
     db.save_character_data(char.clone())?;
     if player_was_sleeping {
         send_message_to_character(connections, &char.name, "You jolt awake!");
@@ -2589,6 +2654,9 @@ fn mob_cast_spell_at_player(
             if player_was_sleeping {
                 char.active_buffs.retain(|b| b.effect_type != EffectType::Sleep);
             }
+
+            // Replicants: big hits stress the engineered mind.
+            apply_replicant_combat_stress(connections, &mut char, damage, room_id);
 
             db.save_character_data(char.clone())?;
             if player_was_sleeping {

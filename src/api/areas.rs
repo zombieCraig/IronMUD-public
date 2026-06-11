@@ -132,6 +132,7 @@ fn apply_default_room_flag_overrides(flags: &mut RoomFlags, map: &std::collectio
             "dirt_floor" => flags.dirt_floor = *v,
             "property_storage" => flags.property_storage = *v,
             "post_office" => flags.post_office = *v,
+            "baseline_office" => flags.baseline_office = *v,
             "bank" => flags.bank = *v,
             "garden" => flags.garden = *v,
             "spawn_point" => flags.spawn_point = *v,

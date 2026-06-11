@@ -50,6 +50,7 @@ pub mod mobile;
 pub mod pursuit;
 pub mod quests;
 pub mod rent;
+pub mod replicant;
 pub mod routine;
 pub mod simulation;
 pub mod spawn;
@@ -75,6 +76,7 @@ pub use mobile::{run_mobile_effects_tick, run_wander_tick};
 pub use pursuit::run_pursuit_tick;
 pub use quests::run_quest_tick;
 pub use rent::run_rent_tick;
+pub use replicant::run_resolve_tick;
 pub use routine::run_routine_tick;
 pub use simulation::run_simulation_tick;
 pub use spawn::run_spawn_tick;
@@ -121,6 +123,7 @@ pub fn register_all_heartbeats() {
         ("quest", quests::QUEST_TICK_INTERVAL_SECS),
         ("sun", ironmud::vampire::SUN_TICK_INTERVAL_SECS),
         ("blood", ironmud::vampire::BLOOD_TICK_INTERVAL_SECS),
+        ("resolve", ironmud::replicant::RESOLVE_TICK_INTERVAL_SECS),
     ];
 
     for (name, secs) in pairs {

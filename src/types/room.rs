@@ -244,6 +244,9 @@ pub struct RoomFlags {
     // Mail system flag
     #[serde(default)]
     pub post_office: bool, // Players can send mail from this room
+    // Replicant system flag
+    #[serde(default)]
+    pub baseline_office: bool, // Replicants can take baseline tests here
     // Banking system flag
     #[serde(default)]
     pub bank: bool, // Players can use banking commands here
@@ -299,6 +302,7 @@ impl RoomFlags {
         self.dirt_floor |= defaults.dirt_floor;
         self.property_storage |= defaults.property_storage;
         self.post_office |= defaults.post_office;
+        self.baseline_office |= defaults.baseline_office;
         self.bank |= defaults.bank;
         self.garden |= defaults.garden;
         self.spawn_point |= defaults.spawn_point;

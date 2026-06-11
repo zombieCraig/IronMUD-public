@@ -135,6 +135,7 @@ export interface RoomFlags {
   liveable?: boolean;
   soundproof?: boolean;
   notrack?: boolean;
+  baseline_office?: boolean;
 }
 
 export interface RoomTrigger {

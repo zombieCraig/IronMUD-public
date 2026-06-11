@@ -101,28 +101,49 @@
       "street_slang": 10
     }
   },
-  "clone": {
-    "id": "clone",
-    "name": "Clone",
-    "description": "Flash-grown replicas with accelerated neural patterning. Physically identical to their template but subtly fragile, as if mass-produced.",
+  "replicant": {
+    "id": "replicant",
+    "name": "Replicant",
+    "description": "Bioengineered humanoids, vat-grown to be more human than human. Stronger, faster, tougher than any baseline person — and tireless. But the engineered mind is brittle: stress accumulates as Resolve damage, and a replicant at the breaking point is a danger to everyone around it.",
     "stat_modifiers": {
+      "str": 2,
       "dex": 1,
-      "int": 1,
-      "con": -1
+      "con": 1,
+      "wis": -2,
+      "cha": -1
     },
-    "granted_traits": [],
-    "resistances": {},
+    "granted_traits": [
+      "night_vision"
+    ],
+    "resistances": {
+      "poison": 25,
+      "cold": 15
+    },
     "passive_abilities": [
       {
-        "id": "adaptable",
-        "name": "Adaptable",
-        "description": "Accelerated neural patterning grants flexibility in any situation.",
-        "effects": {
-          "all_stats": 1
-        }
+        "id": "engineered_vigor",
+        "name": "Engineered Vigor",
+        "description": "Accelerated cell repair: +50% HP regeneration, and a replicant body never tires — no action costs stamina.",
+        "effects": {}
+      },
+      {
+        "id": "stress_track",
+        "name": "Mental Stress Track",
+        "description": "Replicants track Resolve instead of stamina. Pushing past limits, combat trauma, and grief drain it; sleep, comfort from others, and focusing on a bonded memento restore it. Only a baseline test restores it fully. At 0 Resolve the mind breaks.",
+        "effects": {}
       }
     ],
-    "active_abilities": [],
+    "active_abilities": [
+      {
+        "id": "system_purge",
+        "name": "System Purge",
+        "description": "Flush the engineered metabolism: cures poison and stops bleeding. Costs Resolve, not stamina.",
+        "stamina_cost": 0,
+        "mana_cost": 0,
+        "resolve_cost": 2,
+        "cooldown_secs": 600
+      }
+    ],
     "available": true,
     "starting_languages": {
       "protocol": 10

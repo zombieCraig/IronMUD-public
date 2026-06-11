@@ -9,6 +9,7 @@
 //! the bin boundary.
 
 mod on_hit;
+mod rage;
 mod tick;
 mod wounds;
 

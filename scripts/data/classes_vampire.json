@@ -6,6 +6,6 @@
     "starting_skills": {"dominate": 1},
     "stat_bonuses": {"str": 1, "dex": 1, "cha": 1},
     "available": true,
-    "incompatible_races": ["synth", "bioroid", "clone"]
+    "incompatible_races": ["synth", "bioroid", "replicant"]
   }
 }

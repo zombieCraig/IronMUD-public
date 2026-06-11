@@ -382,6 +382,44 @@ pub fn dispatch_player_social(
             } else {
                 emit_found(connections, &social, &actor, &actor_party, &vict_party, Some(&t.name));
             }
+            // Comforting a replicant is more than words: it settles their
+            // Resolve (recipient-side cooldown prevents stacking). Layered
+            // on top of the social's normal output.
+            if social.name == "comfort" && t.replicant_state.is_some() {
+                let db = {
+                    let world = state.lock().unwrap();
+                    world.db.clone()
+                };
+                match crate::replicant::comfort_replicant_by_name(&db, connections, &t.name) {
+                    crate::replicant::ComfortOutcome::Restored(restored, new_resolve, max) => {
+                        send_to(
+                            connections,
+                            connection_id,
+                            &format!(
+                                "\x1b[36mYour words reach something engineered and aching in {}. (+{} Resolve)\x1b[0m\n",
+                                t.name, restored
+                            ),
+                        );
+                        send_to_actor(
+                            connections,
+                            &t,
+                            &format!(
+                                "\x1b[36m{}'s words settle the static in your mind. (+{} Resolve — {}/{})\x1b[0m\n",
+                                actor.name, restored, new_resolve, max
+                            ),
+                        );
+                    }
+                    crate::replicant::ComfortOutcome::TooRattled => {
+                        send_to(
+                            connections,
+                            connection_id,
+                            &format!("{} is too rattled to take it in just yet.\n", t.name),
+                        );
+                    }
+                    // Full / NotApplicable: the social's words were enough.
+                    _ => {}
+                }
+            }
         }
         Some(Target::Mobile { name, gender }) => {
             let vict_party = RenderParty {

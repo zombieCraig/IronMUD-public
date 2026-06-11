@@ -895,6 +895,7 @@ fn run_command(args, connection_id) {
         if flags.difficult_terrain { flag_str += "difficult_terrain "; }
         if flags.dirt_floor { flag_str += "dirt_floor "; }
         if flags.post_office { flag_str += "post_office "; }
+        if flags.baseline_office { flag_str += "baseline_office "; }
         if flags.bank { flag_str += "bank "; }
         if flags.garden { flag_str += "garden "; }
         if flags.spawn_point { flag_str += "spawn_point "; }
@@ -1125,6 +1126,10 @@ fn run_command(args, connection_id) {
         let post_office_plain = if flags.post_office { "ON" } else { "off" };
         let post_office_toggle = mxp_or(mxp_send("redit flag post_office", post_office_text), post_office_plain, connection_id);
 
+        let baseline_office_text = if flags.baseline_office { "[ON]" } else { "[off]" };
+        let baseline_office_plain = if flags.baseline_office { "ON" } else { "off" };
+        let baseline_office_toggle = mxp_or(mxp_send("redit flag baseline_office", baseline_office_text), baseline_office_plain, connection_id);
+
         let bank_text = if flags.bank { "[ON]" } else { "[off]" };
         let bank_plain = if flags.bank { "ON" } else { "off" };
         let bank_toggle = mxp_or(mxp_send("redit flag bank", bank_text), bank_plain, connection_id);
@@ -1189,6 +1194,7 @@ fn run_command(args, connection_id) {
         output += "  difficult_terrain: " + difficult_toggle + "  (costs 2 stamina to traverse)\n";
         output += "  dirt_floor:        " + dirt_floor_toggle + "  (allows wilderness foraging)\n";
         output += "  post_office:       " + post_office_toggle + "  (allows sending mail from this room)\n";
+        output += "  baseline_office:   " + baseline_office_toggle + "  (replicants can take baseline tests here)\n";
         output += "  bank:              " + bank_toggle + "  (allows banking commands here)\n";
         output += "  garden:            " + garden_toggle + "  (thematic garden flag for look output)\n";
         output += "  spawn_point:       " + spawn_point_toggle + "  (players can bind spawn here - inns, safe rooms)\n";
@@ -1215,11 +1221,11 @@ fn run_command(args, connection_id) {
     if subcommand == "flag" {
         // Set or toggle one or more room flags
         if parts.len() < 2 {
-            send_client_message(connection_id, "Usage: redit flag <name> [<name>...] [on|off]\nValid flags: dark, no_mob, indoors, underwater, shallow_water, deep_water, city, no_windows, difficult_terrain, dirt_floor, post_office, bank, garden, spawn_point, liveable, safe");
+            send_client_message(connection_id, "Usage: redit flag <name> [<name>...] [on|off]\nValid flags: dark, no_mob, indoors, underwater, shallow_water, deep_water, city, no_windows, difficult_terrain, dirt_floor, post_office, baseline_office, bank, garden, spawn_point, liveable, safe");
             return;
         }
 
-        let valid_flags = ["dark", "no_mob", "nomob", "indoors", "underwater", "shallow_water", "deep_water", "city", "no_windows", "nowindows", "difficult_terrain", "dirt_floor", "post_office", "bank", "garden", "spawn_point", "liveable", "livable", "private", "private_room", "tunnel", "death", "no_magic", "nomagic", "soundproof", "notrack", "no_track", "no_recall", "norecall", "safe", "peaceful"];
+        let valid_flags = ["dark", "no_mob", "nomob", "indoors", "underwater", "shallow_water", "deep_water", "city", "no_windows", "nowindows", "difficult_terrain", "dirt_floor", "post_office", "baseline_office", "bank", "garden", "spawn_point", "liveable", "livable", "private", "private_room", "tunnel", "death", "no_magic", "nomagic", "soundproof", "notrack", "no_track", "no_recall", "norecall", "safe", "peaceful"];
 
         // Split into flag names and optional trailing on/off value.
         let flag_names = [];
@@ -1243,7 +1249,7 @@ fn run_command(args, connection_id) {
                 if f == name { is_valid = true; break; }
             }
             if !is_valid {
-                send_client_message(connection_id, "Unknown flag: " + name + "\nValid flags: dark, no_mob, indoors, underwater, shallow_water, deep_water, city, no_windows, difficult_terrain, dirt_floor, post_office, bank, garden, spawn_point, liveable, safe\nFor combat zone, use 'redit zone [pve|safe|pvp|inherit]'");
+                send_client_message(connection_id, "Unknown flag: " + name + "\nValid flags: dark, no_mob, indoors, underwater, shallow_water, deep_water, city, no_windows, difficult_terrain, dirt_floor, post_office, baseline_office, bank, garden, spawn_point, liveable, safe\nFor combat zone, use 'redit zone [pve|safe|pvp|inherit]'");
                 return;
             }
         }

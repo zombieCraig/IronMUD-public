@@ -122,6 +122,12 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Replicant lockup breakdown: the body refuses out-of-combat movement.
+    if is_pc_in_breakdown(connection_id) && get_pc_breakdown_kind(connection_id) == "lockup" {
+        send_client_message(connection_id, "Your limbs refuse. You stand perfectly still, eyes open.");
+        return;
+    }
+
     // Combat lock - must use flee command to escape combat
     if is_in_combat(char.name) {
         send_client_message(connection_id, "You are in combat! Use 'flee' to escape.");

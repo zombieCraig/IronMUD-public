@@ -644,8 +644,13 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
         // Check for aggressive / memory-driven attack BEFORE wandering.
         // Aggressive mobiles attack any visible player; MOB_MEMORY mobs
         // attack any remembered visible player even without aggressive.
+        // A Rage buff makes any mob aggressive for its duration.
         // Visibility honours MOB_AWARE + perception.
         if current_mobile.flags.aggressive
+            || current_mobile
+                .active_buffs
+                .iter()
+                .any(|b| b.effect_type == EffectType::Rage)
             || (current_mobile.flags.memory && !current_mobile.remembered_enemies.is_empty())
         {
             if let Some(room_id) = current_mobile.current_room_id {
@@ -1221,7 +1226,10 @@ pub fn find_aggression_target_for_mob(
     mob: &MobileData,
     room_id: &uuid::Uuid,
 ) -> Option<(String, bool)> {
-    let aggressive = mob.flags.aggressive;
+    // A Rage buff overrides temperament: the mob attacks anyone it can see,
+    // including its own charm master.
+    let raging = mob.active_buffs.iter().any(|b| b.effect_type == EffectType::Rage);
+    let aggressive = mob.flags.aggressive || raging;
     let memory_active = mob.flags.memory && !mob.remembered_enemies.is_empty();
     let alignment_aggro = mob.flags.aggro_good || mob.flags.aggro_evil || mob.flags.aggro_neutral;
     if !aggressive && !memory_active && !alignment_aggro {
@@ -1242,8 +1250,8 @@ pub fn find_aggression_target_for_mob(
     let players = find_players_in_room(connections, room_id);
     for name in players {
         let key = name.to_lowercase();
-        // Charmed mobs never aggro their master.
-        if charm_master.as_deref() == Some(&key) {
+        // Charmed mobs never aggro their master — unless rage takes them.
+        if !raging && charm_master.as_deref() == Some(&key) {
             continue;
         }
         let ch = match db.get_character_data(&key) {

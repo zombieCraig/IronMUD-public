@@ -30,9 +30,9 @@ use ticks::{
     register_all_heartbeats, run_aging_tick, run_bleeding_tick, run_blood_tick, run_combat_tick, run_corpse_decay_tick,
     run_donation_decay_tick, run_drowning_tick, run_exposure_tick, run_garden_tick, run_heartbeat_watchdog,
     run_hunger_tick, run_hunting_tick, run_migration_tick, run_mobile_effects_tick, run_periodic_trigger_tick,
-    run_pursuit_tick, run_quest_tick, run_regen_tick, run_rent_tick, run_routine_tick, run_simulation_tick,
-    run_slow_move_tick, run_spawn_tick, run_spoilage_tick, run_sun_tick, run_thirst_tick, run_time_tick,
-    run_transport_tick, run_wander_tick,
+    run_pursuit_tick, run_quest_tick, run_regen_tick, run_rent_tick, run_resolve_tick, run_routine_tick,
+    run_simulation_tick, run_slow_move_tick, run_spawn_tick, run_spoilage_tick, run_sun_tick, run_thirst_tick,
+    run_time_tick, run_transport_tick, run_wander_tick,
 };
 
 #[derive(Parser, Debug)]
@@ -137,6 +137,7 @@ async fn main() -> Result<()> {
     let tick_db26 = db.clone(); // Clone db for vampire sun tick
     let tick_db27 = db.clone(); // Clone db for vampire blood tick
     let tick_db28 = db.clone(); // Clone db for slow-move tick
+    let tick_db29 = db.clone(); // Clone db for replicant resolve tick
     let api_db = db.clone(); // Clone db for REST API
 
     let connections = Arc::new(Mutex::new(HashMap::new()));
@@ -398,10 +399,18 @@ async fn main() -> Result<()> {
         run_sun_tick(tick_db26, sun_connections).await;
     });
 
-    // Start background blood-decay tick (vampires lose blood over time)
+    // Start background blood-decay tick (vampires lose blood over time;
+    // empty pools roll hunger frenzy against humanity + clan banes)
     let blood_connections = connections.clone();
+    let blood_state = state.clone();
     tokio::spawn(async move {
-        run_blood_tick(tick_db27, blood_connections).await;
+        run_blood_tick(tick_db27, blood_connections, blood_state).await;
+    });
+
+    // Start background resolve tick (replicant breakdown expiry + sleep regen)
+    let resolve_connections = connections.clone();
+    tokio::spawn(async move {
+        run_resolve_tick(tick_db29, resolve_connections).await;
     });
 
     // Start control socket listener for out-of-process admin commands.

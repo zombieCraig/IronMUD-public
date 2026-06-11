@@ -66,7 +66,10 @@ pub struct VampireState {
     #[serde(default)]
     pub last_blood_tick: i64,
     /// Unix timestamp at which active frenzy ends. `None` = not currently
-    /// frenzying. Set by `apply_frenzy`, read by combat tick.
+    /// frenzying. Stamped by `crate::vampire::maybe_hunger_frenzy` alongside
+    /// the Frenzy + Rage buff pair; informational for scripts/status — the
+    /// buffs are the operative mechanism (damage bonus, flee lock, forced
+    /// target acquisition).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frenzy_until: Option<i64>,
     /// Unix timestamp of the embrace itself, used for "newly embraced"

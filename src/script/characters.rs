@@ -447,6 +447,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     amap.insert("cooldown_secs".into(), rhai::Dynamic::from(a.cooldown_secs as i64));
                     amap.insert("mana_cost".into(), rhai::Dynamic::from(a.mana_cost as i64));
                     amap.insert("stamina_cost".into(), rhai::Dynamic::from(a.stamina_cost as i64));
+                    amap.insert("resolve_cost".into(), rhai::Dynamic::from(a.resolve_cost as i64));
                     rhai::Dynamic::from(amap)
                 })
                 .collect();

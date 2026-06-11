@@ -1182,6 +1182,16 @@ fn finalize_character(connection_id) {
         }
     }
 
+    // Replicant race inception. Like the vampire embrace, must run AFTER
+    // set_player_character so it can mutate session.character. No settings
+    // gate — the race is data-driven via races_modern.json `available`.
+    if char_data.race == "replicant" {
+        init_pc_replicant(connection_id);
+        char_data = get_character_data(char_name);
+        send_client_message(connection_id, "\x1b[1;36mYou remember a childhood. You are almost sure it happened to you.\x1b[0m");
+        send_client_message(connection_id, "Your body never tires — but your mind keeps score. Watch your Resolve, and 'attune' something that matters.");
+    }
+
     // Safety net: verify room exists, relocate if not
     let room = get_room_data(char_data.current_room_id);
     if room == () {

@@ -156,6 +156,10 @@ pub struct RacialActive {
     pub mana_cost: i32,
     #[serde(default)]
     pub stamina_cost: i32,
+    /// Resolve cost (replicant mental-stress pool). Only meaningful on races
+    /// that carry a `ReplicantState`.
+    #[serde(default)]
+    pub resolve_cost: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

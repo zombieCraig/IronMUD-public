@@ -710,6 +710,21 @@ fn complete_login(connection_id, char_data) {
         }
     }
 
+    // Migration: the "clone" race was reworked into "replicant" (Jun 2026).
+    // Rename on first login after the change, and (re)stamp replicant state
+    // on any replicant missing it.
+    if char_data.race == "clone" {
+        char_data.race = "replicant";
+        save_character_data(char_data);
+        set_player_character(connection_id, char_data);
+    }
+    if char_data.race == "replicant" && !is_pc_replicant(connection_id) {
+        init_pc_replicant(connection_id);
+        char_data = get_character_data(char_data.name);
+        send_client_message(connection_id, "\x1b[1;36mSomething has changed. You remember a childhood. You are almost sure it happened to you.\x1b[0m");
+        send_client_message(connection_id, "You are a replicant: your body never tires, but your mind keeps score. Watch your Resolve.");
+    }
+
     // Clear unconscious state from previous session
     set_unconscious(char_data.name, false);
     if char_data.hp <= 0 {

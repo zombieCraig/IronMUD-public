@@ -1216,6 +1216,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         "consume_stamina_for_attack",
         move |char_name: String, amount: i64| -> bool {
             if let Ok(Some(mut char)) = cloned_db.get_character_data(&char_name) {
+                // Replicants are tireless: attack costs no stamina.
+                if char.replicant_state.is_some() {
+                    return true;
+                }
                 if char.stamina >= amount as i32 {
                     char.stamina -= amount as i32;
                     return cloned_db.save_character_data(char).is_ok();

@@ -40,6 +40,7 @@ pub mod mobile_presets;
 mod mobiles;
 mod property;
 mod quests;
+pub mod replicant;
 pub mod rooms;
 mod shop_presets;
 mod shops;
@@ -136,7 +137,6 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         max_hunger,
         hp,
         max_hp,
-        stamina,
         max_stamina,
         mana,
         max_mana,
@@ -158,6 +158,22 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
 
     // Read-only i32 as i64
     register_i32_ro!(engine, CharacterData, gold_high_water);
+
+    // `stamina` is registered by hand instead of via register_i32! because the
+    // setter pins replicants at max_stamina. This is THE chokepoint that makes
+    // replicants tireless: every command script's
+    // `char.stamina = char.stamina - cost` becomes a no-op for them. Rust code
+    // that writes `char.stamina` directly bypasses this — guard such writers
+    // with `replicant_state.is_none()` (combat tick, hunt tick already are).
+    engine
+        .register_get("stamina", |c: &mut CharacterData| c.stamina as i64)
+        .register_set("stamina", |c: &mut CharacterData, val: i64| {
+            c.stamina = if c.replicant_state.is_some() {
+                c.max_stamina
+            } else {
+                val as i32
+            };
+        });
 
     // Special accessors: uuid coercion, enum/option/collection translation, computed reads.
     register_option_string!(engine, CharacterData, following);
@@ -356,6 +372,9 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 new_editor_enabled: false,
                 // Vampirism state (None = mortal). Stamped by the embrace flow.
                 vampire_state: None,
+                // Replicant state (None = baseline human). Stamped at creation
+                // for race "replicant".
+                replicant_state: None,
                 // Property rental system
                 active_leases: std::collections::HashMap::new(),
                 escrow_ids: Vec::new(),
@@ -462,6 +481,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         .register_get("dirt_floor", |f: &mut RoomFlags| f.dirt_floor)
         // Mail system
         .register_get("post_office", |f: &mut RoomFlags| f.post_office)
+        // Replicant baseline tests
+        .register_get("baseline_office", |f: &mut RoomFlags| f.baseline_office)
         // Banking system
         .register_get("bank", |f: &mut RoomFlags| f.bank)
         // Gardening
@@ -2181,4 +2202,5 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     account_prefs::register(engine, db.clone(), connections.clone());
     editor::register(engine, connections.clone());
     vampire::register(engine, db.clone(), connections.clone());
+    replicant::register_replicant_functions(engine, db.clone(), connections.clone());
 }

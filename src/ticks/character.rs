@@ -380,7 +380,14 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
                 stamina_regen = (stamina_regen / 2).max(1);
             }
 
-            if char.stamina < char.max_stamina {
+            if char.replicant_state.is_some() {
+                // Tireless: keep stamina pinned at max (also repairs saves
+                // that predate the character becoming a replicant).
+                if char.stamina != char.max_stamina {
+                    char.stamina = char.max_stamina;
+                    modified = true;
+                }
+            } else if char.stamina < char.max_stamina {
                 char.stamina = (char.stamina + stamina_regen).min(char.max_stamina);
                 modified = true;
             }
@@ -425,6 +432,10 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
                 if has_frail {
                     r = (r * 3 / 4).max(1);
                 } // -25%
+                if char.replicant_state.is_some() {
+                    // Engineered vigor: accelerated cell repair.
+                    r += (r * ironmud::types::REPLICANT_HP_REGEN_BONUS_PCT / 100).max(1);
+                }
                 r
             } else {
                 0
@@ -495,8 +506,10 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
                 let _ = session.sender.send(format!("\n{}\n", msg));
             }
 
-            // Force sleep at 0 stamina (or drown in deep/underwater)
-            if char.stamina == 0 && old_position != CharacterPosition::Sleeping {
+            // Force sleep at 0 stamina (or drown in deep/underwater).
+            // Replicants are tireless and never collapse (defensive: their
+            // stamina is pinned at max above anyway).
+            if char.stamina == 0 && old_position != CharacterPosition::Sleeping && char.replicant_state.is_none() {
                 // Check if character is in deep water or underwater
                 let in_drowning_water = if let Ok(Some(room)) = db.get_room_data(&char.current_room_id) {
                     room.flags.deep_water || room.flags.underwater
@@ -832,8 +845,12 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections, state: &Sh
             None => continue,
         };
 
-        // Check stamina
-        if char.stamina <= 0 && !char.god_mode && !ironmud::check_build_mode(db, &char_name, &char.current_room_id) {
+        // Check stamina (replicants are tireless)
+        if char.stamina <= 0
+            && char.replicant_state.is_none()
+            && !char.god_mode
+            && !ironmud::check_build_mode(db, &char_name, &char.current_room_id)
+        {
             char.hunting_target.clear();
             let _ = db.save_character_data(char.clone());
             sync_character_to_session(connections, &char, state);
@@ -865,7 +882,10 @@ fn process_hunting_tick(db: &db::Db, connections: &SharedConnections, state: &Sh
 
         // Move the character
         let old_room_id = char.current_room_id;
-        if !char.god_mode && !ironmud::check_build_mode(db, &char_name, &char.current_room_id) {
+        if !char.god_mode
+            && char.replicant_state.is_none()
+            && !ironmud::check_build_mode(db, &char_name, &char.current_room_id)
+        {
             char.stamina -= 1;
             if char.stamina < 0 {
                 char.stamina = 0;

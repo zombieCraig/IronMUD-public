@@ -142,9 +142,12 @@ pub enum EffectType {
     /// (sun or otherwise) ends them. Cleared by being moved to a sheltered
     /// room before the next sun tick.
     SunlightBurning,
-    /// Berserk rage. Combat tick reads this to lock disengage and apply +str.
-    /// Triggered by blood = 0 + failed humanity check, witnessed humanity
-    /// violation, or fire/sunlight damage.
+    /// Berserk rage. Combat tick reads this for bonus damage; flee.rhai
+    /// blocks fleeing while held. Stamped (paired with `Rage`) by the
+    /// voluntary `frenzy` command, the blood tick's hunger-frenzy roll
+    /// (blood = 0 + failed humanity check, clan banes apply), and replicant
+    /// berserk breakdowns. Future triggers: witnessed humanity violation,
+    /// fire/sunlight damage.
     Frenzy,
     /// Hard mind control — bypasses `MobileFlags.no_charm`. Source-controlled
     /// via the `order` command, mirrors Charmed semantics otherwise.
@@ -194,6 +197,14 @@ pub enum EffectType {
     /// Exists as an `EffectType` variant so `StatusResistance` buffs with
     /// `vs_effect = "stun"` can gate application via `roll_status_application`.
     Stun,
+    /// Uncontrolled violence — the bearer attacks anyone they can see.
+    /// On a player: the combat tick's rage pass force-engages a random
+    /// mobile (any non-safe zone) or player (PvP zones only) in the room
+    /// each round until the buff expires. On a mobile: treated as
+    /// `flags.aggressive` (including against its charm master). No damage
+    /// bonus — pair with `Frenzy` for the full berserk package. Magnitude
+    /// is unused.
+    Rage,
 }
 
 impl EffectType {
@@ -268,6 +279,7 @@ impl EffectType {
             }
             "loud" | "noisy" | "conspicuous" => Some(EffectType::Loud),
             "stun" | "stunned" => Some(EffectType::Stun),
+            "rage" | "enraged" | "bloodlust" => Some(EffectType::Rage),
             _ => None,
         }
     }
@@ -321,6 +333,7 @@ impl EffectType {
             EffectType::CustomSkillBoost => "custom_skill_boost",
             EffectType::Loud => "loud",
             EffectType::Stun => "stun",
+            EffectType::Rage => "rage",
         }
     }
 
@@ -373,6 +386,7 @@ impl EffectType {
             "custom_skill_boost",
             "loud",
             "stun",
+            "rage",
         ]
     }
 }
