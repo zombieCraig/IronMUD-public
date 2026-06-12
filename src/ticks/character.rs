@@ -341,6 +341,14 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
         .unwrap_or(4)
         .max(1);
 
+    // Snapshot race/class definitions before locking connections so the
+    // merged-trait lookup below never holds the World and Connections locks at
+    // once (deadlock rule). These maps are tiny and change only on reload.
+    let (race_defs, class_defs) = {
+        let world = state.lock().unwrap();
+        (world.race_definitions.clone(), world.class_definitions.clone())
+    };
+
     let mut conns = connections.lock().unwrap();
 
     for (_conn_id, session) in conns.iter_mut() {
@@ -599,9 +607,13 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
                     CharacterPosition::Sleeping => mana_regen_sleeping,
                 };
 
+                // Mana traits, including race/class granted traits (read-time merge).
+                let effective_traits = crate::script::characters::effective_trait_ids(char, &race_defs, &class_defs);
+                let has_trait = |id: &str| effective_traits.iter().any(|t| t == id);
+
                 // Mana regen traits
-                let has_focused_mind = char.traits.iter().any(|t| t == "focused_mind");
-                let has_scattered_thoughts = char.traits.iter().any(|t| t == "scattered_thoughts");
+                let has_focused_mind = has_trait("focused_mind");
+                let has_scattered_thoughts = has_trait("scattered_thoughts");
                 if has_focused_mind {
                     mana_regen = mana_regen + mana_regen / 2;
                 } // +50%
@@ -610,8 +622,8 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
                 } // -50%
 
                 // Max mana traits (effective cap)
-                let has_mana_well = char.traits.iter().any(|t| t == "mana_well");
-                let has_mana_stunted = char.traits.iter().any(|t| t == "mana_stunted");
+                let has_mana_well = has_trait("mana_well");
+                let has_mana_stunted = has_trait("mana_stunted");
                 // CircleMUD APPLY_MAXMANA parity.
                 let eq_max_mana_bonus: i32 = db
                     .get_equipped_items(&char.name)

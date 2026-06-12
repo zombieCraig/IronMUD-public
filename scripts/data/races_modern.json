@@ -224,7 +224,7 @@
       "cha": 1,
       "str": -2
     },
-    "granted_traits": [],
+    "granted_traits": ["arcane_savant", "focused_mind"],
     "resistances": {},
     "passive_abilities": [],
     "active_abilities": [

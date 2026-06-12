@@ -139,6 +139,7 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
                     starting_gold: 0,
                     allowed_races: Vec::new(),
                     incompatible_races: Vec::new(),
+                    granted_traits: Vec::new(),
                 },
             );
         }
