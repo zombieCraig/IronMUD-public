@@ -668,6 +668,14 @@ export interface CreateItemRequest {
   board_max_messages?: number;
   // World-wide cap on live (non-prototype) instances of this vnum (0 = unlimited)
   world_max_count?: number;
+  // Cyberware fields (item_type "cyberware"; see docs/design/cyberware-system.md)
+  cyber_category?: string;
+  cyber_foundation?: boolean;
+  cyber_option_slots?: number;
+  cyber_slot_cost?: number;
+  cyber_humanity_loss?: number;
+  cyber_paired?: boolean;
+  cyber_exclusive_tag?: string;
   // Sub-keyword lore revealed via `look <keyword>` against this item
   extra_descs?: ExtraDesc[];
   // Per-hit effects rolled when this weapon lands a hit

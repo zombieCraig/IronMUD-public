@@ -18,6 +18,7 @@ pub mod claude;
 pub mod completion;
 pub mod control;
 pub mod corpse;
+pub mod cyberware;
 pub mod db;
 pub mod dialogue_edit;
 pub mod discord;

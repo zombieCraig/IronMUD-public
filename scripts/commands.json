@@ -67,6 +67,14 @@
     "access": "user",
     "description": "Replicant only — take a baseline test at a baseline office: pass restores full Resolve, fail adds a strike"
   },
+  "cyberware": {
+    "access": "user",
+    "description": "Show installed chrome and your Humanity ledger (admin subcommands: install/grant/uninstall/therapy)"
+  },
+  "chrome": {
+    "access": "user",
+    "description": "Alias for cyberware"
+  },
   "say": {
     "access": "user",
     "description": "Say something to others in the room"

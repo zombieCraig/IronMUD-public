@@ -223,6 +223,10 @@ fn run_command(args, connection_id) {
         output += "(You could apply this tattoo to yourself — it is permanent.)\n";
     }
 
+    if item.item_type == "cyberware" {
+        output += "(Surgical hardware — a ripperdoc can install this.)\n";
+    }
+
     if item.item_type == "board" {
         let n = count_board_posts_for(item.vnum);
         if n == 0 {
@@ -248,6 +252,22 @@ fn run_command(args, connection_id) {
 
     // Item type
     output += "\nType: " + item.item_type;
+
+    if item.item_type == "cyberware" && item.cyber_category != "" {
+        output += "\nCyberware: " + item.cyber_category;
+        if item.cyber_foundation {
+            output += " foundation";
+            if item.cyber_option_slots > 0 {
+                output += " (" + item.cyber_option_slots + " option slots)";
+            }
+        } else if item.cyber_paired {
+            output += " option (paired — needs both foundations)";
+        }
+        output += "\nHumanity cost: " + item.cyber_humanity_loss;
+        if item.cyber_exclusive_tag != "" {
+            output += " [" + item.cyber_exclusive_tag + "]";
+        }
+    }
 
     if item.has_armor_class {
         output += "\nArmor Class: " + item.armor_class;
@@ -834,6 +854,18 @@ fn examine_player_tattoos(other_char) {
     return "\n" + examine_join_wound_texts(texts, other_char.name);
 }
 
+fn examine_player_cyberware(other_char) {
+    // Externally visible chrome only — neuralware/cyberaudio/internal body
+    // ware stays hidden under the skin.
+    let chrome = get_character_visible_cyberware(other_char.name);
+    if chrome.len() == 0 { return ""; }
+    let texts = [];
+    for piece in chrome {
+        texts.push(piece["short_desc"]);
+    }
+    return "\n" + other_char.name + " gleams with visible chrome: " + texts.join(", ") + ".";
+}
+
 fn examine_player_scars(other_char) {
     let scars_map = get_character_scars(other_char.name);
     let keys = scars_map.keys();
@@ -888,6 +920,7 @@ fn examine_show_player(other_char, connection_id) {
     output += examine_player_wounds(other_char);
     output += examine_player_scars(other_char);
     output += examine_player_tattoos(other_char);
+    output += examine_player_cyberware(other_char);
     output += examine_player_equipment(other_char);
 
     // Position cue

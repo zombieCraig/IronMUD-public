@@ -12616,3 +12616,432 @@ fn test_replicant_room_flag_baseline_office_persists() {
         std::panic::resume_unwind(e);
     }
 }
+
+// ============================================================
+// Cyberware / Humanity / Cyberpsychosis (Cyberpunk RED-style)
+//
+// Mechanics math (install costs, slot model, paired options, exclusive
+// tags, therapy clamps, CHA erosion, episode bands + cooldowns) is unit-
+// tested in src/cyberware/mod.rs. These tests cover the integration
+// surface: persistence, race data, seeding, death, and replicant overlap.
+// ============================================================
+
+#[test]
+fn test_cyberware_state_defaults_and_persists() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+    // Built via serde so missing fields take serde defaults — proves
+    // cyberware_state defaults to None on legacy saves.
+    let mut char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+        "name": "TestChrome",
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+    }))
+    .expect("build character");
+    assert!(char.cyberware_state.is_none(), "cyberware_state defaults to None");
+    char.stat_cha = 10;
+
+    let state = ironmud::types::CyberwareState::newly_chromed(10, 1_000);
+    assert_eq!(state.humanity, 100, "fresh humanity is base CHA x 10");
+    assert_eq!(state.chromed_at, Some(1_000));
+    assert!(state.installed.is_empty());
+
+    char.cyberware_state = Some(state);
+
+    // Install a piece so the snapshot list round-trips too.
+    let mut graft = ironmud::types::ItemData::new("Test Graft".into(), "a test graft".into(), String::new());
+    graft.item_type = ironmud::types::ItemType::Cyberware;
+    graft.cyber_category = Some(ironmud::types::CyberwareCategory::InternalBody);
+    graft.cyber_humanity_loss = 7;
+    let receipt = ironmud::cyberware::install_piece(
+        &mut char,
+        &graft,
+        ironmud::types::CyberwareAffinity::Normal,
+        false,
+        1_001,
+    )
+    .expect("install");
+    assert_eq!(receipt.humanity_paid, 7);
+
+    db.save_character_data(char.clone()).expect("save");
+    let loaded = db.get_character_data(&char.name).expect("read").expect("present");
+    let cy = loaded.cyberware_state.expect("state persists");
+    assert_eq!(cy.humanity, 93, "100 - 7 paid = 93 (within the reduced max of 98)");
+    assert_eq!(cy.installed.len(), 1);
+    assert_eq!(
+        cy.installed[0].cyber_category,
+        ironmud::types::CyberwareCategory::InternalBody
+    );
+    assert_eq!(cy.installed[0].humanity_paid, 7);
+}
+
+#[test]
+fn test_cyberware_item_fields_serde_defaults() {
+    use ironmud::types::{ItemData, ItemType};
+
+    // Serialize a fresh item, strip the cyber_* keys (simulating a legacy
+    // save), and prove deserialization fills defaults.
+    let item = ItemData::new("Old Sword".into(), "an old sword".into(), String::new());
+    let mut value = serde_json::to_value(&item).expect("serialize");
+    let obj = value.as_object_mut().expect("object");
+    for key in [
+        "cyber_category",
+        "cyber_foundation",
+        "cyber_option_slots",
+        "cyber_slot_cost",
+        "cyber_humanity_loss",
+        "cyber_paired",
+        "cyber_exclusive_tag",
+    ] {
+        obj.remove(key);
+    }
+    let loaded: ItemData = serde_json::from_value(value).expect("legacy item deserializes");
+    assert!(loaded.cyber_category.is_none());
+    assert!(!loaded.cyber_foundation);
+    assert_eq!(loaded.cyber_humanity_loss, 0);
+    assert_eq!(loaded.cyber_exclusive_tag, "");
+
+    // ItemType round-trips with aliases.
+    for alias in ["cyberware", "chrome", "implant"] {
+        assert_eq!(ItemType::from_str(alias), Some(ItemType::Cyberware), "alias {}", alias);
+    }
+    assert_eq!(ItemType::Cyberware.to_display_string(), "cyberware");
+}
+
+#[test]
+fn test_races_modern_augmented_born_chromed() {
+    let raw = std::fs::read_to_string("scripts/data/races_modern.json").expect("read races_modern.json");
+    let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse races_modern.json");
+    let obj = parsed.as_object().expect("object root");
+
+    // The whole file still deserializes (catches cyberware_affinity drift).
+    let races: std::collections::HashMap<String, ironmud::types::RaceDefinition> =
+        serde_json::from_str(&raw).expect("races deserialize into RaceDefinition");
+
+    // Augmented: born chromed. Innate bonuses moved onto the starting kit;
+    // only the neural-tax wis penalty stays.
+    let aug = races.get("augmented").expect("augmented definition");
+    assert_eq!(
+        aug.cyberware_affinity,
+        ironmud::types::CyberwareAffinity::Adept,
+        "augmented installs at a discount"
+    );
+    let aug_json = obj.get("augmented").expect("augmented json");
+    let mods = aug_json
+        .get("stat_modifiers")
+        .and_then(|v| v.as_object())
+        .expect("stat_modifiers");
+    assert!(mods.get("str").is_none(), "str moved to the muscle graft implant");
+    assert!(mods.get("dex").is_none(), "dex moved to the reflex booster implant");
+    assert_eq!(
+        mods.get("wis").and_then(|v| v.as_i64()),
+        Some(-1),
+        "wis tax stays innate"
+    );
+    let traits = aug_json
+        .get("granted_traits")
+        .and_then(|v| v.as_array())
+        .expect("granted_traits");
+    assert!(traits.is_empty(), "dark_adapted moved to the low-light optics implant");
+    let resists = aug_json
+        .get("resistances")
+        .and_then(|v| v.as_object())
+        .expect("resistances");
+    assert!(
+        resists.is_empty(),
+        "lightning vulnerability moved to the muscle graft implant"
+    );
+    assert!(
+        aug.active_abilities.iter().any(|a| a.id == "adrenaline_surge"),
+        "adrenaline_surge stays (gated on the adrenal booster implant)"
+    );
+
+    // Race matrix: synthetic chassis and necrotic tissue reject grafts;
+    // everyone else defaults to normal.
+    assert_eq!(
+        races.get("synth").expect("synth").cyberware_affinity,
+        ironmud::types::CyberwareAffinity::Incompatible
+    );
+    assert_eq!(
+        races.get("revenant").expect("revenant").cyberware_affinity,
+        ironmud::types::CyberwareAffinity::Incompatible
+    );
+    for race in ["human", "mutant", "psychic", "bioroid", "replicant"] {
+        assert_eq!(
+            races.get(race).expect(race).cyberware_affinity,
+            ironmud::types::CyberwareAffinity::Normal,
+            "{} installs at full cost",
+            race
+        );
+    }
+}
+
+#[test]
+fn test_cyberware_install_race_matrix() {
+    use ironmud::cyberware::{InstallError, validate_install};
+    use ironmud::types::{CyberwareAffinity, CyberwareCategory, ItemData, ItemType};
+
+    let mut chrome = ItemData::new("Chrome".into(), "a piece of chrome".into(), String::new());
+    chrome.item_type = ItemType::Cyberware;
+    chrome.cyber_category = Some(CyberwareCategory::Fashionware);
+
+    assert_eq!(
+        validate_install(CyberwareAffinity::Incompatible, &[], &chrome).err(),
+        Some(InstallError::Incompatible),
+        "incompatible races refused"
+    );
+    assert!(validate_install(CyberwareAffinity::Normal, &[], &chrome).is_ok());
+    assert!(validate_install(CyberwareAffinity::Adept, &[], &chrome).is_ok());
+
+    // Non-cyberware items refused regardless of race.
+    let sword = ItemData::new("Sword".into(), "a sword".into(), String::new());
+    assert_eq!(
+        validate_install(CyberwareAffinity::Normal, &[], &sword).err(),
+        Some(InstallError::NotCyberware)
+    );
+}
+
+#[test]
+fn test_cyberware_seed_prototypes_idempotent() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+    let first = ironmud::seed::seed_cyberware_prototypes(&db).expect("seed once");
+    assert_eq!(first, 6, "six starting-kit prototypes created");
+    let second = ironmud::seed::seed_cyberware_prototypes(&db).expect("seed twice");
+    assert_eq!(second, 0, "second pass skips existing vnums");
+
+    // The full augmented kit installs end-to-end on a fresh character at
+    // zero humanity charge, with each piece still reducing the max.
+    let mut char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+        "name": "FactoryModel",
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+    }))
+    .expect("build character");
+    char.stat_cha = 10;
+    char.cyberware_state = Some(ironmud::types::CyberwareState::newly_chromed(10, 0));
+
+    let kit = [
+        "cyb-neural-link",
+        "cyb-reflex-booster",
+        "cyb-cybereye",
+        "cyb-cybereye",
+        "cyb-lowlight-optics",
+        "cyb-muscle-graft",
+        "cyb-adrenal-booster",
+    ];
+    for vnum in kit {
+        let item = db
+            .spawn_item_from_prototype(vnum)
+            .expect("spawn")
+            .unwrap_or_else(|| panic!("prototype {} exists", vnum));
+        let receipt =
+            ironmud::cyberware::install_piece(&mut char, &item, ironmud::types::CyberwareAffinity::Adept, true, 0)
+                .unwrap_or_else(|e| panic!("install {} failed: {}", vnum, e));
+        assert_eq!(receipt.humanity_paid, 0, "{} installs free at creation", vnum);
+        db.delete_item(&item.id).expect("consume");
+    }
+
+    let cy = char.cyberware_state.as_ref().expect("state");
+    assert_eq!(cy.installed.len(), 7);
+    // 7 pieces x -2 max each (no fashionware in the kit) = 86.
+    let max = ironmud::cyberware::max_humanity(char.stat_cha, &cy.installed);
+    assert_eq!(max, 86);
+    assert_eq!(cy.humanity, 86, "born chromed: current sits at the reduced max");
+    assert!(
+        !char
+            .active_buffs
+            .iter()
+            .any(|b| b.source == ironmud::types::HUMANITY_EROSION_BUFF_SOURCE),
+        "no CHA erosion at full (reduced) humanity"
+    );
+
+    // The kit carries the old racial bonuses as affects.
+    use ironmud::types::EffectType;
+    let has = |et: EffectType, mag: i32| {
+        char.active_buffs
+            .iter()
+            .any(|b| b.effect_type == et && b.magnitude == mag && b.remaining_secs == -1)
+    };
+    assert!(has(EffectType::DexterityBoost, 1), "reflex booster grants +1 dex");
+    assert!(has(EffectType::StrengthBoost, 1), "muscle graft grants +1 str");
+    assert!(has(EffectType::NightVision, 1), "low-light optics grant night vision");
+    assert!(
+        char.active_buffs
+            .iter()
+            .any(|b| b.effect_type == EffectType::DamageResistance
+                && b.magnitude == -15
+                && b.damage_type == Some(ironmud::types::DamageType::Lightning)),
+        "muscle graft carries the lightning vulnerability"
+    );
+
+    // Adrenal booster is findable by keyword (gates adrenaline_surge).
+    assert!(
+        cy.installed
+            .iter()
+            .any(|p| p.keywords.iter().any(|k| k.starts_with("adrenal"))),
+        "adrenal booster keyword present"
+    );
+}
+
+#[test]
+fn test_cyberware_uninstall_round_trip_rebuilds_item() {
+    use ironmud::types::{CyberwareAffinity, CyberwareCategory, ItemData, ItemType};
+
+    let mut char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+        "name": "RoundTrip",
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+    }))
+    .expect("build character");
+    char.stat_cha = 10;
+
+    let mut original = ItemData::new("Spur Set".into(), "a set of wolver spurs".into(), "Long blades.".into());
+    original.item_type = ItemType::Cyberware;
+    original.keywords = vec!["wolvers".into(), "spurs".into()];
+    original.vnum = Some("test-wolvers".into());
+    original.cyber_category = Some(CyberwareCategory::ExternalBody);
+    original.cyber_humanity_loss = 7;
+    original.cyber_exclusive_tag = "claws".into();
+
+    let receipt =
+        ironmud::cyberware::install_piece(&mut char, &original, CyberwareAffinity::Normal, false, 5).expect("install");
+    let humanity_after_install = char.cyberware_state.as_ref().unwrap().humanity;
+
+    let rebuilt = ironmud::cyberware::uninstall_piece(&mut char, receipt.install_id).expect("uninstall");
+    assert_eq!(rebuilt.item_type, ItemType::Cyberware);
+    assert_eq!(rebuilt.name, "Spur Set");
+    assert_eq!(rebuilt.vnum.as_deref(), Some("test-wolvers"));
+    assert_eq!(rebuilt.cyber_category, Some(CyberwareCategory::ExternalBody));
+    assert_eq!(rebuilt.cyber_humanity_loss, 7);
+    assert_eq!(rebuilt.cyber_exclusive_tag, "claws");
+
+    let cy = char.cyberware_state.as_ref().unwrap();
+    assert!(cy.installed.is_empty());
+    assert_eq!(
+        ironmud::cyberware::max_humanity(char.stat_cha, &cy.installed),
+        100,
+        "max restored on removal"
+    );
+    assert_eq!(
+        cy.humanity, humanity_after_install,
+        "current humanity does not return with the meat"
+    );
+    assert!(
+        !char
+            .active_buffs
+            .iter()
+            .any(|b| b.source.starts_with(ironmud::types::CYBERWARE_BUFF_SOURCE_PREFIX)
+                && b.source != ironmud::types::HUMANITY_EROSION_BUFF_SOURCE),
+        "affect buffs stripped"
+    );
+}
+
+#[test]
+fn test_cyberware_survives_player_death() {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db = Arc::new(ironmud::db::Db::open(temp.path()).expect("open DB"));
+    let connections: ironmud::SharedConnections = Arc::new(Mutex::new(HashMap::new()));
+
+    let mut char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+        "name": "DeadChrome",
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+    }))
+    .expect("build character");
+    char.stat_cha = 10;
+    char.max_hp = 100;
+    db.save_character_data(char.clone()).expect("save base");
+
+    // Installed chrome + a loose inventory item to die with.
+    let mut graft = ironmud::types::ItemData::new("Graft".into(), "a graft".into(), String::new());
+    graft.item_type = ironmud::types::ItemType::Cyberware;
+    graft.cyber_category = Some(ironmud::types::CyberwareCategory::InternalBody);
+    graft.cyber_humanity_loss = 7;
+    graft.affects = vec![ironmud::types::ItemAffect {
+        effect_type: ironmud::types::EffectType::StrengthBoost,
+        magnitude: 1,
+        damage_type: None,
+        vs_effect: None,
+        skill_key: None,
+    }];
+    ironmud::cyberware::install_piece(&mut char, &graft, ironmud::types::CyberwareAffinity::Normal, false, 0)
+        .expect("install");
+
+    let mut loot = ironmud::types::ItemData::new("Trinket".into(), "a trinket".into(), String::new());
+    loot.location = ironmud::types::ItemLocation::Inventory(char.name.to_lowercase());
+    let loot_id = loot.id;
+    db.save_item_data(loot).expect("save loot");
+
+    let room_id = char.current_room_id;
+    ironmud::session::kill_player_at_room(&db, &connections, &mut char, &room_id, &uuid::Uuid::nil().to_string())
+        .expect("death pipeline");
+
+    // Chrome state + buffs survive; the trinket went to the corpse.
+    let cy = char.cyberware_state.as_ref().expect("chrome state survives death");
+    assert_eq!(cy.installed.len(), 1);
+    assert!(
+        char.active_buffs
+            .iter()
+            .any(|b| b.source.starts_with(ironmud::types::CYBERWARE_BUFF_SOURCE_PREFIX)),
+        "chrome buffs survive death"
+    );
+    let loot_after = db.get_item_data(&loot_id).expect("read loot").expect("loot exists");
+    assert!(
+        matches!(loot_after.location, ironmud::types::ItemLocation::Container(_)),
+        "inventory went to the corpse"
+    );
+}
+
+#[test]
+fn test_replicant_with_cyberware_no_collision() {
+    use ironmud::types::{CyberwareAffinity, CyberwareCategory, EffectType, ItemData, ItemType, ReplicantState};
+
+    let mut char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+        "name": "ChromedSkinjob",
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+    }))
+    .expect("build character");
+    char.stat_cha = 10;
+
+    // Both states coexist (replicants are allowed to chrome per the race
+    // matrix — resolve and humanity are independent ledgers).
+    char.replicant_state = Some(ReplicantState::newly_incepted(0));
+    let mut graft = ItemData::new("Graft".into(), "a graft".into(), String::new());
+    graft.item_type = ItemType::Cyberware;
+    graft.cyber_category = Some(CyberwareCategory::InternalBody);
+    graft.cyber_humanity_loss = 14;
+    ironmud::cyberware::install_piece(&mut char, &graft, CyberwareAffinity::Normal, false, 0).expect("install");
+    assert!(char.replicant_state.is_some());
+    assert!(char.cyberware_state.is_some());
+
+    // A berserk breakdown stamps Frenzy/Rage; a psychotic episode must not
+    // double-stamp on top of it even at zero humanity with a winning roll.
+    char.cyberware_state.as_mut().unwrap().humanity = 0;
+    char.replicant_state.as_mut().unwrap().resolve = 0;
+    let outcome = ironmud::replicant::trigger_breakdown(&mut char, 1_000, 5);
+    assert_eq!(outcome.kind, "berserk");
+    let frenzy_count = char
+        .active_buffs
+        .iter()
+        .filter(|b| b.effect_type == EffectType::Frenzy)
+        .count();
+    assert_eq!(frenzy_count, 1);
+
+    assert!(
+        ironmud::cyberware::maybe_psychotic_episode(&mut char, true, 2_000, 1).is_none(),
+        "no episode while Frenzy is already active"
+    );
+    let frenzy_count = char
+        .active_buffs
+        .iter()
+        .filter(|b| b.effect_type == EffectType::Frenzy)
+        .count();
+    assert_eq!(frenzy_count, 1, "no double-stamp");
+}

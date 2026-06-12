@@ -42,6 +42,7 @@ pub mod aging;
 pub mod bleeding;
 pub mod character;
 pub mod combat;
+pub mod cyberware;
 pub mod donation;
 pub mod environment;
 pub mod garden;
@@ -68,6 +69,7 @@ pub use character::{
     run_drowning_tick, run_hunger_tick, run_hunting_tick, run_regen_tick, run_slow_move_tick, run_thirst_tick,
 };
 pub use combat::run_combat_tick;
+pub use cyberware::run_psyche_tick;
 pub use donation::run_donation_decay_tick;
 pub use environment::{run_exposure_tick, run_time_tick};
 pub use garden::run_garden_tick;
@@ -124,6 +126,7 @@ pub fn register_all_heartbeats() {
         ("sun", ironmud::vampire::SUN_TICK_INTERVAL_SECS),
         ("blood", ironmud::vampire::BLOOD_TICK_INTERVAL_SECS),
         ("resolve", ironmud::replicant::RESOLVE_TICK_INTERVAL_SECS),
+        ("psyche", ironmud::cyberware::PSYCHE_TICK_INTERVAL_SECS),
     ];
 
     for (name, secs) in pairs {

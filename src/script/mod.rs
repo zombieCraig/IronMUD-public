@@ -22,6 +22,7 @@ pub mod clan;
 mod classes;
 mod combat;
 mod crafting;
+pub mod cyberware;
 pub mod dg;
 pub mod dialogue;
 mod editor;
@@ -376,6 +377,9 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 // Replicant state (None = baseline human). Stamped at creation
                 // for race "replicant".
                 replicant_state: None,
+                // Cyberware state (None = no chrome). Stamped on first
+                // install, or at creation for race "augmented".
+                cyberware_state: None,
                 // Property rental system
                 active_leases: std::collections::HashMap::new(),
                 escrow_ids: Vec::new(),
@@ -2205,4 +2209,5 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     editor::register(engine, connections.clone());
     vampire::register(engine, db.clone(), connections.clone());
     replicant::register_replicant_functions(engine, db.clone(), connections.clone());
+    cyberware::register_cyberware_functions(engine, db.clone(), connections.clone(), state.clone());
 }

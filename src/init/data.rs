@@ -257,6 +257,7 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
                     starting_languages: HashMap::new(),
                     starting_items: Vec::new(),
                     starting_gold: 0,
+                    cyberware_affinity: crate::types::CyberwareAffinity::Normal,
                 },
             );
         }

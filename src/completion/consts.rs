@@ -305,6 +305,8 @@ pub const OEDIT_SUBCOMMANDS: &[&str] = &[
     "teaches_spell",
     "note",
     "extra",
+    "world_max",
+    "cyber",
 ];
 
 /// Item trigger actions
@@ -386,6 +388,32 @@ pub const ITEM_TYPES: &[&str] = &[
     "key",
     "misc",
     "ammunition",
+    "cyberware",
+];
+
+/// `oedit <vnum> cyber <field>` fields.
+pub const OEDIT_CYBER_FIELDS: &[&str] = &[
+    "category",
+    "foundation",
+    "slots",
+    "slot_cost",
+    "humanity",
+    "paired",
+    "tag",
+];
+
+/// `oedit <vnum> cyber category <value>` values.
+pub const CYBER_CATEGORIES: &[&str] = &[
+    "fashionware",
+    "neuralware",
+    "cyberoptic",
+    "cyberaudio",
+    "cyberarm",
+    "cyberleg",
+    "internal_body",
+    "external_body",
+    "borgware",
+    "none",
 ];
 
 /// Damage types

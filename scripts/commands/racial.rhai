@@ -224,6 +224,14 @@ fn use_breath_weapon(connection_id, char, ability) {
 fn use_adrenaline_surge(connection_id, char, ability) {
     let now = get_current_time();
 
+    // The surge comes from implanted adrenal boosters — augmented characters
+    // are born with theirs; anyone who lost it (uninstalled) loses the
+    // ability with it.
+    if !has_cyberware(connection_id, "adrenal") {
+        send_client_message(connection_id, "You have no adrenal booster implant to trigger. The surge never comes.");
+        return;
+    }
+
     // Deduct stamina
     char.stamina = char.stamina - ability["stamina_cost"];
 

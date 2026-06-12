@@ -182,6 +182,22 @@ pub(super) fn complete_oedit(
         {
             filter_dynamic(item_vnums, &partial, CompletionType::ItemVnum)
         }
+        // oedit <vnum> cyber - show cyberware fields
+        3 if !completing_word && words[2].to_lowercase() == "cyber" => {
+            all_static(OEDIT_CYBER_FIELDS, CompletionType::OeditSubcommand)
+        }
+        // oedit <vnum> cyber <partial_field> - complete cyber field
+        4 if completing_word && words[2].to_lowercase() == "cyber" => {
+            filter_static(OEDIT_CYBER_FIELDS, &partial, CompletionType::OeditSubcommand)
+        }
+        // oedit <vnum> cyber category - show categories
+        4 if !completing_word && words[2].to_lowercase() == "cyber" && words[3].to_lowercase() == "category" => {
+            all_static(CYBER_CATEGORIES, CompletionType::OeditSubcommand)
+        }
+        // oedit <vnum> cyber category <partial> - complete category
+        5 if completing_word && words[2].to_lowercase() == "cyber" && words[3].to_lowercase() == "category" => {
+            filter_static(CYBER_CATEGORIES, &partial, CompletionType::OeditSubcommand)
+        }
         // oedit <vnum> damtype - show all damage types
         3 if !completing_word && words[2].to_lowercase() == "damtype" => {
             all_static(DAMAGE_TYPES, CompletionType::DamageType)

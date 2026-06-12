@@ -272,6 +272,21 @@ Click room names to teleport, click flags to toggle, etc.
 4. **Use spawn points** - Keep areas populated automatically
 5. **Add extra descriptions** - Let players examine mentioned objects
 
+## Cyberware (Ripperdocs)
+
+Modern-world chrome: create items with `oedit <id> type cyberware`, then
+configure the RED-style slot model with `oedit <id> cyber <field> <value>`
+(category, foundation, slots, slot_cost, humanity, paired, tag). Item
+`affects` become permanent buffs while installed.
+
+Installs/removals/therapy are **capabilities** you wire to NPCs via
+dialogue or DG triggers — the engine moves Humanity, your script sets the
+gold price: `install_cyberware(connection_id, keyword)`,
+`uninstall_cyberware(...)`, `cyberware_therapy(connection_id, points)`,
+plus `get_cyberware_state` / `has_cyberware` /
+`get_race_cyberware_affinity` for gating and flavor. Full design:
+[docs/design/cyberware-system.md](design/cyberware-system.md).
+
 ## Detailed Documentation
 
 - [Room Editing](builder/rooms.md) - Creating and editing rooms

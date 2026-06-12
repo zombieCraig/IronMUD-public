@@ -205,6 +205,11 @@ pub struct RaceDefinition {
     /// `starting_gold` at character creation.
     #[serde(default)]
     pub starting_gold: i32,
+    /// How this race's biology takes to cyberware: `incompatible` races
+    /// can't install at all, `adept` races (augmented) pay reduced humanity
+    /// loss. Defaults to `normal`. See `crate::types::CyberwareAffinity`.
+    #[serde(default)]
+    pub cyberware_affinity: crate::types::CyberwareAffinity,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

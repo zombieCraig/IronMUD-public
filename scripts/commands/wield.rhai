@@ -66,6 +66,12 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Cyberware is never wielded — it gets installed (install_cyberware).
+    if item.item_type == "cyberware" {
+        send_client_message(connection_id, item.name + " is surgical hardware. It has to be installed, not wielded.");
+        return;
+    }
+
     // Check if item can be wielded/held
     let can_wield = has_wieldable_location(item);
     if item.is_fishing_rod { can_wield = true; }

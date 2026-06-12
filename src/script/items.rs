@@ -252,6 +252,18 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             i.world_max_count.unwrap_or(0) as i64
         })
         .register_get("has_world_max_count", |i: &mut ItemData| i.world_max_count.is_some())
+        // Cyberware fields ("" / 0 / false when unset)
+        .register_get("cyber_category", |i: &mut ItemData| {
+            i.cyber_category
+                .map(|c| c.to_display_string().to_string())
+                .unwrap_or_default()
+        })
+        .register_get("cyber_foundation", |i: &mut ItemData| i.cyber_foundation)
+        .register_get("cyber_option_slots", |i: &mut ItemData| i.cyber_option_slots as i64)
+        .register_get("cyber_slot_cost", |i: &mut ItemData| i.cyber_slot_cost as i64)
+        .register_get("cyber_humanity_loss", |i: &mut ItemData| i.cyber_humanity_loss as i64)
+        .register_get("cyber_paired", |i: &mut ItemData| i.cyber_paired)
+        .register_get("cyber_exclusive_tag", |i: &mut ItemData| i.cyber_exclusive_tag.clone())
         .register_get("damage_type", |i: &mut ItemData| {
             i.damage_type.to_display_string().to_string()
         })
@@ -3182,6 +3194,110 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
         }
         false
     });
+
+    // ── Cyberware field setters (oedit `cyber` subcommands) ──────────
+
+    // set_item_cyber_category(item_id, category) -> bool
+    // Empty string clears. Accepts CyberwareCategory::from_str aliases.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_item_cyber_category",
+        move |item_id: String, category: String| -> bool {
+            let uuid = match uuid::Uuid::parse_str(&item_id) {
+                Ok(u) => u,
+                Err(_) => return false,
+            };
+            let parsed = if category.trim().is_empty() {
+                None
+            } else {
+                match crate::types::CyberwareCategory::from_str(&category) {
+                    Some(c) => Some(c),
+                    None => return false,
+                }
+            };
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                item.cyber_category = parsed;
+                return cloned_db.save_item_data(item).is_ok();
+            }
+            false
+        },
+    );
+
+    // set_item_cyber_foundation(item_id, on) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn("set_item_cyber_foundation", move |item_id: String, on: bool| -> bool {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                item.cyber_foundation = on;
+                return cloned_db.save_item_data(item).is_ok();
+            }
+        }
+        false
+    });
+
+    // set_item_cyber_option_slots(item_id, n) -> bool (0 = category default)
+    let cloned_db = db.clone();
+    engine.register_fn("set_item_cyber_option_slots", move |item_id: String, n: i64| -> bool {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                item.cyber_option_slots = (n as i32).max(0);
+                return cloned_db.save_item_data(item).is_ok();
+            }
+        }
+        false
+    });
+
+    // set_item_cyber_slot_cost(item_id, n) -> bool (0 = 1 for options)
+    let cloned_db = db.clone();
+    engine.register_fn("set_item_cyber_slot_cost", move |item_id: String, n: i64| -> bool {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                item.cyber_slot_cost = (n as i32).max(0);
+                return cloned_db.save_item_data(item).is_ok();
+            }
+        }
+        false
+    });
+
+    // set_item_cyber_humanity_loss(item_id, n) -> bool (RED tiers 0/2/3/7/14,
+    // free-form int accepted)
+    let cloned_db = db.clone();
+    engine.register_fn("set_item_cyber_humanity_loss", move |item_id: String, n: i64| -> bool {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                item.cyber_humanity_loss = (n as i32).max(0);
+                return cloned_db.save_item_data(item).is_ok();
+            }
+        }
+        false
+    });
+
+    // set_item_cyber_paired(item_id, on) -> bool
+    let cloned_db = db.clone();
+    engine.register_fn("set_item_cyber_paired", move |item_id: String, on: bool| -> bool {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+            if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                item.cyber_paired = on;
+                return cloned_db.save_item_data(item).is_ok();
+            }
+        }
+        false
+    });
+
+    // set_item_cyber_exclusive_tag(item_id, tag) -> bool ("" clears)
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "set_item_cyber_exclusive_tag",
+        move |item_id: String, tag: String| -> bool {
+            if let Ok(uuid) = uuid::Uuid::parse_str(&item_id) {
+                if let Ok(Some(mut item)) = cloned_db.get_item_data(&uuid) {
+                    item.cyber_exclusive_tag = tag.trim().to_string();
+                    return cloned_db.save_item_data(item).is_ok();
+                }
+            }
+            false
+        },
+    );
 
     // set_item_area_id(item_id, area_id) -> bool. Empty area_id clears
     // the assignment back to orphan. Permission gating happens in OLC.

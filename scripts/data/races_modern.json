@@ -22,24 +22,31 @@
   "augmented": {
     "id": "augmented",
     "name": "Augmented",
-    "description": "Cybernetically enhanced humans with reflex boosters and low-light optics wired into their nervous system. The implants tax the mind.",
+    "description": "Born chromed: humans rebuilt around factory-installed cyberware — neural link, reflex boosters, low-light cybereyes, grafted myofiber. Their strengths are the metal's strengths, and so are its weaknesses. The metal costs them less Humanity than it costs others, but it still costs; run the ledger down and the chrome starts driving.",
     "stat_modifiers": {
-      "str": 1,
-      "dex": 1,
       "wis": -1
     },
-    "granted_traits": [
-      "dark_adapted"
+    "granted_traits": [],
+    "resistances": {},
+    "passive_abilities": [
+      {
+        "id": "born_chromed",
+        "name": "Born Chromed",
+        "description": "Starts with a factory cyberware loadout (neural link, reflex booster, low-light cybereyes, muscle graft, adrenal booster) pre-installed at no Humanity charge. Installs cost augmented characters ~25% less Humanity than baseline races.",
+        "effects": {}
+      },
+      {
+        "id": "humanity_ledger",
+        "name": "Humanity Ledger",
+        "description": "Tracks Humanity (base CHA x 10). Every installed piece lowers the ceiling; every install spends from the pool; therapy buys it back. Low Humanity erodes effective CHA and risks cyberpsychotic episodes.",
+        "effects": {}
+      }
     ],
-    "resistances": {
-      "lightning": -15
-    },
-    "passive_abilities": [],
     "active_abilities": [
       {
         "id": "adrenaline_surge",
         "name": "Adrenaline Surge",
-        "description": "Activate implanted adrenal boosters for a burst of superhuman speed.",
+        "description": "Trigger your implanted adrenal booster for a burst of superhuman speed. Requires the implant.",
         "stamina_cost": 30,
         "mana_cost": 0,
         "cooldown_secs": 300
@@ -48,7 +55,8 @@
     "available": true,
     "starting_languages": {
       "protocol": 4
-    }
+    },
+    "cyberware_affinity": "adept"
   },
   "bioroid": {
     "id": "bioroid",
@@ -170,7 +178,8 @@
     "available": true,
     "starting_languages": {
       "protocol": 10
-    }
+    },
+    "cyberware_affinity": "incompatible"
   },
   "revenant": {
     "id": "revenant",
@@ -193,7 +202,8 @@
     "available": true,
     "starting_languages": {
       "high_speak": 8
-    }
+    },
+    "cyberware_affinity": "incompatible"
   },
   "psychic": {
     "id": "psychic",

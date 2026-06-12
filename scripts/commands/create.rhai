@@ -1214,6 +1214,35 @@ fn finalize_character(connection_id) {
         send_client_message(connection_id, "Your body never tires — but your mind keeps score. Watch your Resolve, and 'attune' something that matters.");
     }
 
+    // Augmented race: born chromed. Like the blocks above, must run AFTER
+    // set_player_character so the cyberware capabilities can mutate
+    // session.character. The starting kit is pre-installed seed cyberware
+    // (free: no humanity charge, but each piece still lowers the max — an
+    // augmented starts at a full-but-reduced ceiling).
+    if char_data.race == "augmented" {
+        init_pc_cyberware(connection_id);
+        let kit = [
+            "cyb-neural-link",
+            "cyb-reflex-booster",
+            "cyb-cybereye",
+            "cyb-cybereye",
+            "cyb-lowlight-optics",
+            "cyb-muscle-graft",
+            "cyb-adrenal-booster"
+        ];
+        for vnum in kit {
+            let r = install_cyberware_free(connection_id, vnum);
+            if !r["success"] {
+                // Seed prototype missing or install refused — server-side
+                // misconfiguration; surface it rather than failing silently.
+                send_client_message(connection_id, "\x1b[33m(A factory implant failed to integrate: " + vnum + " — report this to an admin.)\x1b[0m");
+            }
+        }
+        char_data = get_character_data(char_name);
+        send_client_message(connection_id, "\x1b[1;36mThe chrome was there before you had a name for it. It hums when you are quiet.\x1b[0m");
+        send_client_message(connection_id, "Type 'cyberware' to read your ledger. The metal costs you less than it costs others — but it still costs.");
+    }
+
     // Safety net: verify room exists, relocate if not
     let room = get_room_data(char_data.current_room_id);
     if room == () {

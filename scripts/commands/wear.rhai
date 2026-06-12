@@ -21,6 +21,13 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Cyberware is never worn — it goes under the skin at a ripperdoc's
+    // table (the install_cyberware capability).
+    if item.item_type == "cyberware" {
+        send_client_message(connection_id, item.name + " is surgical hardware. It has to be installed, not worn.");
+        return;
+    }
+
     let wear_locs = item.wear_locations;
     if wear_locs.len() == 0 {
         send_client_message(connection_id, "You can't wear " + item.name + ".");

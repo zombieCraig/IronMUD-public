@@ -114,6 +114,15 @@ pub enum ItemType {
     /// Cosmetic if `affects` is empty; magical if it carries any effects.
     /// Does not occupy or block the matching armor slot.
     Tattoo,
+    /// Surgically installed chrome (Cyberpunk RED-style). Never worn or
+    /// wielded — installing (via the `install_cyberware` capability, wired
+    /// by builders to ripperdoc NPCs) consumes the item and pushes an
+    /// `InstalledCyberware` snapshot onto the character's `CyberwareState`,
+    /// stamping `affects` as permanent buffs sourced
+    /// `"cyberware:<install_id>"` and charging humanity per
+    /// `cyber_humanity_loss`. See `ItemData.cyber_*` fields and
+    /// `src/cyberware/mod.rs`.
+    Cyberware,
 }
 
 impl ItemType {
@@ -136,6 +145,7 @@ impl ItemType {
             "board" | "bulletin" | "bulletin_board" => Some(ItemType::Board),
             "tool" | "kit" => Some(ItemType::Tool),
             "tattoo" | "ink" | "mark" => Some(ItemType::Tattoo),
+            "cyberware" | "chrome" | "implant" => Some(ItemType::Cyberware),
             _ => None,
         }
     }
@@ -159,6 +169,7 @@ impl ItemType {
             ItemType::Board => "board",
             ItemType::Tool => "tool",
             ItemType::Tattoo => "tattoo",
+            ItemType::Cyberware => "cyberware",
         }
     }
 }
@@ -909,6 +920,33 @@ pub struct ItemData {
     /// DG Scripts persistent vars (see MobileData.dg_vars).
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub dg_vars: HashMap<String, String>,
+    // Cyberware fields (requires item_type = Cyberware; see src/cyberware)
+    /// RED taxonomy bucket. Required for install; None on non-cyberware.
+    #[serde(default)]
+    pub cyber_category: Option<crate::types::CyberwareCategory>,
+    /// True for base units that provide option slots (neural link, cybereye,
+    /// cyberaudio suite, cyberarm, cyberleg). False = option or standalone.
+    #[serde(default)]
+    pub cyber_foundation: bool,
+    /// Option slots this foundation provides. 0 = category default
+    /// (neuralware 5 / cyberoptic 3 / cyberaudio 3 / cyberarm 4 / cyberleg 3).
+    #[serde(default)]
+    pub cyber_option_slots: i32,
+    /// Slots this option consumes in its host foundation. 0 = 1 for options.
+    #[serde(default)]
+    pub cyber_slot_cost: i32,
+    /// Humanity charged on install (RED tiers: 0/2/3/7/14). Pieces with 0
+    /// (fashionware) also don't reduce max humanity.
+    #[serde(default)]
+    pub cyber_humanity_loss: i32,
+    /// Option must occupy a slot in TWO foundations of its category at once
+    /// (low-light optics need both eyes).
+    #[serde(default)]
+    pub cyber_paired: bool,
+    /// At most one installed piece per non-empty tag — "speedware"
+    /// implements RED's one-speedware rule generically.
+    #[serde(default)]
+    pub cyber_exclusive_tag: String,
 }
 
 fn default_vending_sell_rate() -> i32 {
@@ -1034,6 +1072,14 @@ impl ItemData {
             treats_infestation: String::new(),
             dg_vars: HashMap::new(),
             affects: Vec::new(),
+            // Cyberware fields
+            cyber_category: None,
+            cyber_foundation: false,
+            cyber_option_slots: 0,
+            cyber_slot_cost: 0,
+            cyber_humanity_loss: 0,
+            cyber_paired: false,
+            cyber_exclusive_tag: String::new(),
         }
     }
 

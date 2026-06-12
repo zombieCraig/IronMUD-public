@@ -232,6 +232,14 @@ pub struct CharacterData {
     /// See `crate::types::ReplicantState`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub replicant_state: Option<crate::types::ReplicantState>,
+    /// Cyberware state. None = no chrome (default). Some = at least one
+    /// install attempt: humanity tracking, installed-piece snapshots,
+    /// cyberpsychosis episode bookkeeping. Race-agnostic — any race whose
+    /// `cyberware_affinity` isn't `Incompatible` can chrome up; the
+    /// augmented race is born with this stamped. See
+    /// `crate::types::CyberwareState`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cyberware_state: Option<crate::types::CyberwareState>,
     // Property rental system
     #[serde(default)]
     pub active_leases: HashMap<Uuid, Uuid>, // area_id -> lease_id (one per area)

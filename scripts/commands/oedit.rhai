@@ -344,6 +344,11 @@ fn handle_subcommand(item, item_id, subcommand, parts, char, connection_id) {
         return;
     }
 
+    if subcommand == "cyber" {
+        handle_cyber_subcommand(uuid, parts, connection_id);
+        return;
+    }
+
     if subcommand == "flags" {
         show_item_flags(item, uuid, connection_id);
         return;
@@ -661,17 +666,17 @@ fn collect_parts(parts, start_idx) {
 
 fn handle_type_subcommand(item_id, parts, connection_id) {
     if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: oedit " + item_id + " type <armor|weapon|ammunition|container|liquid_container|food|key|misc|potion|wand|staff|note|pen|board|tool|tattoo>");
+        send_client_message(connection_id, "Usage: oedit " + item_id + " type <armor|weapon|ammunition|container|liquid_container|food|key|misc|potion|wand|staff|note|pen|board|tool|tattoo|cyberware>");
         return;
     }
     let type_str = parts[2].to_lower();
-    let valid_types = ["armor", "weapon", "ammunition", "misc", "container", "liquid_container", "food", "key", "potion", "wand", "staff", "note", "pen", "board", "tool", "tattoo"];
+    let valid_types = ["armor", "weapon", "ammunition", "misc", "container", "liquid_container", "food", "key", "potion", "wand", "staff", "note", "pen", "board", "tool", "tattoo", "cyberware"];
     let is_valid = false;
     for t in valid_types {
         if type_str == t { is_valid = true; }
     }
     if !is_valid {
-        send_client_message(connection_id, "Invalid type. Use: armor, weapon, ammunition, container, liquid_container, food, key, misc, potion, wand, staff, note, pen, board, tool, tattoo");
+        send_client_message(connection_id, "Invalid type. Use: armor, weapon, ammunition, container, liquid_container, food, key, misc, potion, wand, staff, note, pen, board, tool, tattoo, cyberware");
         return;
     }
     set_item_type(item_id, type_str);
@@ -971,6 +976,92 @@ fn handle_world_max_subcommand(item_id, parts, connection_id) {
     } else {
         send_client_message(connection_id, "World cap set to " + n + " live copies.");
     }
+}
+
+fn cyber_usage(item_id, connection_id) {
+    let u = "Usage: oedit " + item_id + " cyber <field> <value>\n";
+    u += "  cyber category <fashionware|neuralware|cyberoptic|cyberaudio|cyberarm|cyberleg|internal|external|borgware|none>\n";
+    u += "  cyber foundation <on|off>     (base unit providing option slots)\n";
+    u += "  cyber slots <n>               (slots a foundation provides; 0 = category default)\n";
+    u += "  cyber slot_cost <n>           (slots an option consumes; 0 = 1)\n";
+    u += "  cyber humanity <n>            (humanity charged on install; RED tiers 0/2/3/7/14)\n";
+    u += "  cyber paired <on|off>         (option must occupy BOTH foundations, e.g. both eyes)\n";
+    u += "  cyber tag <word|none>         (exclusive tag — only one installed piece per tag, e.g. speedware)\n";
+    u += "Item type must be 'cyberware' (oedit <id> type cyberware) for installs to work.";
+    send_client_message(connection_id, u);
+}
+
+fn handle_cyber_subcommand(item_id, parts, connection_id) {
+    if parts.len() < 4 {
+        cyber_usage(item_id, connection_id);
+        return;
+    }
+    let field = parts[2];
+    let value = parts[3];
+
+    if field == "category" {
+        let cleared = value == "none" || value == "clear";
+        let arg = if cleared { "" } else { value };
+        if set_item_cyber_category(item_id, arg) {
+            if cleared {
+                send_client_message(connection_id, "Cyberware category cleared.");
+            } else {
+                send_client_message(connection_id, "Cyberware category set to " + value + ".");
+            }
+        } else {
+            send_client_message(connection_id, "Unknown category. " + "Try: fashionware, neuralware, cyberoptic, cyberaudio, cyberarm, cyberleg, internal, external, borgware.");
+        }
+        return;
+    }
+    if field == "foundation" {
+        let on = value == "on" || value == "true" || value == "yes";
+        set_item_cyber_foundation(item_id, on);
+        let label = "off";
+        if on { label = "on"; }
+        send_client_message(connection_id, "Cyberware foundation: " + label + ".");
+        return;
+    }
+    if field == "slots" {
+        let n = try_parse_int(value);
+        if n == () { cyber_usage(item_id, connection_id); return; }
+        set_item_cyber_option_slots(item_id, n);
+        send_client_message(connection_id, "Option slots set to " + n + " (0 = category default).");
+        return;
+    }
+    if field == "slot_cost" {
+        let n = try_parse_int(value);
+        if n == () { cyber_usage(item_id, connection_id); return; }
+        set_item_cyber_slot_cost(item_id, n);
+        send_client_message(connection_id, "Slot cost set to " + n + " (0 = 1).");
+        return;
+    }
+    if field == "humanity" {
+        let n = try_parse_int(value);
+        if n == () { cyber_usage(item_id, connection_id); return; }
+        set_item_cyber_humanity_loss(item_id, n);
+        send_client_message(connection_id, "Humanity loss set to " + n + ".");
+        return;
+    }
+    if field == "paired" {
+        let on = value == "on" || value == "true" || value == "yes";
+        set_item_cyber_paired(item_id, on);
+        let label = "off";
+        if on { label = "on"; }
+        send_client_message(connection_id, "Paired requirement: " + label + ".");
+        return;
+    }
+    if field == "tag" {
+        let cleared = value == "none" || value == "clear";
+        let arg = if cleared { "" } else { value };
+        set_item_cyber_exclusive_tag(item_id, arg);
+        if cleared {
+            send_client_message(connection_id, "Exclusive tag cleared.");
+        } else {
+            send_client_message(connection_id, "Exclusive tag set to '" + value + "'.");
+        }
+        return;
+    }
+    cyber_usage(item_id, connection_id);
 }
 
 fn handle_damage_subcommand(item_id, parts, connection_id) {
@@ -2017,6 +2108,16 @@ fn handle_spawn_subcommand(item, char, connection_id) {
     if item.has_world_max_count {
         set_item_world_max_count(new_item.id, item.world_max_count);
     }
+    // Copy cyberware properties
+    if item.cyber_category != "" {
+        set_item_cyber_category(new_item.id, item.cyber_category);
+        set_item_cyber_foundation(new_item.id, item.cyber_foundation);
+        set_item_cyber_option_slots(new_item.id, item.cyber_option_slots);
+        set_item_cyber_slot_cost(new_item.id, item.cyber_slot_cost);
+        set_item_cyber_humanity_loss(new_item.id, item.cyber_humanity_loss);
+        set_item_cyber_paired(new_item.id, item.cyber_paired);
+        set_item_cyber_exclusive_tag(new_item.id, item.cyber_exclusive_tag);
+    }
     // Copy flags
     copy_item_flags(item, new_item.id);
 
@@ -2607,6 +2708,30 @@ fn show_item_properties(item, item_id, connection_id) {
     if item.has_world_max_count {
         output += olc::c_label("World Max: ", connection_id) + olc::c_value("" + item.world_max_count + " live copies", connection_id) + "\n";
     }
+    if item.cyber_category != "" {
+        let cyb = item.cyber_category;
+        if item.cyber_foundation {
+            cyb += " foundation";
+            if item.cyber_option_slots > 0 {
+                cyb += ", " + item.cyber_option_slots + " slots";
+            } else {
+                cyb += ", default slots";
+            }
+        } else {
+            cyb += " option";
+            if item.cyber_slot_cost > 1 {
+                cyb += ", costs " + item.cyber_slot_cost + " slots";
+            }
+            if item.cyber_paired {
+                cyb += ", paired";
+            }
+        }
+        cyb += ", humanity " + item.cyber_humanity_loss;
+        if item.cyber_exclusive_tag != "" {
+            cyb += ", tag '" + item.cyber_exclusive_tag + "'";
+        }
+        output += olc::c_label("Cyberware: ", connection_id) + olc::c_value(cyb, connection_id) + "\n";
+    }
 
     // Recipe-related properties
     let categories = get_item_categories(item.id);
@@ -3039,6 +3164,7 @@ fn build_commands_help(item_id, item) {
     output += "  oedit " + display_id + " weight <value>\n";
     output += "  oedit " + display_id + " value <gold>\n";
     output += "  oedit " + display_id + " world_max <n>              (cap live copies world-wide; 0 = unlimited)\n";
+    output += "  oedit " + display_id + " cyber <field> <value>      (cyberware fields: category/foundation/slots/slot_cost/humanity/paired/tag)\n";
     output += "  oedit " + display_id + " level <value>\n";
     output += "  oedit " + display_id + " affect [list]                          (equip-time effects on the wearer)\n";
     output += "  oedit " + display_id + " affect add <effect> [mag] [tag]        (e.g. strength_boost 2, damage_resistance 25 acid)\n";

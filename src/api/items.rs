@@ -57,6 +57,21 @@ fn build_cast_on_use_from_req(req: &CastOnUseRequest) -> Option<CastOnUse> {
 }
 
 /// Normalize note body line endings (\r\n → \n, lone \r → \n) and enforce the size cap.
+/// Parse an optional cyberware category string from a request. Empty string
+/// (or "none") clears; unknown values are a 400.
+fn parse_cyber_category(raw: Option<&str>) -> Result<Option<crate::types::CyberwareCategory>, ApiError> {
+    match raw {
+        None => Ok(None),
+        Some(s) if s.trim().is_empty() || s.eq_ignore_ascii_case("none") => Ok(None),
+        Some(s) => crate::types::CyberwareCategory::from_str(s).map(Some).ok_or_else(|| {
+            ApiError::InvalidInput(format!(
+                "unknown cyber_category '{}' (use fashionware, neuralware, cyberoptic, cyberaudio, cyberarm, cyberleg, internal_body, external_body, borgware)",
+                s
+            ))
+        }),
+    }
+}
+
 fn normalize_note_input(raw: String) -> Result<Option<String>, ApiError> {
     let normalized = raw.replace("\r\n", "\n").replace('\r', "\n");
     if normalized.len() > MAX_NOTE_BYTES {
@@ -209,6 +224,20 @@ pub struct CreateItemRequest {
     pub container_key_vnum: Option<String>,
     #[serde(default)]
     pub world_max_count: Option<i32>,
+    #[serde(default)]
+    pub cyber_category: Option<String>,
+    #[serde(default)]
+    pub cyber_foundation: Option<bool>,
+    #[serde(default)]
+    pub cyber_option_slots: Option<i32>,
+    #[serde(default)]
+    pub cyber_slot_cost: Option<i32>,
+    #[serde(default)]
+    pub cyber_humanity_loss: Option<i32>,
+    #[serde(default)]
+    pub cyber_paired: Option<bool>,
+    #[serde(default)]
+    pub cyber_exclusive_tag: Option<String>,
     #[serde(default)]
     pub extra_descs: Option<Vec<ExtraDescRequest>>,
     #[serde(default)]
@@ -515,6 +544,20 @@ pub struct UpdateItemRequest {
     #[serde(default)]
     pub world_max_count: Option<i32>,
     #[serde(default)]
+    pub cyber_category: Option<String>,
+    #[serde(default)]
+    pub cyber_foundation: Option<bool>,
+    #[serde(default)]
+    pub cyber_option_slots: Option<i32>,
+    #[serde(default)]
+    pub cyber_slot_cost: Option<i32>,
+    #[serde(default)]
+    pub cyber_humanity_loss: Option<i32>,
+    #[serde(default)]
+    pub cyber_paired: Option<bool>,
+    #[serde(default)]
+    pub cyber_exclusive_tag: Option<String>,
+    #[serde(default)]
     pub extra_descs: Option<Vec<ExtraDescRequest>>,
     #[serde(default)]
     pub on_hit_effects: Option<Vec<OnHitEffectRequest>>,
@@ -635,6 +678,7 @@ fn parse_item_type(s: &str) -> Option<ItemType> {
         "misc" | "other" => Some(ItemType::Misc),
         "tool" | "kit" => Some(ItemType::Tool),
         "tattoo" | "ink" | "mark" => Some(ItemType::Tattoo),
+        "cyberware" | "chrome" | "implant" => Some(ItemType::Cyberware),
         _ => None,
     }
 }
@@ -1065,6 +1109,16 @@ async fn create_item(
         fertilizer_duration: req.fertilizer_duration.unwrap_or(0),
         treats_infestation: req.treats_infestation.unwrap_or_default(),
         dg_vars: std::collections::HashMap::new(),
+        cyber_category: parse_cyber_category(req.cyber_category.as_deref())?,
+        cyber_foundation: req.cyber_foundation.unwrap_or(false),
+        cyber_option_slots: req.cyber_option_slots.unwrap_or(0).max(0),
+        cyber_slot_cost: req.cyber_slot_cost.unwrap_or(0).max(0),
+        cyber_humanity_loss: req.cyber_humanity_loss.unwrap_or(0).max(0),
+        cyber_paired: req.cyber_paired.unwrap_or(false),
+        cyber_exclusive_tag: req
+            .cyber_exclusive_tag
+            .map(|t| t.trim().to_string())
+            .unwrap_or_default(),
     };
 
     // Auto-set default liquid effects for liquid containers
@@ -1158,6 +1212,27 @@ async fn update_item(
     }
     if let Some(world_max) = req.world_max_count {
         item.world_max_count = if world_max <= 0 { None } else { Some(world_max) };
+    }
+    if req.cyber_category.is_some() {
+        item.cyber_category = parse_cyber_category(req.cyber_category.as_deref())?;
+    }
+    if let Some(foundation) = req.cyber_foundation {
+        item.cyber_foundation = foundation;
+    }
+    if let Some(slots) = req.cyber_option_slots {
+        item.cyber_option_slots = slots.max(0);
+    }
+    if let Some(cost) = req.cyber_slot_cost {
+        item.cyber_slot_cost = cost.max(0);
+    }
+    if let Some(hl) = req.cyber_humanity_loss {
+        item.cyber_humanity_loss = hl.max(0);
+    }
+    if let Some(paired) = req.cyber_paired {
+        item.cyber_paired = paired;
+    }
+    if let Some(ref tag) = req.cyber_exclusive_tag {
+        item.cyber_exclusive_tag = tag.trim().to_string();
     }
     if let Some(ref new_vnum) = req.vnum {
         // Check vnum uniqueness (allow keeping the same vnum)

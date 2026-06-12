@@ -349,6 +349,21 @@ fn show_basic_status(char, connection_id) {
         output += thirst_colored + "   " + hunger_colored + "\n";
     }
 
+    // Humanity (chrome) — only for characters carrying cyberware state.
+    // Unrelated to the vampire 0-10 humanity scale.
+    if is_pc_chromed(connection_id) {
+        let cyb = get_cyberware_state(connection_id);
+        if cyb["success"] {
+            let hum_bar = build_bar(cyb["humanity"], cyb["max_humanity"], 10);
+            let hum_str = "Humanity: " + hum_bar + " " + cyb["humanity"] + "/" + cyb["max_humanity"];
+            if cyb["pct"] < 30 {
+                output += color_or(ansi_red(hum_str), hum_str, connection_id) + "\n";
+            } else {
+                output += color_or(ansi_cyan(hum_str), hum_str, connection_id) + "\n";
+            }
+        }
+    }
+
     // Position indicator
     let pos_str = "Position: " + char.position;
     output += pos_str + "\n";
@@ -558,6 +573,15 @@ fn show_detailed_status(char, connection_id) {
 
         let hunger_bar = build_bar(char.hunger, char.max_hunger, 10);
         output += "Hunger: " + hunger_bar + " " + char.hunger + "/" + char.max_hunger + "\n";
+    }
+
+    // Humanity (chrome) line — see `cyberware` for the full ledger.
+    if is_pc_chromed(connection_id) {
+        let cyb = get_cyberware_state(connection_id);
+        if cyb["success"] {
+            let hum_bar = build_bar(cyb["humanity"], cyb["max_humanity"], 10);
+            output += "Humanity: " + hum_bar + " " + cyb["humanity"] + "/" + cyb["max_humanity"] + "\n";
+        }
     }
 
     output += "Position: " + char.position + "\n";

@@ -128,6 +128,13 @@ fn item(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str, ite
         treats_infestation: String::new(),
         dg_vars: std::collections::HashMap::new(),
         affects: Vec::new(),
+        cyber_category: None,
+        cyber_foundation: false,
+        cyber_option_slots: 0,
+        cyber_slot_cost: 0,
+        cyber_humanity_loss: 0,
+        cyber_paired: false,
+        cyber_exclusive_tag: String::new(),
     }
 }
 
@@ -840,4 +847,157 @@ pub fn seed_items(db: &Db) -> Result<()> {
     db.save_item_data(i)?;
 
     Ok(())
+}
+
+/// Seed the cyberware starting-kit prototypes (vnum prefix `cyb-`).
+///
+/// Unlike `seed_items`, this runs UNCONDITIONALLY on every startup (not just
+/// on empty worlds) because character creation for the augmented race
+/// installs these vnums via `install_cyberware_free` — an existing
+/// production world needs them too. Idempotent: existing vnums are skipped,
+/// never overwritten, so builder edits to these prototypes stick.
+///
+/// Returns the number of prototypes created.
+pub fn seed_cyberware_prototypes(db: &Db) -> Result<usize> {
+    let mut created = 0;
+
+    // Helper: save only if the vnum doesn't already exist.
+    let mut save_new = |i: ItemData| -> Result<()> {
+        let vnum = i.vnum.clone().unwrap_or_default();
+        if db.get_item_by_vnum(&vnum)?.is_none() {
+            db.save_item_data(i)?;
+            created += 1;
+        }
+        Ok(())
+    };
+
+    fn affect(effect_type: EffectType, magnitude: i32, damage_type: Option<DamageType>) -> ItemAffect {
+        ItemAffect {
+            effect_type,
+            magnitude,
+            damage_type,
+            vs_effect: None,
+            skill_key: None,
+        }
+    }
+
+    // Neural Link — the neuralware foundation. 5 option slots.
+    let vnum = "cyb-neural-link";
+    let mut i = item(
+        super::seed_uuid(vnum),
+        vnum,
+        "Neural Link",
+        "A coiled neural link processor rests in a sterile case.",
+        "A surgical-grade neural interface processor: a fingertip of black composite trailing filament leads finer than hair. Installed at the base of the skull, it is the foundation every piece of neuralware plugs into.",
+        ItemType::Cyberware,
+    );
+    i.keywords = vec!["neural".into(), "link".into(), "processor".into(), "chrome".into()];
+    i.cyber_category = Some(CyberwareCategory::Neuralware);
+    i.cyber_foundation = true;
+    i.cyber_option_slots = 5;
+    i.cyber_humanity_loss = 7;
+    i.weight = 0;
+    i.value = 500;
+    save_new(i)?;
+
+    // Reflex Booster — neuralware option, speedware. The augmented race's
+    // innate +1 DEX lives here now.
+    let vnum = "cyb-reflex-booster";
+    let mut i = item(
+        super::seed_uuid(vnum),
+        vnum,
+        "Reflex Booster",
+        "A reflex booster module gleams inside its antistatic wrap.",
+        "A spinal shunt that pre-empts conscious reaction time, firing muscles before the thought finishes forming. Requires a neural link. Only one piece of speedware survives in a nervous system at a time.",
+        ItemType::Cyberware,
+    );
+    i.keywords = vec!["reflex".into(), "booster".into(), "speedware".into(), "chrome".into()];
+    i.cyber_category = Some(CyberwareCategory::Neuralware);
+    i.cyber_humanity_loss = 7;
+    i.cyber_exclusive_tag = "speedware".into();
+    i.affects = vec![affect(EffectType::DexterityBoost, 1, None)];
+    i.weight = 0;
+    i.value = 500;
+    save_new(i)?;
+
+    // Cybereye — the cyberoptic foundation. Two per skull, 3 slots each.
+    let vnum = "cyb-cybereye";
+    let mut i = item(
+        super::seed_uuid(vnum),
+        vnum,
+        "Cybereye",
+        "A cybereye stares up from its preservation gel, iris dark.",
+        "A polymer-and-glass replacement eye, indistinguishable from meat at a glance until the iris catches the light wrong. Each eye carries three option slots for vision hardware.",
+        ItemType::Cyberware,
+    );
+    i.keywords = vec!["cybereye".into(), "eye".into(), "optic".into(), "chrome".into()];
+    i.cyber_category = Some(CyberwareCategory::Cyberoptic);
+    i.cyber_foundation = true;
+    i.cyber_option_slots = 3;
+    i.cyber_humanity_loss = 7;
+    i.weight = 0;
+    i.value = 100;
+    save_new(i)?;
+
+    // Low-Light Optics — paired cyberoptic option. Replaces the augmented
+    // race's old `dark_adapted` trait with a NightVision affect.
+    let vnum = "cyb-lowlight-optics";
+    let mut i = item(
+        super::seed_uuid(vnum),
+        vnum,
+        "Low-Light Optics",
+        "A pair of low-light optic chips sits in a padded tray.",
+        "Photon-amplification wafers that slot behind a cybereye's iris, drinking in starlight and spitting out daylight. Must be fitted to both eyes — depth perception dies otherwise.",
+        ItemType::Cyberware,
+    );
+    i.keywords = vec!["lowlight".into(), "low-light".into(), "optics".into(), "chrome".into()];
+    i.cyber_category = Some(CyberwareCategory::Cyberoptic);
+    i.cyber_paired = true;
+    i.cyber_humanity_loss = 3;
+    i.affects = vec![affect(EffectType::NightVision, 1, None)];
+    i.weight = 0;
+    i.value = 500;
+    save_new(i)?;
+
+    // Muscle Graft — internal body ware. Carries the augmented race's old
+    // +1 STR and its lightning vulnerability: the chrome IS the weakness.
+    let vnum = "cyb-muscle-graft";
+    let mut i = item(
+        super::seed_uuid(vnum),
+        vnum,
+        "Myofiber Muscle Graft",
+        "A sealed canister of myofiber muscle graft hums quietly.",
+        "Vat-grown synthetic muscle lace, woven through the recipient's own fiber. The strength is real. So is the conductivity — grafted myofiber takes lightning like a copper wire.",
+        ItemType::Cyberware,
+    );
+    i.keywords = vec!["muscle".into(), "graft".into(), "myofiber".into(), "chrome".into()];
+    i.cyber_category = Some(CyberwareCategory::InternalBody);
+    i.cyber_humanity_loss = 14;
+    i.affects = vec![
+        affect(EffectType::StrengthBoost, 1, None),
+        affect(EffectType::DamageResistance, -15, Some(DamageType::Lightning)),
+    ];
+    i.weight = 0;
+    i.value = 1000;
+    save_new(i)?;
+
+    // Adrenal Booster — internal body ware, no passive affects. Gates the
+    // `racial adrenaline_surge` active ability.
+    let vnum = "cyb-adrenal-booster";
+    let mut i = item(
+        super::seed_uuid(vnum),
+        vnum,
+        "Adrenal Booster",
+        "An adrenal booster implant floats in preservation fluid.",
+        "A glandular pump grafted above the kidneys, holding a measured dose of synthetic adrenaline behind a neural trigger. One thought, and the world slows down.",
+        ItemType::Cyberware,
+    );
+    i.keywords = vec!["adrenal".into(), "booster".into(), "gland".into(), "chrome".into()];
+    i.cyber_category = Some(CyberwareCategory::InternalBody);
+    i.cyber_humanity_loss = 3;
+    i.weight = 0;
+    i.value = 500;
+    save_new(i)?;
+
+    Ok(created)
 }

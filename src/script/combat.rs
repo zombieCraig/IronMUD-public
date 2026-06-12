@@ -2703,6 +2703,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 treats_infestation: String::new(),
                 dg_vars: std::collections::HashMap::new(),
                 affects: Vec::new(),
+                cyber_category: None,
+                cyber_foundation: false,
+                cyber_option_slots: 0,
+                cyber_slot_cost: 0,
+                cyber_humanity_loss: 0,
+                cyber_paired: false,
+                cyber_exclusive_tag: String::new(),
             };
 
             let corpse_id = corpse.id.to_string();

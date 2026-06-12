@@ -524,6 +524,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           board_write_admin_only: args?.board_write_admin_only as boolean | undefined,
           board_max_messages: args?.board_max_messages as number | undefined,
           world_max_count: args?.world_max_count as number | undefined,
+          cyber_category: args?.cyber_category as string | undefined,
+          cyber_foundation: args?.cyber_foundation as boolean | undefined,
+          cyber_option_slots: args?.cyber_option_slots as number | undefined,
+          cyber_slot_cost: args?.cyber_slot_cost as number | undefined,
+          cyber_humanity_loss: args?.cyber_humanity_loss as number | undefined,
+          cyber_paired: args?.cyber_paired as boolean | undefined,
+          cyber_exclusive_tag: args?.cyber_exclusive_tag as string | undefined,
           on_hit_effects: args?.on_hit_effects as { effect: string; chance: number; magnitude: number; duration: number }[] | undefined,
         });
         return {
@@ -550,6 +557,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           "food_nutrition", "food_spoil_duration", "food_effects",
           "note_content", "board_read_admin_only", "board_write_admin_only", "board_max_messages",
           "world_max_count", "on_hit_effects",
+          "cyber_category", "cyber_foundation", "cyber_option_slots", "cyber_slot_cost",
+          "cyber_humanity_loss", "cyber_paired", "cyber_exclusive_tag",
         ];
         for (const field of itemFields) {
           if (args?.[field] !== undefined) {

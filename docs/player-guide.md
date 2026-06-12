@@ -1032,6 +1032,35 @@ Combat works differently underwater:
 
 Bring a dagger or spear for underwater fights!
 
+## Cyberware and Humanity
+
+On modern/cyberpunk worlds, most races can have **cyberware** installed by
+a ripperdoc NPC (synths and revenants cannot; the augmented race is *born
+chromed* and pays less for installs). Every piece of chrome costs
+**Humanity** — your ceiling is your base Charisma × 10, each installed
+piece lowers it, and each install spends from the pool.
+
+```
+> cyberware              (alias: chrome)
+Chrome:
+  Humanity (chrome): 86/86 (100%) — integrated
+Installed cyberware:
+ neuralware
+  a coiled neural link processor [1/5 slots]
+  ...
+```
+
+Run the ledger low and the chrome starts driving: below 30% Humanity you
+risk dissociative episodes, and near zero you risk violent cyberpsychotic
+breaks that attack whoever is nearby. Lost Humanity also erodes your
+effective Charisma (−1 per 10 lost). Therapy (sold by clinic NPCs)
+restores spent Humanity; removing chrome restores your ceiling but never
+the points already spent.
+
+Cyberware items can't be worn or wielded — find a ripperdoc to install or
+remove them. Foundations (a neural link, cybereyes, cyberarms…) provide
+option slots that smaller implants plug into.
+
 ## Tips for New Players
 
 1. **Use `look` often** - Room descriptions contain important clues

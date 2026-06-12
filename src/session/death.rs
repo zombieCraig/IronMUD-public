@@ -190,6 +190,13 @@ fn build_player_corpse(name: &str, room_id: Uuid, gold: i64) -> ItemData {
         treats_infestation: String::new(),
         dg_vars: std::collections::HashMap::new(),
         affects: Vec::new(),
+        cyber_category: None,
+        cyber_foundation: false,
+        cyber_option_slots: 0,
+        cyber_slot_cost: 0,
+        cyber_humanity_loss: 0,
+        cyber_paired: false,
+        cyber_exclusive_tag: String::new(),
     }
 }
 
