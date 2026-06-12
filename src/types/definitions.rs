@@ -212,6 +212,59 @@ pub struct RaceDefinition {
     pub cyberware_affinity: crate::types::CyberwareAffinity,
 }
 
+/// A permanent buff a passive mutation keeps asserted on its owner.
+/// `effect` must resolve via `EffectType::from_str`; the mutation tick
+/// re-stamps any that a temporary same-type buff clobbered.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MutationPassiveBuff {
+    pub effect: String,
+    #[serde(default)]
+    pub magnitude: i32,
+}
+
+/// One Mutant: Year Zero-style mutation, loaded from
+/// `scripts/data/mutations.json` into `World.mutation_definitions`.
+/// Mutants own a subset of these ids in `MutantState.mutations`; actives are
+/// fired through the `mutate` command (handler keyed on `id`, numbers pulled
+/// from here), passives are stamped at init and re-asserted by the mutation
+/// tick.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MutationDefinition {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    /// "active" (fired via `mutate`, spends MP) or "passive" (always on).
+    pub activation: String,
+    /// Active-power shape hint for the mutate handler: "damage", "self_buff",
+    /// "heal", "light", "drain". Empty for passives.
+    #[serde(default)]
+    pub effect: String,
+    /// `DamageType::from_str` key for damage/drain actives.
+    #[serde(default)]
+    pub damage_type: Option<String>,
+    /// Active power scaling: `base_power + power_per_mp * mp_spent`.
+    #[serde(default)]
+    pub base_power: i32,
+    #[serde(default)]
+    pub power_per_mp: i32,
+    /// Buff duration for buff-shaped actives: `duration_secs +
+    /// duration_per_mp * mp_spent`.
+    #[serde(default)]
+    pub duration_secs: i64,
+    #[serde(default)]
+    pub duration_per_mp: i64,
+    /// Permanent buffs a passive mutation keeps asserted.
+    #[serde(default)]
+    pub passive_buffs: Vec<MutationPassiveBuff>,
+    /// Traits granted while owned (e.g. `night_vision`, `mutation_frog_legs`).
+    #[serde(default)]
+    pub granted_traits: Vec<String>,
+    /// Flavor strings keyed by site: "self", "room", "target".
+    #[serde(default)]
+    pub messages: HashMap<String, String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LanguageDefinition {
     pub key: String,

@@ -1243,6 +1243,20 @@ fn finalize_character(connection_id) {
         send_client_message(connection_id, "Type 'cyberware' to read your ledger. The metal costs you less than it costs others — but it still costs.");
     }
 
+    // Mutant race: one mutation rolled at birth (Mutant: Year Zero). Like
+    // the blocks above, must run AFTER set_player_character so the bindings
+    // can mutate session.character.
+    if char_data.race == "mutant" {
+        let rolled = init_pc_mutant(connection_id);
+        char_data = get_character_data(char_name);
+        send_client_message(connection_id, "\x1b[1;32mThe Zone marked you before you drew breath. Something old and patient lives in your blood.\x1b[0m");
+        if rolled != "" {
+            let info = get_mutation_info(rolled);
+            let rolled_name = if info.len() > 0 { info["name"] } else { rolled };
+            send_client_message(connection_id, "\x1b[1;33mYour mutation: " + rolled_name + ".\x1b[0m Type 'mutate' to flex it — and 'push' to feed it.");
+        }
+    }
+
     // Safety net: verify room exists, relocate if not
     let room = get_room_data(char_data.current_room_id);
     if room == () {

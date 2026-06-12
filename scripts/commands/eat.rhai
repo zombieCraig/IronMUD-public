@@ -15,6 +15,17 @@ fn run_command(args, connection_id) {
 
     let keyword = args.to_lower();
 
+    // Corpse Eater mutation: rot and carrion are just food. Spoiled meals
+    // nourish instead of sicken — and actual corpses are a feast.
+    let is_corpse_eater = char.traits.contains("mutation_corpse_eater");
+
+    // A Corpse Eater can devour a corpse lying in the room (or carried).
+    if is_corpse_eater {
+        if try_eat_corpse(connection_id, char, keyword) {
+            return;
+        }
+    }
+
     // Look in inventory only - you can only eat what you're carrying
     let item = find_item_in_inventory(char.name, keyword);
 
@@ -24,6 +35,11 @@ fn run_command(args, connection_id) {
     }
 
     if !item.is_food {
+        if is_corpse_eater && item.flags.is_corpse {
+            // Carried corpse — route through the same feast path.
+            devour_corpse(connection_id, char, item);
+            return;
+        }
         send_client_message(connection_id, "You can't eat that.");
         return;
     }
@@ -42,6 +58,22 @@ fn run_command(args, connection_id) {
 
     // Check if spoiled
     if item.is_spoiled {
+        if is_corpse_eater {
+            send_client_message(connection_id, "You eat " + food_name + " — rot and all. It tastes like home.");
+            broadcast_to_room_except(char.current_room_id, connection_id, char.name + " eats something rotten with evident relish.");
+            let nutrition = item.food_nutrition;
+            if nutrition > 0 {
+                restore_hunger(connection_id, nutrition);
+            }
+            let healed = random_int(1, 6);
+            char.hp = char.hp + healed;
+            if char.hp > char.max_hp { char.hp = char.max_hp; }
+            save_character_data(char);
+            set_player_character(connection_id, char);
+            send_client_message(connection_id, "\x1b[32mThe carrion settles warm in your gut. [+" + healed + " hp]\x1b[0m");
+            consume_food(item.id);
+            return;
+        }
         send_client_message(connection_id, "Ugh! " + food_name + " has gone bad!");
         // Still consume it, but with bad effects
         consume_food(item.id);
@@ -67,7 +99,11 @@ fn run_command(args, connection_id) {
 
     // Check for poisoned food
     if item.food_poisoned {
-        send_client_message(connection_id, "You feel a burning sensation! The food was poisoned!");
+        if is_corpse_eater {
+            send_client_message(connection_id, "Something acrid tingles on your tongue. Your gut shrugs it off.");
+        } else {
+            send_client_message(connection_id, "You feel a burning sensation! The food was poisoned!");
+        }
     }
 
     // Apply nutrition to hunger
@@ -81,6 +117,8 @@ fn run_command(args, connection_id) {
     let effects = item.food_effects;
     let source = food_name;
     for effect in effects {
+        // Corpse Eater guts neutralize ingested poison.
+        if is_corpse_eater && effect.effect_type == "poison" { continue; }
         apply_effect(char, effect, connection_id, source);
     }
 
@@ -220,5 +258,73 @@ fn apply_nutrition_hp(connection_id, nutrition) {
         send_client_message(connection_id, "That was a satisfying meal. (" + healed + " HP restored)");
     } else {
         send_client_message(connection_id, "That was a satisfying meal.");
+    }
+}
+
+// Corpse Eater: find a corpse in the room matching the keyword and devour
+// it. Returns true when a corpse was handled (eaten or refused), false to
+// fall through to the normal food path.
+fn try_eat_corpse(connection_id, char, keyword) {
+    let items = get_items_in_room(char.current_room_id);
+    let corpse = ();
+    for item in items {
+        if !item.flags.is_corpse { continue; }
+        if item.name.to_lower().contains(keyword) {
+            corpse = item;
+            break;
+        }
+        for kw in item.keywords {
+            if kw.to_lower().starts_with(keyword) {
+                corpse = item;
+                break;
+            }
+        }
+        if corpse != () { break; }
+    }
+    if corpse == () {
+        return false;
+    }
+    devour_corpse(connection_id, char, corpse);
+    return true;
+}
+
+// The feast itself. Spills any carried loot to the room first (eating a
+// kill must never destroy its drops), then consumes the corpse: a big
+// hunger restore and a 2d6 heal.
+fn devour_corpse(connection_id, char, corpse) {
+    // Player corpses are off the menu: death recovery depends on them, and
+    // the People don't eat people. Usually.
+    if corpse.flags.corpse_is_player {
+        send_client_message(connection_id, "Even your gut draws the line at that. The dead of the People are not grub.");
+        return;
+    }
+
+    let room_id = char.current_room_id;
+    let corpse_name = corpse.name;
+
+    // Spill contents so loot survives the meal.
+    let contents = corpse.container_contents;
+    let spilled = 0;
+    for item_id in contents {
+        if move_item_to_room(item_id, room_id) {
+            spilled += 1;
+        }
+    }
+
+    delete_item(corpse.id);
+
+    restore_hunger(connection_id, 40);
+    let healed = random_int(1, 6) + random_int(1, 6);
+    let char2 = get_player_character(connection_id);
+    char2.hp = char2.hp + healed;
+    if char2.hp > char2.max_hp { char2.hp = char2.max_hp; }
+    save_character_data(char2);
+    set_player_character(connection_id, char2);
+
+    send_client_message(connection_id, "You crouch over " + corpse_name + " and feed. It tastes like the Zone provides.");
+    send_client_message(connection_id, "\x1b[32mThe carrion settles warm in your gut. [+" + healed + " hp]\x1b[0m");
+    broadcast_to_room_except(room_id, char.name + " crouches over " + corpse_name + " and devours it. You look away.", char.name);
+    if spilled > 0 {
+        broadcast_to_room(room_id, "What the corpse carried clatters to the ground.", "");
     }
 }

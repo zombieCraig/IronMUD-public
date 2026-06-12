@@ -48,6 +48,7 @@ pub mod environment;
 pub mod garden;
 pub mod migration;
 pub mod mobile;
+pub mod mutant;
 pub mod pursuit;
 pub mod quests;
 pub mod rent;
@@ -75,6 +76,7 @@ pub use environment::{run_exposure_tick, run_time_tick};
 pub use garden::run_garden_tick;
 pub use migration::run_migration_tick;
 pub use mobile::{run_mobile_effects_tick, run_wander_tick};
+pub use mutant::{run_mutation_tick, run_rot_tick};
 pub use pursuit::run_pursuit_tick;
 pub use quests::run_quest_tick;
 pub use rent::run_rent_tick;
@@ -127,6 +129,8 @@ pub fn register_all_heartbeats() {
         ("blood", ironmud::vampire::BLOOD_TICK_INTERVAL_SECS),
         ("resolve", ironmud::replicant::RESOLVE_TICK_INTERVAL_SECS),
         ("psyche", ironmud::cyberware::PSYCHE_TICK_INTERVAL_SECS),
+        ("mutation", ironmud::mutant::MUTATION_TICK_INTERVAL_SECS),
+        ("rot", ironmud::mutant::ROT_TICK_INTERVAL_SECS),
     ];
 
     for (name, secs) in pairs {

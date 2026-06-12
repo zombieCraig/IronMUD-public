@@ -888,8 +888,6 @@ fn summarize_effect(e: &DialogueEffect) -> String {
         DialogueEffect::SetQuestChoice { quest_vnum, key, value } => {
             format!("set_quest_choice {}:{} = {}", quest_vnum, key, value)
         }
-        DialogueEffect::InstallCyberware { vnum } => format!("install_cyberware {}", vnum),
-        DialogueEffect::CyberwareTherapy { points } => format!("cyberware_therapy {}", points),
     }
 }
 
@@ -1078,21 +1076,8 @@ fn parse_choice_effect(kind: &str, args: &str) -> Result<DialogueEffect, String>
                 vnum: parts[0].to_string(),
             })
         }
-        "install_cyberware" | "installcyberware" => {
-            need(1, "<item_vnum>")?;
-            Ok(DialogueEffect::InstallCyberware {
-                vnum: parts[0].to_string(),
-            })
-        }
-        "cyberware_therapy" | "cyberwaretherapy" => {
-            need(1, "<points>")?;
-            let points = parts[0]
-                .parse::<i32>()
-                .map_err(|_| "points must be an integer".to_string())?;
-            Ok(DialogueEffect::CyberwareTherapy { points })
-        }
         other => Err(format!(
-            "unknown effect kind `{}` (use set_flag|clear_flag|give_item|take_item|award_skill_xp|set_counter|increment_counter|offer_quest|complete_quest|abandon_quest|install_cyberware|cyberware_therapy; use `tree set <json>` or MCP for set_dg_var / fire_dg_trigger / set_quest_choice)",
+            "unknown effect kind `{}` (use set_flag|clear_flag|give_item|take_item|award_skill_xp|set_counter|increment_counter|offer_quest|complete_quest|abandon_quest; use `tree set <json>` or MCP for set_dg_var / fire_dg_trigger / set_quest_choice)",
             other
         )),
     }
@@ -2246,49 +2231,6 @@ fn apply_effect(
             }
             None
         }
-        DialogueEffect::InstallCyberware { vnum } => {
-            // The player buys the chrome from the shop first; this installs the
-            // carried item by vnum. install_piece mutates `ch` (cyberware_state +
-            // erosion buffs); the dialogue framework persists `ch` to session+DB
-            // after effects (same as GiveItem/TakeItem). We only touch the DB to
-            // delete the consumed item.
-            let item = match db.get_items_in_inventory(&ch.name) {
-                Ok(items) => items.into_iter().find(|i| i.vnum.as_deref() == Some(vnum.as_str())),
-                Err(_) => return Some("[ Your inventory is unavailable right now. ]".to_string()),
-            };
-            let item = match item {
-                Some(i) => i,
-                None => return Some("[ You aren't carrying that piece — buy it from my stock first. ]".to_string()),
-            };
-            let affinity = crate::script::cyberware::race_affinity(state, &ch.race);
-            match crate::cyberware::install_piece(ch, &item, affinity, false, crate::script::cyberware::now_secs()) {
-                Ok(receipt) => {
-                    let _ = db.delete_item(&item.id);
-                    Some(format!(
-                        "[ {} installed. Humanity {} \u{2192} {}/{}. ]",
-                        item.short_desc, -receipt.humanity_paid, receipt.humanity, receipt.max_humanity
-                    ))
-                }
-                Err(e) => Some(format!("[ Can't install {}: {}. ]", item.short_desc, e)),
-            }
-        }
-        DialogueEffect::CyberwareTherapy { points } => {
-            if ch.cyberware_state.is_none() {
-                return Some("[ You have no chrome to recalibrate. ]".to_string());
-            }
-            let (restored, humanity, max) = crate::cyberware::apply_therapy(ch, *points);
-            if restored > 0 {
-                Some(format!(
-                    "[ Recalibration: +{} Humanity \u{2192} {}/{}. ]",
-                    restored, humanity, max
-                ))
-            } else {
-                Some(format!(
-                    "[ Nothing to recalibrate — Humanity already at {}/{}. ]",
-                    humanity, max
-                ))
-            }
-        }
     }
 }
 
@@ -2544,6 +2486,7 @@ mod tests {
             trait_definitions: HashMap::new(),
             race_suggestions: Vec::new(),
             race_definitions: HashMap::new(),
+            mutation_definitions: HashMap::new(),
             language_definitions: HashMap::new(),
             recipes: HashMap::new(),
             spell_definitions: HashMap::new(),
@@ -3403,151 +3346,5 @@ mod tests {
             assert!(classified.is_empty(), "once-picked choice must drop from output");
         }));
         result.unwrap();
-    }
-
-    /// Helper: save a cyberware item into a character's inventory in the DB so
-    /// the InstallCyberware effect can find it by vnum.
-    fn give_cyber_item(
-        db: &Db,
-        owner: &str,
-        vnum: &str,
-        category: CyberwareCategory,
-        foundation: bool,
-        humanity_loss: i32,
-    ) -> Uuid {
-        let mut item = ItemData::new(format!("a {}", vnum), format!("a {}", vnum), String::new());
-        item.vnum = Some(vnum.to_string());
-        item.is_prototype = false;
-        item.item_type = ItemType::Cyberware;
-        item.cyber_category = Some(category);
-        item.cyber_foundation = foundation;
-        item.cyber_humanity_loss = humanity_loss;
-        item.location = ItemLocation::Inventory(owner.to_string());
-        let id = item.id;
-        db.save_item_data(item).expect("save cyber item");
-        id
-    }
-
-    #[test]
-    fn install_cyberware_effect_installs_and_consumes_item() {
-        let (db, _temp) = open_temp_db("install_cyber");
-        let (conns, st) = dummy_conns_and_state(&db);
-        let mut ch = make_character("chromer");
-        ch.stat_cha = 10;
-        let mob = MobileData::new("ripperdoc".into());
-
-        let item_id = give_cyber_item(
-            &db,
-            "chromer",
-            "test-neural-jack",
-            CyberwareCategory::Neuralware,
-            true,
-            7,
-        );
-
-        let msg = apply_effect(
-            &db,
-            &conns,
-            &st,
-            &mut ch,
-            &mob,
-            &DialogueEffect::InstallCyberware {
-                vnum: "test-neural-jack".into(),
-            },
-        );
-        assert!(msg.is_some(), "install reports a result line");
-
-        let cy = ch.cyberware_state.as_ref().expect("state created on install");
-        assert_eq!(cy.installed.len(), 1, "one piece installed");
-        assert_eq!(cy.humanity, 93, "100 base CHA*10 minus 7 paid");
-        assert!(
-            db.get_item_data(&item_id).expect("read").is_none(),
-            "installed item is consumed from the DB",
-        );
-    }
-
-    #[test]
-    fn install_cyberware_effect_fails_option_without_foundation() {
-        let (db, _temp) = open_temp_db("install_cyber_fail");
-        let (conns, st) = dummy_conns_and_state(&db);
-        let mut ch = make_character("chromer");
-        ch.stat_cha = 10;
-        let mob = MobileData::new("ripperdoc".into());
-
-        // A neuralware OPTION with no foundation installed must be refused.
-        let item_id = give_cyber_item(
-            &db,
-            "chromer",
-            "test-reflex-chip",
-            CyberwareCategory::Neuralware,
-            false,
-            7,
-        );
-
-        let msg = apply_effect(
-            &db,
-            &conns,
-            &st,
-            &mut ch,
-            &mob,
-            &DialogueEffect::InstallCyberware {
-                vnum: "test-reflex-chip".into(),
-            },
-        );
-        let line = msg.expect("failure reports a message");
-        assert!(line.contains("Can't install"), "got: {line}");
-        assert!(
-            ch.cyberware_state.is_none() || ch.cyberware_state.as_ref().unwrap().installed.is_empty(),
-            "no piece installed on failure",
-        );
-        assert!(
-            db.get_item_data(&item_id).expect("read").is_some(),
-            "item is NOT consumed when install fails",
-        );
-    }
-
-    #[test]
-    fn install_cyberware_effect_missing_item_is_graceful() {
-        let (db, _temp) = open_temp_db("install_cyber_missing");
-        let (conns, st) = dummy_conns_and_state(&db);
-        let mut ch = make_character("chromer");
-        let mob = MobileData::new("ripperdoc".into());
-        let msg = apply_effect(
-            &db,
-            &conns,
-            &st,
-            &mut ch,
-            &mob,
-            &DialogueEffect::InstallCyberware {
-                vnum: "not-owned".into(),
-            },
-        );
-        assert!(msg.expect("message").contains("buy it from my stock"));
-        assert!(ch.cyberware_state.is_none());
-    }
-
-    #[test]
-    fn cyberware_therapy_effect_restores_humanity() {
-        let (db, _temp) = open_temp_db("therapy");
-        let (conns, st) = dummy_conns_and_state(&db);
-        let mut ch = make_character("chromer");
-        ch.stat_cha = 10;
-        // Start with chrome installed and humanity spent.
-        ch.cyberware_state = Some(CyberwareState::newly_chromed(10, 0));
-        if let Some(s) = ch.cyberware_state.as_mut() {
-            s.humanity = 40;
-        }
-        let mob = MobileData::new("ripperdoc".into());
-
-        let msg = apply_effect(
-            &db,
-            &conns,
-            &st,
-            &mut ch,
-            &mob,
-            &DialogueEffect::CyberwareTherapy { points: 25 },
-        );
-        assert!(msg.expect("message").contains("Recalibration"));
-        assert_eq!(ch.cyberware_state.as_ref().unwrap().humanity, 65);
     }
 }

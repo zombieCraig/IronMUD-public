@@ -349,6 +349,26 @@ fn show_basic_status(char, connection_id) {
         output += thirst_colored + "   " + hunger_colored + "\n";
     }
 
+    // Mutation Points (mutant). MP refills only via 'push'.
+    if is_pc_mutant(connection_id) {
+        let mp = get_pc_mp(connection_id);
+        let mp_max = get_pc_max_mp(connection_id);
+        let mp_bar = build_bar(mp, mp_max, 10);
+        let mp_str = "Mutation: " + mp_bar + " " + mp + "/" + mp_max;
+        output += color_or(ansi_green(mp_str), mp_str, connection_id) + "\n";
+    }
+
+    // The Rot — any race, shown only when contaminated.
+    let rot = get_pc_rot(connection_id);
+    let perm_rot = get_pc_permanent_rot(connection_id);
+    if rot > 0 || perm_rot > 0 {
+        let rot_str = "Rot: " + rot;
+        if perm_rot > 0 {
+            rot_str += " (" + perm_rot + " permanent)";
+        }
+        output += color_or(ansi_yellow(rot_str), rot_str, connection_id) + "\n";
+    }
+
     // Humanity (chrome) — only for characters carrying cyberware state.
     // Unrelated to the vampire 0-10 humanity scale.
     if is_pc_chromed(connection_id) {
@@ -584,6 +604,25 @@ fn show_detailed_status(char, connection_id) {
         }
     }
 
+    // Mutation Points (mutant) — refilled only by 'push'.
+    if is_pc_mutant(connection_id) {
+        let mp = get_pc_mp(connection_id);
+        let mp_max = get_pc_max_mp(connection_id);
+        let mp_bar = build_bar(mp, mp_max, 10);
+        output += "Mutation: " + mp_bar + " " + mp + "/" + mp_max + "\n";
+    }
+
+    // The Rot — any race, only when contaminated.
+    let score_rot = get_pc_rot(connection_id);
+    let score_perm_rot = get_pc_permanent_rot(connection_id);
+    if score_rot > 0 || score_perm_rot > 0 {
+        let rot_str = "Rot: " + score_rot;
+        if score_perm_rot > 0 {
+            rot_str += " (" + score_perm_rot + " permanent)";
+        }
+        output += color_or(ansi_yellow(rot_str), rot_str, connection_id) + "\n";
+    }
+
     output += "Position: " + char.position + "\n";
 
     // Conditions warning
@@ -668,6 +707,26 @@ fn show_detailed_status(char, connection_id) {
         if char.traits.contains("retirement_order") {
             let ro_str = "RETIREMENT ORDER ON RECORD";
             output += color_or(ansi_red(ro_str), ro_str, connection_id) + "\n";
+        }
+    }
+
+    // Mutant status — owned mutations and misfire scars.
+    if is_pc_mutant(connection_id) {
+        let owned = get_pc_mutations(connection_id);
+        let names = "";
+        for id in owned {
+            let info = get_mutation_info(id);
+            if names != "" { names += ", "; }
+            names += if info.len() > 0 { info["name"] } else { id };
+        }
+        if names == "" { names = "(none)"; }
+        output += "Mutations: " + names + "\n";
+        let deformities = get_pc_deformities(connection_id);
+        if deformities.len() > 0 {
+            output += "The power has marked you:\n";
+            for d in deformities {
+                output += "  - " + d + "\n";
+            }
         }
     }
 

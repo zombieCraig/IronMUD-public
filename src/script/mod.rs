@@ -39,6 +39,7 @@ pub mod map;
 mod medical;
 pub mod mobile_presets;
 mod mobiles;
+pub mod mutant;
 mod property;
 mod quests;
 mod races;
@@ -380,6 +381,14 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 // Cyberware state (None = no chrome). Stamped on first
                 // install, or at creation for race "augmented".
                 cyberware_state: None,
+                // Mutant state (None = baseline). Stamped at creation for
+                // race "mutant".
+                mutant_state: None,
+                // The Rot: world contamination, tracked on every character.
+                rot_points: 0,
+                permanent_rot_points: 0,
+                last_rot_gain_time: 0,
+                last_rot_decay_time: 0,
                 // Property rental system
                 active_leases: std::collections::HashMap::new(),
                 escrow_ids: Vec::new(),
@@ -706,6 +715,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         // Migrant housing
         .register_get("living_capacity", |r: &mut RoomData| r.living_capacity as i64)
         .register_get("resident_count", |r: &mut RoomData| r.residents.len() as i64)
+        // The Rot (0 clean .. 3 hotspot)
+        .register_get("rot_level", |r: &mut RoomData| r.rot_level as i64)
         .register_get("contextual_commands", |r: &mut RoomData| {
             r.contextual_commands
                 .iter()
@@ -736,6 +747,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         winter_desc: None,
         dynamic_desc: None,
         water_type: crate::WaterType::None,
+        rot_level: 0,
         catch_table: Vec::new(),
         is_property_template: false,
         property_template_id: None,
@@ -2210,4 +2222,5 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     vampire::register(engine, db.clone(), connections.clone());
     replicant::register_replicant_functions(engine, db.clone(), connections.clone());
     cyberware::register_cyberware_functions(engine, db.clone(), connections.clone(), state.clone());
+    mutant::register_mutant_functions(engine, db.clone(), connections.clone(), state.clone());
 }

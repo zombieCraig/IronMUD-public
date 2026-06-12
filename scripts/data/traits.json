@@ -683,5 +683,35 @@
     "effects": {"frenzy_dc_modifier": -1, "beast_marks_on_frenzy": 1},
     "conflicts_with": ["clan_brujah", "clan_toreador", "clan_ventrue", "clan_nosferatu"],
     "available": false
+  },
+  "mutation_frog_legs": {
+    "id": "mutation_frog_legs",
+    "name": "Frog Legs",
+    "description": "Amphibian leg muscle. Nothing in the Zone catches you. (Granted by the Frog Legs mutation; see mutations.json.)",
+    "cost": 0,
+    "category": "neutral",
+    "effects": {"flee_bonus": 25},
+    "conflicts_with": [],
+    "available": false
+  },
+  "mutation_corpse_eater": {
+    "id": "mutation_corpse_eater",
+    "name": "Corpse Eater",
+    "description": "Carrion and rot are food, not poison. (Granted by the Corpse Eater mutation; see mutations.json.)",
+    "cost": 0,
+    "category": "neutral",
+    "effects": {},
+    "conflicts_with": [],
+    "available": false
+  },
+  "mutation_rot_eater": {
+    "id": "mutation_rot_eater",
+    "name": "Rot-Eater",
+    "description": "The Rot feeds you instead of killing you. (Granted by the Rot-Eater mutation; see mutations.json.)",
+    "cost": 0,
+    "category": "neutral",
+    "effects": {},
+    "conflicts_with": [],
+    "available": false
   }
 }

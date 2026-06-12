@@ -31,6 +31,7 @@ pub mod init;
 pub mod matrix;
 pub mod migration;
 pub mod morality;
+pub mod mutant;
 pub mod necromancy;
 pub mod quest;
 pub mod ratelimit;
@@ -234,6 +235,9 @@ pub struct World {
     pub trait_definitions: HashMap<String, TraitDefinition>,
     pub race_suggestions: Vec<RaceSuggestion>,
     pub race_definitions: HashMap<String, RaceDefinition>,
+    // Mutation definitions (loaded from scripts/data/mutations.json).
+    // Owned per-character via MutantState.mutations.
+    pub mutation_definitions: HashMap<String, MutationDefinition>,
     // Language definitions (loaded from scripts/data/languages_*.json)
     pub language_definitions: HashMap<String, LanguageDefinition>,
     // Crafting/cooking recipes (created via recedit command)
@@ -1531,6 +1535,8 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
         resolve,
         max_resolve,
         in_breakdown,
+        mp,
+        max_mp,
     ) = {
         let conns = connections.lock().unwrap();
         let session = match conns.get(connection_id) {
@@ -1585,6 +1591,10 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
                     Some(r) => (Some(r.resolve), Some(r.max_resolve), r.is_breaking_down(now)),
                     None => (None, None, false),
                 };
+                let (mp, max_mp) = match c.mutant_state.as_ref() {
+                    Some(m) => (Some(m.mp), Some(m.max_mp)),
+                    None => (None, None),
+                };
                 let burning = c
                     .active_buffs
                     .iter()
@@ -1609,6 +1619,8 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
                     resolve,
                     max_resolve,
                     breakdown,
+                    mp,
+                    max_mp,
                 )
             }
             None => return "> ".to_string(), // Not logged in = simple prompt
@@ -1757,6 +1769,27 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
         resolve_segment
     };
 
+    // Mutation Point segment (mutants only). Greens when the pool is full,
+    // dims as it drains — a reminder that refilling means bleeding.
+    let mp_segment = match (mp, max_mp) {
+        (Some(mp), Some(max_mp)) if max_mp > 0 => {
+            let pct = (mp * 100) / max_mp;
+            let mp_color = if colors_enabled {
+                if pct >= 70 {
+                    "\x1b[32m" // Green: brimming
+                } else if pct >= 30 {
+                    "\x1b[33m" // Yellow: running dry
+                } else {
+                    "\x1b[90m" // Grey: the power sleeps
+                }
+            } else {
+                ""
+            };
+            format!("[{}MP:{}/{}{}] ", mp_color, mp, max_mp, reset)
+        }
+        _ => String::new(),
+    };
+
     // SunlightBurning indicator — one more tick (or one blow) and the player
     // ends. Loud, unmissable.
     let burning_segment = if sunlight_burning {
@@ -1781,7 +1814,7 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
     };
 
     let base_prompt = format!(
-        "[{}HP:{}/{}{}] {}{}{}{}{}{}",
+        "[{}HP:{}/{}{}] {}{}{}{}{}{}{}",
         hp_color,
         hp,
         max_hp,
@@ -1789,6 +1822,7 @@ fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, s
         stamina_segment,
         mana_segment,
         blood_segment,
+        mp_segment,
         breath_segment,
         burning_segment,
         breakdown_segment

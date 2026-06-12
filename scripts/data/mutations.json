@@ -1,0 +1,142 @@
+{
+  "acid_spit": {
+    "id": "acid_spit",
+    "name": "Acid Spit",
+    "description": "Glands behind your molars brew a corrosive bile you can hawk at an enemy. More MP, more meat dissolved.",
+    "activation": "active",
+    "effect": "damage",
+    "damage_type": "acid",
+    "base_power": 4,
+    "power_per_mp": 3,
+    "messages": {
+      "self": "You hawk a gob of hissing acid at {target}!",
+      "room": "{name} spits a stream of smoking acid at {target}!",
+      "target": "{name} spits burning acid across your skin!"
+    }
+  },
+  "manbeast": {
+    "id": "manbeast",
+    "name": "Manbeast",
+    "description": "The animal under your skin comes when called: claws lengthen, senses sharpen, and you fight like the predator you half are.",
+    "activation": "active",
+    "effect": "self_buff",
+    "base_power": 1,
+    "power_per_mp": 1,
+    "duration_secs": 60,
+    "messages": {
+      "self": "Your jaw cracks and reforms. Claws slide from your fingertips.",
+      "room": "{name} hunches and changes — claws, fangs, and hungry eyes."
+    }
+  },
+  "insectoid": {
+    "id": "insectoid",
+    "name": "Insectoid",
+    "description": "Chitinous plates sheath your back and forearms. Armor you were born wearing.",
+    "activation": "passive",
+    "passive_buffs": [
+      { "effect": "armor_class_boost", "magnitude": 2 }
+    ],
+    "messages": {
+      "examine": "Plates of dark chitin armor their body."
+    }
+  },
+  "frog_legs": {
+    "id": "frog_legs",
+    "name": "Frog Legs",
+    "description": "Your legs coil with amphibian power. When a fight goes wrong, nothing in the Zone catches you.",
+    "activation": "passive",
+    "granted_traits": ["mutation_frog_legs"],
+    "messages": {
+      "examine": "Their legs bend strangely, corded with too much muscle."
+    }
+  },
+  "extreme_reflexes": {
+    "id": "extreme_reflexes",
+    "name": "Extreme Reflexes",
+    "description": "Time goes thick around you. Burn MP to move between the moments.",
+    "activation": "active",
+    "effect": "self_buff",
+    "base_power": 1,
+    "power_per_mp": 0,
+    "duration_secs": 15,
+    "duration_per_mp": 10,
+    "messages": {
+      "self": "The world slows to a crawl. You move through it like water.",
+      "room": "{name} blurs, moving faster than eyes can follow."
+    }
+  },
+  "luminescence": {
+    "id": "luminescence",
+    "name": "Luminescence",
+    "description": "Your veins carry their own cold light. Light the dark — or pour it into someone's eyes.",
+    "activation": "active",
+    "effect": "light",
+    "base_power": 30,
+    "power_per_mp": 15,
+    "duration_secs": 300,
+    "messages": {
+      "self": "Cold green light wells up beneath your skin.",
+      "room": "{name} begins to glow with cold green light.",
+      "target": "{name} flares blinding-bright in your face!"
+    }
+  },
+  "sonar": {
+    "id": "sonar",
+    "name": "Sonar",
+    "description": "You hear the shape of the world. Darkness means nothing to you.",
+    "activation": "passive",
+    "granted_traits": ["night_vision"],
+    "messages": {
+      "examine": "Their ears are large, ridged, always moving."
+    }
+  },
+  "reptilian": {
+    "id": "reptilian",
+    "name": "Reptilian",
+    "description": "Cold blood, old patience. Your flesh knits where others scar.",
+    "activation": "active",
+    "effect": "heal",
+    "base_power": 5,
+    "power_per_mp": 4,
+    "duration_secs": 60,
+    "messages": {
+      "self": "Your skin ripples; torn flesh seals over in fresh scales.",
+      "room": "{name}'s wounds close beneath a sheen of new scales."
+    }
+  },
+  "corpse_eater": {
+    "id": "corpse_eater",
+    "name": "Corpse Eater",
+    "description": "Nothing in the Zone is too far gone to be a meal. Rot, carrion, the unspeakable — your gut welcomes it all.",
+    "activation": "passive",
+    "granted_traits": ["mutation_corpse_eater"],
+    "messages": {
+      "examine": "Their teeth are stained dark, and they smell faintly of carrion."
+    }
+  },
+  "rot_eater": {
+    "id": "rot_eater",
+    "name": "Rot-Eater",
+    "description": "The Rot doesn't burn you — it feeds you. You walk the hotspots like a garden and come out stronger.",
+    "activation": "passive",
+    "granted_traits": ["mutation_rot_eater"],
+    "messages": {
+      "examine": "Something about them thrives where everything else withers."
+    }
+  },
+  "parasite": {
+    "id": "parasite",
+    "name": "Parasite",
+    "description": "A touch, a moment, and what's theirs becomes yours. Life flows along the thin proboscis hidden in your palm.",
+    "activation": "active",
+    "effect": "drain",
+    "damage_type": "bite",
+    "base_power": 3,
+    "power_per_mp": 2,
+    "messages": {
+      "self": "You press your palm to {target} and DRINK.",
+      "room": "{name} lays a hand on {target}, and {target} withers.",
+      "target": "{name}'s touch pulls the life out of you!"
+    }
+  }
+}

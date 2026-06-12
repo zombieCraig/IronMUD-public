@@ -260,6 +260,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     flags: args?.flags,
                     contextual_commands: args?.contextual_commands,
                     entry_gate: args?.entry_gate,
+                    rot_level: args?.rot_level,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(room, null, 2) }],
@@ -277,6 +278,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     contextual_commands: args?.contextual_commands,
                     entry_gate: args?.entry_gate,
                     clear_entry_gate: args?.clear_entry_gate,
+                    rot_level: args?.rot_level,
                 });
                 return {
                     content: [{ type: "text", text: JSON.stringify(room, null, 2) }],

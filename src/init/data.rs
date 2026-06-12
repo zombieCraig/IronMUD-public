@@ -263,6 +263,24 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
         }
     }
 
+    // Load mutation definitions (Mutant: Year Zero-style powers for the
+    // mutant race). Missing file is fine — mutants just roll nothing.
+    let mutations_path = "scripts/data/mutations.json";
+    match std::fs::read_to_string(mutations_path) {
+        Ok(content) => match serde_json::from_str::<HashMap<String, crate::types::MutationDefinition>>(&content) {
+            Ok(defs) => {
+                info!("Loaded {} mutation definitions from {}", defs.len(), mutations_path);
+                world.mutation_definitions = defs;
+            }
+            Err(e) => {
+                error!("Failed to parse {}: {}", mutations_path, e);
+            }
+        },
+        Err(_) => {
+            info!("No mutation definitions file found at {}", mutations_path);
+        }
+    }
+
     // Overlay admin-authored starting kit overrides (admin loadout race) on top
     // of the JSON-loaded race definitions. Loadouts for race ids no longer
     // present in JSON are skipped (and stay in the tree until the race returns).

@@ -14,6 +14,7 @@ Detailed OLC editor documentation. Start with [Builder Guide](../builder-guide.m
 | `dialogue-trees.md` | Branching NPC dialogue: nodes, conditions, effects, MCP authoring |
 | `quests.md` | Quest authoring (`quedit`): objectives, rewards, gates, dialogue hooks |
 | `vampire-progression.md` | Sire-NPC + clan-embrace quest plumbing for thinblood progression |
+| `mutant-progression.md` | Mutation Points, misfires, and the Rot — room contamination + mutant content plumbing |
 | `languages.md` | Language definitions, garbling, NPC `spoken_language` |
 | `achievements.md` | Achievement editor (achedit), criteria and rewards |
 | `custom-skills.md` | Builder-published "fake" skills (e.g. `dancing_queen`): registry + DG read/write + item affects |

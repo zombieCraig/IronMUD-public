@@ -240,6 +240,22 @@ pub struct CharacterData {
     /// `crate::types::CyberwareState`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cyberware_state: Option<crate::types::CyberwareState>,
+    /// Mutant state. None = baseline (default). Some = mutant (race
+    /// "mutant"): Mutation Point pool, owned mutations, misfire deformities.
+    /// See `crate::types::MutantState`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mutant_state: Option<crate::types::MutantState>,
+    // The Rot: zone contamination, tracked on EVERY character regardless of
+    // race (world plumbing). Gained in rotted rooms, shed slowly in clean
+    // ones; shed points sometimes become permanent. Mutants resist it.
+    #[serde(default)]
+    pub rot_points: i32,
+    #[serde(default)]
+    pub permanent_rot_points: i32,
+    #[serde(default)]
+    pub last_rot_gain_time: i64,
+    #[serde(default)]
+    pub last_rot_decay_time: i64,
     // Property rental system
     #[serde(default)]
     pub active_leases: HashMap<Uuid, Uuid>, // area_id -> lease_id (one per area)

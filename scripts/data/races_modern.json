@@ -82,7 +82,7 @@
   "mutant": {
     "id": "mutant",
     "name": "Mutant",
-    "description": "Survivors of toxic exposure whose altered DNA grants unnatural resilience. Their appearance marks them as outsiders.",
+    "description": "Children of the Zone, born of the old world's poison. Each mutant carries one power rolled into their blood at birth — acid glands, beast-shift, chitin plate, stranger things — and that power feeds on pain: push your broken body to its limits and the mutation grows strong. Lean on it too hard and it misfires, twisting flesh and burning out what was human. The Rot that kills everyone else only half-touches you. The Zone marked you as its own.",
     "stat_modifiers": {
       "con": 2,
       "str": 1,
@@ -93,17 +93,27 @@
       "poison": 25,
       "acid": 15
     },
-    "passive_abilities": [],
-    "active_abilities": [
+    "passive_abilities": [
       {
-        "id": "regenerate",
-        "name": "Regenerate",
-        "description": "Channel mutated biology to rapidly knit wounds closed.",
-        "stamina_cost": 30,
-        "mana_cost": 0,
-        "cooldown_secs": 300
+        "id": "born_mutation",
+        "name": "Born of the Zone",
+        "description": "One mutation, rolled at birth — no choice, no reroll. New powers come only when an overloaded misfire tears another one loose. See 'mutate'.",
+        "effects": {}
+      },
+      {
+        "id": "mutation_points",
+        "name": "Mutation Points",
+        "description": "The power runs on flesh. 'push' trades your own HP for Mutation Points (and a 30s exertion surge); mutation powers spend MP, and every point spent adds a misfire die. MP never regenerates on its own.",
+        "effects": {}
+      },
+      {
+        "id": "rot_tolerance",
+        "name": "Rot Tolerance",
+        "description": "The Rot gathers in you at half the rate and bites at half the depth it does in baseline stock. Rot-Eater mutants drink it like water.",
+        "effects": {}
       }
     ],
+    "active_abilities": [],
     "available": true,
     "starting_languages": {
       "street_slang": 10

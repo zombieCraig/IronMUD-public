@@ -112,6 +112,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             winter_desc: None,
             dynamic_desc: None,
             water_type: crate::WaterType::None,
+            rot_level: 0,
             catch_table: Vec::new(),
             is_property_template: false,
             property_template_id: None,
@@ -1439,6 +1440,19 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 output.push('\n');
             }
 
+            // The Rot: ambient contamination warning (always sensed, even in
+            // the dark — it's a taste, not a sight).
+            if room.rot_level > 0 {
+                let rot_line = match room.rot_level {
+                    1 => "The air here tastes faintly of rust and rot.",
+                    2 => "The Rot hangs heavy here; every breath stings going down.",
+                    _ => "This is a Rot hotspot. Your skin prickles and weeps where the air touches it.",
+                };
+                output.push('\n');
+                output.push_str(&color(rot_line, ANSI_YELLOW));
+                output.push('\n');
+            }
+
             // Mobiles in room (green) - show generic if dark/blind
             if let Ok(mobiles) = cloned_db.get_mobiles_in_room(&room_uuid) {
                 let visible_mobiles: Vec<_> = mobiles
@@ -1980,6 +1994,29 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             false
         },
     );
+
+    // set_room_rot_level(room_id, level) -> bool (clamped 0-3; The Rot)
+    let cloned_db = db.clone();
+    engine.register_fn("set_room_rot_level", move |room_id: String, level: i64| -> bool {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&room_id) {
+            if let Ok(Some(mut room)) = cloned_db.get_room_data(&uuid) {
+                room.rot_level = (level as i32).clamp(0, crate::types::ROT_LEVEL_MAX);
+                return cloned_db.save_room_data(room).is_ok();
+            }
+        }
+        false
+    });
+
+    // get_room_rot_level(room_id) -> i64 (0 = clean .. 3 = rot hotspot)
+    let cloned_db = db.clone();
+    engine.register_fn("get_room_rot_level", move |room_id: String| -> i64 {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&room_id) {
+            if let Ok(Some(room)) = cloned_db.get_room_data(&uuid) {
+                return room.rot_level as i64;
+            }
+        }
+        0
+    });
 
     // get_room_living_capacity(room_id) -> i64
     let cloned_db = db.clone();

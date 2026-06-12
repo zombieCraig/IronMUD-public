@@ -18,6 +18,7 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            rot_level?: undefined;
             entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
@@ -59,6 +60,7 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            rot_level?: undefined;
             entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
@@ -182,6 +184,10 @@ export declare const roomToolDefinitions: ({
                     required: string[];
                 };
             };
+            rot_level: {
+                type: string;
+                description: string;
+            };
             entry_gate: {
                 type: string;
                 description: string;
@@ -278,6 +284,10 @@ export declare const roomToolDefinitions: ({
                 properties?: undefined;
             };
             living_capacity: {
+                type: string;
+                description: string;
+            };
+            rot_level: {
                 type: string;
                 description: string;
             };
@@ -393,6 +403,7 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            rot_level?: undefined;
             entry_gate?: undefined;
             living_capacity?: undefined;
             clear_entry_gate?: undefined;
@@ -443,6 +454,7 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            rot_level?: undefined;
             entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
@@ -487,6 +499,7 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            rot_level?: undefined;
             entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
@@ -563,6 +576,7 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            rot_level?: undefined;
             entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
@@ -602,6 +616,7 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            rot_level?: undefined;
             entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
@@ -668,6 +683,7 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            rot_level?: undefined;
             entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
@@ -707,6 +723,7 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            rot_level?: undefined;
             entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
@@ -757,6 +774,7 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            rot_level?: undefined;
             entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;
@@ -801,6 +819,7 @@ export declare const roomToolDefinitions: ({
             vnum?: undefined;
             flags?: undefined;
             contextual_commands?: undefined;
+            rot_level?: undefined;
             entry_gate?: undefined;
             id?: undefined;
             living_capacity?: undefined;

@@ -725,6 +725,19 @@ fn complete_login(connection_id, char_data) {
         send_client_message(connection_id, "You are a replicant: your body never tires, but your mind keeps score. Watch your Resolve.");
     }
 
+    // Migration: mutants created before the MYZ rework (Jun 2026) get their
+    // mutation rolled on first login after the change.
+    if char_data.race == "mutant" && !is_pc_mutant(connection_id) {
+        let rolled = init_pc_mutant(connection_id);
+        char_data = get_character_data(char_data.name);
+        send_client_message(connection_id, "\x1b[1;32mSomething shifts in your blood, like it was waiting for permission. The Zone has marked you.\x1b[0m");
+        if rolled != "" {
+            let info = get_mutation_info(rolled);
+            let rolled_name = if info.len() > 0 { info["name"] } else { rolled };
+            send_client_message(connection_id, "\x1b[1;33mYour mutation: " + rolled_name + ".\x1b[0m Type 'mutate' to flex it — and 'push' to feed it.");
+        }
+    }
+
     // Clear unconscious state from previous session
     set_unconscious(char_data.name, false);
     if char_data.hp <= 0 {

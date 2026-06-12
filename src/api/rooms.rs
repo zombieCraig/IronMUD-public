@@ -57,6 +57,9 @@ pub struct CreateRoomRequest {
     /// open to all entrants.
     #[serde(default)]
     pub entry_gate: Option<RoomEntryGate>,
+    /// The Rot contamination level (0 clean .. 3 hotspot); clamped.
+    #[serde(default)]
+    pub rot_level: Option<i32>,
 }
 
 #[derive(Deserialize)]
@@ -137,6 +140,9 @@ pub struct UpdateRoomRequest {
     pub area_id: Option<String>,
     pub flags: Option<RoomFlagsRequest>,
     pub living_capacity: Option<i32>,
+    /// The Rot contamination level (0 clean .. 3 hotspot); clamped.
+    #[serde(default)]
+    pub rot_level: Option<i32>,
     #[serde(default)]
     pub contextual_commands: Option<Vec<ContextualCommandRequest>>,
     /// `Some(gate)` replaces the room's entry gate (full replacement —
@@ -531,6 +537,7 @@ async fn create_room(
         winter_desc: None,
         dynamic_desc: None,
         water_type: WaterType::default(),
+        rot_level: 0,
         is_property_template: false,
         is_template_entrance: false,
         property_lease_id: None,
@@ -564,6 +571,9 @@ async fn create_room(
 
     if room.flags.liveable && room.living_capacity <= 0 {
         room.living_capacity = 1;
+    }
+    if let Some(rot) = req.rot_level {
+        room.rot_level = rot.clamp(0, crate::types::ROT_LEVEL_MAX);
     }
 
     state
@@ -731,6 +741,9 @@ async fn update_room(
     }
     if let Some(cap) = req.living_capacity {
         room.living_capacity = cap.max(0);
+    }
+    if let Some(rot) = req.rot_level {
+        room.rot_level = rot.clamp(0, crate::types::ROT_LEVEL_MAX);
     }
     if let Some(list) = req.contextual_commands {
         room.contextual_commands = list

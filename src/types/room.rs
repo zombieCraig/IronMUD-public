@@ -40,6 +40,11 @@ pub struct RoomData {
     // Fishing system
     #[serde(default)]
     pub water_type: WaterType,
+    /// The Rot: ambient contamination level. 0 = clean (default), 1 = weak
+    /// rot, 2 = heavy rot, 3 = rot hotspot. Characters lingering here gain
+    /// rot points on the rot tick. Builder-set via `redit rot <0-3>`.
+    #[serde(default)]
+    pub rot_level: i32,
     #[serde(default)]
     pub catch_table: Vec<CatchEntry>,
     // Property template fields

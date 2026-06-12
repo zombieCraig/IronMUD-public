@@ -71,6 +71,8 @@ export interface Room {
   // Migrant housing
   living_capacity?: number;
   residents?: string[];
+  /** The Rot contamination level: 0 clean, 1 weak, 2 heavy, 3 hotspot. */
+  rot_level?: number;
   /** Builder-declared verbs the room exposes (TAB completion + look hints). */
   contextual_commands?: ContextualCommand[];
   /** Conditional entry gate. Absent = no gate (anyone may enter). */
@@ -601,6 +603,8 @@ export interface CreateRoomRequest {
   entry_gate?: RoomEntryGate;
   /** Update-only: when true, removes the room's entry gate entirely. */
   clear_entry_gate?: boolean;
+  /** The Rot contamination level (0 clean .. 3 hotspot); clamped server-side. */
+  rot_level?: number;
 }
 
 export interface CreateItemRequest {

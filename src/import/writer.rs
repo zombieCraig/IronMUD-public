@@ -242,6 +242,7 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
             winter_desc: None,
             dynamic_desc: None,
             water_type: Default::default(),
+            rot_level: 0,
             catch_table: Vec::new(),
             is_property_template: false,
             property_template_id: None,

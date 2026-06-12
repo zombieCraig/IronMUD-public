@@ -53,7 +53,11 @@
   },
   "push": {
     "access": "user",
-    "description": "Replicant only — push past engineered limits for a 30s combat surge; always costs Resolve, never the body"
+    "description": "Replicant/mutant only — push past your limits for a 30s combat surge; costs a replicant Resolve, costs a mutant flesh (and feeds them Mutation Points)"
+  },
+  "mutate": {
+    "access": "user",
+    "description": "Mutant only — unleash a mutation power (mutate <power> [target] [mp]; more MP = stronger but riskier, misfires maim)"
   },
   "attune": {
     "access": "user",

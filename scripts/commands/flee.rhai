@@ -74,6 +74,13 @@ fn run_command(args, connection_id) {
     // Calculate flee chance
     let flee_chance = calculate_flee_chance(char.name, target.target_id);
 
+    // Trait-driven flee bonus (e.g. the Frog Legs mutation: +25).
+    let flee_bonus = get_trait_effect_sum(char.name, "flee_bonus");
+    if flee_bonus != 0 {
+        flee_chance += flee_bonus;
+        if flee_chance > 95 { flee_chance = 95; }
+    }
+
     // Roll d100
     let roll = roll_d100();
 

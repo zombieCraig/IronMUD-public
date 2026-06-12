@@ -269,6 +269,7 @@ async fn test_character_system_lifecycle() -> Result<()> {
         trait_definitions: std::collections::HashMap::new(),
         race_suggestions: Vec::new(),
         race_definitions: std::collections::HashMap::new(),
+        mutation_definitions: std::collections::HashMap::new(),
         language_definitions: std::collections::HashMap::new(),
         recipes: std::collections::HashMap::new(),
         transports: std::collections::HashMap::new(),
@@ -1593,6 +1594,7 @@ mod migration_tests {
             winter_desc: None,
             dynamic_desc: None,
             water_type: WaterType::None,
+            rot_level: 0,
             catch_table: Vec::new(),
             is_property_template: false,
             property_template_id: None,
@@ -4704,6 +4706,7 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
             winter_desc: None,
             dynamic_desc: None,
             water_type: WaterType::None,
+            rot_level: 0,
             catch_table: Vec::new(),
             is_property_template: false,
             property_template_id: None,
@@ -5834,6 +5837,7 @@ fn stay_zone_test_room(area_id: Option<uuid::Uuid>) -> ironmud::types::RoomData 
         winter_desc: None,
         dynamic_desc: None,
         water_type: WaterType::None,
+        rot_level: 0,
         catch_table: Vec::new(),
         is_property_template: false,
         property_template_id: None,
@@ -8377,6 +8381,7 @@ fn test_contextual_commands_round_trip() {
             winter_desc: None,
             dynamic_desc: None,
             water_type: WaterType::None,
+            rot_level: 0,
             catch_table: Vec::new(),
             is_property_template: false,
             property_template_id: None,
@@ -9691,6 +9696,7 @@ fn test_apply_world_preset_switches_settings_and_reloads() {
             trait_definitions: HashMap::new(),
             race_suggestions: Vec::new(),
             race_definitions: HashMap::new(),
+            mutation_definitions: HashMap::new(),
             language_definitions: HashMap::new(),
             recipes: HashMap::new(),
             transports: HashMap::new(),
@@ -9846,6 +9852,7 @@ fn vampire_test_room(title: &str, indoors: bool) -> ironmud::types::RoomData {
         winter_desc: None,
         dynamic_desc: None,
         water_type: WaterType::None,
+        rot_level: 0,
         catch_table: Vec::new(),
         is_property_template: false,
         property_template_id: None,
@@ -11581,6 +11588,7 @@ fn make_test_room_with_gate(db: &ironmud::db::Db, gate: Option<ironmud::types::R
         winter_desc: None,
         dynamic_desc: None,
         water_type: WaterType::None,
+        rot_level: 0,
         catch_table: Vec::new(),
         is_property_template: false,
         property_template_id: None,
@@ -13044,4 +13052,401 @@ fn test_replicant_with_cyberware_no_collision() {
         .filter(|b| b.effect_type == EffectType::Frenzy)
         .count();
     assert_eq!(frenzy_count, 1, "no double-stamp");
+}
+
+// ---------------------------------------------------------------------------
+// Mutant race (Mutant: Year Zero): MP/push/misfire economy + the world Rot.
+// ---------------------------------------------------------------------------
+
+fn build_test_mutant(name: &str) -> ironmud::types::CharacterData {
+    // Built via serde so missing fields take serde defaults — proves
+    // mutant_state / rot fields default correctly on legacy saves.
+    serde_json::from_value(serde_json::json!({
+        "name": name,
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+    }))
+    .expect("build character")
+}
+
+#[test]
+fn test_mutant_state_defaults_and_persists() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+    let mut char = build_test_mutant("TestMutant");
+    assert!(char.mutant_state.is_none(), "mutant_state defaults to None");
+    assert_eq!(char.rot_points, 0, "rot_points default 0");
+    assert_eq!(char.permanent_rot_points, 0, "permanent rot default 0");
+
+    let mut state = ironmud::types::MutantState::newly_mutated(1_000);
+    assert_eq!(state.mp, 10, "fresh MP pool is full");
+    assert_eq!(state.max_mp, 10);
+    assert!(state.mutations.is_empty());
+    assert!(state.deformities.is_empty());
+    assert_eq!(state.mutation_time, Some(1_000));
+    state.mutations.push("acid_spit".to_string());
+
+    char.mutant_state = Some(state);
+    char.rot_points = 3;
+    char.permanent_rot_points = 1;
+    db.save_character_data(char.clone()).expect("save");
+
+    let loaded = db.get_character_data(&char.name).expect("read").expect("present");
+    let m = loaded.mutant_state.expect("state persists");
+    assert_eq!(m.mp, 10);
+    assert!(m.has_mutation("acid_spit"));
+    assert!(!m.has_mutation("sonar"));
+    assert_eq!(loaded.rot_points, 3);
+    assert_eq!(loaded.permanent_rot_points, 1);
+}
+
+#[test]
+fn test_races_modern_mutant_mechanics() {
+    let raw = std::fs::read_to_string("scripts/data/races_modern.json").expect("read races_modern.json");
+    let defs: std::collections::HashMap<String, ironmud::types::RaceDefinition> =
+        serde_json::from_str(&raw).expect("parse races_modern.json");
+    let mutant = defs.get("mutant").expect("mutant race present");
+    assert!(mutant.available, "mutant stays available");
+    assert!(
+        !mutant.active_abilities.iter().any(|a| a.id == "regenerate"),
+        "regenerate racial active replaced by the Reptilian mutation"
+    );
+    let passive_ids: Vec<&str> = mutant.passive_abilities.iter().map(|p| p.id.as_str()).collect();
+    assert!(passive_ids.contains(&"born_mutation"), "born_mutation lore passive");
+    assert!(passive_ids.contains(&"mutation_points"), "mutation_points lore passive");
+    assert!(passive_ids.contains(&"rot_tolerance"), "rot_tolerance lore passive");
+}
+
+#[test]
+fn test_mutations_json_valid() {
+    let raw = std::fs::read_to_string("scripts/data/mutations.json").expect("read mutations.json");
+    let defs: std::collections::HashMap<String, ironmud::types::MutationDefinition> =
+        serde_json::from_str(&raw).expect("parse mutations.json");
+    assert_eq!(defs.len(), 11, "11 mutations in v1");
+
+    let mut actives = 0;
+    let mut passives = 0;
+    for (id, def) in &defs {
+        assert_eq!(&def.id, id, "id field matches key for {}", id);
+        match def.activation.as_str() {
+            "active" => actives += 1,
+            "passive" => passives += 1,
+            other => panic!("mutation {} has unknown activation {}", id, other),
+        }
+        if let Some(dt) = &def.damage_type {
+            assert!(
+                ironmud::types::DamageType::from_str(dt).is_some(),
+                "mutation {} has unknown damage_type {}",
+                id,
+                dt
+            );
+        }
+        for pb in &def.passive_buffs {
+            assert!(
+                ironmud::types::EffectType::from_str(&pb.effect).is_some(),
+                "mutation {} has unknown passive buff effect {}",
+                id,
+                pb.effect
+            );
+        }
+    }
+    assert_eq!(actives, 6, "6 active mutations");
+    assert_eq!(passives, 5, "5 passive mutations");
+
+    // Every granted trait must exist in traits.json (so score/effects render).
+    let traits_raw = std::fs::read_to_string("scripts/data/traits.json").expect("read traits.json");
+    let traits: serde_json::Value = serde_json::from_str(&traits_raw).expect("parse traits.json");
+    for def in defs.values() {
+        for t in &def.granted_traits {
+            assert!(
+                traits.get(t).is_some(),
+                "granted trait {} (mutation {}) missing from traits.json",
+                t,
+                def.id
+            );
+        }
+    }
+}
+
+fn test_mutation_def(id: &str) -> ironmud::types::MutationDefinition {
+    serde_json::from_value(serde_json::json!({
+        "id": id,
+        "name": id,
+        "activation": "active",
+        "effect": "damage",
+        "base_power": 4,
+        "power_per_mp": 3,
+    }))
+    .expect("build mutation def")
+}
+
+#[test]
+fn test_push_math() {
+    use ironmud::types::{push_hp_cost, push_severity};
+    assert_eq!(push_severity(1), 1);
+    assert_eq!(push_severity(3), 3);
+    assert_eq!(push_severity(99), 3, "clamped");
+    // 5/10/15% of max HP.
+    assert_eq!(push_hp_cost(100, 1), 5);
+    assert_eq!(push_hp_cost(100, 2), 10);
+    assert_eq!(push_hp_cost(100, 3), 15);
+    assert_eq!(push_hp_cost(3, 1), 1, "floors at 1");
+}
+
+#[test]
+fn test_mutant_misfire_table() {
+    use ironmud::mutant::{ActivationDice, activate_mutation};
+    use ironmud::types::MutantState;
+
+    let def = test_mutation_def("acid_spit");
+    let all: Vec<String> = vec!["acid_spit".into(), "sonar".into(), "manbeast".into()];
+
+    // No 1s rolled => no misfire; MP spent; power scales.
+    let mut ch = build_test_mutant("NoMisfire");
+    let mut st = MutantState::newly_mutated(0);
+    st.mutations.push("acid_spit".into());
+    ch.mutant_state = Some(st);
+    let dice = ActivationDice {
+        misfire_dice: vec![4, 5, 6],
+        severity_roll: 6,
+        trauma_roll: 6,
+        pick_roll: 0,
+    };
+    let out = activate_mutation(&mut ch, &def, 3, &all, &dice);
+    assert!(!out.misfire);
+    assert_eq!(out.power, 4 + 3 * 3);
+    assert_eq!(out.mp_left, 7);
+    assert_eq!(ch.mutant_state.as_ref().unwrap().mp, 7);
+
+    // Severity 1-2: power loss — MP zeroed.
+    let mut ch = build_test_mutant("PowerLoss");
+    let mut st = MutantState::newly_mutated(0);
+    st.mutations.push("acid_spit".into());
+    ch.mutant_state = Some(st);
+    let dice = ActivationDice {
+        misfire_dice: vec![1],
+        severity_roll: 1,
+        trauma_roll: 4,
+        pick_roll: 0,
+    };
+    let out = activate_mutation(&mut ch, &def, 1, &all, &dice);
+    assert!(out.misfire);
+    assert_eq!(out.misfire_kind, Some("power_loss"));
+    assert_eq!(ch.mutant_state.as_ref().unwrap().mp, 0);
+
+    // Severity 3-4: self trauma — damage = trauma_roll + mp_spent, HP floors at 1.
+    let mut ch = build_test_mutant("SelfTrauma");
+    ch.hp = 5;
+    let mut st = MutantState::newly_mutated(0);
+    st.mutations.push("acid_spit".into());
+    ch.mutant_state = Some(st);
+    let dice = ActivationDice {
+        misfire_dice: vec![1, 2],
+        severity_roll: 3,
+        trauma_roll: 6,
+        pick_roll: 0,
+    };
+    let out = activate_mutation(&mut ch, &def, 2, &all, &dice);
+    assert_eq!(out.misfire_kind, Some("self_trauma"));
+    assert_eq!(out.misfire_damage, 6 + 2);
+    assert_eq!(ch.hp, 1, "self trauma floors at 1 HP");
+
+    // Severity 5: deformity appended.
+    let mut ch = build_test_mutant("Deformity");
+    let mut st = MutantState::newly_mutated(0);
+    st.mutations.push("acid_spit".into());
+    ch.mutant_state = Some(st);
+    let dice = ActivationDice {
+        misfire_dice: vec![1],
+        severity_roll: 5,
+        trauma_roll: 1,
+        pick_roll: 4,
+    };
+    let out = activate_mutation(&mut ch, &def, 1, &all, &dice);
+    assert_eq!(out.misfire_kind, Some("deformity"));
+    let got = out.deformity.expect("deformity granted");
+    assert_eq!(ch.mutant_state.as_ref().unwrap().deformities, vec![got]);
+
+    // Severity 6: overload — permanent stat loss + a new mutation.
+    let mut ch = build_test_mutant("Overload");
+    let mut st = MutantState::newly_mutated(0);
+    st.mutations.push("acid_spit".into());
+    ch.mutant_state = Some(st);
+    let stat_sum_before = ch.stat_str + ch.stat_dex + ch.stat_con + ch.stat_int + ch.stat_wis + ch.stat_cha;
+    let dice = ActivationDice {
+        misfire_dice: vec![1],
+        severity_roll: 6,
+        trauma_roll: 1,
+        pick_roll: 12,
+    };
+    let out = activate_mutation(&mut ch, &def, 1, &all, &dice);
+    assert_eq!(out.misfire_kind, Some("overload"));
+    let new_mut = out.new_mutation.expect("overload grants a new mutation");
+    assert!(new_mut == "sonar" || new_mut == "manbeast");
+    assert!(ch.mutant_state.as_ref().unwrap().has_mutation(&new_mut));
+    assert!(out.stat_lost.is_some(), "a stat burned out");
+    let stat_sum_after = ch.stat_str + ch.stat_dex + ch.stat_con + ch.stat_int + ch.stat_wis + ch.stat_cha;
+    assert_eq!(stat_sum_after, stat_sum_before - 1);
+
+    // Overload with every mutation owned: max_mp deepens instead.
+    let mut ch = build_test_mutant("OverloadFull");
+    let mut st = MutantState::newly_mutated(0);
+    st.mutations = all.clone();
+    ch.mutant_state = Some(st);
+    let dice = ActivationDice {
+        misfire_dice: vec![1],
+        severity_roll: 6,
+        trauma_roll: 1,
+        pick_roll: 3,
+    };
+    let out = activate_mutation(&mut ch, &def, 1, &all, &dice);
+    assert!(out.max_mp_increased);
+    assert!(out.new_mutation.is_none());
+    assert_eq!(ch.mutant_state.as_ref().unwrap().max_mp, 11);
+}
+
+#[test]
+fn test_mutant_passive_reassertion() {
+    use ironmud::mutant::{MUTATION_BUFF_SOURCE, ensure_passive_effects};
+    use ironmud::types::{EffectType, MutantState, MutationDefinition};
+
+    let def: MutationDefinition = serde_json::from_value(serde_json::json!({
+        "id": "insectoid",
+        "name": "Insectoid",
+        "activation": "passive",
+        "passive_buffs": [{"effect": "armor_class_boost", "magnitude": 2}],
+        "granted_traits": ["mutation_test_trait"],
+    }))
+    .expect("build def");
+    let mut defs = std::collections::HashMap::new();
+    defs.insert("insectoid".to_string(), def);
+
+    let mut ch = build_test_mutant("Passive");
+    let mut st = MutantState::newly_mutated(0);
+    st.mutations.push("insectoid".into());
+    ch.mutant_state = Some(st);
+
+    assert!(ensure_passive_effects(&mut ch, &defs), "first pass stamps");
+    let buff = ch
+        .active_buffs
+        .iter()
+        .find(|b| b.effect_type == EffectType::ArmorClassBoost && b.source == MUTATION_BUFF_SOURCE)
+        .expect("permanent buff stamped");
+    assert_eq!(buff.remaining_secs, -1, "permanent");
+    assert_eq!(buff.magnitude, 2);
+    assert!(ch.traits.iter().any(|t| t == "mutation_test_trait"));
+
+    assert!(!ensure_passive_effects(&mut ch, &defs), "idempotent");
+
+    // A temporary same-type buff clobber is healed on the next pass.
+    ch.active_buffs.retain(|b| b.source != MUTATION_BUFF_SOURCE);
+    assert!(ensure_passive_effects(&mut ch, &defs), "re-stamps after clobber");
+}
+
+#[test]
+fn test_room_rot_level_defaults() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+    // Legacy room JSON without the field parses to 0.
+    let room: ironmud::types::RoomData = serde_json::from_value(serde_json::json!({
+        "id": uuid::Uuid::new_v4(),
+        "title": "Legacy",
+        "description": "",
+        "exits": {},
+        "flags": {},
+        "extra_descs": [],
+        "vnum": null,
+        "area_id": null,
+        "triggers": [],
+        "doors": {},
+    }))
+    .expect("parse legacy room");
+    assert_eq!(room.rot_level, 0, "legacy rooms are rot-free");
+
+    let mut room = room;
+    room.rot_level = 3;
+    db.save_room_data(room.clone()).expect("save");
+    let loaded = db.get_room_data(&room.id).expect("read").expect("present");
+    assert_eq!(loaded.rot_level, 3, "rot level persists");
+}
+
+#[test]
+fn test_rot_gain_decay_and_permanent() {
+    use ironmud::mutant::{RotTickOutcome, apply_rot_tick_to_character};
+    use ironmud::types::{MutantState, rot_gain_interval_secs};
+
+    // Gain cadence per level + mutant divisor.
+    assert_eq!(rot_gain_interval_secs(1, false), Some(300));
+    assert_eq!(rot_gain_interval_secs(2, false), Some(120));
+    assert_eq!(rot_gain_interval_secs(3, false), Some(60));
+    assert_eq!(rot_gain_interval_secs(1, true), Some(600), "mutants gain at half rate");
+    assert_eq!(rot_gain_interval_secs(0, false), None);
+
+    // Cold clock in a rot room: starts the clock, no instant back-charge.
+    let mut ch = build_test_mutant("RotStart");
+    let out = apply_rot_tick_to_character(&mut ch, 1, 10_000, &[6; 8], 99);
+    assert_eq!(out, RotTickOutcome::ClockStarted);
+    assert_eq!(ch.rot_points, 0);
+
+    // Due gain: +1 rot point, damage roll counts 1s over TOTAL rot.
+    ch.hp = 100;
+    ch.permanent_rot_points = 2;
+    ch.last_rot_gain_time = 10_000 - 300;
+    let out = apply_rot_tick_to_character(&mut ch, 1, 10_000, &[1, 1, 6, 6], 99);
+    assert_eq!(out, RotTickOutcome::Gained(2), "two 1s over total-rot dice = 2 damage");
+    assert_eq!(ch.rot_points, 1);
+    assert_eq!(ch.hp, 98);
+
+    // Mutants halve rot damage.
+    let mut ch = build_test_mutant("RotMutant");
+    ch.hp = 100;
+    ch.mutant_state = Some(MutantState::newly_mutated(0));
+    ch.rot_points = 2;
+    ch.last_rot_gain_time = 10_000 - 600;
+    let out = apply_rot_tick_to_character(&mut ch, 1, 10_000, &[1, 1, 1, 6], 99);
+    assert_eq!(out, RotTickOutcome::Gained(1), "3 raw damage halves to 1");
+    assert_eq!(ch.hp, 99);
+
+    // Rot damage floors at 1 HP — no tick-death.
+    let mut ch = build_test_mutant("RotFloor");
+    ch.hp = 2;
+    ch.rot_points = 5;
+    ch.last_rot_gain_time = 10_000 - 300;
+    let out = apply_rot_tick_to_character(&mut ch, 1, 10_000, &[1; 6], 99);
+    assert_eq!(out, RotTickOutcome::Gained(6));
+    assert_eq!(ch.hp, 1, "floors at 1");
+
+    // Rot-Eater converts the gain into MP.
+    let mut ch = build_test_mutant("RotEater");
+    let mut st = MutantState::newly_mutated(0);
+    st.mutations.push("rot_eater".into());
+    st.mp = 4;
+    ch.mutant_state = Some(st);
+    ch.last_rot_gain_time = 10_000 - 600;
+    let out = apply_rot_tick_to_character(&mut ch, 1, 10_000, &[1; 4], 99);
+    assert_eq!(out, RotTickOutcome::RotEaterFed);
+    assert_eq!(ch.rot_points, 0, "no rot gained");
+    assert_eq!(ch.mutant_state.as_ref().unwrap().mp, 5, "+1 MP instead");
+
+    // Clean-room decay: shed a point...
+    let mut ch = build_test_mutant("RotDecay");
+    ch.rot_points = 3;
+    ch.last_rot_decay_time = 10_000 - 600;
+    let out = apply_rot_tick_to_character(&mut ch, 0, 10_000, &[], 99);
+    assert_eq!(out, RotTickOutcome::Decayed);
+    assert_eq!(ch.rot_points, 2);
+
+    // ...but a low permanence roll scars it in forever.
+    ch.last_rot_decay_time = 10_000 - 600;
+    let out = apply_rot_tick_to_character(&mut ch, 0, 10_000, &[], 5);
+    assert_eq!(out, RotTickOutcome::DecayedPermanent);
+    assert_eq!(ch.rot_points, 1);
+    assert_eq!(ch.permanent_rot_points, 1, "permanent points never leave");
+
+    // Clean room with no rot: nothing happens.
+    let mut ch = build_test_mutant("RotClean");
+    let out = apply_rot_tick_to_character(&mut ch, 0, 10_000, &[], 0);
+    assert_eq!(out, RotTickOutcome::Nothing);
 }

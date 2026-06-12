@@ -32,6 +32,7 @@ This guide covers creating and editing rooms using IronMUD's Online Creation (OL
 | `area` | `redit area [id\|prefix\|clear]` | Set or clear room area |
 | `zone` | `redit zone [pve\|safe\|pvp\|inherit]` | Set room combat zone |
 | `capacity` | `redit capacity <n>` | Set living capacity (for `liveable` rooms) |
+| `rot` | `redit rot <0-3>` | The Rot contamination level (0=clean, 3=hotspot; see [Building for Mutants](mutant-progression.md)) |
 | `cmd` | `redit cmd <add\|rm\|clear\|list> ...` | Manage per-room contextual commands (see below) |
 | `trigger` | `redit trigger` | List triggers (see [Triggers](triggers.md)) |
 | `door` | `redit door` | Manage doors (see below) |

@@ -278,6 +278,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           entry_gate: args?.entry_gate as
             | import("./types.js").RoomEntryGate
             | undefined,
+          rot_level: args?.rot_level as number | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(room, null, 2) }],
@@ -298,6 +299,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             | import("./types.js").RoomEntryGate
             | undefined,
           clear_entry_gate: args?.clear_entry_gate as boolean | undefined,
+          rot_level: args?.rot_level as number | undefined,
         });
         return {
           content: [{ type: "text", text: JSON.stringify(room, null, 2) }],

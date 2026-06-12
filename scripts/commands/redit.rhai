@@ -174,6 +174,7 @@ fn handle_zone_subcommand(room_id, parts, connection_id) {
 //   water <none|freshwater|saltwater|magical> - Water type for fishing
 //   catch add/remove/list   - Manage fishing catch table
 //   capacity <n>            - Set living capacity (migrant slots)
+//   rot <0-3>               - The Rot contamination level (0=clean..3=hotspot)
 //
 // Trigger Types: enter, exit, look, periodic, on_time_change,
 //                on_weather_change, on_season_change, on_month_change
@@ -916,6 +917,16 @@ fn run_command(args, connection_id) {
             output += "  " + flag_str + "\n";
         }
 
+        // The Rot (only shown when contaminated)
+        let rot_lvl = get_room_rot_level(room.id);
+        if rot_lvl > 0 {
+            let rot_name = "weak rot";
+            if rot_lvl == 2 { rot_name = "heavy rot"; }
+            if rot_lvl == 3 { rot_name = "rot hotspot"; }
+            output += "\n" + olc::c_label("Rot: ", connection_id);
+            output += olc::c_value("" + rot_lvl + " (" + rot_name + ")", connection_id) + "\n";
+        }
+
         // Display residents if this is a liveable room (or has stale residents)
         let resident_count = get_room_resident_count(room.id);
         if flags.liveable || resident_count > 0 {
@@ -1025,6 +1036,8 @@ fn run_command(args, connection_id) {
         output += "  " + cmd_catch + "    - Configure catch table for fishing\n";
         let cmd_capacity = mxp_or(mxp_send("redit capacity", "redit capacity"), "redit capacity", connection_id);
         output += "  " + cmd_capacity + " <n> - Set living capacity (migrant slots; requires liveable flag)\n";
+        let cmd_rot = mxp_or(mxp_send("redit rot", "redit rot"), "redit rot", connection_id);
+        output += "  " + cmd_rot + " <0-3>  - The Rot contamination level (0=clean, 3=hotspot)\n";
         let cmd_delay = mxp_or(mxp_send("redit delay", "redit delay"), "redit delay", connection_id);
         output += "  " + cmd_delay + " <dir> <s> - Slow-exit travel delay in seconds (0 clears)\n";
         let cmd_entry = mxp_or(mxp_send("redit entry", "redit entry"), "redit entry", connection_id);
@@ -1479,6 +1492,24 @@ fn run_command(args, connection_id) {
 
     if subcommand == "vnum" {
         handle_vnum_subcommand(connection_id, room, parts);
+        return;
+    }
+
+    if subcommand == "rot" {
+        if parts.len() < 2 {
+            let current = get_room_rot_level(room.id);
+            send_client_message(connection_id,
+                "Rot level: " + current + " (0=clean, 1=weak rot, 2=heavy rot, 3=rot hotspot)" +
+                "\nUsage: redit rot <0-3>");
+            return;
+        }
+        let lvl = try_parse_int(parts[1]);
+        if lvl == () || lvl < 0 || lvl > 3 {
+            send_client_message(connection_id, "Rot level must be 0-3 (0=clean, 1=weak, 2=heavy, 3=hotspot).");
+            return;
+        }
+        set_room_rot_level(room.id, lvl);
+        send_client_message(connection_id, "Room rot level set to " + lvl + ".");
         return;
     }
 

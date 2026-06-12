@@ -84,6 +84,10 @@ export const roomToolDefinitions = [
                         required: ["verb"],
                     },
                 },
+                rot_level: {
+                    type: "number",
+                    description: "The Rot contamination level (0=clean, 1=weak, 2=heavy, 3=hotspot). Characters lingering here accumulate Rot Points.",
+                },
                 entry_gate: {
                     type: "object",
                     description: "Conditional entry gate. ALL conditions must pass for a character to enter the room. god_mode + build_mode bypass.",
@@ -131,6 +135,10 @@ export const roomToolDefinitions = [
                 living_capacity: {
                     type: "number",
                     description: "Maximum migrants that can reside in this room (requires liveable flag)",
+                },
+                rot_level: {
+                    type: "number",
+                    description: "The Rot contamination level (0=clean, 1=weak, 2=heavy, 3=hotspot)",
                 },
                 contextual_commands: {
                     type: "array",

@@ -205,22 +205,6 @@ pub enum DialogueEffect {
         key: String,
         value: String,
     },
-    /// Install a cyberware item the player is carrying (matched by vnum),
-    /// charging Humanity via the `install_piece` capability and consuming the
-    /// item. No-op-with-message on validation failure (missing foundation, no
-    /// free slots, exclusive clash, incompatible race…). The intended ripperdoc
-    /// flow: the player buys the chrome from the shop, then a dialogue choice
-    /// (gated on `has_item`) installs it.
-    InstallCyberware {
-        vnum: String,
-    },
-    /// Restore Humanity points (`apply_therapy`). Gold pricing lives in the
-    /// shop: gate the choice on a purchasable voucher and pair this with a
-    /// `take_item` on the same choice.
-    CyberwareTherapy {
-        #[serde(default = "default_qty_one")]
-        points: i32,
-    },
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
