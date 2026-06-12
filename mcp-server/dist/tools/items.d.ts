@@ -96,6 +96,13 @@ export declare const itemToolDefinitions: ({
             board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
+            cyber_category?: undefined;
+            cyber_foundation?: undefined;
+            cyber_option_slots?: undefined;
+            cyber_slot_cost?: undefined;
+            cyber_humanity_loss?: undefined;
+            cyber_paired?: undefined;
+            cyber_exclusive_tag?: undefined;
             extra_descs?: undefined;
             on_hit_effects?: undefined;
             id?: undefined;
@@ -173,6 +180,13 @@ export declare const itemToolDefinitions: ({
             board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
+            cyber_category?: undefined;
+            cyber_foundation?: undefined;
+            cyber_option_slots?: undefined;
+            cyber_slot_cost?: undefined;
+            cyber_humanity_loss?: undefined;
+            cyber_paired?: undefined;
+            cyber_exclusive_tag?: undefined;
             extra_descs?: undefined;
             on_hit_effects?: undefined;
             id?: undefined;
@@ -253,6 +267,13 @@ export declare const itemToolDefinitions: ({
             board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
+            cyber_category?: undefined;
+            cyber_foundation?: undefined;
+            cyber_option_slots?: undefined;
+            cyber_slot_cost?: undefined;
+            cyber_humanity_loss?: undefined;
+            cyber_paired?: undefined;
+            cyber_exclusive_tag?: undefined;
             extra_descs?: undefined;
             on_hit_effects?: undefined;
             id?: undefined;
@@ -333,6 +354,13 @@ export declare const itemToolDefinitions: ({
             board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
+            cyber_category?: undefined;
+            cyber_foundation?: undefined;
+            cyber_option_slots?: undefined;
+            cyber_slot_cost?: undefined;
+            cyber_humanity_loss?: undefined;
+            cyber_paired?: undefined;
+            cyber_exclusive_tag?: undefined;
             extra_descs?: undefined;
             on_hit_effects?: undefined;
             id?: undefined;
@@ -786,6 +814,34 @@ export declare const itemToolDefinitions: ({
                 type: string;
                 description: string;
             };
+            cyber_category: {
+                type: string;
+                description: string;
+            };
+            cyber_foundation: {
+                type: string;
+                description: string;
+            };
+            cyber_option_slots: {
+                type: string;
+                description: string;
+            };
+            cyber_slot_cost: {
+                type: string;
+                description: string;
+            };
+            cyber_humanity_loss: {
+                type: string;
+                description: string;
+            };
+            cyber_paired: {
+                type: string;
+                description: string;
+            };
+            cyber_exclusive_tag: {
+                type: string;
+                description: string;
+            };
             extra_descs: {
                 type: string;
                 description: string;
@@ -1290,6 +1346,34 @@ export declare const itemToolDefinitions: ({
                 type: string;
                 description: string;
             };
+            cyber_category: {
+                type: string;
+                description: string;
+            };
+            cyber_foundation: {
+                type: string;
+                description: string;
+            };
+            cyber_option_slots: {
+                type: string;
+                description: string;
+            };
+            cyber_slot_cost: {
+                type: string;
+                description: string;
+            };
+            cyber_humanity_loss: {
+                type: string;
+                description: string;
+            };
+            cyber_paired: {
+                type: string;
+                description: string;
+            };
+            cyber_exclusive_tag: {
+                type: string;
+                description: string;
+            };
             extra_descs: {
                 type: string;
                 description: string;
@@ -1417,6 +1501,13 @@ export declare const itemToolDefinitions: ({
             board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
+            cyber_category?: undefined;
+            cyber_foundation?: undefined;
+            cyber_option_slots?: undefined;
+            cyber_slot_cost?: undefined;
+            cyber_humanity_loss?: undefined;
+            cyber_paired?: undefined;
+            cyber_exclusive_tag?: undefined;
             extra_descs?: undefined;
             on_hit_effects?: undefined;
             room_id?: undefined;
@@ -1500,6 +1591,13 @@ export declare const itemToolDefinitions: ({
             board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
+            cyber_category?: undefined;
+            cyber_foundation?: undefined;
+            cyber_option_slots?: undefined;
+            cyber_slot_cost?: undefined;
+            cyber_humanity_loss?: undefined;
+            cyber_paired?: undefined;
+            cyber_exclusive_tag?: undefined;
             extra_descs?: undefined;
             on_hit_effects?: undefined;
             id?: undefined;
@@ -1600,6 +1698,13 @@ export declare const itemToolDefinitions: ({
             board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
+            cyber_category?: undefined;
+            cyber_foundation?: undefined;
+            cyber_option_slots?: undefined;
+            cyber_slot_cost?: undefined;
+            cyber_humanity_loss?: undefined;
+            cyber_paired?: undefined;
+            cyber_exclusive_tag?: undefined;
             extra_descs?: undefined;
             on_hit_effects?: undefined;
             id?: undefined;
@@ -1680,6 +1785,13 @@ export declare const itemToolDefinitions: ({
             board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
+            cyber_category?: undefined;
+            cyber_foundation?: undefined;
+            cyber_option_slots?: undefined;
+            cyber_slot_cost?: undefined;
+            cyber_humanity_loss?: undefined;
+            cyber_paired?: undefined;
+            cyber_exclusive_tag?: undefined;
             extra_descs?: undefined;
             on_hit_effects?: undefined;
             id?: undefined;
@@ -1768,6 +1880,13 @@ export declare const itemToolDefinitions: ({
             board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
+            cyber_category?: undefined;
+            cyber_foundation?: undefined;
+            cyber_option_slots?: undefined;
+            cyber_slot_cost?: undefined;
+            cyber_humanity_loss?: undefined;
+            cyber_paired?: undefined;
+            cyber_exclusive_tag?: undefined;
             extra_descs?: undefined;
             on_hit_effects?: undefined;
             id?: undefined;
@@ -1851,6 +1970,13 @@ export declare const itemToolDefinitions: ({
             board_max_messages?: undefined;
             container_key_vnum?: undefined;
             world_max_count?: undefined;
+            cyber_category?: undefined;
+            cyber_foundation?: undefined;
+            cyber_option_slots?: undefined;
+            cyber_slot_cost?: undefined;
+            cyber_humanity_loss?: undefined;
+            cyber_paired?: undefined;
+            cyber_exclusive_tag?: undefined;
             extra_descs?: undefined;
             on_hit_effects?: undefined;
             id?: undefined;

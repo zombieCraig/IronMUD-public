@@ -136,6 +136,7 @@ export const areaToolDefinitions = [
                         dirt_floor: { type: "boolean" },
                         property_storage: { type: "boolean" },
                         post_office: { type: "boolean" },
+                        baseline_office: { type: "boolean" },
                         bank: { type: "boolean" },
                         garden: { type: "boolean" },
                         spawn_point: { type: "boolean" },

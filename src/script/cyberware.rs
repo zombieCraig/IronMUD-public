@@ -28,7 +28,7 @@ use rhai::Engine;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-fn now_secs() -> i64 {
+pub(crate) fn now_secs() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -44,7 +44,7 @@ fn err_map(error: &str) -> rhai::Map {
 
 /// Read a race's cyberware affinity from the World. Takes and RELEASES the
 /// World lock — call before locking connections.
-fn race_affinity(state: &SharedState, race: &str) -> CyberwareAffinity {
+pub(crate) fn race_affinity(state: &SharedState, race: &str) -> CyberwareAffinity {
     let world = match state.lock() {
         Ok(w) => w,
         Err(_) => return CyberwareAffinity::Normal,
@@ -58,7 +58,7 @@ fn race_affinity(state: &SharedState, race: &str) -> CyberwareAffinity {
 
 /// Case-insensitive item match: exact UUID, name-contains, or
 /// keyword-starts-with (standard MUD targeting).
-fn item_matches(item: &ItemData, key: &str) -> bool {
+pub(crate) fn item_matches(item: &ItemData, key: &str) -> bool {
     let key_lower = key.to_lowercase();
     if let Ok(u) = uuid::Uuid::parse_str(key) {
         if item.id == u {

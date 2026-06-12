@@ -340,6 +340,9 @@ export declare const areaToolDefinitions: ({
                     post_office: {
                         type: string;
                     };
+                    baseline_office: {
+                        type: string;
+                    };
                     bank: {
                         type: string;
                     };

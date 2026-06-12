@@ -158,6 +158,10 @@ export declare const roomToolDefinitions: ({
                         type: string;
                         description: string;
                     };
+                    baseline_office: {
+                        type: string;
+                        description: string;
+                    };
                 };
             };
             contextual_commands: {

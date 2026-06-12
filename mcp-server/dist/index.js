@@ -499,6 +499,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     board_write_admin_only: args?.board_write_admin_only,
                     board_max_messages: args?.board_max_messages,
                     world_max_count: args?.world_max_count,
+                    cyber_category: args?.cyber_category,
+                    cyber_foundation: args?.cyber_foundation,
+                    cyber_option_slots: args?.cyber_option_slots,
+                    cyber_slot_cost: args?.cyber_slot_cost,
+                    cyber_humanity_loss: args?.cyber_humanity_loss,
+                    cyber_paired: args?.cyber_paired,
+                    cyber_exclusive_tag: args?.cyber_exclusive_tag,
                     on_hit_effects: args?.on_hit_effects,
                 });
                 return {
@@ -526,6 +533,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     "food_nutrition", "food_spoil_duration", "food_effects",
                     "note_content", "board_read_admin_only", "board_write_admin_only", "board_max_messages",
                     "world_max_count", "on_hit_effects",
+                    "cyber_category", "cyber_foundation", "cyber_option_slots", "cyber_slot_cost",
+                    "cyber_humanity_loss", "cyber_paired", "cyber_exclusive_tag",
                 ];
                 for (const field of itemFields) {
                     if (args?.[field] !== undefined) {

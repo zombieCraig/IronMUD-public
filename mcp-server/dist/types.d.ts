@@ -128,6 +128,7 @@ export interface RoomFlags {
     liveable?: boolean;
     soundproof?: boolean;
     notrack?: boolean;
+    baseline_office?: boolean;
 }
 export interface RoomTrigger {
     trigger_type: TriggerType;
@@ -631,6 +632,13 @@ export interface CreateItemRequest {
     board_write_admin_only?: boolean;
     board_max_messages?: number;
     world_max_count?: number;
+    cyber_category?: string;
+    cyber_foundation?: boolean;
+    cyber_option_slots?: number;
+    cyber_slot_cost?: number;
+    cyber_humanity_loss?: number;
+    cyber_paired?: boolean;
+    cyber_exclusive_tag?: string;
     extra_descs?: ExtraDesc[];
     on_hit_effects?: OnHitEffect[];
 }

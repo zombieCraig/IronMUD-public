@@ -69,6 +69,7 @@ export const roomToolDefinitions = [
                         soundproof: { type: "boolean", description: "Blocks shouts from leaking in or out (Circle ROOM_SOUNDPROOF)" },
                         notrack: { type: "boolean", description: "Defeats the track skill in this room (Circle ROOM_NOTRACK)" },
                         no_recall: { type: "boolean", description: "Prevents players from recalling (teleporting) out of this room" },
+                        baseline_office: { type: "boolean", description: "Replicants can take baseline tests here" },
                     },
                 },
                 contextual_commands: {
