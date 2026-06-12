@@ -122,7 +122,7 @@ When attaching shared trigger logic across multiple mobs (behavior packs like vi
 
 | Flag | Effect |
 |------|--------|
-| `no_charm` | Immune to the `charm` spell |
+| `no_charm` | Immune to the `charm` spell. On a shopkeeper, also disables charisma-based price haggling (prices stay flat regardless of buyer charisma) -- see [Shop System](#shop-system). |
 | `no_summon` | Immune to the `summon` spell |
 | `no_sleep` | Immune to the `sleep` spell |
 | `no_blind` | Immune to the `blind` spell |
@@ -270,6 +270,19 @@ Added buy type: armor
 > medit blacksmith shop minvalue 5
 Min buy value set to 5 gold.
 ```
+
+### Charisma Pricing
+
+Buy and sell rates are adjusted by the customer's **active charisma** (base stat
+plus equipment bonuses and temporary buffs). Charisma 10 is neutral; every point
+above shifts prices 2% in the player's favour (cheaper to buy, more paid when
+selling), every point below shifts them against -- capped at ±30%. The price shown
+by `list` already reflects the viewing player's charisma and matches what `buy`
+charges.
+
+To run a shopkeeper who haggles on flat principle, set the `no_charm` flag
+(`medit <id> flag no_charm on`): charisma is ignored and everyone pays the base
+buy/sell rates.
 
 ### Buy Filtering
 

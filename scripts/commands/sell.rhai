@@ -77,7 +77,7 @@ fn run_command(args, connection_id) {
     }
 
     // Calculate price
-    let buy_rate = shopkeeper.shop_buy_rate;
+    let buy_rate = shop_charisma_rate(shopkeeper.shop_buy_rate, get_effective_charisma(char.name), false, shopkeeper.flags.no_charm);
     let price = calculate_buy_price(item.value, buy_rate);
 
     if price <= 0 {
@@ -144,7 +144,7 @@ fn sell_all_items(char, shopkeeper, filter_keyword, connection_id) {
         }
 
         // Calculate price
-        let buy_rate = shopkeeper.shop_buy_rate;
+        let buy_rate = shop_charisma_rate(shopkeeper.shop_buy_rate, get_effective_charisma(char.name), false, shopkeeper.flags.no_charm);
         let price = calculate_buy_price(item.value, buy_rate);
 
         if price <= 0 {

@@ -40,7 +40,7 @@ fn run_command(args, connection_id) {
 }
 
 fn buy_from_shopkeeper(shopkeeper, char, args, connection_id) {
-    let sell_rate = shopkeeper.shop_sell_rate;
+    let sell_rate = shop_charisma_rate(shopkeeper.shop_sell_rate, get_effective_charisma(char.name), true, shopkeeper.flags.no_charm);
 
     // Check if args is a numeric index
     let target_index = try_parse_int(args);
@@ -74,7 +74,7 @@ fn buy_from_shopkeeper(shopkeeper, char, args, connection_id) {
 }
 
 fn handle_buy_by_index(shopkeeper, char, target_index, connection_id) {
-    let sell_rate = shopkeeper.shop_sell_rate;
+    let sell_rate = shop_charisma_rate(shopkeeper.shop_sell_rate, get_effective_charisma(char.name), true, shopkeeper.flags.no_charm);
     let stock = shopkeeper.shop_stock;
     let inventory = get_shop_inventory(shopkeeper.id);
     let current_index = 1;

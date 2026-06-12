@@ -35,7 +35,7 @@ fn run_command(args, connection_id) {
 }
 
 fn show_shopkeeper_list(shopkeeper, char, connection_id) {
-    let sell_rate = shopkeeper.shop_sell_rate;
+    let sell_rate = shop_charisma_rate(shopkeeper.shop_sell_rate, get_effective_charisma(char.name), true, shopkeeper.flags.no_charm);
     let stock = shopkeeper.shop_stock;
     let inventory = get_shop_inventory(shopkeeper.id);
 

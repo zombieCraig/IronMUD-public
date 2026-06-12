@@ -5,6 +5,22 @@ use crate::db::Db;
 use rhai::Engine;
 use std::sync::Arc;
 
+/// Adjust a shop rate by the player's effective charisma.
+/// Returns `base_rate` unchanged when `no_charm` is set. Baseline CHA = 10,
+/// 2% per point, capped at ±30%, floored at SHOP_RATE_MIN (1).
+pub(crate) fn charisma_adjusted_rate(base_rate: i64, effective_cha: i64, player_buying: bool, no_charm: bool) -> i64 {
+    if no_charm {
+        return base_rate;
+    }
+    let modifier_pct = ((effective_cha - 10) * 2).clamp(-30, 30);
+    let signed = if player_buying {
+        100 - modifier_pct
+    } else {
+        100 + modifier_pct
+    };
+    (base_rate * signed / 100).max(1)
+}
+
 /// Register shop-related functions
 pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // ========== Shopkeeper Functions ==========
@@ -188,6 +204,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     engine.register_fn("calculate_sell_price", |base_value: i64, sell_rate: i64| -> i64 {
         base_value * sell_rate / 100
     });
+
+    // shop_charisma_rate(base_rate, effective_cha, player_buying, no_charm) -> i64
+    // Adjust a shop rate by the player's effective charisma (base + gear + buffs).
+    engine.register_fn(
+        "shop_charisma_rate",
+        |base_rate: i64, effective_cha: i64, player_buying: bool, no_charm: bool| -> i64 {
+            charisma_adjusted_rate(base_rate, effective_cha, player_buying, no_charm)
+        },
+    );
 
     // get_shop_buys_types(mobile_id) -> Array of strings
     let cloned_db = db.clone();
@@ -719,4 +744,49 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
             false
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::charisma_adjusted_rate;
+
+    #[test]
+    fn baseline_charisma_leaves_rate_unchanged() {
+        // CHA 10 = no adjustment in either direction.
+        assert_eq!(charisma_adjusted_rate(150, 10, true, false), 150);
+        assert_eq!(charisma_adjusted_rate(50, 10, false, false), 50);
+    }
+
+    #[test]
+    fn high_charisma_helps_both_directions() {
+        // CHA 18 -> 16% better: pay less buying, earn more selling.
+        assert_eq!(charisma_adjusted_rate(150, 18, true, false), 126);
+        assert_eq!(charisma_adjusted_rate(50, 18, false, false), 58);
+    }
+
+    #[test]
+    fn modifier_caps_at_thirty_percent() {
+        // CHA 30 would be +40% uncapped; clamps to ±30%.
+        assert_eq!(charisma_adjusted_rate(150, 30, true, false), 105);
+        assert_eq!(charisma_adjusted_rate(50, 30, false, false), 65);
+    }
+
+    #[test]
+    fn low_charisma_hurts_both_directions() {
+        // CHA 5 -> -10%: pay more buying, earn less selling.
+        assert_eq!(charisma_adjusted_rate(150, 5, true, false), 165);
+        assert_eq!(charisma_adjusted_rate(50, 5, false, false), 45);
+    }
+
+    #[test]
+    fn no_charm_ignores_charisma() {
+        assert_eq!(charisma_adjusted_rate(150, 30, true, true), 150);
+        assert_eq!(charisma_adjusted_rate(50, 5, false, true), 50);
+    }
+
+    #[test]
+    fn rate_never_drops_below_one() {
+        // Tiny base rate with max discount still floors at 1, never 0.
+        assert_eq!(charisma_adjusted_rate(1, 30, true, false), 1);
+    }
 }
