@@ -15,7 +15,10 @@
 //!   erosion debuff back into the ceiling.
 //! - Installing charges current humanity (the item's tier, discounted for
 //!   `Adept` races). Uninstalling restores the max reduction, never the
-//!   spent points. Therapy restores spent points up to max.
+//!   spent points. Therapy restores Humanity lost to *use* (episodes, trauma,
+//!   future sinks) but is capped below max by the cost paid to install the
+//!   chrome still in the body — it never refunds an install. Pulling a piece
+//!   is the only way to reclaim its cost.
 //! - Every full 10 points of deficit (max − current) = −1 effective CHA via
 //!   a single permanent `CharismaBoost` buff sourced `"cyberware:humanity"`.
 //! - Below 30% humanity the psyche tick rolls for cyberpsychotic episodes,
@@ -418,7 +421,17 @@ pub fn apply_therapy(ch: &mut CharacterData, points: i32) -> (i32, i32, i32) {
     };
     let max = max_humanity(base_cha, &state.installed);
     let before = state.humanity.clamp(0, max);
-    state.humanity = (before + points.max(0)).clamp(0, max);
+    // Therapy recovers Humanity lost to USE, never the cost of the chrome
+    // currently installed: the sum of humanity_paid across installed pieces is
+    // locked out of the ceiling, so a freshly-chromed character can't buy the
+    // install cost straight back. Removing a piece (uninstall) drops it from
+    // this sum and reclaims its cost. Clamp to max (never exceed the absolute
+    // cap) and to `before` (therapy never reduces someone already above it).
+    let installed_cost: i32 = state.installed.iter().map(|p| p.humanity_paid).sum();
+    let ceiling = (base_cha.max(1) * HUMANITY_PER_CHA_POINT - installed_cost)
+        .clamp(0, max)
+        .max(before);
+    state.humanity = (before + points.max(0)).clamp(0, ceiling);
     let restored = state.humanity - before;
     state.lifetime_humanity_restored += restored;
     let new = state.humanity;
@@ -912,12 +925,45 @@ mod tests {
         assert_eq!(max_humanity(ch.stat_cha, &state.installed), 100);
         assert_eq!(state.humanity, 86, "current humanity does not return with the meat");
 
+        // Therapy can recover the 14 here ONLY because the chrome was pulled —
+        // an empty install list lifts the ceiling back to max.
         let (restored, new, max) = apply_therapy(&mut ch, 50);
         assert_eq!((restored, new, max), (14, 100, 100));
         assert!(
             !ch.active_buffs.iter().any(|b| b.source == HUMANITY_EROSION_BUFF_SOURCE),
             "erosion clears at full humanity"
         );
+    }
+
+    #[test]
+    fn therapy_cannot_refund_installed_chrome_cost() {
+        // Install a 14-HL piece: current 100 -> 86, max 100 -> 98.
+        let mut ch = test_char(10);
+        let graft = cyber_item(CyberwareCategory::InternalBody, false, 14);
+        let receipt = install_piece(&mut ch, &graft, CyberwareAffinity::Normal, false, 0).unwrap();
+        assert_eq!(
+            (receipt.humanity_paid, receipt.humanity, receipt.max_humanity),
+            (14, 86, 98)
+        );
+
+        // Right after install, therapy is a no-op: the ceiling equals the
+        // post-install level (100 base - 14 paid = 86). The install cost is locked.
+        let (restored, new, max) = apply_therapy(&mut ch, 50);
+        assert_eq!((restored, new, max), (0, 86, 98), "therapy must not refund the install");
+
+        // Simulate a USE loss (episode / trauma) dropping current to 70.
+        ch.cyberware_state.as_mut().unwrap().humanity = 70;
+        // Therapy recovers that loss, but only up to the 86 chrome floor, not max 98.
+        let (restored, new, max) = apply_therapy(&mut ch, 50);
+        assert_eq!(
+            (restored, new, max),
+            (16, 86, 98),
+            "use loss heals; install cost stays locked"
+        );
+
+        // Further therapy at the floor does nothing.
+        let (restored, _, _) = apply_therapy(&mut ch, 50);
+        assert_eq!(restored, 0, "cannot climb past the installed-chrome ceiling");
     }
 
     #[test]
