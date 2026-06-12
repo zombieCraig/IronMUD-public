@@ -649,8 +649,36 @@ pub const ADMIN_SUBCOMMANDS: &[&str] = &[
     "god",
     "user",
     "api-key",
+    "ban",
+    "unban",
+    "siteban",
+    "sitebans",
+    "alts",
+    "preset",
+    "reload",
+    "email-stats",
+    "email-audit",
+    "email-test",
+    "embrace",
+    "embrace_revoke",
+    "masquerade_reset",
+    "account",
+    "world",
+    "config",
+    "ticks",
+    "morality",
+    "loadout",
     "help",
 ];
+
+/// Admin loadout targets (`admin loadout <target>`)
+pub const ADMIN_LOADOUT_TARGETS: &[&str] = &["list", "class", "race", "help"];
+
+/// Admin loadout per-kit actions (`admin loadout <class|race> <id> <action>`)
+pub const ADMIN_LOADOUT_ACTIONS: &[&str] = &["show", "gold", "items"];
+
+/// Admin loadout item actions (`admin loadout <class|race> <id> items <action>`)
+pub const ADMIN_LOADOUT_ITEM_ACTIONS: &[&str] = &["add", "remove", "clear"];
 
 /// Admin user sub-actions
 pub const ADMIN_USER_ACTIONS: &[&str] = &[
@@ -667,6 +695,25 @@ pub const ADMIN_USER_ACTIONS: &[&str] = &[
 
 /// Admin api-key sub-actions
 pub const ADMIN_API_KEY_ACTIONS: &[&str] = &["list", "create", "show", "revoke", "enable", "delete", "help"];
+
+/// Admin account sub-actions
+pub const ADMIN_ACCOUNT_ACTIONS: &[&str] = &[
+    "list",
+    "info",
+    "ban",
+    "unban",
+    "alts",
+    "verify",
+    "unverify",
+    "set-email",
+    "send-code",
+    "adjust-bank",
+    "delete",
+    "help",
+];
+
+/// Admin world sub-actions
+pub const ADMIN_WORLD_ACTIONS: &[&str] = &["info", "clear"];
 
 /// Recipe tool locations
 pub const TOOL_LOCATIONS: &[&str] = &["inv", "inventory", "room", "either"];

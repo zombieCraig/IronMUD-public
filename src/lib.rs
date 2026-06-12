@@ -2242,6 +2242,7 @@ pub async fn handle_connection(
                 online_players,
                 mobs_in_room,
                 class_ids,
+                race_ids,
                 achievement_keys,
                 custom_skill_keys,
                 has_builder_access,
@@ -2414,6 +2415,7 @@ pub async fn handle_connection(
                 let has_builder_access = is_builder || is_admin;
 
                 let class_ids: Vec<String> = world.class_definitions.keys().cloned().collect();
+                let race_ids: Vec<String> = world.race_definitions.keys().cloned().collect();
                 let achievement_keys: Vec<String> = world.achievement_definitions.keys().cloned().collect();
                 let custom_skill_keys: Vec<String> = world.custom_skill_definitions.keys().cloned().collect();
 
@@ -2433,6 +2435,7 @@ pub async fn handle_connection(
                     online_players,
                     mobs_in_room,
                     class_ids,
+                    race_ids,
                     achievement_keys,
                     custom_skill_keys,
                     has_builder_access,
@@ -2458,6 +2461,7 @@ pub async fn handle_connection(
                 &online_players,
                 &mobs_in_room,
                 &class_ids,
+                &race_ids,
                 &achievement_keys,
                 &custom_skill_keys,
                 has_builder_access,
