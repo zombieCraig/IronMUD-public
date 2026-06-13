@@ -634,6 +634,17 @@
     "available": true
   },
 
+  "synthetic_calm": {
+    "id": "synthetic_calm",
+    "name": "Synthetic Calm",
+    "description": "No adrenal gland, no terror response. Fear, panic, and morale effects do not take hold. (Granted by the synth race; the contract any future fear mechanic must consult.)",
+    "cost": 0,
+    "category": "neutral",
+    "effects": {"fear_immunity": 1},
+    "conflicts_with": [],
+    "available": false
+  },
+
   "clan_brujah": {
     "id": "clan_brujah",
     "name": "Brujah",
@@ -682,6 +693,36 @@
     "category": "neutral",
     "effects": {"frenzy_dc_modifier": -1, "beast_marks_on_frenzy": 1},
     "conflicts_with": ["clan_brujah", "clan_toreador", "clan_ventrue", "clan_nosferatu"],
+    "available": false
+  },
+  "tribe_get_of_fenris": {
+    "id": "tribe_get_of_fenris",
+    "name": "Get of Fenris",
+    "description": "The Fenrir. War is the only prayer. Rage runs hot and frenzy comes easy. (Granted by the First Change; see werewolf_tribes.json.)",
+    "cost": 0,
+    "category": "neutral",
+    "effects": {"frenzy_dc_modifier": -2},
+    "conflicts_with": ["tribe_children_of_gaia", "tribe_silent_striders"],
+    "available": false
+  },
+  "tribe_children_of_gaia": {
+    "id": "tribe_children_of_gaia",
+    "name": "Children of Gaia",
+    "description": "The peacemakers. Their calm holds where other Garou break. (Granted by the First Change; see werewolf_tribes.json.)",
+    "cost": 0,
+    "category": "neutral",
+    "effects": {"frenzy_dc_modifier": 2},
+    "conflicts_with": ["tribe_get_of_fenris", "tribe_silent_striders"],
+    "available": false
+  },
+  "tribe_silent_striders": {
+    "id": "tribe_silent_striders",
+    "name": "Silent Striders",
+    "description": "The wanderers. No trap holds them; no fight keeps them that they choose to leave. (Granted by the First Change; see werewolf_tribes.json.)",
+    "cost": 0,
+    "category": "neutral",
+    "effects": {"flee_bonus": 15},
+    "conflicts_with": ["tribe_get_of_fenris", "tribe_children_of_gaia"],
     "available": false
   },
   "mutation_frog_legs": {

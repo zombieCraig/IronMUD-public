@@ -498,6 +498,7 @@ export interface MobileFlags {
   no_bash?: boolean;
   no_summon?: boolean;
   no_charm?: boolean;
+  no_fear?: boolean;
   hostile_on_steal?: boolean;
   tameable?: boolean;
   aggro_good?: boolean;

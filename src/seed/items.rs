@@ -1001,3 +1001,31 @@ pub fn seed_cyberware_prototypes(db: &Db) -> Result<usize> {
 
     Ok(created)
 }
+
+/// Seed the synth repair-kit prototype (vnum `synth-repair-kit`).
+///
+/// Like `seed_cyberware_prototypes`, this runs UNCONDITIONALLY on every
+/// startup because the `repair` command consumes this vnum — an existing
+/// production world needs it too. Idempotent: an existing vnum is skipped,
+/// never overwritten, so builder edits to the prototype stick.
+///
+/// Returns the number of prototypes created.
+pub fn seed_synth_prototypes(db: &Db) -> Result<usize> {
+    let vnum = "synth-repair-kit";
+    if db.get_item_by_vnum(vnum)?.is_some() {
+        return Ok(0);
+    }
+    let mut i = item(
+        super::seed_uuid(vnum),
+        vnum,
+        "Synth Repair Kit",
+        "A compact synth repair kit sits here, seals unbroken.",
+        "A field-service case for synthetic chassis: sealant foam, pre-tensioned myomer patches, a spool of structural filament, and a one-shot diagnostic wand. Single use — the wand burns out and the consumables don't refill. One kit handles field damage; a chassis already running on emergency reserve takes two at once.",
+        ItemType::Misc,
+    );
+    i.keywords = vec!["repair".into(), "kit".into(), "synth".into(), "case".into()];
+    i.weight = 2;
+    i.value = 75;
+    db.save_item_data(i)?;
+    Ok(1)
+}

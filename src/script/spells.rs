@@ -83,6 +83,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
                 .map(|c| rhai::Dynamic::from(c.clone()))
                 .collect();
             map.insert("requires_clan".into(), rhai::Dynamic::from(clans));
+            map.insert("requires_werewolf".into(), rhai::Dynamic::from(spell.requires_werewolf));
+            let tribes: Vec<rhai::Dynamic> = spell
+                .requires_tribe
+                .iter()
+                .map(|t| rhai::Dynamic::from(t.clone()))
+                .collect();
+            map.insert("requires_tribe".into(), rhai::Dynamic::from(tribes));
             map.insert(
                 "damage_per_spell_level".into(),
                 rhai::Dynamic::from(spell.damage_per_spell_level as i64),
@@ -132,6 +139,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
             if !spell.requires_clan.is_empty() {
                 let has_clan = spell.requires_clan.iter().any(|c| char.traits.iter().any(|t| t == c));
                 if !has_clan {
+                    continue;
+                }
+            }
+            if spell.requires_werewolf && char.werewolf_state.is_none() {
+                continue;
+            }
+            if !spell.requires_tribe.is_empty() {
+                let has_tribe = spell.requires_tribe.iter().any(|c| char.traits.iter().any(|t| t == c));
+                if !has_tribe {
                     continue;
                 }
             }
@@ -297,6 +313,24 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
             Err(_) => return false,
         };
         items.iter().any(|item| item.vnum.as_deref() == Some(&reagent_vnum))
+    });
+
+    // count_reagent(char_name, reagent_vnum) -> i64
+    // How many items with this vnum the player carries (synth repair kits
+    // need two at once for a critical chassis).
+    let cloned_db = db.clone();
+    engine.register_fn("count_reagent", move |char_name: String, reagent_vnum: String| -> i64 {
+        if reagent_vnum.is_empty() {
+            return 0;
+        }
+        let items = match cloned_db.get_items_in_inventory(&char_name.to_lowercase()) {
+            Ok(items) => items,
+            Err(_) => return 0,
+        };
+        items
+            .iter()
+            .filter(|item| item.vnum.as_deref() == Some(&reagent_vnum))
+            .count() as i64
     });
 
     // get_item_teaches_spell(item_id) -> String or ()

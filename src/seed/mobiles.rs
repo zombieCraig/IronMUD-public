@@ -77,6 +77,7 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
         scars: HashMap::new(),
         is_unconscious: false,
         bleedout_rounds_remaining: 0,
+        last_combat_at: 0,
         pursuit_target_name: String::new(),
         pursuit_target_room: None,
         pursuit_direction: String::new(),

@@ -139,7 +139,6 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
                     starting_gold: 0,
                     allowed_races: Vec::new(),
                     incompatible_races: Vec::new(),
-                    granted_traits: Vec::new(),
                 },
             );
         }
@@ -157,6 +156,20 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
                 info!("Loaded {} vampire class definition(s) from {}", count, vampire_path);
             }
             Err(e) => error!("Failed to parse {}: {}", vampire_path, e),
+        }
+    }
+
+    // Theme-agnostic werewolf overlay: same shape as the vampire one, gated
+    // at runtime by `enable_werewolf_creation`.
+    let werewolf_path = "scripts/data/classes_werewolf.json";
+    if let Ok(content) = std::fs::read_to_string(werewolf_path) {
+        match serde_json::from_str::<HashMap<String, ClassDefinition>>(&content) {
+            Ok(extras) => {
+                let count = extras.len();
+                world.class_definitions.extend(extras);
+                info!("Loaded {} werewolf class definition(s) from {}", count, werewolf_path);
+            }
+            Err(e) => error!("Failed to parse {}: {}", werewolf_path, e),
         }
     }
 
@@ -343,6 +356,30 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
             }
             Err(e) => {
                 error!("Failed to parse {}: {}", vampire_spells_path, e);
+            }
+        },
+        Err(_) => {
+            // Optional — quiet when missing.
+        }
+    }
+
+    // Werewolf gifts layer on the same way — optional file, gated
+    // independently via `requires_werewolf` / `requires_tribe`.
+    let werewolf_spells_path = "scripts/data/spells_werewolf.json";
+    match std::fs::read_to_string(werewolf_spells_path) {
+        Ok(content) => match parse_doc_tolerant_map::<SpellDefinition>(&content) {
+            Ok(spells) => {
+                info!(
+                    "Loaded {} werewolf gift spells from {}",
+                    spells.len(),
+                    werewolf_spells_path
+                );
+                for (id, spell) in spells {
+                    world.spell_definitions.insert(id, spell);
+                }
+            }
+            Err(e) => {
+                error!("Failed to parse {}: {}", werewolf_spells_path, e);
             }
         },
         Err(_) => {

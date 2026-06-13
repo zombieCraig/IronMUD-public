@@ -72,6 +72,12 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // A wolf has paws, not hands.
+    if is_pc_werewolf(connection_id) && get_pc_form(connection_id) == "lupus" {
+        send_client_message(connection_id, "Paws. You have paws. Shift out of lupus before trying to hold a weapon.");
+        return;
+    }
+
     // Check if item can be wielded/held
     let can_wield = has_wieldable_location(item);
     if item.is_fishing_rod { can_wield = true; }

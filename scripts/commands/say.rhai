@@ -360,6 +360,14 @@ fn is_specific_healer_keyword(word, healer_type) {
         if word == "resurrection" { return true; }
         return false;
     }
+    if healer_type == "technician" {
+        if word == "repair" { return true; }
+        if word == "fix" { return true; }
+        if word == "chassis" { return true; }
+        if word == "diagnostic" { return true; }
+        if word == "diagnostics" { return true; }
+        return false;
+    }
     return false;
 }
 
@@ -367,6 +375,18 @@ fn handle_healer_keyword(mobile, healer_type, keyword, msg, char, room_id, conne
     // Route to appropriate handler based on keyword
     if keyword == "help" || keyword == "cost" || keyword == "price" {
         show_healer_services(mobile, healer_type, room_id, connection_id);
+        return;
+    }
+
+    // Organic medicine and synthetic chassis don't mix: medics, herbalists
+    // and clerics turn synths away; technicians only work on synths.
+    let char_is_synth = is_character_synth(char.name);
+    if char_is_synth && healer_type != "technician" {
+        healer_say(mobile.name, "I work on flesh, not chassis. You need a technician.", room_id, connection_id);
+        return;
+    }
+    if !char_is_synth && healer_type == "technician" {
+        healer_say(mobile.name, "I fix machines, not meat. Find yourself a medic.", room_id, connection_id);
         return;
     }
 
@@ -381,6 +401,10 @@ fn handle_healer_keyword(mobile, healer_type, keyword, msg, char, room_id, conne
     }
     if healer_type == "cleric" {
         handle_cleric_action(mobile, keyword, char, room_id, connection_id);
+        return;
+    }
+    if healer_type == "technician" {
+        handle_technician_action(mobile, keyword, char, room_id, connection_id);
         return;
     }
 }
@@ -403,6 +427,21 @@ fn show_healer_services(mobile, healer_type, room_id, connection_id) {
         show_cleric_prices(mobile, is_free, room_id, connection_id);
         return;
     }
+    if healer_type == "technician" {
+        show_technician_prices(mobile, is_free, room_id, connection_id);
+        return;
+    }
+}
+
+fn show_technician_prices(mobile, is_free, room_id, connection_id) {
+    if is_free {
+        healer_say(mobile.name, "Pro bono chassis work — say 'repair' and get on the bench.", room_id, connection_id);
+        return;
+    }
+    let msg = "Full chassis restore - " + get_healing_cost(mobile.id, "synth_repair") + " gold. ";
+    msg += "Covers structural damage, malfunction clears, and emergency-reserve resets.";
+    healer_say(mobile.name, msg, room_id, connection_id);
+    healer_say(mobile.name, "Say 'repair' when you're ready. Synthetic clients only.", room_id, connection_id);
 }
 
 fn show_medic_prices(mobile, is_free, room_id, connection_id) {
@@ -469,6 +508,44 @@ fn handle_herbalist_action(mobile, keyword, char, room_id, connection_id) {
         treat_elemental_wounds(mobile, char, keyword, room_id, connection_id);
         return;
     }
+}
+
+fn handle_technician_action(mobile, keyword, char, room_id, connection_id) {
+    if keyword == "repair" || keyword == "fix" || keyword == "chassis" || keyword == "diagnostic" || keyword == "diagnostics" {
+        repair_player_chassis(mobile, char, room_id, connection_id);
+        return;
+    }
+}
+
+fn repair_player_chassis(mobile, char, room_id, connection_id) {
+    let is_free = is_healing_free(mobile.id);
+    let cost = if is_free { 0 } else { get_healing_cost(mobile.id, "synth_repair") };
+
+    if !is_free && char.gold < cost {
+        healer_say(mobile.name, "Parts and labor run " + cost + " gold. Come back when you can cover it.", room_id, connection_id);
+        return;
+    }
+
+    let result = synth_technician_repair(char.name);
+    if !result["success"] {
+        if result["error"] == "already nominal" {
+            healer_say(mobile.name, "Diagnostics clean. Your chassis is already NOMINAL.", room_id, connection_id);
+        } else {
+            healer_say(mobile.name, "I can't get a diagnostic handshake from you. Are you sure you're synthetic?", room_id, connection_id);
+        }
+        return;
+    }
+
+    if !is_free {
+        remove_player_gold(connection_id, cost);
+    }
+    healer_say(mobile.name, "There. Structural welds set, malfunction flags cleared, reserve recharged.", room_id, connection_id);
+    let msg = mobile.name + " opens a panel in your chassis and works with practiced speed. All systems NOMINAL.";
+    if !is_free {
+        msg += " (Cost: " + cost + " gold)";
+    }
+    send_client_message(connection_id, msg);
+    broadcast_to_room(room_id, mobile.name + " runs a field repair on " + char.name + "'s chassis.", char.name);
 }
 
 fn handle_cleric_action(mobile, keyword, char, room_id, connection_id) {

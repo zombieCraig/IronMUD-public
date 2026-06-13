@@ -79,6 +79,7 @@ pub const MOBILE_FLAGS: &[&str] = &[
     "no_bash",
     "no_blind",
     "no_charm",
+    "no_fear",
     "no_sleep",
     "no_summon",
     "poisonous",

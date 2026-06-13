@@ -1,0 +1,25 @@
+{
+  "_doc": "Werewolf tribe registry. Each entry is the lore + display data for a tribe; the matching mechanical effects (frenzy modifiers, flee bonuses, etc.) live as `tribe_*` entries in traits.json. The two files are intentionally separate so tribe flavor can be edited without touching the mechanic encoding — the exact split vampire_clans.json uses.\n\nAt the First Change, the awaken flow grants the matching `tribe_*` trait. An empty tribe at awakening produces a tribeless cub (the thinblood analog) who can claim a tribe later via quest or admin.",
+
+  "get_of_fenris": {
+    "id": "get_of_fenris",
+    "trait_id": "tribe_get_of_fenris",
+    "display_name": "Get of Fenris",
+    "description": "The Fenrir. War is the only prayer they trust. Strongest in battle, first into it, and the last tribe you want angry at you — including at themselves.",
+    "bane": "Rage runs hot — the frenzy threshold is lower than for other Garou."
+  },
+  "children_of_gaia": {
+    "id": "children_of_gaia",
+    "trait_id": "tribe_children_of_gaia",
+    "display_name": "Children of Gaia",
+    "description": "The peacemakers, as far as a werewolf can be one. They believe the war can be ended without becoming the thing they fight.",
+    "bane": "None to speak of — their calm is the boon: frenzy finds little purchase."
+  },
+  "silent_striders": {
+    "id": "silent_striders",
+    "trait_id": "tribe_silent_striders",
+    "display_name": "Silent Striders",
+    "description": "The wanderers, exiled from their ancient homeland. They carry messages between septs, walk where others fear, and never stay.",
+    "bane": "No den, no rest — but no trap holds them either: they slip away from any fight they choose to leave."
+  }
+}

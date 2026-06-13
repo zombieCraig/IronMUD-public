@@ -1765,8 +1765,18 @@ impl Db {
             .affects
             .iter()
             .any(|a| a.effect_type == crate::types::EffectType::Loud);
+        let item_grants_courage = item
+            .affects
+            .iter()
+            .any(|a| a.effect_type == crate::types::EffectType::Courage);
         if let Some(mut character) = self.get_character_data(&key)? {
             character.active_buffs.retain(|b| b.source != source);
+            // Courage cures fear — from any source (spell, consumable, item).
+            if item_grants_courage {
+                character
+                    .active_buffs
+                    .retain(|b| b.effect_type != crate::types::EffectType::Feared);
+            }
             for affect in &item.affects {
                 character.active_buffs.push(crate::types::ActiveBuff {
                     effect_type: affect.effect_type,
@@ -1801,8 +1811,18 @@ impl Db {
             .affects
             .iter()
             .any(|a| a.effect_type == crate::types::EffectType::Loud);
+        let item_grants_courage = item
+            .affects
+            .iter()
+            .any(|a| a.effect_type == crate::types::EffectType::Courage);
         if let Some(mut mobile) = self.get_mobile_data(mobile_id)? {
             mobile.active_buffs.retain(|b| b.source != source);
+            // Courage cures fear — from any source (spell, consumable, item).
+            if item_grants_courage {
+                mobile
+                    .active_buffs
+                    .retain(|b| b.effect_type != crate::types::EffectType::Feared);
+            }
             for affect in &item.affects {
                 mobile.active_buffs.push(crate::types::ActiveBuff {
                     effect_type: affect.effect_type,

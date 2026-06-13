@@ -34,7 +34,7 @@ pub fn seed_uuid(vnum: &str) -> Uuid {
     Uuid::new_v5(&SEED_NAMESPACE, vnum.as_bytes())
 }
 
-pub use items::seed_cyberware_prototypes;
+pub use items::{seed_cyberware_prototypes, seed_synth_prototypes};
 
 /// Seed the demo world if it doesn't already exist.
 ///

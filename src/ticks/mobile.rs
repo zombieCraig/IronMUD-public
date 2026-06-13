@@ -447,8 +447,12 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
         }
 
         // Skip sentinel mobiles (they never wander)
-        // BUT: sentinel mobiles with a routine destination should still process step movement
-        if mobile.flags.sentinel && mobile.routine_destination_room.is_none() {
+        // BUT: sentinel mobiles with a routine destination should still process step movement,
+        // and a terrified sentinel abandons its post (panic-wander below).
+        if mobile.flags.sentinel
+            && mobile.routine_destination_room.is_none()
+            && !ironmud::script::fear::is_feared(&mobile.active_buffs)
+        {
             continue;
         }
 
@@ -904,18 +908,23 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
             }
         }
 
+        // A terrified mobile panic-wanders: it overrides sentinel posts,
+        // routine suppression, and the stay-put roll, moving every wander
+        // tick until the Feared buff expires.
+        let feared = ironmud::script::fear::is_feared(&current_mobile.active_buffs);
+
         // Check if routine suppresses wandering
-        if should_suppress_wander(&current_mobile) {
+        if should_suppress_wander(&current_mobile) && !feared {
             continue;
         }
 
         // Sentinel mobiles should not randomly wander (only routine movement above)
-        if current_mobile.flags.sentinel {
+        if current_mobile.flags.sentinel && !feared {
             continue;
         }
 
         // Random chance to stay in place
-        if rng.gen_range(0..100) >= wander_chance_percent {
+        if !feared && rng.gen_range(0..100) >= wander_chance_percent {
             continue;
         }
 
@@ -969,12 +978,20 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
         );
         if db.move_mobile_to_room(&current_mobile.id, &target_room_id).is_ok() {
             // Broadcast departure message
-            let departure_msg = format!("{} leaves heading {}.\n", current_mobile.name, direction);
+            let departure_msg = if feared {
+                format!("{} bolts {} in a blind panic!\n", current_mobile.name, direction)
+            } else {
+                format!("{} leaves heading {}.\n", current_mobile.name, direction)
+            };
             broadcast_to_room_mobiles(connections, &mobile_room_id, &departure_msg);
 
             // Broadcast arrival message
             let arrival_dir = get_opposite_direction_rust(&direction);
-            let arrival_msg = format!("{} arrives from the {}.\n", current_mobile.name, arrival_dir);
+            let arrival_msg = if feared {
+                format!("{} arrives from the {}, panicked!\n", current_mobile.name, arrival_dir)
+            } else {
+                format!("{} arrives from the {}.\n", current_mobile.name, arrival_dir)
+            };
             broadcast_to_room_mobiles(connections, &target_room_id, &arrival_msg);
 
             propagate_mobile_followers(

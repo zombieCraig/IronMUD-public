@@ -331,14 +331,18 @@ fn show_basic_status(char, connection_id) {
 
     output += hp_colored + "   " + stamina_colored + "\n";
 
-    // Mana bar (only if mana is enabled for this character)
+    // Mana bar (only if mana is enabled for this character). Werewolves
+    // read the same pool as Gnosis — gifts and any class magic draw from
+    // one shared well; the relabel is the whole mechanic.
+    let is_werewolf = is_pc_werewolf(connection_id);
     if char.mana_enabled {
         let mana_pct = 100;
         if char.max_mana > 0 {
             mana_pct = (char.mana * 100) / char.max_mana;
         }
+        let mana_label = if is_werewolf { "Gnosis: " } else { "Mana: " };
         let mana_bar = build_bar(char.mana, char.max_mana, 10);
-        let mana_str = "Mana: " + mana_bar + " " + char.mana + "/" + char.max_mana;
+        let mana_str = mana_label + mana_bar + " " + char.mana + "/" + char.max_mana;
         let mana_colored = get_mana_colored(mana_str, mana_pct, connection_id);
         output += mana_colored + "\n";
     }
@@ -347,6 +351,24 @@ fn show_basic_status(char, connection_id) {
         output += blood_colored + "\n";
     } else {
         output += thirst_colored + "   " + hunger_colored + "\n";
+    }
+
+    // Rage pool + current form (werewolf). Rage builds in combat and via
+    // 'rage'; high rage risks involuntary frenzy on the rage tick.
+    if is_werewolf {
+        let rage = get_pc_rage(connection_id);
+        let rage_max = get_pc_max_rage(connection_id);
+        let rage_bar = build_bar(rage, rage_max, 10);
+        let rage_str = "Rage: " + rage_bar + " " + rage + "/" + rage_max + "  Form: " + get_pc_form(connection_id);
+        let tribe = get_pc_tribe(connection_id);
+        if tribe != "" {
+            rage_str += "  Tribe: " + tribe;
+        }
+        if rage >= 8 {
+            output += color_or(ansi_red(rage_str), rage_str, connection_id) + "\n";
+        } else {
+            output += color_or(ansi_yellow(rage_str), rage_str, connection_id) + "\n";
+        }
     }
 
     // Mutation Points (mutant). MP refills only via 'push'.
@@ -384,6 +406,22 @@ fn show_basic_status(char, connection_id) {
         }
     }
 
+    // Chassis integrity (synth). Stages 0-2 derive from HP each chassis
+    // tick; CRITICAL is sticky and runs a System Shutdown countdown.
+    if is_pc_synth(connection_id) {
+        let chassis_label = get_pc_chassis_label(connection_id);
+        let chassis_str = "Chassis: " + chassis_label;
+        let shutdown = get_pc_shutdown_remaining(connection_id);
+        if shutdown >= 0 {
+            chassis_str += " (SHUTDOWN in " + shutdown + "s)";
+            output += color_or(ansi_red(chassis_str), chassis_str, connection_id) + "\n";
+        } else if chassis_label == "NOMINAL" {
+            output += color_or(ansi_cyan(chassis_str), chassis_str, connection_id) + "\n";
+        } else {
+            output += color_or(ansi_yellow(chassis_str), chassis_str, connection_id) + "\n";
+        }
+    }
+
     // Position indicator
     let pos_str = "Position: " + char.position;
     output += pos_str + "\n";
@@ -409,6 +447,11 @@ fn show_basic_status(char, connection_id) {
     if conditions.len() > 0 {
         let cond_str = "Conditions: " + conditions.join(", ") + " (use 'diagnose' for details)";
         output += color_or(ansi_red(cond_str), cond_str, connection_id) + "\n";
+    }
+
+    if has_buff(char.name, "feared") {
+        let fear_str = "[TERRIFIED] You are gripped by fear!";
+        output += color_or(ansi_red(fear_str), fear_str, connection_id) + "\n";
     }
 
     // Morality "feel" line (empty for the Neutral band).
@@ -636,6 +679,11 @@ fn show_detailed_status(char, connection_id) {
     if conditions.len() > 0 {
         let cond_str = "Conditions: " + conditions.join(", ") + " (use 'diagnose' for details)";
         output += color_or(ansi_red(cond_str), cond_str, connection_id) + "\n";
+    }
+
+    if has_buff(char.name, "feared") {
+        let fear_str = "[TERRIFIED] You are gripped by fear!";
+        output += color_or(ansi_red(fear_str), fear_str, connection_id) + "\n";
     }
 
     let gold_str = "Gold: " + char.gold;

@@ -43,10 +43,12 @@ pub mod session;
 pub mod settings;
 pub mod social;
 pub mod spawn;
+pub mod synth;
 pub mod telnet;
 pub mod throttle;
 pub mod types;
 pub mod vampire;
+pub mod werewolf;
 
 pub use types::*;
 

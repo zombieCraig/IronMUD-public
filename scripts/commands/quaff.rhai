@@ -89,6 +89,11 @@ fn fire_potion_spell(connection_id, char, spell) {
         let int_bonus = if effective_int > 10 { effective_int - 10 } else { 0 };
         let heal_amount = spell["heal_base"] + (spell["heal_per_skill"] * magic_level) + (spell["heal_int_scaling"] * int_bonus);
         if heal_amount < 1 { heal_amount = 1; }
+        // Organic medicine barely takes on a polymer chassis: 25%, min 1.
+        let is_synth = is_character_synth(char.name);
+        if is_synth {
+            heal_amount = scale_heal_for_synth(heal_amount);
+        }
         let old_hp = target.hp;
         target.hp += heal_amount;
         if target.hp > target.max_hp { target.hp = target.max_hp; }
@@ -98,7 +103,11 @@ fn fire_potion_spell(connection_id, char, spell) {
         if type_of(refreshed) != "()" {
             set_player_character(connection_id, refreshed);
         }
-        send_client_message(connection_id, "Warmth flows through you, healing " + actual + " HP.");
+        if is_synth {
+            send_client_message(connection_id, "The draught pools uselessly in synthetic plumbing — " + actual + " HP. Repairs would serve better.");
+        } else {
+            send_client_message(connection_id, "Warmth flows through you, healing " + actual + " HP.");
+        }
         return;
     }
 
@@ -122,6 +131,20 @@ fn fire_potion_spell(connection_id, char, spell) {
         let dur = spell["buff_duration_secs"];
         apply_buff(char.name, effect, mag, dur, spell["name"]);
         send_client_message(connection_id, "The potion's bitter draught afflicts you with " + spell["name"] + ".");
+        return;
+    }
+
+    // Fear in potion form frightens the drinker. Routes through the Rust
+    // chokepoint (try_apply_fear) so immunities (synth, courage, frenzy)
+    // and status resistance hold.
+    if stype == "fear" {
+        let outcome = try_apply_fear(char.name, 100, spell["buff_magnitude"], spell["buff_duration_secs"], spell["name"]);
+        if outcome == "applied" {
+            send_client_message(connection_id, "\x1b[1;31mCold dread crawls up your spine!\x1b[0m");
+            broadcast_to_room_except(char.current_room_id, connection_id, char.name + " blanches in sudden terror!");
+        } else {
+            send_client_message(connection_id, "A chill passes through you, but finds nothing to grip.");
+        }
         return;
     }
 

@@ -1,0 +1,11 @@
+{
+  "werewolf": {
+    "id": "werewolf",
+    "name": "Werewolf (Garou)",
+    "description": "The wolf was always there, under the skin. Rage builds in battle and begs to be spent — on extra savagery, on the war-form, on the change itself — and a Garou who lets it crest loses the wheel entirely. Gifts of the spirit world answer to Gnosis; tribes mark the soul.",
+    "starting_skills": {"primal_urge": 1},
+    "stat_bonuses": {"str": 1, "con": 1},
+    "available": true,
+    "incompatible_races": ["synth", "bioroid", "replicant", "revenant", "augmented"]
+  }
+}

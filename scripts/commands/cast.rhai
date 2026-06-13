@@ -182,7 +182,7 @@ fn cast_damage(connection_id, char, spell, target_arg) {
 
     // Start combat if not already
     if !is_in_combat(char.name) {
-        enter_combat(char.name, mob_id, "mobile");
+        enter_combat(char.name, "mobile", mob_id);
     }
     enter_mobile_combat(mob_id, "player", char.name);
 
@@ -233,7 +233,7 @@ fn cast_debuff(connection_id, char, spell, target_arg) {
 
     // Initiate combat regardless of resist (cast was hostile and committed).
     if !is_in_combat(char.name) {
-        enter_combat(char.name, mob_id, "mobile");
+        enter_combat(char.name, "mobile", mob_id);
     }
     enter_mobile_combat(mob_id, "player", char.name);
 
@@ -295,10 +295,16 @@ fn cast_buff(connection_id, char, spell, target_arg) {
     let magnitude = spell["buff_magnitude"] + (spell["buff_magnitude_per_spell_level"] * spell_level);
     let duration = spell["buff_duration_secs"] + (spell["buff_duration_per_spell_level"] * spell_level);
 
+    // Courage strips any Feared buff inside apply_buff (Rust side) — capture
+    // whether the target was afraid so we can narrate the cure.
+    let cured_fear = effect == "courage" && has_buff(target_name, "feared");
     apply_buff(target_name, effect, magnitude, duration, spell["name"]);
 
     if target_name == char.name {
         send_client_message(connection_id, "You cast " + spell["name"] + " on yourself.");
+        if cured_fear {
+            send_client_message(connection_id, "Courage floods through you; your terror melts away.");
+        }
         broadcast_to_room_except(char.current_room_id, char.name + " casts " + spell["name"] + ".", char.name);
     } else {
         send_client_message(connection_id, "You cast " + spell["name"] + " on " + target_name + ".");
@@ -306,6 +312,9 @@ fn cast_buff(connection_id, char, spell, target_arg) {
         let target_conn = find_player_connection_by_name(target_name);
         if target_conn != "" {
             send_client_message(target_conn, char.name + " casts " + spell["name"] + " on you.");
+            if cured_fear {
+                send_client_message(target_conn, "Courage floods through you; your terror melts away.");
+            }
         }
         broadcast_to_room_except(char.current_room_id, char.name + " casts " + spell["name"] + " on " + target_name + ".", char.name);
     }
@@ -340,6 +349,12 @@ fn cast_heal(connection_id, char, spell, target_arg) {
         return false;
     }
 
+    // Organic medicine barely takes on a polymer chassis: 25%, min 1.
+    let target_is_synth = is_character_synth(target_name);
+    if target_is_synth {
+        heal_amount = scale_heal_for_synth(heal_amount);
+    }
+
     let old_hp = target.hp;
     target.hp += heal_amount;
     let target_eff_max_hp = get_effective_max_hp(target.name);
@@ -367,6 +382,15 @@ fn cast_heal(connection_id, char, spell, target_arg) {
             send_client_message(target_conn, char.name + " casts " + spell["name"] + " on you, healing you for " + actual_heal + " HP.");
         }
         broadcast_to_room_except(char.current_room_id, char.name + " casts " + spell["name"] + " on " + target_name + ".", char.name);
+    }
+
+    if target_is_synth {
+        let note = "\x1b[90mThe magic slides off the synthetic dermis; only a fraction takes. Repairs would serve better.\x1b[0m";
+        if target_name == char.name {
+            send_client_message(connection_id, note);
+        } else if target_conn != "" {
+            send_client_message(target_conn, note);
+        }
     }
 
     award_per_spell_xp(connection_id, char.name, spell["id"], true);
@@ -609,6 +633,146 @@ fn cast_dominate(connection_id, char, spell, target_arg) {
 
     send_client_message(connection_id, target.short_desc + "'s gaze locks onto yours, will collapsing into yours.");
     broadcast_to_room_except(room_id, connection_id, target.short_desc + "'s eyes go glassy as " + char.name + " takes hold of their mind.");
+    award_per_spell_xp(connection_id, char.name, spell["id"], true);
+    return true;
+}
+
+// Fear spell. Tries an in-room mobile first; if no mob matches the keyword,
+// falls back to a player target (PvP zones only). Application routes through
+// the Rust chokepoint try_apply_fear so immunities (synths, no_fear /
+// construct / undead mobs, courage, frenzy holders) and status resistance
+// hold uniformly.
+fn cast_fear(connection_id, char, spell, target_arg) {
+    let room_id = char.current_room_id;
+    let zone = get_combat_zone(room_id);
+    let in_build = is_in_build_mode(char.name, room_id);
+    if zone == "safe" && !char.god_mode && !in_build {
+        send_client_message(connection_id, "A peaceful aura suppresses your magic here.");
+        return false;
+    }
+
+    let spell_level = get_spell_level(char.name, spell["id"]);
+    let magnitude = spell["buff_magnitude"] + (spell["buff_magnitude_per_spell_level"] * spell_level);
+    let duration = spell["buff_duration_secs"] + (spell["buff_duration_per_spell_level"] * spell_level);
+
+    let mob_id = find_mob_target(char, target_arg, room_id);
+    if mob_id != "" {
+        return cast_fear_at_mobile(connection_id, char, spell, mob_id, magnitude, duration);
+    }
+    return cast_fear_at_player(connection_id, char, spell, target_arg, zone, magnitude, duration);
+}
+
+fn cast_fear_at_mobile(connection_id, char, spell, mob_id, magnitude, duration) {
+    let room_id = char.current_room_id;
+    let mob = get_mobile_data(mob_id);
+    if type_of(mob) == "()" {
+        send_client_message(connection_id, "That target is no longer here.");
+        return false;
+    }
+    if mob.flags.no_attack {
+        send_client_message(connection_id, "You cannot attack " + mob.name + ".");
+        return false;
+    }
+
+    // Hostile cast commits — combat starts whether or not the terror lands.
+    if !is_in_combat(char.name) {
+        enter_combat(char.name, "mobile", mob_id);
+    }
+    enter_mobile_combat(mob_id, "player", char.name);
+
+    let outcome = try_apply_fear(mob_id, 80, magnitude, duration, spell["name"]);
+    if outcome == "immune" {
+        send_client_message(connection_id, mob.name + " stands unshaken — your terror finds no purchase.");
+        broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + " on " + mob.name + ", but it has no effect.", char.name);
+        award_per_spell_xp(connection_id, char.name, spell["id"], false);
+        return true;
+    }
+    if outcome == "resisted" {
+        send_client_message(connection_id, mob.name + " shrugs off the creeping dread.");
+        broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + " on " + mob.name + ", but the magic dissipates.", char.name);
+        award_per_spell_xp(connection_id, char.name, spell["id"], false);
+        return true;
+    }
+    if outcome != "applied" {
+        send_client_message(connection_id, "That target is no longer here.");
+        return false;
+    }
+
+    send_client_message(connection_id, "You cast " + spell["name"] + " — stark terror floods " + mob.name + "'s eyes!");
+    broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + " — stark terror floods " + mob.name + "'s eyes!", char.name);
+    award_per_spell_xp(connection_id, char.name, spell["id"], true);
+    return true;
+}
+
+fn cast_fear_at_player(connection_id, char, spell, target_arg, zone, magnitude, duration) {
+    let room_id = char.current_room_id;
+    if target_arg == "" {
+        send_client_message(connection_id, "Cast at whom?");
+        return false;
+    }
+
+    let keyword = target_arg.to_lower();
+    let victim_name = "";
+    for room_char in get_characters_in_room(room_id) {
+        if room_char.to_lower() == char.name.to_lower() { continue; }
+        if room_char.to_lower() == keyword || room_char.to_lower().starts_with(keyword) {
+            victim_name = room_char;
+            break;
+        }
+    }
+    if victim_name == "" {
+        send_client_message(connection_id, "Cast at whom?");
+        return false;
+    }
+
+    if zone != "pvp" && !char.god_mode {
+        send_client_message(connection_id, "You cannot terrify other adventurers here.");
+        return false;
+    }
+
+    let victim = get_character_data(victim_name);
+    if type_of(victim) == "()" {
+        send_client_message(connection_id, "Cast at whom?");
+        return false;
+    }
+    if victim.god_mode {
+        send_client_message(connection_id, victim.name + " is beyond your terror.");
+        return false;
+    }
+
+    // Hostile cast commits — mutual PvP engagement (attack.rhai parity).
+    enter_combat(char.name, "player", victim.name);
+    enter_combat(victim.name, "player", char.name);
+
+    let outcome = try_apply_fear(victim.name, 80, magnitude, duration, spell["name"]);
+    let victim_conn = find_player_connection_by_name(victim.name);
+
+    if outcome == "immune" {
+        send_client_message(connection_id, victim.name + " stands unshaken — your terror finds no purchase.");
+        if victim_conn != "" {
+            send_client_message(victim_conn, char.name + " casts " + spell["name"] + " on you, but it finds no purchase. " + char.name + " attacks you!");
+        }
+        award_per_spell_xp(connection_id, char.name, spell["id"], false);
+        return true;
+    }
+    if outcome == "resisted" {
+        send_client_message(connection_id, victim.name + " shrugs off the creeping dread.");
+        if victim_conn != "" {
+            send_client_message(victim_conn, "You shrug off a wave of creeping dread. " + char.name + " attacks you!");
+        }
+        award_per_spell_xp(connection_id, char.name, spell["id"], false);
+        return true;
+    }
+    if outcome != "applied" {
+        send_client_message(connection_id, "Cast at whom?");
+        return false;
+    }
+
+    send_client_message(connection_id, "You cast " + spell["name"] + " — stark terror floods " + victim.name + "'s eyes!");
+    if victim_conn != "" {
+        send_client_message(victim_conn, "\x1b[1;31mStark, unreasoning terror floods your mind as " + char.name + " attacks you!\x1b[0m");
+    }
+    broadcast_to_room_except(room_id, char.name + " casts " + spell["name"] + " — " + victim.name + " blanches in terror!", char.name);
     award_per_spell_xp(connection_id, char.name, spell["id"], true);
     return true;
 }
@@ -888,6 +1052,9 @@ fn run_command(args, connection_id) {
     }
     if stype == "charm" {
         success = cast_charm(connection_id, char, spell, target_arg);
+    }
+    if stype == "fear" {
+        success = cast_fear(connection_id, char, spell, target_arg);
     }
     if stype == "dominate" {
         success = cast_dominate(connection_id, char, spell, target_arg);

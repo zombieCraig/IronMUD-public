@@ -326,16 +326,8 @@ fn use_neural_spike(connection_id, char, ability) {
     char.racial_cooldowns = cooldowns;
     save_character_data(char);
 
-    // Calculate damage: scales with the psychic's WIS (its signature stat) and
-    // magic training, so the WIS+2 investment finally drives the psionic strike.
-    let wis = get_effective_stat(char.name, "wis");
-    let wis_bonus = if wis > 10 { wis - 10 } else { 0 };
-    let magic_level = get_skill_level(char.name, "magic");
-    let damage = 8 + char.level * 2 + wis_bonus * 3 + magic_level * 2;
-    // Honor the same spell-damage trait lever ordinary spells use.
-    let dmg_mod = get_trait_effect_sum(char.name, "spell_damage_bonus");
-    if dmg_mod != 0 { damage = damage * (100 + dmg_mod) / 100; }
-    if damage < 1 { damage = 1; }
+    // Calculate damage: base 8 + level * 3
+    let damage = 8 + char.level * 3;
 
     let target_name = target_info["target_name"];
     let target_id = target_info["target_id"];

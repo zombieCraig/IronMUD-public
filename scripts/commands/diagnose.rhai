@@ -64,6 +64,18 @@ fn run_command(args, connection_id) {
         }
     }
 
+    // Synthetic chassis telemetry (online synth targets only)
+    if target_conn != "" && is_pc_synth(target_conn) {
+        output += "\n--- Chassis Diagnostics ---\n";
+        output += "  Integrity: " + get_pc_chassis_label(target_conn) + "\n";
+        let shutdown = get_pc_shutdown_remaining(target_conn);
+        if shutdown >= 0 {
+            output += "  \x1b[1;31mEMERGENCY RESERVE ENGAGED: System Shutdown in " + shutdown + "s.\x1b[0m\n";
+        }
+        output += "  Organic medicine is largely ineffective on this chassis.\n";
+        output += "  Recommend: synth repair kit ('repair') or a technician NPC.\n";
+    }
+
     // Check conditions (only if target is online, use connection_id)
     output += "\n--- Conditions ---\n";
     let has_conditions = false;

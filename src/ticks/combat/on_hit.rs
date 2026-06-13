@@ -53,6 +53,11 @@ pub fn apply_on_hit_effects_to_mobile(
                     if mob_immune(&mobile.flags, et) {
                         continue;
                     }
+                    // Fear immunity needs more than flags (creature_type,
+                    // Courage/Frenzy buffs) — use the chokepoint's predicate.
+                    if et == EffectType::Feared && ironmud::script::fear::mobile_fear_immunity(mobile).is_some() {
+                        continue;
+                    }
                     upsert_buff(&mut mobile.active_buffs, et, eff.magnitude, eff.duration, attacker_name);
                     if let Some(msg) = buff_msg(et, &mobile.name) {
                         room_messages.push(msg);
@@ -93,6 +98,10 @@ pub fn apply_on_hit_effects_to_character(
             }
             other => {
                 if let Some(et) = EffectType::from_str(other) {
+                    // Synths, Courage, and Frenzy holders shrug off fear.
+                    if et == EffectType::Feared && ironmud::script::fear::character_fear_immunity(character).is_some() {
+                        continue;
+                    }
                     upsert_buff(
                         &mut character.active_buffs,
                         et,
@@ -188,6 +197,7 @@ fn buff_msg(effect: EffectType, name: &str) -> Option<String> {
         EffectType::Blind => format!("{} reels, blinded!", name),
         EffectType::Slow => format!("{} slows, movements suddenly sluggish.", name),
         EffectType::Curse => format!("A creeping curse shadows {}.", name),
+        EffectType::Feared => format!("Stark terror floods {}!", name),
         _ => return None,
     })
 }

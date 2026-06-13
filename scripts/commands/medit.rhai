@@ -1268,7 +1268,7 @@ fn handle_flag_subcommand(mobile_id, parts, connection_id) {
     // Validate all names before changing anything.
     for name in flag_names {
         if get_mobile_flag_value(mobile, name) == () {
-            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, helper, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim, poisonous, fiery, chilling, corrosive, shocking, unique, stay_zone, aware, memory, no_sleep, no_blind, no_bash, no_summon, no_charm, hostile_on_steal, tameable, undead, vampire, holy_vulnerable, aggro_good, aggro_evil, aggro_neutral");
+            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, helper, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim, poisonous, fiery, chilling, corrosive, shocking, unique, stay_zone, aware, memory, no_sleep, no_blind, no_bash, no_summon, no_charm, no_fear, hostile_on_steal, tameable, undead, vampire, holy_vulnerable, aggro_good, aggro_evil, aggro_neutral");
             return;
         }
     }
@@ -1317,6 +1317,7 @@ fn get_mobile_flag_value(mobile, flag_name) {
     if flag_name == "no_bash" || flag_name == "nobash" { return flags.no_bash; }
     if flag_name == "no_summon" || flag_name == "nosummon" { return flags.no_summon; }
     if flag_name == "no_charm" || flag_name == "nocharm" { return flags.no_charm; }
+    if flag_name == "no_fear" || flag_name == "nofear" { return flags.no_fear; }
     if flag_name == "hostile_on_steal" || flag_name == "hostileonsteal" { return flags.hostile_on_steal; }
     if flag_name == "tameable" { return flags.tameable; }
     if flag_name == "undead" { return flags.undead; }
@@ -1537,6 +1538,7 @@ fn build_flags_display(mobile) {
     if flags.no_bash { flag_str += "no_bash "; }
     if flags.no_summon { flag_str += "no_summon "; }
     if flags.no_charm { flag_str += "no_charm "; }
+    if flags.no_fear { flag_str += "no_fear "; }
     if flags.hostile_on_steal { flag_str += "hostile_on_steal "; }
     if flags.tameable { flag_str += "tameable "; }
     if flags.undead { flag_str += "undead "; }
@@ -1703,6 +1705,7 @@ fn show_mobile_flags(mobile, mobile_id, connection_id) {
     output += build_flag_line("no_bash", flags.no_bash, "Immune to the bash skill", display_id, connection_id);
     output += build_flag_line("no_summon", flags.no_summon, "Immune to the summon spell", display_id, connection_id);
     output += build_flag_line("no_charm", flags.no_charm, "Immune to the charm spell", display_id, connection_id);
+    output += build_flag_line("no_fear", flags.no_fear, "Immune to the fear effect", display_id, connection_id);
     output += build_flag_line("hostile_on_steal", flags.hostile_on_steal, "Attacks the thief when a steal attempt is caught", display_id, connection_id);
     output += build_flag_line("tameable", flags.tameable, "Charm spell installs a permanent pet bond instead of temporary control", display_id, connection_id);
     output += build_flag_line("undead", flags.undead, "Generic undead marker (zombies, skeletons, vampires, ghouls)", display_id, connection_id);

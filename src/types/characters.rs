@@ -245,6 +245,16 @@ pub struct CharacterData {
     /// See `crate::types::MutantState`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mutant_state: Option<crate::types::MutantState>,
+    /// Synth state. None = organic (default). Some = synth (race "synth"):
+    /// repair-not-heal chassis, malfunction stages, System Shutdown clock,
+    /// behavioral inhibitor. See `crate::types::SynthState`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub synth_state: Option<crate::types::SynthState>,
+    /// Werewolf state. None = not Garou (default). Some = werewolf (class
+    /// overlay): Rage pool, forms, involuntary frenzy. See
+    /// `crate::types::WerewolfState`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub werewolf_state: Option<crate::types::WerewolfState>,
     // The Rot: zone contamination, tracked on EVERY character regardless of
     // race (world plumbing). Gained in rotted rooms, shed slowly in clean
     // ones; shed points sometimes become permanent. Mutants resist it.

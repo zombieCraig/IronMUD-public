@@ -341,14 +341,6 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
         .unwrap_or(4)
         .max(1);
 
-    // Snapshot race/class definitions before locking connections so the
-    // merged-trait lookup below never holds the World and Connections locks at
-    // once (deadlock rule). These maps are tiny and change only on reload.
-    let (race_defs, class_defs) = {
-        let world = state.lock().unwrap();
-        (world.race_definitions.clone(), world.class_definitions.clone())
-    };
-
     let mut conns = connections.lock().unwrap();
 
     for (_conn_id, session) in conns.iter_mut() {
@@ -444,6 +436,11 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
                     // Engineered vigor: accelerated cell repair.
                     r += (r * ironmud::types::REPLICANT_HP_REGEN_BONUS_PCT / 100).max(1);
                 }
+                if char.synth_state.is_some() {
+                    // A polymer chassis does not knit itself back together:
+                    // synths repair, they don't regenerate.
+                    r = 0;
+                }
                 r
             } else {
                 0
@@ -535,12 +532,42 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
                         drowning_damage
                     ));
                     if char.hp <= 0 {
-                        char.hp = 0;
-                        char.is_unconscious = true;
-                        char.bleedout_rounds_remaining = 1;
-                        let _ = session.sender.send(
-                            "\n\x1b[1;31mYou lose consciousness as you slip beneath the water...\x1b[0m\n".to_string(),
-                        );
+                        if char.synth_state.is_some() {
+                            // Synths run broken instead of collapsing. The
+                            // connections lock is held here, so this can't
+                            // route through handle_synth_down — the inline
+                            // transition messages via the session sender, and
+                            // a Shutdown parks the synth at unconscious/0
+                            // rounds for the bleeding tick to finish.
+                            let now = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_secs() as i64)
+                                .unwrap_or(0);
+                            match ironmud::synth::synth_down_transition(char, now) {
+                                Some(ironmud::synth::SynthDownOutcome::Critical) => {
+                                    let _ = session
+                                        .sender
+                                        .send(format!("\n{}\n", ironmud::synth::SYNTH_CRITICAL_MESSAGE));
+                                }
+                                Some(ironmud::synth::SynthDownOutcome::Shutdown) => {
+                                    char.hp = 0;
+                                    char.is_unconscious = true;
+                                    char.bleedout_rounds_remaining = 0;
+                                    let _ = session
+                                        .sender
+                                        .send(format!("\n{}\n", ironmud::synth::SYNTH_SHUTDOWN_MESSAGE));
+                                }
+                                None => {}
+                            }
+                        } else {
+                            char.hp = 0;
+                            char.is_unconscious = true;
+                            char.bleedout_rounds_remaining = 1;
+                            let _ = session.sender.send(
+                                "\n\x1b[1;31mYou lose consciousness as you slip beneath the water...\x1b[0m\n"
+                                    .to_string(),
+                            );
+                        }
                     }
                 } else {
                     char.position = CharacterPosition::Sleeping;
@@ -607,13 +634,9 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
                     CharacterPosition::Sleeping => mana_regen_sleeping,
                 };
 
-                // Mana traits, including race/class granted traits (read-time merge).
-                let effective_traits = crate::script::characters::effective_trait_ids(char, &race_defs, &class_defs);
-                let has_trait = |id: &str| effective_traits.iter().any(|t| t == id);
-
                 // Mana regen traits
-                let has_focused_mind = has_trait("focused_mind");
-                let has_scattered_thoughts = has_trait("scattered_thoughts");
+                let has_focused_mind = char.traits.iter().any(|t| t == "focused_mind");
+                let has_scattered_thoughts = char.traits.iter().any(|t| t == "scattered_thoughts");
                 if has_focused_mind {
                     mana_regen = mana_regen + mana_regen / 2;
                 } // +50%
@@ -622,8 +645,8 @@ fn process_regen_tick(db: &db::Db, connections: &SharedConnections, state: &Shar
                 } // -50%
 
                 // Max mana traits (effective cap)
-                let has_mana_well = has_trait("mana_well");
-                let has_mana_stunted = has_trait("mana_stunted");
+                let has_mana_well = char.traits.iter().any(|t| t == "mana_well");
+                let has_mana_stunted = char.traits.iter().any(|t| t == "mana_stunted");
                 // CircleMUD APPLY_MAXMANA parity.
                 let eq_max_mana_bonus: i32 = db
                     .get_equipped_items(&char.name)
@@ -1081,14 +1104,20 @@ fn process_drowning_tick(db: &db::Db, connections: &SharedConnections, state: &S
                 );
 
                 if char.hp <= 0 {
-                    char.hp = 0;
-                    char.is_unconscious = true;
-                    char.bleedout_rounds_remaining = 1;
-                    send_message_to_character(
-                        connections,
-                        &char_name,
-                        "\x1b[1;31mYou lose consciousness as water fills your lungs...\x1b[0m",
-                    );
+                    // Synths run broken instead of collapsing.
+                    if char.synth_state.is_some() {
+                        let drown_room = char.current_room_id;
+                        crate::ticks::combat::handle_synth_down(db, connections, &mut char, &drown_room, state)?;
+                    } else {
+                        char.hp = 0;
+                        char.is_unconscious = true;
+                        char.bleedout_rounds_remaining = 1;
+                        send_message_to_character(
+                            connections,
+                            &char_name,
+                            "\x1b[1;31mYou lose consciousness as water fills your lungs...\x1b[0m",
+                        );
+                    }
                 }
             }
 
@@ -1141,6 +1170,8 @@ fn get_buff_expiry_message(effect_type: EffectType) -> String {
         EffectType::Regeneration => "The regeneration effect wears off.".to_string(),
         EffectType::WaterBreathing => "The water breathing magic fades.".to_string(),
         EffectType::DamageReduction => "The protective aura around you fades.".to_string(),
+        EffectType::Feared => "Your terror finally subsides.".to_string(),
+        EffectType::Courage => "The surge of courage fades.".to_string(),
         _ => String::new(),
     }
 }

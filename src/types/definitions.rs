@@ -32,13 +32,6 @@ pub struct ClassDefinition {
     /// (synth, bioroid, clone) that can't be embraced.
     #[serde(default)]
     pub incompatible_races: Vec<String>,
-    /// Trait ids automatically granted to every member of this class, mirroring
-    /// `RaceDefinition::granted_traits`. These are merged into a character's
-    /// effective trait set at read-time (see `effective_trait_ids`) so their
-    /// `effects` maps feed the same machinery as chosen traits — without being
-    /// copied into `CharacterData.traits`.
-    #[serde(default)]
-    pub granted_traits: Vec<String>,
 }
 
 impl ClassDefinition {
@@ -345,6 +338,14 @@ pub struct SpellDefinition {
     /// Empty = any clan / any kindred can cast.
     #[serde(default)]
     pub requires_clan: Vec<String>,
+    /// When true, only characters with a `werewolf_state` may cast this
+    /// spell (a "gift"). Used by every entry in `spells_werewolf.json`.
+    #[serde(default)]
+    pub requires_werewolf: bool,
+    /// When non-empty, the caster must have one of these `tribe_*` traits.
+    /// Empty = any tribe / any Garou can use the gift.
+    #[serde(default)]
+    pub requires_tribe: Vec<String>,
     /// Per-spell-level scaling added to the magic-skill scaling. The cast
     /// formulas in cast.rhai add `per_spell_level * spell_level` to their
     /// damage/heal/magnitude/duration outputs. Default 0 = no per-spell

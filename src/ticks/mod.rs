@@ -57,9 +57,11 @@ pub mod routine;
 pub mod simulation;
 pub mod spawn;
 pub mod spoilage;
+pub mod synth;
 pub mod transport;
 pub mod triggers;
 pub mod vampire;
+pub mod werewolf;
 
 // Re-export all the public tick runner functions
 pub use heartbeat::run_watchdog as run_heartbeat_watchdog;
@@ -85,9 +87,11 @@ pub use routine::run_routine_tick;
 pub use simulation::run_simulation_tick;
 pub use spawn::run_spawn_tick;
 pub use spoilage::{run_corpse_decay_tick, run_spoilage_tick};
+pub use synth::run_chassis_tick;
 pub use transport::run_transport_tick;
 pub use triggers::run_periodic_trigger_tick;
 pub use vampire::{run_blood_tick, run_sun_tick};
+pub use werewolf::run_rage_tick;
 
 /// Register expected intervals for every tick task with the heartbeat
 /// registry. Call once at startup *before* spawning the tick tasks themselves
@@ -127,7 +131,9 @@ pub fn register_all_heartbeats() {
         ("quest", quests::QUEST_TICK_INTERVAL_SECS),
         ("sun", ironmud::vampire::SUN_TICK_INTERVAL_SECS),
         ("blood", ironmud::vampire::BLOOD_TICK_INTERVAL_SECS),
+        ("rage", ironmud::werewolf::RAGE_TICK_INTERVAL_SECS),
         ("resolve", ironmud::replicant::RESOLVE_TICK_INTERVAL_SECS),
+        ("chassis", ironmud::synth::SYNTH_CHASSIS_TICK_INTERVAL_SECS),
         ("psyche", ironmud::cyberware::PSYCHE_TICK_INTERVAL_SECS),
         ("mutation", ironmud::mutant::MUTATION_TICK_INTERVAL_SECS),
         ("rot", ironmud::mutant::ROT_TICK_INTERVAL_SECS),

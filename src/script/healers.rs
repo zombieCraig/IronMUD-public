@@ -23,7 +23,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     });
 
     // get_healer_type(mobile_id) -> String
-    // Returns the healer type: "medic", "herbalist", or "cleric"
+    // Returns the healer type: "medic", "herbalist", "cleric", or "technician"
     let cloned_db = db.clone();
     engine.register_fn("get_healer_type", move |mobile_id: String| -> String {
         if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
@@ -146,6 +146,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                             | "toxic_shock"
                     ),
                     "cleric" => matches!(service_lower.as_str(), "restore_hp" | "revive" | "full_heal"),
+                    "technician" => matches!(service_lower.as_str(), "synth_repair"),
                     _ => false,
                 };
             }
@@ -193,6 +194,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         "toxic_shock",
                     ],
                     "cleric" => vec!["restore_hp", "revive", "full_heal"],
+                    "technician" => vec!["synth_repair"],
                     _ => vec![],
                 };
 
@@ -222,6 +224,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             "restore_hp" => 20, // Per 10 HP
             "revive" => 500,
             "full_heal" => 300,
+            // Workshop restore for synth chassis (technician)
+            "synth_repair" => 300,
             // Physical trauma (medic)
             "broken_bone" => 150,
             "concussion" => 125,
@@ -265,6 +269,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     "restore_hp" => 20,
                     "revive" => 500,
                     "full_heal" => 300,
+                    "synth_repair" => 300,
                     "broken_bone" => 150,
                     "concussion" => 125,
                     "severed_tendon" => 200,
@@ -663,6 +668,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     "medic" => "I can treat your wounds and stop bleeding. Say 'treat' to begin.".to_string(),
                     "herbalist" => "I specialize in curing poisons, illnesses, and elemental ailments. Say 'cure' to begin.".to_string(),
                     "cleric" => "May the divine light heal you. I can restore your health or revive the fallen. Say 'heal' to begin.".to_string(),
+                    "technician" => "Chassis work, diagnostics, full restores — synthetic clients only. Say 'repair' to begin.".to_string(),
                     _ => "I can help with your ailments.".to_string(),
                 };
             }
@@ -697,6 +703,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             "cleric" => matches!(
                 word_lower.as_str(),
                 "heal" | "restore" | "revive" | "resurrection" | "bless" | "prayer" | "cost" | "price" | "help"
+            ),
+            "technician" => matches!(
+                word_lower.as_str(),
+                "repair" | "fix" | "chassis" | "diagnostic" | "diagnostics" | "cost" | "price" | "help"
             ),
             _ => false,
         }

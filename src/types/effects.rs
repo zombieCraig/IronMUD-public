@@ -205,6 +205,25 @@ pub enum EffectType {
     /// bonus — pair with `Frenzy` for the full berserk package. Magnitude
     /// is unused.
     Rage,
+    /// Supernatural terror. The combat tick's fear pass makes a feared
+    /// player roll flee/freeze/act each round; feared mobiles flee every
+    /// round and panic-wander out of combat. attack.rhai blocks initiating
+    /// fights while held. Application MUST route through
+    /// `script::fear::try_apply_fear_to_*` so immunities (synths, no_fear /
+    /// construct / undead mobiles, `Courage` and `Frenzy` holders) and
+    /// `StatusResistance` hold for every source: spell, consumable, aura.
+    /// Magnitude is unused.
+    Feared,
+    /// Temporary fear immunity. The fear chokepoint refuses application
+    /// while held, and stamping Courage (spell, consumable, or equipped
+    /// item) strips any existing `Feared` buffs. Magnitude is unused.
+    Courage,
+    /// Aura of dread — frightens the bearer's combat opponents, never the
+    /// bearer. Typically stamped by an equipped weapon/armor with
+    /// `affects: [fear_aura mag=N]`; the combat tick's fear pass rolls
+    /// `Feared` on each opponent per round with `magnitude`% chance
+    /// (0 → default 15). Behavior code only ever checks `Feared`.
+    FearAura,
 }
 
 impl EffectType {
@@ -280,6 +299,9 @@ impl EffectType {
             "loud" | "noisy" | "conspicuous" => Some(EffectType::Loud),
             "stun" | "stunned" => Some(EffectType::Stun),
             "rage" | "enraged" | "bloodlust" => Some(EffectType::Rage),
+            "fear" | "feared" | "afraid" | "terrified" => Some(EffectType::Feared),
+            "courage" | "brave" | "bravery" | "heroism" => Some(EffectType::Courage),
+            "fear_aura" | "fearaura" | "dread_aura" | "dreadaura" => Some(EffectType::FearAura),
             _ => None,
         }
     }
@@ -334,6 +356,9 @@ impl EffectType {
             EffectType::Loud => "loud",
             EffectType::Stun => "stun",
             EffectType::Rage => "rage",
+            EffectType::Feared => "feared",
+            EffectType::Courage => "courage",
+            EffectType::FearAura => "fear_aura",
         }
     }
 
@@ -387,6 +412,9 @@ impl EffectType {
             "loud",
             "stun",
             "rage",
+            "feared",
+            "courage",
+            "fear_aura",
         ]
     }
 }

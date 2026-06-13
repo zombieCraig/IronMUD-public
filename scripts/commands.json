@@ -49,7 +49,15 @@
   },
   "frenzy": {
     "access": "user",
-    "description": "Vampire only — voluntarily enter frenzy (combat lock + strength bonus; humanity gates the resist)"
+    "description": "Vampire/werewolf only — voluntarily loose the beast (combat lock + damage bonus until it passes)"
+  },
+  "shift": {
+    "access": "user",
+    "description": "Werewolf only — shift between homid, crinos (war-form, 3 Rage) and lupus (wolf, 1 Rage); shifting at high Rage risks frenzy"
+  },
+  "rage": {
+    "access": "user",
+    "description": "Werewolf only — stoke your Rage in combat (+2, 60s cooldown); out of combat shows the pool"
   },
   "push": {
     "access": "user",
@@ -70,6 +78,10 @@
   "baseline": {
     "access": "user",
     "description": "Replicant only — take a baseline test at a baseline office: pass restores full Resolve, fail adds a strike"
+  },
+  "repair": {
+    "access": "user",
+    "description": "Synth only — consume a repair kit to restore your chassis (a CRITICAL chassis needs two at once; find a technician for full restores)"
   },
   "cyberware": {
     "access": "user",

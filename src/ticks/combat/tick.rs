@@ -52,6 +52,12 @@ fn process_combat_round(db: &db::Db, connections: &SharedConnections, state: &Sh
         debug!("Rage acquisition error: {}", e);
     }
 
+    // Fear auras roll terror against opponents before attacks so terror
+    // applied here reshapes the victim's action this round.
+    if let Err(e) = super::fear::process_fear_auras(db, connections) {
+        debug!("Fear aura error: {}", e);
+    }
+
     tracing::trace!("Combat tick: getting characters in combat");
     // Get all characters in combat
     let char_names = db.get_all_characters_in_combat()?;
@@ -178,6 +184,49 @@ fn process_character_combat_round(
         return Ok(());
     }
 
+    // Terror reshapes the round: forced flee, frozen panic, or a shaky
+    // swing. Frenzy holders never reach here (the fear chokepoint refuses
+    // application while frenzying), and is_feared ignores Courage pairs.
+    if ironmud::script::fear::is_feared(&char.active_buffs) {
+        match super::fear::roll_player_fear_action(&mut rand::thread_rng()) {
+            super::fear::FearAction::Flee => {
+                send_message_to_character(connections, char_name, "\x1b[1;31mPanic seizes you — you bolt!\x1b[0m");
+                // Inject the flee command so flee.rhai resolves stamina,
+                // flee chance, and triggers exactly as a voluntary flee.
+                if let Ok(conns) = connections.lock() {
+                    for session in conns.values() {
+                        if let Some(ref sc) = session.character {
+                            if sc.name.eq_ignore_ascii_case(char_name) {
+                                let _ = session
+                                    .input_sender
+                                    .try_send(ironmud::InputEvent::Line("flee".to_string()));
+                                break;
+                            }
+                        }
+                    }
+                }
+                return Ok(());
+            }
+            super::fear::FearAction::Freeze => {
+                send_message_to_character(
+                    connections,
+                    char_name,
+                    "\x1b[1;31mYou freeze, paralyzed by terror!\x1b[0m",
+                );
+                broadcast_to_room_except(
+                    connections,
+                    &room_id,
+                    &format!("{} stands rooted in terror!", char.name),
+                    char_name,
+                );
+                return Ok(());
+            }
+            super::fear::FearAction::Act => {
+                send_message_to_character(connections, char_name, "You fight on through the panic, hands shaking.");
+            }
+        }
+    }
+
     // Apply ongoing effects (burn, frost, poison, acid)
     if !char.ongoing_effects.is_empty() {
         // Poison resistance traits
@@ -240,6 +289,11 @@ fn process_character_combat_round(
         db.save_character_data(char.clone())?;
 
         if char.hp <= 0 {
+            // Synths run broken instead of collapsing (System Shutdown rule).
+            if char.synth_state.is_some() {
+                handle_synth_down(db, connections, &mut char, &room_id, state)?;
+                return Ok(());
+            }
             char.is_unconscious = true;
             char.bleedout_rounds_remaining = 5;
             db.save_character_data(char.clone())?;
@@ -352,6 +406,12 @@ fn process_character_combat_round(
         if let Err(e) = process_helper_joins(db, connections, &char, &room_id) {
             debug!("Helper join scan error for {}: {}", char_name, e);
         }
+    }
+
+    // Garou: a credited kill feeds the Rage. Runs before the save below so
+    // the gain persists with the round's other writes.
+    if kill_info.is_some() && char.werewolf_state.is_some() {
+        apply_werewolf_kill_rage(connections, &mut char, &room_id);
     }
 
     db.save_character_data(char.clone())?;
@@ -1496,7 +1556,13 @@ fn process_character_attacks_player(
     }
 
     // Downed: route through the shared PvE unconscious/bleedout flow.
-    if victim.hp <= 0 {
+    // Synths run broken instead of collapsing (System Shutdown rule).
+    if victim.hp <= 0 && victim.synth_state.is_some() {
+        if handle_synth_down(db, connections, &mut victim, &room_id, state)? {
+            // Death pipeline already saved/synced the respawned victim.
+            return Ok(());
+        }
+    } else if victim.hp <= 0 {
         victim.hp = 0;
         victim.is_unconscious = true;
         victim.bleedout_rounds_remaining = 5;
@@ -1518,6 +1584,8 @@ fn process_character_attacks_player(
 
     // Replicants: big hits stress the engineered mind (PvP path).
     apply_replicant_combat_stress(connections, &mut victim, damage, &room_id);
+    // Werewolves: meaningful hits feed the Rage (PvP path).
+    apply_werewolf_combat_rage(connections, &mut victim, damage, &room_id);
 
     db.save_character_data(victim.clone())?;
     sync_character_to_session(connections, &victim, state);
@@ -1698,6 +1766,20 @@ fn process_mobile_combat_round(
 
     debug!("Mobile {} is in room {}", mobile.name, room_id);
 
+    // Stamp the recent-combat timestamp (synth behavioral inhibitor reads
+    // this to allow pursuing a mortal that fled). Throttled to one save per
+    // 10s so a long fight doesn't double every round's writes.
+    {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        if now - mobile.last_combat_at >= 10 {
+            mobile.last_combat_at = now;
+            db.save_mobile_data(mobile.clone())?;
+        }
+    }
+
     // Handle stun
     if mobile.combat.stun_rounds_remaining > 0 {
         debug!(
@@ -1824,6 +1906,18 @@ fn process_mobile_combat_round(
     // Consume stamina for attack (bloodless mobiles never tire).
     if mobile.tires() {
         mobile.current_stamina = (mobile.current_stamina - MOBILE_COMBAT_STAMINA_COST).max(0);
+    }
+
+    // A terrified mobile spends every round trying to escape — it never
+    // attacks while the Feared buff holds, whether or not the flee lands.
+    if ironmud::script::fear::is_feared(&mobile.active_buffs) {
+        broadcast_to_room_awake(
+            connections,
+            &room_id,
+            &format!("{} shrieks in terror and scrambles to escape!", mobile.name),
+        );
+        let _ = attempt_mobile_flee(db, connections, &mut mobile, state);
+        return Ok(());
     }
 
     // Check if mobile should attempt to flee (HP <= 25%)
@@ -2074,6 +2168,77 @@ fn apply_replicant_combat_stress(
             &char.name,
         );
     }
+}
+
+/// Werewolf rage gain from taking a meaningful hit (at least 5% of max HP —
+/// chip damage doesn't feed the wolf). Overflow at the cap forces a frenzy
+/// roll on the spot. Tribe banes apply on the rage tick's rolls; the
+/// in-combat overflow roll runs unmodified (dc 0) to keep the World lock
+/// out of the per-hit path. Caller saves the character afterward.
+fn apply_werewolf_combat_rage(
+    connections: &SharedConnections,
+    char: &mut ironmud::CharacterData,
+    damage: i32,
+    room_id: &uuid::Uuid,
+) {
+    if char.werewolf_state.is_none() || char.hp <= 0 {
+        return;
+    }
+    let threshold = (char.max_hp / 20).max(1);
+    if damage < threshold {
+        return;
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let (rage, frenzied) = ironmud::werewolf::gain_rage_rolled(char, ironmud::types::RAGE_GAIN_ON_DAMAGE, 0, now);
+    send_message_to_character(
+        connections,
+        &char.name,
+        &format!("\x1b[31mThe pain feeds the Rage. ({})\x1b[0m", rage),
+    );
+    if frenzied {
+        announce_werewolf_frenzy(connections, char, room_id);
+    }
+}
+
+/// Werewolf rage gain from a credited kill. Same overflow rule as the
+/// damage hook. Caller saves the character afterward.
+fn apply_werewolf_kill_rage(connections: &SharedConnections, char: &mut ironmud::CharacterData, room_id: &uuid::Uuid) {
+    if char.werewolf_state.is_none() {
+        return;
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let (rage, frenzied) = ironmud::werewolf::gain_rage_rolled(char, ironmud::types::RAGE_GAIN_ON_KILL, 0, now);
+    send_message_to_character(
+        connections,
+        &char.name,
+        &format!("\x1b[31mThe kill sings in your blood. Rage rises. ({})\x1b[0m", rage),
+    );
+    if frenzied {
+        announce_werewolf_frenzy(connections, char, room_id);
+    }
+}
+
+fn announce_werewolf_frenzy(connections: &SharedConnections, char: &ironmud::CharacterData, room_id: &uuid::Uuid) {
+    send_message_to_character(
+        connections,
+        &char.name,
+        "\x1b[1;31mThe Rage crests. Fur splits skin — the wolf is driving now.\x1b[0m",
+    );
+    broadcast_to_room_except_awake(
+        connections,
+        room_id,
+        &format!(
+            "{}'s eyes flood amber. Something with too many teeth is wearing their face.",
+            char.name
+        ),
+        &char.name,
+    );
 }
 
 /// Process a mobile attacking a player
@@ -2441,6 +2606,8 @@ fn process_mobile_attacks_player(
 
     // Replicants: big hits stress the engineered mind.
     apply_replicant_combat_stress(connections, &mut char, damage, room_id);
+    // Werewolves: meaningful hits feed the Rage.
+    apply_werewolf_combat_rage(connections, &mut char, damage, room_id);
 
     db.save_character_data(char.clone())?;
     if player_was_sleeping {
@@ -2489,7 +2656,20 @@ fn process_mobile_attacks_player(
 
     // Check if player died or went unconscious
     if char.hp <= 0 {
-        if char.is_unconscious {
+        if char.synth_state.is_some() {
+            // Synths run broken instead of collapsing: critical keeps the
+            // fight going (no aggressive-mob coup de grâce on a standing
+            // target); a lethal hit while critical is System Shutdown.
+            if handle_synth_down(db, connections, &mut char, room_id, state)? {
+                mobile
+                    .combat
+                    .targets
+                    .retain(|t| t.target_type != CombatTargetType::Player);
+                if mobile.combat.targets.is_empty() {
+                    mobile.combat.in_combat = false;
+                }
+            }
+        } else if char.is_unconscious {
             // Already unconscious and took damage - instant death!
             process_player_death(db, connections, &mut char, room_id, state)?;
 
@@ -2657,6 +2837,8 @@ fn mob_cast_spell_at_player(
 
             // Replicants: big hits stress the engineered mind.
             apply_replicant_combat_stress(connections, &mut char, damage, room_id);
+            // Werewolves: meaningful hits feed the Rage.
+            apply_werewolf_combat_rage(connections, &mut char, damage, room_id);
 
             db.save_character_data(char.clone())?;
             if player_was_sleeping {
@@ -2685,7 +2867,18 @@ fn mob_cast_spell_at_player(
 
             // Death handling mirrors process_mobile_attacks_player.
             if char.hp <= 0 {
-                if char.is_unconscious {
+                if char.synth_state.is_some() {
+                    // Synths run broken instead of collapsing.
+                    if handle_synth_down(db, connections, &mut char, room_id, state)? {
+                        mobile
+                            .combat
+                            .targets
+                            .retain(|t| t.target_type != CombatTargetType::Player);
+                        if mobile.combat.targets.is_empty() {
+                            mobile.combat.in_combat = false;
+                        }
+                    }
+                } else if char.is_unconscious {
                     process_player_death(db, connections, &mut char, room_id, state)?;
                     mobile
                         .combat
@@ -3364,6 +3557,55 @@ fn escalate_character_wound_to_severe(db: &db::Db, char_name: &str, body_part: &
 }
 
 /// Process player death: create corpse, transfer items, respawn
+/// Shared "runs broken" handler for every tick-side point where a synth's HP
+/// hits 0. First failure goes CRITICAL (floored at 1 HP, debuffs, shutdown
+/// countdown — the synth stays on its feet); a lethal hit while already
+/// critical is System Shutdown and runs the death pipeline. Returns true if
+/// the synth died. Caller must have checked `char.synth_state.is_some()`.
+pub fn handle_synth_down(
+    db: &db::Db,
+    connections: &SharedConnections,
+    char: &mut CharacterData,
+    room_id: &uuid::Uuid,
+    state: &SharedState,
+) -> Result<bool> {
+    use ironmud::synth::{
+        SYNTH_CRITICAL_MESSAGE, SYNTH_CRITICAL_ROOM_MESSAGE, SYNTH_SHUTDOWN_MESSAGE, SYNTH_SHUTDOWN_ROOM_MESSAGE,
+        SynthDownOutcome, synth_down_transition,
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    match synth_down_transition(char, now) {
+        Some(SynthDownOutcome::Critical) => {
+            db.save_character_data(char.clone())?;
+            sync_character_to_session(connections, char, state);
+            send_message_to_character(connections, &char.name, SYNTH_CRITICAL_MESSAGE);
+            broadcast_to_room_except_awake(
+                connections,
+                room_id,
+                &SYNTH_CRITICAL_ROOM_MESSAGE.replace("{name}", &char.name),
+                &char.name,
+            );
+            Ok(false)
+        }
+        Some(SynthDownOutcome::Shutdown) => {
+            char.hp = 0;
+            send_message_to_character(connections, &char.name, SYNTH_SHUTDOWN_MESSAGE);
+            broadcast_to_room_except_awake(
+                connections,
+                room_id,
+                &SYNTH_SHUTDOWN_ROOM_MESSAGE.replace("{name}", &char.name),
+                &char.name,
+            );
+            process_player_death(db, connections, char, room_id, state)?;
+            Ok(true)
+        }
+        None => Ok(false),
+    }
+}
+
 pub fn process_player_death(
     db: &db::Db,
     connections: &SharedConnections,
@@ -3424,6 +3666,13 @@ pub fn process_player_death(
     char.bleedout_rounds_remaining = 0;
     char.wounds.clear();
     char.ongoing_effects.clear();
+    // A respawned synth boots clean: no shutdown countdown, no malfunction
+    // flags (the chassis tick re-derives stages from the new HP).
+    if let Some(s) = char.synth_state.as_mut() {
+        ironmud::synth::reset_synth_state_on_death(s);
+    }
+    char.active_buffs
+        .retain(|b| b.source != ironmud::types::SYNTH_MALFUNCTION_SOURCE);
     char.combat.in_combat = false;
     char.combat.targets.clear();
     char.combat.stun_rounds_remaining = 0;

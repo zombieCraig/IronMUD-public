@@ -258,6 +258,13 @@ pub fn kill_player_at_room(
     char.bleedout_rounds_remaining = 0;
     char.wounds.clear();
     char.ongoing_effects.clear();
+    // A respawned synth boots clean: no shutdown countdown, no malfunction
+    // flags (the chassis tick re-derives stages from the new HP).
+    if let Some(s) = char.synth_state.as_mut() {
+        crate::synth::reset_synth_state_on_death(s);
+    }
+    char.active_buffs
+        .retain(|b| b.source != crate::types::SYNTH_MALFUNCTION_SOURCE);
     char.combat.in_combat = false;
     char.combat.targets.clear();
     char.combat.stun_rounds_remaining = 0;

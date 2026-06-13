@@ -92,8 +92,24 @@ fn apply_effect(char, effect, connection_id, source) {
     if etype == "quenched" { return apply_quenched(magnitude, connection_id); }
     if etype == "satiated" { return apply_satiated(magnitude, connection_id); }
     if etype == "drunk" { return apply_drunk(char.name, magnitude, connection_id); }
+    if etype == "feared" { return apply_fear_consumable(char, magnitude, duration, source, connection_id); }
     // Buff effects (timed)
     return apply_buff_effect(char.name, etype, magnitude, duration, source, connection_id);
+}
+
+// Fear-laced consumables route through the Rust chokepoint (try_apply_fear)
+// so immunities (synth, courage, frenzy) and status resistance hold.
+// Base chance 100 — you drank it; only resistance saves you.
+fn apply_fear_consumable(char, magnitude, duration, source, connection_id) {
+    let outcome = try_apply_fear(char.name, 100, magnitude, duration, source);
+    if outcome == "applied" {
+        send_client_message(connection_id, "\x1b[1;31mCold dread crawls up your spine!\x1b[0m");
+        broadcast_to_room_except(char.current_room_id, connection_id, char.name + " blanches in sudden terror!");
+        return;
+    }
+    if outcome == "immune" || outcome == "resisted" {
+        send_client_message(connection_id, "A chill passes through you, but finds nothing to grip.");
+    }
 }
 
 fn apply_heal(char, magnitude, connection_id) {

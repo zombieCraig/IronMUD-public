@@ -80,7 +80,7 @@ See also: [Weapon Damage Balance](weapon-balance.md) for recommended damage dice
 
 - `bleeding` → adds `magnitude` to wound bleeding severity on a random body part (`duration` ignored)
 - `fire` / `poison` / `cold` / `acid` / `lightning` → ongoing DOT (`magnitude` = damage/round, `duration` = rounds)
-- anything else (`sleep`, `blind`, `slow`, `curse`, …) → applied as an `ActiveBuff` with `magnitude` and `duration` in seconds; honours target mob immunity flags (`no_sleep`, `no_blind`, `no_charm`)
+- anything else (`sleep`, `blind`, `slow`, `curse`, `feared`, …) → applied as an `ActiveBuff` with `magnitude` and `duration` in seconds; honours target mob immunity flags (`no_sleep`, `no_blind`, `no_charm`, `no_fear`). Fear additionally respects full fear immunity (synths, constructs, undead, `courage` holders).
 
 Example: a pirate's cutlass that bleeds at 70%:
 ```
@@ -348,6 +348,8 @@ oedit fire_cloak    affect add damage_resistance 25 fire
 oedit ward_pendant  affect add status_resistance 20 sleep
 oedit dancing_boots affect add custom_skill_boost dancing_queen 1
 oedit dancing_boots affect add loud
+oedit dread_blade   affect add fear_aura 25
+oedit hero_helm     affect add courage
 ```
 
 The `custom_skill_boost` variant adds `magnitude` to a builder-published
@@ -370,6 +372,18 @@ no damage bonus; combine with a timed `frenzy` source for a full berserk
 package. Usable as a cursed equip-affect, a potion/food effect, or from
 scripts via `apply_buff`/`apply_buff_to_mobile` with effect `"rage"`.
 Magnitude is unused.
+
+The `fear_aura` variant terrifies the wearer's combat opponents, never the
+wearer: each combat round, every enemy actively fighting the wearer rolls
+`magnitude`% (0 → 15%) to gain a short `feared` buff. Feared mobiles flee
+every round and panic-wander after combat; feared players may bolt or
+freeze each round and cannot start fights. Fear immunity (the `no_fear`
+flag, constructs, undead, synth characters, `courage` holders) and
+`status_resistance ... fear` wards both apply. Fits weapons and armor
+alike — the aura rides the wearer, not the swing. For fear on a
+consumable, use a `feared` food/liquid effect instead (frightens the
+consumer). The `courage` variant grants fear immunity while worn and
+cures any existing fear on equip.
 
 Use `oedit <id> affect [list]` to inspect, `affect rm <index>` to remove,
 `affect clear` to wipe.

@@ -517,6 +517,10 @@ export declare const mobileToolDefinitions: ({
                         type: string;
                         description: string;
                     };
+                    no_fear: {
+                        type: string;
+                        description: string;
+                    };
                     hostile_on_steal: {
                         type: string;
                         description: string;
@@ -975,6 +979,10 @@ export declare const mobileToolDefinitions: ({
                         description?: undefined;
                     };
                     no_charm: {
+                        type: string;
+                        description?: undefined;
+                    };
+                    no_fear: {
                         type: string;
                         description?: undefined;
                     };

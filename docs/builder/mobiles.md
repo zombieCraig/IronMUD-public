@@ -127,6 +127,7 @@ When attaching shared trigger logic across multiple mobs (behavior packs like vi
 | `no_sleep` | Immune to the `sleep` spell |
 | `no_blind` | Immune to the `blind` spell |
 | `no_bash` | Immune to the `bash` skill's stun |
+| `no_fear` | Immune to the fear effect (spell, consumables, fear auras). Mobiles with `creature_type` construct or the `undead` flag are implicitly immune. |
 
 ### On-Hit Elemental Flags
 

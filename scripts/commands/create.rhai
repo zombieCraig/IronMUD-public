@@ -1011,18 +1011,6 @@ fn accept_trait(connection_id, idx) {
         }
     }
 
-    // Check if class already grants this trait (prevents double-dipping)
-    let class_info = get_class_info(char_data.class_name);
-    let class_granted = class_info["granted_traits"];
-    if class_granted != () {
-        for g in class_granted {
-            if g == trait_id {
-                send_client_message(connection_id, "Your class already grants " + info["name"] + " for free!\n> ");
-                return;
-            }
-        }
-    }
-
     // Check if can afford
     let new_points = char_data.trait_points - info["cost"];
     if new_points < 0 {
@@ -1216,6 +1204,19 @@ fn finalize_character(connection_id) {
         }
     }
 
+    // Werewolf class: the First Change. Mirrors the vampire embrace block —
+    // re-checks the runtime gate, awakens tribeless (claim a tribe via
+    // quest or admin later).
+    if char_data.class_name == "werewolf" {
+        let creation_on = get_setting_or_default("enable_werewolf_creation", "off");
+        if creation_on == "on" || creation_on == "true" {
+            awaken_pc(connection_id, "");
+            char_data = get_character_data(char_name);
+            send_client_message(connection_id, "\x1b[1;31mIt happened on a night you don't let yourself remember: bone cracking, fur splitting skin, the world turning to scent and blood. The Rage has lived in you ever since.\x1b[0m");
+            send_client_message(connection_id, "Rage builds in battle — 'shift' between forms, 'rage' to stoke it, and watch the pool: let it crest and the wolf drives. A sept elder can mark you for a tribe.");
+        }
+    }
+
     // Replicant race inception. Like the vampire embrace, must run AFTER
     // set_player_character so it can mutate session.character. No settings
     // gate — the race is data-driven via races_modern.json `available`.
@@ -1267,6 +1268,16 @@ fn finalize_character(connection_id) {
             let rolled_name = if info.len() > 0 { info["name"] } else { rolled };
             send_client_message(connection_id, "\x1b[1;33mYour mutation: " + rolled_name + ".\x1b[0m Type 'mutate' to flex it — and 'push' to feed it.");
         }
+    }
+
+    // Synth race: chassis activation (Alien RPG synthetic). Like the blocks
+    // above, must run AFTER set_player_character so the bindings can mutate
+    // session.character. No settings gate — race-driven via races_modern.json.
+    if char_data.race == "synth" {
+        init_pc_synth(connection_id);
+        char_data = get_character_data(char_name);
+        send_client_message(connection_id, "\x1b[1;36mBoot sequence complete. All subsystems NOMINAL.\x1b[0m");
+        send_client_message(connection_id, "Your chassis does not heal — it is repaired. Carry repair kits, know where a technician works, and mind your behavioral inhibitor.");
     }
 
     // Safety net: verify room exists, relocate if not

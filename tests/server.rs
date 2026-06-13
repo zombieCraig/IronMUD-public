@@ -6289,6 +6289,153 @@ fn test_no_summon_flag_persists() {
 }
 
 #[test]
+fn test_fear_spell_definition_loads() {
+    use std::fs;
+
+    let json = fs::read_to_string("scripts/data/spells_fantasy.json").expect("read spells_fantasy");
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+    let spell = parsed
+        .get("fear")
+        .expect("fear entry present")
+        .as_object()
+        .expect("fear is an object");
+
+    assert_eq!(spell.get("spell_type").and_then(|v| v.as_str()), Some("fear"));
+    assert_eq!(spell.get("skill_required").and_then(|v| v.as_i64()), Some(3));
+    assert_eq!(spell.get("mana_cost").and_then(|v| v.as_i64()), Some(30));
+    assert_eq!(spell.get("buff_effect").and_then(|v| v.as_str()), Some("feared"));
+    assert_eq!(spell.get("buff_duration_secs").and_then(|v| v.as_i64()), Some(30));
+}
+
+#[test]
+fn test_courage_spell_definition_loads() {
+    use std::fs;
+
+    let json = fs::read_to_string("scripts/data/spells_fantasy.json").expect("read spells_fantasy");
+    let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+    let spell = parsed
+        .get("courage")
+        .expect("courage entry present")
+        .as_object()
+        .expect("courage is an object");
+
+    assert_eq!(spell.get("spell_type").and_then(|v| v.as_str()), Some("buff"));
+    assert_eq!(spell.get("buff_effect").and_then(|v| v.as_str()), Some("courage"));
+    assert_eq!(
+        spell.get("target_type").and_then(|v| v.as_str()),
+        Some("self_or_friendly")
+    );
+}
+
+#[test]
+fn test_no_fear_flag_persists() {
+    use ironmud::types::MobileData;
+
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        let mut mob = MobileData::new("a fearless knight".to_string());
+        mob.flags.no_fear = true;
+        let id = mob.id;
+        db.save_mobile_data(mob).expect("save");
+
+        let loaded = db.get_mobile_data(&id).expect("read").expect("present");
+        assert!(loaded.flags.no_fear);
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_fear_effect_types_parse() {
+    use ironmud::types::EffectType;
+
+    for alias in ["fear", "feared", "afraid", "terrified"] {
+        assert_eq!(EffectType::from_str(alias), Some(EffectType::Feared), "alias {}", alias);
+    }
+    for alias in ["courage", "brave", "bravery", "heroism"] {
+        assert_eq!(
+            EffectType::from_str(alias),
+            Some(EffectType::Courage),
+            "alias {}",
+            alias
+        );
+    }
+    for alias in ["fear_aura", "fearaura", "dread_aura", "dreadaura"] {
+        assert_eq!(
+            EffectType::from_str(alias),
+            Some(EffectType::FearAura),
+            "alias {}",
+            alias
+        );
+    }
+
+    assert_eq!(EffectType::Feared.to_display_string(), "feared");
+    assert_eq!(EffectType::Courage.to_display_string(), "courage");
+    assert_eq!(EffectType::FearAura.to_display_string(), "fear_aura");
+
+    let all = EffectType::all();
+    for name in ["feared", "courage", "fear_aura"] {
+        assert!(all.contains(&name), "all() contains {}", name);
+    }
+}
+
+#[test]
+fn test_courage_buff_cures_feared() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+        let conns: ironmud::SharedConnections =
+            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+
+        let char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "fraidycat",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        db.save_character_data(char).expect("save");
+
+        let mut rng = rand::rngs::mock::StepRng::new(0, 0);
+        let outcome =
+            ironmud::script::fear::try_apply_fear_to_character(&db, &conns, "fraidycat", 100, 0, 60, "test", &mut rng);
+        assert_eq!(outcome, ironmud::script::fear::FearOutcome::Applied);
+        let loaded = db.get_character_data("fraidycat").expect("read").expect("present");
+        assert!(ironmud::script::fear::is_feared(&loaded.active_buffs));
+
+        // Courage strips the Feared buff inside the chokepoint-independent
+        // stamping rule; once held it also hard-blocks re-application.
+        let mut loaded = loaded;
+        loaded
+            .active_buffs
+            .retain(|b| b.effect_type != ironmud::types::EffectType::Feared);
+        loaded.active_buffs.push(ironmud::types::ActiveBuff {
+            effect_type: ironmud::types::EffectType::Courage,
+            magnitude: 0,
+            remaining_secs: 120,
+            source: "Courage".to_string(),
+            damage_type: None,
+            vs_effect: None,
+            skill_key: None,
+        });
+        db.save_character_data(loaded).expect("save");
+
+        let outcome =
+            ironmud::script::fear::try_apply_fear_to_character(&db, &conns, "fraidycat", 100, 0, 60, "test", &mut rng);
+        assert_eq!(outcome, ironmud::script::fear::FearOutcome::Immune);
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
 fn test_summonable_field_defaults_off_and_persists() {
     let temp = tempfile::tempdir().expect("create temp dir");
 
@@ -10071,7 +10218,6 @@ fn test_class_allowed_for_race_filters() {
         starting_gold: 0,
         allowed_races: Vec::new(),
         incompatible_races: vec!["synth".into(), "bioroid".into(), "replicant".into()],
-        granted_traits: Vec::new(),
     };
     assert!(vampire.allowed_for_race("human"));
     assert!(vampire.allowed_for_race("orc"));
@@ -10087,63 +10233,6 @@ fn test_class_allowed_for_race_filters() {
     assert!(vampire.allowed_for_race("human"));
     assert!(vampire.allowed_for_race("elf"));
     assert!(!vampire.allowed_for_race("dwarf"));
-}
-
-#[test]
-fn test_effective_trait_ids_merges_race_and_class_granted() {
-    use ironmud::script::characters::effective_trait_ids;
-    use std::collections::HashMap;
-
-    // Psychic-style race grants two magic traits; mage-style class grants two more.
-    let race: ironmud::types::RaceDefinition = serde_json::from_value(serde_json::json!({
-        "id": "psychic",
-        "name": "Psychic",
-        "description": "",
-        "granted_traits": ["arcane_savant", "focused_mind"],
-    }))
-    .expect("build race");
-    let class: ironmud::types::ClassDefinition = serde_json::from_value(serde_json::json!({
-        "id": "mage",
-        "name": "Mage",
-        "description": "",
-        "granted_traits": ["spell_prodigy", "mana_well"],
-    }))
-    .expect("build class");
-
-    let mut race_defs = HashMap::new();
-    race_defs.insert("psychic".to_string(), race);
-    let mut class_defs = HashMap::new();
-    class_defs.insert("mage".to_string(), class);
-
-    // Character with one chosen trait, race=psychic, class=mage. The chosen
-    // trait plus both granted lists should all surface, deduped. Race lookup is
-    // case-insensitive (stored lowercase).
-    let char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
-        "name": "Merlin",
-        "password_hash": "",
-        "current_room_id": uuid::Uuid::nil(),
-        "race": "Psychic",
-        "class_name": "mage",
-        "traits": ["focused_mind", "night_vision"],
-    }))
-    .expect("build character");
-
-    let ids = effective_trait_ids(&char, &race_defs, &class_defs);
-    for expected in [
-        "night_vision",
-        "focused_mind",
-        "arcane_savant",
-        "spell_prodigy",
-        "mana_well",
-    ] {
-        assert!(ids.contains(&expected.to_string()), "missing {expected}: {ids:?}");
-    }
-    // focused_mind appears in both chosen and race-granted but must not double.
-    assert_eq!(
-        ids.iter().filter(|t| t.as_str() == "focused_mind").count(),
-        1,
-        "granted trait already chosen must not duplicate: {ids:?}"
-    );
 }
 
 #[test]
@@ -13507,4 +13596,606 @@ fn test_rot_gain_decay_and_permanent() {
     let mut ch = build_test_mutant("RotClean");
     let out = apply_rot_tick_to_character(&mut ch, 0, 10_000, &[], 0);
     assert_eq!(out, RotTickOutcome::Nothing);
+}
+
+// ===========================================================================
+// Synth (Alien RPG synthetic): repair-not-heal chassis, runs-broken,
+// behavioral inhibitor.
+// ===========================================================================
+
+fn build_test_synth(name: &str) -> ironmud::types::CharacterData {
+    let mut ch: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+        "name": name,
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+        "hp": 100,
+        "max_hp": 100,
+    }))
+    .expect("build character");
+    ch.synth_state = Some(ironmud::types::SynthState::newly_activated(1_000));
+    ch
+}
+
+#[test]
+fn test_synth_state_defaults_and_persists() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        // Built via serde so missing fields take serde defaults — proves
+        // synth_state defaults to None on legacy saves.
+        let mut char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "TestSynth",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        assert!(char.synth_state.is_none(), "synth_state defaults to None");
+
+        let state = ironmud::types::SynthState::newly_activated(1_000);
+        assert_eq!(state.malfunction_stage, 0, "fresh chassis is NOMINAL");
+        assert!(state.shutdown_at.is_none());
+        assert_eq!(state.activated_at, Some(1_000));
+        assert!(!state.is_critical());
+
+        char.synth_state = Some(state);
+        db.save_character_data(char.clone()).expect("save");
+
+        let loaded = db.get_character_data(&char.name).expect("read").expect("present");
+        let s = loaded.synth_state.expect("state persists");
+        assert_eq!(s.malfunction_stage, 0);
+        assert_eq!(s.activated_at, Some(1_000));
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_races_modern_synth_mechanics_and_bioroid_retired() {
+    let raw = std::fs::read_to_string("scripts/data/races_modern.json").expect("read races_modern.json");
+
+    // The whole file must still deserialize into RaceDefinitions.
+    let races: std::collections::HashMap<String, ironmud::types::RaceDefinition> =
+        serde_json::from_str(&raw).expect("races deserialize into RaceDefinition");
+
+    let bioroid = races.get("bioroid").expect("bioroid definition kept for legacy chars");
+    assert!(!bioroid.available, "bioroid retired from creation");
+
+    let synth = races.get("synth").expect("synth definition");
+    assert!(synth.available, "synth selectable at creation");
+    assert!(
+        synth.granted_traits.iter().any(|t| t == "synthetic_calm"),
+        "synth grants the fear-immunity contract trait"
+    );
+    assert_eq!(
+        synth.cyberware_affinity,
+        ironmud::types::CyberwareAffinity::Incompatible,
+        "polymer chassis still rejects chrome"
+    );
+    for id in ["repairs_not_healing", "runs_broken", "behavioral_inhibitor"] {
+        assert!(
+            synth.passive_abilities.iter().any(|p| p.id == id),
+            "synth advertises {}",
+            id
+        );
+    }
+
+    // The granted trait must actually exist in traits.json.
+    let traits_raw = std::fs::read_to_string("scripts/data/traits.json").expect("read traits.json");
+    let traits: serde_json::Value = serde_json::from_str(&traits_raw).expect("parse traits.json");
+    let calm = traits.get("synthetic_calm").expect("synthetic_calm trait defined");
+    assert_eq!(calm.get("cost").and_then(|v| v.as_i64()), Some(0));
+}
+
+#[test]
+fn test_synth_down_transition_floors_at_one_hp() {
+    use ironmud::synth::{SynthDownOutcome, synth_down_transition};
+    use ironmud::types::EffectType;
+
+    let mut ch = build_test_synth("SynthDown");
+    ch.hp = -7;
+
+    let outcome = synth_down_transition(&mut ch, 5_000).expect("synth transition");
+    assert!(matches!(outcome, SynthDownOutcome::Critical), "first down is critical");
+    assert_eq!(ch.hp, 1, "emergency reserve floors HP at 1");
+
+    let s = ch.synth_state.as_ref().expect("state");
+    assert!(s.is_critical());
+    assert_eq!(
+        s.shutdown_at,
+        Some(5_000 + ironmud::types::SYNTH_SHUTDOWN_GRACE_SECS),
+        "shutdown countdown armed"
+    );
+
+    // CRITICAL debuffs stamped with the malfunction source.
+    for effect in [EffectType::Slow, EffectType::HitBonus, EffectType::DamageBonus] {
+        assert!(
+            ch.active_buffs
+                .iter()
+                .any(|b| b.effect_type == effect && b.source == ironmud::types::SYNTH_MALFUNCTION_SOURCE),
+            "critical stamps {:?}",
+            effect
+        );
+    }
+
+    // Non-synths are untouched.
+    let mut mortal: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+        "name": "Mortal",
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+    }))
+    .expect("build character");
+    assert!(synth_down_transition(&mut mortal, 5_000).is_none());
+}
+
+#[test]
+fn test_synth_second_down_is_lethal() {
+    use ironmud::synth::{SynthDownOutcome, synth_down_transition};
+
+    let mut ch = build_test_synth("SynthDead");
+    ch.hp = 0;
+    assert!(matches!(
+        synth_down_transition(&mut ch, 5_000),
+        Some(SynthDownOutcome::Critical)
+    ));
+
+    // Lethal damage while already critical: System Shutdown.
+    ch.hp = -3;
+    assert!(matches!(
+        synth_down_transition(&mut ch, 5_010),
+        Some(SynthDownOutcome::Shutdown)
+    ));
+}
+
+#[test]
+fn test_synth_chassis_tick_core() {
+    use ironmud::synth::apply_chassis_tick_to_character;
+    use ironmud::types::{EffectType, synth_stage_for_hp};
+
+    // Stage derivation from HP%.
+    assert_eq!(synth_stage_for_hp(100, 100), 0);
+    assert_eq!(synth_stage_for_hp(50, 100), 0, "50% is still NOMINAL");
+    assert_eq!(synth_stage_for_hp(49, 100), 1, "below 50% is DEGRADED");
+    assert_eq!(synth_stage_for_hp(24, 100), 2, "below 25% is FAILING");
+
+    // FAILING stamps the Slow malfunction debuff.
+    let mut ch = build_test_synth("SynthTick");
+    ch.hp = 20;
+    let (modified, message, fatal) = apply_chassis_tick_to_character(&mut ch, 2_000);
+    assert!(modified);
+    assert!(!fatal);
+    assert!(message.expect("transition message").contains("FAILING"));
+    assert_eq!(ch.synth_state.as_ref().unwrap().malfunction_stage, 2);
+    assert!(
+        ch.active_buffs
+            .iter()
+            .any(|b| b.effect_type == EffectType::Slow && b.source == ironmud::types::SYNTH_MALFUNCTION_SOURCE)
+    );
+
+    // Recovery clears the debuffs.
+    ch.hp = 90;
+    let (_, message, _) = apply_chassis_tick_to_character(&mut ch, 2_030);
+    assert!(message.expect("recovery message").contains("NOMINAL"));
+    assert!(
+        !ch.active_buffs
+            .iter()
+            .any(|b| b.source == ironmud::types::SYNTH_MALFUNCTION_SOURCE)
+    );
+
+    // An expired shutdown countdown is fatal.
+    let mut dying = build_test_synth("SynthExpire");
+    dying.hp = 0;
+    ironmud::synth::synth_down_transition(&mut dying, 1_000);
+    let (_, _, fatal) =
+        apply_chassis_tick_to_character(&mut dying, 1_000 + ironmud::types::SYNTH_SHUTDOWN_GRACE_SECS + 1);
+    assert!(fatal, "countdown expiry is System Shutdown");
+
+    // A countdown still running just warns.
+    let mut holding = build_test_synth("SynthHold");
+    holding.hp = 0;
+    ironmud::synth::synth_down_transition(&mut holding, 1_000);
+    let (_, message, fatal) = apply_chassis_tick_to_character(&mut holding, 1_030);
+    assert!(!fatal);
+    assert!(message.expect("reserve warning").contains("emergency reserve"));
+}
+
+#[test]
+fn test_synth_repairs() {
+    use ironmud::synth::{RepairOutcome, apply_kit_repair, apply_technician_repair, synth_scaled_heal};
+
+    // Heal scaling: 25%, min 1.
+    assert_eq!(synth_scaled_heal(40), 10);
+    assert_eq!(synth_scaled_heal(2), 1);
+    assert_eq!(synth_scaled_heal(1), 1);
+
+    // Kit repair heals 25% of max HP and re-derives the stage.
+    let mut ch = build_test_synth("SynthFix");
+    ch.hp = 20;
+    ch.synth_state.as_mut().unwrap().malfunction_stage = 2;
+    match apply_kit_repair(&mut ch, 10_000, 1) {
+        RepairOutcome::Repaired(healed, hp, stage) => {
+            assert_eq!(healed, 25);
+            assert_eq!(hp, 45);
+            assert_eq!(stage, 1, "45% HP re-derives DEGRADED");
+        }
+        _ => panic!("kit repair should succeed"),
+    }
+
+    // Cooldown gate.
+    assert!(matches!(
+        apply_kit_repair(&mut ch, 10_001, 1),
+        RepairOutcome::OnCooldown(_)
+    ));
+
+    // CRITICAL demands two kits at once...
+    let mut crit = build_test_synth("SynthCrit");
+    crit.hp = 0;
+    ironmud::synth::synth_down_transition(&mut crit, 1_000);
+    assert!(matches!(
+        apply_kit_repair(&mut crit, 10_000, 1),
+        RepairOutcome::NeedsMoreKits(2)
+    ));
+    // ...and two kits clear the countdown.
+    match apply_kit_repair(&mut crit, 10_000, 2) {
+        RepairOutcome::Repaired(_, hp, stage) => {
+            assert_eq!(hp, 51, "1 + 2x25% of max");
+            assert!(stage < 3);
+            assert!(crit.synth_state.as_ref().unwrap().shutdown_at.is_none());
+        }
+        _ => panic!("two-kit critical repair should succeed"),
+    }
+
+    // Technician: full restore from critical, debuffs gone.
+    let mut bench = build_test_synth("SynthBench");
+    bench.hp = 0;
+    ironmud::synth::synth_down_transition(&mut bench, 1_000);
+    match apply_technician_repair(&mut bench) {
+        RepairOutcome::Repaired(_, hp, stage) => {
+            assert_eq!(hp, 100);
+            assert_eq!(stage, 0);
+            assert!(bench.synth_state.as_ref().unwrap().shutdown_at.is_none());
+            assert!(
+                !bench
+                    .active_buffs
+                    .iter()
+                    .any(|b| b.source == ironmud::types::SYNTH_MALFUNCTION_SOURCE)
+            );
+        }
+        _ => panic!("technician repair should succeed"),
+    }
+    assert!(matches!(apply_technician_repair(&mut bench), RepairOutcome::Full));
+}
+
+#[test]
+fn test_synth_directive_blocks_idle_mortal_but_allows_in_combat_and_fled() {
+    use ironmud::synth::directive_allows_attack;
+    use ironmud::types::{CreatureType, SYNTH_RECENT_COMBAT_WINDOW_SECS};
+
+    let now = 100_000;
+
+    // Idle mortal: inhibited.
+    assert!(!directive_allows_attack(CreatureType::Mortal, false, 0, now));
+    // Mortal already in a fight: join freely.
+    assert!(directive_allows_attack(CreatureType::Mortal, true, 0, now));
+    // Mortal that fled combat inside the window: pursue.
+    assert!(directive_allows_attack(
+        CreatureType::Mortal,
+        false,
+        now - SYNTH_RECENT_COMBAT_WINDOW_SECS,
+        now
+    ));
+    // Stale combat memory: inhibited again.
+    assert!(!directive_allows_attack(
+        CreatureType::Mortal,
+        false,
+        now - SYNTH_RECENT_COMBAT_WINDOW_SECS - 1,
+        now
+    ));
+    // Every other creature type is unrestricted.
+    for ct in [
+        CreatureType::Animal,
+        CreatureType::Insect,
+        CreatureType::Plant,
+        CreatureType::Construct,
+        CreatureType::Spirit,
+    ] {
+        assert!(directive_allows_attack(ct, false, 0, now), "{:?} unrestricted", ct);
+    }
+}
+
+// ===========================================================================
+// Werewolf (W:tA): Rage economy, forms, involuntary frenzy, tribes —
+// theme-agnostic class overlay mirroring the vampire one.
+// ===========================================================================
+
+fn build_test_werewolf(name: &str) -> ironmud::types::CharacterData {
+    let mut ch: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+        "name": name,
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+        "hp": 100,
+        "max_hp": 100,
+    }))
+    .expect("build character");
+    ch.werewolf_state = Some(ironmud::types::WerewolfState::newly_awakened(1_000));
+    ch
+}
+
+#[test]
+fn test_werewolf_class_present_with_primal_urge_starter_skill() {
+    let raw = std::fs::read_to_string("scripts/data/classes_werewolf.json").expect("read classes_werewolf.json");
+    let classes: std::collections::HashMap<String, ironmud::types::ClassDefinition> =
+        serde_json::from_str(&raw).expect("classes deserialize into ClassDefinition");
+
+    let ww = classes.get("werewolf").expect("werewolf class present");
+    assert!(ww.available, "data-driven available (runtime gate is separate)");
+    assert_eq!(
+        ww.starting_skills.get("primal_urge").copied(),
+        Some(1),
+        "primal_urge starter skill"
+    );
+
+    // Garou regeneration rejects chrome and synthetic chassis entirely.
+    for race in ["synth", "bioroid", "replicant", "revenant", "augmented"] {
+        assert!(!ww.allowed_for_race(race), "{} cannot be werewolf", race);
+    }
+    assert!(ww.allowed_for_race("human"));
+    assert!(ww.allowed_for_race("mutant"));
+}
+
+#[test]
+fn test_spells_werewolf_gifts_deserialize_with_flags() {
+    let raw = std::fs::read_to_string("scripts/data/spells_werewolf.json").expect("read spells_werewolf.json");
+    let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse spells_werewolf.json");
+    let obj = parsed.as_object().expect("object root");
+
+    let mut count = 0;
+    for (id, entry) in obj.iter().filter(|(k, _)| !k.starts_with('_')) {
+        let spell: ironmud::types::SpellDefinition =
+            serde_json::from_value(entry.clone()).unwrap_or_else(|e| panic!("gift {} deserializes: {}", id, e));
+        assert!(spell.requires_werewolf, "gift {} gated on requires_werewolf", id);
+        assert!(!spell.requires_vampire, "gift {} is not a discipline", id);
+        assert_eq!(
+            spell.requires_skill.as_deref(),
+            Some("primal_urge"),
+            "gift {} gates on primal_urge",
+            id
+        );
+        assert!(spell.mana_cost > 0, "gift {} costs mana (Gnosis)", id);
+        count += 1;
+    }
+    assert!(count >= 5, "at least five starter gifts");
+}
+
+#[test]
+fn test_werewolf_tribes_map_to_traits() {
+    let raw = std::fs::read_to_string("scripts/data/werewolf_tribes.json").expect("read werewolf_tribes.json");
+    let parsed: serde_json::Value = serde_json::from_str(&raw).expect("parse werewolf_tribes.json");
+    let tribes = parsed.as_object().expect("object root");
+
+    let traits_raw = std::fs::read_to_string("scripts/data/traits.json").expect("read traits.json");
+    let traits: serde_json::Value = serde_json::from_str(&traits_raw).expect("parse traits.json");
+
+    let mut count = 0;
+    for (id, entry) in tribes.iter().filter(|(k, _)| !k.starts_with('_')) {
+        let trait_id = entry
+            .get("trait_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_else(|| panic!("tribe {} has trait_id", id));
+        let t = traits
+            .get(trait_id)
+            .unwrap_or_else(|| panic!("trait {} defined in traits.json", trait_id));
+        assert_eq!(t.get("cost").and_then(|v| v.as_i64()), Some(0));
+        assert_eq!(t.get("available").and_then(|v| v.as_bool()), Some(false));
+        count += 1;
+    }
+    assert_eq!(count, 3, "three launch tribes");
+
+    // The Fenris bane must ride the same generic frenzy_dc_modifier
+    // extraction the clan banes use.
+    let fenris = traits.get("tribe_get_of_fenris").expect("fenris trait");
+    assert_eq!(
+        fenris
+            .get("effects")
+            .and_then(|e| e.get("frenzy_dc_modifier"))
+            .and_then(|v| v.as_i64()),
+        Some(-2)
+    );
+}
+
+#[test]
+fn test_werewolf_state_defaults_and_persists() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+        // Built via serde so missing fields take serde defaults — proves
+        // werewolf_state defaults to None on legacy saves.
+        let mut char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "TestGarou",
+            "password_hash": "",
+            "current_room_id": uuid::Uuid::nil(),
+        }))
+        .expect("build character");
+        assert!(char.werewolf_state.is_none(), "werewolf_state defaults to None");
+
+        let state = ironmud::types::WerewolfState::newly_awakened(1_000);
+        assert_eq!(state.rage, ironmud::types::WEREWOLF_STARTING_RAGE);
+        assert_eq!(state.max_rage, 10);
+        assert_eq!(state.current_form, "homid");
+        assert_eq!(state.awakened_at, Some(1_000));
+
+        char.werewolf_state = Some(state);
+        db.save_character_data(char.clone()).expect("save");
+
+        let loaded = db.get_character_data(&char.name).expect("read").expect("present");
+        let w = loaded.werewolf_state.expect("state persists");
+        assert_eq!(w.rage, ironmud::types::WEREWOLF_STARTING_RAGE);
+        assert_eq!(w.current_form, "homid");
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_rage_frenzy_chance_curve() {
+    use ironmud::werewolf::rage_frenzy_chance;
+
+    assert_eq!(rage_frenzy_chance(6, 0), 0, "calm below the testing range");
+    assert_eq!(rage_frenzy_chance(8, 0), 30);
+    assert_eq!(rage_frenzy_chance(10, 0), 60, "full pool, no tribe");
+    assert_eq!(rage_frenzy_chance(10, -2), 90, "Get of Fenris bane");
+    assert_eq!(rage_frenzy_chance(10, 2), 30, "Children of Gaia calm");
+    assert_eq!(rage_frenzy_chance(20, -10), 100, "clamped high");
+    assert_eq!(rage_frenzy_chance(0, 0), 0, "clamped low");
+}
+
+#[test]
+fn test_rage_frenzy_roll_and_buffs() {
+    use ironmud::types::{EffectType, WerewolfState};
+    use ironmud::werewolf::maybe_rage_frenzy;
+
+    let mut w = WerewolfState::default();
+    let mut buffs = Vec::new();
+
+    // Below the threshold even a guaranteed roll does nothing.
+    w.set_rage(7);
+    assert!(!maybe_rage_frenzy(&mut w, &mut buffs, 0, 1_000, 1));
+    assert!(buffs.is_empty());
+
+    // At rage 8 / dc 0 the chance is 30: a roll of 30 fires.
+    w.set_rage(8);
+    assert!(maybe_rage_frenzy(&mut w, &mut buffs, 0, 1_000, 30));
+    assert!(
+        buffs
+            .iter()
+            .any(|b| b.effect_type == EffectType::Frenzy && b.source == "rage")
+    );
+    assert!(
+        buffs
+            .iter()
+            .any(|b| b.effect_type == EffectType::Rage && b.source == "rage")
+    );
+    assert!(w.frenzy_until.is_some());
+    assert!(w.is_frenzying(1_001));
+
+    // Never stacks onto an active frenzy.
+    assert!(!maybe_rage_frenzy(&mut w, &mut buffs, 0, 1_000, 1));
+
+    // A roll above the chance resists.
+    let mut calm = WerewolfState::default();
+    let mut calm_buffs = Vec::new();
+    calm.set_rage(8);
+    assert!(!maybe_rage_frenzy(&mut calm, &mut calm_buffs, 0, 1_000, 31));
+}
+
+#[test]
+fn test_gain_rage_overflow_and_clamping() {
+    use ironmud::types::WerewolfState;
+
+    let mut w = WerewolfState::default();
+    w.set_rage(5);
+    assert!(!w.gain_rage(2), "7/10 is not overflow");
+    assert!(w.gain_rage(3), "exactly hitting max reports overflow");
+    assert_eq!(w.rage, 10);
+    assert!(w.gain_rage(1), "already at max stays overflow");
+    assert_eq!(w.rage, 10, "clamped at max");
+    assert_eq!(w.set_rage(-5), 0, "clamped at zero");
+}
+
+#[test]
+fn test_rage_tick_decays_out_of_combat_and_reasserts_form() {
+    use ironmud::types::{EffectType, WEREWOLF_FORM_SOURCE};
+    use ironmud::werewolf::apply_rage_tick_to_character;
+
+    // Out of combat: rage cools.
+    let mut ch = build_test_werewolf("GarouCool");
+    ch.werewolf_state.as_mut().unwrap().set_rage(5);
+    let (modified, _, frenzied) = apply_rage_tick_to_character(&mut ch, 2_000, 0, 100);
+    assert!(modified);
+    assert!(!frenzied);
+    assert_eq!(ch.werewolf_state.as_ref().unwrap().rage, 4);
+
+    // In combat: rage holds.
+    let mut fighting = build_test_werewolf("GarouHold");
+    fighting.werewolf_state.as_mut().unwrap().set_rage(5);
+    fighting.combat.in_combat = true;
+    apply_rage_tick_to_character(&mut fighting, 2_000, 0, 100);
+    assert_eq!(fighting.werewolf_state.as_ref().unwrap().rage, 5);
+
+    // Hot rage rolls frenzy on the tick (roll 1 always fails to resist).
+    let mut hot = build_test_werewolf("GarouHot");
+    hot.werewolf_state.as_mut().unwrap().set_rage(9);
+    hot.combat.in_combat = true;
+    let (_, _, frenzied) = apply_rage_tick_to_character(&mut hot, 2_000, 0, 1);
+    assert!(frenzied, "rage 9 in combat, roll 1 → the wolf wins");
+
+    // Crinos buffs are re-asserted by the tick.
+    let mut warform = build_test_werewolf("GarouWar");
+    warform.werewolf_state.as_mut().unwrap().current_form = "crinos".to_string();
+    apply_rage_tick_to_character(&mut warform, 2_000, 0, 100);
+    assert!(
+        warform
+            .active_buffs
+            .iter()
+            .any(|b| b.effect_type == EffectType::StrengthBoost && b.source == WEREWOLF_FORM_SOURCE)
+    );
+}
+
+#[test]
+fn test_form_shift_buffs_and_costs() {
+    use ironmud::types::EffectType;
+    use ironmud::werewolf::{apply_form_buffs, form_buffs, is_known_form, shift_cost};
+
+    assert_eq!(shift_cost("crinos"), 3);
+    assert_eq!(shift_cost("lupus"), 1);
+    assert_eq!(shift_cost("homid"), 0);
+    assert!(is_known_form("homid") && is_known_form("crinos") && is_known_form("lupus"));
+    assert!(!is_known_form("hispo"));
+
+    // The war-form trades presence for power.
+    let crinos = form_buffs("crinos");
+    assert!(crinos.contains(&(EffectType::StrengthBoost, 4)));
+    assert!(crinos.contains(&(EffectType::CharismaBoost, -6)));
+
+    // Shifting swaps the whole form-sourced set.
+    let mut buffs = Vec::new();
+    apply_form_buffs(&mut buffs, "crinos");
+    assert!(buffs.iter().any(|b| b.effect_type == EffectType::StrengthBoost));
+    apply_form_buffs(&mut buffs, "lupus");
+    assert!(!buffs.iter().any(|b| b.effect_type == EffectType::StrengthBoost));
+    assert!(buffs.iter().any(|b| b.effect_type == EffectType::Haste));
+    apply_form_buffs(&mut buffs, "homid");
+    assert!(buffs.is_empty(), "homid carries no form buffs");
+}
+
+#[test]
+fn test_tribe_acknowledgment_grants_trait_once() {
+    use ironmud::script::werewolf::{apply_tribe_acknowledgment, pc_tribe_from_traits};
+
+    let mut ch = build_test_werewolf("GarouTribe");
+    assert!(pc_tribe_from_traits(&ch).is_none(), "awakens tribeless");
+
+    assert!(apply_tribe_acknowledgment(&mut ch, "get_of_fenris"));
+    assert_eq!(pc_tribe_from_traits(&ch).as_deref(), Some("get_of_fenris"));
+    assert!(ch.traits.iter().any(|t| t == "tribe_get_of_fenris"));
+
+    // Idempotent, and unknown tribes are refused.
+    assert!(!apply_tribe_acknowledgment(&mut ch, "get_of_fenris"));
+    assert!(!apply_tribe_acknowledgment(&mut ch, "black_spiral_dancers"));
+
+    // Mortals can't claim tribes.
+    let mut mortal: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+        "name": "Mortal",
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+    }))
+    .expect("build character");
+    assert!(!apply_tribe_acknowledgment(&mut mortal, "get_of_fenris"));
 }

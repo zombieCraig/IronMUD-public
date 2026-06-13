@@ -33,10 +33,12 @@ mod serde_defaults;
 mod simulation;
 mod social;
 mod spawn;
+mod synth;
 mod time;
 mod transport;
 mod trigger;
 mod vampire;
+mod werewolf;
 
 // Re-export all types from submodules
 pub use account::*;
@@ -65,7 +67,9 @@ pub use room::*;
 pub use simulation::*;
 pub use social::*;
 pub use spawn::*;
+pub use synth::*;
 pub use time::*;
 pub use transport::*;
 pub use trigger::*;
 pub use vampire::*;
+pub use werewolf::*;

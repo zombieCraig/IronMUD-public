@@ -12,7 +12,7 @@ use ironmud::{BloodTrail, SharedConnections, SharedState, db};
 use super::broadcast::{
     broadcast_to_room_awake, broadcast_to_room_except, send_message_to_character, sync_character_to_session,
 };
-use super::combat::{process_mobile_death, process_player_death};
+use super::combat::{handle_synth_down, process_mobile_death, process_player_death};
 
 /// Bleeding tick interval in seconds
 pub const BLEEDING_TICK_INTERVAL_SECS: u64 = 30;
@@ -165,6 +165,11 @@ fn process_character_bleeding(db: &db::Db, connections: &SharedConnections, stat
         );
 
         if char.hp <= 0 {
+            // Synths run broken instead of collapsing (System Shutdown rule).
+            if char.synth_state.is_some() {
+                handle_synth_down(db, connections, &mut char, &room_id, state)?;
+                continue;
+            }
             let post = db.update_character(&char_name, |c| {
                 c.is_unconscious = true;
                 c.bleedout_rounds_remaining = 5;

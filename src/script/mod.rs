@@ -17,7 +17,7 @@ mod areas;
 pub mod bans;
 mod boards;
 mod bugs;
-pub mod characters;
+mod characters;
 pub mod clan;
 mod classes;
 mod combat;
@@ -27,6 +27,7 @@ pub mod dg;
 pub mod dialogue;
 mod editor;
 pub mod email;
+pub mod fear;
 mod fishing;
 mod garden;
 mod groups;
@@ -52,11 +53,13 @@ pub mod social;
 mod spawn;
 mod spells;
 mod stealth;
+pub mod synth;
 mod tattoos;
 mod transport;
 mod triggers;
 mod utilities;
 pub mod vampire;
+pub mod werewolf;
 
 pub use ai::{set_chat_sender, set_claude_sender, set_gemini_sender};
 pub use areas::check_build_mode;
@@ -384,6 +387,12 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 // Mutant state (None = baseline). Stamped at creation for
                 // race "mutant".
                 mutant_state: None,
+                // Synth state (None = organic). Stamped at creation for
+                // race "synth".
+                synth_state: None,
+                // Werewolf state (None = not Garou). Stamped by the First
+                // Change flow (werewolf class creation / admin awaken).
+                werewolf_state: None,
                 // The Rot: world contamination, tracked on every character.
                 rot_points: 0,
                 permanent_rot_points: 0,
@@ -2180,6 +2189,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     api_keys::register(engine, db.clone());
     areas::register(engine, db.clone());
     combat::register(engine, db.clone());
+    fear::register(engine, db.clone(), connections.clone());
     items::register(engine, db.clone());
     mobiles::register(engine, db.clone(), state.clone());
     mobile_presets::register(engine, db.clone());
@@ -2220,7 +2230,9 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     account_prefs::register(engine, db.clone(), connections.clone());
     editor::register(engine, connections.clone());
     vampire::register(engine, db.clone(), connections.clone());
+    werewolf::register(engine, db.clone(), connections.clone(), state.clone());
     replicant::register_replicant_functions(engine, db.clone(), connections.clone());
+    synth::register_synth_functions(engine, db.clone(), connections.clone());
     cyberware::register_cyberware_functions(engine, db.clone(), connections.clone(), state.clone());
     mutant::register_mutant_functions(engine, db.clone(), connections.clone(), state.clone());
 }

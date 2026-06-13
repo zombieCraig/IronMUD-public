@@ -36,35 +36,6 @@ fn sum_stat_with_boost(
     }
 }
 
-/// A character's *effective* trait id set: their chosen `traits` plus any
-/// `granted_traits` from their race and class definitions, deduped. This is the
-/// single mechanism that makes race/class-granted traits behave like chosen
-/// traits everywhere effect maps are consumed (`get_trait_effect_sum`,
-/// `has_trait`, the mana regen tick) — granted traits are never copied into
-/// `CharacterData.traits`, they are merged here at read-time so a race/class
-/// change reverts them cleanly.
-pub fn effective_trait_ids(
-    char: &crate::CharacterData,
-    race_defs: &std::collections::HashMap<String, crate::types::RaceDefinition>,
-    class_defs: &std::collections::HashMap<String, crate::types::ClassDefinition>,
-) -> Vec<String> {
-    let mut ids: Vec<String> = char.traits.clone();
-    let mut add = |granted: &[String]| {
-        for t in granted {
-            if !ids.contains(t) {
-                ids.push(t.clone());
-            }
-        }
-    };
-    if let Some(r) = race_defs.get(&char.race.to_lowercase()) {
-        add(&r.granted_traits);
-    }
-    if let Some(c) = class_defs.get(&char.class_name.to_lowercase()) {
-        add(&c.granted_traits);
-    }
-    ids
-}
-
 /// Build the rhai::Map shape that `get_game_time()` returns, projecting
 /// weather and effective temperature through the supplied climate. Pass
 /// `ClimateProfile::Temperate` for the unprojected (global) view.
@@ -128,6 +99,25 @@ pub(crate) fn xp_for_level(level: i32) -> i32 {
     }
 }
 
+/// Runtime gate for the supernatural class overlays. Data-driven classes
+/// pass straight through; "vampire" and "werewolf" additionally require
+/// their `enable_*_creation` setting flipped on (toggleable at runtime via
+/// `admin config`, no restart). Add new overlay classes here.
+fn runtime_class_enabled(world: &crate::World, class_id: &str) -> bool {
+    let setting = match class_id {
+        "vampire" => "enable_vampire_creation",
+        "werewolf" => "enable_werewolf_creation",
+        _ => return true,
+    };
+    world
+        .db
+        .get_setting(setting)
+        .ok()
+        .flatten()
+        .map(|s| s.to_lowercase() == "on" || s == "true")
+        .unwrap_or(false)
+}
+
 pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, state: SharedState) {
     // ========== Character Creation Wizard Functions ==========
 
@@ -172,25 +162,19 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // get_class_list() -> Array of available class IDs
     //
     // Class is filtered by the data-driven `available` flag plus a runtime
-    // gate for the vampire class: it only appears when the
-    // `enable_vampire_creation` setting is "on". Admins can toggle this at
-    // runtime via `admin config enable_vampire_creation on|off` without a
-    // server restart. Mortals stay the default new-character experience.
+    // gate for the supernatural class overlays (vampire, werewolf): each
+    // only appears when its `enable_*_creation` setting is "on". Admins can
+    // toggle these at runtime via `admin config enable_vampire_creation
+    // on|off` (and the werewolf sibling) without a server restart. Mortals
+    // stay the default new-character experience.
     let state_clone = state.clone();
     engine.register_fn("get_class_list", move || -> rhai::Array {
         let world = state_clone.lock().unwrap();
-        let vampire_enabled = world
-            .db
-            .get_setting("enable_vampire_creation")
-            .ok()
-            .flatten()
-            .map(|s| s.to_lowercase() == "on" || s == "true")
-            .unwrap_or(false);
         world
             .class_definitions
             .iter()
             .filter(|(_, c)| c.available)
-            .filter(|(id, _)| id.as_str() != "vampire" || vampire_enabled)
+            .filter(|(id, _)| runtime_class_enabled(&world, id))
             .map(|(id, _)| rhai::Dynamic::from(id.clone()))
             .collect()
     });
@@ -202,18 +186,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let state_clone = state.clone();
     engine.register_fn("get_class_list_for_race", move |race_id: String| -> rhai::Array {
         let world = state_clone.lock().unwrap();
-        let vampire_enabled = world
-            .db
-            .get_setting("enable_vampire_creation")
-            .ok()
-            .flatten()
-            .map(|s| s.to_lowercase() == "on" || s == "true")
-            .unwrap_or(false);
         world
             .class_definitions
             .iter()
             .filter(|(_, c)| c.available)
-            .filter(|(id, _)| id.as_str() != "vampire" || vampire_enabled)
+            .filter(|(id, _)| runtime_class_enabled(&world, id))
             .filter(|(_, c)| c.allowed_for_race(&race_id))
             .map(|(id, _)| rhai::Dynamic::from(id.clone()))
             .collect()
@@ -284,12 +261,6 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 .map(|s| rhai::Dynamic::from(s.clone()))
                 .collect();
             map.insert("incompatible_races".into(), rhai::Dynamic::from(incompat));
-            let granted: rhai::Array = class
-                .granted_traits
-                .iter()
-                .map(|s| rhai::Dynamic::from(s.clone()))
-                .collect();
-            map.insert("granted_traits".into(), rhai::Dynamic::from(granted));
         }
         map
     });
@@ -1303,13 +1274,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     if char.traits.iter().any(|t| t == &trait_id) {
                         return true;
                     }
-                    // Check race + class definition granted traits (read-time merge)
-                    let char = char.clone();
+                    // Check race definition's granted traits
+                    let race_id = char.race.to_lowercase();
                     drop(conns_guard);
                     let world = state_clone.lock().unwrap();
-                    return effective_trait_ids(&char, &world.race_definitions, &world.class_definitions)
-                        .iter()
-                        .any(|t| t == &trait_id);
+                    if let Some(race) = world.race_definitions.get(&race_id) {
+                        return race.granted_traits.iter().any(|t| t == &trait_id);
+                    }
+                    return false;
                 }
             }
         }
@@ -2343,7 +2315,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 _ => return 0,
             };
             let world = state_clone.lock().unwrap();
-            effective_trait_ids(&char, &world.race_definitions, &world.class_definitions)
+            char.traits
                 .iter()
                 .filter_map(|t| world.trait_definitions.get(t.as_str()))
                 .filter_map(|def| def.effects.get(&effect_key))
@@ -3117,6 +3089,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 {
                     return false;
                 }
+                // Courage cures fear — from any source (spell, consumable, item).
+                if effect_type == EffectType::Courage {
+                    character.active_buffs.retain(|b| b.effect_type != EffectType::Feared);
+                }
                 // Replace existing buff of same type, or add new
                 if let Some(existing) = character.active_buffs.iter_mut().find(|b| b.effect_type == effect_type) {
                     existing.magnitude = existing.magnitude.max(buff.magnitude);
@@ -3167,6 +3143,10 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 && mobile.active_buffs.iter().any(|b| b.effect_type == EffectType::Loud)
             {
                 return false;
+            }
+            // Courage cures fear — from any source (spell, consumable, item).
+            if effect_type == EffectType::Courage {
+                mobile.active_buffs.retain(|b| b.effect_type != EffectType::Feared);
             }
             if let Some(existing) = mobile.active_buffs.iter_mut().find(|b| b.effect_type == effect_type) {
                 existing.magnitude = existing.magnitude.max(magnitude as i32);

@@ -112,6 +112,13 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Terror blocks initiating violence (joining via retaliation still works
+    // through the combat tick). Courage would have stripped the Feared buff.
+    if has_buff(char.name, "feared") {
+        send_client_message(connection_id, "You are too terrified to start a fight!");
+        return;
+    }
+
     if args == "" {
         send_client_message(connection_id, "Attack whom?");
         return;
@@ -232,6 +239,15 @@ fn execute_attack_vs_mobile(attacker, target_info, connection_id) {
     // God mode: instant divine smite
     if attacker.god_mode {
         god_smite_mobile(attacker, mobile, connection_id);
+        return;
+    }
+
+    // Synth behavioral inhibitor: no initiating violence against a mortal
+    // going about its business. Joining a fight in progress is fine, and so
+    // is running down a mortal that fled combat within the recent window.
+    let directive = synth_directive_check(connection_id, target_info.target_id);
+    if !directive["allowed"] {
+        send_client_message(connection_id, "\x1b[1;33m" + directive["reason"] + "\x1b[0m");
         return;
     }
 

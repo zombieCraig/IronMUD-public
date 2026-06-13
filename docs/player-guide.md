@@ -912,6 +912,8 @@ Casting spells costs mana. Your current mana is shown in the `status` command an
 | Detect Invisible | 3 | 20 | Reveals invisible creatures |
 | Sleep | 3 | 25 | Puts a target to sleep — they skip turns until damaged or the buff expires |
 | Blind | 3 | 25 | Reduces a target's hit chance |
+| Fear | 3 | 30 | Floods a target with terror — mobs flee every round; feared players may bolt or freeze (PvP zones only) |
+| Courage | 3 | 25 | Grants temporary fear immunity to yourself or an ally and cures existing fear |
 | Charm | 4 | 35 | Compels an NPC to obey you (see [Pets and Charmed Mobs](#pets-and-charmed-mobs)) |
 | Summon | 4 | 40 | Yanks a willing target to your room from anywhere in the world |
 | Lightning Bolt | 4 | 40 | Strikes a target with lightning |
@@ -926,7 +928,9 @@ Casting spells costs mana. Your current mana is shown in the `status` command an
 
 Spells marked "scroll-only" cannot be learned through skill advancement alone and must be found on scrolls in the world.
 
-**Resists:** mobs flagged `no_charm`, `no_summon`, `no_sleep`, or `no_blind` are immune to the matching spell — the cast still consumes mana but has no effect. Players consenting to be summoned set this with `set summonable on`.
+**Resists:** mobs flagged `no_charm`, `no_summon`, `no_sleep`, `no_blind`, or `no_fear` are immune to the matching spell — the cast still consumes mana but has no effect. Players consenting to be summoned set this with `set summonable on`.
+
+**Fear:** while terrified you cannot start fights, and each combat round you may bolt for an exit or freeze in panic. Synth characters, constructs, undead, and anyone under a `Courage` buff are immune. Fear can also ride on items: cursed food and drink frighten whoever consumes them, and weapons or armor bearing a *dread aura* terrify the wearer's enemies in combat.
 
 ## Stealth and Subterfuge
 

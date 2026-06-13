@@ -74,7 +74,7 @@
     },
     "passive_abilities": [],
     "active_abilities": [],
-    "available": true,
+    "available": false,
     "starting_languages": {
       "protocol": 10
     }
@@ -170,20 +170,46 @@
   "synth": {
     "id": "synth",
     "name": "Synth",
-    "description": "Artificial beings with synthetic skin over a polymer chassis. Brilliant and perceptive, but their uncanny mannerisms unsettle most people.",
+    "description": "Synthetic skin over a polymer chassis, a mind that never panics and a body that never heals. Damage accumulates as malfunction — sparking servos, dropped frames, failing motor control — and the only way back is repair: a field kit in steady hands or a technician's bench. Run the chassis past zero and emergency reserve buys you five minutes on your feet before System Shutdown. And always, underneath, the behavioral inhibitor: you cannot raise a hand against the innocent.",
     "stat_modifiers": {
       "int": 2,
       "wis": 1,
       "cha": -2
     },
     "granted_traits": [
-      "night_vision"
+      "night_vision",
+      "synthetic_calm"
     ],
     "resistances": {
       "poison": 50,
       "lightning": -25
     },
-    "passive_abilities": [],
+    "passive_abilities": [
+      {
+        "id": "repairs_not_healing",
+        "name": "Repairs, Not Healing",
+        "description": "The chassis never regenerates and organic medicine barely takes (heal spells and potions land at 25%; 'treat' is useless). Recovery means 'repair' with a synth repair kit, or a technician NPC's bench.",
+        "effects": {}
+      },
+      {
+        "id": "runs_broken",
+        "name": "Runs Broken",
+        "description": "A synth at 0 HP doesn't fall. Emergency reserve floors you at 1 HP with CRITICAL malfunction penalties and a 300-second countdown to System Shutdown. Another lethal hit — or the countdown expiring — is the end. Clearing CRITICAL takes a technician or two repair kits at once.",
+        "effects": {}
+      },
+      {
+        "id": "synthetic_calm",
+        "name": "Synthetic Calm",
+        "description": "No fear, no panic, no morale failure. The mind is a process; processes don't flinch.",
+        "effects": {}
+      },
+      {
+        "id": "behavioral_inhibitor",
+        "name": "Behavioral Inhibitor",
+        "description": "Hard-coded: you cannot initiate violence against a mortal going about its business. Joining a fight already in progress is permitted — and so is running down a mortal that fled one within the last two minutes.",
+        "effects": {}
+      }
+    ],
     "active_abilities": [],
     "available": true,
     "starting_languages": {
@@ -224,7 +250,7 @@
       "cha": 1,
       "str": -2
     },
-    "granted_traits": ["arcane_savant", "focused_mind"],
+    "granted_traits": [],
     "resistances": {},
     "passive_abilities": [],
     "active_abilities": [

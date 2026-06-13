@@ -155,6 +155,8 @@ pub struct MobileFlags {
     #[serde(default)]
     pub no_charm: bool, // Immune to the charm spell (CircleMUD MOB_NOCHARM)
     #[serde(default)]
+    pub no_fear: bool, // Immune to the fear effect (constructs and undead are implicitly immune)
+    #[serde(default)]
     pub hostile_on_steal: bool, // Attacks the thief when a steal attempt is caught (CircleMUD shop WILL_START_FIGHT)
     #[serde(default)]
     pub tameable: bool, // Casting `charm` on this mob installs a permanent pet bond instead of a temporary buff
@@ -349,6 +351,12 @@ pub struct MobileData {
     pub is_unconscious: bool,
     #[serde(skip)]
     pub bleedout_rounds_remaining: i32,
+
+    // Unix timestamp of this instance's most recent combat round. Stamped by
+    // the combat tick; consumed by the synth behavioral inhibitor ("pursue a
+    // mortal that fled within the recent window").
+    #[serde(default)]
+    pub last_combat_at: i64,
 
     // Pursuit state (for cross-room sniping response)
     #[serde(default)]
@@ -585,6 +593,7 @@ impl MobileData {
             // Death/unconscious state (not persisted)
             is_unconscious: false,
             bleedout_rounds_remaining: 0,
+            last_combat_at: 0,
             // Pursuit state
             pursuit_target_name: String::new(),
             pursuit_target_room: None,

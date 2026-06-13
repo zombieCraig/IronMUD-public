@@ -300,6 +300,8 @@ pub struct MobileFlagsRequest {
     #[serde(default)]
     pub no_charm: Option<bool>,
     #[serde(default)]
+    pub no_fear: Option<bool>,
+    #[serde(default)]
     pub hostile_on_steal: Option<bool>,
     #[serde(default)]
     pub tameable: Option<bool>,
@@ -896,6 +898,7 @@ async fn create_mobile(
             no_bash: req.flags.no_bash.unwrap_or(false),
             no_summon: req.flags.no_summon.unwrap_or(false),
             no_charm: req.flags.no_charm.unwrap_or(false),
+            no_fear: req.flags.no_fear.unwrap_or(false),
             hostile_on_steal: req.flags.hostile_on_steal.unwrap_or(false),
             tameable: req.flags.tameable.unwrap_or(false),
             undead: req.flags.undead.unwrap_or(false),
@@ -932,6 +935,7 @@ async fn create_mobile(
         shop_max_value: req.shop_max_value.unwrap_or(0),
         is_unconscious: false,
         bleedout_rounds_remaining: 0,
+        last_combat_at: 0,
         pursuit_target_name: String::new(),
         pursuit_target_room: None,
         pursuit_direction: String::new(),
@@ -1158,6 +1162,9 @@ async fn update_mobile(
         }
         if let Some(v) = flags.no_charm {
             mobile.flags.no_charm = v;
+        }
+        if let Some(v) = flags.no_fear {
+            mobile.flags.no_fear = v;
         }
         if let Some(v) = flags.hostile_on_steal {
             mobile.flags.hostile_on_steal = v;

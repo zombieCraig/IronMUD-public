@@ -47,6 +47,17 @@ fn run_command(args, connection_id) {
     let target_id = target_result.target_id;
     let is_self = target_result.is_self;
 
+    // Bandages and sutures do nothing for a polymer chassis: synths are
+    // repaired (repair kits, technician NPCs), not treated.
+    if target_type != "mobile" && is_character_synth(target_name) {
+        if is_self {
+            send_client_message(connection_id, "Gauze won't hold a weld. Your chassis needs repair, not medicine.");
+        } else {
+            send_client_message(connection_id, target_name + "'s synthetic chassis is beyond medicine. It needs repair, not treatment.");
+        }
+        return;
+    }
+
     // Check if second argument is a condition name
     if is_condition_name(second_arg) {
         // Only players can have conditions treated (not mobiles)
