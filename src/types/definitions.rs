@@ -32,6 +32,13 @@ pub struct ClassDefinition {
     /// (synth, bioroid, clone) that can't be embraced.
     #[serde(default)]
     pub incompatible_races: Vec<String>,
+    /// Trait ids automatically granted to every member of this class, mirroring
+    /// `RaceDefinition::granted_traits`. These are merged into a character's
+    /// effective trait set at read-time (see `effective_trait_ids`) so their
+    /// `effects` maps feed the same machinery as chosen traits — without being
+    /// copied into `CharacterData.traits`.
+    #[serde(default)]
+    pub granted_traits: Vec<String>,
 }
 
 impl ClassDefinition {

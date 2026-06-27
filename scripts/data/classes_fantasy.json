@@ -21,6 +21,7 @@
     "description": "A student of the arcane arts. Your intellect fuels powerful spells, though your body is frail.",
     "starting_skills": {"magic": 1, "crafting": 1, "foraging": 1},
     "stat_bonuses": {"int": 2, "wis": 1},
+    "granted_traits": ["spell_prodigy", "mana_well"],
     "available": true
   },
   "ranger": {

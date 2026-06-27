@@ -10218,6 +10218,7 @@ fn test_class_allowed_for_race_filters() {
         starting_gold: 0,
         allowed_races: Vec::new(),
         incompatible_races: vec!["synth".into(), "bioroid".into(), "replicant".into()],
+        granted_traits: Vec::new(),
     };
     assert!(vampire.allowed_for_race("human"));
     assert!(vampire.allowed_for_race("orc"));
@@ -10233,6 +10234,63 @@ fn test_class_allowed_for_race_filters() {
     assert!(vampire.allowed_for_race("human"));
     assert!(vampire.allowed_for_race("elf"));
     assert!(!vampire.allowed_for_race("dwarf"));
+}
+
+#[test]
+fn test_effective_trait_ids_merges_race_and_class_granted() {
+    use ironmud::script::characters::effective_trait_ids;
+    use std::collections::HashMap;
+
+    // Psychic-style race grants two magic traits; mage-style class grants two more.
+    let race: ironmud::types::RaceDefinition = serde_json::from_value(serde_json::json!({
+        "id": "psychic",
+        "name": "Psychic",
+        "description": "",
+        "granted_traits": ["arcane_savant", "focused_mind"],
+    }))
+    .expect("build race");
+    let class: ironmud::types::ClassDefinition = serde_json::from_value(serde_json::json!({
+        "id": "mage",
+        "name": "Mage",
+        "description": "",
+        "granted_traits": ["spell_prodigy", "mana_well"],
+    }))
+    .expect("build class");
+
+    let mut race_defs = HashMap::new();
+    race_defs.insert("psychic".to_string(), race);
+    let mut class_defs = HashMap::new();
+    class_defs.insert("mage".to_string(), class);
+
+    // Character with one chosen trait, race=psychic, class=mage. The chosen
+    // trait plus both granted lists should all surface, deduped. Race lookup is
+    // case-insensitive (stored lowercase).
+    let char: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+        "name": "Merlin",
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+        "race": "Psychic",
+        "class_name": "mage",
+        "traits": ["focused_mind", "night_vision"],
+    }))
+    .expect("build character");
+
+    let ids = effective_trait_ids(&char, &race_defs, &class_defs);
+    for expected in [
+        "night_vision",
+        "focused_mind",
+        "arcane_savant",
+        "spell_prodigy",
+        "mana_well",
+    ] {
+        assert!(ids.contains(&expected.to_string()), "missing {expected}: {ids:?}");
+    }
+    // focused_mind appears in both chosen and race-granted but must not double.
+    assert_eq!(
+        ids.iter().filter(|t| t.as_str() == "focused_mind").count(),
+        1,
+        "granted trait already chosen must not duplicate: {ids:?}"
+    );
 }
 
 #[test]

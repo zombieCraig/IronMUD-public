@@ -1011,6 +1011,18 @@ fn accept_trait(connection_id, idx) {
         }
     }
 
+    // Check if class already grants this trait (prevents double-dipping)
+    let class_info = get_class_info(char_data.class_name);
+    let class_granted = class_info["granted_traits"];
+    if class_granted != () {
+        for g in class_granted {
+            if g == trait_id {
+                send_client_message(connection_id, "Your class already grants " + info["name"] + " for free!\n> ");
+                return;
+            }
+        }
+    }
+
     // Check if can afford
     let new_points = char_data.trait_points - info["cost"];
     if new_points < 0 {

@@ -97,6 +97,8 @@ pub enum CompletionType {
     AdminSubcommand,
     AdminUserAction,
     AdminApiKeyAction,
+    /// `admin loadout <class|race> <id>` — a class or race id.
+    LoadoutId,
     TreatTarget,
     BodyPart,
     TreatableCondition,

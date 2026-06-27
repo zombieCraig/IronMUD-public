@@ -17,7 +17,7 @@ mod areas;
 pub mod bans;
 mod boards;
 mod bugs;
-mod characters;
+pub mod characters;
 pub mod clan;
 mod classes;
 mod combat;

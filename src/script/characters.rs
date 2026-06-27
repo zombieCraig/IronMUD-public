@@ -36,6 +36,35 @@ fn sum_stat_with_boost(
     }
 }
 
+/// A character's *effective* trait id set: their chosen `traits` plus any
+/// `granted_traits` from their race and class definitions, deduped. This is the
+/// single mechanism that makes race/class-granted traits behave like chosen
+/// traits everywhere effect maps are consumed (`get_trait_effect_sum`,
+/// `has_trait`, the mana regen tick) — granted traits are never copied into
+/// `CharacterData.traits`, they are merged here at read-time so a race/class
+/// change reverts them cleanly.
+pub fn effective_trait_ids(
+    char: &crate::CharacterData,
+    race_defs: &std::collections::HashMap<String, crate::types::RaceDefinition>,
+    class_defs: &std::collections::HashMap<String, crate::types::ClassDefinition>,
+) -> Vec<String> {
+    let mut ids: Vec<String> = char.traits.clone();
+    let mut add = |granted: &[String]| {
+        for t in granted {
+            if !ids.contains(t) {
+                ids.push(t.clone());
+            }
+        }
+    };
+    if let Some(r) = race_defs.get(&char.race.to_lowercase()) {
+        add(&r.granted_traits);
+    }
+    if let Some(c) = class_defs.get(&char.class_name.to_lowercase()) {
+        add(&c.granted_traits);
+    }
+    ids
+}
+
 /// Build the rhai::Map shape that `get_game_time()` returns, projecting
 /// weather and effective temperature through the supplied climate. Pass
 /// `ClimateProfile::Temperate` for the unprojected (global) view.
@@ -261,6 +290,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 .map(|s| rhai::Dynamic::from(s.clone()))
                 .collect();
             map.insert("incompatible_races".into(), rhai::Dynamic::from(incompat));
+            let granted: rhai::Array = class
+                .granted_traits
+                .iter()
+                .map(|s| rhai::Dynamic::from(s.clone()))
+                .collect();
+            map.insert("granted_traits".into(), rhai::Dynamic::from(granted));
         }
         map
     });
@@ -1274,14 +1309,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     if char.traits.iter().any(|t| t == &trait_id) {
                         return true;
                     }
-                    // Check race definition's granted traits
-                    let race_id = char.race.to_lowercase();
+                    // Check race + class definition granted traits (read-time merge)
+                    let char = char.clone();
                     drop(conns_guard);
                     let world = state_clone.lock().unwrap();
-                    if let Some(race) = world.race_definitions.get(&race_id) {
-                        return race.granted_traits.iter().any(|t| t == &trait_id);
-                    }
-                    return false;
+                    return effective_trait_ids(&char, &world.race_definitions, &world.class_definitions)
+                        .iter()
+                        .any(|t| t == &trait_id);
                 }
             }
         }
@@ -2315,7 +2349,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 _ => return 0,
             };
             let world = state_clone.lock().unwrap();
-            char.traits
+            effective_trait_ids(&char, &world.race_definitions, &world.class_definitions)
                 .iter()
                 .filter_map(|t| world.trait_definitions.get(t.as_str()))
                 .filter_map(|def| def.effects.get(&effect_key))
