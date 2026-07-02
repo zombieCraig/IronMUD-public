@@ -39,6 +39,7 @@ mod transport;
 mod trigger;
 mod vampire;
 mod werewolf;
+mod worship;
 
 // Re-export all types from submodules
 pub use account::*;
@@ -73,3 +74,4 @@ pub use transport::*;
 pub use trigger::*;
 pub use vampire::*;
 pub use werewolf::*;
+pub use worship::*;

@@ -426,6 +426,7 @@ fn process_character_combat_round(
     if let Some(kill) = kill_info {
         crate::ticks::achievements::notify_kill_with_state(db, connections, state, &char.name, &kill.killed_vnum);
         ironmud::quest::handle_mob_kill(db, connections, state, &char.name, &kill.killed_vnum, &kill.damaged_by);
+        ironmud::script::worship::handle_npc_kill_credit(db, connections, &char.name, &kill.killed_vnum);
     }
     Ok(())
 }
@@ -3615,6 +3616,17 @@ pub fn process_player_death(
 ) -> Result<()> {
     let char_name = char.name.clone();
 
+    // Snapshot engaged player attackers before combat state is cleared —
+    // enemy-god worship credit for PvP kills is awarded after the respawn
+    // save below.
+    let pvp_attackers: Vec<String> = char
+        .combat
+        .targets
+        .iter()
+        .filter(|t| t.target_type == CombatTargetType::Player)
+        .filter_map(|t| t.target_name.clone())
+        .collect();
+
     // Release any mobiles this player had charmed.
     break_all_charms_by_player(db, &char_name);
 
@@ -3697,6 +3709,13 @@ pub fn process_player_death(
     // Send respawn message
     send_message_to_character(connections, &char_name, "You awaken at your spawn point...");
     send_message_to_character(connections, &char_name, &format!("You have {} HP.", char.hp));
+
+    // Enemy-god worship credit for the killers. Runs after the victim's
+    // save+sync above; the killers' own rounds load fresh state, so the
+    // favor write isn't clobbered by end-of-round saves.
+    for killer in pvp_attackers {
+        ironmud::script::worship::handle_pvp_kill_credit(db, connections, &killer, &char_name);
+    }
 
     Ok(())
 }

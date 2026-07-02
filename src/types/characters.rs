@@ -4,7 +4,7 @@
 use super::serde_defaults::default_stat;
 use super::{
     AchievementUnlock, ActiveBuff, ActiveQuest, BodyPart, CombatState, DialoguePairState, ItemAffect, OngoingEffect,
-    SkillProgress, WearLocation, Wound,
+    SkillProgress, WearLocation, WorshipState, Wound,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -144,6 +144,9 @@ pub struct CharacterData {
     // to scan every clan.
     #[serde(default)]
     pub clan_tag: Option<String>,
+    // Active god pact + standing. None = worships no god. See types/worship.rs.
+    #[serde(default)]
+    pub worship: Option<WorshipState>,
     // Active language for say/tell/whisper/shout. Defaults to "common".
     #[serde(default = "default_language")]
     pub current_language: String,

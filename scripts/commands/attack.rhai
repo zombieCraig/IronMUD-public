@@ -251,6 +251,12 @@ fn execute_attack_vs_mobile(attacker, target_info, connection_id) {
         return;
     }
 
+    // Faith offense: raising a hand against a mob sworn to your own god
+    // brings escalating divine punishment (the attack still proceeds).
+    if mobile.patron_god_vnum != "" {
+        punish_faith_offense(attacker.name, mobile.patron_god_vnum);
+    }
+
     // Check if target is unconscious - instant kill
     if is_mobile_unconscious(target_info.target_id) {
         execute_coup_de_grace_mobile(attacker, mobile, connection_id);
@@ -420,6 +426,13 @@ fn execute_attack_vs_player(attacker, target_info, connection_id) {
     if target.god_mode {
         send_client_message(connection_id, "You think better of it. You are not that foolish.");
         return;
+    }
+
+    // Faith offense: attacking a co-worshiper of your own god brings
+    // escalating divine punishment (the attack still proceeds).
+    let target_god = get_worship_god(target_info.target_name);
+    if target_god != "" {
+        punish_faith_offense(attacker.name, target_god);
     }
 
     // Check if target is unconscious - instant kill

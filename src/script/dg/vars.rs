@@ -1217,6 +1217,18 @@ fn try_character_field(ch: &crate::types::CharacterData, field: &str) -> Option<
         "hunger" => ch.hunger.to_string(),
         "thirst" => ch.thirst.to_string(),
         "canbeseen" => "1".to_string(),
+        // God worship: vnum of the worshiped god ("" when godless), divine
+        // favor, and the escalating faith-offense counter. Overdue days are
+        // supplied as fire-time context vars on OnPray/OnSmite instead
+        // (they need the god's tribute interval + current game day).
+        "worship_god" => ch.worship.as_ref().map(|w| w.god_vnum.clone()).unwrap_or_default(),
+        "worship_favor" => ch.worship.as_ref().map(|w| w.favor).unwrap_or(0).to_string(),
+        "worship_offenses" => ch
+            .worship
+            .as_ref()
+            .map(|w| w.coworshiper_offenses)
+            .unwrap_or(0)
+            .to_string(),
         _ => return None,
     })
 }
@@ -1270,6 +1282,11 @@ fn try_mobile_field(mob: &crate::types::MobileData, field: &str) -> Option<Strin
             .unwrap_or_else(|| "0".to_string()),
         "thirst" => "0".to_string(),
         "canbeseen" => "1".to_string(),
+        // God worship: vnum of the god this mob serves ("" for the unsworn),
+        // and deity self-inspection for god-mob trigger bodies.
+        "patron_god" => mob.patron_god_vnum.clone().unwrap_or_default(),
+        "is_deity" => if mob.deity.is_some() { "1" } else { "0" }.to_string(),
+        "deity_epithet" => mob.deity.as_ref().map(|d| d.epithet.clone()).unwrap_or_default(),
         _ => return None,
     })
 }

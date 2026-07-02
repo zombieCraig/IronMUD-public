@@ -52,11 +52,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             mobile_id?: undefined;
             keyword?: undefined;
             response?: undefined;
@@ -139,11 +142,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             mobile_id?: undefined;
             keyword?: undefined;
             response?: undefined;
@@ -229,11 +235,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             mobile_id?: undefined;
             keyword?: undefined;
             response?: undefined;
@@ -319,11 +328,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             mobile_id?: undefined;
             keyword?: undefined;
             response?: undefined;
@@ -776,6 +788,79 @@ export declare const mobileToolDefinitions: ({
                 };
                 required: string[];
             };
+            deity: {
+                type: string;
+                description: string;
+                properties: {
+                    rank: {
+                        type: string;
+                        enum: string[];
+                        description: string;
+                    };
+                    epithet: {
+                        type: string;
+                        description: string;
+                    };
+                    lore: {
+                        type: string;
+                        description: string;
+                    };
+                    enemy_god_vnums: {
+                        type: string;
+                        items: {
+                            type: string;
+                        };
+                        description: string;
+                    };
+                    pact_item_vnums: {
+                        type: string;
+                        items: {
+                            type: string;
+                        };
+                        description: string;
+                    };
+                    pact_quest_ids: {
+                        type: string;
+                        items: {
+                            type: string;
+                        };
+                        description: string;
+                    };
+                    tribute_interval_days: {
+                        type: string;
+                        description: string;
+                    };
+                    tribute_gold_percent: {
+                        type: string;
+                        description: string;
+                    };
+                    blessing_effects: {
+                        type: string;
+                        description: string;
+                        items: {
+                            type: string;
+                            properties: {
+                                effect: {
+                                    type: string;
+                                    description: string;
+                                };
+                                magnitude: {
+                                    type: string;
+                                };
+                            };
+                            required: string[];
+                        };
+                    };
+                    allow_permanent_smite: {
+                        type: string;
+                        description: string;
+                    };
+                };
+            };
+            patron_god_vnum: {
+                type: string;
+                description: string;
+            };
             limit?: undefined;
             offset?: undefined;
             vnum_prefix?: undefined;
@@ -785,6 +870,7 @@ export declare const mobileToolDefinitions: ({
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             mobile_id?: undefined;
             keyword?: undefined;
             response?: undefined;
@@ -1254,6 +1340,83 @@ export declare const mobileToolDefinitions: ({
                 type: string;
                 description: string;
             };
+            deity: {
+                type: string;
+                description: string;
+                properties: {
+                    rank: {
+                        type: string;
+                        enum: string[];
+                        description: string;
+                    };
+                    epithet: {
+                        type: string;
+                        description: string;
+                    };
+                    lore: {
+                        type: string;
+                        description: string;
+                    };
+                    enemy_god_vnums: {
+                        type: string;
+                        items: {
+                            type: string;
+                        };
+                        description: string;
+                    };
+                    pact_item_vnums: {
+                        type: string;
+                        items: {
+                            type: string;
+                        };
+                        description: string;
+                    };
+                    pact_quest_ids: {
+                        type: string;
+                        items: {
+                            type: string;
+                        };
+                        description: string;
+                    };
+                    tribute_interval_days: {
+                        type: string;
+                        description: string;
+                    };
+                    tribute_gold_percent: {
+                        type: string;
+                        description: string;
+                    };
+                    blessing_effects: {
+                        type: string;
+                        description: string;
+                        items: {
+                            type: string;
+                            properties: {
+                                effect: {
+                                    type: string;
+                                    description: string;
+                                };
+                                magnitude: {
+                                    type: string;
+                                };
+                            };
+                            required: string[];
+                        };
+                    };
+                    allow_permanent_smite: {
+                        type: string;
+                        description: string;
+                    };
+                };
+            };
+            patron_god_vnum: {
+                type: string;
+                description: string;
+            };
+            remove_deity: {
+                type: string;
+                description: string;
+            };
             limit?: undefined;
             offset?: undefined;
             vnum_prefix?: undefined;
@@ -1345,10 +1508,13 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             mobile_id?: undefined;
             keyword?: undefined;
             response?: undefined;
@@ -1443,11 +1609,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             node_name?: undefined;
             text?: undefined;
             on_enter?: undefined;
@@ -1535,11 +1704,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             response?: undefined;
             node_name?: undefined;
             text?: undefined;
@@ -1628,11 +1800,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             keyword?: undefined;
             response?: undefined;
             text?: undefined;
@@ -1736,11 +1911,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             keyword?: undefined;
             response?: undefined;
             node_name?: undefined;
@@ -1842,11 +2020,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             keyword?: undefined;
             response?: undefined;
             label?: undefined;
@@ -1963,11 +2144,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             response?: undefined;
             text?: undefined;
             on_enter?: undefined;
@@ -2084,11 +2268,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             response?: undefined;
             text?: undefined;
             on_enter?: undefined;
@@ -2172,11 +2359,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             keyword?: undefined;
             response?: undefined;
             text?: undefined;
@@ -2284,11 +2474,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             keyword?: undefined;
             response?: undefined;
             node_name?: undefined;
@@ -2372,11 +2565,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             keyword?: undefined;
             response?: undefined;
             node_name?: undefined;
@@ -2464,11 +2660,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             mobile_id?: undefined;
             keyword?: undefined;
             response?: undefined;
@@ -2581,11 +2780,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             keyword?: undefined;
             response?: undefined;
             node_name?: undefined;
@@ -2665,11 +2867,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             mobile_id?: undefined;
             keyword?: undefined;
             response?: undefined;
@@ -2759,11 +2964,14 @@ export declare const mobileToolDefinitions: ({
             shop_preset_vnum?: undefined;
             daily_routine?: undefined;
             simulation?: undefined;
+            deity?: undefined;
+            patron_god_vnum?: undefined;
             id?: undefined;
             gold?: undefined;
             dialogue_tree?: undefined;
             clear_dialogue_tree?: undefined;
             remove_simulation?: undefined;
+            remove_deity?: undefined;
             keyword?: undefined;
             response?: undefined;
             node_name?: undefined;

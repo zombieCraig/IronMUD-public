@@ -33,7 +33,7 @@ use ticks::{
     run_mutation_tick, run_periodic_trigger_tick, run_psyche_tick, run_pursuit_tick, run_quest_tick, run_rage_tick,
     run_regen_tick, run_rent_tick, run_resolve_tick, run_rot_tick, run_routine_tick, run_simulation_tick,
     run_slow_move_tick, run_spawn_tick, run_spoilage_tick, run_sun_tick, run_thirst_tick, run_time_tick,
-    run_transport_tick, run_wander_tick,
+    run_transport_tick, run_wander_tick, run_worship_tick,
 };
 
 #[derive(Parser, Debug)]
@@ -161,6 +161,7 @@ async fn main() -> Result<()> {
     let tick_db32 = db.clone(); // Clone db for world rot tick
     let tick_db33 = db.clone(); // Clone db for synth chassis tick
     let tick_db34 = db.clone(); // Clone db for werewolf rage tick
+    let tick_db35 = db.clone(); // Clone db for worship anger tick
     let api_db = db.clone(); // Clone db for REST API
 
     let connections = Arc::new(Mutex::new(HashMap::new()));
@@ -471,6 +472,13 @@ async fn main() -> Result<()> {
     let rot_connections = connections.clone();
     tokio::spawn(async move {
         run_rot_tick(tick_db32, rot_connections).await;
+    });
+
+    // Start background worship anger tick (missed god tribute escalates:
+    // warning -> curse -> smite -> opt-in permanent smite)
+    let worship_connections = connections.clone();
+    tokio::spawn(async move {
+        run_worship_tick(tick_db35, worship_connections).await;
     });
 
     // Start control socket listener for out-of-process admin commands.

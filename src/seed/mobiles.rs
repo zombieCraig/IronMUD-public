@@ -90,6 +90,8 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
         perception: 0,
         simulation: None,
         needs: None,
+        deity: None,
+        patron_god_vnum: None,
         characteristics: None,
         household_id: None,
         faction: None,

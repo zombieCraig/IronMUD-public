@@ -490,7 +490,11 @@
   },
   "pray": {
     "access": "user",
-    "description": "Send a message to online administrators"
+    "description": "Send a message to online administrators; in a temple, pray to your god"
+  },
+  "worship": {
+    "access": "user",
+    "description": "Swear yourself to a god, or view your standing with them"
   },
   "prompt": {
     "access": "user",

@@ -242,6 +242,16 @@ pub enum MobileTriggerType {
     /// `args` first entry is matched against the command verb (DG keyword
     /// `/=` semantics). `Return(0)` cancels the host command. (DG MTRIG_COMMAND)
     OnCommand,
+    /// Fires on the worshiped god's mob when a worshiper prays in a temple.
+    /// Context vars: `action` ("pray" | "tribute"), `overdue_days`.
+    /// `Return(0)` cancels the default tribute/blessing handling.
+    OnPray,
+    /// Fires on the god's mob when a player forms a worship pact with it.
+    OnWorshipPact,
+    /// Fires on the worshiped god's mob when the anger ladder smites a
+    /// worshiper. Context vars: `severity` (1-4), `overdue_days`.
+    /// `Return(0)` cancels the default smite.
+    OnSmite,
 }
 
 impl Default for MobileTriggerType {

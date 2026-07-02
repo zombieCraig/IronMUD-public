@@ -744,6 +744,8 @@ fn dispatch_routine_subcommand(mobile, uuid, subcommand, parts, connection_id) {
     if subcommand == "social" { handle_social_subcommand(mobile, uuid, parts, connection_id); return true; }
     if subcommand == "pregnancy" || subcommand == "preg" { handle_pregnancy_subcommand(mobile, uuid, parts, connection_id); return true; }
     if subcommand == "on_hit" || subcommand == "onhit" { handle_mob_on_hit_subcommand(uuid, mobile_id, parts, connection_id); return true; }
+    if subcommand == "deity" { handle_deity_subcommand(mobile, uuid, parts, connection_id); return true; }
+    if subcommand == "patron" { handle_patron_subcommand(uuid, parts, connection_id); return true; }
     return false;
 }
 
@@ -1631,6 +1633,23 @@ fn build_commands_help(mobile_id, mobile) {
     } else {
         output += "\n  medit " + display_id + " simulation setup <home> <work> <shop>  - Enable needs simulation\n";
     }
+
+    if mobile.is_deity {
+        output += "\nDeity Commands:\n";
+        output += "  medit " + display_id + " deity                            - Show deity configuration\n";
+        output += "  medit " + display_id + " deity setup <god|demigod|ascended> - Change rank\n";
+        output += "  medit " + display_id + " deity remove                     - Remove deity status\n";
+        output += "  medit " + display_id + " deity epithet <text>             - Lore line ('God of Wrath')\n";
+        output += "  medit " + display_id + " deity lore <text>                - Story paragraph\n";
+        output += "  medit " + display_id + " deity enemy add|remove <vnum>    - Enemy god vnums\n";
+        output += "  medit " + display_id + " deity pact item|quest add|remove <id> - Pact gates\n";
+        output += "  medit " + display_id + " deity tribute interval <days> | gold <pct>\n";
+        output += "  medit " + display_id + " deity bless add <effect> <mag> | remove <idx>\n";
+        output += "  medit " + display_id + " deity permanent_smite on|off     - Allow stage-4 permanent smite\n";
+    } else {
+        output += "\n  medit " + display_id + " deity setup <god|demigod|ascended> - Mark as deity (worship system)\n";
+    }
+    output += "  medit " + display_id + " patron <god_vnum>|clear          - Link this mob to a god (minion/priest)\n";
 
     let routine_count = get_mobile_routine_entry_count(mobile.id);
     if routine_count > 0 {
@@ -4403,3 +4422,251 @@ fn handle_combat_spells_subcommand(mobile, mobile_id, parts, connection_id) {
     send_client_message(connection_id, "Usage: medit <id> combat_spells [add|remove|clear|chance] [<spell_id>|<0-100>]");
 }
 
+
+// === Deity (god worship) subcommands ===
+// Compact by design: only `deity setup <rank>` is surfaced until the mob is
+// marked as a deity; the full group appears in help once it is.
+
+fn handle_deity_subcommand(mobile, mobile_id, parts, connection_id) {
+    let action = if parts.len() < 4 { "show" } else { parts[3].to_lower() };
+
+    if action == "show" { show_deity_config(mobile_id, connection_id); return; }
+    if action == "setup" { handle_deity_setup(mobile_id, parts, connection_id); return; }
+    if action == "remove" { handle_deity_remove(mobile_id, connection_id); return; }
+    if action == "epithet" { handle_deity_text(mobile_id, parts, "epithet", connection_id); return; }
+    if action == "lore" { handle_deity_text(mobile_id, parts, "lore", connection_id); return; }
+    if action == "enemy" { handle_deity_list(mobile_id, parts, "enemy", connection_id); return; }
+    if action == "pact" { handle_deity_pact(mobile_id, parts, connection_id); return; }
+    if action == "tribute" { handle_deity_tribute(mobile_id, parts, connection_id); return; }
+    if action == "bless" { handle_deity_bless(mobile_id, parts, connection_id); return; }
+    if action == "permanent_smite" { handle_deity_permanent_smite(mobile_id, parts, connection_id); return; }
+
+    send_client_message(connection_id, "Unknown deity action: " + action);
+    send_client_message(connection_id, "Valid: setup, remove, epithet, lore, enemy, pact, tribute, bless, permanent_smite");
+}
+
+fn show_deity_config(mobile_id, connection_id) {
+    let cfg = get_deity_config(mobile_id);
+    if cfg == () {
+        send_client_message(connection_id, "Not a deity. Use 'medit <id> deity setup <god|demigod|ascended>' to mark it as one.");
+        return;
+    }
+    let output = "\n=== Deity Configuration ===\n";
+    output += "  Rank:      " + cfg["rank"] + (if cfg["rank"] == "god" { " (worshipable)" } else { " (not worshipable)" }) + "\n";
+    output += "  Epithet:   " + (if cfg["epithet"] == "" { "(none)" } else { cfg["epithet"] }) + "\n";
+    output += "  Lore:      " + (if cfg["lore"] == "" { "(none)" } else { cfg["lore"] }) + "\n";
+    output += "  Enemies:   " + format_deity_list(cfg["enemy_god_vnums"]) + "\n";
+    output += "  Pact item vnums:  " + format_deity_list(cfg["pact_item_vnums"]) + " (any one, CONSUMED on pact)\n";
+    output += "  Pact quest ids:   " + format_deity_list(cfg["pact_quest_ids"]) + " (any one completed)\n";
+    output += "  Tribute:   every " + cfg["tribute_interval_days"] + " game day(s), " + cfg["tribute_gold_percent"] + "% of total gold\n";
+    output += "  Permanent smite: " + (if cfg["allow_permanent_smite"] { "ON" } else { "off" }) + "\n";
+    output += "  Blessings:\n";
+    let blessings = cfg["blessing_effects"];
+    if blessings.len() == 0 {
+        output += "    (none)\n";
+    } else {
+        let idx = 0;
+        for b in blessings {
+            output += "    [" + idx + "] " + b["effect"] + " +" + b["magnitude"] + "\n";
+            idx += 1;
+        }
+    }
+    send_client_message(connection_id, output);
+}
+
+fn format_deity_list(list) {
+    if list.len() == 0 { return "(none)"; }
+    let out = "";
+    for v in list {
+        if out != "" { out += ", "; }
+        out += v;
+    }
+    return out;
+}
+
+fn handle_deity_setup(mobile_id, parts, connection_id) {
+    if parts.len() < 5 {
+        send_client_message(connection_id, "Usage: medit <id> deity setup <god|demigod|ascended>");
+        return;
+    }
+    let rank = parts[4].to_lower();
+    if set_mobile_deity_rank(mobile_id, rank) {
+        send_client_message(connection_id, "Deity rank set to " + rank + ". Only rank 'god' accepts worship.");
+        if rank == "god" {
+            send_client_message(connection_id, "Configure with 'medit <id> deity' — and consider flag no_attack for invulnerability.");
+        }
+    } else {
+        send_client_message(connection_id, "Invalid rank. Use: god, demigod, ascended.");
+    }
+}
+
+fn handle_deity_remove(mobile_id, connection_id) {
+    if remove_mobile_deity(mobile_id) {
+        send_client_message(connection_id, "Deity status removed.");
+    } else {
+        send_client_message(connection_id, "This mobile is not a deity.");
+    }
+}
+
+fn handle_deity_text(mobile_id, parts, kind, connection_id) {
+    if parts.len() < 5 {
+        send_client_message(connection_id, "Usage: medit <id> deity " + kind + " <text>");
+        return;
+    }
+    let text = build_string_from_parts(parts, 4);
+    let ok = if kind == "epithet" { set_deity_epithet(mobile_id, text) } else { set_deity_lore(mobile_id, text) };
+    if ok {
+        send_client_message(connection_id, "Deity " + kind + " set to: " + text);
+    } else {
+        send_client_message(connection_id, "Failed. Is this mobile a deity?");
+    }
+}
+
+fn handle_deity_list(mobile_id, parts, kind, connection_id) {
+    if parts.len() < 6 {
+        send_client_message(connection_id, "Usage: medit <id> deity " + kind + " add|remove <vnum>");
+        return;
+    }
+    let op = parts[4].to_lower();
+    let value = parts[5];
+    let ok = if op == "add" {
+        deity_list_add(mobile_id, kind, value)
+    } else if op == "remove" {
+        deity_list_remove(mobile_id, kind, value)
+    } else {
+        false
+    };
+    if ok {
+        send_client_message(connection_id, "Deity " + kind + " list updated: " + op + " " + value);
+    } else {
+        send_client_message(connection_id, "Failed. Check the value and that this mobile is a deity.");
+    }
+}
+
+fn handle_deity_pact(mobile_id, parts, connection_id) {
+    if parts.len() < 7 {
+        send_client_message(connection_id, "Usage: medit <id> deity pact item|quest add|remove <id>");
+        return;
+    }
+    let kind_word = parts[4].to_lower();
+    let kind = if kind_word == "item" { "pact_item" } else if kind_word == "quest" { "pact_quest" } else { "" };
+    if kind == "" {
+        send_client_message(connection_id, "Pact gate kind must be 'item' or 'quest'.");
+        return;
+    }
+    let op = parts[5].to_lower();
+    let value = parts[6];
+    let ok = if op == "add" {
+        deity_list_add(mobile_id, kind, value)
+    } else if op == "remove" {
+        deity_list_remove(mobile_id, kind, value)
+    } else {
+        false
+    };
+    if ok {
+        send_client_message(connection_id, "Pact " + kind_word + " gate updated: " + op + " " + value);
+    } else {
+        send_client_message(connection_id, "Failed. Check the value and that this mobile is a deity.");
+    }
+}
+
+fn handle_deity_tribute(mobile_id, parts, connection_id) {
+    if parts.len() < 6 {
+        send_client_message(connection_id, "Usage: medit <id> deity tribute interval <days> | gold <percent>");
+        return;
+    }
+    let which = parts[4].to_lower();
+    let value = try_parse_int(parts[5]);
+    if value == () {
+        send_client_message(connection_id, "Invalid number.");
+        return;
+    }
+    if which == "interval" {
+        if set_deity_tribute_interval(mobile_id, value) {
+            send_client_message(connection_id, "Tribute interval set to " + value + " game day(s).");
+        } else {
+            send_client_message(connection_id, "Failed. Is this mobile a deity?");
+        }
+        return;
+    }
+    if which == "gold" {
+        if set_deity_tribute_gold(mobile_id, value) {
+            send_client_message(connection_id, "Tribute set to " + value + "% of total gold.");
+        } else {
+            send_client_message(connection_id, "Failed. Is this mobile a deity?");
+        }
+        return;
+    }
+    send_client_message(connection_id, "Usage: medit <id> deity tribute interval <days> | gold <percent>");
+}
+
+fn handle_deity_bless(mobile_id, parts, connection_id) {
+    if parts.len() < 6 {
+        send_client_message(connection_id, "Usage: medit <id> deity bless add <effect> <magnitude> | remove <index>");
+        return;
+    }
+    let op = parts[4].to_lower();
+    if op == "remove" {
+        let idx = try_parse_int(parts[5]);
+        if idx == () {
+            send_client_message(connection_id, "Invalid index.");
+            return;
+        }
+        if deity_bless_remove(mobile_id, idx) {
+            send_client_message(connection_id, "Blessing removed.");
+        } else {
+            send_client_message(connection_id, "No blessing at that index.");
+        }
+        return;
+    }
+    if op == "add" {
+        if parts.len() < 7 {
+            send_client_message(connection_id, "Usage: medit <id> deity bless add <effect> <magnitude>");
+            return;
+        }
+        let magnitude = try_parse_int(parts[6]);
+        if magnitude == () {
+            send_client_message(connection_id, "Invalid magnitude.");
+            return;
+        }
+        if deity_bless_add(mobile_id, parts[5], magnitude) {
+            send_client_message(connection_id, "Blessing added: " + parts[5] + " +" + magnitude);
+        } else {
+            send_client_message(connection_id, "Unknown effect type '" + parts[5] + "' (or not a deity).");
+        }
+        return;
+    }
+    send_client_message(connection_id, "Usage: medit <id> deity bless add <effect> <magnitude> | remove <index>");
+}
+
+fn handle_deity_permanent_smite(mobile_id, parts, connection_id) {
+    if parts.len() < 5 {
+        send_client_message(connection_id, "Usage: medit <id> deity permanent_smite on|off");
+        return;
+    }
+    let value = parts[4].to_lower();
+    if value != "on" && value != "off" {
+        send_client_message(connection_id, "Usage: medit <id> deity permanent_smite on|off");
+        return;
+    }
+    if set_deity_permanent_smite(mobile_id, value == "on") {
+        send_client_message(connection_id, "Permanent smite " + value + ".");
+    } else {
+        send_client_message(connection_id, "Failed. Is this mobile a deity?");
+    }
+}
+
+fn handle_patron_subcommand(mobile_id, parts, connection_id) {
+    if parts.len() < 4 {
+        send_client_message(connection_id, "Usage: medit <id> patron <god_vnum> | clear");
+        return;
+    }
+    let value = parts[3];
+    if value.to_lower() == "clear" {
+        set_mobile_patron_god(mobile_id, "");
+        send_client_message(connection_id, "Patron god cleared.");
+        return;
+    }
+    set_mobile_patron_god(mobile_id, value);
+    send_client_message(connection_id, "Patron god set to " + value + ". Killing this mob now counts for/against worshipers.");
+}

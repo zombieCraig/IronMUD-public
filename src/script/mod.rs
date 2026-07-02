@@ -60,6 +60,7 @@ mod triggers;
 mod utilities;
 pub mod vampire;
 pub mod werewolf;
+pub mod worship;
 
 pub use ai::{set_chat_sender, set_claude_sender, set_gemini_sender};
 pub use areas::check_build_mode;
@@ -335,6 +336,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 following_mobile_id: None,
                 is_grouped: false,
                 clan_tag: None,
+                worship: None,
                 current_language: "common".to_string(),
                 // Character stats (default 10)
                 stat_str: 10,
@@ -526,7 +528,9 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         .register_get("no_magic", |f: &mut RoomFlags| f.no_magic)
         .register_get("soundproof", |f: &mut RoomFlags| f.soundproof)
         .register_get("notrack", |f: &mut RoomFlags| f.notrack)
-        .register_get("no_recall", |f: &mut RoomFlags| f.no_recall);
+        .register_get("no_recall", |f: &mut RoomFlags| f.no_recall)
+        // God worship (temples route pray to the worshiper's god)
+        .register_get("temple", |f: &mut RoomFlags| f.temple);
 
     // Register ExtraDesc type with getters
     engine
@@ -2190,6 +2194,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     areas::register(engine, db.clone());
     combat::register(engine, db.clone());
     fear::register(engine, db.clone(), connections.clone());
+    worship::register(engine, db.clone(), connections.clone());
     items::register(engine, db.clone());
     mobiles::register(engine, db.clone(), state.clone());
     mobile_presets::register(engine, db.clone());

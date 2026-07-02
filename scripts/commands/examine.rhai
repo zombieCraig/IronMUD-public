@@ -630,6 +630,35 @@ fn format_stat_bonus(label, value) {
     return "" + value + " " + label;
 }
 
+// Deity lore block: epithet + story, and the viewer's standing when this is
+// their god. Empty for ordinary mobiles.
+fn examine_deity_presence(mobile, connection_id) {
+    if !mobile.is_deity {
+        return "";
+    }
+    let output = "";
+    if mobile.deity_epithet != "" {
+        output += "\n\n\x1b[1;36m" + mobile.name + ", " + mobile.deity_epithet + ".\x1b[0m";
+    } else {
+        output += "\n\n\x1b[1;36mA divine presence radiates from " + mobile.name + ".\x1b[0m";
+    }
+    if mobile.deity_lore != "" {
+        output += "\n" + mobile.deity_lore;
+    }
+    let viewer = get_player_character(connection_id);
+    if type_of(viewer) != "()" && mobile.vnum != "" {
+        if get_worship_god(viewer.name) == mobile.vnum {
+            let overdue = get_worship_overdue_days(viewer.name);
+            if overdue > 0 {
+                output += "\n\x1b[33mThis is your god — and your tribute is " + overdue + " day(s) overdue.\x1b[0m";
+            } else {
+                output += "\nThis is your god. Your tribute is current. Favor: " + get_worship_favor(viewer.name) + ".";
+            }
+        }
+    }
+    return output;
+}
+
 fn examine_show_mobile(mobile, connection_id) {
     let output = mobile.name + "\n";
     output += "--------------------\n";
@@ -638,6 +667,8 @@ fn examine_show_mobile(mobile, connection_id) {
         desc = "You see nothing special about " + mobile.name + ".";
     }
     output += desc;
+
+    output += examine_deity_presence(mobile, connection_id);
 
     output += examine_mobile_health(mobile);
     output += examine_mobile_wounds(mobile);

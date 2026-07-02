@@ -63,6 +63,9 @@ pub(crate) fn parse_mobile_trigger_type(s: &str) -> Option<MobileTriggerType> {
         "on_bribe" | "bribe" => MobileTriggerType::OnBribe,
         "on_load" | "load" => MobileTriggerType::OnLoad,
         "on_command" | "command" => MobileTriggerType::OnCommand,
+        "on_pray" | "pray" => MobileTriggerType::OnPray,
+        "on_worship_pact" | "worship_pact" => MobileTriggerType::OnWorshipPact,
+        "on_smite" | "smite" => MobileTriggerType::OnSmite,
         _ => return None,
     })
 }
@@ -1729,6 +1732,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         MobileTriggerType::OnBribe => "on_bribe".to_string(),
         MobileTriggerType::OnLoad => "on_load".to_string(),
         MobileTriggerType::OnCommand => "on_command".to_string(),
+        MobileTriggerType::OnPray => "on_pray".to_string(),
+        MobileTriggerType::OnWorshipPact => "on_worship_pact".to_string(),
+        MobileTriggerType::OnSmite => "on_smite".to_string(),
     });
 
     // get_mobile_triggers(mobile_id) -> Array of MobileTrigger

@@ -10,11 +10,14 @@ This is a MUD game project written primarily in Rust with Rhai scripting. Key sy
 
 After making changes to Rust source files, always run `cargo build` and `cargo test` before considering the task complete. Fix all compilation errors before committing.
 
+Always run `cargo fmt --all` before committing — the pre-commit hook runs `cargo fmt --all -- --check` and aborts the commit on any formatting diff.
+
 ## Quick Reference
 
 ```bash
 cargo build                    # Build
 cargo test                     # Run all tests (preferred verification)
+cargo fmt --all                # Format (required before commit; hook enforces)
 cargo run                      # Run server (port 4000)
 cargo test --test server       # Integration tests only
 ```

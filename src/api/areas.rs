@@ -145,6 +145,8 @@ fn apply_default_room_flag_overrides(flags: &mut RoomFlags, map: &std::collectio
             "no_magic" => flags.no_magic = *v,
             "soundproof" => flags.soundproof = *v,
             "notrack" | "no_track" => flags.notrack = *v,
+            "no_recall" | "norecall" => flags.no_recall = *v,
+            "temple" => flags.temple = *v,
             _ => {}
         }
     }

@@ -284,6 +284,12 @@ impl Default for GameTime {
 }
 
 impl GameTime {
+    /// Monotonic day counter since year 1, month 1, day 1. Used for
+    /// absolute-day bookkeeping (worship tribute deadlines, etc.).
+    pub fn absolute_day(&self) -> i64 {
+        (self.day as i64 - 1) + (self.month as i64 - 1) * 30 + (self.year as i64 - 1) * 360
+    }
+
     pub fn get_season(&self) -> Season {
         match self.month {
             3 | 4 | 5 => Season::Spring,

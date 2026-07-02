@@ -169,6 +169,9 @@ fn bit_to_mobile(bit: u32) -> Option<MobileTriggerType> {
         21 => Some(MobileTriggerType::OnAttack),
         22 => Some(MobileTriggerType::OnAlways),
         23 => Some(MobileTriggerType::OnFlee),
+        24 => Some(MobileTriggerType::OnPray),
+        25 => Some(MobileTriggerType::OnWorshipPact),
+        26 => Some(MobileTriggerType::OnSmite),
         _ => None,
     }
 }
@@ -192,9 +195,12 @@ pub fn flags_for_mobile_trigger(t: MobileTriggerType) -> String {
         // never uses (s=18 onward) so importing stock `.trg` files
         // with one of these letters still drops silently as Info
         // warnings rather than promoting to an IronMUD-native type.
-        MobileTriggerType::OnAttack => "v", // bit 21 (unused in stock)
-        MobileTriggerType::OnAlways => "w", // bit 22 (unused in stock)
-        MobileTriggerType::OnFlee => "x",   // bit 23 (unused in stock)
+        MobileTriggerType::OnAttack => "v",      // bit 21 (unused in stock)
+        MobileTriggerType::OnAlways => "w",      // bit 22 (unused in stock)
+        MobileTriggerType::OnFlee => "x",        // bit 23 (unused in stock)
+        MobileTriggerType::OnPray => "y",        // bit 24 (unused in stock)
+        MobileTriggerType::OnWorshipPact => "z", // bit 25 (unused in stock)
+        MobileTriggerType::OnSmite => "A",       // bit 26 (unused in stock)
     }
     .to_string()
 }

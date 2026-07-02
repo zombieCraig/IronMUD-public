@@ -138,6 +138,7 @@ export interface RoomFlags {
   soundproof?: boolean;
   notrack?: boolean;
   baseline_office?: boolean;
+  temple?: boolean;
 }
 
 export interface RoomTrigger {
@@ -441,10 +442,25 @@ export interface Mobile {
   combat_spell_chance?: number;
   simulation?: SimulationConfig;
   needs?: NeedsState;
+  deity?: DeityConfig;
+  patron_god_vnum?: string;
   position?: "standing" | "sitting" | "sleeping";
   creature_type?: "mortal" | "animal" | "insect" | "plant" | "construct" | "spirit";
   pet_owner?: string;
   gender?: string;
+}
+
+export interface DeityConfig {
+  rank?: "god" | "demigod" | "ascended";
+  epithet?: string;
+  lore?: string;
+  enemy_god_vnums?: string[];
+  pact_item_vnums?: string[];
+  pact_quest_ids?: string[];
+  tribute_interval_days?: number;
+  tribute_gold_percent?: number;
+  blessing_effects?: { effect: string; magnitude: number }[];
+  allow_permanent_smite?: boolean;
 }
 
 export interface SimulationConfig {
@@ -723,6 +739,10 @@ export interface CreateMobileRequest {
   // Needs simulation
   simulation?: Partial<SimulationConfig> & { home_room_vnum: string; work_room_vnum: string };
   remove_simulation?: boolean;
+  // God worship
+  deity?: DeityConfig;
+  remove_deity?: boolean;
+  patron_god_vnum?: string;
   // World-wide cap on live (non-prototype) instances of this vnum (0 = unlimited)
   world_max_count?: number;
   // Branching dialogue tree (overlay; falls back to flat keyword `dialogue` map on miss).

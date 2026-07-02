@@ -286,6 +286,8 @@ pub struct RoomFlags {
     pub notrack: bool, // Defeats the track skill (Circle ROOM_NOTRACK)
     #[serde(default)]
     pub no_recall: bool, // Prevents recall (teleport) out of this room
+    #[serde(default)]
+    pub temple: bool, // Sacred ground: `pray` here reaches a worshiper's god (tribute/blessing)
 }
 
 impl RoomFlags {
@@ -321,6 +323,7 @@ impl RoomFlags {
         self.soundproof |= defaults.soundproof;
         self.notrack |= defaults.notrack;
         self.no_recall |= defaults.no_recall;
+        self.temple |= defaults.temple;
     }
 }
 

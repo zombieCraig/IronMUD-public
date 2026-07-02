@@ -4,9 +4,9 @@
 
 use super::serde_defaults::default_stat;
 use super::{
-    ActiveBuff, ActivityState, Characteristics, CombatState, DamageType, DialogueTree, EffectType, MobileTrigger,
-    NeedsState, OnHitEffect, OngoingEffect, Relationship, RoutineEntry, SimulationConfig, SocialState, TransportRoute,
-    Wound,
+    ActiveBuff, ActivityState, Characteristics, CombatState, DamageType, DeityConfig, DialogueTree, EffectType,
+    MobileTrigger, NeedsState, OnHitEffect, OngoingEffect, Relationship, RoutineEntry, SimulationConfig, SocialState,
+    TransportRoute, Wound,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -393,6 +393,15 @@ pub struct MobileData {
     #[serde(default)]
     pub needs: Option<NeedsState>,
 
+    // God worship system
+    /// Deity config - if Some, this mobile is a god/demigod/ascended
+    #[serde(default)]
+    pub deity: Option<DeityConfig>,
+    /// Vnum of the god this mobile serves (minions, priests). Killing mobs
+    /// whose patron is an enemy god earns the killer worship favor.
+    #[serde(default)]
+    pub patron_god_vnum: Option<String>,
+
     // Migrant / emergent population system
     /// Visual/physical characteristics (populated for generated migrants; optional for others).
     #[serde(default)]
@@ -609,6 +618,8 @@ impl MobileData {
             perception: 0,
             simulation: None,
             needs: None,
+            deity: None,
+            patron_god_vnum: None,
             characteristics: None,
             household_id: None,
             faction: None,

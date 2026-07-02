@@ -62,6 +62,7 @@ pub mod transport;
 pub mod triggers;
 pub mod vampire;
 pub mod werewolf;
+pub mod worship;
 
 // Re-export all the public tick runner functions
 pub use heartbeat::run_watchdog as run_heartbeat_watchdog;
@@ -92,6 +93,7 @@ pub use transport::run_transport_tick;
 pub use triggers::run_periodic_trigger_tick;
 pub use vampire::{run_blood_tick, run_sun_tick};
 pub use werewolf::run_rage_tick;
+pub use worship::run_worship_tick;
 
 /// Register expected intervals for every tick task with the heartbeat
 /// registry. Call once at startup *before* spawning the tick tasks themselves
@@ -137,6 +139,7 @@ pub fn register_all_heartbeats() {
         ("psyche", ironmud::cyberware::PSYCHE_TICK_INTERVAL_SECS),
         ("mutation", ironmud::mutant::MUTATION_TICK_INTERVAL_SECS),
         ("rot", ironmud::mutant::ROT_TICK_INTERVAL_SECS),
+        ("worship", ironmud::worship::WORSHIP_TICK_INTERVAL_SECS),
     ];
 
     for (name, secs) in pairs {

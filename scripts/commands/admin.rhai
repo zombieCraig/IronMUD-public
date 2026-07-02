@@ -141,6 +141,11 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "religion" {
+        handle_religion(connection_id, args, char);
+        return;
+    }
+
     if subcommand == "account" {
         handle_account(connection_id, args, char);
         return;
@@ -537,6 +542,58 @@ fn handle_embrace(connection_id, args, admin_char) {
     }
 }
 
+// admin religion <player> set <god_vnum> | clear
+// Testing surface for the worship system: sets or removes a player's pact,
+// bypassing the artifact/quest gates (rank-God check still applies on set).
+fn handle_religion(connection_id, args, admin_char) {
+    let parts = args.split(" ");
+    if parts.len() < 3 {
+        send_client_message(connection_id, "Usage: admin religion <player> set <god_vnum> | clear");
+        return;
+    }
+    let target_name = parts[1];
+    let action = parts[2].to_lower();
+
+    let target_conn = find_player_connection_by_name(target_name);
+    if target_conn == "" {
+        send_client_message(connection_id, "Player '" + target_name + "' is not online.");
+        return;
+    }
+    let target_char = get_player_character(target_conn);
+    if target_char == () {
+        send_client_message(connection_id, "Player '" + target_name + "' is not online.");
+        return;
+    }
+
+    if action == "clear" {
+        if clear_worship(target_char.name) {
+            send_client_message(connection_id, "Removed " + target_char.name + "'s religion.");
+            send_client_message(target_conn, "The divine presence in your soul is gone. You worship nothing.");
+        } else {
+            send_client_message(connection_id, target_char.name + " worships no god.");
+        }
+        return;
+    }
+
+    if action != "set" || parts.len() < 4 {
+        send_client_message(connection_id, "Usage: admin religion <player> set <god_vnum> | clear");
+        return;
+    }
+    let god_vnum = parts[3];
+    if !is_worshipable_god(god_vnum) {
+        send_client_message(connection_id, "'" + god_vnum + "' is not a rank-god deity vnum.");
+        return;
+    }
+    let result = force_worship_pact(target_char.name, god_vnum);
+    if result != "ok" {
+        send_client_message(connection_id, "Failed to set religion: " + result);
+        return;
+    }
+    let god_name = get_god_display_name(god_vnum);
+    send_client_message(connection_id, "Set " + target_char.name + "'s religion to " + god_name + " (" + god_vnum + ").");
+    send_client_message(target_conn, "\x1b[1;36mA divine presence settles into your soul. You now worship " + god_name + ".\x1b[0m");
+}
+
 fn handle_embrace_revoke(connection_id, args, admin_char) {
     let parts = args.split(" ");
     if parts.len() < 2 || parts[1] == "" {
@@ -749,6 +806,7 @@ fn show_help(connection_id) {
     help += "  admin email-test <address>        - Send a test email to confirm SMTP delivery works\n";
     help += "  admin embrace <player> [<clan>]   - Embrace a PC as kindred (clans: brujah/toreador/ventrue/nosferatu/gangrel)\n";
     help += "  admin embrace_revoke <player>     - Restore mortality to a vampire PC\n";
+    help += "  admin religion <player> set <god_vnum> | clear - Set or remove a player's god pact (testing)\n";
     help += "  admin masquerade_reset <player>   - Clear masquerade_broken on a vampire PC\n";
     help += "  admin config [<key>] [<value>]    - Read, write, or list runtime settings\n";
     help += "  admin ticks                       - Show liveness of every background tick task\n";

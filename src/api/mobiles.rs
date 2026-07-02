@@ -18,8 +18,8 @@ use super::{
     validate::{LONG_DESC_MAX, NAME_MAX, SHORT_DESC_MAX, check_shop_rate, check_stat_bonus, check_text_len},
 };
 use crate::{
-    ActivityState, CombatState, DamageType, MobileData, MobileFlags, MobileTrigger, MobileTriggerType, NeedsState,
-    RoutineEntry, SimulationConfig,
+    ActivityState, BlessingGrant, CombatState, DamageType, DeityConfig, EffectType, GodRank, MobileData, MobileFlags,
+    MobileTrigger, MobileTriggerType, NeedsState, RoutineEntry, SimulationConfig,
 };
 
 pub fn routes() -> Router<Arc<ApiState>> {
@@ -121,6 +121,13 @@ pub struct CreateMobileRequest {
     // Needs simulation
     #[serde(default)]
     pub simulation: Option<SimulationConfigRequest>,
+    // God worship
+    /// Deity config - presence marks this mobile as a god/demigod/ascended.
+    #[serde(default)]
+    pub deity: Option<DeityConfigRequest>,
+    /// Vnum of the god this mobile serves (minion/priest linkage).
+    #[serde(default)]
+    pub patron_god_vnum: Option<String>,
     #[serde(default)]
     pub world_max_count: Option<i32>,
     /// Helper-system faction tag. None/empty falls back to Circle-stock semantics.
@@ -202,6 +209,72 @@ fn convert_simulation_config(req: SimulationConfigRequest) -> SimulationConfig {
         comfort_decay_rate: req.comfort_decay_rate,
         low_gold_threshold: req.low_gold_threshold,
     }
+}
+
+#[derive(Deserialize)]
+pub struct DeityConfigRequest {
+    /// "god" | "demigod" | "ascended" (default "god"; only god is worshipable)
+    #[serde(default)]
+    pub rank: Option<String>,
+    #[serde(default)]
+    pub epithet: String,
+    #[serde(default)]
+    pub lore: String,
+    #[serde(default)]
+    pub enemy_god_vnums: Vec<String>,
+    #[serde(default)]
+    pub pact_item_vnums: Vec<String>,
+    #[serde(default)]
+    pub pact_quest_ids: Vec<String>,
+    #[serde(default)]
+    pub tribute_interval_days: Option<i32>,
+    #[serde(default)]
+    pub tribute_gold_percent: Option<i32>,
+    #[serde(default)]
+    pub blessing_effects: Vec<BlessingGrantRequest>,
+    #[serde(default)]
+    pub allow_permanent_smite: bool,
+}
+
+#[derive(Deserialize)]
+pub struct BlessingGrantRequest {
+    /// EffectType name, e.g. "strength_boost", "regeneration", "luck"
+    pub effect: String,
+    pub magnitude: i32,
+}
+
+fn convert_deity_config(req: DeityConfigRequest) -> Result<DeityConfig, ApiError> {
+    let mut config = DeityConfig::default();
+    if let Some(rank) = req.rank.as_deref() {
+        config.rank = GodRank::from_str(rank).ok_or_else(|| {
+            ApiError::InvalidInput(format!("Invalid deity rank '{}'. Use: god, demigod, ascended", rank))
+        })?;
+    }
+    config.epithet = req.epithet;
+    config.lore = req.lore;
+    config.enemy_god_vnums = req.enemy_god_vnums;
+    config.pact_item_vnums = req.pact_item_vnums;
+    config.pact_quest_ids = req.pact_quest_ids;
+    if let Some(days) = req.tribute_interval_days {
+        config.tribute_interval_days = days.clamp(1, 30);
+    }
+    if let Some(pct) = req.tribute_gold_percent {
+        config.tribute_gold_percent = pct.clamp(0, 100);
+    }
+    config.blessing_effects = req
+        .blessing_effects
+        .into_iter()
+        .map(|b| {
+            EffectType::from_str(&b.effect)
+                .map(|effect| BlessingGrant {
+                    effect,
+                    magnitude: b.magnitude,
+                })
+                .ok_or_else(|| ApiError::InvalidInput(format!("Unknown blessing effect type '{}'", b.effect)))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    config.allow_permanent_smite = req.allow_permanent_smite;
+    Ok(config)
 }
 
 fn default_level() -> i32 {
@@ -392,6 +465,16 @@ pub struct UpdateMobileRequest {
     /// Set to true to remove simulation config
     #[serde(default)]
     pub remove_simulation: Option<bool>,
+    // God worship
+    /// Deity config - replaces the whole config when present.
+    #[serde(default)]
+    pub deity: Option<DeityConfigRequest>,
+    /// Set to true to remove deity status
+    #[serde(default)]
+    pub remove_deity: Option<bool>,
+    /// Vnum of the god this mobile serves. Empty string clears.
+    #[serde(default)]
+    pub patron_god_vnum: Option<String>,
     #[serde(default)]
     pub world_max_count: Option<i32>,
     /// Replace the dialogue tree. `Some(tree)` overwrites; pass an explicit
@@ -834,6 +917,11 @@ async fn create_mobile(
     // Use provided damage dice string or default
     let damage_dice = req.damage_dice.clone().unwrap_or_else(|| "1d4".to_string());
 
+    let deity = match req.deity {
+        Some(d) => Some(convert_deity_config(d)?),
+        None => None,
+    };
+
     let mut mobile = MobileData {
         id: Uuid::new_v4(),
         name: req.name,
@@ -948,6 +1036,8 @@ async fn create_mobile(
         perception: req.perception,
         simulation: req.simulation.map(convert_simulation_config),
         needs: None,
+        deity,
+        patron_god_vnum: req.patron_god_vnum.clone().filter(|s| !s.is_empty()),
         characteristics: None,
         household_id: None,
         faction: req.faction.clone().filter(|s| !s.is_empty()),
@@ -1298,6 +1388,15 @@ async fn update_mobile(
         if mobile.needs.is_none() {
             mobile.needs = Some(NeedsState::default());
         }
+    }
+    // God worship
+    if let Some(true) = req.remove_deity {
+        mobile.deity = None;
+    } else if let Some(deity_config) = req.deity {
+        mobile.deity = Some(convert_deity_config(deity_config)?);
+    }
+    if let Some(patron) = req.patron_god_vnum {
+        mobile.patron_god_vnum = if patron.is_empty() { None } else { Some(patron) };
     }
 
     state
@@ -1728,9 +1827,12 @@ async fn add_trigger(
         "idle" | "on_idle" => MobileTriggerType::OnIdle,
         "always" | "on_always" => MobileTriggerType::OnAlways,
         "flee" | "on_flee" => MobileTriggerType::OnFlee,
+        "pray" | "on_pray" => MobileTriggerType::OnPray,
+        "worship_pact" | "on_worship_pact" => MobileTriggerType::OnWorshipPact,
+        "smite" | "on_smite" => MobileTriggerType::OnSmite,
         _ => {
             return Err(ApiError::InvalidInput(format!(
-                "Invalid trigger type '{}'. Use: greet, attack, death, say, idle, always, flee",
+                "Invalid trigger type '{}'. Use: greet, attack, death, say, idle, always, flee, pray, worship_pact, smite",
                 req.trigger_type
             )));
         }

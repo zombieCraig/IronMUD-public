@@ -715,6 +715,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     "soundproof" => room.flags.soundproof = value,
                     "notrack" | "no_track" => room.flags.notrack = value,
                     "no_recall" | "norecall" => room.flags.no_recall = value,
+                    "temple" => room.flags.temple = value,
                     _ => return false,
                 }
                 if room.flags.liveable && room.living_capacity <= 0 {
@@ -764,6 +765,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 "soundproof" => room.flags.soundproof,
                 "notrack" | "no_track" => room.flags.notrack,
                 "no_recall" | "norecall" => room.flags.no_recall,
+                "temple" => room.flags.temple,
                 _ => false,
             }
         } else {

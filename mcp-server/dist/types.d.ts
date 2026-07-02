@@ -131,6 +131,7 @@ export interface RoomFlags {
     soundproof?: boolean;
     notrack?: boolean;
     baseline_office?: boolean;
+    temple?: boolean;
 }
 export interface RoomTrigger {
     trigger_type: TriggerType;
@@ -423,10 +424,27 @@ export interface Mobile {
     combat_spell_chance?: number;
     simulation?: SimulationConfig;
     needs?: NeedsState;
+    deity?: DeityConfig;
+    patron_god_vnum?: string;
     position?: "standing" | "sitting" | "sleeping";
     creature_type?: "mortal" | "animal" | "insect" | "plant" | "construct" | "spirit";
     pet_owner?: string;
     gender?: string;
+}
+export interface DeityConfig {
+    rank?: "god" | "demigod" | "ascended";
+    epithet?: string;
+    lore?: string;
+    enemy_god_vnums?: string[];
+    pact_item_vnums?: string[];
+    pact_quest_ids?: string[];
+    tribute_interval_days?: number;
+    tribute_gold_percent?: number;
+    blessing_effects?: {
+        effect: string;
+        magnitude: number;
+    }[];
+    allow_permanent_smite?: boolean;
 }
 export interface SimulationConfig {
     home_room_vnum: string;
@@ -682,6 +700,9 @@ export interface CreateMobileRequest {
         work_room_vnum: string;
     };
     remove_simulation?: boolean;
+    deity?: DeityConfig;
+    remove_deity?: boolean;
+    patron_god_vnum?: string;
     world_max_count?: number;
     dialogue_tree?: DialogueTree;
     clear_dialogue_tree?: boolean;

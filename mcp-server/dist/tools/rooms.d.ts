@@ -160,6 +160,10 @@ export declare const roomToolDefinitions: ({
                         type: string;
                         description: string;
                     };
+                    temple: {
+                        type: string;
+                        description: string;
+                    };
                     baseline_office: {
                         type: string;
                         description: string;

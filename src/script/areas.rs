@@ -1331,6 +1331,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "soundproof" => f.soundproof = value,
                         "notrack" | "no_track" => f.notrack = value,
                         "no_recall" | "norecall" => f.no_recall = value,
+                        "temple" => f.temple = value,
                         _ => return false,
                     }
                     return cloned_db.save_area_data(area).is_ok();
@@ -1376,6 +1377,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                         "soundproof" => f.soundproof,
                         "notrack" | "no_track" => f.notrack,
                         "no_recall" | "norecall" => f.no_recall,
+                        "temple" => f.temple,
                         _ => false,
                     };
                 }

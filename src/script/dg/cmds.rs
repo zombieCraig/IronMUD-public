@@ -106,6 +106,17 @@ pub fn dispatch(line: &str, ctx: &EvalCtx) -> Result<(), String> {
         "skill_set" => cmd_skill_set(rest, ctx),
         "skill_add" => cmd_skill_add(rest, ctx),
 
+        // ---- Worship (god-worship capability bridge) ----
+        // `worship_bless <player>` — stamp the player's god's blessing buffs.
+        // `worship_tribute <player>` — mark tribute paid (exotic DG tribute:
+        //   blood, sacrifices, tasks) without touching gold.
+        // `worship_favor <player> <amount>` — adjust divine favor (+/-).
+        // `worship_smite <player> <severity 1-4>` — fire the punishment ladder.
+        "worship_bless" => cmd_worship_bless(rest, ctx),
+        "worship_tribute" => cmd_worship_tribute(rest, ctx),
+        "worship_favor" => cmd_worship_favor(rest, ctx),
+        "worship_smite" => cmd_worship_smite(rest, ctx),
+
         // `social <name> [target]` — fire a CircleMUD-style social as
         // the script's self. Only meaningful when self is a mob.
         "social" | "msocial" | "osocial" | "wsocial" => cmd_social(rest, ctx),
@@ -219,6 +230,10 @@ pub const COMMANDS: &[&str] = &[
     "wsocial",
     "skill_set",
     "skill_add",
+    "worship_bless",
+    "worship_tribute",
+    "worship_favor",
+    "worship_smite",
 ];
 
 /// Return `true` when `verb` (already lowercased + `%`-stripped) is a
@@ -307,6 +322,10 @@ pub(super) fn is_known_dg_verb(verb: &str) -> bool {
             | "msocial"
             | "osocial"
             | "wsocial"
+            | "worship_bless"
+            | "worship_tribute"
+            | "worship_favor"
+            | "worship_smite"
     )
 }
 
@@ -1660,6 +1679,59 @@ fn cmd_award_achievement(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
         _ => return Ok(()),
     };
     crate::script::achievements::award_manual_via_db(&ctx.db, &ctx.connections, &player_name, key);
+    Ok(())
+}
+
+/// Resolve the first token of `rest` to a player name, or None (silent
+/// no-op) when it isn't a player. Shared by the worship_* opcodes.
+fn resolve_player_name<'a>(rest: &'a str, ctx: &EvalCtx) -> Option<(String, &'a str)> {
+    let (target_tok, remainder) = split_verb(rest);
+    if target_tok.is_empty() {
+        return None;
+    }
+    match resolve_target(&target_tok, ctx)? {
+        ActorRef::Player { name, .. } if !name.is_empty() => Some((name, remainder)),
+        _ => None,
+    }
+}
+
+fn cmd_worship_bless(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
+    if let Some((player, _)) = resolve_player_name(rest, ctx) {
+        crate::script::worship::apply_worship_blessing(&ctx.db, &ctx.connections, &player);
+    }
+    Ok(())
+}
+
+fn cmd_worship_tribute(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
+    if let Some((player, _)) = resolve_player_name(rest, ctx) {
+        crate::script::worship::record_tribute(&ctx.db, &ctx.connections, &player);
+    }
+    Ok(())
+}
+
+fn cmd_worship_favor(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
+    if let Some((player, remainder)) = resolve_player_name(rest, ctx) {
+        let amount: i32 = remainder
+            .split_whitespace()
+            .next()
+            .and_then(|t| t.parse().ok())
+            .unwrap_or(0);
+        if amount != 0 {
+            crate::script::worship::add_worship_favor(&ctx.db, &ctx.connections, &player, amount);
+        }
+    }
+    Ok(())
+}
+
+fn cmd_worship_smite(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
+    if let Some((player, remainder)) = resolve_player_name(rest, ctx) {
+        let severity: i32 = remainder
+            .split_whitespace()
+            .next()
+            .and_then(|t| t.parse().ok())
+            .unwrap_or(1);
+        crate::script::worship::smite_worshiper(&ctx.db, &ctx.connections, &player, severity);
+    }
     Ok(())
 }
 

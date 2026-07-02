@@ -594,6 +594,33 @@ pub fn fire_mobile_dg_triggers(
     cmd_canonical: &str,
     arg: &str,
 ) -> bool {
+    fire_mobile_dg_triggers_with_context(
+        db,
+        connections,
+        mobile,
+        trig_type,
+        connection_id,
+        cmd,
+        cmd_canonical,
+        arg,
+        std::collections::HashMap::new(),
+    )
+}
+
+/// [`fire_mobile_dg_triggers`] with fire-time `context_vars` (e.g.
+/// `severity`/`overdue_days` for `OnSmite`, `action` for `OnPray`).
+#[allow(clippy::too_many_arguments)]
+pub fn fire_mobile_dg_triggers_with_context(
+    db: &Arc<Db>,
+    connections: &SharedConnections,
+    mobile: &crate::types::MobileData,
+    trig_type: crate::types::MobileTriggerType,
+    connection_id: &str,
+    cmd: &str,
+    cmd_canonical: &str,
+    arg: &str,
+    context_vars: std::collections::HashMap<String, String>,
+) -> bool {
     let mut cancelled = false;
     for t in &mobile.triggers {
         if t.trigger_type != trig_type || !t.enabled {
@@ -627,7 +654,7 @@ pub fn fire_mobile_dg_triggers(
             } else {
                 cmd_canonical.to_string()
             },
-            context_vars: std::collections::HashMap::new(),
+            context_vars: context_vars.clone(),
             authored_by: t.authored_by.clone(),
             elevated: t.elevated,
             #[cfg(test)]
@@ -2042,6 +2069,59 @@ end";
         assert!(!cancelled, "test triggers don't return 0");
         // `fired` global must be 'pan', not 'shovel' (or empty).
         assert_eq!(ctx.db.get_dg_global("fired").expect("get").as_deref(), Some("pan"));
+    }
+
+    #[test]
+    fn on_pray_fires_without_room_colocation_and_return_zero_cancels() {
+        // Worship: pray in a temple fires the god's OnPray triggers even
+        // though the god is nowhere near the actor (no room check). A body
+        // returning 0 cancels the default tribute/blessing handling. Also
+        // proves fire-time context vars (`action`) reach the body.
+        let mut god = crate::types::MobileData::new("Aurex".to_string());
+        god.current_room_id = None; // prototype-style: no room at all
+        god.triggers.push(crate::MobileTrigger {
+            trigger_type: crate::MobileTriggerType::OnPray,
+            script_name: String::new(),
+            enabled: true,
+            chance: 100,
+            args: Vec::new(),
+            interval_secs: 60,
+            last_fired: 0,
+            dg_body: Some("set prayed %action%\nglobal prayed\nreturn 0".to_string()),
+            dg_name: None,
+            authored_by: None,
+            elevated: false,
+            source_proto_vnum: None,
+        });
+        let god_id = god.id;
+        let ctx = make_ctx(SelfKind::Mob, god_id, "Aurex");
+        ctx.db.save_mobile_data(god.clone()).expect("save");
+
+        let god = ctx.db.get_mobile_data(&god_id).expect("get").expect("god");
+        let mut context = HashMap::new();
+        context.insert("action".to_string(), "tribute".to_string());
+        context.insert("overdue_days".to_string(), "2".to_string());
+        let cancelled = fire_mobile_dg_triggers_with_context(
+            &ctx.db,
+            &ctx.connections,
+            &god,
+            crate::MobileTriggerType::OnPray,
+            "",
+            "",
+            "",
+            "",
+            context,
+        );
+        assert!(cancelled, "return 0 must cancel the default handling");
+        assert_eq!(ctx.db.get_dg_global("prayed").expect("get").as_deref(), Some("tribute"));
+    }
+
+    #[test]
+    fn worship_opcodes_are_known_dg_verbs() {
+        for verb in ["worship_bless", "worship_tribute", "worship_favor", "worship_smite"] {
+            assert!(cmds::is_known_dg_verb(verb), "{verb} missing from is_known_dg_verb");
+            assert!(cmds::COMMANDS.contains(&verb), "{verb} missing from COMMANDS");
+        }
     }
 
     // ---------- F3 (author-stamped DG opcode gate) ----------

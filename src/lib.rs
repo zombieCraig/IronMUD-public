@@ -49,6 +49,7 @@ pub mod throttle;
 pub mod types;
 pub mod vampire;
 pub mod werewolf;
+pub mod worship;
 
 pub use types::*;
 
