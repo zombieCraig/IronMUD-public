@@ -209,9 +209,33 @@ fn handle_select_character(input, connection_id) {
     }
 
     if trimmed == "quit" || trimmed == "q" {
+        clear_wizard_data(connection_id);
         set_olc_mode(connection_id, "");
         clear_authenticated_account(connection_id);
         send_client_message(connection_id, "Logged out. Goodbye!");
+        return;
+    }
+
+    if trimmed == "back" || trimmed == "b" {
+        // Only set when we arrived here via `roster` (see roster.rhai) —
+        // a fresh login has no prior character to return to.
+        let return_name = "";
+        let raw = get_wizard_data(connection_id);
+        if raw != () {
+            for part in raw.split(";") {
+                if part.index_of("roster_return_char=") == 0 {
+                    return_name = part.sub_string(19);
+                }
+            }
+        }
+
+        if return_name == "" {
+            send_client_message(connection_id, "There's no character to go back to — pick one from the list.\n> ");
+            return;
+        }
+
+        clear_wizard_data(connection_id);
+        complete_character_selection(connection_id, return_name);
         return;
     }
 

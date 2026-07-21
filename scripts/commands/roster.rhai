@@ -16,6 +16,10 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Remember who we're stepping out of so `back` at the roster prompt can
+    // return here directly — handy if `roster` was run by accident.
+    set_wizard_data(connection_id, "roster_return_char=" + char.name);
+
     // Save current character state and announce departure to the room — the
     // session is about to swap out of "playing" mode.
     save_character_data(char);
@@ -35,10 +39,10 @@ fn run_command(args, connection_id) {
 
 
     set_olc_mode(connection_id, "select_character");
-    show_account_roster(connection_id, summaries);
+    show_account_roster(connection_id, summaries, char.name);
 }
 
-fn show_account_roster(connection_id, summaries) {
+fn show_account_roster(connection_id, summaries, departed_name) {
     let output = "\n=== Your characters ===\n\n";
     let idx = 1;
     for s in summaries {
@@ -53,6 +57,6 @@ fn show_account_roster(connection_id, summaries) {
     }
     output += "  [R] Retire a character (permanent)\n";
     output += "  [X] Delete entire account (permanent)\n";
-    output += "\nType a number to play that character, `new` to create another, or `quit` to log out.\n> ";
+    output += "\nType a number to play that character, `back` to return to " + departed_name + ", `new` to create another, or `quit` to log out.\n> ";
     send_client_message(connection_id, output);
 }

@@ -29,6 +29,7 @@ Type `admin help` for the live list. Highlights:
 | `admin alts <account>` | Show accounts sharing the subject's IP (last 30d) or normalized email — banned alts are flagged |
 | `admin summon <player>` | Teleport a player to your location |
 | `admin heal <player>` | Fully heal a player |
+| `admin religion <player> set <god_vnum>\|clear` | Set or remove a player's god pact, bypassing artifact/quest gates (worship-system testing) |
 | `admin broadcast <message>` | Server-wide announcement |
 | `admin shutdown <secs> [reason]` | Schedule shutdown with countdown |
 | `admin god` | Toggle invulnerability for the admin character |

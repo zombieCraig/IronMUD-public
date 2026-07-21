@@ -63,20 +63,29 @@ fn mutate_character<T>(
     char_name: &str,
     f: impl FnOnce(&mut CharacterData) -> T,
 ) -> Option<T> {
-    {
+    // Mutate under the lock, but persist after releasing it — holding a
+    // session mutex across sled IO stalls every other connection.
+    let mut f = Some(f);
+    let online: Option<(T, CharacterData)> = {
         let mut guard = connections.lock().unwrap();
+        let mut hit = None;
         for (_id, session) in guard.iter_mut() {
             if let Some(ref mut ch) = session.character {
                 if ch.name.eq_ignore_ascii_case(char_name) {
-                    let out = f(ch);
-                    let _ = db.save_character_data(ch.clone());
-                    return Some(out);
+                    let out = (f.take().expect("f consumed once"))(ch);
+                    hit = Some((out, ch.clone()));
+                    break;
                 }
             }
         }
+        hit
+    };
+    if let Some((out, snapshot)) = online {
+        let _ = db.save_character_data(snapshot);
+        return Some(out);
     }
     let mut ch = db.get_character_data(&char_name.to_lowercase()).ok()??;
-    let out = f(&mut ch);
+    let out = (f.take().expect("f consumed once"))(&mut ch);
     db.save_character_data(ch).ok()?;
     Some(out)
 }

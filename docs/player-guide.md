@@ -497,6 +497,39 @@ NPCs may offer quests through their dialogue trees. When you accept one, it appe
 
 Some quests are **time-limited** — abandon or complete them before the timer expires. Party kill credit is shared: anyone who damaged the target during the fight gets credit.
 
+## Gods and Worship
+
+Some beings in the world are true gods. Swear yourself to one and they will
+bless you — but they will also expect tribute, and gods do not forgive
+neglect.
+
+| Command | Description |
+|---------|-------------|
+| `worship` | Show your god and your standing with them |
+| `worship <god>` | Swear the pact (god present, or named in a temple) |
+| `pray` | In a temple: offer devotion; blessed if your tribute is current |
+| `pray tribute` | Pay what the god demands (usually a share of your gold) |
+| `pray atone` | Surrender half your wealth to lift divine wrath |
+
+Things to know before you kneel:
+
+- **The pact is for life.** There is no command to leave a god or switch
+  to another. Choose carefully.
+- You can't worship a god just because you've heard of them — most demand
+  an **artifact** (consumed in the ritual) or a **deed** (a completed quest).
+- Blessings fade after a few days; pray regularly in any room that serves
+  as a **temple** to keep them.
+- Miss your tribute and the god's anger grows day by day: cold warnings,
+  then curses, then a smite. Some gods can inflict wounds that never heal.
+  `pray atone` is the expensive way back into grace.
+- Harming your god's faithful — their priests, their creatures, their
+  worshipers — is punished. Slaying the followers of your god's **enemies**
+  earns favor.
+- `examine` a god (or their servants) to learn who and what they are.
+
+Outside a temple, `pray <message>` still simply calls out to the
+administrators.
+
 ## Bulletin Boards
 
 Some rooms contain bulletin boards (a piece of furniture or a notice board). Use the `board` command while standing next to one:

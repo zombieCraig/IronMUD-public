@@ -976,6 +976,18 @@ fn handle_account(connection_id, args, admin_char) {
             return;
         }
         let email = parts[3];
+
+        // Reject an address already tied to a different account (normalized
+        // form) — mirrors the player-facing check in email.rhai's `email set`.
+        // Without this, two accounts can share a verified email and password
+        // resets get routed to whichever account the lookup finds first.
+        let existing = find_account_id_by_normalized_email(email);
+        if existing != "" && existing != account.id {
+            let other = get_account_by_id(existing);
+            send_client_message(connection_id, "That email is already registered to account '" + other.name + "'.");
+            return;
+        }
+
         if set_account_email(account.id, email) {
             send_client_message(connection_id, "Account '" + account.name + "' email updated to: " + email);
             broadcast_to_builders("[admin] " + admin_char.name + " set email for " + account.name + " to " + email);
