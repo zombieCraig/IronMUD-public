@@ -19,6 +19,29 @@ fn category_letter(category) {
     return "?";
 }
 
+// Everything an achievement pays out beyond its title, as a short phrase.
+// Empty when the title is the whole reward.
+fn format_rewards(reward) {
+    let bits = [];
+    if reward.trait_points > 0 {
+        let plural = if reward.trait_points == 1 { " trait point" } else { " trait points" };
+        bits.push("" + reward.trait_points + plural);
+    }
+    if reward.gold > 0 {
+        bits.push("" + reward.gold + " gold");
+    }
+    if reward.item_vnum != "" {
+        bits.push("an item");
+    }
+    if reward.morality_delta > 0 {
+        bits.push("+" + reward.morality_delta + " morality");
+    } else if reward.morality_delta < 0 {
+        bits.push("" + reward.morality_delta + " morality");
+    }
+    if bits.len() == 0 { return ""; }
+    return bits.join(", ");
+}
+
 fn render_list(items, filter_category, connection_id) {
     if items.len() == 0 {
         send_client_message(connection_id, "No achievements available on this world.");
@@ -49,6 +72,13 @@ fn render_list(items, filter_category, connection_id) {
         }
         let cat_letter = "[" + category_letter(it.category) + "]";
         let line = "  " + mark + " " + cat_letter + " " + it.name + active_marker;
+        // Trait points are flagged in the list, not just on `show`. They are
+        // the only reward that changes what a character can become, so they
+        // are worth seeing before you decide what to chase.
+        if it.reward.trait_points > 0 {
+            let pts = " (+" + it.reward.trait_points + " trait pts)";
+            line += color_or(ansi_cyan(pts), pts, connection_id);
+        }
         send_client_message(connection_id, line);
         if it.unlocked {
             send_client_message(connection_id, "      " + it.description);
@@ -69,6 +99,10 @@ fn render_show(items, key, connection_id) {
             send_client_message(connection_id, color_or(ansi_cyan(header), header, connection_id));
             send_client_message(connection_id, "  " + it.description);
             send_client_message(connection_id, title_line);
+            let rewards = format_rewards(it.reward);
+            if rewards != "" {
+                send_client_message(connection_id, "  Rewards: " + rewards);
+            }
             if it.unlocked {
                 send_client_message(connection_id, "  Unlocked at: " + it.unlocked_at);
             }

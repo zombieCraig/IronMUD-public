@@ -294,7 +294,8 @@ fn run_command(args, connection_id) {
     let xp_gained = (base_xp * rarity_mult * skill_diminish) / 100;
     if xp_gained < 1 { xp_gained = 1; }
 
-    let leveled_up = add_skill_experience(char.name, "fishing", xp_gained);
+    let leveled_up = add_skill_experience(char.name, "fishing", xp_gained, "gather");
+    notify_achievement_counter(char.name, "fish.landed", 1);
 
     // Refresh session with updated character data (including new skills)
     let updated_char = get_character_data(char.name);
@@ -308,13 +309,13 @@ fn run_command(args, connection_id) {
     if catch_rarity == "rare" { rarity_prefix = "an impressive "; }
     if catch_rarity == "legendary" { rarity_prefix = "an incredible "; }
 
-    send_client_message(connection_id, "You caught " + size_desc + rarity_prefix + caught_item.name + "! (+" + xp_gained + " Fishing XP)");
+    send_client_message(connection_id, "You caught " + size_desc + rarity_prefix + caught_item.name + "!");
     broadcast_to_room(char.current_room_id, char.name + " reels in " + size_desc + rarity_prefix + caught_item.name + "!", char.name);
 
     if leveled_up {
-        let new_level = get_skill_level(char.name, "fishing");
-        let level_msg = get_level_up_message(new_level);
-        send_client_message(connection_id, "\n*** Your Fishing skill increased to level " + new_level + "! ***");
+        // Banner comes from the progress chokepoint; this is the
+        // per-skill flavour line, which is unique to this skill.
+        let level_msg = get_level_up_message(get_skill_level(char.name, "fishing"));
         if level_msg != "" {
             send_client_message(connection_id, level_msg);
         }

@@ -70,6 +70,14 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Loot protection covers putting in as well as taking out: stuffing junk
+    // into a corpse you cannot open is a way to make its owner's run pointless.
+    let blocked = corpse_loot_block_reason(char.name, container.id);
+    if blocked != "" {
+        send_client_message(connection_id, blocked);
+        return;
+    }
+
     // Check for "all" syntax
     let all_parsed = parse_all_syntax(item_keyword);
     if all_parsed.is_all {
@@ -271,6 +279,14 @@ fn put_gold_in_container(char, amount, container_keyword, connection_id) {
 
     if container.container_closed {
         send_client_message(connection_id, "It's closed.");
+        return;
+    }
+
+    // Loot protection covers putting in as well as taking out: stuffing junk
+    // into a corpse you cannot open is a way to make its owner's run pointless.
+    let blocked = corpse_loot_block_reason(char.name, container.id);
+    if blocked != "" {
+        send_client_message(connection_id, blocked);
         return;
     }
 

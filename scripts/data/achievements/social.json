@@ -1,0 +1,203 @@
+[
+  {
+    "key": "first_words",
+    "name": "First Words",
+    "description": "Use 5 different social actions.",
+    "category": "social",
+    "criterion": {
+      "kind": "counter",
+      "counter": "socials.distinct",
+      "threshold": 5
+    },
+    "reward": {
+      "title": "the Expressive"
+    }
+  },
+  {
+    "key": "well_mannered",
+    "name": "Well Mannered",
+    "description": "Use 25 different social actions.",
+    "category": "social",
+    "criterion": {
+      "kind": "counter",
+      "counter": "socials.distinct",
+      "threshold": 25
+    },
+    "reward": {
+      "title": "the Well-Mannered"
+    }
+  },
+  {
+    "key": "socialite",
+    "name": "Socialite",
+    "description": "Use 75 different social actions.",
+    "category": "social",
+    "criterion": {
+      "kind": "counter",
+      "counter": "socials.distinct",
+      "threshold": 75
+    },
+    "reward": {
+      "title": "the Socialite"
+    }
+  },
+  {
+    "key": "full_repertoire",
+    "name": "Full Repertoire",
+    "description": "Use 200 different social actions.",
+    "category": "social",
+    "criterion": {
+      "kind": "counter",
+      "counter": "socials.distinct",
+      "threshold": 200
+    },
+    "reward": {
+      "title": "the Consummate",
+      "gold": 2000,
+      "trait_points": 1
+    }
+  },
+  {
+    "key": "made_an_introduction",
+    "name": "Introductions",
+    "description": "Hold a conversation with 5 different people.",
+    "category": "social",
+    "criterion": {
+      "kind": "counter",
+      "counter": "npcs.talked_to",
+      "threshold": 5
+    },
+    "reward": {
+      "title": "the Introduced"
+    }
+  },
+  {
+    "key": "known_face",
+    "name": "A Known Face",
+    "description": "Hold a conversation with 25 different people.",
+    "category": "social",
+    "criterion": {
+      "kind": "counter",
+      "counter": "npcs.talked_to",
+      "threshold": 25
+    },
+    "reward": {
+      "title": "the Known"
+    }
+  },
+  {
+    "key": "everybody_knows_you",
+    "name": "Everybody Knows Your Name",
+    "description": "Hold a conversation with 75 different people.",
+    "category": "social",
+    "criterion": {
+      "kind": "counter",
+      "counter": "npcs.talked_to",
+      "threshold": 75
+    },
+    "reward": {
+      "title": "the Well-Connected",
+      "gold": 1000
+    }
+  },
+  {
+    "key": "correspondent",
+    "name": "Correspondent",
+    "description": "Send 10 letters.",
+    "category": "social",
+    "criterion": {
+      "kind": "counter",
+      "counter": "mail.sent",
+      "threshold": 10
+    },
+    "reward": {
+      "title": "the Correspondent"
+    }
+  },
+  {
+    "key": "prolific_pen",
+    "name": "A Prolific Pen",
+    "description": "Send 100 letters.",
+    "category": "social",
+    "criterion": {
+      "kind": "counter",
+      "counter": "mail.sent",
+      "threshold": 100
+    },
+    "reward": {
+      "title": "the Prolific"
+    }
+  },
+  {
+    "key": "have_your_say",
+    "name": "Have Your Say",
+    "description": "Post to a notice board.",
+    "category": "social",
+    "criterion": {
+      "kind": "counter",
+      "counter": "board.posts",
+      "threshold": 1
+    },
+    "reward": {
+      "title": "the Outspoken"
+    }
+  },
+  {
+    "key": "town_crier",
+    "name": "Town Crier",
+    "description": "Post to notice boards 25 times.",
+    "category": "social",
+    "criterion": {
+      "kind": "counter",
+      "counter": "board.posts",
+      "threshold": 25
+    },
+    "reward": {
+      "title": "the Town Crier"
+    }
+  },
+  {
+    "key": "errand_runner",
+    "name": "Errand Runner",
+    "description": "Complete 5 quests.",
+    "category": "social",
+    "criterion": {
+      "kind": "counter",
+      "counter": "quests.completed",
+      "threshold": 5
+    },
+    "reward": {
+      "title": "the Reliable"
+    }
+  },
+  {
+    "key": "trusted_hand",
+    "name": "Trusted Hand",
+    "description": "Complete 25 quests.",
+    "category": "social",
+    "criterion": {
+      "kind": "counter",
+      "counter": "quests.completed",
+      "threshold": 25
+    },
+    "reward": {
+      "title": "the Trusted"
+    }
+  },
+  {
+    "key": "champion_of_the_people",
+    "name": "Champion of the People",
+    "description": "Complete 100 quests.",
+    "category": "social",
+    "criterion": {
+      "kind": "counter",
+      "counter": "quests.completed",
+      "threshold": 100
+    },
+    "reward": {
+      "title": "Champion of the People",
+      "gold": 5000,
+      "trait_points": 3
+    }
+  }
+]

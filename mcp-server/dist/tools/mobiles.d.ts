@@ -24,6 +24,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -44,6 +45,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -114,6 +117,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -134,6 +138,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -207,6 +213,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -227,6 +234,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -300,6 +309,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -320,6 +330,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -417,6 +429,10 @@ export declare const mobileToolDefinitions: ({
             armor_class: {
                 type: string;
                 default: number;
+            };
+            alignment: {
+                type: string;
+                description: string;
             };
             flags: {
                 type: string;
@@ -553,6 +569,10 @@ export declare const mobileToolDefinitions: ({
                         type: string;
                         description: string;
                     };
+                    consignment: {
+                        type: string;
+                        description: string;
+                    };
                 };
             };
             position: {
@@ -662,6 +682,17 @@ export declare const mobileToolDefinitions: ({
             };
             shop_max_value: {
                 type: string;
+                description: string;
+            };
+            consignment_commission_pct: {
+                type: string;
+                minimum: number;
+                maximum: number;
+                description: string;
+            };
+            consignment_max_listings_per_player: {
+                type: string;
+                minimum: number;
                 description: string;
             };
             shop_extra_types: {
@@ -953,6 +984,10 @@ export declare const mobileToolDefinitions: ({
                 type: string;
                 default?: undefined;
             };
+            alignment: {
+                type: string;
+                description: string;
+            };
             gold: {
                 type: string;
                 description: string;
@@ -1092,6 +1127,10 @@ export declare const mobileToolDefinitions: ({
                         type: string;
                         description?: undefined;
                     };
+                    consignment: {
+                        type: string;
+                        description?: undefined;
+                    };
                 };
             };
             position: {
@@ -1210,6 +1249,17 @@ export declare const mobileToolDefinitions: ({
             };
             shop_max_value: {
                 type: string;
+                description: string;
+            };
+            consignment_commission_pct: {
+                type: string;
+                minimum: number;
+                maximum: number;
+                description: string;
+            };
+            consignment_max_listings_per_player: {
+                type: string;
+                minimum: number;
                 description: string;
             };
             shop_extra_types: {
@@ -1480,6 +1530,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -1500,6 +1551,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -1581,6 +1634,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -1601,6 +1655,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -1676,6 +1732,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -1696,6 +1753,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -1772,6 +1831,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -1792,6 +1852,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -1883,6 +1945,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -1903,6 +1966,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -1992,6 +2057,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -2012,6 +2078,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -2116,6 +2184,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -2136,6 +2205,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -2240,6 +2311,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -2260,6 +2332,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -2331,6 +2405,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -2351,6 +2426,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -2446,6 +2523,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -2466,6 +2544,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -2537,6 +2617,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -2557,6 +2638,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -2632,6 +2715,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -2652,6 +2736,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -2752,6 +2838,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -2772,6 +2859,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -2839,6 +2928,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -2859,6 +2949,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;
@@ -2936,6 +3028,7 @@ export declare const mobileToolDefinitions: ({
             max_hp?: undefined;
             damage_dice?: undefined;
             armor_class?: undefined;
+            alignment?: undefined;
             flags?: undefined;
             position?: undefined;
             creature_type?: undefined;
@@ -2956,6 +3049,8 @@ export declare const mobileToolDefinitions: ({
             shop_buys_categories?: undefined;
             shop_min_value?: undefined;
             shop_max_value?: undefined;
+            consignment_commission_pct?: undefined;
+            consignment_max_listings_per_player?: undefined;
             shop_extra_types?: undefined;
             shop_extra_categories?: undefined;
             shop_deny_types?: undefined;

@@ -161,6 +161,9 @@ fn run_command(args, connection_id) {
             set_item_area_id(item.id, new_area_id);
         }
 
+        // Attribution: claim the prototype for its creator. See src/attribution.rs.
+        stamp_content_created("item", "" + item.id, char.name);
+
         // Re-fetch to get updated data for display
         let item = get_item_data(item.id);
         send_client_message(connection_id, "Created item prototype with vnum: " + vnum + "\n");
@@ -219,6 +222,11 @@ fn run_command(args, connection_id) {
             return;
         }
     }
+
+    // Attribution: one stamp per editor, after the permission gate and after
+    // the read-only subcommands have returned. See src/attribution.rs.
+    stamp_content_edited("item", "" + item.id, char.name);
+    note_grade_before("item", "" + item.id, connection_id);
 
     // Handle subcommands
     handle_subcommand(item, item_id, subcommand, parts, char, connection_id);

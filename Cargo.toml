@@ -3,6 +3,30 @@ name = "ironmud"
 version = "0.1.0"
 edition = "2024"
 
+# cargo audit triage
+#
+# The pre-commit hook runs `cargo audit` as advisory and asks for findings to be
+# sorted into known-and-unused / waiting-on-upstream / new-and-actionable. Three
+# sit permanently in the middle bucket. All are **unmaintained-crate** notices
+# with no patched version published — there is nothing to upgrade *to* — and all
+# arrive through dependencies this project is built on rather than through
+# anything it calls:
+#
+#   fxhash            RUSTSEC-2025-0057   sled -> fxhash
+#   instant           RUSTSEC-2024-0384   rhai, and sled -> parking_lot 0.11
+#   proc-macro-error2 RUSTSEC-2026-0173   matrix-sdk -> matrix-pickle-derive,
+#                                                       aquamarine
+#
+# Clearing them means replacing sled or rhai, which is the storage layer and the
+# scripting engine. `proc-macro-error2` alone would clear on matrix-sdk 0.18,
+# but 0.18 drops the `native-tls` feature used below, so it is a TLS migration
+# bought to silence a *build-time* proc macro with no known vulnerability. Not a
+# good trade; revisit when matrix-sdk is being upgraded for its own reasons.
+#
+# They are deliberately NOT added to an `audit.toml` ignore list. A real
+# advisory against one of these crates would then arrive silently, and the whole
+# value of the hook is that a new line in its output means something.
+
 [dependencies]
 tokio = { version = "1.36", features = ["full"] }
 rhai = { version = "1.17", features = ["sync"] }

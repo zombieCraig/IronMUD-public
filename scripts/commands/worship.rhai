@@ -51,7 +51,7 @@ fn show_worship_status(char, connection_id) {
     } else {
         output += "Your tribute is current.\n";
     }
-    output += "Favor: " + get_worship_favor(char.name);
+    output += "Standing: " + get_worship_standing(char.name);
     send_client_message(connection_id, output);
 }
 

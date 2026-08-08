@@ -1,13 +1,13 @@
 // src/script/triggers.rs
 // Trigger system functions for rooms, items, and mobiles
 
-use crate::SharedConnections;
 use crate::db::Db;
 use crate::session::broadcast_to_builders;
 use crate::{
     CharacterData, ItemData, ItemTrigger, ItemTriggerType, MobileData, MobileTrigger, MobileTriggerType, RoomData,
     RoomTrigger, TriggerType,
 };
+use crate::{SharedConnections, SharedState};
 use rhai::Engine;
 use std::sync::Arc;
 
@@ -387,7 +387,7 @@ pub fn execute_room_template(
 }
 
 /// Register trigger-related functions
-pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections) {
+pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, state: SharedState) {
     // ========== Room Trigger Functions ==========
 
     // Register TriggerType enum for Rhai
@@ -819,6 +819,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // context is a Rhai map with event-specific data (direction, source_room, etc.)
     let cloned_db = db.clone();
     let cloned_conns = connections.clone();
+    let cloned_state = state.clone();
     engine.register_fn(
         "fire_room_trigger",
         move |room_id: String, trigger_type: String, connection_id: String, context: rhai::Map| {
@@ -867,6 +868,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         &connection_id,
                         cloned_db.clone(),
                         cloned_conns.clone(),
+                        cloned_state.clone(),
                         trigger.authored_by.clone(),
                         trigger.elevated,
                         ctx_strmap.clone(),
@@ -1415,6 +1417,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // Called from command scripts when item events occur
     let cloned_db = db.clone();
     let cloned_conns = connections.clone();
+    let cloned_state = state.clone();
     engine.register_fn(
         "fire_item_trigger",
         move |item_id: String, trigger_type_str: String, connection_id: String, context: rhai::Map| {
@@ -1466,6 +1469,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         &connection_id,
                         cloned_db.clone(),
                         cloned_conns.clone(),
+                        cloned_state.clone(),
                         trigger.authored_by.clone(),
                         trigger.elevated,
                         ctx_strmap.clone(),
@@ -2207,6 +2211,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // Called from command scripts when mobile events occur
     let cloned_db = db.clone();
     let cloned_conns = connections.clone();
+    let cloned_state = state.clone();
     engine.register_fn(
         "fire_mobile_trigger",
         move |mobile_id: String, trigger_type_str: String, connection_id: String, context: rhai::Map| {
@@ -2259,6 +2264,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         &connection_id,
                         cloned_db.clone(),
                         cloned_conns.clone(),
+                        cloned_state.clone(),
                         trigger.authored_by.clone(),
                         trigger.elevated,
                         ctx_strmap.clone(),
@@ -2865,6 +2871,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // pushes a fully-bodied trigger onto the target's triggers list.
     let cloned_db = db.clone();
     let cloned_conns = connections.clone();
+    let cloned_state = state.clone();
     engine.register_fn("attach_dg_trigger_proto", move |target_id: String, vnum: String| {
         let uid = match uuid::Uuid::parse_str(&target_id) {
             Ok(u) => u,
@@ -2884,6 +2891,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         let ctx = crate::script::dg::EvalCtx {
             db: cloned_db.clone(),
             connections: cloned_conns.clone(),
+            state: cloned_state.clone(),
             self_kind,
             self_id: uid,
             self_name: String::new(),

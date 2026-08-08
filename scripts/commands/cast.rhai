@@ -1091,10 +1091,17 @@ fn run_command(args, connection_id) {
         consume_reagent(char.name, reagent);
     }
 
-    // Award magic XP
+    // Award magic XP.
+    //
+    // Deliberately left on the untagged three-argument form: casting is not
+    // reliably combat (a light spell, a mend, a divination all land here) and
+    // there is no honest XpSource for "cast a spell". The untagged form reports
+    // as `admin`, which batches — the correct behaviour for a repeated action
+    // either way — so tagging it would only put a wrong label in telemetry.
     let xp = spell["xp_award"];
     let old_level = get_skill_level(char.name, "magic");
     add_skill_experience(char.name, "magic", xp);
+    notify_achievement_counter(char.name, "spells.cast", 1);
     let new_level = get_skill_level(char.name, "magic");
 
     if new_level > old_level {

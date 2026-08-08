@@ -646,17 +646,13 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
         }
 
         // Check for aggressive / memory-driven attack BEFORE wandering.
-        // Aggressive mobiles attack any visible player; MOB_MEMORY mobs
-        // attack any remembered visible player even without aggressive.
-        // A Rage buff makes any mob aggressive for its duration.
-        // Visibility honours MOB_AWARE + perception.
-        if current_mobile.flags.aggressive
-            || current_mobile
-                .active_buffs
-                .iter()
-                .any(|b| b.effect_type == EffectType::Rage)
-            || (current_mobile.flags.memory && !current_mobile.remembered_enemies.is_empty())
-        {
+        // The gate here and the early return inside
+        // `find_aggression_target_for_mob` must agree on who is even a
+        // candidate, so both ask the same helper. They did not before: this
+        // site listed only aggressive / rage / memory, which meant a mob whose
+        // sole reason to attack was the alignment flags never reached the scan
+        // that reads them.
+        if may_aggress(&current_mobile) {
             if let Some(room_id) = current_mobile.current_room_id {
                 // Check if room allows combat (not a safe zone)
                 if let Ok(Some(room)) = db.get_room_data(&room_id) {
@@ -664,7 +660,7 @@ fn process_wander_tick(db: &db::Db, connections: &SharedConnections, state: &Sha
 
                     if !is_safe {
                         if let Some((player_name, was_remembered)) =
-                            find_aggression_target_for_mob(db, connections, &current_mobile, &room_id)
+                            find_aggression_target_for_mob(connections, state, &current_mobile, &room_id)
                         {
                             debug!(
                                 "Aggression: {} targeting player {} in room {} (remembered={})",
@@ -1233,25 +1229,72 @@ pub fn find_players_in_room(connections: &SharedConnections, room_id: &uuid::Uui
     players
 }
 
-/// Returns a candidate player for a mob's aggression / memory logic, if any.
-/// Honours MOB_AWARE (visibility) and MOB_MEMORY (remembered enemies). The
-/// boolean in the tuple is `true` when the candidate matched the memory
-/// list — used to gate the "I remember you!" emote.
-pub fn find_aggression_target_for_mob(
-    db: &db::Db,
+/// [`find_players_in_room`], but carrying each player's character rather than
+/// just their name.
+///
+/// The session copy is authoritative for anyone online — every write path in
+/// the game syncs it — so a caller that needs to *read* several fields off
+/// each player in a room should take them from here rather than paying a
+/// `get_character_data` per player. That per-player read is the difference
+/// between a free scan and a per-mob, per-player database round trip on a
+/// tick that walks every mobile in the world.
+pub fn find_players_in_room_with_data(
     connections: &SharedConnections,
+    room_id: &uuid::Uuid,
+) -> Vec<ironmud::CharacterData> {
+    let mut players = Vec::new();
+    if let Ok(conns) = connections.lock() {
+        for (_, session) in conns.iter() {
+            if let Some(ref char) = session.character {
+                if char.current_room_id == *room_id {
+                    players.push(char.clone());
+                }
+            }
+        }
+    }
+    players
+}
+
+/// Has this mob any reason at all to attack somebody on sight?
+///
+/// The cheap pre-filter both the wander tick and
+/// [`find_aggression_target_for_mob`] gate on, so the two cannot disagree
+/// about who is a candidate. Everything expensive — loading each player in the
+/// room, visibility, standing — happens only after this returns true.
+pub fn may_aggress(mob: &MobileData) -> bool {
+    mob.flags.aggressive
+        || mob.active_buffs.iter().any(|b| b.effect_type == EffectType::Rage)
+        || (mob.flags.memory && !mob.remembered_enemies.is_empty())
+        || mob.flags.aggro_good
+        || mob.flags.aggro_evil
+        || mob.flags.aggro_neutral
+        // A faction-tagged mob has a standing to check even with no
+        // aggression flag set. Untagged mobs — most of the world's wildlife —
+        // stop here, which is what keeps this off the hot path.
+        || ironmud::reputation::normalize(mob.faction.as_deref()).is_some()
+}
+
+/// Returns a candidate player for a mob's aggression / memory / alignment /
+/// faction logic, if any. Honours MOB_AWARE (visibility) and MOB_MEMORY
+/// (remembered enemies). The boolean in the tuple is `true` when the candidate
+/// matched the memory list — used to gate the "I remember you!" emote.
+pub fn find_aggression_target_for_mob(
+    connections: &SharedConnections,
+    state: &SharedState,
     mob: &MobileData,
     room_id: &uuid::Uuid,
 ) -> Option<(String, bool)> {
+    if !may_aggress(mob) {
+        return None;
+    }
     // A Rage buff overrides temperament: the mob attacks anyone it can see,
     // including its own charm master.
     let raging = mob.active_buffs.iter().any(|b| b.effect_type == EffectType::Rage);
     let aggressive = mob.flags.aggressive || raging;
-    let memory_active = mob.flags.memory && !mob.remembered_enemies.is_empty();
-    let alignment_aggro = mob.flags.aggro_good || mob.flags.aggro_evil || mob.flags.aggro_neutral;
-    if !aggressive && !memory_active && !alignment_aggro {
-        return None;
-    }
+    // Resolved once, not per player: this is the only World-lock read on the
+    // path, and it must not be taken while the connections lock is held.
+    let faction_def =
+        ironmud::reputation::normalize(mob.faction.as_deref()).map(|f| ironmud::reputation::definition(state, &f));
     let now = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -1264,17 +1307,21 @@ pub fn find_aggression_target_for_mob(
         .collect();
 
     let charm_master = mob.charm_master().map(|s| s.to_lowercase());
-    let players = find_players_in_room(connections, room_id);
-    for name in players {
+    // Off the session, not the database. This used to be one
+    // `get_character_data` per player per candidate mob, and `may_aggress`
+    // now admits every faction-tagged mob — so a town of tagged guards and a
+    // handful of players was hundreds of character deserializations a tick.
+    // The session copy is authoritative for anyone online, and combat,
+    // morality and reputation all sync it on write, so it is also the
+    // *correct* source here rather than merely the cheap one.
+    let players = find_players_in_room_with_data(connections, room_id);
+    for ch in players {
+        let name = ch.name.clone();
         let key = name.to_lowercase();
         // Charmed mobs never aggro their master — unless rage takes them.
         if !raging && charm_master.as_deref() == Some(&key) {
             continue;
         }
-        let ch = match db.get_character_data(&key) {
-            Ok(Some(c)) => c,
-            _ => continue,
-        };
         if !ironmud::script::is_player_visible_to_mob(&ch, mob) {
             continue;
         }
@@ -1282,7 +1329,14 @@ pub fn find_aggression_target_for_mob(
         let alignment_match = (mob.flags.aggro_evil && ch.morality < -24)
             || (mob.flags.aggro_good && ch.morality > 24)
             || (mob.flags.aggro_neutral && ch.morality >= -24 && ch.morality <= 24);
-        if aggressive || is_remembered || alignment_match {
+        // Faction hostility: a group whose members you have been killing stops
+        // waiting to be provoked. Threshold is per-faction, so a jumpy militia
+        // and a patient guild can share one mechanism.
+        let faction_match = faction_def
+            .as_ref()
+            .map(|d| ironmud::reputation::is_hostile_at(d, ironmud::reputation::standing(&ch.reputation, &d.key)))
+            .unwrap_or(false);
+        if aggressive || is_remembered || alignment_match || faction_match {
             return Some((name, is_remembered));
         }
     }
@@ -1399,4 +1453,192 @@ fn process_mobile_effects(db: &db::Db, connections: &SharedConnections, _state: 
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ironmud::reputation;
+
+    fn temp_db() -> (db::Db, tempfile::TempDir) {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let db = db::Db::open(temp.path()).expect("open db");
+        (db, temp)
+    }
+
+    fn mob(faction: Option<&str>) -> MobileData {
+        let mut m = MobileData::new("a guardsman".into());
+        m.faction = faction.map(|s| s.to_string());
+        m
+    }
+
+    /// A player standing in `room`, online, with the given faction standing.
+    fn player_in(db: &db::Db, room: uuid::Uuid, name: &str, standing: Option<(&str, i32)>) -> SharedConnections {
+        let mut ch: ironmud::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": name,
+            "password_hash": "",
+            "current_room_id": room,
+        }))
+        .expect("build character");
+        if let Some((f, v)) = standing {
+            ch.reputation.insert(f.to_string(), v);
+        }
+        db.save_character_data(ch.clone()).expect("save char");
+
+        let (tx_client, _rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let (tx_input, _rx_input) = tokio::sync::mpsc::channel::<InputEvent>(1);
+        let mut session = ironmud::PlayerSession::new_for_test(tx_client, tx_input);
+        session.character = Some(ch);
+        let conns: SharedConnections = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        conns.lock().unwrap().insert(uuid::Uuid::new_v4(), session);
+        conns
+    }
+
+    fn state_with(db: &db::Db, conns: &SharedConnections, defs: Vec<reputation::FactionDefinition>) -> SharedState {
+        let state = ironmud::World::minimal_shared(db.clone(), conns.clone());
+        {
+            let mut w = state.lock().unwrap();
+            for d in defs {
+                w.faction_definitions.insert(d.key.clone(), d);
+            }
+        }
+        state
+    }
+
+    /// The wander tick used to gate the whole scan on aggressive/rage/memory,
+    /// so a mob whose only reason to attack was an alignment flag never
+    /// reached the code that reads it. Both sites now ask `may_aggress`.
+    #[test]
+    fn alignment_flags_alone_make_a_mob_a_candidate() {
+        let mut m = mob(None);
+        assert!(!may_aggress(&m), "a placid untagged mob is not a candidate");
+
+        m.flags.aggro_evil = true;
+        assert!(may_aggress(&m));
+
+        let mut m = mob(None);
+        m.flags.aggro_good = true;
+        assert!(may_aggress(&m));
+
+        let mut m = mob(None);
+        m.flags.aggro_neutral = true;
+        assert!(may_aggress(&m));
+    }
+
+    #[test]
+    fn a_faction_tag_alone_makes_a_mob_a_candidate_but_a_blank_one_does_not() {
+        assert!(may_aggress(&mob(Some("iron_guard"))));
+        // Blank and whitespace tags are how a mob opts out entirely; they must
+        // not drag every wildlife mob onto the expensive path.
+        assert!(!may_aggress(&mob(Some(""))));
+        assert!(!may_aggress(&mob(Some("   "))));
+        assert!(!may_aggress(&mob(None)));
+    }
+
+    #[test]
+    fn a_faction_attacks_someone_it_has_come_to_hate() {
+        let (db, _t) = temp_db();
+        let room = uuid::Uuid::new_v4();
+        let conns = player_in(&db, room, "rook", Some(("iron_guard", -500)));
+        let state = state_with(
+            &db,
+            &conns,
+            vec![reputation::FactionDefinition::unregistered("iron_guard")],
+        );
+
+        let found = find_aggression_target_for_mob(&conns, &state, &mob(Some("iron_guard")), &room);
+        assert_eq!(found.map(|(n, _)| n), Some("rook".to_string()));
+    }
+
+    #[test]
+    fn a_faction_ignores_someone_who_has_merely_annoyed_it() {
+        let (db, _t) = temp_db();
+        let room = uuid::Uuid::new_v4();
+        // Disliked, but above the default hostile_at of -200.
+        let conns = player_in(&db, room, "rook", Some(("iron_guard", -199)));
+        let state = state_with(
+            &db,
+            &conns,
+            vec![reputation::FactionDefinition::unregistered("iron_guard")],
+        );
+
+        assert!(find_aggression_target_for_mob(&conns, &state, &mob(Some("iron_guard")), &room).is_none());
+    }
+
+    #[test]
+    fn each_faction_sets_its_own_patience() {
+        let (db, _t) = temp_db();
+        let room = uuid::Uuid::new_v4();
+        let conns = player_in(&db, room, "rook", Some(("reavers", -60)));
+        let jumpy = reputation::FactionDefinition {
+            hostile_at: -50,
+            ..reputation::FactionDefinition::unregistered("reavers")
+        };
+        let state = state_with(&db, &conns, vec![jumpy]);
+
+        assert!(
+            find_aggression_target_for_mob(&conns, &state, &mob(Some("reavers")), &room).is_some(),
+            "a faction can be quicker to take offence than the default"
+        );
+    }
+
+    /// The scan reads the session, not the database.
+    ///
+    /// Two reasons, and the test pins both at once by making the two copies
+    /// disagree. Correctness: the session copy is authoritative for anyone
+    /// online, so a standing that moved this tick is visible there first.
+    /// Cost: `may_aggress` admits every faction-tagged mob, so a DB read per
+    /// player here was a read per *player per tagged mob* — a town of guards
+    /// with a few players in it ran hundreds of character deserializations a
+    /// tick, on a loop that already walks every mobile in the world.
+    #[test]
+    fn the_scan_reads_the_session_copy_rather_than_the_database() {
+        let (db, _t) = temp_db();
+        let room = uuid::Uuid::new_v4();
+
+        // The stored character is a stranger to the faction...
+        let mut stored: ironmud::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "rook",
+            "password_hash": "",
+            "current_room_id": room,
+        }))
+        .expect("build character");
+        db.save_character_data(stored.clone()).expect("save char");
+
+        // ...while the live session has fallen well past hostile.
+        stored.reputation.insert("iron_guard".to_string(), -800);
+        let (tx_client, _rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let (tx_input, _rx_input) = tokio::sync::mpsc::channel::<InputEvent>(1);
+        let mut session = ironmud::PlayerSession::new_for_test(tx_client, tx_input);
+        session.character = Some(stored);
+        let conns: SharedConnections = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        conns.lock().unwrap().insert(uuid::Uuid::new_v4(), session);
+
+        let state = state_with(
+            &db,
+            &conns,
+            vec![reputation::FactionDefinition::unregistered("iron_guard")],
+        );
+
+        assert!(
+            find_aggression_target_for_mob(&conns, &state, &mob(Some("iron_guard")), &room).is_some(),
+            "the session standing is the one that counts"
+        );
+    }
+
+    #[test]
+    fn a_tagged_mob_leaves_a_stranger_alone() {
+        let (db, _t) = temp_db();
+        let room = uuid::Uuid::new_v4();
+        // No standing row at all: a faction you have never dealt with is
+        // Neutral, and tagging a mob must not make it aggressive by itself.
+        let conns = player_in(&db, room, "rook", None);
+        let state = state_with(
+            &db,
+            &conns,
+            vec![reputation::FactionDefinition::unregistered("iron_guard")],
+        );
+
+        assert!(find_aggression_target_for_mob(&conns, &state, &mob(Some("iron_guard")), &room).is_none());
+    }
 }

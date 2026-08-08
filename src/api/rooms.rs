@@ -1,5 +1,6 @@
 //! Room CRUD endpoints
 
+use crate::types::Authored;
 use axum::{
     Json, Router,
     extract::{Extension, Path, Query, State},
@@ -492,6 +493,9 @@ async fn create_room(
     };
 
     let mut room = RoomData {
+        authored_by: None,
+        last_edited_by: None,
+        origin: Default::default(),
         id: Uuid::new_v4(),
         title: req.title,
         description: req.description,
@@ -579,6 +583,8 @@ async fn create_room(
         room.rot_level = rot.clamp(0, crate::types::ROT_LEVEL_MAX);
     }
 
+    // Attribution: see src/attribution.rs.
+    room.stamp_created(&user.api_key.owner_character);
     state
         .db
         .save_room_data(room.clone())
@@ -771,6 +777,8 @@ async fn update_room(
         room.entry_gate = Some(gate);
     }
 
+    // Attribution: see src/attribution.rs.
+    room.stamp_edited(&user.api_key.owner_character);
     state
         .db
         .save_room_data(room.clone())

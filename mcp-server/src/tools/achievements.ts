@@ -65,6 +65,12 @@ const rewardSchema = {
       description:
         "Morality shift applied at unlock. Positive pushes toward Good, negative toward Evil. Clamped into [-200, 200]. Defaults to 0.",
     },
+    trait_points: {
+      type: "number",
+      minimum: 0,
+      description:
+        "Trait points granted at unlock, spendable via the 'traits' command. Must be zero or positive; the server clamps negatives to 0. Defaults to 0.",
+    },
   },
   required: ["title"],
 };

@@ -59,10 +59,7 @@ fn run_command(args, connection_id) {
         send_client_message(connection_id, "You carefully disarm the " + trap_type + " trap.");
         broadcast_to_room_awake(room_id, char.name + " disarms a trap.", char.name);
 
-        let leveled = add_skill_experience(char.name, "thievery", 10);
-        if leveled {
-            send_client_message(connection_id, "Your thievery skill has improved!");
-        }
+        add_skill_experience(char.name, "thievery", 10, "stealth");
     } else if roll > 90 {
         // Critical fail - trap triggers on you
         send_client_message(connection_id, "You fumble and the " + trap_type + " trap triggers on you!");

@@ -65,10 +65,7 @@ fn run_command(args, connection_id) {
         }
     }
 
-    let leveled = add_skill_experience(char.name, "stealth", 5);
-    if leveled {
-        send_client_message(connection_id, "Your stealth skill has improved!");
-    }
+    add_skill_experience(char.name, "stealth", 5, "stealth");
 }
 
 fn get_exit_room_id(room, direction) {

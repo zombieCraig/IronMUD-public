@@ -103,6 +103,7 @@ fn process_upgrade(current_lease, target_template, char, agent, connection_id) {
 
     // Deduct gold
     add_character_gold(char.name, -total_cost);
+    notify_achievement_counter(char.name, "gold.spent", total_cost);
 
     // Create new lease
     let new_lease = create_lease(target_template.vnum, char.name, agent.id, char.current_room_id);

@@ -30,6 +30,8 @@ Type `admin help` for the live list. Highlights:
 | `admin summon <player>` | Teleport a player to your location |
 | `admin heal <player>` | Fully heal a player |
 | `admin religion <player> set <god_vnum>\|clear` | Set or remove a player's god pact, bypassing artifact/quest gates (worship-system testing) |
+| `admin morality <player> [+/-<delta> \| set <value>]` | Inspect or correct a player's alignment slider. No argument shows the current value and tier. Clamped to `[-200, 200]`. |
+| `admin reputation <player> [<faction> [+/-<delta> \| set <value>]]` | Inspect or correct faction standing. With no faction, lists every standing. The delta form propagates to opposed factions and tells the player; `set` assigns an absolute value and does neither, because a correction is not an act in the world. See [Factions](builder/factions.md). |
 | `admin broadcast <message>` | Server-wide announcement |
 | `admin shutdown <secs> [reason]` | Schedule shutdown with countdown |
 | `admin god` | Toggle invulnerability for the admin character |
@@ -223,6 +225,33 @@ ironmud-admin settings delete <key>
 | `adoption_chance_per_day` | `0.10` | Per-day chance an orphaned migrant is adopted by eligible candidates |
 
 See `ironmud-admin settings list` on a live install for the complete list, including regen rates, corpse decay, and mail settings.
+
+#### Death and corpse settings
+
+Death is the rule players are most sensitive to, so all of it is tunable
+without a rebuild. The defaults keep full loot — a corpse holds everything the
+player was carrying and wearing, plus their gold — and add drama around it
+rather than softening it.
+
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `player_corpse_decay_secs` | `3600` | How long a player's corpse lasts before it and everything in it is deleted |
+| `mobile_corpse_decay_secs` | `600` | The same for mob corpses |
+| `corpse_decay_warn_fractions` | `50,90` | Percentages of the decay window at which a player is warned their corpse is rotting. Empty disables the warnings |
+| `player_corpse_loot_protect_secs` | `300` | Seconds a player's corpse can only be opened by them and their group. **`0` disables protection** and restores immediate free-for-all looting |
+
+Notes:
+
+- Warnings go to the corpse's owner wherever they are, and the "already warned"
+  marker lives on the corpse, so a restart does not replay them.
+- Loot protection covers every route into the body — `get`, `get all from`,
+  `look in`, `put`, and `butcher` — through one shared check. It applies to
+  player corpses only; mob corpses are never protected.
+- "Their group" means grouped, not merely following. A player who types
+  `follow <victim>` is not in their party and does not get in.
+- `locate corpse` lets a player ask their god where their body fell. It is
+  gated on reaching the **Noticed** favor tier and reports the room and area
+  only, never a route.
 
 #### Email Verification (optional anti-griefing gate)
 

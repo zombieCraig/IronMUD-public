@@ -32,6 +32,20 @@ pub async fn run_corpse_decay_tick(db: db::Db, connections: SharedConnections) {
 
 /// Process corpse decay - remove old corpses
 fn process_corpse_decay(db: &db::Db, connections: &SharedConnections) -> Result<()> {
+    let items = db.list_all_items().unwrap_or_default();
+    decay_corpses(db, connections, items)
+}
+
+/// The decay pass, over a snapshot the caller took.
+///
+/// The snapshot is a parameter rather than a local because *staleness is the
+/// interesting property here*: everything in `items` was read before this
+/// function ran, and a player can loot a corpse in between. Passing it in is
+/// what lets a test hand over a snapshot that no longer matches the database
+/// and check that the writes below cope — which is the bug this shape was
+/// introduced to pin, where the warning wrote the whole stale item back and
+/// restored loot someone had already taken.
+fn decay_corpses(db: &db::Db, connections: &SharedConnections, items: Vec<ironmud::ItemData>) -> Result<()> {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let now = SystemTime::now()
@@ -52,10 +66,17 @@ fn process_corpse_decay(db: &db::Db, connections: &SharedConnections) -> Result<
         .unwrap_or(600)
         .max(60);
 
-    // Get all items and check for decayed corpses
-    if let Ok(items) = db.list_all_items() {
+    let warn_fractions = ironmud::corpse::parse_warn_fractions(
+        &db.get_setting_or_default("corpse_decay_warn_fractions", ironmud::corpse::DEFAULT_WARN_FRACTIONS)
+            .unwrap_or_else(|_| ironmud::corpse::DEFAULT_WARN_FRACTIONS.to_string()),
+    );
+
+    {
         for item in items {
-            if !item.flags.is_corpse {
+            // A corpse prototype is a builder's template, not a body on a
+            // timer. `process_spoilage` below skips prototypes for the same
+            // reason; this loop did not.
+            if !item.flags.is_corpse || item.is_prototype {
                 continue;
             }
 
@@ -73,6 +94,28 @@ fn process_corpse_decay(db: &db::Db, connections: &SharedConnections) -> Result<
                     broadcast_to_room(connections, &room_id, &format!("The {} crumbles to dust.", item.name));
                 }
 
+                // The owner is told directly, wherever they are. A player who
+                // could not make it back deserves to know the run is over
+                // rather than arriving at an empty room and guessing.
+                if item.flags.corpse_is_player {
+                    ironmud::script::achievements::send_to_player(
+                        connections,
+                        &item.flags.corpse_owner,
+                        ironmud::corpse::decay_final_line(),
+                    );
+                    // Drop it from the owner's `corpse_ids` so `locate` does
+                    // not have to prune it later. Through `apply_to_character`
+                    // rather than `update_character`: the owner may well be
+                    // online, and a DB-only write to an online player is
+                    // reverted by the next session flush.
+                    let gone = item.id;
+                    ironmud::script::achievements::apply_to_character(db, connections, &item.flags.corpse_owner, |c| {
+                        let before = c.corpse_ids.len();
+                        c.corpse_ids.retain(|id| *id != gone);
+                        c.corpse_ids.len() != before
+                    });
+                }
+
                 // Delete all items in the corpse
                 for item_id in &item.container_contents {
                     let _ = db.delete_item(item_id);
@@ -82,6 +125,37 @@ fn process_corpse_decay(db: &db::Db, connections: &SharedConnections) -> Result<
                 let _ = db.delete_item(&item.id);
 
                 debug!("Corpse {} decayed", item.name);
+                continue;
+            }
+
+            // Decay warnings, player corpses only. A mob corpse rotting is not
+            // a loss anyone needs chasing; a player's is the whole stake of
+            // dying, and it used to run out on a blind timer with no signal at
+            // all.
+            if !item.flags.corpse_is_player || warn_fractions.is_empty() {
+                continue;
+            }
+            if let Some(threshold) =
+                ironmud::corpse::next_warning(age, decay_time, item.flags.corpse_warned_pct, &warn_fractions)
+            {
+                ironmud::script::achievements::send_to_player(
+                    connections,
+                    &item.flags.corpse_owner,
+                    &ironmud::corpse::decay_warning_line(decay_time - age),
+                );
+                // Recorded on the item, not in the tick, so a restart does not
+                // replay every warning the owner already had.
+                //
+                // A CAS update, not `save_item_data(item)`. `item` came out of
+                // a `list_all_items()` snapshot taken at the top of this
+                // function, and writing it back whole would revert anything
+                // that changed since — on a corpse the field that changes is
+                // `container_contents`, so a player looting in the same moment
+                // a threshold fired would have the loot put back and end up
+                // with two of it.
+                let _ = db.update_item(&item.id, |i| {
+                    i.flags.corpse_warned_pct = threshold;
+                });
             }
         }
     }
@@ -277,4 +351,91 @@ fn process_spoilage(db: &db::Db, connections: &SharedConnections) -> Result<()> 
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ironmud::corpse::CorpseBuilder;
+    use ironmud::types::ItemData;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    fn conns() -> SharedConnections {
+        Arc::new(Mutex::new(HashMap::new()))
+    }
+
+    fn now() -> i64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0)
+    }
+
+    /// The decay warning must not write the corpse back whole.
+    ///
+    /// `item` comes out of a `list_all_items()` snapshot taken at the top of
+    /// the tick. Saving it wholesale reverts anything that changed since, and
+    /// on a corpse the field that changes is `container_contents` — so a player
+    /// looting in the same moment a threshold fired had the loot put back and
+    /// ended up holding two of it. Simulated here by emptying the corpse
+    /// between the snapshot and the write, which is exactly what a loot does.
+    #[test]
+    fn a_decay_warning_does_not_restore_looted_contents() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let db = db::Db::open(temp.path()).expect("open db");
+
+        db.set_setting("player_corpse_decay_secs", "3600").expect("setting");
+
+        let loot = ItemData::new("Dagger".into(), "a rusty dagger".into(), String::new());
+        let loot_id = loot.id;
+        db.save_item_data(loot).expect("save loot");
+
+        // Old enough to have crossed the 50% threshold but not to have rotted.
+        let mut corpse = CorpseBuilder::for_player("Kaleth", uuid::Uuid::new_v4(), 0).build();
+        corpse.flags.corpse_created_at = now() - 2000;
+        corpse.container_contents.push(loot_id);
+        let corpse_id = corpse.id;
+        db.save_item_data(corpse).expect("save corpse");
+
+        // The snapshot the tick works from — taken *before* the loot, which is
+        // the whole point. A real tick reads every item at the top and then
+        // spends time working through them; a player looting in that window is
+        // ordinary, not exotic.
+        let snapshot = db.list_all_items().expect("snapshot");
+
+        // The loot leaves the corpse, as `get` would move it.
+        db.update_item(&corpse_id, |i| i.container_contents.clear())
+            .expect("loot it");
+
+        decay_corpses(&db, &conns(), snapshot).expect("tick runs");
+
+        let after = db.get_item_data(&corpse_id).expect("read").expect("still there");
+        assert!(
+            after.container_contents.is_empty(),
+            "the warning must not put the loot back: {:?}",
+            after.container_contents
+        );
+        assert_eq!(after.flags.corpse_warned_pct, 50, "and it still records the warning");
+    }
+
+    /// A corpse prototype is a builder's template, not a body on a timer.
+    #[test]
+    fn a_corpse_prototype_is_not_on_the_clock() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let db = db::Db::open(temp.path()).expect("open db");
+
+        let mut proto = CorpseBuilder::for_player("Template", uuid::Uuid::new_v4(), 0).build();
+        proto.is_prototype = true;
+        proto.flags.corpse_created_at = 0; // ancient
+        let proto_id = proto.id;
+        db.save_item_data(proto).expect("save prototype");
+
+        process_corpse_decay(&db, &conns()).expect("tick runs");
+
+        assert!(
+            db.get_item_data(&proto_id).expect("read").is_some(),
+            "the prototype survives"
+        );
+    }
 }

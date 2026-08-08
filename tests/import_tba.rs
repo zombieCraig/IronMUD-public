@@ -105,6 +105,23 @@ fn maps_tba_ir_to_plan() {
     assert_eq!(plan.mobiles.len(), 2);
     assert_eq!(plan.items.len(), 2);
 
+    // CircleMUD alignment [-1000, 1000] rescales onto IronMUD morality
+    // [-200, 200]. The wizard's stock 900 lands at 180 — comfortably inside
+    // the Pure Good band rather than clamped flat with everything above 200.
+    // Before the alignment field existed this value was logged and discarded.
+    let wizard = plan
+        .mobiles
+        .iter()
+        .find(|m| m.source_vnum == 3000)
+        .expect("wizard planned");
+    assert_eq!(wizard.alignment, 180);
+    let guard = plan
+        .mobiles
+        .iter()
+        .find(|m| m.source_vnum == 3001)
+        .expect("guard planned");
+    assert_eq!(guard.alignment, 0, "an unaligned mob stays morally inert");
+
     // DG trigger handling (post-runtime-interpreter, Phase 4 mapping):
     // - Room T 555 (`g` = WTRIG_ENTER) → OnEnter overlay.
     // - Obj  T 778 (`g` letter, treated as OTRIG_GET on the obj host) → OnGet.

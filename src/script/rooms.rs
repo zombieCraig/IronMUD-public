@@ -2,12 +2,12 @@
 // Room system functions including OLC, doors, extra descriptions, vnums, and display
 
 use super::utilities;
-use crate::SharedConnections;
 use crate::db::Db;
 use crate::script::items::character_has_item_vnum;
 use crate::{
     CharacterData, CombatZoneType, DoorState, RoomData, RoomEntryCondition, RoomEntryGate, RoomExits, RoomFlags,
 };
+use crate::{SharedConnections, SharedState};
 use rhai::Engine;
 use std::sync::Arc;
 
@@ -89,13 +89,16 @@ fn condition_kind(cond: &RoomEntryCondition) -> &'static str {
 }
 
 /// Register room-related functions
-pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections) {
+pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, state: SharedState) {
     // ========== OLC (Online Creation) Functions ==========
 
     // create_room(title, description) -> Creates new room with random UUID, returns RoomData
     let cloned_db = db.clone();
     engine.register_fn("create_room", move |title: String, description: String| {
         let room = RoomData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: uuid::Uuid::new_v4(),
             title,
             description,
@@ -1122,6 +1125,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // Consolidates room display logic used by look, go, and login commands
     let conns = connections.clone();
     let cloned_db = db.clone();
+    let visit_state = state.clone();
     engine.register_fn(
         "display_room",
         move |room_id: String, connection_id: String, exclude_char_name: String| {
@@ -1142,7 +1146,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
             // Map fog-of-war: record this room in the viewing character's
             // `rooms_visited`. Debounced: skip if already present in the
-            // session's cached copy.
+            // session's cached copy. The write itself goes through the shared
+            // chokepoint so the `rooms.visited` counter sees every new room,
+            // whether it was discovered here or via `mark_room_visited`.
             {
                 let already = {
                     let conns_guard = conns.lock().unwrap();
@@ -1154,16 +1160,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 };
                 if let Some((player_name, already_visited)) = already {
                     if !already_visited {
-                        if let Ok(Some(mut ch)) = cloned_db.get_character_data(&player_name) {
-                            if ch.rooms_visited.insert(room_uuid) {
-                                let _ = cloned_db.save_character_data(ch.clone());
-                                if let Ok(mut conns_guard) = conns.lock() {
-                                    if let Some(session) = conns_guard.get_mut(&conn_uuid) {
-                                        session.character = Some(ch);
-                                    }
-                                }
-                            }
-                        }
+                        crate::script::achievements::notify_room_visited_core(
+                            &cloned_db,
+                            &conns,
+                            &visit_state,
+                            &player_name,
+                            &room_uuid,
+                        );
                     }
                 }
             }

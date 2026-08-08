@@ -2,6 +2,7 @@
 //! aggregate with its many subsystems (combat, dialogue, shop, healer,
 //! routines, simulation, social, charm, pet).
 
+use super::provenance::ContentOrigin;
 use super::serde_defaults::default_stat;
 use super::{
     ActiveBuff, ActivityState, Characteristics, CombatState, DamageType, DeityConfig, DialogueTree, EffectType,
@@ -175,6 +176,13 @@ pub struct MobileFlags {
     pub aggro_evil: bool,
     #[serde(default)]
     pub aggro_neutral: bool,
+    /// Accepts player consignments: other players can leave items with this mob
+    /// at a price of their choosing, and anyone can buy them.
+    ///
+    /// Independent of `shopkeeper`. A broker can be a pure middleman with no
+    /// stock of its own, or a shopkeeper that also runs a consignment shelf.
+    #[serde(default)]
+    pub consignment: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -301,6 +309,18 @@ pub struct MobileData {
     #[serde(default)]
     pub shop_max_value: i32, // 0 = no maximum
 
+    // Consignment system (requires the `consignment` flag)
+    /// Percentage the broker keeps from each sale. This is the economy's gold
+    /// sink: a player market with no sink inflates, and the commission is what
+    /// makes both underpricing (laundering) and overpricing (a mule trade
+    /// dressed as commerce) cost something.
+    #[serde(default = "default_consignment_commission_pct")]
+    pub consignment_commission_pct: i32,
+    /// How many listings one player may have on this broker at once, so a
+    /// single seller cannot wallpaper the shelf. 0 = the shared default.
+    #[serde(default)]
+    pub consignment_max_listings_per_player: i32,
+
     // Healer system (requires healer flag)
     #[serde(default)]
     pub healer_type: String, // "medic", "herbalist", "cleric"
@@ -415,6 +435,17 @@ pub struct MobileData {
     /// matching tags ally.
     #[serde(default)]
     pub faction: Option<String>,
+    /// Moral weight of this mobile, on the same `[-200, 200]` scale as
+    /// `CharacterData.morality` (see `src/morality.rs`). Negative is evil,
+    /// positive is good, and 0 — the default — is a creature killing carries
+    /// no moral charge at all: vermin, constructs, and anything the builder
+    /// has not thought about.
+    ///
+    /// Read at kill credit to move the killer's morality. Also what the
+    /// CircleMUD importer maps its `alignment` column onto; before this field
+    /// existed the importer logged that value and threw it away.
+    #[serde(default)]
+    pub alignment: i32,
     /// Declared relationships to other mobiles (future: families, partners, rivals).
     #[serde(default)]
     pub relationships: Vec<Relationship>,
@@ -488,6 +519,17 @@ pub struct MobileData {
     /// combat broadcasts, and order/dismiss keyword matches.
     #[serde(default)]
     pub nickname: Option<String>,
+
+    // === Provenance (see src/types/provenance.rs) ===
+    /// Builder who first created this. `None` = unclaimed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authored_by: Option<String>,
+    /// Builder who last changed it. An edit never reassigns `authored_by`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_edited_by: Option<String>,
+    /// Where this content came from. Only `Builder` counts toward a score.
+    #[serde(default)]
+    pub origin: ContentOrigin,
 }
 
 fn default_mobile_hp() -> i32 {
@@ -500,6 +542,12 @@ fn default_mobile_stamina() -> i32 {
 
 fn default_shop_buy_rate() -> i32 {
     50
+}
+
+/// Ten percent. High enough that a wash trade is not free, low enough that an
+/// honest sale is worth making.
+fn default_consignment_commission_pct() -> i32 {
+    10
 }
 
 fn default_shop_sell_rate() -> i32 {
@@ -541,6 +589,9 @@ impl MobileData {
 
     pub fn new(name: String) -> Self {
         MobileData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: Uuid::new_v4(),
             name: name.clone(),
             short_desc: format!("{} is here.", name),
@@ -584,6 +635,8 @@ impl MobileData {
             shop_deny_categories: Vec::new(),
             shop_min_value: 0,
             shop_max_value: 0,
+            consignment_commission_pct: default_consignment_commission_pct(),
+            consignment_max_listings_per_player: 0,
             healer_type: String::new(),
             healing_free: false,
             healing_cost_multiplier: 100,
@@ -623,6 +676,7 @@ impl MobileData {
             characteristics: None,
             household_id: None,
             faction: None,
+            alignment: 0,
             relationships: Vec::new(),
             resident_of: None,
             social: None,
@@ -719,3 +773,5 @@ mod tests {
         }
     }
 }
+
+crate::impl_authored!(MobileData);

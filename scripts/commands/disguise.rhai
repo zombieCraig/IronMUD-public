@@ -72,8 +72,5 @@ fn run_command(args, connection_id) {
     send_client_message(connection_id, "You don a disguise and assume the identity of '" + alias + "'.");
     broadcast_to_room_awake(char.current_room_id, char.name + " adjusts their appearance.", char.name);
 
-    let leveled = add_skill_experience(char.name, "stealth", 10);
-    if leveled {
-        send_client_message(connection_id, "Your stealth skill has improved!");
-    }
+    add_skill_experience(char.name, "stealth", 10, "stealth");
 }

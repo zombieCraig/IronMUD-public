@@ -251,6 +251,32 @@ pub fn broadcast_to_outdoor_players(db: &db::Db, connections: &SharedConnections
     }
 }
 
+/// Tell every builder and admin online, whether or not they asked for debug
+/// output.
+///
+/// [`broadcast_to_builders`] is the *debug* channel: it gates on
+/// `builder_debug_enabled`, prefixes `[Builder]`, and pushes into the 50-slot
+/// debug ring buffer. That is right for trigger errors and script warnings and
+/// wrong for news — a world milestone sent that way is invisible to every
+/// builder who has not typed `builder debug on`, arrives labelled as debug
+/// output, and evicts a real debug line on the way past.
+///
+/// Locks are taken with `if let`, not `unwrap`: this is reachable from a
+/// blocking tick thread, where a panic poisons the connections mutex for the
+/// whole process.
+pub fn announce_to_builders(connections: &SharedConnections, message: &str) {
+    let Ok(conns) = connections.lock() else {
+        return;
+    };
+    for session in conns.values() {
+        if let Some(ref character) = session.character
+            && (character.is_builder || character.is_admin)
+        {
+            let _ = session.sender.send(format!("{message}\n"));
+        }
+    }
+}
+
 /// Broadcast a message to builders/admins who have builder_debug_enabled
 pub fn broadcast_to_builders(connections: &SharedConnections, message: &str) {
     // Store in global log buffer

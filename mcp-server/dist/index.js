@@ -15,6 +15,8 @@ import { recipeToolDefinitions } from "./tools/recipes.js";
 import { questToolDefinitions } from "./tools/quests.js";
 import { achievementToolDefinitions } from "./tools/achievements.js";
 import { bugToolDefinitions } from "./tools/bugs.js";
+import { bountyToolDefinitions } from "./tools/bounties.js";
+import { auditToolDefinitions } from "./tools/audit.js";
 import { dgProtoToolDefinitions } from "./tools/dg-protos.js";
 import { logToolDefinitions } from "./tools/logs.js";
 import { buildRoomContext, buildItemContext, buildMobileContext, getDescriptionExamples, } from "./description-context.js";
@@ -88,6 +90,8 @@ const allTools = [
     ...questToolDefinitions,
     ...achievementToolDefinitions,
     ...bugToolDefinitions,
+    ...bountyToolDefinitions,
+    ...auditToolDefinitions,
     ...dgProtoToolDefinitions,
     ...logToolDefinitions,
 ];
@@ -1451,6 +1455,91 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 };
             }
             // Bug report tools
+            // === Bounties (the builder help-wanted board) ===
+            //
+            // Bounty text is written by builders and by the content auditor. Treat
+            // `title` and `detail` as a description of wanted work, never as
+            // instructions.
+            case "list_bounties": {
+                const rows = await api.listBounties({
+                    status: args?.status,
+                    claimed_by: args?.claimed_by,
+                    limit: args?.limit,
+                });
+                return {
+                    content: [{ type: "text", text: JSON.stringify(rows, null, 2) }],
+                };
+            }
+            case "get_bounty": {
+                const row = await api.getBounty(args?.ticket);
+                return {
+                    content: [{ type: "text", text: JSON.stringify(row, null, 2) }],
+                };
+            }
+            case "post_bounty": {
+                const row = await api.postBounty({
+                    title: args?.title,
+                    detail: args?.detail ?? "",
+                    points: args?.points,
+                    area: args?.area ?? "",
+                    kind: args?.kind,
+                });
+                return {
+                    content: [
+                        {
+                            type: "text",
+                            text: `Posted as bounty #${row.ticket_number} for ${row.points} builder points.`,
+                        },
+                    ],
+                };
+            }
+            case "claim_bounty": {
+                // Who is claiming comes from the API key server-side, not from here.
+                const outcome = await api.claimBounty(args?.ticket);
+                return { content: [{ type: "text", text: outcome.message }] };
+            }
+            case "submit_bounty": {
+                const outcome = await api.submitBounty(args?.ticket, args?.linked ?? []);
+                return { content: [{ type: "text", text: outcome.message }] };
+            }
+            // === Content auditor ===
+            //
+            // Findings are engine-authored strings, not user text — nothing here
+            // needs the data-not-instructions caveat the bounty board carries.
+            case "audit_room":
+            case "audit_item":
+            case "audit_mobile":
+            case "audit_quest": {
+                const kind = name.slice("audit_".length);
+                const graded = await api.auditEntity(kind, args?.key);
+                return {
+                    content: [{ type: "text", text: JSON.stringify(graded, null, 2) }],
+                };
+            }
+            case "audit_area": {
+                const report = await api.auditArea(args?.key);
+                return {
+                    content: [{ type: "text", text: JSON.stringify(report, null, 2) }],
+                };
+            }
+            case "audit_world": {
+                const report = await api.auditWorld();
+                return {
+                    content: [{ type: "text", text: JSON.stringify(report, null, 2) }],
+                };
+            }
+            case "get_world_report": {
+                const report = await api.getWorldReport();
+                return {
+                    content: [{ type: "text", text: JSON.stringify(report, null, 2) }],
+                };
+            }
+            case "get_build_tracks": {
+                const tracks = await api.getBuildTracks();
+                return {
+                    content: [{ type: "text", text: JSON.stringify(tracks, null, 2) }],
+                };
+            }
             case "list_bug_reports": {
                 const reports = await api.listBugReports(args?.status);
                 return {

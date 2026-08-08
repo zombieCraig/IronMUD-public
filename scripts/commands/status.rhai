@@ -2,6 +2,9 @@
 // status [detailed] - View your character status
 // status <mobile> - (Builder/Admin) View mobile debug status
 
+// Bars, skill naming and the core skill list are shared with `skills`.
+import "progress_ui" as ui;
+
 fn run_command(args, connection_id) {
     let char = get_player_character(connection_id);
     if char == () {
@@ -263,15 +266,13 @@ fn show_basic_status(char, connection_id) {
     } else {
         output += "Description: (none set - use 'describe <text>' to add one)\n";
     }
-    // Achievements / active title summary (skipped when system disabled)
+    // Active title. The unlocked *count* used to live here too; it now sits in
+    // the Progression block with its denominator, where it means something.
     if achievements_enabled() {
-        let unlocked = char.achievements_unlocked_count;
         let title_text = get_active_title(char.name);
-        let ach_line = "Achievements: " + unlocked + " unlocked";
         if title_text != "" {
-            ach_line += "   Title: " + title_text;
+            output += "Title: " + title_text + "\n";
         }
-        output += ach_line + "\n";
     }
     output += "\n";
 
@@ -464,6 +465,10 @@ fn show_basic_status(char, connection_id) {
     let gold_str = "Gold: " + char.gold;
     output += color_or(ansi_yellow(gold_str), gold_str, connection_id) + "\n\n";
 
+    // Progression — the meta loop. Everything here was already being tracked
+    // by the engine and shown nowhere.
+    output += build_progression_block(char, connection_id) + "\n";
+
     // Equipment summary
     output += build_equipment_summary(char.name, connection_id) + "\n";
 
@@ -488,6 +493,68 @@ fn show_basic_status(char, connection_id) {
     output += "\nHints: Use 'skills' to view abilities, 'traits' to view/spend trait points.\n";
 
     send_client_message(connection_id, output);
+}
+
+// The meta-progression summary. Every figure here was already being tracked
+// and reported nowhere, which is why a player could kill a mob, advance a
+// skill, tick a quest and bump a counter in one round and see none of it.
+fn build_progression_block(char, connection_id) {
+    let heading = "--- Progression ---";
+    let out = color_or(ansi_cyan(heading), heading, connection_id) + "\n";
+
+    let r = get_renown(char.name);
+
+    // Renown is shown with its breakdown rather than alone. An unexplained
+    // score tells a player their number moved but not what moved it.
+    let renown_str = "Renown: " + r.total;
+    out += color_or(ansi_yellow(renown_str), renown_str, connection_id);
+    out += "   (" + r.skill_levels + " skill levels, " + r.mastered + " mastered, " +
+        r.achievements + " achievements, " + r.quests + " quests)\n";
+
+    // The bar and the mastery count use the *core* figures. The wide totals
+    // above include languages (which share the skills map) and any
+    // builder-defined skill, so pairing them with a fixed 18-skill
+    // denominator printed things like "Mastered: 19/18".
+    let core = r.core_skill_count;
+    let max_levels = core * 10;
+    out += "Skills:  " + ui::build_bar_of_width(r.core_skill_levels, max_levels, 20) +
+        " " + r.core_skill_levels + "/" + max_levels +
+        "   Mastered: " + r.core_mastered + "/" + core + "\n";
+
+    // Languages and any builder-defined skill live in the same skills map and
+    // do count toward Renown. Called out separately so the breakdown above and
+    // the core bar cannot look like they disagree.
+    let extra_levels = r.skill_levels - r.core_skill_levels;
+    if extra_levels > 0 {
+        out += "Other:   " + extra_levels + " levels in languages and other skills\n";
+    }
+
+    if r.spell_levels > 0 {
+        out += "Spells:  " + r.spell_levels + " total mastery levels\n";
+    }
+
+    if achievements_enabled() {
+        // The denominator counts what this character can see: hidden
+        // achievements stay out of it until they unlock, so the display
+        // never leaks their existence.
+        let visible = list_achievements(char.name).len();
+        out += "Awards:  " + ui::build_bar_of_width(r.achievements, visible, 20) +
+            " " + r.achievements + "/" + visible + " achievements\n";
+    }
+
+    let active = quest_format_progress(char.name).len();
+    out += "Quests:  " + r.quests + " completed, " + active + " active\n";
+
+    let kills = get_achievement_counter(char.name, "kills.any");
+    let rooms = get_achievement_counter(char.name, "rooms.visited");
+    out += "Kills:   " + ui::pad_right("" + kills, 8) +
+        "Explored: " + rooms + " rooms\n";
+
+    // Folds in the current session — total_seconds_played only advances on
+    // quit, so a player who has never logged out would otherwise read zero.
+    out += "Played:  " + ui::format_playtime(get_live_seconds_played(connection_id, char)) + "\n";
+
+    return out;
 }
 
 fn format_location(loc) {

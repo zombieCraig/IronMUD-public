@@ -1,0 +1,132 @@
+[
+  {
+    "key": "first_steps",
+    "name": "First Steps",
+    "description": "Visit 10 different rooms.",
+    "category": "exploration",
+    "criterion": {
+      "kind": "counter",
+      "counter": "rooms.visited",
+      "threshold": 10
+    },
+    "reward": {
+      "title": "the Curious"
+    }
+  },
+  {
+    "key": "wanderer",
+    "name": "Wanderer",
+    "description": "Visit 50 different rooms.",
+    "category": "exploration",
+    "criterion": {
+      "kind": "counter",
+      "counter": "rooms.visited",
+      "threshold": 50
+    },
+    "reward": {
+      "title": "the Wanderer"
+    }
+  },
+  {
+    "key": "pathfinder",
+    "name": "Pathfinder",
+    "description": "Visit 150 different rooms.",
+    "category": "exploration",
+    "criterion": {
+      "kind": "counter",
+      "counter": "rooms.visited",
+      "threshold": 150
+    },
+    "reward": {
+      "title": "the Pathfinder"
+    }
+  },
+  {
+    "key": "cartographer",
+    "name": "Cartographer",
+    "description": "Visit 400 different rooms.",
+    "category": "exploration",
+    "criterion": {
+      "kind": "counter",
+      "counter": "rooms.visited",
+      "threshold": 400
+    },
+    "reward": {
+      "title": "the Cartographer",
+      "gold": 500,
+      "trait_points": 1
+    }
+  },
+  {
+    "key": "world_walker",
+    "name": "World Walker",
+    "description": "Visit 1000 different rooms.",
+    "category": "exploration",
+    "criterion": {
+      "kind": "counter",
+      "counter": "rooms.visited",
+      "threshold": 1000
+    },
+    "reward": {
+      "title": "the World Walker",
+      "gold": 2000,
+      "trait_points": 2
+    }
+  },
+  {
+    "key": "sign_reader",
+    "name": "Sign Reader",
+    "description": "Reach level 3 in the tracking skill.",
+    "category": "exploration",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "tracking",
+      "level": 3
+    },
+    "reward": {
+      "title": "the Sign Reader"
+    }
+  },
+  {
+    "key": "trailbreaker",
+    "name": "Trailbreaker",
+    "description": "Master the tracking skill.",
+    "category": "exploration",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "tracking",
+      "level": 10
+    },
+    "reward": {
+      "title": "the Trailbreaker"
+    }
+  },
+  {
+    "key": "water_treader",
+    "name": "Water Treader",
+    "description": "Reach level 3 in the swimming skill.",
+    "category": "exploration",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "swimming",
+      "level": 3
+    },
+    "reward": {
+      "title": "the Water Treader"
+    }
+  },
+  {
+    "key": "deep_diver",
+    "name": "Deep Diver",
+    "description": "Master the swimming skill.",
+    "category": "exploration",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "swimming",
+      "level": 10
+    },
+    "reward": {
+      "title": "the Deep Diver"
+    }
+  }
+]

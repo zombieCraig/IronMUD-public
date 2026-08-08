@@ -328,6 +328,19 @@ pub fn dispatch_player_social(
         return DispatchOutcome::Handled;
     }
 
+    // Past every gate, so the social is going to emit something. Record the
+    // verb before the branches below, which each have their own early return.
+    // The World lock is taken and dropped for the `db` handle alone —
+    // `notify_social_used_core` locks connections, and holding both at once is
+    // the deadlock this codebase is built to avoid.
+    {
+        let db = {
+            let world = state.lock().unwrap();
+            world.db.clone()
+        };
+        crate::script::achievements::notify_social_used_core(&db, connections, state, &actor.name, &social.name);
+    }
+
     let actor_party = RenderParty {
         visible_name: &actor.name,
         gender: render::parse_gender(&actor.gender),

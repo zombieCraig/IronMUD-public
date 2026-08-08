@@ -33,6 +33,9 @@ pub struct SiteBanRecord {
 pub struct AccountPreferences {
     #[serde(default)]
     pub prompt_mode: String,
+    /// A custom prompt format string; empty means the `prompt_mode` preset.
+    #[serde(default)]
+    pub prompt_format: String,
     #[serde(default = "default_colors_enabled")]
     pub colors_enabled: bool,
     #[serde(default)]
@@ -69,6 +72,7 @@ impl Default for AccountPreferences {
     fn default() -> Self {
         AccountPreferences {
             prompt_mode: String::new(),
+            prompt_format: String::new(),
             colors_enabled: true,
             mxp_enabled: false,
             abbrev_enabled: true,

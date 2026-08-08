@@ -209,20 +209,231 @@ You shout: Anyone need help?
 ### Check your status
 ```
 > status
-=== MyName ===
-Level: 1
-Health: 100/100
-Gold: 0
+=== MyName the Halfling (Level 28) ===
+HP: [########--] 82/100   Stamina: [##########] 100/100
+...
+Gold: 431
+
+--- Progression ---
+Renown: 47   (28 skill levels, 2 mastered, 4 achievements, 3 quests)
+Skills:  [###-----------------] 28/180   Mastered: 2/18
+Awards:  [#-------------------] 4/89 achievements
+Quests:  3 completed, 1 active
+Kills:   142     Explored: 87 rooms
+Played:  4h 12m
 ```
 
 The `status` line shows your six attribute scores (Str/Dex/Con/Int/Wis/Cha)
 with a `(+N)` parenthetical when equipment or magical buffs are modifying
 them — e.g. `Dex: 7 (+2)` while wearing boots that grant Dexterity.
 
+#### Renown
+
+**Renown** is a single number summarising everything you have accomplished.
+It is not a character level: nothing is gated on it, no content requires it,
+and it is never spent. It exists so a classless world has one figure you can
+compare and watch move.
+
+It is derived from:
+
+| Contribution | Weight |
+|---|---|
+| Each skill level | 1 |
+| Each skill mastered (level 10) | +3 |
+| Each achievement unlocked | +2 |
+| Each quest completed | +1 |
+| Each spell mastery level | +½ |
+
+Mastery, achievements and quests count for more than raw skill levels because
+a specialist and a generalist can reach the same skill total by very different
+routes — the raw sum alone cannot tell them apart.
+
+The `Awards` denominator counts only the achievements you can see; hidden ones
+are not revealed until you unlock them.
+
+The `Skills` bar and the `Mastered` count cover the eighteen core skills, so
+they always have the same denominator on every character. Languages and any
+world-specific skills your world adds still count toward Renown — they are
+progression too — and appear on their own `Other` line when you have any.
+
 The `skills` command lists your core skill levels by category (Combat,
 Crafting, Magic, Stealth, Utility). If a builder has granted you points in
 any world-specific custom skills (e.g. `Dancing Queen`), they appear under
 a `Custom (Builder-Defined)` section at the bottom.
+
+### Skill XP feedback
+
+Skills advance constantly and quietly, so the engine reports every award. How
+loudly is up to you:
+
+```
+> set xpfeed brief
+```
+
+| Mode | What you see |
+|---|---|
+| `off` | Nothing, not even level-ups |
+| `brief` | One batched line per skill, printed just above your next prompt (**default**) |
+| `full` | A line per individual award |
+
+In `brief` the line collapses a whole burst — a combat round's worth of swings
+becomes one entry:
+
+```
+[ +40 short blades  410/550 → 4 ]
+```
+
+Reaching a new level always prints its own banner, in `brief` and `full`
+alike, and replaces the batched line for that skill:
+
+```
+*** Your Short Blades skill rises to 4. ***
+    [####------]  next: 800 xp
+```
+
+The number shown is what you were actually credited, after traits such as
+`prodigy` or `slow_learner` have been applied.
+
+### Your prompt
+
+`prompt verbose` switches from a bare `>` to a status line:
+
+```
+[HP:82/100] [ST:64/100] >
+```
+
+Extra segments appear only when they apply — mana, air while underwater,
+blood pool, and so on. In a fight you also get your opponent:
+
+```
+[HP:82/100] [ST:64/100] [a rust-scarred ghoul: Bloodied] >
+```
+
+The condition word is the same scale `look` and `examine` use — Unhurt,
+Scratched, Wounded, Bloodied, Critical — so you can tell whether to press
+the attack or run without spending a round looking. If you are not toe to
+toe, the range is appended: `[a ghoul: Wounded | Ranged]`. Melee goes
+unlabelled, being the usual case.
+
+`prompt simple` puts it back.
+
+#### Building your own
+
+`simple` and `verbose` are just two saved formats. You can write your own out
+of the same pieces:
+
+```
+> prompt %h/%H hp %s/%S st %t >
+42/60 hp 30/100 st >
+```
+
+`prompt tokens` lists everything available and marks the lines that mean
+nothing for your character — a mutant sees `%u` marked as applying, a human
+does not.
+
+There are two kinds of token. The short ones (`%h`, `%s`, `%g`, `%x`) print a
+bare number and leave the layout to you. The long ones (`%{hp}`,
+`%{mana}`, `%{target}`) print a whole coloured, bracketed group and print
+nothing at all when they do not apply — which is how one format works for a
+vampire, a replicant and a mutant at once. `%%` gives you a literal `%`.
+
+A few worth knowing:
+
+| Token | Shows |
+|---|---|
+| `%h` `%H` | current / maximum hit points |
+| `%s` `%S` | current / maximum stamina |
+| `%m` `%M` | current / maximum mana |
+| `%c` | your own condition word (Bloodied, Scratched, …) |
+| `%t` | who you are fighting and how they are holding up |
+| `%g` | gold carried |
+| `%x` | your Renown |
+| `%l` | your alignment band |
+| `%{standing:town_watch}` | where you stand with one named faction |
+| `%{renown}` `%{morality}` | the same, as bracketed groups |
+
+Standing needs a faction name because there is no such thing as your
+reputation in the singular — put the token in twice if you want to watch two
+groups at once.
+
+`prompt default` drops a custom format and goes back to whichever preset you
+were on. If you want to start from the verbose one and edit it, `prompt` on
+its own prints it.
+
+### Achievements and trait points
+
+`achievements` lists every milestone you can see, locked and unlocked. Each
+grants a title you can wear with `achievements title <key>`; some also pay
+gold, an item, or **trait points**.
+
+```
+> achievements
+  [X] [C] First Blood
+  [ ] [C] Scourge (+2 trait pts)
+  [ ] [S] The Compleat (+3 trait pts)
+
+> achievements show compleat
+The Compleat [locked]
+  Master ten different skills (level 10).
+  Title: the Compleat
+  Rewards: 3 trait points, 10000 gold
+```
+
+Trait points are the only reward that changes what your character *is* rather
+than what they carry. Spend them with the `traits` command, the same way you
+spent your starting ten during creation — and note that traits are permanent
+once accepted.
+
+They are deliberately scarce. Only capstone achievements grant them: the top
+rung of a long ladder, like a thousand kills or a hundred completed quests.
+Achievements that grant points are marked in the list, so you can decide what
+is worth chasing before you start.
+
+### Leaderboards
+
+`top` ranks everyone who has played. Nearly everything the game counts about
+you is a board: renown, kills, deaths, rooms explored, gold earned, recipes
+discovered, every skill, and your standing with every faction.
+
+```
+> top
+Renown  (top 10 of 214)
+   1  Ada                   412
+   2  Brannock              388
+   ...
+  10  Sethri                203
+   ...
+  34  Yourself              118
+Updated 2 minutes ago.
+```
+
+| Command | Shows |
+|---|---|
+| `top` | The renown board |
+| `top boards` | Every board there is, grouped |
+| `top <board>` | One board — `top cooking`, `top kills`, `top gold.earned` |
+| `top me` | Every board *you* rank on, your best placing first |
+
+A board shows ten names, but you are not competing against ten people. If you
+rank anywhere at all your own placing is added below the list, so `top` always
+tells you where you actually are.
+
+Factions rank both ways. `top town_watch` is who they think best of;
+`top town_watch.wanted` is who they would most like to see in a cell. A board
+only exists once somebody qualifies for it, so the second one appears the first
+time anyone gives that faction a reason.
+
+**`top me` is the one worth knowing about.** Nobody is near the top of
+everything, and a single board will not tell you what you are quietly good
+at — being 300th at killing and 2nd at cooking looks identical from the
+combat board. `top me` sweeps the lot and leads with your best.
+
+Board names are matched loosely: `top kills` finds the kill board, `top short`
+finds short blades. Admin characters are never ranked.
+
+The boards are redrawn every few minutes rather than the instant you do
+something, which is what the "Updated N ago" line is telling you. If the
+number has not moved yet, it will.
 
 ## Exploring
 
@@ -440,6 +651,49 @@ The Innkeeper says: Rooms are 5 gold per night.
 
 NPCs that have a **dialogue tree** instead of simple keywords will offer numbered choices when you initiate the conversation. Type the keyword next to a choice to follow it. Some choices are limited (one-shot per player) or have a cooldown — the NPC will let you know.
 
+### Consignment Brokers
+
+Some NPCs run a **consignment shelf**: you leave an item with them at a price
+you choose, and any other player can buy it. You do not have to be online when
+it sells.
+
+```
+> consign iron helm 120
+You hand over an iron helm . Bram the Broker sets it out at 120 gold, minus 10% when it sells.
+
+> consignments
+Your consignments
+   1. an iron helm                       120 gold   expires in 6d 23h
+      with Bram the Broker
+```
+
+The proceeds — the price minus the broker's cut — go straight to your **bank**,
+so you can be anywhere when the sale happens. Buyers use `list` to see the
+shelf and `buy <number>` to take something off it.
+
+If the broker is also a shopkeeper, or is just standing next to one, `list`
+prints one page: the shop's own goods first, then the shelf, numbered straight
+through. `buy 7` always means the seventh line you were shown.
+
+Things worth knowing:
+
+- **The broker's cut is destroyed, not paid to anyone.** That is deliberate: it
+  is the only thing keeping gold from piling up forever, which is what makes
+  prices mean anything.
+- **You cannot price anything you like.** A listing has to be between a quarter
+  of the item's value and ten times it. Anything outside that is not a sale, it
+  is a hand-off with extra steps, and the broker will say so and name the
+  actual limit.
+- **Corpses, quest items and bound items are refused.** So is coin for coin.
+- **An unsold listing expires after a week into escrow**, not into nothing. You
+  can still get it back — see your `escrow`.
+- Take something back with `unconsign <number>` or `consignments take <number>`
+  — **at the broker holding it**. `consignments` names which broker has what,
+  so you know where to go. A shelf is a shop counter, not a courier.
+
+Two brokers in different towns keep separate shelves, so it is worth checking
+more than one before deciding what something is worth.
+
 ### Asking About Other People
 
 Simulated NPCs (townsfolk, neighbours) keep track of how they feel about each other. You can ask them:
@@ -495,7 +749,187 @@ NPCs may offer quests through their dialogue trees. When you accept one, it appe
 | `quest <id>` | Show full detail for a quest (objectives, time remaining, rewards) |
 | `quest abandon <id>` | Drop an active quest (forfeits any progress) |
 
-Some quests are **time-limited** — abandon or complete them before the timer expires. Party kill credit is shared: anyone who damaged the target during the fight gets credit.
+Some quests are **time-limited** — abandon or complete them before the timer
+expires. Kill credit is shared across the party — see below for exactly who
+counts.
+
+## Grouping
+
+Following someone puts you behind them; being **grouped** makes you part of what
+they do. The leader adds you with `group <name>`, or `group all` to add every
+follower at once.
+
+| Command | Description |
+|---------|-------------|
+| `follow <name>` | Move when they move |
+| `group` | Show the party panel |
+| `group <name>` | Add or remove a follower from your group (leader only) |
+| `group all` | Add every follower at once |
+| `ungroup` | Leave the group |
+| `gtell <message>` | Speak to the group |
+| `split <amount>` | Divide gold among grouped members in the room |
+
+`group` prints a live panel: each member's health bar and condition band,
+stamina, position, and what they are currently fighting. Anyone in another room
+shows as `(elsewhere)` with no vitals — they are not in your fight, so their
+numbers would only mislead you.
+
+```
+Group led by Kaleth:
+  Kaleth        [########--] Scratched  ST  45/60 standing (Leader) <-- You
+                fighting a rust-scarred ghoul
+  Medic         [###-------] Bloodied   ST  12/50 standing
+  Scout         (elsewhere) (Following)
+```
+
+The `fighting` line is the one thing no other display shows you: at a glance
+you can see whether the party is focusing one target or has split across three.
+
+### Who gets credit for a kill
+
+Everything a kill produces — the kill counter, quest progress, worship favor,
+alignment, and faction standing — goes to **every credited participant**, not
+only whoever landed the last blow. You are credited if you either:
+
+- dealt any damage to the target during the fight, **or**
+- were grouped with the killer and **in the room** when it died.
+
+That second rule is deliberate. A healer or a buffer who carried the fight deals
+no damage at all, and a credit rule built only on damage would tell them they
+were never there. Being grouped somewhere else does not count — you have to be
+in the room.
+
+The consequences travel with the credit, in both directions. Help put down a
+town watch guard and the watch holds it against you too; that is not a loophole,
+it is the point.
+
+Weapon skill XP is the exception, and it is not shared: it is earned per landed
+blow, so everyone who swung is already paid for their own swings.
+
+## Dying
+
+Death costs you everything you were carrying. Your corpse drops where you fell,
+holding your inventory, everything you were wearing, and every coin on you. You
+wake at your bind point with a quarter of your health and nothing else.
+
+Getting it back is a **corpse run**, and you are on a clock.
+
+**Your corpse rots.** After an hour it and everything inside it is gone for
+good. You will be told when it is halfway there and again when it is nearly
+gone, wherever you are — the warnings reach you, so you always know how much
+race you have left.
+
+**Nobody else can touch it for the first five minutes.** For that window your
+corpse only opens for you and for the people grouped with you. Following
+someone does not count; they have to actually be in your group. After the
+window lapses, it is open to anyone who finds it. Five minutes is not a lot,
+which is the point — it is enough for a party to carry a body home, not enough
+to leave it lying while you go do something else.
+
+**If you have lost the body, ask.**
+
+```
+> locate corpse
+You go still, and something older than you looks out through your eyes.
+
+  Your body lies at The Sunken Causeway, in Riverwatch.
+    It has 34m before it is gone.
+```
+
+`locate corpse` is a divination, not a map: it names the room and the area and
+stops there. Getting there is still your problem.
+
+It also requires a god who is listening. You must be worshipping someone and
+have reached at least **Noticed** with them. If you serve nobody, or you have
+been taking your deity for granted, the silence you get back is an answer of
+its own — see [Gods and Worship](#gods-and-worship).
+
+*(Server operators can tune every number above, including turning loot
+protection off entirely. Ask on your server if the rules feel different.)*
+
+## Alignment
+
+Every meaningful thing you kill says something about you. Slay something evil
+and you drift toward Good; cut down something good and you drift toward Evil.
+Most creatures — vermin, constructs, wildlife — carry no moral charge at all
+and move you nowhere.
+
+You will never see a number. What you see is a line on `status` when your
+standing settles into a new band:
+
+```
+You feel a quiet warmth in your heart.
+```
+
+There are nine bands, from *pure evil* through *neutral* to *pure of spirit*.
+Crossing between them prints a line like the one above; drifting within one is
+silent, so you are told when something has changed and left alone otherwise.
+Reaching one of the two extremes takes something like a campaign's worth of
+consistent deeds, and the extremes are *sticky* — once you are genuinely
+notorious, a single contrary act will not launder it.
+
+Quests and conversations move it too. A quest whose ending is a moral choice
+will shift you by that ending, and some dialogue options carry weight of their
+own — sparing someone, informing on someone.
+
+It is not only bookkeeping. Some creatures in the world hunt by alignment: they
+attack the wicked on sight, or the virtuous, or those who have committed to
+neither. A reputation you earned is a reputation something else can smell.
+
+## Standing With Factions
+
+Alignment is what the world thinks of your character. **Standing** is what
+particular groups think of you, and they keep separate books.
+
+Kill a town guard and the Town Guard notices. Kill twenty and they will not
+serve you, will not talk to you, and eventually will not wait for you to draw
+first. Meanwhile the road bandits the guard exists to suppress have been
+watching, and they think rather better of you than they did.
+
+```
+> standing
+Where you stand:
+  The Town Guard          Hostile       [###-------] -260
+  The Roadmen             Accepted      [#####-----] 130
+```
+
+`standing <faction>` gives you the detail — what the band means, and who else
+it costs you:
+
+```
+> standing guard
+The Town Guard
+Underpaid, over-extended, and the only thing standing between the settled
+roads and everything that walks them.
+Standing: Hostile (-260)
+They consider you an enemy.
+At odds with: The Roadmen, The Restless
+Earning their goodwill costs you standing here, and the reverse.
+```
+
+Seven bands run from **Hated** through **Neutral** to **Revered**. A group you
+have never dealt with is Neutral and does not appear in the list at all — the
+list is a record of what you have done.
+
+Four things follow from standing:
+
+- **Prices.** A merchant who counts you a friend charges you less and pays you
+  more. One you have wronged does the opposite. `list` and `appraise` quote you
+  the real number, not the sticker price.
+- **Aggression.** Fall far enough with a group and its members stop waiting to
+  be provoked. How far is "far enough" varies — some are quicker to take
+  offence than others.
+- **Conversation.** Some dialogue only opens to people a faction trusts.
+- **Work.** Some quests are never offered until you have proved yourself, and
+  the questgiver will not even hint at them.
+
+**Fighting can only lower standing.** It rises two ways: by killing a
+faction's enemies, and by doing a faction's work. That is deliberate — if
+every group liked everyone eventually, standing would not mean anything. The
+kill that buys you the Guard's goodwill costs you the Roadmen's, and where you
+end up is a record of what you chose rather than how long you played.
+
+Like alignment, crossing a band tells you and moving inside one does not.
 
 ## Gods and Worship
 
@@ -526,6 +960,28 @@ Things to know before you kneel:
   worshipers — is punished. Slaying the followers of your god's **enemies**
   earns favor.
 - `examine` a god (or their servants) to learn who and what they are.
+
+### Standing
+
+`worship` shows where you stand, not a bare score:
+
+```
+Standing: Favored (127)
+```
+
+| Standing | Meaning |
+|----------|---------|
+| Anathema | Nothing you offer will be accepted. |
+| Disfavored | Your god's regard has soured. |
+| Unproven | Where everyone begins. |
+| Noticed | Your god has taken note of you. |
+| Favored | Your god looks upon you with favor. |
+| Blessed | Your god's blessing rests upon you. |
+| Exalted | You stand among your god's exalted. |
+
+Your god tells you when you cross between standings, in either direction.
+Smaller movements pass in silence, so a long run of kills doesn't narrate
+every one.
 
 Outside a temple, `pray <message>` still simply calls out to the
 administrators.
@@ -794,6 +1250,57 @@ Alcoholic drinks increase your drunk level. Effects:
 - **Heavy** (drunk > 50): You may stumble into random rooms when moving
 
 Drunk level decreases over time as you sober up.
+
+## Crafting and Discovery
+
+`craft <recipe>` and `cook <recipe>` make things you already know how to
+make; `recipes crafting` and `recipes cooking` list those. Recipes reach you
+by rising skill, by reading a book, or as a quest reward.
+
+### Working it out yourself
+
+`experiment` is the one that does not wait to be told.
+
+```
+> experiment flour, water
+*** You have discovered how to make coarse bread! ***
+You produce a loaf of coarse bread.
+```
+
+Name the materials you want to put together, separated by commas (`and` and
+`with` work too). If they are exactly what some recipe needs — every
+ingredient covered, nothing left over — you may work out how it is made, and
+the recipe is yours from then on.
+
+**The materials are used up either way.** That is what makes a guess a
+decision. What a failure buys you is knowing how close you were:
+
+```
+> experiment flour
+They begin to come together — and then stop. You are something short.
+```
+
+That is worth more than the flour. A combination that means nothing at all
+says so, and teaches you nothing:
+
+```
+> experiment boot, boot
+You work at the materials and get nothing out of them but waste.
+```
+
+Three things will not work no matter how right your materials are:
+
+- **A recipe you already know.** There is nothing left to discover.
+- **Anything measured out of a container** — a recipe needing water by the
+  unit rather than by the flask has to be made the ordinary way.
+- **Tools you do not have.** If the work needs a forge, you need a forge —
+  and finding that out costs you the materials, same as any other failure.
+
+Skill decides whether you can see what is in front of you. At the recipe's
+own level you have an even chance; every level above that improves it, and
+harder recipes resist. Failing with the right materials still teaches you a
+little, so the skill creeps up even on a bad day — though never fast enough
+to beat simply making things you already know.
 
 ## Useful Commands
 

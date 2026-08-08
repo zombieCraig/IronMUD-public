@@ -932,7 +932,11 @@ fn handle_account_command(db: &Db, action: AccountAction) -> Result<()> {
                 println!("Character defaults (applied to new alts):");
                 println!(
                     "  prompt={} colors={} mxp={} abbrev={} helpline={} summonable={}",
-                    if d.prompt_mode.is_empty() {
+                    // A stored custom format is what an alt actually gets, so
+                    // report that in preference to the preset it overrides.
+                    if !d.prompt_format.is_empty() {
+                        d.prompt_format.as_str()
+                    } else if d.prompt_mode.is_empty() {
                         "default"
                     } else {
                         d.prompt_mode.as_str()

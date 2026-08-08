@@ -1,21 +1,28 @@
-//! Library-side player death helper.
+//! Player death — the single implementation.
 //!
-//! Used by Rhai-driven death paths (e.g. ROOM_DEATH triggered by `apply_room_death`).
-//! The combat tick has its own copy in `src/ticks/combat/tick.rs::process_player_death`
-//! reachable only from the binary side; this mirrors that flow with lib-only helpers
-//! so it can be called from `src/script/*`.
+//! There used to be two. `process_player_death` lived in
+//! `src/ticks/combat/tick.rs` (bin-side, reachable from the combat, bleedout
+//! and synth ticks) and `kill_player_at_room` lived here (lib-side, reachable
+//! from `src/script/*` for the ROOM_DEATH path). They were near-identical, and
+//! they had already drifted: the lib copy bumped no `deaths` counter and
+//! credited no PvP worship, so **walking into a death trap did not count as
+//! dying** — the counter item 11d added, which `top` ranks and achievements
+//! read, simply never moved for that route. It also carried its own
+//! hand-rolled corpse literal duplicating [`crate::corpse::CorpseBuilder`].
+//!
+//! The flow now lives here in full and the tick calls it. That is the same
+//! direction the codebase already took for other bin/lib mirrors, and it is
+//! possible because `SharedState` reaches everywhere after Tier 1 item 11b.
 
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
-use uuid::Uuid;
 
 use anyhow::Result;
+use uuid::Uuid;
 
-use crate::SharedConnections;
 use crate::db::Db;
 use crate::session::broadcast::broadcast_to_room;
-use crate::session::connection::send_client_message;
-use crate::types::{CharacterData, EffectType, ItemData, ItemFlags, ItemLocation, ItemType, LiquidType};
+use crate::types::{CharacterData, CombatTargetType, EffectType, ItemLocation};
+use crate::{SharedConnections, SharedState};
 
 /// Drop any `EffectType::Charmed` buffs sourced to `player_name` from every
 /// non-prototype mobile in the world. Used on player death and quit so that
@@ -72,152 +79,64 @@ pub fn break_all_charms_by_player(db: &Db, player_name: &str) {
     }
 }
 
-fn build_player_corpse(name: &str, room_id: Uuid, gold: i64) -> ItemData {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs() as i64)
-        .unwrap_or(0);
-    ItemData {
-        id: Uuid::new_v4(),
-        name: format!("corpse of {}", name),
-        short_desc: format!("The corpse of {} lies here.", name),
-        long_desc: format!("The lifeless body of {} lies in a crumpled heap.", name),
-        area_id: None,
-        keywords: vec!["corpse".to_string(), "body".to_string(), name.to_lowercase()],
-        item_type: ItemType::Container,
-        categories: Vec::new(),
-        teaches_recipe: None,
-        teaches_spell: None,
-        note_content: None,
-        board_read_admin_only: false,
-        board_write_admin_only: false,
-        board_max_messages: None,
-        donated_at: None,
-        extra_descs: Vec::new(),
-        wear_locations: vec![],
-        armor_class: None,
-        hit_bonus: 0,
-        damage_bonus: 0,
-        max_hp_bonus: 0,
-        max_mana_bonus: 0,
-        light_hours_remaining: 0,
-        cast_on_use: None,
-        protects: vec![],
-        flags: ItemFlags {
-            no_get: true,
-            is_corpse: true,
-            corpse_owner: name.to_string(),
-            corpse_created_at: now,
-            corpse_is_player: true,
-            corpse_gold: gold,
-            ..Default::default()
-        },
-        weight: 100,
-        value: 0,
-        location: ItemLocation::Room(room_id),
-        currently_worn_at: None,
-        damage_dice_count: 0,
-        damage_dice_sides: 0,
-        damage_type: Default::default(),
-        two_handed: false,
-        weapon_skill: None,
-        on_hit_effects: Vec::new(),
-        container_contents: vec![],
-        container_max_items: 1000,
-        container_max_weight: 10000,
-        container_closed: false,
-        container_locked: false,
-        container_key_vnum: None,
-        weight_reduction: 0,
-        liquid_type: LiquidType::default(),
-        liquid_current: 0,
-        liquid_max: 0,
-        liquid_poisoned: false,
-        liquid_effects: vec![],
-        food_nutrition: 0,
-        food_poisoned: false,
-        food_spoil_duration: 0,
-        food_created_at: None,
-        food_effects: vec![],
-        food_spoilage_points: 0.0,
-        preservation_level: 0,
-        level_requirement: 0,
-        stat_str: 0,
-        stat_dex: 0,
-        stat_con: 0,
-        stat_int: 0,
-        stat_wis: 0,
-        stat_cha: 0,
-        insulation: 0,
-        is_prototype: false,
-        vnum: None,
-        world_max_count: None,
-        triggers: vec![],
-        vending_stock: vec![],
-        vending_sell_rate: 150,
-        quality: 0,
-        bait_uses: 0,
-        holes: 0,
-        medical_tier: 0,
-        medical_uses: 0,
-        treats_wound_types: vec![],
-        max_treatable_wound: String::new(),
-        transport_link: None,
-        caliber: None,
-        ammo_count: 0,
-        ammo_damage_bonus: 0,
-        ranged_type: None,
-        magazine_size: 0,
-        loaded_ammo: 0,
-        loaded_ammo_bonus: 0,
-        loaded_ammo_vnum: None,
-        fire_mode: String::new(),
-        supported_fire_modes: vec![],
-        noise_level: String::new(),
-        ammo_effect_type: String::new(),
-        ammo_effect_duration: 0,
-        ammo_effect_damage: 0,
-        loaded_ammo_effect_type: String::new(),
-        loaded_ammo_effect_duration: 0,
-        loaded_ammo_effect_damage: 0,
-        attachment_slot: String::new(),
-        attachment_accuracy_bonus: 0,
-        attachment_noise_reduction: 0,
-        attachment_magazine_bonus: 0,
-        attachment_compatible_types: Vec::new(),
-        plant_prototype_vnum: String::new(),
-        fertilizer_duration: 0,
-        treats_infestation: String::new(),
-        dg_vars: std::collections::HashMap::new(),
-        affects: Vec::new(),
-        cyber_category: None,
-        cyber_foundation: false,
-        cyber_option_slots: 0,
-        cyber_slot_cost: 0,
-        cyber_humanity_loss: 0,
-        cyber_paired: false,
-        cyber_exclusive_tag: String::new(),
+/// Send one line to a character by name, if they are online.
+fn notify(connections: &SharedConnections, char_name: &str, message: &str) {
+    crate::script::achievements::send_to_player(connections, char_name, message);
+}
+
+/// Mirror the saved character into the live session so the client sees the new
+/// room and HP without waiting for another tick, and keep MSDP coherent.
+fn sync_to_session(connections: &SharedConnections, char: &CharacterData, state: &SharedState) {
+    if let Ok(mut conns) = connections.lock() {
+        for session in conns.values_mut() {
+            let matches = session
+                .character
+                .as_ref()
+                .is_some_and(|c| c.name.eq_ignore_ascii_case(&char.name));
+            if matches {
+                session.character = Some(char.clone());
+                session.sync_msdp_vitals(state);
+                return;
+            }
+        }
     }
 }
 
-/// Kill a player at their current room, drop a corpse with their gear + gold,
-/// and respawn at their bound spawn room (or STARTING_ROOM_ID).
+/// Kill a player at `room_id`: drop a corpse holding their gear and gold,
+/// reset their condition, and respawn them at their bound spawn room (or the
+/// world's starting room).
 ///
-/// `connection_id_str` is the calling player's connection id, used for the
-/// "You have died!" private message; `room_id` is where the corpse is dropped.
-pub fn kill_player_at_room(
-    db: &Arc<Db>,
+/// **Every** route to a player's death funnels through here — a combat blow, a
+/// bleedout expiry, a synth shutdown, a ROOM_DEATH trap — which is what makes
+/// the `deaths` counter at the bottom countable exactly once.
+///
+/// The two writes after the respawn save (PvP worship credit and the death
+/// counter) are out-of-band and must stay after it, for the standing reason:
+/// the wholesale save would otherwise clobber them.
+pub fn process_player_death(
+    db: &Db,
     connections: &SharedConnections,
+    state: &SharedState,
     char: &mut CharacterData,
     room_id: &Uuid,
-    connection_id_str: &str,
 ) -> Result<()> {
     let char_name = char.name.clone();
+
+    // Snapshot engaged player attackers before combat state is cleared —
+    // enemy-god worship credit for PvP kills is awarded after the respawn
+    // save below.
+    let pvp_attackers: Vec<String> = char
+        .combat
+        .targets
+        .iter()
+        .filter(|t| t.target_type == CombatTargetType::Player)
+        .filter_map(|t| t.target_name.clone())
+        .collect();
 
     // Release any mobiles this player had charmed.
     break_all_charms_by_player(db, &char_name);
 
-    send_client_message(connections, connection_id_str.to_string(), "You have died!".to_string());
+    notify(connections, &char_name, "You have died!");
     broadcast_to_room(
         connections,
         *room_id,
@@ -225,33 +144,40 @@ pub fn kill_player_at_room(
         Some(&char_name),
     );
 
-    let mut corpse = build_player_corpse(&char_name, *room_id, char.gold as i64);
+    let mut corpse = crate::corpse::CorpseBuilder::for_player(&char_name, *room_id, char.gold as i64).build();
     let corpse_id = corpse.id;
 
-    if let Ok(inv) = db.get_items_in_inventory(&char_name) {
-        for item in inv {
+    // Inventory and equipment both move into the corpse. The source of truth
+    // for each is `ItemLocation`, so the move is a location rewrite.
+    if let Ok(inventory_items) = db.get_items_in_inventory(&char_name) {
+        for item in inventory_items {
             let item_id = item.id;
-            let mut updated = item;
-            updated.location = ItemLocation::Container(corpse_id);
-            let _ = db.save_item_data(updated);
+            let mut updated_item = item;
+            updated_item.location = ItemLocation::Container(corpse_id);
+            let _ = db.save_item_data(updated_item);
             corpse.container_contents.push(item_id);
         }
     }
-    if let Ok(eq) = db.get_equipped_items(&char_name) {
-        for item in eq {
+    if let Ok(equipped_items) = db.get_equipped_items(&char_name) {
+        for item in equipped_items {
             let item_id = item.id;
-            let mut updated = item;
-            updated.location = ItemLocation::Container(corpse_id);
-            let _ = db.save_item_data(updated);
+            let mut updated_item = item;
+            updated_item.location = ItemLocation::Container(corpse_id);
+            let _ = db.save_item_data(updated_item);
             corpse.container_contents.push(item_id);
         }
     }
     db.save_item_data(corpse)?;
 
+    // Written down here so `locate corpse` is a lookup rather than a scan of
+    // the whole item tree. This is the only place a player corpse is created,
+    // and the character save below carries it.
+    char.corpse_ids.push(corpse_id);
+
+    // Gold moved onto the corpse with the items above.
     char.gold = 0;
 
     let spawn_room = char.spawn_room_id.unwrap_or_else(|| db.resolve_starting_room_id());
-
     char.current_room_id = spawn_room;
     char.hp = (char.max_hp / 4).max(1);
     char.is_unconscious = false;
@@ -270,6 +196,7 @@ pub fn kill_player_at_room(
     char.combat.stun_rounds_remaining = 0;
     char.combat.ammo_depleted = 0;
 
+    // Environmental and illness conditions all clear on respawn.
     char.is_wet = false;
     char.wet_level = 0;
     char.cold_exposure = 0;
@@ -283,26 +210,10 @@ pub fn kill_player_at_room(
     char.food_sick = false;
 
     db.save_character_data(char.clone())?;
+    sync_to_session(connections, char, state);
 
-    // Mirror the saved character back into the live session so the client
-    // sees the new room/HP without waiting for the next save.
-    {
-        let mut conns_guard = connections.lock().unwrap();
-        for (_id, session) in conns_guard.iter_mut() {
-            if let Some(ref mut sc) = session.character {
-                if sc.name.eq_ignore_ascii_case(&char_name) {
-                    *sc = char.clone();
-                    break;
-                }
-            }
-        }
-    }
-
-    send_client_message(
-        connections,
-        connection_id_str.to_string(),
-        "You feel yourself drawn back to safety.".to_string(),
-    );
+    notify(connections, &char_name, "You awaken at your spawn point...");
+    notify(connections, &char_name, &format!("You have {} HP.", char.hp));
     broadcast_to_room(
         connections,
         spawn_room,
@@ -310,5 +221,137 @@ pub fn kill_player_at_room(
         Some(&char_name),
     );
 
+    // Enemy-god worship credit for the killers. Runs after the victim's
+    // save+sync above; the killers' own rounds load fresh state, so the favor
+    // write isn't clobbered by end-of-round saves.
+    for killer in pvp_attackers {
+        crate::script::worship::handle_pvp_kill_credit(db, connections, &killer, &char_name);
+    }
+
+    // Death counter. Sits with the worship credit after the save+sync for the
+    // same reason: the counter bump writes the character out-of-band, and the
+    // wholesale save would otherwise overwrite it.
+    crate::script::achievements::notify_counter_core(db, connections, state, &char_name, "deaths", 1);
+
     Ok(())
+}
+
+/// Backwards-compatible entry point for the ROOM_DEATH script path.
+///
+/// Kept as a wrapper rather than deleted because `apply_room_death` is the only
+/// caller and its name says what it does at that site. The `connection_id_str`
+/// parameter is gone: [`process_player_death`] messages by character name, so
+/// the connection id was only ever a slower way to reach the same session.
+pub fn kill_player_at_room(
+    db: &Arc<Db>,
+    connections: &SharedConnections,
+    state: &SharedState,
+    char: &mut CharacterData,
+    room_id: &Uuid,
+) -> Result<()> {
+    process_player_death(db, connections, state, char, room_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_db() -> (Db, tempfile::TempDir) {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let db = Db::open(temp.path()).expect("open db");
+        (db, temp)
+    }
+
+    fn victim_at(db: &Db, name: &str, room: Uuid) -> CharacterData {
+        let mut ch: CharacterData = serde_json::from_value(serde_json::json!({
+            "name": name,
+            "password_hash": "",
+            "current_room_id": room,
+        }))
+        .expect("build character");
+        ch.max_hp = 100;
+        ch.hp = 0;
+        ch.spawn_room_id = Some(room);
+        db.save_character_data(ch.clone()).expect("save");
+        ch
+    }
+
+    fn deaths(db: &Db, name: &str) -> u32 {
+        db.get_character_data(name)
+            .expect("read")
+            .expect("exists")
+            .achievement_counters
+            .get("deaths")
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// The bug that made unifying the two death paths worth doing.
+    ///
+    /// `kill_player_at_room` is the ROOM_DEATH route — a death trap, a lethal
+    /// room. It used to be a separate near-copy that never bumped the `deaths`
+    /// counter, so a trap kill did not count as dying anywhere the counter is
+    /// read: `top`, achievements, `status`.
+    #[test]
+    fn a_room_death_counts_as_a_death() {
+        let (db, _temp) = temp_db();
+        let room = Uuid::new_v4();
+        let mut ch = victim_at(&db, "trapped", room);
+        let conns: SharedConnections = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        let state = crate::World::minimal_shared(db.clone(), conns.clone());
+
+        kill_player_at_room(&std::sync::Arc::new(db.clone()), &conns, &state, &mut ch, &room).expect("death resolves");
+
+        assert_eq!(deaths(&db, "trapped"), 1, "a trap kill is a death");
+    }
+
+    /// Both entry points reach the same implementation, so both count.
+    #[test]
+    fn the_two_entry_points_agree() {
+        let (db, _temp) = temp_db();
+        let room = Uuid::new_v4();
+        let conns: SharedConnections = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        let state = crate::World::minimal_shared(db.clone(), conns.clone());
+
+        let mut a = victim_at(&db, "direct", room);
+        process_player_death(&db, &conns, &state, &mut a, &room).expect("death resolves");
+        assert_eq!(deaths(&db, "direct"), 1);
+
+        let mut b = victim_at(&db, "wrapped", room);
+        kill_player_at_room(&std::sync::Arc::new(db.clone()), &conns, &state, &mut b, &room).expect("death resolves");
+        assert_eq!(deaths(&db, "wrapped"), 1);
+    }
+
+    /// The corpse takes the gold and the gear, and the player respawns with a
+    /// quarter of their health and none of their money.
+    #[test]
+    fn death_moves_gold_and_gear_to_the_corpse() {
+        let (db, _temp) = temp_db();
+        let room = Uuid::new_v4();
+        let mut ch = victim_at(&db, "looted", room);
+        ch.gold = 137;
+        db.save_character_data(ch.clone()).expect("save");
+
+        let mut item = crate::types::ItemData::new("Dagger".into(), "a rusty dagger".into(), String::new());
+        item.location = ItemLocation::Inventory("looted".to_string());
+        let item_id = item.id;
+        db.save_item_data(item).expect("save item");
+
+        let conns: SharedConnections = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        let state = crate::World::minimal_shared(db.clone(), conns.clone());
+        process_player_death(&db, &conns, &state, &mut ch, &room).expect("death resolves");
+
+        assert_eq!(ch.gold, 0, "gold leaves with the corpse");
+        assert_eq!(ch.hp, 25, "respawn at a quarter of max");
+
+        let corpse = db
+            .get_items_in_room(&room)
+            .expect("read room")
+            .into_iter()
+            .find(|i| i.flags.is_corpse)
+            .expect("a corpse was dropped");
+        assert_eq!(corpse.flags.corpse_gold, 137);
+        assert!(corpse.flags.corpse_is_player);
+        assert!(corpse.container_contents.contains(&item_id), "the dagger went with it");
+    }
 }

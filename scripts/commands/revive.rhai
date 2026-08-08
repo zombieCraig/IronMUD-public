@@ -135,24 +135,20 @@ fn process_revive_success(char, target_name, target_conn, tool, connection_id) {
 
     // Award significant XP for revival
     let xp_gained = 50;
-    let leveled_up = add_skill_experience(char.name, "medical", xp_gained);
+    add_skill_experience(char.name, "medical", xp_gained, "medical");
 
     let updated_char = get_character_data(char.name);
     if updated_char != () {
         set_player_character(connection_id, updated_char);
     }
 
-    send_revive_success_messages(char, target_name, target_conn, tool, xp_gained, connection_id);
-
-    if leveled_up {
-        send_client_message(connection_id, "Your medical skill has improved!");
-    }
+    send_revive_success_messages(char, target_name, target_conn, tool, connection_id);
 }
 
-fn send_revive_success_messages(char, target_name, target_conn, tool, xp_gained, connection_id) {
+fn send_revive_success_messages(char, target_name, target_conn, tool, connection_id) {
     send_client_message(connection_id, "You carefully work on " + target_name + " with your " + tool.name + "...");
     send_client_message(connection_id, "After tense moments, " + target_name + " gasps and regains consciousness!");
-    send_client_message(connection_id, "Revival successful! (+" + xp_gained + " Medical XP)");
+    send_client_message(connection_id, "Revival successful!");
     send_client_message(target_conn, "Everything was dark... then you feel hands working on you...");
     send_client_message(target_conn, "With a gasp, you return to consciousness! " + char.name + " has revived you.");
     broadcast_to_room(char.current_room_id, char.name + " frantically works to revive " + target_name + "... SUCCESS!", char.name);
@@ -160,24 +156,20 @@ fn send_revive_success_messages(char, target_name, target_conn, tool, xp_gained,
 
 fn process_revive_failure(char, target_name, target_conn, tool, connection_id) {
     let xp_gained = 15;
-    let leveled_up = add_skill_experience(char.name, "medical", xp_gained);
+    add_skill_experience(char.name, "medical", xp_gained, "medical");
 
     let updated_char = get_character_data(char.name);
     if updated_char != () {
         set_player_character(connection_id, updated_char);
     }
 
-    send_revive_failure_messages(char, target_name, target_conn, tool, xp_gained, connection_id);
-
-    if leveled_up {
-        send_client_message(connection_id, "Your medical skill has improved!");
-    }
+    send_revive_failure_messages(char, target_name, target_conn, tool, connection_id);
 }
 
-fn send_revive_failure_messages(char, target_name, target_conn, tool, xp_gained, connection_id) {
+fn send_revive_failure_messages(char, target_name, target_conn, tool, connection_id) {
     send_client_message(connection_id, "You carefully work on " + target_name + " with your " + tool.name + "...");
     send_client_message(connection_id, "Despite your efforts, " + target_name + " remains unconscious.");
-    send_client_message(connection_id, "The revival attempt failed. Try again quickly! (+" + xp_gained + " Medical XP)");
+    send_client_message(connection_id, "The revival attempt failed. Try again quickly!");
     broadcast_to_room(char.current_room_id, char.name + " frantically works to revive " + target_name + "... no response.", char.name);
 }
 

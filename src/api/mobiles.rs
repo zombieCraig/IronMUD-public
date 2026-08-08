@@ -1,5 +1,6 @@
 //! Mobile CRUD endpoints
 
+use crate::types::Authored;
 use axum::{
     Json, Router,
     extract::{Extension, Path, Query, State},
@@ -79,6 +80,11 @@ pub struct CreateMobileRequest {
     pub damage_dice: Option<String>,
     #[serde(default = "default_ac")]
     pub armor_class: i32,
+    /// Moral weight of killing this mobile, on the `[-200, 200]` morality
+    /// scale. Negative is evil, positive good, 0 (default) morally inert.
+    /// Out-of-range values are clamped rather than rejected.
+    #[serde(default)]
+    pub alignment: i32,
     #[serde(default)]
     pub perception: i32,
     #[serde(default)]
@@ -103,6 +109,10 @@ pub struct CreateMobileRequest {
     pub shop_min_value: Option<i32>,
     #[serde(default)]
     pub shop_max_value: Option<i32>,
+    #[serde(default)]
+    pub consignment_commission_pct: Option<i32>,
+    #[serde(default)]
+    pub consignment_max_listings_per_player: Option<i32>,
     #[serde(default)]
     pub shop_extra_types: Option<Vec<String>>,
     #[serde(default)]
@@ -130,7 +140,12 @@ pub struct CreateMobileRequest {
     pub patron_god_vnum: Option<String>,
     #[serde(default)]
     pub world_max_count: Option<i32>,
-    /// Helper-system faction tag. None/empty falls back to Circle-stock semantics.
+    /// Faction tag, lowercased on save. Read by three systems: mobiles sharing
+    /// a tag defend each other when `flags.helper` is set; killing this mobile
+    /// costs the killer standing with the faction and buys standing with its
+    /// declared enemies; and a faction the player has fallen below
+    /// `hostile_at` with attacks on sight. None/empty falls back to
+    /// Circle-stock helper semantics and opts the mob out of reputation.
     #[serde(default)]
     pub faction: Option<String>,
     /// Spell IDs the mob may cast in combat (CircleMUD `magic_user` analog).
@@ -390,6 +405,8 @@ pub struct MobileFlagsRequest {
     pub aggro_evil: Option<bool>,
     #[serde(default)]
     pub aggro_neutral: Option<bool>,
+    #[serde(default)]
+    pub consignment: Option<bool>,
 }
 
 #[derive(Deserialize)]
@@ -421,6 +438,8 @@ pub struct UpdateMobileRequest {
     pub level: Option<i32>,
     pub max_hp: Option<i32>,
     pub armor_class: Option<i32>,
+    /// Moral weight of killing this mobile. Clamped to `[-200, 200]`.
+    pub alignment: Option<i32>,
     pub perception: Option<i32>,
     pub gold: Option<i32>,
     pub flags: Option<MobileFlagsRequest>,
@@ -444,6 +463,10 @@ pub struct UpdateMobileRequest {
     pub shop_min_value: Option<i32>,
     #[serde(default)]
     pub shop_max_value: Option<i32>,
+    #[serde(default)]
+    pub consignment_commission_pct: Option<i32>,
+    #[serde(default)]
+    pub consignment_max_listings_per_player: Option<i32>,
     #[serde(default)]
     pub shop_extra_types: Option<Vec<String>>,
     #[serde(default)]
@@ -483,7 +506,8 @@ pub struct UpdateMobileRequest {
     pub dialogue_tree: Option<crate::types::DialogueTree>,
     #[serde(default)]
     pub clear_dialogue_tree: Option<bool>,
-    /// Helper-system faction tag. Empty string clears to None.
+    /// Faction tag, lowercased on save. See the create request for what reads
+    /// it. Empty string clears to None.
     #[serde(default)]
     pub faction: Option<String>,
     /// Replace combat spell list. Empty vec clears.
@@ -923,6 +947,9 @@ async fn create_mobile(
     };
 
     let mut mobile = MobileData {
+        authored_by: None,
+        last_edited_by: None,
+        origin: Default::default(),
         id: Uuid::new_v4(),
         name: req.name,
         short_desc: req.short_desc,
@@ -939,6 +966,7 @@ async fn create_mobile(
         current_stamina: 100,
         level: req.level,
         armor_class: check_stat_bonus("armor_class", req.armor_class)?,
+        alignment: crate::morality::clamp(req.alignment),
         hit_modifier: 0,
         damage_dice,
         damage_type: DamageType::default(),
@@ -995,6 +1023,7 @@ async fn create_mobile(
             aggro_good: req.flags.aggro_good.unwrap_or(false),
             aggro_evil: req.flags.aggro_evil.unwrap_or(false),
             aggro_neutral: req.flags.aggro_neutral.unwrap_or(false),
+            consignment: req.flags.consignment.unwrap_or(false),
         },
         dialogue: HashMap::new(),
         dialogue_tree: None,
@@ -1021,6 +1050,11 @@ async fn create_mobile(
         shop_deny_categories: req.shop_deny_categories.unwrap_or_default(),
         shop_min_value: req.shop_min_value.unwrap_or(0),
         shop_max_value: req.shop_max_value.unwrap_or(0),
+        consignment_commission_pct: crate::api::validate::check_commission_pct(
+            "consignment_commission_pct",
+            req.consignment_commission_pct.unwrap_or(10),
+        )?,
+        consignment_max_listings_per_player: req.consignment_max_listings_per_player.unwrap_or(0).max(0),
         is_unconscious: false,
         bleedout_rounds_remaining: 0,
         last_combat_at: 0,
@@ -1040,7 +1074,7 @@ async fn create_mobile(
         patron_god_vnum: req.patron_god_vnum.clone().filter(|s| !s.is_empty()),
         characteristics: None,
         household_id: None,
-        faction: req.faction.clone().filter(|s| !s.is_empty()),
+        faction: crate::reputation::normalize(req.faction.as_deref()),
         relationships: Vec::new(),
         resident_of: None,
         social: None,
@@ -1077,6 +1111,8 @@ async fn create_mobile(
         }
     }
 
+    // Attribution: see src/attribution.rs.
+    mobile.stamp_created(&user.api_key.owner_character);
     state
         .db
         .save_mobile_data(mobile.clone())
@@ -1167,6 +1203,9 @@ async fn update_mobile(
     }
     if let Some(armor_class) = req.armor_class {
         mobile.armor_class = check_stat_bonus("armor_class", armor_class)?;
+    }
+    if let Some(alignment) = req.alignment {
+        mobile.alignment = crate::morality::clamp(alignment);
     }
     if let Some(perception) = req.perception {
         mobile.perception = perception;
@@ -1271,6 +1310,9 @@ async fn update_mobile(
         if let Some(v) = flags.aggro_neutral {
             mobile.flags.aggro_neutral = v;
         }
+        if let Some(v) = flags.consignment {
+            mobile.flags.consignment = v;
+        }
     }
     if let Some(ref pos_str) = req.position {
         if let Some(parsed) = crate::types::MobilePosition::parse(pos_str) {
@@ -1314,7 +1356,7 @@ async fn update_mobile(
         mobile.dialogue_tree = Some(tree);
     }
     if let Some(faction) = req.faction {
-        mobile.faction = if faction.is_empty() { None } else { Some(faction) };
+        mobile.faction = crate::reputation::normalize(Some(&faction));
     }
     if let Some(lang) = req.spoken_language {
         mobile.spoken_language = if lang.is_empty() { None } else { Some(lang) };
@@ -1356,6 +1398,13 @@ async fn update_mobile(
     }
     if let Some(shop_max_value) = req.shop_max_value {
         mobile.shop_max_value = shop_max_value;
+    }
+    if let Some(pct) = req.consignment_commission_pct {
+        mobile.consignment_commission_pct =
+            crate::api::validate::check_commission_pct("consignment_commission_pct", pct)?;
+    }
+    if let Some(cap) = req.consignment_max_listings_per_player {
+        mobile.consignment_max_listings_per_player = cap.max(0);
     }
     if let Some(shop_extra_types) = req.shop_extra_types {
         mobile.shop_extra_types = shop_extra_types;
@@ -1399,6 +1448,8 @@ async fn update_mobile(
         mobile.patron_god_vnum = if patron.is_empty() { None } else { Some(patron) };
     }
 
+    // Attribution: see src/attribution.rs.
+    mobile.stamp_edited(&user.api_key.owner_character);
     state
         .db
         .save_mobile_data(mobile.clone())

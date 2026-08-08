@@ -497,6 +497,9 @@ mod tests {
         let mut chances = ImmigrationVariationChances::default();
         chances.vampire = vampire_chance;
         AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: Uuid::new_v4(),
             name: "Test".to_string(),
             prefix: "test".to_string(),

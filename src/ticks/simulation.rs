@@ -1819,6 +1819,9 @@ mod tests {
 
     fn save_room(db: &db::Db, vnum: &str) -> RoomData {
         let r = RoomData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: uuid::Uuid::new_v4(),
             title: format!("room {}", vnum),
             description: String::new(),
@@ -1993,6 +1996,9 @@ mod tests {
         // Set up an area with a guard wage configured.
         let area_id = uuid::Uuid::new_v4();
         let area = AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: area_id,
             name: "T".into(),
             prefix: "t".into(),
@@ -2070,6 +2076,9 @@ mod tests {
         let g = open_db("role_wage_scav");
         let area_id = uuid::Uuid::new_v4();
         let area = AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: area_id,
             name: "T".into(),
             prefix: "t".into(),
@@ -2214,6 +2223,9 @@ mod tests {
         };
         let area_id = uuid::Uuid::new_v4();
         let area = AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: area_id,
             name: prefix.into(),
             prefix: prefix.into(),

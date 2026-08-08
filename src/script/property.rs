@@ -1,9 +1,9 @@
 // src/script/property.rs
 // Property rental system functions for IronMUD
 
-use crate::SharedConnections;
 use crate::db::Db;
 use crate::{EscrowData, LeaseData, PartyAccessLevel, PropertyTemplate, RoomData, RoomExits, RoomFlags};
+use crate::{SharedConnections, SharedState};
 use rhai::Engine;
 use std::sync::Arc;
 
@@ -21,7 +21,7 @@ fn get_character_name_from_connection(conns: &SharedConnections, connection_id: 
 }
 
 /// Register property-related functions
-pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections) {
+pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, state: SharedState) {
     // ========== Property Template Registration ==========
 
     engine.register_type_with_name::<PropertyTemplate>("PropertyTemplate");
@@ -439,6 +439,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // create_lease(template_vnum, owner_name, agent_id, office_room_id) -> LeaseData | ()
     // Creates a new property instance from a template
     let cloned_db = db.clone();
+    let lease_conns = connections.clone();
+    let lease_state = state.clone();
     engine.register_fn(
         "create_lease",
         move |template_vnum: String, owner_name: String, agent_id: String, office_room_id: String| -> rhai::Dynamic {
@@ -521,6 +523,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 instanced_rooms.push(instance_id);
 
                 let instance_room = RoomData {
+                    authored_by: None,
+                    last_edited_by: None,
+                    origin: Default::default(),
                     id: instance_id,
                     title: format!("{}'s {}", owner_name, template_room.title),
                     description: template_room.description.clone(),
@@ -676,6 +681,32 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 owner_name,
                 template_vnum
             );
+
+            // Achievement hooks. `OwnedLease`'s `area_vnum` is matched against
+            // the area prefix, which is the vnum namespace areas are named by.
+            let area_prefix = cloned_db
+                .get_area_data(&area_id)
+                .ok()
+                .flatten()
+                .map(|a| a.prefix)
+                .unwrap_or_default();
+            crate::script::achievements::notify_event_core(
+                &cloned_db,
+                &lease_conns,
+                &lease_state,
+                &owner_name,
+                "lease_bought",
+                &area_prefix,
+            );
+            crate::script::achievements::notify_counter_core(
+                &cloned_db,
+                &lease_conns,
+                &lease_state,
+                &owner_name,
+                "leases.bought",
+                1,
+            );
+
             rhai::Dynamic::from(final_lease)
         },
     );
@@ -939,6 +970,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             };
 
             let room = RoomData {
+                authored_by: None,
+                last_edited_by: None,
+                origin: Default::default(),
                 id: uuid::Uuid::new_v4(),
                 title,
                 description,

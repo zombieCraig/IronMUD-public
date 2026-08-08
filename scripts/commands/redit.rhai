@@ -764,6 +764,9 @@ fn handle_create_room(char, parts, connection_id) {
     // Inherit area from current room and auto-generate vnum (like dig does)
     let inherited = inherit_area_for_new_room(char, new_room_id, title);
 
+    // Attribution: claim the room for its creator. See src/attribution.rs.
+    stamp_content_created("room", "" + new_room_id, char.name);
+
     let output = olc::c_header("=== Created Detached Room ===", connection_id) + "\n";
     output += olc::c_label("Title: ", connection_id) + olc::c_value(title, connection_id) + "\n";
     output += olc::c_label("ID: ", connection_id) + olc::c_value(new_room_id, connection_id) + "\n";
@@ -820,6 +823,15 @@ fn run_command(args, connection_id) {
     let subcommand = "";
     if parts.len() >= 1 {
         subcommand = parts[0].to_lower();
+    }
+
+    // Attribution: one stamp per editor, here, rather than one per setter —
+    // src/script/rooms.rs alone has thirty-five save sites. Read-only
+    // subcommands are excluded so looking at a room never counts as touching
+    // it. See src/attribution.rs.
+    if subcommand != "" && subcommand != "show" {
+        stamp_content_edited("room", "" + room.id, char.name);
+        note_grade_before("room", "" + room.id, connection_id);
     }
 
     // Handle subcommands

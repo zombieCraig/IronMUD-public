@@ -23,9 +23,14 @@ fn format_player_line(player) {
     if char != () && char.god_mode {
         glow_tag = " (glowing)";
     }
-    // Get effective level for display
-    let eff_level = get_effective_level(player.name);
-    let level_tag = " [Eff:" + eff_level + "]";
+    // Renown, not the raw effective level. Both are one number summarising a
+    // character, but `Eff` was the bare sum of skill levels — a 0-180 figure
+    // that means nothing to a player and undercounts anyone whose progress is
+    // in achievements, quests or spells. Renown is the number `status`, the
+    // prompt and the leaderboards already use, so `who` agreeing with them is
+    // the whole point of having one.
+    let r = get_renown(player.name);
+    let level_tag = " [Renown:" + r.total + "]";
     let title_tag = "";
     if achievements_enabled() {
         let title_text = get_active_title(player.name);

@@ -20,6 +20,7 @@ use super::{
     validate::{DESCRIPTION_MAX, NAME_MAX, check_text_len},
 };
 use crate::spawn::apply_spawn_dependencies;
+use crate::types::Authored;
 use crate::{AreaData, AreaFlags, AreaPermission, CombatZoneType, ForageEntry, RoomData, RoomFlags, SpawnEntityType};
 
 pub fn routes() -> Router<Arc<ApiState>> {
@@ -300,7 +301,10 @@ async fn create_area(
     check_text_len("name", &req.name, NAME_MAX)?;
     check_text_len("description", &req.description, DESCRIPTION_MAX)?;
 
-    let area = AreaData {
+    let mut area = AreaData {
+        authored_by: None,
+        last_edited_by: None,
+        origin: Default::default(),
         id: Uuid::new_v4(),
         name: req.name,
         prefix: req.prefix,
@@ -350,6 +354,8 @@ async fn create_area(
         max_spawn_points: None,
     };
 
+    // Attribution: see src/attribution.rs.
+    area.stamp_created(&user.api_key.owner_character);
     state
         .db
         .save_area_data(area.clone())
@@ -488,6 +494,8 @@ async fn update_area(
         }
     }
 
+    // Attribution: see src/attribution.rs.
+    area.stamp_edited(&user.api_key.owner_character);
     state
         .db
         .save_area_data(area.clone())

@@ -1,0 +1,155 @@
+[
+  {
+    "key": "world_hundred_rooms",
+    "name": "A Hundred Rooms",
+    "description": "The world reached one hundred rooms.",
+    "category": "builder",
+    "criterion": { "kind": "manual" },
+    "reward": { "title": "of the Hundred" },
+    "hidden": false
+  },
+  {
+    "key": "world_five_hundred_rooms",
+    "name": "Five Hundred Rooms",
+    "description": "The world reached five hundred rooms.",
+    "category": "builder",
+    "criterion": { "kind": "manual" },
+    "reward": { "title": "the Prolific" },
+    "hidden": false
+  },
+  {
+    "key": "world_thousand_rooms",
+    "name": "A Thousand Rooms",
+    "description": "The world reached one thousand rooms.",
+    "category": "builder",
+    "criterion": { "kind": "manual" },
+    "reward": { "title": "of the Thousand" },
+    "hidden": false
+  },
+  {
+    "key": "world_ten_areas",
+    "name": "Ten Regions",
+    "description": "The world reached ten areas.",
+    "category": "builder",
+    "criterion": { "kind": "manual" },
+    "reward": { "title": "the Surveyor" },
+    "hidden": false
+  },
+  {
+    "key": "world_twenty_areas",
+    "name": "Twenty Regions",
+    "description": "The world reached twenty areas.",
+    "category": "builder",
+    "criterion": { "kind": "manual" },
+    "reward": { "title": "the Continental" },
+    "hidden": false
+  },
+  {
+    "key": "world_ten_quests",
+    "name": "Reasons To Go",
+    "description": "The world has ten quests.",
+    "category": "builder",
+    "criterion": { "kind": "manual" },
+    "reward": { "title": "the Questgiver" },
+    "hidden": false
+  },
+  {
+    "key": "world_fifty_quests",
+    "name": "A Body Of Work",
+    "description": "The world has fifty quests.",
+    "category": "builder",
+    "criterion": { "kind": "manual" },
+    "reward": { "title": "the Loremaster" },
+    "hidden": false
+  },
+  {
+    "key": "world_hundred_mobiles",
+    "name": "A Populace",
+    "description": "The world has a hundred mobile prototypes.",
+    "category": "builder",
+    "criterion": { "kind": "manual" },
+    "reward": { "title": "the Peopler" },
+    "hidden": false
+  },
+  {
+    "key": "world_two_hundred_items",
+    "name": "Well Provisioned",
+    "description": "The world has two hundred item prototypes.",
+    "category": "builder",
+    "criterion": { "kind": "manual" },
+    "reward": { "title": "the Quartermaster" },
+    "hidden": false
+  },
+  {
+    "key": "world_talkative",
+    "name": "Somebody To Talk To",
+    "description": "Twenty NPCs carry a branching dialogue tree.",
+    "category": "builder",
+    "criterion": { "kind": "manual" },
+    "reward": { "title": "the Conversationalist" },
+    "hidden": false
+  },
+  {
+    "key": "world_well_stocked",
+    "name": "A Trade To Learn",
+    "description": "The world has twenty crafting recipes.",
+    "category": "builder",
+    "criterion": { "kind": "manual" },
+    "reward": { "title": "the Guildwright" },
+    "hidden": false
+  },
+  {
+    "key": "world_transit",
+    "name": "Ways To Travel",
+    "description": "The world runs three transports.",
+    "category": "builder",
+    "criterion": { "kind": "manual" },
+    "reward": { "title": "the Wayfarer" },
+    "hidden": false
+  },
+  {
+    "key": "world_notice_board",
+    "name": "Somewhere To Talk",
+    "description": "The world has a bulletin board.",
+    "category": "builder",
+    "criterion": { "kind": "manual" },
+    "reward": { "title": "the Town Crier" },
+    "hidden": false
+  },
+  {
+    "key": "world_tier_town",
+    "name": "A Town",
+    "description": "The world grew into a Town.",
+    "category": "builder",
+    "criterion": { "kind": "manual" },
+    "reward": { "title": "the Townwright" },
+    "hidden": false
+  },
+  {
+    "key": "world_tier_city",
+    "name": "A City",
+    "description": "The world grew into a City.",
+    "category": "builder",
+    "criterion": { "kind": "manual" },
+    "reward": { "title": "the Citywright" },
+    "hidden": false
+  },
+  {
+    "key": "world_tier_realm",
+    "name": "A Realm",
+    "description": "The world grew into a Realm.",
+    "category": "builder",
+    "criterion": { "kind": "manual" },
+    "reward": { "title": "the Realmwright" },
+    "hidden": false
+  },
+  {
+    "key": "world_tier_world",
+    "name": "A World",
+    "description": "The world became, at last, a world.",
+    "category": "builder",
+    "criterion": { "kind": "manual" },
+    "reward": { "title": "the Worldwright" },
+    "hidden": false
+  }
+]

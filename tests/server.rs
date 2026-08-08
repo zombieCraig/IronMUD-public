@@ -253,12 +253,21 @@ async fn test_character_system_lifecycle() -> Result<()> {
     // 1. Initialize the server state
     let mut engine = Engine::new();
     engine.set_max_expr_depths(128, 128);
+    // Mirror main.rs: without the resolver, any command that imports a
+    // scripts/lib module fails at runtime and is silently untestable here.
+    let mut resolver = rhai::module_resolvers::FileModuleResolver::new();
+    resolver.set_base_path("scripts/lib");
+    engine.set_module_resolver(resolver);
     let db = ironmud::db::Db::open("test.db")?;
     let scripts = HashMap::new();
     let connections = Arc::new(Mutex::new(HashMap::new()));
     let command_metadata = load_command_metadata()?;
 
     let state = Arc::new(Mutex::new(World {
+        build_tracks: Vec::new(),
+        world_report: Default::default(),
+        build_scores: Default::default(),
+        audit_ctx: Default::default(),
         engine,
         db,
         scripts,
@@ -271,6 +280,7 @@ async fn test_character_system_lifecycle() -> Result<()> {
         race_definitions: std::collections::HashMap::new(),
         mutation_definitions: std::collections::HashMap::new(),
         language_definitions: std::collections::HashMap::new(),
+        faction_definitions: std::collections::HashMap::new(),
         recipes: std::collections::HashMap::new(),
         transports: std::collections::HashMap::new(),
         spell_definitions: std::collections::HashMap::new(),
@@ -282,6 +292,7 @@ async fn test_character_system_lifecycle() -> Result<()> {
         shutdown_cancel_sender: None,
         ip_limiter: Arc::new(ironmud::ratelimit::IpRateLimiter::new()),
         command_throttle: Arc::new(ironmud::throttle::CommandThrottle::new()),
+        leaderboards: ironmud::leaderboard::Leaderboards::default(),
     }));
 
     // Register Rhai functions for character system
@@ -349,6 +360,71 @@ async fn test_character_system_lifecycle() -> Result<()> {
     assert!(
         response.contains(&expected_welcome_msg),
         "Auto-login after creation failed: {}",
+        response
+    );
+
+    // --- Test 1b: Progression display renders ---
+    // `status` and `skills` both import scripts/lib/progress_ui. An import
+    // that fails to resolve produces no output at all rather than a Rhai
+    // error the player sees, so this exercises the whole path end to end.
+    client.send("status").await?;
+    let response = client.read_until_prompt().await?;
+    for expected in [
+        "--- Progression ---",
+        "Renown: 0",
+        "Skills:",
+        "Mastered: 0/18",
+        "Quests:  0 completed, 0 active",
+        "Explored:",
+        "Played:",
+    ] {
+        assert!(
+            response.contains(expected),
+            "status progression block missing {:?}: {}",
+            expected,
+            response
+        );
+    }
+
+    client.send("skills").await?;
+    let response = client.read_until_prompt().await?;
+    assert!(
+        response.contains("-- Combat --") && response.contains("Short Blades"),
+        "skills failed to render shared helpers: {}",
+        response
+    );
+
+    // The verbose prompt renders a combat target segment. Out of combat it
+    // must render nothing at all — this is the branch that runs on every
+    // prompt for every player who isn't fighting, i.e. nearly always.
+    client.send("prompt verbose").await?;
+    let _ = client.read_until_prompt().await?;
+    client.send("look").await?;
+    let response = client.read_until_prompt().await?;
+    let prompt_line = response.lines().last().unwrap_or("").to_string();
+    // Color codes sit between the bracket and the label, so match the labels.
+    assert!(
+        prompt_line.contains("HP:100/100") && prompt_line.contains("ST:100/100"),
+        "verbose prompt did not render: {:?}",
+        prompt_line
+    );
+    for absent in [": Unhurt", ": Bloodied", "| Ranged", "| Pole"] {
+        assert!(
+            !prompt_line.contains(absent),
+            "out-of-combat prompt leaked a target segment ({}): {:?}",
+            absent,
+            prompt_line
+        );
+    }
+    client.send("prompt simple").await?;
+    let _ = client.read_until_prompt().await?;
+
+    // Reward preview reads the nested reward map, which nothing else exercises.
+    client.send("achievements show compleat").await?;
+    let response = client.read_until_prompt().await?;
+    assert!(
+        response.contains("Rewards: 3 trait points, 10000 gold"),
+        "achievement reward preview missing trait points: {}",
         response
     );
 
@@ -453,22 +529,21 @@ fn test_scripts_call_registered_functions() {
     // Pattern to match: register_fn("function_name", ...)
     let register_fn_pattern = Regex::new(r#"register_fn\s*\(\s*"([^"]+)""#).unwrap();
 
-    // Scan all Rust files in src/script/
-    for entry in glob("src/script/**/*.rs").expect("Failed to glob src/script") {
+    // Scan every Rust file under src/.
+    //
+    // This used to look only at src/script/**, plus src/lib.rs and
+    // src/main.rs by name. That assumed all Rhai registrations live under
+    // src/script/, which stopped being true once domain modules outside it
+    // (src/combat_text.rs) began registering their own helpers. Missing a
+    // registration source makes this test fail on scripts that are actually
+    // fine, so the glob is deliberately broad: widening it can only add to
+    // the registered set, never produce a false pass on an unregistered call.
+    for entry in glob("src/**/*.rs").expect("Failed to glob src") {
         if let Ok(path) = entry {
             if let Ok(content) = fs::read_to_string(&path) {
                 for cap in register_fn_pattern.captures_iter(&content) {
                     registered_functions.insert(cap[1].to_string());
                 }
-            }
-        }
-    }
-
-    // Also scan src/lib.rs and src/main.rs for any additional registrations
-    for path in &["src/lib.rs", "src/main.rs"] {
-        if let Ok(content) = fs::read_to_string(path) {
-            for cap in register_fn_pattern.captures_iter(&content) {
-                registered_functions.insert(cap[1].to_string());
             }
         }
     }
@@ -1531,6 +1606,9 @@ mod migration_tests {
 
     fn new_area(prefix: &str) -> AreaData {
         AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: Uuid::new_v4(),
             name: format!("Test {}", prefix),
             prefix: prefix.to_string(),
@@ -1575,6 +1653,9 @@ mod migration_tests {
 
     fn new_room(area_id: Uuid, vnum: &str, liveable: bool, capacity: i32) -> RoomData {
         RoomData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: Uuid::new_v4(),
             title: format!("Room {}", vnum),
             description: String::new(),
@@ -4022,6 +4103,9 @@ fn test_area_caps_persist_and_count_helpers_match() {
 
         let area_id = Uuid::new_v4();
         let area = AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: area_id,
             name: "Capped".into(),
             prefix: "cap".into(),
@@ -4384,6 +4468,9 @@ fn test_donation_fields_round_trip() {
 
         // AreaData.donation_room_vnum starts unset, persists when set.
         let mut area = ironmud::types::AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: uuid::Uuid::new_v4(),
             name: "Test Area".to_string(),
             prefix: "test".to_string(),
@@ -4613,6 +4700,9 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
         defaults.dark = true;
 
         let area = AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: uuid::Uuid::new_v4(),
             name: "Underground".into(),
             prefix: "und".into(),
@@ -4690,6 +4780,9 @@ fn test_area_default_room_flags_apply_to_new_rooms() {
 
         // Sanity: a fresh RoomData using merged flags persists and loads.
         let room = RoomData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: uuid::Uuid::new_v4(),
             title: "Cave".into(),
             description: String::new(),
@@ -4926,6 +5019,9 @@ fn test_area_climate_persists() {
         let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let area = AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: uuid::Uuid::new_v4(),
             name: "Sun Isle".into(),
             prefix: "isle".into(),
@@ -5011,6 +5107,9 @@ fn test_area_combat_zone_persists_and_parses() {
         let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let area = AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: uuid::Uuid::new_v4(),
             name: "Arena".into(),
             prefix: "arena".into(),
@@ -5821,6 +5920,9 @@ fn stay_zone_test_room(area_id: Option<uuid::Uuid>) -> ironmud::types::RoomData 
     use ironmud::types::{RoomData, RoomExits, RoomFlags, WaterType};
     use std::collections::HashMap;
     RoomData {
+        authored_by: None,
+        last_edited_by: None,
+        origin: Default::default(),
         id: uuid::Uuid::new_v4(),
         title: "test room".to_string(),
         description: String::new(),
@@ -6574,6 +6676,7 @@ fn test_achievement_unlock_applies_morality_delta_clamped() {
                 item_vnum: None,
                 gold: None,
                 morality_delta: -50,
+                trait_points: 0,
             },
             hidden: false,
             source: ironmud::types::AchievementSource::Db { author: String::new() },
@@ -6632,7 +6735,8 @@ fn test_achievement_morality_delta_clamps_at_floor() {
                 title: "of the Abyss".to_string(),
                 item_vnum: None,
                 gold: None,
-                morality_delta: -200, // huge swing
+                morality_delta: -200,
+                trait_points: 0, // huge swing
             },
             hidden: false,
             source: ironmud::types::AchievementSource::Db { author: String::new() },
@@ -8512,6 +8616,9 @@ fn test_contextual_commands_round_trip() {
         let db = ironmud::db::Db::open(temp.path()).expect("open DB");
 
         let room = RoomData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: uuid::Uuid::new_v4(),
             title: "Puzzle chamber".to_string(),
             description: "An odd room.".to_string(),
@@ -9833,6 +9940,10 @@ fn test_apply_world_preset_switches_settings_and_reloads() {
         db.set_setting("class_preset", "fantasy").expect("seed class_preset");
 
         let state = Arc::new(Mutex::new(World {
+            build_tracks: Vec::new(),
+            world_report: Default::default(),
+            build_scores: Default::default(),
+            audit_ctx: Default::default(),
             engine: Engine::new(),
             db,
             scripts: HashMap::new(),
@@ -9845,6 +9956,7 @@ fn test_apply_world_preset_switches_settings_and_reloads() {
             race_definitions: HashMap::new(),
             mutation_definitions: HashMap::new(),
             language_definitions: HashMap::new(),
+            faction_definitions: HashMap::new(),
             recipes: HashMap::new(),
             transports: HashMap::new(),
             spell_definitions: HashMap::new(),
@@ -9856,6 +9968,7 @@ fn test_apply_world_preset_switches_settings_and_reloads() {
             shutdown_cancel_sender: None,
             ip_limiter: Arc::new(ironmud::ratelimit::IpRateLimiter::new()),
             command_throttle: Arc::new(ironmud::throttle::CommandThrottle::new()),
+            leaderboards: ironmud::leaderboard::Leaderboards::default(),
         }));
 
         let mut driver = Engine::new();
@@ -9983,6 +10096,9 @@ fn vampire_test_room(title: &str, indoors: bool) -> ironmud::types::RoomData {
     let mut flags = RoomFlags::default();
     flags.indoors = indoors;
     RoomData {
+        authored_by: None,
+        last_edited_by: None,
+        origin: Default::default(),
         id: uuid::Uuid::new_v4(),
         title: title.to_string(),
         description: String::new(),
@@ -11777,6 +11893,9 @@ fn make_test_room_with_gate(db: &ironmud::db::Db, gate: Option<ironmud::types::R
     use ironmud::types::{RoomData, RoomExits, RoomFlags, WaterType};
     use std::collections::HashMap as StdHashMap;
     let room = RoomData {
+        authored_by: None,
+        last_edited_by: None,
+        origin: Default::default(),
         id: uuid::Uuid::new_v4(),
         title: "Gated Room".into(),
         description: String::new(),
@@ -13192,8 +13311,8 @@ fn test_cyberware_survives_player_death() {
     db.save_item_data(loot).expect("save loot");
 
     let room_id = char.current_room_id;
-    ironmud::session::kill_player_at_room(&db, &connections, &mut char, &room_id, &uuid::Uuid::nil().to_string())
-        .expect("death pipeline");
+    let state = ironmud::World::minimal_shared((*db).clone(), connections.clone());
+    ironmud::session::kill_player_at_room(&db, &connections, &state, &mut char, &room_id).expect("death pipeline");
 
     // Chrome state + buffs survive; the trinket went to the corpse.
     let cy = char.cyberware_state.as_ref().expect("chrome state survives death");
@@ -14256,4 +14375,366 @@ fn test_tribe_acknowledgment_grants_trait_once() {
     }))
     .expect("build character");
     assert!(!apply_tribe_acknowledgment(&mut mortal, "get_of_fenris"));
+}
+
+/// `progress::CORE_SKILLS` owns the membership of the core skill set;
+/// `scripts/lib/progress_ui.rhai::core_skill_categories()` owns how that set is
+/// grouped for display. Two lists, one set — so pin them together. If they
+/// drift, `status` and `skills` start describing different worlds, and the
+/// mastery denominator stops matching the bar above it.
+#[test]
+fn test_core_skill_list_matches_the_rhai_display_grouping() {
+    let mut engine = Engine::new();
+    engine.set_max_expr_depths(128, 128);
+    let ast = engine
+        .compile_file("scripts/lib/progress_ui.rhai".into())
+        .expect("progress_ui.rhai compiles");
+
+    let categories: rhai::Array = engine
+        .call_fn(&mut rhai::Scope::new(), &ast, "core_skill_categories", ())
+        .expect("core_skill_categories() is callable");
+
+    let mut from_rhai: Vec<String> = Vec::new();
+    for cat in categories {
+        let map = cat.cast::<rhai::Map>();
+        let skills = map
+            .get("skills")
+            .cloned()
+            .expect("each category has a skills array")
+            .cast::<rhai::Array>();
+        for s in skills {
+            from_rhai.push(s.cast::<String>());
+        }
+    }
+    from_rhai.sort();
+
+    let mut from_rust: Vec<String> = ironmud::progress::CORE_SKILLS.iter().map(|s| s.to_string()).collect();
+    from_rust.sort();
+
+    assert_eq!(
+        from_rhai, from_rust,
+        "progress::CORE_SKILLS and progress_ui.rhai::core_skill_categories() must cover the same skills"
+    );
+    assert_eq!(
+        from_rhai.len(),
+        ironmud::progress::CORE_SKILLS.len(),
+        "the display grouping must not list a skill twice"
+    );
+}
+
+/// `experiment` splits its argument into material names by hand, because
+/// Rhai has no `trim` and a comma list collects spaces on both sides of every
+/// separator. Getting that wrong does not fail loudly — it silently looks up
+/// " flour" and tells the player they are not carrying something they are
+/// holding. The matcher itself is covered in `ironmud::experiment`; this
+/// pins the string handling in front of it.
+#[test]
+fn test_experiment_parses_material_lists() {
+    let mut engine = Engine::new();
+    engine.set_max_expr_depths(128, 128);
+    // experiment.rhai imports scripts/lib/crafting, so it needs the resolver.
+    let mut resolver = rhai::module_resolvers::FileModuleResolver::new();
+    resolver.set_base_path("scripts/lib");
+    engine.set_module_resolver(resolver);
+
+    let ast = engine
+        .compile_file("scripts/commands/experiment.rhai".into())
+        .expect("experiment.rhai compiles");
+
+    let parse = |args: &str| -> Vec<String> {
+        let out: rhai::Array = engine
+            .call_fn(&mut rhai::Scope::new(), &ast, "parse_materials", (args.to_string(),))
+            .expect("parse_materials is callable");
+        out.into_iter().map(|d| d.cast::<String>()).collect()
+    };
+
+    assert_eq!(parse("flour, water"), vec!["flour", "water"]);
+    // The three separators a player might reasonably reach for.
+    assert_eq!(parse("flour and water"), vec!["flour", "water"]);
+    assert_eq!(parse("flour with water"), vec!["flour", "water"]);
+    // Multi-word names survive; only the separators split.
+    assert_eq!(parse("iron nail, oak plank"), vec!["iron nail", "oak plank"]);
+    // Ragged spacing and empty segments do not produce blank lookups.
+    assert_eq!(parse("  flour ,,  water  "), vec!["flour", "water"]);
+    assert_eq!(parse("flour"), vec!["flour"]);
+    assert!(parse("").is_empty());
+    assert!(parse("  ,  ").is_empty());
+}
+
+/// Renown scores the whole skills map — languages share it and builder worlds
+/// add to it, and that breadth is the point of the number. The `core_*`
+/// figures exist so a display has something with a fixed denominator, and they
+/// must exclude exactly that extra. Regression guard for `Mastered: 19/18`.
+#[test]
+fn test_renown_separates_core_skills_from_languages_and_extras() {
+    let mut ch: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+        "name": "Polyglot",
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+    }))
+    .expect("build character");
+
+    // One mastered core skill, one mastered language, one non-core skill.
+    for (key, level) in [("foraging", 10), ("elvish", 10), ("bash", 4)] {
+        ch.skills
+            .insert(key.to_string(), ironmud::SkillProgress { level, experience: 0 });
+    }
+
+    let r = ironmud::progress::renown(&ch);
+    assert_eq!(r.skill_levels, 24, "the wide sum counts every skill row");
+    assert_eq!(r.mastered, 2, "the wide count includes the mastered language");
+    assert_eq!(r.core_skill_levels, 10, "only foraging is a core skill");
+    assert_eq!(r.core_mastered, 1);
+    assert!(
+        r.core_mastered <= ironmud::progress::CORE_SKILLS.len() as i32,
+        "the core count can never exceed its own denominator"
+    );
+    // The language still earns Renown — 24 levels + 3 per mastery.
+    assert_eq!(r.total, 24 + 3 * 2);
+}
+
+/// The leaderboard tick is the only thing that writes `World.leaderboards`,
+/// and `top` is useless without it. Drive the whole path — real database, real
+/// World lock — rather than only the pure ranking, because the two lock
+/// acquisitions around the scan are exactly the part a unit test cannot see.
+#[test]
+fn test_leaderboard_tick_fills_the_world_cache() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+    let db = ironmud::db::Db::open(temp.path()).expect("open DB");
+
+    let mut ada: ironmud::types::CharacterData = serde_json::from_value(serde_json::json!({
+        "name": "Ada",
+        "password_hash": "",
+        "current_room_id": uuid::Uuid::nil(),
+    }))
+    .expect("build character");
+    ada.achievement_counters.insert("kills.any".into(), 12);
+    ada.gold = 400;
+
+    let mut bo = ada.clone();
+    bo.name = "Bo".into();
+    bo.achievement_counters.insert("kills.any".into(), 3);
+    bo.gold = 900;
+
+    // An admin with the best numbers in the world, who must not appear.
+    let mut zeus = ada.clone();
+    zeus.name = "Zeus".into();
+    zeus.is_admin = true;
+    zeus.achievement_counters.insert("kills.any".into(), 99999);
+
+    for ch in [ada, bo, zeus] {
+        db.save_character_data(ch).expect("save character");
+    }
+
+    let connections: ironmud::SharedConnections =
+        std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+    let state = ironmud::World::minimal_shared(db.clone(), connections);
+
+    // Before the scan the cache is empty, and a reader has to cope with that.
+    assert_eq!(state.lock().unwrap().leaderboards.generated_at, 0);
+    assert!(state.lock().unwrap().leaderboards.is_empty());
+
+    ironmud::leaderboard::process_leaderboard_tick(&db, &state).expect("leaderboard tick");
+
+    let world = state.lock().unwrap();
+    let boards = &world.leaderboards;
+    assert!(boards.generated_at > 0, "the scan stamps its own time");
+    assert_eq!(boards.characters_scanned, 2, "the admin is not a competitor");
+
+    let kills = boards.resolve("kills").expect("kills.any board, found by prefix");
+    let names: Vec<&str> = kills.entries.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(names, vec!["Ada", "Bo"]);
+
+    // A different board ranks the same two people in the other order — which
+    // is the whole point of having more than one.
+    let gold = boards.resolve("gold").expect("gold board");
+    assert_eq!(gold.entries[0].name, "Bo");
+
+    assert_eq!(boards.placings_for("ada").len(), boards.placings_for("Ada").len());
+    assert!(boards.placings_for("zeus").is_empty());
+}
+
+/// `top` formats ranks, and the shared text module strips argument padding —
+/// Rhai has no `trim`, so the second one is hand-rolled and worth pinning.
+///
+/// `normalise` used to be a private copy inside `top.rhai`, which is why
+/// `standing` could not handle its own leading space. It lives in
+/// `scripts/lib/text.rhai` now and both commands import it, so the assertions
+/// below cover both.
+#[test]
+fn test_top_command_helpers() {
+    let mut engine = Engine::new();
+    engine.set_max_expr_depths(128, 128);
+    let mut resolver = rhai::module_resolvers::FileModuleResolver::new();
+    resolver.set_base_path("scripts/lib");
+    engine.set_module_resolver(resolver);
+    let ast = engine
+        .compile_file("scripts/commands/top.rhai".into())
+        .expect("top.rhai compiles");
+    let text_ast = engine
+        .compile_file("scripts/lib/text.rhai".into())
+        .expect("text.rhai compiles");
+
+    let call = |func: &str, arg: rhai::Dynamic| -> String {
+        engine
+            .call_fn::<String>(&mut rhai::Scope::new(), &ast, func, (arg,))
+            .unwrap_or_else(|e| panic!("{func} is callable: {e}"))
+    };
+
+    let ordinal = |n: i64| call("ordinal", rhai::Dynamic::from(n));
+    assert_eq!(ordinal(1), "1st");
+    assert_eq!(ordinal(2), "2nd");
+    assert_eq!(ordinal(3), "3rd");
+    assert_eq!(ordinal(4), "4th");
+    // The teens are the whole reason this function is not three lines.
+    assert_eq!(ordinal(11), "11th");
+    assert_eq!(ordinal(12), "12th");
+    assert_eq!(ordinal(13), "13th");
+    assert_eq!(ordinal(21), "21st");
+    assert_eq!(ordinal(112), "112th");
+
+    let normalise = |s: &str| -> String {
+        engine
+            .call_fn::<String>(
+                &mut rhai::Scope::new(),
+                &text_ast,
+                "normalise",
+                (rhai::Dynamic::from(s.to_string()),),
+            )
+            .expect("normalise is callable")
+    };
+    assert_eq!(normalise("  renown "), "renown");
+    assert_eq!(normalise("Kills.Any"), "kills.any");
+    assert_eq!(normalise("   "), "");
+    assert_eq!(normalise(""), "");
+}
+
+/// Corpse loot protection, driven through the actual Rhai binding the four
+/// container scripts call.
+///
+/// `get`, `look in`, `put` and `butcher` all ask `corpse_loot_block_reason`,
+/// so the glue between the pure logic and the scripts is the part worth
+/// covering: a binding that silently returns "" for everything would let every
+/// one of those guards pass while protecting nothing.
+#[test]
+fn test_corpse_loot_protection_binding() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let db = Arc::new(ironmud::db::Db::open(temp.path()).expect("open db"));
+    let connections: ironmud::SharedConnections = Arc::new(Mutex::new(HashMap::new()));
+
+    let mut engine = Engine::new();
+    ironmud::script::items::register(&mut engine, db.clone(), connections.clone());
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+
+    let mut corpse = ironmud::corpse::CorpseBuilder::for_player("Kaleth", uuid::Uuid::new_v4(), 0).build();
+    corpse.flags.corpse_created_at = now;
+    let fresh_id = corpse.id.to_string();
+    db.save_item_data(corpse).expect("save fresh corpse");
+
+    // Same corpse, well past the default 300s window.
+    let mut old = ironmud::corpse::CorpseBuilder::for_player("Kaleth", uuid::Uuid::new_v4(), 0).build();
+    old.flags.corpse_created_at = now - 1000;
+    let old_id = old.id.to_string();
+    db.save_item_data(old).expect("save old corpse");
+
+    // A mob corpse is never protected, whatever its age.
+    let mut mob = ironmud::corpse::CorpseBuilder::for_mobile("a ghoul", uuid::Uuid::new_v4(), 0).build();
+    mob.flags.corpse_created_at = now;
+    let mob_id = mob.id.to_string();
+    db.save_item_data(mob).expect("save mob corpse");
+
+    let reason = |who: &str, id: &str| -> String {
+        engine
+            .call_fn::<String>(
+                &mut rhai::Scope::new(),
+                &engine
+                    .compile("fn ask(w, i) { corpse_loot_block_reason(w, i) }")
+                    .unwrap(),
+                "ask",
+                (who.to_string(), id.to_string()),
+            )
+            .expect("binding is callable")
+    };
+
+    assert_eq!(reason("Kaleth", &fresh_id), "", "the owner is never blocked");
+    assert_eq!(reason("Kaleth", &old_id), "");
+    assert_eq!(reason("Stranger", &mob_id), "", "mob corpses are free for all");
+    assert_eq!(reason("Stranger", &old_id), "", "the window lapses");
+
+    let blocked = reason("Stranger", &fresh_id);
+    assert!(!blocked.is_empty(), "a stranger cannot open a fresh player corpse");
+    assert!(blocked.contains("Kaleth"), "the refusal names the owner: {blocked}");
+
+    // An unknown id is not this rule's business — the caller's own
+    // "you don't see that" handling is the right answer there.
+    assert_eq!(reason("Stranger", &uuid::Uuid::new_v4().to_string()), "");
+    assert_eq!(reason("Stranger", "not-a-uuid"), "");
+}
+
+/// The group panel's row renderer, driven with synthetic rows shaped exactly
+/// like `get_group_panel` returns.
+///
+/// Worth a test because the panel is the one display built entirely from a map
+/// rather than a registered type, so the static analyzers cannot see a
+/// misspelled field — a typo would show up as an empty column in play and
+/// nowhere else.
+#[test]
+fn test_group_panel_rows_render() {
+    let mut engine = Engine::new();
+    engine.set_max_expr_depths(128, 128);
+    let mut resolver = rhai::module_resolvers::FileModuleResolver::new();
+    resolver.set_base_path("scripts/lib");
+    engine.set_module_resolver(resolver);
+    let ast = engine
+        .compile_file("scripts/commands/group.rhai".into())
+        .expect("group.rhai compiles");
+
+    let row = |name: &str, here: bool, hp: i64, role: &str, is_you: bool| -> rhai::Map {
+        let mut m = rhai::Map::new();
+        m.insert("name".into(), rhai::Dynamic::from(name.to_string()));
+        m.insert("is_you".into(), rhai::Dynamic::from(is_you));
+        m.insert("role".into(), rhai::Dynamic::from(role.to_string()));
+        m.insert("here".into(), rhai::Dynamic::from(here));
+        m.insert("hp".into(), rhai::Dynamic::from(hp));
+        m.insert("max_hp".into(), rhai::Dynamic::from(100i64));
+        m.insert("condition".into(), rhai::Dynamic::from("Bloodied".to_string()));
+        m.insert("condition_color".into(), rhai::Dynamic::from("\x1b[1;33m".to_string()));
+        m.insert("stamina".into(), rhai::Dynamic::from(45i64));
+        m.insert("max_stamina".into(), rhai::Dynamic::from(60i64));
+        m.insert("position".into(), rhai::Dynamic::from("standing".to_string()));
+        m.insert("fighting".into(), rhai::Dynamic::from(rhai::Array::new()));
+        m
+    };
+
+    let render = |func: &str, m: rhai::Map| -> String {
+        engine
+            .call_fn::<String>(&mut rhai::Scope::new(), &ast, func, (m,))
+            .unwrap_or_else(|e| panic!("{func} is callable: {e}"))
+    };
+
+    let line = render("render_member_row", row("Kaleth", true, 40, "leader", true));
+    assert!(line.contains("Kaleth"), "{line:?}");
+    assert!(line.contains("Bloodied"), "{line:?}");
+    assert!(line.contains("ST  45/60"), "stamina column: {line:?}");
+    assert!(line.contains("standing"), "{line:?}");
+    // Colour must reset, or the rest of the row bleeds.
+    assert!(line.contains("\x1b[0m"), "{line:?}");
+
+    // A member elsewhere has no vitals — printing HP for someone who is not in
+    // the fight invites the party to react to an irrelevant number.
+    let away = render("render_member_row", row("Scout", false, 40, "member", false));
+    assert!(away.contains("(elsewhere)"), "{away:?}");
+    assert!(!away.contains("Bloodied"), "{away:?}");
+    assert!(!away.contains('\u{1b}'), "no escapes on an absent row: {away:?}");
+
+    let tags = render("render_member_tags", row("Kaleth", true, 40, "leader", true));
+    assert_eq!(tags, " (Leader) <-- You");
+    let plain = render("render_member_tags", row("Medic", true, 90, "member", false));
+    assert_eq!(plain, "", "a present grouped member needs no tag at all");
+    let tagalong = render("render_member_tags", row("Pup", true, 90, "following", false));
+    assert_eq!(tagalong, " (Following)");
 }

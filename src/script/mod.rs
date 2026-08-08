@@ -16,11 +16,14 @@ mod api_keys;
 mod areas;
 pub mod bans;
 mod boards;
+pub mod bounty;
 mod bugs;
+pub mod build;
 pub mod characters;
 pub mod clan;
 mod classes;
 mod combat;
+pub mod consignment;
 mod crafting;
 pub mod cyberware;
 pub mod dg;
@@ -34,6 +37,7 @@ mod groups;
 mod healers;
 pub mod items;
 pub mod lang;
+pub mod leaderboard;
 mod lookup;
 mod mail;
 pub mod map;
@@ -45,6 +49,7 @@ mod property;
 mod quests;
 mod races;
 pub mod replicant;
+pub mod reputation;
 pub mod rooms;
 mod shop_presets;
 mod shops;
@@ -125,6 +130,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         short_description,
         class_name,
         prompt_mode,
+        prompt_format,
         current_language
     );
 
@@ -278,6 +284,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
         "new_character",
         |name: String, password_hash: String, room_id: String| {
             CharacterData {
+                builder_bounty_points: 0,
                 name,
                 password_hash,
                 current_room_id: uuid::Uuid::parse_str(&room_id).unwrap_or_default(),
@@ -312,6 +319,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 max_hp: 100,
                 // Prompt settings
                 prompt_mode: String::new(),
+                prompt_format: String::new(),
+                xp_feed: String::new(),
                 // Password management
                 must_change_password: false,
                 // Builder mode: show room flags (persisted)
@@ -347,6 +356,9 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 stat_cha: 10,
                 // Morality (clamp -200..=200; starts neutral)
                 morality: 0,
+                // Every faction starts Neutral, which is the absent-key
+                // reading, so a new character carries no rows at all.
+                reputation: std::collections::HashMap::new(),
                 // Combat system fields
                 spawn_room_id: None,
                 combat: crate::CombatState::default(),
@@ -403,6 +415,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 // Property rental system
                 active_leases: std::collections::HashMap::new(),
                 escrow_ids: Vec::new(),
+                consignment_ids: Vec::new(),
+                corpse_ids: Vec::new(),
                 tour_origin_room: None,
                 on_tour: false,
                 // Buff system fields
@@ -438,6 +452,8 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
                 dialogue_flags: std::collections::HashMap::new(),
                 // Map system fields
                 rooms_visited: std::collections::HashSet::new(),
+                socials_used: std::collections::HashSet::new(),
+                npcs_talked_to: std::collections::HashSet::new(),
                 automap_enabled: false,
                 automap_radius: crate::script::map::AUTOMAP_DEFAULT_RADIUS,
                 ascii_map: false,
@@ -744,6 +760,9 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
 
     // Register RoomData constructor
     engine.register_fn("new_room", |id: String, title: String, description: String| RoomData {
+        authored_by: None,
+        last_edited_by: None,
+        origin: Default::default(),
         id: uuid::Uuid::parse_str(&id).unwrap_or_else(|_| uuid::Uuid::new_v4()),
         title,
         description,
@@ -2193,29 +2212,37 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     api_keys::register(engine, db.clone());
     areas::register(engine, db.clone());
     combat::register(engine, db.clone());
+    consignment::register(engine, db.clone(), connections.clone(), state.clone());
+    // Severity-tiered hit verbs, shared with the combat tick so attack/shoot/
+    // snipe don't each carry their own copy of the tables.
+    crate::combat_text::register(engine);
     fear::register(engine, db.clone(), connections.clone());
     worship::register(engine, db.clone(), connections.clone());
-    items::register(engine, db.clone());
-    mobiles::register(engine, db.clone(), state.clone());
+    items::register(engine, db.clone(), connections.clone());
+    mobiles::register(engine, db.clone(), connections.clone(), state.clone());
     mobile_presets::register(engine, db.clone());
-    rooms::register(engine, db.clone(), connections.clone());
-    shops::register(engine, db.clone());
+    rooms::register(engine, db.clone(), connections.clone(), state.clone());
+    reputation::register(engine, db.clone(), connections.clone(), state.clone());
+    leaderboard::register(engine, state.clone());
+    build::register(engine, db.clone(), connections.clone(), state.clone());
+    bounty::register(engine, db.clone(), connections.clone(), state.clone());
+    shops::register(engine, db.clone(), state.clone());
     shop_presets::register(engine, db.clone());
     transport::register_types(engine);
     transport::register(engine, db.clone());
-    triggers::register(engine, db.clone(), connections.clone());
+    triggers::register(engine, db.clone(), connections.clone(), state.clone());
     fishing::register(engine, connections.clone());
     medical::register(engine, db.clone(), connections.clone());
     tattoos::register(engine, db.clone(), connections.clone());
     healers::register(engine, db.clone(), connections.clone());
-    crafting::register(engine, db.clone(), state.clone());
+    crafting::register(engine, db.clone(), connections.clone(), state.clone());
     characters::register(engine, db.clone(), connections.clone(), state.clone());
     classes::register(engine, db.clone(), state.clone());
     races::register(engine, db.clone(), state.clone());
     groups::register(engine, db.clone(), connections.clone());
-    property::register(engine, db.clone(), connections.clone());
-    mail::register(engine, db.clone(), connections.clone());
-    boards::register(engine, db.clone());
+    property::register(engine, db.clone(), connections.clone(), state.clone());
+    mail::register(engine, db.clone(), connections.clone(), state.clone());
+    boards::register(engine, db.clone(), connections.clone(), state.clone());
     garden::register(engine, db.clone());
     spells::register(engine, db.clone(), connections.clone(), state.clone());
     lookup::register(engine, db.clone(), state.clone());
@@ -2225,7 +2252,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     social::register(engine, db.clone());
     clan::register(engine, db.clone(), connections.clone());
     achievements::register(engine, db.clone(), connections.clone(), state.clone());
-    map::register(engine, db.clone(), connections.clone());
+    map::register(engine, db.clone(), connections.clone(), state.clone());
     lang::register(engine, db.clone(), state.clone());
     dialogue::register(engine, db.clone(), connections.clone(), state.clone());
     quests::register(engine, db.clone(), connections.clone(), state.clone());

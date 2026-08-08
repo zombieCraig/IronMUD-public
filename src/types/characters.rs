@@ -73,6 +73,14 @@ pub struct CharacterData {
     pub traits: Vec<String>,
     #[serde(default = "default_trait_points")]
     pub trait_points: i32,
+    /// Builder points awarded for accepted bounties.
+    ///
+    /// The one term of a builder's score that is stored rather than derived
+    /// from a scan: a bounty pays for work whose product may be spread across
+    /// content the claimant does not own, and it stays paid if that content
+    /// is later deleted by someone else. See `src/build_score.rs`.
+    #[serde(default)]
+    pub builder_bounty_points: i32,
     #[serde(default)]
     pub creation_complete: bool,
     /// Cumulative seconds the character has been played, across all sessions.
@@ -102,6 +110,16 @@ pub struct CharacterData {
     // Prompt settings
     #[serde(default)]
     pub prompt_mode: String, // "simple" (default) or "verbose"
+    /// A custom prompt format string over the tokens in `crate::prompt`.
+    /// Empty means "use the preset `prompt_mode` names", which is what every
+    /// pre-existing character has — so this needs no migration.
+    #[serde(default)]
+    pub prompt_format: String,
+    /// Verbosity of the skill-XP feed: "off", "brief" (default) or "full".
+    /// Empty means brief, so pre-existing characters need no migration.
+    /// Toggled via `set xpfeed`; consumed by `crate::progress::XpFeed`.
+    #[serde(default)]
+    pub xp_feed: String,
     // Password management
     #[serde(default)]
     pub must_change_password: bool,
@@ -167,6 +185,15 @@ pub struct CharacterData {
     // No class sets this; only explicit Rhai/DG script calls (kills, quests, dialogue) shift it.
     #[serde(default)]
     pub morality: i32,
+    /// Standing with each faction the character has dealt with, keyed by the
+    /// lowercase faction tag and clamped to `[-1000, 1000]`. See
+    /// `crate::reputation`.
+    ///
+    /// Sparse on purpose: an absent key reads as Neutral, and a standing that
+    /// returns to Neutral is removed rather than stored as a zero, so this map
+    /// stays proportional to what the character has actually done.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub reputation: std::collections::HashMap<String, i32>,
     // Combat system fields
     #[serde(default)]
     pub spawn_room_id: Option<Uuid>, // Respawn location on death
@@ -274,6 +301,21 @@ pub struct CharacterData {
     pub active_leases: HashMap<Uuid, Uuid>, // area_id -> lease_id (one per area)
     #[serde(default)]
     pub escrow_ids: Vec<Uuid>, // Escrow IDs for evicted items
+    /// Consignment listings this character currently has on brokers. Mirrors
+    /// `escrow_ids`: the listing is findable from the seller without scanning
+    /// the whole tree.
+    #[serde(default)]
+    pub consignment_ids: Vec<Uuid>,
+    /// Corpses this character has left lying around, newest last.
+    ///
+    /// Same reason as the two above: `locate corpse` used to answer by
+    /// deserializing the entire item tree — the heaviest read the server
+    /// performs — on a command with no cost and no cooldown. Death already owns
+    /// the corpse and the character save, so it can just write the id down.
+    /// Stale ids are pruned wherever the list is read, so a corpse that rotted
+    /// while the owner was offline does not linger.
+    #[serde(default)]
+    pub corpse_ids: Vec<Uuid>,
     #[serde(default)]
     pub tour_origin_room: Option<Uuid>, // Return location after tour
     #[serde(default)]
@@ -346,6 +388,16 @@ pub struct CharacterData {
     // Map system: rooms the player has entered (drives fog-of-war).
     #[serde(default)]
     pub rooms_visited: std::collections::HashSet<Uuid>,
+    /// Social verbs the character has performed at least once. Backs the
+    /// `socials.distinct` achievement counter. Stored as a set rather than a
+    /// tally because the interesting goal is breadth across the ~490 socials;
+    /// a plain count would be satisfied by repeating one verb.
+    #[serde(default)]
+    pub socials_used: std::collections::HashSet<String>,
+    /// Mobile prototype vnums the character has opened a dialogue with. Backs
+    /// `npcs.talked_to`, and is a set for the same reason as `socials_used`.
+    #[serde(default)]
+    pub npcs_talked_to: std::collections::HashSet<String>,
     // Map system: prepend ASCII map to every room display (look/move/login).
     // Default off — opt-in via `set automap on`. The map is screen-real-estate
     // heavy and many players prefer to invoke `map` on demand.

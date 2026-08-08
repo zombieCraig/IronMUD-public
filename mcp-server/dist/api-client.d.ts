@@ -1,9 +1,10 @@
-import type { Area, Room, Item, Mobile, SpawnPoint, Transport, PlantPrototype, Recipe, CreateRecipeRequest, UpdateRecipeRequest, Quest, CreateQuestRequest, UpdateQuestRequest, ForageTables, AddForageEntryRequest, ForageType, ItemSummary, RoomSummary, MobileSummary, AreaOverview, CreateAreaRequest, UpdateAreaRequest, CreateRoomRequest, CreateItemRequest, CreateMobileRequest, CreateSpawnPointRequest, CreateTransportRequest, CreatePlantPrototypeRequest, AddTransportStopRequest, SetExitRequest, AddDoorRequest, AddTriggerRequest, AddExtraDescRequest, AddDialogueRequest, AddDialogueNodeRequest, UpdateDialogueNodeRequest, DialogueChoiceRequest, AddMobileTriggerRequest, AddItemTriggerRequest, AddSpawnDependencyRequest, SpawnEntityRequest, BugReport, UpdateBugReportRequest, AddBugNoteRequest, Achievement, AchievementSummary, CreateAchievementRequest, UpdateAchievementRequest, DgProto, DgProtoSummary, CreateDgProtoRequest, UpdateDgProtoRequest } from "./types.js";
+import type { Area, Room, Item, Mobile, SpawnPoint, Transport, PlantPrototype, Recipe, CreateRecipeRequest, UpdateRecipeRequest, Quest, CreateQuestRequest, UpdateQuestRequest, ForageTables, AddForageEntryRequest, ForageType, ItemSummary, RoomSummary, MobileSummary, AreaOverview, CreateAreaRequest, UpdateAreaRequest, CreateRoomRequest, CreateItemRequest, CreateMobileRequest, CreateSpawnPointRequest, CreateTransportRequest, CreatePlantPrototypeRequest, AddTransportStopRequest, SetExitRequest, AddDoorRequest, AddTriggerRequest, AddExtraDescRequest, AddDialogueRequest, AddDialogueNodeRequest, UpdateDialogueNodeRequest, DialogueChoiceRequest, AddMobileTriggerRequest, AddItemTriggerRequest, AddSpawnDependencyRequest, SpawnEntityRequest, BugReport, BuildRequest, UpdateBugReportRequest, AddBugNoteRequest, Achievement, AchievementSummary, CreateAchievementRequest, UpdateAchievementRequest, DgProto, DgProtoSummary, CreateDgProtoRequest, UpdateDgProtoRequest } from "./types.js";
 export declare class IronMUDApiClient {
     private client;
     constructor(baseUrl: string, apiKey: string);
     private request;
     private requestWithMeta;
+    private outcomeRequest;
     private listRequest;
     health(): Promise<{
         status: string;
@@ -180,6 +181,26 @@ export declare class IronMUDApiClient {
     listForageTables(areaId: string): Promise<ForageTables>;
     addForageEntry(areaId: string, data: AddForageEntryRequest): Promise<Area>;
     removeForageEntry(areaId: string, forageType: ForageType, vnum: string): Promise<Area>;
+    listBounties(params: {
+        status?: string;
+        claimed_by?: string;
+        limit?: number;
+    }): Promise<BuildRequest[]>;
+    getBounty(ticket: number): Promise<BuildRequest>;
+    auditEntity(kind: string, key: string): Promise<Record<string, unknown>>;
+    auditArea(key: string): Promise<Record<string, unknown>>;
+    auditWorld(): Promise<Record<string, unknown>>;
+    getWorldReport(): Promise<Record<string, unknown>>;
+    getBuildTracks(): Promise<Record<string, unknown>[]>;
+    postBounty(body: Record<string, unknown>): Promise<BuildRequest>;
+    claimBounty(ticket: number): Promise<{
+        success: boolean;
+        message: string;
+    }>;
+    submitBounty(ticket: number, linked: string[]): Promise<{
+        success: boolean;
+        message: string;
+    }>;
     listBugReports(status?: string): Promise<BugReport[]>;
     getBugReport(id: string): Promise<BugReport>;
     getBugReportByTicket(num: number): Promise<BugReport>;

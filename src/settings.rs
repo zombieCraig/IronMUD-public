@@ -43,6 +43,12 @@ pub const KNOWN_SETTINGS: &[(&str, &str)] = &[
     // Corpse decay
     ("player_corpse_decay_secs", "3600"),
     ("mobile_corpse_decay_secs", "600"),
+    // Percentages of the decay window at which a player's corpse warns its
+    // owner. Empty disables the warnings entirely.
+    ("corpse_decay_warn_fractions", "50,90"),
+    // Seconds a player corpse is reserved for its owner and their group.
+    // 0 disables protection and restores immediate free-for-all looting.
+    ("player_corpse_loot_protect_secs", "300"),
     // Economy & property
     ("rent_period_game_days", "30"),
     ("escrow_expiry_real_days", "30"),

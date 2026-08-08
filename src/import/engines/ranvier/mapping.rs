@@ -786,6 +786,7 @@ fn emit_mobile(
         armor_class: 10 - level.min(8),
         gold,
         flags,
+        alignment: 0,
         world_max_count: None,
         active_buffs: Vec::new(),
         position: None,

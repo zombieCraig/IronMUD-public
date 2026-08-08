@@ -118,7 +118,7 @@ fn run_command(args, connection_id) {
         }
         enter_mobile_combat(target_id, "player", char.name);
         set_mobile_combat_distance(target_id, char.name, "melee");
-        add_skill_experience(char.name, "bash", 1);
+        add_skill_experience(char.name, "bash", 1, "combat");
         return;
     }
 
@@ -154,7 +154,7 @@ fn run_command(args, connection_id) {
             }
             quest_credit_mob_kill(char.name, mobile.vnum);
             delete_mobile(target_id);
-            add_skill_experience(char.name, "bash", 5);
+            add_skill_experience(char.name, "bash", 5, "combat");
             return;
         }
     }
@@ -167,9 +167,6 @@ fn run_command(args, connection_id) {
     enter_mobile_combat(target_id, "player", char.name);
     set_mobile_combat_distance(target_id, char.name, "melee");
 
-    let leveled = add_skill_experience(char.name, "bash", 4);
-    if leveled {
-        send_client_message(connection_id, "Your bash skill has improved!");
-    }
+    add_skill_experience(char.name, "bash", 4, "combat");
     return;
 }

@@ -4,47 +4,173 @@
     "name": "Novice Forager",
     "description": "Reach level 3 in the foraging skill.",
     "category": "skill",
-    "criterion": { "kind": "skill_reached", "skill": "foraging", "level": 3 },
-    "reward": { "title": "the Forager" }
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "foraging",
+      "level": 3
+    },
+    "reward": {
+      "title": "the Forager"
+    }
   },
   {
     "key": "skilled_cook",
     "name": "Skilled Cook",
     "description": "Reach level 5 in the cooking skill.",
     "category": "skill",
-    "criterion": { "kind": "skill_reached", "skill": "cooking", "level": 5 },
-    "reward": { "title": "the Cook" }
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "cooking",
+      "level": 5
+    },
+    "reward": {
+      "title": "the Cook"
+    }
   },
   {
     "key": "field_medic",
     "name": "Field Medic",
     "description": "Reach level 5 in the medical skill.",
     "category": "skill",
-    "criterion": { "kind": "skill_reached", "skill": "medical", "level": 5 },
-    "reward": { "title": "the Field Medic" }
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "medical",
+      "level": 5
+    },
+    "reward": {
+      "title": "the Field Medic"
+    }
   },
   {
-    "key": "swordmaster",
-    "name": "Swordmaster",
-    "description": "Reach level 8 in the swords skill.",
+    "key": "surgeon",
+    "name": "Surgeon",
+    "description": "Master the medical skill.",
     "category": "skill",
-    "criterion": { "kind": "skill_reached", "skill": "swords", "level": 8 },
-    "reward": { "title": "the Swordmaster" }
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "medical",
+      "level": 10
+    },
+    "reward": {
+      "title": "the Surgeon",
+      "gold": 1000
+    }
+  },
+  {
+    "key": "light_fingers",
+    "name": "Light Fingers",
+    "description": "Reach level 3 in the thievery skill.",
+    "category": "skill",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "thievery",
+      "level": 3
+    },
+    "reward": {
+      "title": "the Light-Fingered"
+    }
+  },
+  {
+    "key": "master_thief",
+    "name": "Master Thief",
+    "description": "Master the thievery skill.",
+    "category": "skill",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "thievery",
+      "level": 10
+    },
+    "reward": {
+      "title": "the Master Thief"
+    }
+  },
+  {
+    "key": "unseen",
+    "name": "Unseen",
+    "description": "Reach level 5 in the stealth skill.",
+    "category": "skill",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "stealth",
+      "level": 5
+    },
+    "reward": {
+      "title": "the Unseen"
+    }
+  },
+  {
+    "key": "ghost",
+    "name": "Ghost",
+    "description": "Master the stealth skill.",
+    "category": "skill",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "stealth",
+      "level": 10
+    },
+    "reward": {
+      "title": "the Ghost"
+    }
   },
   {
     "key": "polymath",
     "name": "Polymath",
     "description": "Reach level 10 in any skill.",
     "category": "skill",
-    "criterion": { "kind": "counter", "counter": "skills_maxed", "threshold": 1 },
-    "reward": { "title": "the Adept" }
+    "criterion": {
+      "kind": "counter",
+      "counter": "skills_maxed",
+      "threshold": 1
+    },
+    "reward": {
+      "title": "the Adept"
+    }
+  },
+  {
+    "key": "many_talents",
+    "name": "Of Many Talents",
+    "description": "Master three different skills (level 10).",
+    "category": "skill",
+    "criterion": {
+      "kind": "counter",
+      "counter": "skills_maxed",
+      "threshold": 3
+    },
+    "reward": {
+      "title": "the Talented",
+      "trait_points": 1
+    }
   },
   {
     "key": "renaissance",
     "name": "Renaissance",
     "description": "Master five different skills (level 10).",
     "category": "skill",
-    "criterion": { "kind": "counter", "counter": "skills_maxed", "threshold": 5 },
-    "reward": { "title": "the Renaissance" }
+    "criterion": {
+      "kind": "counter",
+      "counter": "skills_maxed",
+      "threshold": 5
+    },
+    "reward": {
+      "title": "the Renaissance",
+      "gold": 2000,
+      "trait_points": 2
+    }
+  },
+  {
+    "key": "compleat",
+    "name": "The Compleat",
+    "description": "Master ten different skills (level 10).",
+    "category": "skill",
+    "criterion": {
+      "kind": "counter",
+      "counter": "skills_maxed",
+      "threshold": 10
+    },
+    "reward": {
+      "title": "the Compleat",
+      "gold": 10000,
+      "trait_points": 3
+    }
   }
 ]

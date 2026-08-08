@@ -1,15 +1,6 @@
 // scripts/commands/lore.rhai
 // lore <target> - Study a mobile to learn about its capabilities
 
-fn get_health_desc(hp, max_hp) {
-    let pct = (hp * 100) / max_hp;
-    if pct >= 90 { return "looks healthy"; }
-    if pct >= 60 { return "has some wounds"; }
-    if pct >= 30 { return "looks wounded"; }
-    if pct >= 10 { return "looks badly wounded"; }
-    return "is near death";
-}
-
 fn get_danger_desc(mob_level, char_level) {
     let diff = mob_level - char_level;
     if diff <= -10 { return "completely harmless"; }
@@ -130,13 +121,13 @@ fn run_command(args, connection_id) {
 
     // Level 1: add rough health
     if tracking_skill == 1 {
-        output += "  Condition: " + get_health_desc(mob.hp, mob.max_hp) + "\n";
+        output += "  Condition: " + condition_tag(mob.hp, mob.max_hp) + "\n";
     }
 
     // Level 2+: exact level + health description
     if tracking_skill >= 2 {
         output += "  Level: " + mob.level + "\n";
-        output += "  Condition: " + get_health_desc(mob.hp, mob.max_hp) + "\n";
+        output += "  Condition: " + condition_tag(mob.hp, mob.max_hp) + "\n";
     }
 
     // Level 4+: AC, damage, temperament
@@ -151,8 +142,5 @@ fn run_command(args, connection_id) {
 
     send_client_message(connection_id, output);
 
-    let leveled = add_skill_experience(char.name, "tracking", 5);
-    if leveled {
-        send_client_message(connection_id, "Your tracking skill has improved!");
-    }
+    add_skill_experience(char.name, "tracking", 5, "gather");
 }

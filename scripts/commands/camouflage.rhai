@@ -72,8 +72,5 @@ fn run_command(args, connection_id) {
         send_client_message(connection_id, "You try to blend in, but can't find adequate cover.");
     }
 
-    let leveled = add_skill_experience(char.name, "tracking", 5);
-    if leveled {
-        send_client_message(connection_id, "Your tracking skill has improved!");
-    }
+    add_skill_experience(char.name, "tracking", 5, "stealth");
 }

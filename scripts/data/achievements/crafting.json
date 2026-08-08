@@ -1,0 +1,347 @@
+[
+  {
+    "key": "apprentice_crafter",
+    "name": "Apprentice Crafter",
+    "description": "Learn your first recipe.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "counter",
+      "counter": "recipes.learned",
+      "threshold": 1
+    },
+    "reward": {
+      "title": "the Apprentice"
+    }
+  },
+  {
+    "key": "journeyman_crafter",
+    "name": "Journeyman Crafter",
+    "description": "Learn 10 recipes.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "counter",
+      "counter": "recipes.learned",
+      "threshold": 10
+    },
+    "reward": {
+      "title": "the Journeyman"
+    }
+  },
+  {
+    "key": "master_crafter",
+    "name": "Master Crafter",
+    "description": "Learn 25 recipes.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "counter",
+      "counter": "recipes.learned",
+      "threshold": 25
+    },
+    "reward": {
+      "title": "the Master Crafter",
+      "gold": 1000,
+      "trait_points": 1
+    }
+  },
+  {
+    "key": "first_discovery",
+    "name": "Figured It Out",
+    "description": "Work out a recipe for yourself, without being told.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "counter",
+      "counter": "recipes.discovered",
+      "threshold": 1
+    },
+    "reward": {
+      "title": "the Curious"
+    }
+  },
+  {
+    "key": "tinkerer",
+    "name": "Tinkerer",
+    "description": "Discover 5 recipes by experiment.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "counter",
+      "counter": "recipes.discovered",
+      "threshold": 5
+    },
+    "reward": {
+      "title": "the Tinkerer",
+      "gold": 250
+    }
+  },
+  {
+    "key": "natural_philosopher",
+    "name": "Natural Philosopher",
+    "description": "Discover 20 recipes by experiment.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "counter",
+      "counter": "recipes.discovered",
+      "threshold": 20
+    },
+    "reward": {
+      "title": "the Natural Philosopher",
+      "gold": 1000,
+      "trait_points": 1
+    }
+  },
+  {
+    "key": "steady_hands",
+    "name": "Steady Hands",
+    "description": "Reach level 5 in the crafting skill.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "crafting",
+      "level": 5
+    },
+    "reward": {
+      "title": "the Steady-Handed"
+    }
+  },
+  {
+    "key": "artificer",
+    "name": "Artificer",
+    "description": "Master the crafting skill.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "crafting",
+      "level": 10
+    },
+    "reward": {
+      "title": "the Artificer",
+      "gold": 1000
+    }
+  },
+  {
+    "key": "head_chef",
+    "name": "Head Chef",
+    "description": "Master the cooking skill.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "cooking",
+      "level": 10
+    },
+    "reward": {
+      "title": "the Head Chef"
+    }
+  },
+  {
+    "key": "green_thumb",
+    "name": "Green Thumb",
+    "description": "Reach level 5 in the gardening skill.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "gardening",
+      "level": 5
+    },
+    "reward": {
+      "title": "the Green-Thumbed"
+    }
+  },
+  {
+    "key": "cultivator",
+    "name": "Cultivator",
+    "description": "Master the gardening skill.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "gardening",
+      "level": 10
+    },
+    "reward": {
+      "title": "the Cultivator"
+    }
+  },
+  {
+    "key": "angler",
+    "name": "Angler",
+    "description": "Reach level 5 in the fishing skill.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "fishing",
+      "level": 5
+    },
+    "reward": {
+      "title": "the Angler"
+    }
+  },
+  {
+    "key": "old_man_and_the_sea",
+    "name": "Old Hand at Sea",
+    "description": "Master the fishing skill.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "fishing",
+      "level": 10
+    },
+    "reward": {
+      "title": "the Old Hand"
+    }
+  },
+  {
+    "key": "gatherer",
+    "name": "Gatherer",
+    "description": "Master the foraging skill.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "foraging",
+      "level": 10
+    },
+    "reward": {
+      "title": "the Gatherer"
+    }
+  },
+  {
+    "key": "first_creation",
+    "name": "First Creation",
+    "description": "Craft your first item.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "counter",
+      "counter": "items.crafted",
+      "threshold": 1
+    },
+    "reward": {
+      "title": "the Maker"
+    }
+  },
+  {
+    "key": "workshop_hands",
+    "name": "Workshop Hands",
+    "description": "Craft 50 items.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "counter",
+      "counter": "items.crafted",
+      "threshold": 50
+    },
+    "reward": {
+      "title": "the Maker of Many"
+    }
+  },
+  {
+    "key": "production_line",
+    "name": "Production Line",
+    "description": "Craft 250 items.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "counter",
+      "counter": "items.crafted",
+      "threshold": 250
+    },
+    "reward": {
+      "title": "the Tireless",
+      "gold": 2000,
+      "trait_points": 2
+    }
+  },
+  {
+    "key": "short_order",
+    "name": "Short Order",
+    "description": "Cook 25 meals.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "counter",
+      "counter": "meals.cooked",
+      "threshold": 25
+    },
+    "reward": {
+      "title": "the Short-Order Cook"
+    }
+  },
+  {
+    "key": "feast_maker",
+    "name": "Feast Maker",
+    "description": "Cook 200 meals.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "counter",
+      "counter": "meals.cooked",
+      "threshold": 200
+    },
+    "reward": {
+      "title": "the Feast Maker"
+    }
+  },
+  {
+    "key": "first_catch",
+    "name": "First Catch",
+    "description": "Land your first fish.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "counter",
+      "counter": "fish.landed",
+      "threshold": 1
+    },
+    "reward": {
+      "title": "the Hopeful"
+    }
+  },
+  {
+    "key": "full_creel",
+    "name": "A Full Creel",
+    "description": "Land 100 fish.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "counter",
+      "counter": "fish.landed",
+      "threshold": 100
+    },
+    "reward": {
+      "title": "the Fisher"
+    }
+  },
+  {
+    "key": "one_that_got_away",
+    "name": "Never the One That Got Away",
+    "description": "Land 500 fish.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "counter",
+      "counter": "fish.landed",
+      "threshold": 500
+    },
+    "reward": {
+      "title": "the Angler Supreme",
+      "gold": 2000
+    }
+  },
+  {
+    "key": "first_harvest",
+    "name": "First Harvest",
+    "description": "Harvest your first plant.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "counter",
+      "counter": "plants.harvested",
+      "threshold": 1
+    },
+    "reward": {
+      "title": "the Sower"
+    }
+  },
+  {
+    "key": "good_season",
+    "name": "A Good Season",
+    "description": "Harvest 100 plants.",
+    "category": "crafting",
+    "criterion": {
+      "kind": "counter",
+      "counter": "plants.harvested",
+      "threshold": 100
+    },
+    "reward": {
+      "title": "the Reaper of Fields"
+    }
+  }
+]

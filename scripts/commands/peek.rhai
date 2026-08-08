@@ -77,10 +77,7 @@ fn run_command(args, connection_id) {
             }
         }
         // Award small XP on failure to allow progression from level 0
-        let leveled = add_skill_experience(char.name, "thievery", 1);
-        if leveled {
-            send_client_message(connection_id, "Your thievery skill has improved!");
-        }
+        add_skill_experience(char.name, "thievery", 1, "stealth");
         return;
     }
 
@@ -116,8 +113,5 @@ fn run_command(args, connection_id) {
 
     send_client_message(connection_id, output);
 
-    let leveled = add_skill_experience(char.name, "thievery", 3);
-    if leveled {
-        send_client_message(connection_id, "Your thievery skill has improved!");
-    }
+    add_skill_experience(char.name, "thievery", 3, "stealth");
 }

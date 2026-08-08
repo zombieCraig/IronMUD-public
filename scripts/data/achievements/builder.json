@@ -1,0 +1,146 @@
+[
+  {
+    "key": "first_room",
+    "name": "First Stone",
+    "description": "Build a room.",
+    "category": "builder",
+    "criterion": { "kind": "counter", "counter": "build.rooms", "threshold": 1 },
+    "reward": { "title": "the Mason" },
+    "hidden": false
+  },
+  {
+    "key": "ten_rooms",
+    "name": "A Place With Corners",
+    "description": "Build ten rooms.",
+    "category": "builder",
+    "criterion": { "kind": "counter", "counter": "build.rooms", "threshold": 10 },
+    "reward": { "title": "the Builder" },
+    "hidden": false
+  },
+  {
+    "key": "fifty_rooms",
+    "name": "Somewhere To Get Lost",
+    "description": "Build fifty rooms.",
+    "category": "builder",
+    "criterion": { "kind": "counter", "counter": "build.rooms", "threshold": 50 },
+    "reward": { "title": "the Cartographer" },
+    "hidden": false
+  },
+  {
+    "key": "two_hundred_rooms",
+    "name": "A World, Then",
+    "description": "Build two hundred rooms.",
+    "category": "builder",
+    "criterion": { "kind": "counter", "counter": "build.rooms", "threshold": 200 },
+    "reward": { "title": "the Worldwright" },
+    "hidden": false
+  },
+  {
+    "key": "first_area",
+    "name": "Somewhere Of Your Own",
+    "description": "Build an area.",
+    "category": "builder",
+    "criterion": { "kind": "counter", "counter": "build.areas", "threshold": 1 },
+    "reward": { "title": "the Founder" },
+    "hidden": false
+  },
+  {
+    "key": "five_areas",
+    "name": "A Map With Edges",
+    "description": "Build five areas.",
+    "category": "builder",
+    "criterion": { "kind": "counter", "counter": "build.areas", "threshold": 5 },
+    "reward": { "title": "the Regent" },
+    "hidden": false
+  },
+  {
+    "key": "first_mobile",
+    "name": "Somebody Lives Here",
+    "description": "Build a mobile.",
+    "category": "builder",
+    "criterion": { "kind": "counter", "counter": "build.mobiles", "threshold": 1 },
+    "reward": { "title": "the Populator" },
+    "hidden": false
+  },
+  {
+    "key": "twenty_five_mobiles",
+    "name": "A Population",
+    "description": "Build twenty-five mobiles.",
+    "category": "builder",
+    "criterion": { "kind": "counter", "counter": "build.mobiles", "threshold": 25 },
+    "reward": { "title": "the Peoplewright" },
+    "hidden": false
+  },
+  {
+    "key": "first_item",
+    "name": "Something To Carry",
+    "description": "Build an item.",
+    "category": "builder",
+    "criterion": { "kind": "counter", "counter": "build.items", "threshold": 1 },
+    "reward": { "title": "the Provisioner" },
+    "hidden": false
+  },
+  {
+    "key": "fifty_items",
+    "name": "Well Stocked",
+    "description": "Build fifty items.",
+    "category": "builder",
+    "criterion": { "kind": "counter", "counter": "build.items", "threshold": 50 },
+    "reward": { "title": "the Outfitter" },
+    "hidden": false
+  },
+  {
+    "key": "first_quest",
+    "name": "A Reason To Go",
+    "description": "Write a quest.",
+    "category": "builder",
+    "criterion": { "kind": "counter", "counter": "build.quests", "threshold": 1 },
+    "reward": { "title": "the Storyteller" },
+    "hidden": false
+  },
+  {
+    "key": "ten_quests",
+    "name": "Ten Reasons To Go",
+    "description": "Write ten quests.",
+    "category": "builder",
+    "criterion": { "kind": "counter", "counter": "build.quests", "threshold": 10 },
+    "reward": { "title": "the Chronicler" },
+    "hidden": false
+  },
+  {
+    "key": "first_excellent",
+    "name": "Held To The Light",
+    "description": "Bring one piece of your work up to an A grade.",
+    "category": "builder",
+    "criterion": { "kind": "counter", "counter": "build.excellent", "threshold": 1 },
+    "reward": { "title": "the Careful" },
+    "hidden": false
+  },
+  {
+    "key": "twenty_excellent",
+    "name": "Nothing Left Rough",
+    "description": "Bring twenty pieces of your work up to an A grade.",
+    "category": "builder",
+    "criterion": { "kind": "counter", "counter": "build.excellent", "threshold": 20 },
+    "reward": { "title": "the Meticulous" },
+    "hidden": false
+  },
+  {
+    "key": "builder_points_250",
+    "name": "Journeyman",
+    "description": "Reach 250 builder points.",
+    "category": "builder",
+    "criterion": { "kind": "counter", "counter": "build.score", "threshold": 250 },
+    "reward": { "title": "the Journeyman" },
+    "hidden": false
+  },
+  {
+    "key": "builder_points_1000",
+    "name": "Master of the Craft",
+    "description": "Reach 1000 builder points.",
+    "category": "builder",
+    "criterion": { "kind": "counter", "counter": "build.score", "threshold": 1000 },
+    "reward": { "title": "the Architect" },
+    "hidden": false
+  }
+]

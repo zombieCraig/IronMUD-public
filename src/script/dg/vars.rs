@@ -1223,6 +1223,11 @@ fn try_character_field(ch: &crate::types::CharacterData, field: &str) -> Option<
         // (they need the god's tribute interval + current game day).
         "worship_god" => ch.worship.as_ref().map(|w| w.god_vnum.clone()).unwrap_or_default(),
         "worship_favor" => ch.worship.as_ref().map(|w| w.favor).unwrap_or(0).to_string(),
+        "worship_favor_tier" => {
+            crate::worship::favor::FavorTier::from_value(ch.worship.as_ref().map(|w| w.favor).unwrap_or(0))
+                .key()
+                .to_string()
+        }
         "worship_offenses" => ch
             .worship
             .as_ref()

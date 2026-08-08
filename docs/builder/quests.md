@@ -67,6 +67,8 @@ The `flag` objective is the escape hatch — wire any DG trigger to set a variab
 | `reward add skill` | `quedit <vnum> reward add skill <key> <amount>` | Award skill XP (100 XP = 1 level, capped at 10) |
 | `reward add achievement` | `quedit <vnum> reward add achievement <key>` | Unlock an achievement |
 | `reward add recipe` | `quedit <vnum> reward add recipe <recipe_id>` | Teach a crafting recipe |
+| `reward add morality` | `quedit <vnum> reward add morality <delta>` | Shift the alignment slider. Positive is Good, negative Evil; clamped to `[-200, 200]`. A tier crossing announces itself. |
+| `reward add reputation` | `quedit <vnum> reward add reputation <faction> <delta>` | Shift standing with a faction, clamped to `[-1000, 1000]`. That faction's declared enemies move the opposite way. Combat can only lower standing, so this is the main way a story raises it. See [Factions](factions.md). |
 | `reward remove` | `quedit <vnum> reward remove <idx>` | Delete by 0-based index |
 
 ```
@@ -86,6 +88,11 @@ These keep quests appropriately scoped and prevent low-level players from accept
 | `prereq` | `quedit <vnum> prereq <quest_vnum\|clear>` | Require an earlier quest's completion |
 | `min_skill` | `quedit <vnum> min_skill <n>` | Sum of player's skill levels must be ≥ n (`0` clears) |
 | `duration` | `quedit <vnum> duration <secs>` | Time limit in seconds from acceptance (`0` clears) |
+| `reputation` | `quedit <vnum> reputation <faction> <min_value>` | Standing with a faction must be ≥ min_value (`clear` removes). 50 is Accepted, 200 Honored, 500 Revered; a faction the player has never met reads 0. See [Factions](factions.md) |
+
+The reputation gate also hides the "(has a quest for you)" cue, so a
+questgiver the player cannot yet satisfy does not advertise. A negative
+threshold gates on *not* having wronged the faction.
 
 Prereqs and min-skill are checked at offer time — the dialogue choice's `OfferQuest` effect silently no-ops if the gate fails (use a `hint` and a `QuestComplete` condition on the choice if you want a visible "come back when you've finished X" line).
 

@@ -7,22 +7,22 @@ use tokio::time::{Duration, interval};
 use tracing::{debug, error};
 
 use ironmud::{
-    ItemType, SharedConnections, SpawnDestination, SpawnEntityType, SpawnPointData, broadcast_to_builders, db,
-    spawn::apply_spawn_dependencies,
+    ItemType, SharedConnections, SharedState, SpawnDestination, SpawnEntityType, SpawnPointData, broadcast_to_builders,
+    db, spawn::apply_spawn_dependencies,
 };
 
 /// Spawn tick interval in seconds
 pub const SPAWN_TICK_INTERVAL_SECS: u64 = 30;
 
 /// Background task that processes spawn points periodically
-pub async fn run_spawn_tick(db: db::Db, connections: SharedConnections) {
+pub async fn run_spawn_tick(db: db::Db, connections: SharedConnections, state: SharedState) {
     let mut ticker = interval(Duration::from_secs(SPAWN_TICK_INTERVAL_SECS));
 
     loop {
         ticker.tick().await;
         crate::ticks::heartbeat::beat("spawn");
 
-        if let Err(e) = process_spawn_points(&db, &connections) {
+        if let Err(e) = process_spawn_points(&db, &connections, &state) {
             error!("Spawn tick error: {}", e);
         }
     }
@@ -85,7 +85,7 @@ fn refill_container_dependencies(db: &db::Db, connections: &SharedConnections, s
 }
 
 /// Process all spawn points, respawning entities as needed
-fn process_spawn_points(db: &db::Db, connections: &SharedConnections) -> Result<()> {
+fn process_spawn_points(db: &db::Db, connections: &SharedConnections, state: &SharedState) -> Result<()> {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -184,6 +184,7 @@ fn process_spawn_points(db: &db::Db, connections: &SharedConnections) -> Result<
                         ironmud::script::dg::fire_item_dg_triggers(
                             &db_arc,
                             connections,
+                            state,
                             &loaded,
                             ironmud::ItemTriggerType::OnLoad,
                             "",

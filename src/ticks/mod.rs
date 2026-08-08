@@ -29,6 +29,7 @@
 //! | Bleeding | 30s | Applies wound bleeding damage in and out of combat |
 //! | Simulation | 60s | NPC needs simulation (hunger, energy, comfort) |
 //! | Migration | 300s | Emergent migrant population spawning per area |
+//! | Leaderboard | 300s | Rescans every character and rebuilds the `top` boards |
 
 // Internal broadcast utilities shared across tick systems
 pub(crate) mod broadcast;
@@ -40,12 +41,14 @@ pub mod heartbeat;
 pub mod achievements;
 pub mod aging;
 pub mod bleeding;
+pub mod build_score;
 pub mod character;
 pub mod combat;
 pub mod cyberware;
 pub mod donation;
 pub mod environment;
 pub mod garden;
+pub mod leaderboard;
 pub mod migration;
 pub mod mobile;
 pub mod mutant;
@@ -69,6 +72,7 @@ pub use heartbeat::run_watchdog as run_heartbeat_watchdog;
 
 pub use aging::run_aging_tick;
 pub use bleeding::run_bleeding_tick;
+pub use build_score::run_build_score_tick;
 pub use character::{
     run_drowning_tick, run_hunger_tick, run_hunting_tick, run_regen_tick, run_slow_move_tick, run_thirst_tick,
 };
@@ -77,6 +81,7 @@ pub use cyberware::run_psyche_tick;
 pub use donation::run_donation_decay_tick;
 pub use environment::{run_exposure_tick, run_time_tick};
 pub use garden::run_garden_tick;
+pub use leaderboard::run_leaderboard_tick;
 pub use migration::run_migration_tick;
 pub use mobile::{run_mobile_effects_tick, run_wander_tick};
 pub use mutant::{run_mutation_tick, run_rot_tick};
@@ -131,6 +136,8 @@ pub fn register_all_heartbeats() {
         ("aging", aging::AGING_TICK_INTERVAL_SECS),
         ("donation_decay", donation::DONATION_DECAY_INTERVAL_SECS),
         ("quest", quests::QUEST_TICK_INTERVAL_SECS),
+        ("leaderboard", ironmud::leaderboard::LEADERBOARD_TICK_INTERVAL_SECS),
+        ("build_score", ironmud::build_score::BUILD_SCORE_TICK_INTERVAL_SECS),
         ("sun", ironmud::vampire::SUN_TICK_INTERVAL_SECS),
         ("blood", ironmud::vampire::BLOOD_TICK_INTERVAL_SECS),
         ("rage", ironmud::werewolf::RAGE_TICK_INTERVAL_SECS),

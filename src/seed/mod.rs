@@ -64,6 +64,23 @@ pub fn seed_demo_world(db: &Db) -> Result<bool> {
     transports::seed_transports(db)?;
     properties::seed_properties(db)?;
 
+    // Label everything this pass produced as engine-shipped content.
+    //
+    // A sweep rather than a stamp inside each `seed_*` function: one call site
+    // that a sixth seed module cannot forget, and it is safe to re-run because
+    // `stamp_unattributed` never overwrites content that already has an origin
+    // or an author. Without this the demo world would count toward builder
+    // scores, which is the same cheat-code the import guard exists to stop.
+    let stamped = crate::attribution::stamp_unattributed(db, crate::types::ContentOrigin::Seed)?;
+    tracing::info!(
+        "Marked {} seeded entities as engine content ({} rooms, {} items, {} mobiles, {} areas)",
+        stamped.total(),
+        stamped.rooms,
+        stamped.items,
+        stamped.mobiles,
+        stamped.areas
+    );
+
     tracing::info!("Demo world seeded successfully!");
     Ok(true)
 }

@@ -22,6 +22,7 @@ use crate::{
 };
 
 use super::rooms::AddExtraDescRequest;
+use crate::types::Authored;
 
 const MAX_NOTE_BYTES: usize = 32 * 1024;
 
@@ -910,6 +911,9 @@ async fn create_item(
         .unwrap_or_default();
 
     let mut item = ItemData {
+        authored_by: None,
+        last_edited_by: None,
+        origin: Default::default(),
         id: Uuid::new_v4(),
         name: req.name,
         short_desc: req.short_desc,
@@ -1128,6 +1132,8 @@ async fn create_item(
 
     item.sync_flag_categories();
 
+    // Attribution: see src/attribution.rs.
+    item.stamp_created(&user.api_key.owner_character);
     state
         .db
         .save_item_data(item.clone())
@@ -1518,6 +1524,8 @@ async fn update_item(
 
     item.sync_flag_categories();
 
+    // Attribution: see src/attribution.rs.
+    item.stamp_edited(&user.api_key.owner_character);
     state
         .db
         .save_item_data(item.clone())

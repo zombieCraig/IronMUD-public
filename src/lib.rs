@@ -13,9 +13,16 @@ use uuid::Uuid;
 
 pub mod aging;
 pub mod api;
+pub mod attribution;
+pub mod audit;
+pub mod bounty;
+pub mod build_score;
+pub mod build_tracks;
 pub mod chat;
 pub mod claude;
+pub mod combat_text;
 pub mod completion;
+pub mod consignment;
 pub mod control;
 pub mod corpse;
 pub mod cyberware;
@@ -24,19 +31,26 @@ pub mod dialogue_edit;
 pub mod discord;
 pub mod editor;
 pub mod email;
+pub mod experiment;
 pub mod game;
 pub mod gemini;
+pub mod group;
 pub mod import;
 pub mod init;
+pub mod leaderboard;
 pub mod matrix;
 pub mod migration;
 pub mod morality;
 pub mod mutant;
 pub mod necromancy;
+pub mod progress;
+pub mod prompt;
+pub mod purse;
 pub mod quest;
 pub mod ratelimit;
 pub mod readline;
 pub mod replicant;
+pub mod reputation;
 pub mod script;
 pub mod seed;
 pub mod session;
@@ -46,9 +60,12 @@ pub mod spawn;
 pub mod synth;
 pub mod telnet;
 pub mod throttle;
+pub mod tiers;
 pub mod types;
 pub mod vampire;
 pub mod werewolf;
+pub mod world_milestones;
+pub mod world_rating;
 pub mod worship;
 
 pub use types::*;
@@ -145,6 +162,16 @@ pub struct PlayerSession {
     pub colors_enabled: bool,
     // Builder mode: show room flags/vnum in room display
     pub show_room_flags: bool,
+    /// Grade of the thing this builder is about to change, taken just before
+    /// the change. Drained after the command finishes, so the editor can say
+    /// what moved. See `crate::audit::scan::grade_change_line`.
+    pub pending_audit: Option<crate::audit::scan::PendingAudit>,
+    /// Skill XP accumulated since the last prompt render, keyed by skill.
+    /// Populated by `progress::report_xp` in `brief` feed mode and drained by
+    /// `build_prompt`, so a burst of small awards (a combat round awards 10
+    /// XP per hit) collapses into one line instead of spamming the scroll.
+    /// BTreeMap for stable ordering across renders.
+    pub xp_buffer: std::collections::BTreeMap<String, progress::XpTally>,
     // Telnet protocol state for tab completion
     pub telnet_state: telnet::TelnetState,
     pub input_buffer: String,
@@ -243,6 +270,11 @@ pub struct World {
     pub mutation_definitions: HashMap<String, MutationDefinition>,
     // Language definitions (loaded from scripts/data/languages_*.json)
     pub language_definitions: HashMap<String, LanguageDefinition>,
+    /// Faction definitions (loaded from `scripts/data/factions.json`), keyed
+    /// by the same lowercase string builders put in `MobileData.faction`.
+    /// A tag with no entry here still works — see
+    /// `reputation::FactionDefinition::unregistered`.
+    pub faction_definitions: HashMap<String, crate::reputation::FactionDefinition>,
     // Crafting/cooking recipes (created via recedit command)
     pub recipes: HashMap<String, Recipe>,
     // Spell definitions (loaded from scripts/data/spells_*.json)
@@ -275,6 +307,93 @@ pub struct World {
     /// commands (`shout`, `tell`) to suppress spam without throttling
     /// the rest of the game.
     pub command_throttle: Arc<throttle::CommandThrottle>,
+    /// Last leaderboard scan. Written wholesale by the leaderboard tick and
+    /// read by `top`; empty until the first scan completes, which is the only
+    /// state a reader has to handle. Cached rather than computed on demand
+    /// because ranking needs every character in the database and that must
+    /// never run on a player's command.
+    pub leaderboards: crate::leaderboard::Leaderboards,
+    /// Last builder-score scan. Same shape and same reasoning as
+    /// `leaderboards`: a full-world read installed wholesale by a tick and
+    /// read by the `build` command. `generated_at == 0` means the first scan
+    /// has not landed, which readers must render as "not ready" rather than
+    /// "nobody has built anything".
+    pub build_scores: crate::build_score::BuildScores,
+    /// Last world rating. Installed by the same tick as `build_scores`, for
+    /// the same reason: computing it needs a full world scan.
+    pub world_report: crate::world_rating::WorldReport,
+    /// Builder progress tracks, loaded from `scripts/data/build_tracks/`.
+    /// Definitions only — progress is evaluated per area or per builder on
+    /// demand, because a track is a question about content, not a stored fact.
+    pub build_tracks: Vec<crate::build_tracks::TrackDef>,
+    /// Room-derived audit context, refreshed by the build-score tick.
+    ///
+    /// Exists for the OLC grade toast. Building it means deserialising every
+    /// room in the world and hashing every description, and the toast fires on
+    /// *every* mutating editor subcommand — twice, once for the before and once
+    /// for the after. On an imported world that is the most expensive thing in
+    /// the interactive path, paid at the speed a builder types.
+    ///
+    /// Reusing a cached one costs at most five minutes of staleness in the two
+    /// checks that read it (dangling and one-way exits). That is the right
+    /// trade: the toast is a nudge, and `build audit` is the authority.
+    pub audit_ctx: std::sync::Arc<crate::audit::AuditCtx>,
+}
+
+impl World {
+    /// A `World` with the two handles that matter and every definition table
+    /// empty. For callers that need something to put behind a [`SharedState`]
+    /// but read nothing out of it — the tick tests, and `ironmud-admin`, which
+    /// drives the db directly and never loads game data.
+    ///
+    /// Exists so the ~25-field literal lives in one place: adding a field to
+    /// `World` should not break every test module that happens to need a lock
+    /// to hand to a function. Callers that *do* need a populated table should
+    /// build one and assign it after construction.
+    ///
+    /// Deliberately not `#[cfg(test)]`: the bin crate and the integration
+    /// tests compile against the lib without `cfg(test)`, so a test-gated
+    /// constructor would be invisible to exactly the callers that duplicate
+    /// this literal most.
+    pub fn minimal(db: crate::db::Db, connections: SharedConnections) -> World {
+        World {
+            build_tracks: Vec::new(),
+            world_report: Default::default(),
+            build_scores: Default::default(),
+            audit_ctx: Default::default(),
+            engine: Engine::new(),
+            db,
+            connections,
+            scripts: HashMap::new(),
+            command_metadata: HashMap::new(),
+            socials: crate::social::actions::SocialRegistry::default(),
+            class_definitions: HashMap::new(),
+            trait_definitions: HashMap::new(),
+            race_suggestions: Vec::new(),
+            race_definitions: HashMap::new(),
+            mutation_definitions: HashMap::new(),
+            language_definitions: HashMap::new(),
+            faction_definitions: HashMap::new(),
+            recipes: HashMap::new(),
+            spell_definitions: HashMap::new(),
+            achievement_definitions: HashMap::new(),
+            achievement_index_by_counter: HashMap::new(),
+            custom_skill_definitions: HashMap::new(),
+            transports: HashMap::new(),
+            chat_sender: None,
+            shutdown_sender: None,
+            shutdown_cancel_sender: None,
+            ip_limiter: Arc::new(ratelimit::IpRateLimiter::new()),
+            command_throttle: Arc::new(throttle::CommandThrottle::new()),
+            leaderboards: crate::leaderboard::Leaderboards::default(),
+        }
+    }
+
+    /// [`World::minimal`] wrapped in the `Arc<Mutex<_>>` every caller actually
+    /// wants.
+    pub fn minimal_shared(db: crate::db::Db, connections: SharedConnections) -> SharedState {
+        Arc::new(Mutex::new(World::minimal(db, connections)))
+    }
 }
 
 /// Command sent to trigger server shutdown
@@ -1514,387 +1633,202 @@ pub fn interrupt_writer_by_name(connections: &SharedConnections, state: &SharedS
     }
 }
 
-/// Build the prompt string for a connection, respecting prompt_mode setting.
-/// Returns simple "> " for guests or when prompt_mode is "simple".
-/// Returns verbose "[HP:current/max] >" with color coding when prompt_mode is "verbose".
+/// Build the prompt string for a connection.
+///
+/// What the prompt can *say* lives in [`crate::prompt`] as a table of
+/// segments; this function only gathers the state those segments read. It
+/// gathers as little as the player's format actually asks for: the combat
+/// target, the equipped-item contributions and the faction display names
+/// each cost a lock and some reads, and are skipped when no token wants
+/// them. A `simple` prompt now touches nothing, where it used to fetch the
+/// player's equipped items and throw them away.
 fn build_prompt(connection_id: &ConnectionId, connections: &SharedConnections, state: &SharedState) -> String {
-    let (
-        prompt_mode,
-        hp,
-        max_hp,
-        stamina,
-        max_stamina,
-        mana,
-        max_mana,
-        mana_enabled,
-        breath,
-        max_breath,
-        colors_enabled,
-        char_name,
-        build_mode,
-        blood_pool,
-        max_blood_pool,
-        sunlight_burning,
-        resolve,
-        max_resolve,
-        in_breakdown,
-        mp,
-        max_mp,
-    ) = {
+    // Flush any skill XP batched since the last prompt. This runs here rather
+    // than on a tick because the prompt is rendered after every command, which
+    // is exactly the cadence we want: a combat round's worth of 10-XP awards
+    // collapses into one line instead of spamming the scroll, and the line
+    // lands immediately above the prompt where the player is already looking.
+    //
+    // Scoped so the lock is released before the main read block below
+    // re-acquires it.
+    {
+        if let Ok(mut conns) = connections.lock() {
+            if let Some(session) = conns.get_mut(connection_id) {
+                for line in progress::drain_xp_buffer(session) {
+                    let _ = session.sender.send(format!("{}\n", line));
+                }
+            }
+        }
+    }
+
+    // Snapshot everything the prompt can read off the session in one lock,
+    // and pick the format while we are in there.
+    let (format, mut ctx) = {
         let conns = connections.lock().unwrap();
         let session = match conns.get(connection_id) {
             Some(s) => s,
-            None => return "> ".to_string(),
+            None => return prompt::SIMPLE_FORMAT.to_string(),
         };
-
-        let colors = session.colors_enabled;
-
         match &session.character {
-            Some(c) => {
-                let mode = if c.prompt_mode.is_empty() {
-                    "simple"
-                } else {
-                    &c.prompt_mode
-                };
-                // Apply torso wound HP cap
-                let torso_penalty = c
-                    .wounds
-                    .iter()
-                    .filter(|w| w.body_part == BodyPart::Torso)
-                    .map(|w| w.level.penalty())
-                    .max()
-                    .unwrap_or(0);
-                let effective_max_hp = if torso_penalty > 0 {
-                    (c.max_hp * (100 - torso_penalty) / 100).max(1)
-                } else {
-                    c.max_hp
-                };
-                // Apply head wound mana cap
-                let head_penalty = c
-                    .wounds
-                    .iter()
-                    .filter(|w| w.body_part == BodyPart::Head)
-                    .map(|w| w.level.penalty())
-                    .max()
-                    .unwrap_or(0);
-                let effective_max_mana = if head_penalty > 0 {
-                    (c.max_mana * (100 - head_penalty) / 100).max(0)
-                } else {
-                    c.max_mana
-                };
-                let (blood, max_blood) = match c.vampire_state.as_ref() {
-                    Some(v) => (Some(v.blood_pool), Some(v.max_blood_pool)),
-                    None => (None, None),
-                };
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs() as i64)
-                    .unwrap_or(0);
-                let (resolve, max_resolve, breakdown) = match c.replicant_state.as_ref() {
-                    Some(r) => (Some(r.resolve), Some(r.max_resolve), r.is_breaking_down(now)),
-                    None => (None, None, false),
-                };
-                let (mp, max_mp) = match c.mutant_state.as_ref() {
-                    Some(m) => (Some(m.mp), Some(m.max_mp)),
-                    None => (None, None),
-                };
-                let burning = c
-                    .active_buffs
-                    .iter()
-                    .any(|b| b.effect_type == crate::types::EffectType::SunlightBurning);
-                (
-                    mode.to_string(),
-                    c.hp,
-                    effective_max_hp,
-                    c.stamina,
-                    c.max_stamina,
-                    c.mana,
-                    effective_max_mana,
-                    c.mana_enabled,
-                    c.breath,
-                    c.max_breath,
-                    colors,
-                    c.name.clone(),
-                    c.build_mode,
-                    blood,
-                    max_blood,
-                    burning,
-                    resolve,
-                    max_resolve,
-                    breakdown,
-                    mp,
-                    max_mp,
-                )
-            }
-            None => return "> ".to_string(), // Not logged in = simple prompt
+            // Not logged in = simple prompt.
+            None => return prompt::SIMPLE_FORMAT.to_string(),
+            Some(c) => (
+                prompt::format_for(c).to_string(),
+                prompt::PromptContext::from_character(c, session.colors_enabled),
+            ),
         }
     };
 
-    // Get equipped items from database (source of truth is ItemLocation::Equipped)
-    let equipped_items: Vec<Uuid> = {
+    let (pieces, _unknown) = prompt::parse(&format);
+
+    // Combat target segment: who you are fighting and how they are holding
+    // up, plus the engagement distance when it isn't melee.
+    //
+    // The distance half already existed but only rendered at Ranged/Pole, so
+    // in the overwhelmingly common melee case the prompt said nothing about
+    // the fight at all — the player had to spend a round on `look` to learn
+    // whether the thing hitting them was nearly dead. MSDP has reported
+    // OPPONENT_NAME/OPPONENT_HEALTH for GUI clients all along; this is the
+    // same two facts for everyone else.
+    if prompt::uses(&pieces, "target") {
         let world = state.lock().unwrap();
-        world
-            .db
-            .get_equipped_items(&char_name)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|item| item.id)
-            .collect()
-    };
-
-    if prompt_mode == "simple" {
-        return "> ".to_string();
-    }
-
-    // Verbose prompt
-    let hp_percent = if max_hp > 0 { (hp * 100) / max_hp } else { 100 };
-
-    // Color based on health percentage
-    let (hp_color, reset) = if colors_enabled {
-        let color = if hp_percent >= 70 {
-            "\x1b[32m" // Green: healthy
-        } else if hp_percent >= 30 {
-            "\x1b[33m" // Yellow: wounded
-        } else {
-            "\x1b[31m" // Red: critical
-        };
-        (color, "\x1b[0m")
-    } else {
-        ("", "")
-    };
-
-    // Stamina percentage and color
-    let stamina_percent = if max_stamina > 0 {
-        (stamina * 100) / max_stamina
-    } else {
-        100
-    };
-    let st_color = if colors_enabled {
-        if stamina_percent >= 70 {
-            "\x1b[36m" // Cyan: energized
-        } else if stamina_percent >= 30 {
-            "\x1b[34m" // Blue: tired
-        } else {
-            "\x1b[35m" // Magenta: exhausted
-        }
-    } else {
-        ""
-    };
-
-    // Mana segment (only if mana_enabled)
-    let mana_segment = if mana_enabled {
-        let mana_percent = if max_mana > 0 { (mana * 100) / max_mana } else { 100 };
-        let mp_color = if colors_enabled {
-            if mana_percent >= 70 {
-                "\x1b[94m" // Bright blue: full
-            } else if mana_percent >= 30 {
-                "\x1b[34m" // Blue: moderate
-            } else {
-                "\x1b[35m" // Magenta: low
-            }
-        } else {
-            ""
-        };
-        format!("[{}MP:{}/{}{}] ", mp_color, mana, max_mana, reset)
-    } else {
-        String::new()
-    };
-
-    // Breath segment (only shown when breath < max_breath)
-    let breath_segment = if breath < max_breath {
-        let breath_percent = if max_breath > 0 {
-            (breath * 100) / max_breath
-        } else {
-            100
-        };
-        let br_color = if colors_enabled {
-            if breath_percent >= 50 {
-                "\x1b[36m" // Cyan: ok
-            } else if breath_percent >= 25 {
-                "\x1b[33m" // Yellow: low
-            } else {
-                "\x1b[31m" // Red: critical
-            }
-        } else {
-            ""
-        };
-        format!("[{}Air:{}/{}{}] ", br_color, breath, max_breath, reset)
-    } else {
-        String::new()
-    };
-
-    // Blood pool segment (vampires only). Shows current/max blood; reddens
-    // as the pool empties so the player can pace feeding without `score`.
-    let blood_segment = match (blood_pool, max_blood_pool) {
-        (Some(bp), Some(max_bp)) if max_bp > 0 => {
-            let pct = (bp * 100) / max_bp;
-            let bp_color = if colors_enabled {
-                if pct >= 70 {
-                    "\x1b[31m" // Red: well-fed
-                } else if pct >= 30 {
-                    "\x1b[33m" // Yellow: peckish
-                } else {
-                    "\x1b[1;31m" // Bright red: hungry / frenzy risk
-                }
-            } else {
-                ""
-            };
-            format!("[{}BP:{}/{}{}] ", bp_color, bp, max_bp, reset)
-        }
-        _ => String::new(),
-    };
-
-    // Resolve segment (replicants only) — replaces the stamina segment,
-    // since a replicant's body never tires; their mind is the gauge.
-    let resolve_segment = match (resolve, max_resolve) {
-        (Some(res), Some(max_res)) if max_res > 0 => {
-            let pct = (res * 100) / max_res;
-            let res_color = if colors_enabled {
-                if pct >= 70 {
-                    "\x1b[36m" // Cyan: steady
-                } else if pct >= 30 {
-                    "\x1b[33m" // Yellow: fraying
-                } else {
-                    "\x1b[1;31m" // Bright red: breakdown risk
-                }
-            } else {
-                ""
-            };
-            format!("[{}RES:{}/{}{}] ", res_color, res, max_res, reset)
-        }
-        _ => String::new(),
-    };
-
-    // Stamina segment — hidden for replicants (tireless), replaced by RES.
-    let stamina_segment = if resolve_segment.is_empty() {
-        format!("[{}ST:{}/{}{}] ", st_color, stamina, max_stamina, reset)
-    } else {
-        resolve_segment
-    };
-
-    // Mutation Point segment (mutants only). Greens when the pool is full,
-    // dims as it drains — a reminder that refilling means bleeding.
-    let mp_segment = match (mp, max_mp) {
-        (Some(mp), Some(max_mp)) if max_mp > 0 => {
-            let pct = (mp * 100) / max_mp;
-            let mp_color = if colors_enabled {
-                if pct >= 70 {
-                    "\x1b[32m" // Green: brimming
-                } else if pct >= 30 {
-                    "\x1b[33m" // Yellow: running dry
-                } else {
-                    "\x1b[90m" // Grey: the power sleeps
-                }
-            } else {
-                ""
-            };
-            format!("[{}MP:{}/{}{}] ", mp_color, mp, max_mp, reset)
-        }
-        _ => String::new(),
-    };
-
-    // SunlightBurning indicator — one more tick (or one blow) and the player
-    // ends. Loud, unmissable.
-    let burning_segment = if sunlight_burning {
-        if colors_enabled {
-            "\x1b[1;31m[BURNING]\x1b[0m ".to_string()
-        } else {
-            "[BURNING] ".to_string()
-        }
-    } else {
-        String::new()
-    };
-
-    // Active replicant breakdown — same loudness as BURNING.
-    let breakdown_segment = if in_breakdown {
-        if colors_enabled {
-            "\x1b[1;31m[BREAKDOWN]\x1b[0m ".to_string()
-        } else {
-            "[BREAKDOWN] ".to_string()
-        }
-    } else {
-        String::new()
-    };
-
-    let base_prompt = format!(
-        "[{}HP:{}/{}{}] {}{}{}{}{}{}{}",
-        hp_color,
-        hp,
-        max_hp,
-        reset,
-        stamina_segment,
-        mana_segment,
-        blood_segment,
-        mp_segment,
-        breath_segment,
-        burning_segment,
-        breakdown_segment
-    );
-
-    // Distance indicator for combat prompt
-    let distance_tag = {
-        let world = state.lock().unwrap();
-        if let Ok(Some(char_data)) = world.db.get_character_data(&char_name) {
+        if let Ok(Some(char_data)) = world.db.get_character_data(&ctx.name) {
             if char_data.combat.in_combat && !char_data.combat.targets.is_empty() {
                 let primary = &char_data.combat.targets[0];
+                let (target_name, hp, max_hp) = match primary.target_type {
+                    CombatTargetType::Mobile => world
+                        .db
+                        .get_mobile_data(&primary.target_id)
+                        .ok()
+                        .flatten()
+                        .map(|m| (m.name.clone(), m.current_hp, m.max_hp))
+                        .unwrap_or_else(|| ("opponent".to_string(), 0, 1)),
+                    // `target_name` is what the PvP path records; the old
+                    // distance tag hardcoded "opponent" here and lost it.
+                    CombatTargetType::Player => primary
+                        .target_name
+                        .as_deref()
+                        .and_then(|n| world.db.get_character_data(n).ok().flatten())
+                        .map(|c| (c.name.clone(), c.hp, c.max_hp))
+                        .unwrap_or_else(|| {
+                            (
+                                primary.target_name.clone().unwrap_or_else(|| "opponent".to_string()),
+                                0,
+                                1,
+                            )
+                        }),
+                };
                 let distance = char_data
                     .combat
                     .distances
                     .get(&primary.target_id)
                     .copied()
                     .unwrap_or(CombatDistance::Melee);
-                match distance {
-                    CombatDistance::Ranged | CombatDistance::Pole => {
-                        // Resolve target name
-                        let target_name = match primary.target_type {
-                            CombatTargetType::Mobile => world
-                                .db
-                                .get_mobile_data(&primary.target_id)
-                                .ok()
-                                .flatten()
-                                .map(|m| m.name.clone())
-                                .unwrap_or_else(|| "opponent".to_string()),
-                            CombatTargetType::Player => "opponent".to_string(),
-                        };
-                        let (tag_color, label) = if distance == CombatDistance::Ranged {
-                            ("\x1b[33m", "Ranged")
-                        } else {
-                            ("\x1b[36m", "Pole")
-                        };
-                        if colors_enabled {
-                            format!("{}[{}: {}]\x1b[0m ", tag_color, label, target_name)
-                        } else {
-                            format!("[{}: {}] ", label, target_name)
-                        }
-                    }
-                    CombatDistance::Melee => String::new(),
-                }
-            } else {
-                String::new()
+                ctx.target_tag = combat_text::target_prompt_tag(&target_name, hp, max_hp, distance, ctx.colors);
             }
-        } else {
-            String::new()
         }
-    };
+    }
 
-    // Collect on_prompt trigger contributions from equipped items
-    let extra = collect_on_prompt_contributions(connection_id, connections, state, &equipped_items);
-
-    // Build mode indicator
-    let build_tag = if build_mode {
-        if colors_enabled {
-            "\x1b[1;33m[BUILD]\x1b[0m ".to_string()
-        } else {
-            "[BUILD] ".to_string()
+    // Display names for any faction the format names. Resolved in one pass
+    // so a prompt carrying two standings does not lock the world twice.
+    let wanted = prompt::requested_factions(&pieces);
+    if !wanted.is_empty() {
+        let world = state.lock().unwrap();
+        for key in wanted {
+            if let Some(def) = world.faction_definitions.get(&key) {
+                ctx.faction_names.insert(key, def.display().to_string());
+            }
         }
-    } else {
-        String::new()
-    };
+    }
 
-    format!("{}{}{}{}> ", base_prompt, distance_tag, extra, build_tag)
+    // Contributions from equipped items with on_prompt triggers — a watch
+    // showing the time, a compass showing the heading. Each one runs a Rhai
+    // script, so this stays behind the token that asks for it.
+    if prompt::uses(&pieces, "extra") {
+        let equipped: Vec<Uuid> = {
+            let world = state.lock().unwrap();
+            world
+                .db
+                .get_equipped_items(&ctx.name)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|item| item.id)
+                .collect()
+        };
+        ctx.extra = collect_on_prompt_contributions(connection_id, connections, state, &equipped);
+    }
+
+    prompt::render(&pieces, &ctx)
 }
 
 impl PlayerSession {
+    /// A blank session wired to the given channels, for tests that need a
+    /// player to be *online* — anything that asserts on text the engine sends
+    /// via `session.sender`. Every field beyond the channels is at its
+    /// logged-out default; set `character` after constructing.
+    ///
+    /// Exists so the ~40-field literal lives in one place. Adding a field to
+    /// `PlayerSession` should not break every test module that happens to
+    /// need a connected player.
+    ///
+    /// Deliberately not `#[cfg(test)]`, for the same reason as
+    /// [`World::minimal`]: the bin crate and the integration tests compile
+    /// against the lib without `cfg(test)`, so a test-gated constructor is
+    /// invisible to the tick-side test modules that need it most.
+    pub fn new_for_test(
+        sender: mpsc::UnboundedSender<String>,
+        input_sender: mpsc::Sender<InputEvent>,
+    ) -> PlayerSession {
+        PlayerSession {
+            pending_audit: None,
+            character: None,
+            sender,
+            raw_sender: None,
+            input_sender,
+            addr: "127.0.0.1:0".parse().expect("loopback addr"),
+            olc_mode: None,
+            olc_buffer: Vec::new(),
+            olc_edit_room: None,
+            olc_edit_item: None,
+            olc_edit_board_vnum: None,
+            olc_board_subject: None,
+            olc_edit_mobile: None,
+            olc_edit_trigger_host: None,
+            olc_edit_trigger_index: None,
+            olc_edit_proto_vnum: None,
+            olc_dialogue_node_name: None,
+            olc_extra_keywords: Vec::new(),
+            olc_undo_buffer: None,
+            wizard_data: None,
+            mxp_enabled: false,
+            colors_enabled: true,
+            show_room_flags: false,
+            xp_buffer: std::collections::BTreeMap::new(),
+            telnet_state: telnet::TelnetState::new(),
+            input_buffer: String::new(),
+            cursor_pos: 0,
+            command_history: std::collections::VecDeque::new(),
+            history_index: None,
+            saved_input: String::new(),
+            escape_state: telnet::EscapeState::Normal,
+            pending_ai_request: None,
+            pending_ai_response: None,
+            pending_ai_target: None,
+            fishing_state: None,
+            afk: false,
+            last_activity_time: 0,
+            abbrev_enabled: true,
+            map_legend_shown: false,
+            dialogue_partner_id: None,
+            account_id: None,
+            account_name: None,
+            slow_move_completing: false,
+            disconnected_at: None,
+            session_started_at: None,
+            modern_editor: None,
+        }
+    }
+
     /// Sync MSDP vitals if supported and requested
     pub fn sync_msdp_vitals(&self, state: &SharedState) {
         if !self.telnet_state.msdp_supported
@@ -2127,6 +2061,7 @@ pub async fn handle_connection(
         conns.insert(
             connection_id,
             PlayerSession {
+                pending_audit: None,
                 character: None,
                 sender: tx_client.clone(),
                 raw_sender: Some(tx_raw.clone()),
@@ -2149,6 +2084,7 @@ pub async fn handle_connection(
                 mxp_enabled: false,
                 colors_enabled: true,
                 show_room_flags: false,
+                xp_buffer: std::collections::BTreeMap::new(),
                 telnet_state: telnet::TelnetState::new(),
                 input_buffer: String::new(),
                 cursor_pos: 0,
@@ -2282,6 +2218,7 @@ pub async fn handle_connection(
                 race_ids,
                 achievement_keys,
                 custom_skill_keys,
+                faction_keys,
                 has_builder_access,
             ) = {
                 let world = state.lock().unwrap();
@@ -2455,6 +2392,7 @@ pub async fn handle_connection(
                 let race_ids: Vec<String> = world.race_definitions.keys().cloned().collect();
                 let achievement_keys: Vec<String> = world.achievement_definitions.keys().cloned().collect();
                 let custom_skill_keys: Vec<String> = world.custom_skill_definitions.keys().cloned().collect();
+                let faction_keys: Vec<String> = world.faction_definitions.keys().cloned().collect();
 
                 (
                     available_commands,
@@ -2475,6 +2413,7 @@ pub async fn handle_connection(
                     race_ids,
                     achievement_keys,
                     custom_skill_keys,
+                    faction_keys,
                     has_builder_access,
                 )
             };
@@ -2501,6 +2440,7 @@ pub async fn handle_connection(
                 &race_ids,
                 &achievement_keys,
                 &custom_skill_keys,
+                &faction_keys,
                 has_builder_access,
             );
 
@@ -4010,6 +3950,7 @@ pub async fn handle_connection(
                     args,
                     &db_arc,
                     &connections,
+                    &state,
                 ) {
                     // Suppressed: skip rhai dispatch and the prompt redraw
                     // path picks up cleanly on the next iteration.
@@ -4080,6 +4021,28 @@ pub async fn handle_connection(
                 if let Err(e) = tx_client.send(result_message) {
                     error!("Failed to send error message to socket {}: {}", addr, e);
                     break;
+                }
+            }
+
+            // A builder who just changed something gets one line about what
+            // moved — the core loop of building, and the reason `note_grade_before`
+            // exists. Drained here rather than in the editor scripts because
+            // this is the one place every editor's every early return passes
+            // through. Silent when the letter did not change; see
+            // `audit::scan::grade_change_line`.
+            {
+                let pending = {
+                    let mut conns = connections.lock().unwrap();
+                    conns.get_mut(&connection_id).and_then(|s| s.pending_audit.take())
+                };
+                if let Some(pending) = pending {
+                    // One lock, both values, released before the grading runs.
+                    let handles = { state.lock().ok().map(|w| (w.db.clone(), w.audit_ctx.clone())) };
+                    if let Some((db, ctx)) = handles
+                        && let Some(line) = audit::scan::grade_change_line(&db, &pending, &ctx)
+                    {
+                        let _ = tx_client.send(format!("{line}\n"));
+                    }
                 }
             }
 

@@ -37,6 +37,7 @@ fn run_command(args, connection_id) {
     }
 
     add_character_gold(char.name, -cost);
+    notify_achievement_counter(char.name, "gold.spent", cost);
     broadcast_to_room(char.current_room_id, connection_id,
         shopkeeper.name + " carefully examines " + char.name + "'s " + item.name + ".");
 

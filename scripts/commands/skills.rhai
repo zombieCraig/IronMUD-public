@@ -1,38 +1,9 @@
 // scripts/commands/skills.rhai
 // skills - Display your skill levels and progress
 
-// Format skill name for display: "short_blades" -> "Short Blades"
-fn format_skill_name(name) {
-    let result = "";
-    let capitalize_next = true;
-    for i in 0..name.len() {
-        let ch = name.sub_string(i, 1);
-        if ch == "_" {
-            result += " ";
-            capitalize_next = true;
-        } else if capitalize_next {
-            result += ch.to_upper();
-            capitalize_next = false;
-        } else {
-            result += ch;
-        }
-    }
-    return result;
-}
-
-// Build a 10-char progress bar: [###-------]
-fn build_progress_bar(level) {
-    let bar = "[";
-    for i in 0..10 {
-        if i < level {
-            bar += "#";
-        } else {
-            bar += "-";
-        }
-    }
-    bar += "]";
-    return bar;
-}
+// Skill-name formatting and bar drawing are shared with `status`, which
+// renders the same skill data in summary form.
+import "progress_ui" as ui;
 
 fn run_command(args, connection_id) {
     let char = get_player_character(connection_id);
@@ -45,25 +16,9 @@ fn run_command(args, connection_id) {
 
     let output = "=== Your Skills ===\n";
 
-    // Category: Combat (alphabetically sorted)
-    let combat_skills = ["long_blades", "long_blunt", "polearms", "ranged", "short_blades", "short_blunt", "unarmed"];
-    output += render_category("Combat", combat_skills, all_skills);
-
-    // Category: Crafting (alphabetically sorted)
-    let crafting_skills = ["cooking", "crafting", "fishing", "foraging", "gardening"];
-    output += render_category("Crafting", crafting_skills, all_skills);
-
-    // Category: Magic
-    let magic_skills = ["magic"];
-    output += render_category("Magic", magic_skills, all_skills);
-
-    // Category: Stealth (alphabetically sorted)
-    let stealth_skills = ["stealth", "thievery", "tracking"];
-    output += render_category("Stealth", stealth_skills, all_skills);
-
-    // Category: Utility
-    let utility_skills = ["medical", "swimming"];
-    output += render_category("Utility", utility_skills, all_skills);
+    for category in ui::core_skill_categories() {
+        output += render_category(category.name, category.skills, all_skills);
+    }
 
     // Category: Custom (builder-defined) — surfaces only the keys this
     // character has a non-zero base value for or is buffed in. Empty for
@@ -89,7 +44,7 @@ fn collect_custom_skill_rows(char_name) {
 fn render_custom_category(rows) {
     let out = "\n  -- Custom (Builder-Defined) --\n";
     for row in rows {
-        let display = format_skill_name(row.key);
+        let display = ui::format_skill_name(row.key);
         let padded = display;
         while padded.len() < 15 { padded += " "; }
         let diff = row.eff - row.base;
@@ -112,7 +67,7 @@ fn render_category(category_name, skill_list, all_skills) {
 }
 
 fn render_skill(skill_name, all_skills) {
-    let display_name = format_skill_name(skill_name);
+    let display_name = ui::format_skill_name(skill_name);
 
     // Pad skill name to 15 chars with spaces
     let padded_name = display_name;
@@ -131,7 +86,7 @@ fn render_skill(skill_name, all_skills) {
         xp_to_level = skill_data.xp_to_level;
     }
 
-    let bar = build_progress_bar(level);
+    let bar = ui::build_progress_bar(level);
 
     // Right-align level number in 2 chars
     let level_str = "" + level;

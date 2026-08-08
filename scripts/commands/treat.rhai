@@ -269,30 +269,26 @@ fn process_successful_treatment(char, target_name, target_conn, target_type, tar
     let difficulty_bonus = get_wound_severity_score(wound.level) * 5;
     let xp_gained = base_xp + difficulty_bonus;
 
-    let leveled_up = add_skill_experience(char.name, "medical", xp_gained);
+    add_skill_experience(char.name, "medical", xp_gained, "medical");
 
     let updated_char = get_character_data(char.name);
     if updated_char != () {
         set_player_character(connection_id, updated_char);
     }
 
-    send_success_messages(char, target_name, target_conn, target_type, tool, body_part_display, wound_type_display, xp_gained, is_self, connection_id);
-
-    if leveled_up {
-        send_client_message(connection_id, "Your medical skill has improved!");
-    }
+    send_success_messages(char, target_name, target_conn, target_type, tool, body_part_display, wound_type_display, is_self, connection_id);
 }
 
-fn send_success_messages(char, target_name, target_conn, target_type, tool, body_part, wound_type, xp_gained, is_self, connection_id) {
+fn send_success_messages(char, target_name, target_conn, target_type, tool, body_part, wound_type, is_self, connection_id) {
     if is_self {
         send_client_message(connection_id, "You carefully treat your " + wound_type + " on your " + body_part + " with your " + tool.name + ".");
-        send_client_message(connection_id, "The treatment is successful! Your wound has been healed. (+" + xp_gained + " Medical XP)");
+        send_client_message(connection_id, "The treatment is successful! Your wound has been healed.");
         broadcast_to_room(char.current_room_id, char.name + " treats their own wounds.", char.name);
         return;
     }
 
     send_client_message(connection_id, "You carefully treat " + target_name + "'s " + wound_type + " on their " + body_part + " with your " + tool.name + ".");
-    send_client_message(connection_id, "The treatment is successful! The wound has been healed. (+" + xp_gained + " Medical XP)");
+    send_client_message(connection_id, "The treatment is successful! The wound has been healed.");
 
     // Only send messages to target if it's a player
     if target_type == "player" {
@@ -305,30 +301,26 @@ fn send_success_messages(char, target_name, target_conn, target_type, tool, body
 
 fn process_failed_treatment(char, target_name, target_conn, target_type, tool, body_part_display, wound_type_display, is_self, connection_id) {
     let xp_gained = 5;
-    let leveled_up = add_skill_experience(char.name, "medical", xp_gained);
+    add_skill_experience(char.name, "medical", xp_gained, "medical");
 
     let updated_char = get_character_data(char.name);
     if updated_char != () {
         set_player_character(connection_id, updated_char);
     }
 
-    send_failure_messages(char, target_name, target_conn, target_type, tool, body_part_display, wound_type_display, xp_gained, is_self, connection_id);
-
-    if leveled_up {
-        send_client_message(connection_id, "Your medical skill has improved!");
-    }
+    send_failure_messages(char, target_name, target_conn, target_type, tool, body_part_display, wound_type_display, is_self, connection_id);
 }
 
-fn send_failure_messages(char, target_name, target_conn, target_type, tool, body_part, wound_type, xp_gained, is_self, connection_id) {
+fn send_failure_messages(char, target_name, target_conn, target_type, tool, body_part, wound_type, is_self, connection_id) {
     if is_self {
         send_client_message(connection_id, "You attempt to treat your " + wound_type + " on your " + body_part + " with your " + tool.name + ".");
-        send_client_message(connection_id, "The treatment was unsuccessful. Your supplies were used but the wound remains. (+" + xp_gained + " Medical XP)");
+        send_client_message(connection_id, "The treatment was unsuccessful. Your supplies were used but the wound remains.");
         broadcast_to_room(char.current_room_id, char.name + " struggles to treat their own wounds.", char.name);
         return;
     }
 
     send_client_message(connection_id, "You attempt to treat " + target_name + "'s " + wound_type + " on their " + body_part + " with your " + tool.name + ".");
-    send_client_message(connection_id, "The treatment was unsuccessful. Your supplies were used but the wound remains. (+" + xp_gained + " Medical XP)");
+    send_client_message(connection_id, "The treatment was unsuccessful. Your supplies were used but the wound remains.");
 
     // Only send messages to target if it's a player
     if target_type == "player" {
@@ -503,7 +495,7 @@ fn process_condition_success(char, target_name, target_conn, condition, tool, is
 
     // Award XP
     let xp_gained = 25;
-    let leveled_up = add_skill_experience(char.name, "medical", xp_gained);
+    add_skill_experience(char.name, "medical", xp_gained, "medical");
 
     // Refresh character data
     let updated_char = get_character_data(char.name);
@@ -515,25 +507,21 @@ fn process_condition_success(char, target_name, target_conn, condition, tool, is
     let condition_display = get_condition_display(condition);
     if is_self {
         send_client_message(connection_id, "You treat yourself with your " + tool.name + ".");
-        send_client_message(connection_id, "The treatment is successful! Your " + condition_display + " has been cured. (+" + xp_gained + " Medical XP)");
+        send_client_message(connection_id, "The treatment is successful! Your " + condition_display + " has been cured.");
         broadcast_to_room(char.current_room_id, char.name + " treats themselves with medical supplies.", char.name);
     } else {
         send_client_message(connection_id, "You treat " + target_name + " with your " + tool.name + ".");
-        send_client_message(connection_id, "The treatment is successful! Their " + condition_display + " has been cured. (+" + xp_gained + " Medical XP)");
+        send_client_message(connection_id, "The treatment is successful! Their " + condition_display + " has been cured.");
         send_client_message(target_conn, char.name + " treats you with medical supplies.");
         send_client_message(target_conn, "The treatment is successful! Your " + condition_display + " has been cured.");
         broadcast_to_room(char.current_room_id, char.name + " treats " + target_name + " with medical supplies.", char.name);
-    }
-
-    if leveled_up {
-        send_client_message(connection_id, "Your medical skill has improved!");
     }
 }
 
 fn process_condition_failure(char, target_name, target_conn, condition, tool, is_self, connection_id) {
     // Award reduced XP for attempt
     let xp_gained = 5;
-    let leveled_up = add_skill_experience(char.name, "medical", xp_gained);
+    add_skill_experience(char.name, "medical", xp_gained, "medical");
 
     // Refresh character data
     let updated_char = get_character_data(char.name);
@@ -545,17 +533,13 @@ fn process_condition_failure(char, target_name, target_conn, condition, tool, is
     let condition_display = get_condition_display(condition);
     if is_self {
         send_client_message(connection_id, "You attempt to treat yourself with your " + tool.name + ".");
-        send_client_message(connection_id, "The treatment was unsuccessful. Your supplies were used but the condition remains. (+" + xp_gained + " Medical XP)");
+        send_client_message(connection_id, "The treatment was unsuccessful. Your supplies were used but the condition remains.");
         broadcast_to_room(char.current_room_id, char.name + " struggles to treat themselves.", char.name);
     } else {
         send_client_message(connection_id, "You attempt to treat " + target_name + " with your " + tool.name + ".");
-        send_client_message(connection_id, "The treatment was unsuccessful. Your supplies were used but the condition remains. (+" + xp_gained + " Medical XP)");
+        send_client_message(connection_id, "The treatment was unsuccessful. Your supplies were used but the condition remains.");
         send_client_message(target_conn, char.name + " attempts to treat you with medical supplies.");
         send_client_message(target_conn, "Unfortunately, the treatment was not successful.");
         broadcast_to_room(char.current_room_id, char.name + " struggles to treat " + target_name + ".", char.name);
-    }
-
-    if leveled_up {
-        send_client_message(connection_id, "Your medical skill has improved!");
     }
 }

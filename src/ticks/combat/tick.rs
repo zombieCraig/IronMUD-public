@@ -9,7 +9,7 @@ use tracing::{debug, error};
 use ironmud::{
     ActiveBuff, BodyPart, CharacterData, CharacterPosition, CombatDistance, CombatTarget, CombatTargetType,
     CombatZoneType, DamageType, EffectType, ItemLocation, ItemType, MobileData, SharedConnections, SharedState,
-    SkillProgress, WeaponSkill, WearLocation, WoundLevel, WoundType, break_all_charms_by_player, db,
+    WeaponSkill, WearLocation, WoundLevel, WoundType, db,
 };
 
 use super::on_hit::{apply_on_hit_effects_to_character, apply_on_hit_effects_to_mobile};
@@ -391,12 +391,21 @@ fn process_character_combat_round(
 
     // Process attack based on target type
     let mut kill_info: Option<MobKill> = None;
+    let mut skill_gain: Option<(String, ironmud::progress::XpOutcome)> = None;
     match target.target_type {
         CombatTargetType::Mobile => {
-            process_character_attacks_mobile(db, connections, state, &mut char, &target.target_id, &mut kill_info)?;
+            process_character_attacks_mobile(
+                db,
+                connections,
+                state,
+                &mut char,
+                &target.target_id,
+                &mut kill_info,
+                &mut skill_gain,
+            )?;
         }
         CombatTargetType::Player => {
-            process_character_attacks_player(db, connections, state, &mut char, &target)?;
+            process_character_attacks_player(db, connections, state, &mut char, &target, &mut skill_gain)?;
         }
     }
 
@@ -418,17 +427,104 @@ fn process_character_combat_round(
     sync_character_to_session(connections, &char, state);
 
     // Kill-credit notifications run AFTER the char save+sync above so they are
-    // the last writers. They mutate the killer's character out-of-band (the
-    // achievement unlock/counter and quest progress); running them before the
-    // save would let the save clobber those writes back out of the DB and
-    // session (the symptom: the first-kill achievement's banner fired but the
-    // award never appeared under `achievements`/stats).
+    // the last writers. They mutate the character out-of-band (the achievement
+    // unlock/counter and quest progress); running them before the save would
+    // let the save clobber those writes back out of the DB and session (the
+    // symptom: the first-kill achievement's banner fired but the award never
+    // appeared under `achievements`/stats).
+    //
+    // Every consumer below runs once per *credited participant*, not once for
+    // the killer. Before this, quests fanned out over `damaged_by` while the
+    // kill counter, worship favor, morality and faction standing all took the
+    // killing blow's name alone — so a party of four hunting town watch left
+    // three of them with clean hands. `group::kill_credit` is the one place
+    // that set is decided.
+    //
+    // Safe for the other participants for a different reason than the killer:
+    // `process_combat_round` walks combatants sequentially and each round
+    // re-loads its character from the DB at the top, so a participant's next
+    // round picks these writes up rather than clobbering them.
     if let Some(kill) = kill_info {
-        crate::ticks::achievements::notify_kill_with_state(db, connections, state, &char.name, &kill.killed_vnum);
-        ironmud::quest::handle_mob_kill(db, connections, state, &char.name, &kill.killed_vnum, &kill.damaged_by);
-        ironmud::script::worship::handle_npc_kill_credit(db, connections, &char.name, &kill.killed_vnum);
+        apply_kill_credit(db, connections, state, &kill, &char.name, &room_id);
+    }
+    // Same reasoning as the kill-credit block: a weapon skill reaching a new
+    // level can unlock an achievement, which is an out-of-band write to the
+    // killer's character. It has to run after the save above.
+    if let Some((skill, outcome)) = skill_gain {
+        ironmud::progress::notify_xp_achievements(db, connections, state, &char.name, &skill, &outcome);
     }
     Ok(())
+}
+
+/// Credit one mob kill to everyone who earned it, and tell each of them.
+///
+/// Split out of the combat round so it is directly testable — the alternative
+/// is driving a whole round to observe a fan-out, which makes the test about
+/// swing rolls rather than about who gets credit.
+///
+/// **Must be called after the caller has persisted its character.** Every
+/// consumer here writes the character out-of-band, so an earlier wholesale save
+/// would clobber them. This is the same rule the quest and achievement hooks
+/// have always run under; the loop does not change it.
+fn apply_kill_credit(
+    db: &db::Db,
+    connections: &SharedConnections,
+    state: &SharedState,
+    kill: &MobKill,
+    killer_name: &str,
+    room_id: &uuid::Uuid,
+) {
+    let credit = ironmud::group::kill_credit(connections, &kill.damaged_by, killer_name, room_id);
+    let corpse_contents = ironmud::corpse::describe_corpse_contents(db, &kill.corpse_id);
+
+    ironmud::quest::handle_mob_kill(db, connections, state, &credit.participants, &kill.killed_vnum);
+
+    for name in &credit.participants {
+        let kill_total =
+            crate::ticks::achievements::notify_kill_with_state(db, connections, state, name, &kill.killed_vnum);
+        ironmud::script::worship::handle_npc_kill_credit(db, connections, name, &kill.killed_vnum);
+
+        // Morality. Killing something evil pushes the participant toward Good
+        // and vice versa; a mob nobody assigned a moral weight to is inert.
+        // This is what makes the slider move during play at all — before it,
+        // only an admin or a DG script could touch it, which left the nine
+        // tiers and the aggro_good / aggro_evil / aggro_neutral mob gating that
+        // reads them effectively dead.
+        ironmud::morality::apply_delta(db, connections, name, ironmud::morality::kill_delta(kill.alignment));
+
+        // Faction standing. Killing a tagged mob costs standing with its
+        // faction and buys standing with that faction's declared enemies, so
+        // grinding one group is a choice about who else will deal with you.
+        // Untagged mobs are inert here, exactly as morally-neutral ones are
+        // above. Helping is not a loophole: assist in putting down a guard and
+        // the watch holds it against you too.
+        ironmud::reputation::apply_kill(db, connections, state, name, kill.faction.as_deref());
+
+        // Kill resolution block. The room already saw the red "X collapses to
+        // the ground, dead!" broadcast; this is each participant's own summary,
+        // and it exists so the most-repeated action in the game finally reports
+        // what it produced instead of requiring a `look in corpse` every time.
+        //
+        // Sits after the handlers above so the milestone can use the kill total
+        // they just incremented. Weapon-skill XP is not repeated here — it
+        // flushes from each player's own progress buffer at their next prompt.
+        let slay = if *name == credit.killer {
+            ironmud::combat_text::slay_line(&kill.mob_display)
+        } else {
+            ironmud::combat_text::party_slay_line(killer_name, &kill.mob_display)
+        };
+        send_message_to_character(connections, name, &slay);
+        if let Some(ref contents) = corpse_contents {
+            send_message_to_character(connections, name, &ironmud::combat_text::corpse_contents_line(contents));
+        }
+        if ironmud::corpse::is_kill_milestone(kill_total) {
+            send_message_to_character(
+                connections,
+                name,
+                &ironmud::combat_text::kill_milestone_line(&ironmud::corpse::ordinal(kill_total)),
+            );
+        }
+    }
 }
 
 /// Scan the PC's room for HELPER mobiles that should join combat against the PC
@@ -593,6 +689,299 @@ mod tests {
         m
     }
 
+    /// Minimal `World` for the handful of tick paths that take `SharedState`.
+    /// Nothing here reads a definition table; the lock is what is needed.
+    fn dummy_state(db: &db::Db, conns: &SharedConnections) -> SharedState {
+        ironmud::World::minimal_shared(db.clone(), conns.clone())
+    }
+
+    /// A landed PvP swing credits weapon-skill XP on the same terms as the PvE
+    /// branch. This path awarded nothing at all until the Tier 0 review — PvP
+    /// was the one way to swing a weapon all day and never advance the skill.
+    ///
+    /// The victim is asleep so the hit is automatic; the roll is otherwise
+    /// random and the test would flake.
+    #[test]
+    fn a_landed_pvp_hit_credits_weapon_skill_xp() {
+        run_with_db("pvp_xp", |db| {
+            // No room row: `effective_combat_zone` falls back to Pve, and the
+            // sustain check here only refuses Safe.
+            let room = Uuid::new_v4();
+
+            let mut victim = mk_char("victim", room, Uuid::nil());
+            victim.combat.targets.clear();
+            victim.combat.in_combat = false;
+            victim.position = CharacterPosition::Sleeping;
+            victim.hp = 500;
+            victim.max_hp = 500;
+            db.save_character_data(victim).expect("save victim");
+
+            let mut attacker = mk_char("attacker", room, Uuid::nil());
+            attacker.combat.targets.clear();
+            attacker.combat.targets.push(CombatTarget::player("victim"));
+
+            let conns = empty_connections();
+            let state = dummy_state(db, &conns);
+            let target = attacker.combat.targets[0].clone();
+            let mut skill_gain = None;
+            process_character_attacks_player(db, &conns, &state, &mut attacker, &target, &mut skill_gain)
+                .expect("swing resolves");
+
+            // Unarmed is the default with no weapon equipped.
+            let banked: i32 = attacker.skills.values().map(|s| s.experience).sum();
+            assert_eq!(banked, 10, "a landed PvP hit banks the same 10 XP as PvE");
+            assert!(
+                attacker.skills.contains_key("unarmed"),
+                "credited against the weapon skill, got {:?}",
+                attacker.skills.keys().collect::<Vec<_>>()
+            );
+        });
+    }
+
+    /// The kill snapshots the victim's moral weight, so the deferred credit
+    /// block can move the killer's morality after the mobile row is gone.
+    ///
+    /// Read from the *instance*, not the prototype: mobiles clone at spawn, so
+    /// editing a prototype must not retroactively change what killing an
+    /// already-live copy of it means.
+    #[test]
+    fn a_kill_snapshots_the_victims_alignment_from_the_instance() {
+        run_with_db("kill_alignment", |db| {
+            let room = Uuid::new_v4();
+
+            // Prototype and instance disagree. The instance is what counts.
+            let mut proto = MobileData::new("ghoul".to_string());
+            proto.is_prototype = true;
+            proto.vnum = "test_ghoul".to_string();
+            proto.alignment = 0;
+            db.save_mobile_data(proto).expect("save prototype");
+
+            let mut victim = mk_mobile(db, "ghoul", room, false, None);
+            victim.vnum = "test_ghoul".to_string();
+            victim.alignment = -150;
+            victim.max_hp = 1;
+            victim.current_hp = 1;
+            // Trivially hittable so the roll cannot make this flake.
+            victim.armor_class = -50;
+            victim.stat_dex = 1;
+            db.save_mobile_data(victim.clone()).expect("save victim");
+
+            let mut attacker = mk_char("attacker", room, victim.id);
+            let conns = empty_connections();
+            let state = dummy_state(db, &conns);
+
+            let mut kill = None;
+            let mut skill_gain = None;
+            for _ in 0..500 {
+                process_character_attacks_mobile(
+                    db,
+                    &conns,
+                    &state,
+                    &mut attacker,
+                    &victim.id,
+                    &mut kill,
+                    &mut skill_gain,
+                )
+                .expect("swing resolves");
+                if kill.is_some() {
+                    break;
+                }
+            }
+            let kill = kill.expect("500 swings at a 1 HP mob must land one");
+            assert_eq!(
+                kill.alignment, -150,
+                "snapshot the instance's alignment, not the prototype's"
+            );
+            assert_eq!(
+                ironmud::morality::kill_delta(kill.alignment),
+                3,
+                "which is what the credit block feeds to morality"
+            );
+        });
+    }
+
+    /// Dying bumps the `deaths` counter, and the bump survives the wholesale
+    /// respawn save that happens in the same function. Every death route —
+    /// bleedout expiry, a hit while unconscious, a synth shutdown — funnels
+    /// through `process_player_death`, so counting here counts all of them
+    /// exactly once.
+    #[test]
+    fn dying_bumps_the_deaths_counter() {
+        run_with_db("deaths", |db| {
+            let room = Uuid::new_v4();
+            let mut victim = mk_char("victim", room, Uuid::nil());
+            victim.combat.targets.clear();
+            victim.hp = 0;
+            victim.max_hp = 100;
+            victim.spawn_room_id = Some(room);
+            db.save_character_data(victim.clone()).expect("save victim");
+
+            let conns = empty_connections();
+            let state = dummy_state(db, &conns);
+            process_player_death(db, &conns, &mut victim, &room, &state).expect("death resolves");
+
+            let count = |db: &db::Db| {
+                db.get_character_data("victim")
+                    .expect("read")
+                    .expect("exists")
+                    .achievement_counters
+                    .get("deaths")
+                    .copied()
+                    .unwrap_or(0)
+            };
+            assert_eq!(count(db), 1, "the respawn save must not clobber the counter");
+
+            // Reload before dying again. The counter bump writes out-of-band,
+            // so the caller's in-memory copy is stale the moment it returns —
+            // reusing it would save the pre-bump value back over the counter.
+            // Every real caller either returns immediately or reloads, which
+            // is what this mirrors.
+            let mut victim = db.get_character_data("victim").expect("read").expect("exists");
+            process_player_death(db, &conns, &mut victim, &room, &state).expect("second death");
+            assert_eq!(count(db), 2, "deaths accumulate");
+        });
+    }
+
+    /// Put `chars` online in one connections table so the party terms in
+    /// `group::kill_credit` have sessions to read.
+    fn connections_with(chars: &[CharacterData]) -> SharedConnections {
+        let conns = empty_connections();
+        for c in chars {
+            let (tx_client, _rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+            let (tx_input, _rx_in) = tokio::sync::mpsc::channel::<ironmud::InputEvent>(1);
+            let mut session = ironmud::PlayerSession::new_for_test(tx_client, tx_input);
+            session.character = Some(c.clone());
+            conns.lock().unwrap().insert(Uuid::new_v4(), session);
+            // Leak the receivers: dropping them closes the channel and every
+            // send after that fails, which would silence the messages under
+            // test.
+            std::mem::forget((_rx, _rx_in));
+        }
+        conns
+    }
+
+    fn a_kill(vnum: &str, alignment: i32, faction: Option<&str>, damaged_by: &[(&str, i32)]) -> MobKill {
+        MobKill {
+            killed_vnum: vnum.to_string(),
+            damaged_by: damaged_by
+                .iter()
+                .map(|(n, d)| (n.to_string(), *d))
+                .collect::<std::collections::HashMap<String, i32>>(),
+            corpse_id: Uuid::nil(),
+            mob_display: "a rust-scarred ghoul".to_string(),
+            alignment,
+            faction: faction.map(|s| s.to_string()),
+        }
+    }
+
+    fn counter(db: &db::Db, name: &str, key: &str) -> u32 {
+        db.get_character_data(name)
+            .expect("read")
+            .expect("exists")
+            .achievement_counters
+            .get(key)
+            .copied()
+            .unwrap_or(0)
+    }
+
+    /// The defect this slice exists for. A healer who lands no blow all fight
+    /// contributes nothing to `damaged_by`, so before the shared recipient set
+    /// they earned no kill counter, no morality shift and no faction standing —
+    /// only quests, which were the one consumer that fanned out. Grouping and
+    /// being present is what makes support playable.
+    #[test]
+    fn a_grouped_healer_who_dealt_no_damage_gets_the_whole_kill_credit() {
+        run_with_db("party_credit", |db| {
+            let room = Uuid::new_v4();
+
+            let mut tank = mk_char("tank", room, Uuid::nil());
+            tank.combat.targets.clear();
+            let mut medic = mk_char("medic", room, Uuid::nil());
+            medic.combat.targets.clear();
+            medic.following = Some("tank".to_string());
+            medic.is_grouped = true;
+            db.save_character_data(tank.clone()).expect("save tank");
+            db.save_character_data(medic.clone()).expect("save medic");
+
+            let conns = connections_with(&[tank.clone(), medic.clone()]);
+            let state = dummy_state(db, &conns);
+
+            // An evil, faction-tagged mob, so morality and standing both move.
+            let kill = a_kill("ghoul", -100, Some("undead"), &[("tank", 40)]);
+            apply_kill_credit(db, &conns, &state, &kill, "tank", &room);
+
+            for who in ["tank", "medic"] {
+                assert_eq!(
+                    counter(db, who, "kills.any"),
+                    1,
+                    "{who} should be credited with the kill"
+                );
+                assert_eq!(counter(db, who, "kills.ghoul"), 1, "{who} per-vnum tally");
+                let ch = db.get_character_data(who).expect("read").expect("exists");
+                assert!(
+                    ch.morality > 0,
+                    "{who} should have moved toward Good, got {}",
+                    ch.morality
+                );
+                assert!(
+                    ch.reputation.get("undead").copied().unwrap_or(0) < 0,
+                    "{who} should have lost standing with the undead"
+                );
+            }
+        });
+    }
+
+    /// Presence and grouping are both required. A grouped member off in another
+    /// zone did not take part, and crediting them would make grouping a way to
+    /// farm standing from a safe room.
+    #[test]
+    fn a_grouped_member_elsewhere_earns_nothing() {
+        run_with_db("absent_member", |db| {
+            let room = Uuid::new_v4();
+            let elsewhere = Uuid::new_v4();
+
+            let mut tank = mk_char("tank", room, Uuid::nil());
+            tank.combat.targets.clear();
+            let mut absent = mk_char("absent", elsewhere, Uuid::nil());
+            absent.combat.targets.clear();
+            absent.following = Some("tank".to_string());
+            absent.is_grouped = true;
+            db.save_character_data(tank.clone()).expect("save tank");
+            db.save_character_data(absent.clone()).expect("save absent");
+
+            let conns = connections_with(&[tank.clone(), absent.clone()]);
+            let state = dummy_state(db, &conns);
+
+            let kill = a_kill("ghoul", -100, Some("undead"), &[("tank", 40)]);
+            apply_kill_credit(db, &conns, &state, &kill, "tank", &room);
+
+            assert_eq!(counter(db, "tank", "kills.any"), 1);
+            assert_eq!(counter(db, "absent", "kills.any"), 0, "not in the room, not credited");
+            let ch = db.get_character_data("absent").expect("read").expect("exists");
+            assert_eq!(ch.morality, 0, "and no morality drift either");
+        });
+    }
+
+    /// The killer is in `damaged_by` as well as being the killing blow. Credit
+    /// must not land twice.
+    #[test]
+    fn the_killer_is_credited_exactly_once() {
+        run_with_db("no_double_credit", |db| {
+            let room = Uuid::new_v4();
+            let mut tank = mk_char("tank", room, Uuid::nil());
+            tank.combat.targets.clear();
+            db.save_character_data(tank.clone()).expect("save tank");
+
+            let conns = connections_with(&[tank.clone()]);
+            let state = dummy_state(db, &conns);
+
+            let kill = a_kill("ghoul", -100, None, &[("tank", 40)]);
+            apply_kill_credit(db, &conns, &state, &kill, "tank", &room);
+
+            assert_eq!(counter(db, "tank", "kills.any"), 1, "one kill, one tally");
+        });
+    }
+
     fn run_with_db(_label: &str, body: impl FnOnce(&db::Db)) {
         let temp = tempfile::tempdir().expect("create temp dir");
         let db = db::Db::open(temp.path()).expect("open db");
@@ -721,6 +1110,20 @@ mod tests {
 struct MobKill {
     killed_vnum: String,
     damaged_by: std::collections::HashMap<String, i32>,
+    /// Corpse `process_mobile_death` created, so the deferred kill block can
+    /// report what dropped. Read after the round-end save, not before.
+    corpse_id: uuid::Uuid,
+    /// The mob's display name, snapshotted before deletion.
+    mob_display: String,
+    /// The mob's moral weight, snapshotted before deletion. Read from the
+    /// *instance*, not the prototype: mobiles clone at spawn, so a prototype
+    /// edited after a mob went live must not retroactively change what killing
+    /// that mob means.
+    alignment: i32,
+    /// The mob's faction tag, snapshotted from the instance for the same
+    /// reason as `alignment`. `None` for the unaffiliated, which is most of
+    /// the world's wildlife and keeps it out of the reputation system.
+    faction: Option<String>,
 }
 
 fn process_character_attacks_mobile(
@@ -730,6 +1133,7 @@ fn process_character_attacks_mobile(
     char: &mut CharacterData,
     target_id: &uuid::Uuid,
     kill_out: &mut Option<MobKill>,
+    skill_gain_out: &mut Option<(String, ironmud::progress::XpOutcome)>,
 ) -> Result<()> {
     use rand::Rng;
 
@@ -1178,34 +1582,39 @@ fn process_character_attacks_mobile(
         let crit_roll = rng.gen_range(1..=100);
         let is_crit = crit_roll <= crit_chance;
 
-        // Track critical effect for messaging
+        // Track the critical effect for messaging. The effect key doubles as
+        // the mechanic: `combat_text::crit_mechanic` classifies it, so the tag
+        // the player reads and the effect the target suffers cannot disagree.
         let mut crit_effect = String::new();
+        let mut crit_body_part = String::new();
 
         if is_crit {
+            use ironmud::combat_text::CritMechanic;
+
             // Scale damage: 2x at skill >= 5, 1.5x otherwise
             damage = if skill >= 5 { damage * 2 } else { (damage * 3) / 2 };
 
-            // Roll for secondary crit effect (1-4)
-            let effect_roll = rng.gen_range(1..=4);
-            crit_effect = match effect_roll {
-                1 => {
-                    let severity = std::cmp::min(2 + skill / 3, 5);
-                    let body_part = roll_random_body_part(&mut rng);
-                    add_mobile_wound_bleeding(db, &mobile.id, &body_part, severity)?;
-                    "Bleeding".to_string()
+            crit_effect = ironmud::combat_text::roll_crit_effect(weapon_damage_type, rng.gen_range(1..=4)).to_string();
+            crit_body_part = roll_random_body_part(&mut rng);
+            let mechanic = ironmud::combat_text::crit_mechanic(&crit_effect);
+            let severity = std::cmp::min(2 + skill / 3, 5);
+            let stun_rounds = if skill >= 5 { 2 } else { 1 };
+
+            // Wound helpers save the mobile themselves, so they run before the
+            // reload below and their writes survive it.
+            match mechanic {
+                CritMechanic::Bleed => {
+                    add_mobile_wound_bleeding(db, &mobile.id, &crit_body_part, severity)?;
                 }
-                2 => {
-                    let stun_rounds = if skill >= 5 { 2 } else { 1 };
-                    mobile.combat.stun_rounds_remaining += stun_rounds;
-                    "Stun".to_string()
+                CritMechanic::StunBleed => {
+                    add_mobile_wound_bleeding(db, &mobile.id, &crit_body_part, 2)?;
                 }
-                3 => {
-                    let body_part = roll_random_body_part(&mut rng);
-                    escalate_mobile_wound_to_severe(db, &mobile.id, &body_part)?;
+                CritMechanic::Disable => {
+                    escalate_mobile_wound_to_severe(db, &mobile.id, &crit_body_part)?;
 
                     // Drop mobile's weapon on arm/hand disable
                     if matches!(
-                        body_part.as_str(),
+                        crit_body_part.as_str(),
                         "right arm" | "right hand" | "left arm" | "left hand"
                     ) {
                         if let Ok(equipped) = db.get_items_equipped_on_mobile(&mobile.id) {
@@ -1226,14 +1635,30 @@ fn process_character_attacks_mobile(
                             }
                         }
                     }
-
-                    body_part_disable_message(&body_part)
                 }
-                _ => String::new(),
-            };
+                _ => {}
+            }
 
             if let Some(fresh_mobile) = db.get_mobile_data(&mobile.id)? {
                 mobile = fresh_mobile;
+            }
+
+            // In-memory mutations go after the reload — the previous version
+            // applied the stun first and the reload silently discarded it, so
+            // crit stuns never landed on mobiles.
+            if matches!(
+                mechanic,
+                CritMechanic::Stun | CritMechanic::StunBleed | CritMechanic::OngoingStun
+            ) {
+                mobile.combat.stun_rounds_remaining += stun_rounds;
+            }
+            if matches!(mechanic, CritMechanic::Ongoing | CritMechanic::OngoingStun) {
+                mobile.ongoing_effects.push(ironmud::OngoingEffect {
+                    effect_type: ironmud::combat_text::crit_ongoing_element(&crit_effect).to_string(),
+                    rounds_remaining: 3,
+                    damage_per_round: severity,
+                    body_part: crit_body_part.clone(),
+                });
             }
         }
 
@@ -1298,23 +1723,19 @@ fn process_character_attacks_mobile(
             );
         }
 
-        // Build message with crit text (yellow/bold)
-        let crit_text = if is_crit {
-            if crit_effect.is_empty() {
-                " \x1b[1;33m[CRITICAL]\x1b[0m".to_string()
-            } else {
-                format!(" \x1b[1;33m[CRITICAL - {}!]\x1b[0m", crit_effect)
-            }
-        } else {
-            String::new()
-        };
+        // Build message with crit text, coloured by damage type.
+        let crit_text =
+            ironmud::combat_text::crit_text(is_crit, &crit_effect, &crit_body_part, false, weapon_damage_type);
 
         // Send messages
         if is_ranged_attack {
             let body_part = roll_random_body_part(&mut rng);
             let max_dmg = dice_count * dice_sides;
-            let projectile = ranged_projectile_word(&weapon_ranged_type);
-            let verb = ranged_hit_verb_contextual(&weapon_ranged_type, damage, max_dmg);
+            let projectile = ironmud::combat_text::ranged_projectile_word(&weapon_ranged_type);
+            let verb = ironmud::combat_text::ranged_hit_verb(
+                &weapon_ranged_type,
+                ironmud::combat_text::hit_severity(damage, max_dmg),
+            );
             send_message_to_character(
                 connections,
                 &char.name,
@@ -1335,15 +1756,25 @@ fn process_character_attacks_mobile(
                 )
             });
         } else {
+            // Melee used to print a flat "You hit X for N damage!" regardless
+            // of how hard the blow landed, while ranged (above) tiered its
+            // verbs. Same severity banding now drives both.
+            let max_dmg = dice_count * dice_sides;
+            let severity = ironmud::combat_text::hit_severity(damage, max_dmg);
+            let verb = ironmud::combat_text::melee_hit_verb(weapon_damage_type, severity);
             send_message_to_character(
                 connections,
                 &char.name,
-                &format!("You hit {} for {} damage!{}", mobile.name, damage, crit_text),
+                &format!(
+                    "You {} {} for {} damage!{}",
+                    verb.second, mobile.name, damage, crit_text
+                ),
             );
             broadcast_to_room_except_awake_per_viewer(connections, &room_id, &char.name, |viewer| {
                 format!(
-                    "{} hits {} for {} damage!",
+                    "{} {} {} for {} damage!",
                     char.name,
+                    verb.third,
                     mob_display_name_for(viewer, &mobile, true),
                     damage
                 )
@@ -1355,17 +1786,24 @@ fn process_character_attacks_mobile(
             broadcast_to_room_awake(connections, &room_id, line);
         }
 
-        // Award XP for successful hit (10 XP to weapon skill)
-        let leveled = add_skill_experience_to_character(char, &weapon_skill, 10);
-        if leveled {
-            send_message_to_character(
-                connections,
-                &char.name,
-                &format!(
-                    "\x1b[1;33mYour {} skill has improved!\x1b[0m",
-                    weapon_skill.replace('_', " ")
-                ),
-            );
+        // Award XP for successful hit (10 XP to weapon skill).
+        //
+        // `is_language = false` is passed explicitly rather than looked up:
+        // weapon skills are never languages, and the lookup would need the
+        // World lock, which this tick must not take while holding its own
+        // state. The client-facing line is emitted inline, but the achievement
+        // hook is deferred to the caller so it lands AFTER the round-end
+        // character save (see the kill-credit note there).
+        let xp = ironmud::progress::award_xp_to_character(char, &weapon_skill, 10, false);
+        ironmud::progress::report_xp(
+            connections,
+            &char.name,
+            &weapon_skill,
+            &xp,
+            ironmud::progress::XpSource::Combat,
+        );
+        if xp.leveled {
+            *skill_gain_out = Some((weapon_skill.clone(), xp));
         }
 
         // Check if target died
@@ -1374,7 +1812,12 @@ fn process_character_attacks_mobile(
             // Snapshot the damage map BEFORE process_mobile_death so all
             // contributing players can be credited (slice 3c party credit).
             let damaged_by = mobile.combat.damaged_by.clone();
-            process_mobile_death(db, connections, &mut mobile, &room_id)?;
+            // Snapshot the display name too — the mobile row is deleted by
+            // process_mobile_death, so the deferred block can't look it up.
+            let mob_display = mobile.display_name().to_string();
+            let alignment = mobile.alignment;
+            let faction = mobile.faction.clone();
+            let corpse_id = process_mobile_death(db, connections, &mut mobile, &room_id)?;
             // Defer kill-credit notifications (achievements, quests) to the
             // caller, which runs them only after persisting `char`. Firing
             // them here would write the award out-of-band, then the caller's
@@ -1383,6 +1826,10 @@ fn process_character_attacks_mobile(
             *kill_out = Some(MobKill {
                 killed_vnum,
                 damaged_by,
+                corpse_id,
+                mob_display,
+                alignment,
+                faction,
             });
 
             char.combat.targets.retain(|t| t.target_id != *target_id);
@@ -1414,6 +1861,7 @@ fn process_character_attacks_player(
     state: &SharedState,
     char: &mut CharacterData,
     target: &CombatTarget,
+    skill_gain_out: &mut Option<(String, ironmud::progress::XpOutcome)>,
 ) -> Result<()> {
     use rand::Rng;
 
@@ -1485,7 +1933,7 @@ fn process_character_attacks_player(
     let mut rng = rand::thread_rng();
 
     // Attacker offense.
-    let (weapon_skill, count, sides, weapon_bonus, _wdt) = get_character_weapon_info(db, char);
+    let (weapon_skill, count, sides, weapon_bonus, weapon_damage_type) = get_character_weapon_info(db, char);
     let skill = get_skill_level_for_character(char, &weapon_skill);
     let (atk_hit_bonus, atk_dam_bonus, atk_dex_bonus) = sum_combat_buff_bonuses(&char.active_buffs);
     let attacker_dex_mod = (char.stat_dex as i32 + atk_dex_bonus - 10) / 2;
@@ -1535,25 +1983,58 @@ fn process_character_attacks_player(
     if is_crit {
         damage = (damage * 3) / 2;
     }
-    let crit_text = if is_crit { " \x1b[1;31m(critical!)\x1b[0m" } else { "" };
+    // PvP crits are damage-only — no wound or stun is rolled — so the tag
+    // stays generic rather than naming an effect the victim never suffered.
+    // It shares the PvE renderer so the colour and bracket form match.
+    let crit_text = ironmud::combat_text::crit_text(is_crit, "clean", "", false, weapon_damage_type);
 
     victim.hp -= damage;
 
+    let verb = ironmud::combat_text::melee_hit_verb(
+        weapon_damage_type,
+        ironmud::combat_text::hit_severity(damage, count * sides),
+    );
     send_message_to_character(
         connections,
         &char.name,
-        &format!("You hit {} for {} damage!{}", victim.name, damage, crit_text),
+        &format!(
+            "You {} {} for {} damage!{}",
+            verb.second, victim.name, damage, crit_text
+        ),
     );
     {
         let victim_name = victim.name.clone();
         let attacker_name = char.name.clone();
         broadcast_to_room_except_awake_per_viewer(connections, &room_id, &attacker_name, |viewer| {
             if viewer.name.eq_ignore_ascii_case(&victim_name) {
-                format!("{} hits you for {} damage!", attacker_name, damage)
+                format!("{} {} you for {} damage!", attacker_name, verb.third, damage)
             } else {
-                format!("{} hits {} for {} damage!", attacker_name, victim_name, damage)
+                format!(
+                    "{} {} {} for {} damage!",
+                    attacker_name, verb.third, victim_name, damage
+                )
             }
         });
+    }
+
+    // Weapon-skill XP, on the same terms as the PvE branch (10 per landed
+    // hit). This path used to award nothing at all, which made PvP the one
+    // way to swing a weapon all day and never advance the skill. Awarded
+    // here rather than after the downed handling below because the synth
+    // path returns early and would otherwise swallow the credit.
+    //
+    // `is_language = false` for the same reason as the PvE branch: weapon
+    // skills are never languages and the lookup would need the World lock.
+    let xp = ironmud::progress::award_xp_to_character(char, &weapon_skill, 10, false);
+    ironmud::progress::report_xp(
+        connections,
+        &char.name,
+        &weapon_skill,
+        &xp,
+        ironmud::progress::XpSource::Combat,
+    );
+    if xp.leveled {
+        *skill_gain_out = Some((weapon_skill.clone(), xp));
     }
 
     // Downed: route through the shared PvE unconscious/bleedout flow.
@@ -1902,7 +2383,7 @@ fn process_mobile_combat_round(
     // Fire DG OnFight + OnHitPercent triggers (Phase 3) before action.
     // OnFight runs each round; OnHitPercent fires once when HP% crosses
     // a trigger-specified threshold and re-arms when HP% rises above it.
-    fire_combat_dg_triggers(db, connections, &mut mobile);
+    fire_combat_dg_triggers(db, connections, state, &mut mobile);
 
     // Consume stamina for attack (bloodless mobiles never tire).
     if mobile.tires() {
@@ -2052,7 +2533,7 @@ fn process_mobile_combat_round(
 /// Fire DG `OnFight` (every round) and `OnHitPercent` (once per
 /// crossing) triggers on a combatant mobile. Mutates `mobile.triggers[i]
 /// .last_fired` as a flag for HitPercent re-arm semantics.
-fn fire_combat_dg_triggers(db: &db::Db, connections: &SharedConnections, mobile: &mut MobileData) {
+fn fire_combat_dg_triggers(db: &db::Db, connections: &SharedConnections, state: &SharedState, mobile: &mut MobileData) {
     use ironmud::MobileTriggerType;
 
     let db_arc = std::sync::Arc::new(db.clone());
@@ -2062,6 +2543,7 @@ fn fire_combat_dg_triggers(db: &db::Db, connections: &SharedConnections, mobile:
     ironmud::script::dg::fire_mobile_dg_triggers(
         &db_arc,
         connections,
+        state,
         &snapshot,
         MobileTriggerType::OnFight,
         "",
@@ -2109,6 +2591,7 @@ fn fire_combat_dg_triggers(db: &db::Db, connections: &SharedConnections, mobile:
                     "",
                     db_arc.clone(),
                     connections.clone(),
+                    state.clone(),
                     t.authored_by.clone(),
                     t.elevated,
                     std::collections::HashMap::new(),
@@ -2395,7 +2878,7 @@ fn process_mobile_attacks_player(
     // Skip hit roll if target was sleeping (automatic hit)
     if !was_sleeping && roll > hit_chance {
         // Miss
-        let miss_verb = get_miss_verb(damage_type);
+        let miss_verb = ironmud::combat_text::miss_verb(damage_type);
         let target_attacker_name = mob_display_name_for(&char, mobile, false);
         send_message_to_character(
             connections,
@@ -2438,36 +2921,37 @@ fn process_mobile_attacks_player(
     let crit_roll = rng.gen_range(1..=100);
     let is_crit = crit_roll <= crit_chance;
 
-    // Track critical effect for messaging
+    // Track the critical effect for messaging. The key doubles as the
+    // mechanic (see `combat_text::crit_mechanic`), so the tag the player reads
+    // always matches what actually hit them.
     let mut crit_effect = String::new();
+    let mut crit_body_part = String::new();
 
     if is_crit {
+        use ironmud::combat_text::CritMechanic;
+
         // Scale damage: 1.5x for mobiles (no skill)
         damage = (damage * 3) / 2;
 
-        // Roll for secondary crit effect (1-4)
-        let effect_roll = rng.gen_range(1..=4);
-        crit_effect = match effect_roll {
-            1 => {
-                // Bleeding
-                let severity = 2; // Base severity for mobiles
-                let body_part = roll_random_body_part(&mut rng);
-                add_character_wound_bleeding(db, player_name, &body_part, severity)?;
-                "Bleeding".to_string()
+        crit_effect = ironmud::combat_text::roll_crit_effect(damage_type, rng.gen_range(1..=4)).to_string();
+        crit_body_part = roll_random_body_part(&mut rng);
+        let mechanic = ironmud::combat_text::crit_mechanic(&crit_effect);
+        let severity = 2; // Base severity for mobiles
+
+        // Wound helpers save the character themselves, so they run before the
+        // reload below and their writes survive it.
+        match mechanic {
+            CritMechanic::Bleed => {
+                add_character_wound_bleeding(db, player_name, &crit_body_part, severity)?;
             }
-            2 => {
-                // Stun: 1 round for mobiles
-                char.combat.stun_rounds_remaining += 1;
-                db.save_character_data(char.clone())?;
-                "Stun".to_string()
+            CritMechanic::StunBleed => {
+                add_character_wound_bleeding(db, player_name, &crit_body_part, 2)?;
             }
-            3 => {
-                // Limb disable
-                let body_part = roll_random_body_part(&mut rng);
-                escalate_character_wound_to_severe(db, player_name, &body_part)?;
+            CritMechanic::Disable => {
+                escalate_character_wound_to_severe(db, player_name, &crit_body_part)?;
 
                 // Weapon drop on arm/hand disable
-                match body_part.as_str() {
+                match crit_body_part.as_str() {
                     "right arm" | "right hand" => {
                         if let Some(wid) = get_character_wielded_weapon_id(db, &char) {
                             if let Ok(Some(weapon)) = db.get_item_data(&wid) {
@@ -2518,17 +3002,32 @@ fn process_mobile_attacks_player(
                     }
                     _ => {}
                 }
-
-                body_part_disable_message(&body_part)
             }
-            _ => String::new(), // Clean crit
-        };
+            _ => {}
+        }
 
         // Reload character from DB to get any wounds that were added
         // (add_character_wound_bleeding and escalate_character_wound_to_severe save directly to DB)
         if let Some(fresh_char) = db.get_character_data(player_name)? {
             char = fresh_char;
         }
+
+        // In-memory mutations go after the reload so it cannot discard them.
+        if matches!(
+            mechanic,
+            CritMechanic::Stun | CritMechanic::StunBleed | CritMechanic::OngoingStun
+        ) {
+            char.combat.stun_rounds_remaining += 1;
+        }
+        if matches!(mechanic, CritMechanic::Ongoing | CritMechanic::OngoingStun) {
+            char.ongoing_effects.push(ironmud::OngoingEffect {
+                effect_type: ironmud::combat_text::crit_ongoing_element(&crit_effect).to_string(),
+                rounds_remaining: 3,
+                damage_per_round: severity,
+                body_part: crit_body_part.clone(),
+            });
+        }
+        db.save_character_data(char.clone())?;
     }
 
     // Apply combined typed resistance: race + item-stamped buffs.
@@ -2618,19 +3117,15 @@ fn process_mobile_attacks_player(
     // Sync updated character to session so prompt shows correct HP
     sync_character_to_session(connections, &char, state);
 
-    // Build message with crit text (yellow/bold)
-    let crit_text = if is_crit {
-        if crit_effect.is_empty() {
-            " \x1b[1;33m[CRITICAL]\x1b[0m".to_string()
-        } else {
-            format!(" \x1b[1;33m[CRITICAL - {}!]\x1b[0m", crit_effect)
-        }
-    } else {
-        String::new()
-    };
+    // Build message with crit text, coloured by damage type.
+    let crit_text = ironmud::combat_text::crit_text(is_crit, &crit_effect, &crit_body_part, false, damage_type);
 
     // Send messages (red for damage taken) - sleeping bystanders don't see combat
-    let hit_verb = get_hit_verb(damage_type);
+    // Tiered by severity for the same reason the player's own swings are: a
+    // scrape and a maiming blow should not read identically.
+    let hit_verb =
+        ironmud::combat_text::melee_hit_verb(damage_type, ironmud::combat_text::hit_severity(damage, count * sides))
+            .third;
     let target_attacker_name = mob_display_name_for(&char, mobile, false);
     send_message_to_character(
         connections,
@@ -3224,25 +3719,6 @@ fn get_mobile_weapon_info(db: &db::Db, mobile: &MobileData) -> (i32, i32, i32, D
     (count, sides, bonus, mobile.damage_type)
 }
 
-/// Get the miss verb for a damage type (third person, e.g. "snaps at")
-fn get_miss_verb(damage_type: DamageType) -> &'static str {
-    match damage_type {
-        DamageType::Slashing => "slashes at",
-        DamageType::Piercing => "thrusts at",
-        DamageType::Bludgeoning => "swings at",
-        DamageType::Fire => "hurls flames at",
-        DamageType::Cold => "sends frost at",
-        DamageType::Lightning => "sends lightning at",
-        DamageType::Poison => "strikes at",
-        DamageType::Acid => "flings acid at",
-        DamageType::Bite => "snaps at",
-        DamageType::Ballistic => "fires at",
-        DamageType::Arcane => "hurls magic at",
-        DamageType::Sunlight => "sears with sunlight at",
-        DamageType::Holy => "smites at",
-    }
-}
-
 /// Returns the name a viewer should see when a mob is referenced in
 /// a combat message. If the mob has the Invisibility buff and the
 /// viewer lacks DetectInvisible (and isn't admin), returns
@@ -3267,70 +3743,6 @@ fn mob_display_name_for(viewer: &CharacterData, mob: &MobileData, lowered: bool)
         "something".to_string()
     } else {
         "Something".to_string()
-    }
-}
-
-/// Get the hit verb for a damage type (third person, e.g. "bites")
-fn get_hit_verb(damage_type: DamageType) -> &'static str {
-    match damage_type {
-        DamageType::Slashing => "slashes",
-        DamageType::Piercing => "stabs",
-        DamageType::Bludgeoning => "hits",
-        DamageType::Fire => "burns",
-        DamageType::Cold => "freezes",
-        DamageType::Lightning => "shocks",
-        DamageType::Poison => "poisons",
-        DamageType::Acid => "corrodes",
-        DamageType::Bite => "bites",
-        DamageType::Ballistic => "shoots",
-        DamageType::Arcane => "blasts",
-        DamageType::Sunlight => "sears",
-        DamageType::Holy => "smites",
-    }
-}
-
-/// Get the projectile word for a ranged weapon type
-fn ranged_projectile_word(ranged_type: &str) -> &'static str {
-    match ranged_type {
-        "bow" => "arrow",
-        "crossbow" => "bolt",
-        _ => "shot",
-    }
-}
-
-/// Get a contextual hit verb based on ranged type and damage severity
-fn ranged_hit_verb_contextual(ranged_type: &str, damage: i32, max_damage: i32) -> &'static str {
-    // Determine severity: low (<=25%), medium (25-75%), high (>75%)
-    let severity = if max_damage <= 0 {
-        1 // medium
-    } else if damage <= max_damage / 4 {
-        0 // low
-    } else if damage > (max_damage * 3) / 4 {
-        2 // high
-    } else {
-        1 // medium
-    };
-
-    match severity {
-        0 => {
-            if ranged_type == "crossbow" {
-                "nicks"
-            } else {
-                "grazes"
-            }
-        }
-        1 => match ranged_type {
-            "bow" => "lodges in",
-            "crossbow" => "punches into",
-            _ => "rips into",
-        },
-        _ => {
-            if ranged_type == "bow" {
-                "punches through"
-            } else {
-                "tears through"
-            }
-        }
     }
 }
 
@@ -3406,97 +3818,13 @@ pub fn get_skill_level_for_character(char: &CharacterData, skill_name: &str) -> 
     0
 }
 
-/// Add skill experience to a character, returns true if leveled up
-pub fn add_skill_experience_to_character(char: &mut CharacterData, skill_name: &str, amount: i32) -> bool {
-    // XP required per level - matches Rhai version in characters.rs
-    fn xp_for_level(level: i32) -> i32 {
-        match level {
-            0 => 100,
-            1 => 200,
-            2 => 350,
-            3 => 550,
-            4 => 800,
-            5 => 1100,
-            6 => 1500,
-            7 => 2000,
-            8 => 2600,
-            9 => 3300,
-            _ => 0,
-        }
-    }
-
-    let max_level = 10;
-    let skill_key = skill_name.to_lowercase();
-
-    if let Some(skill) = char.skills.get_mut(&skill_key) {
-        if skill.level >= max_level {
-            return false;
-        }
-        skill.experience += amount;
-
-        // Check for level up (may level multiple times if XP is high)
-        let mut leveled_up = false;
-        loop {
-            let xp_needed = xp_for_level(skill.level);
-            if xp_needed == 0 || skill.experience < xp_needed || skill.level >= max_level {
-                break;
-            }
-            skill.experience -= xp_needed;
-            skill.level += 1;
-            leveled_up = true;
-            if skill.level >= max_level {
-                skill.experience = 0;
-                break;
-            }
-        }
-        return leveled_up;
-    }
-
-    // Skill not found, create it
-    char.skills.insert(
-        skill_key,
-        SkillProgress {
-            level: 0,
-            experience: amount,
-        },
-    );
-    false
-}
-
-/// Roll a random body part for combat effects
-fn body_part_disable_message(body_part: &str) -> String {
-    match body_part {
-        "head" => "Head Rattled".to_string(),
-        "neck" => "Neck Wrenched".to_string(),
-        "torso" => "Ribs Cracked".to_string(),
-        "left eye" | "right eye" => {
-            let side = if body_part.starts_with("left") { "Left" } else { "Right" };
-            format!("{} Eye Blinded", side)
-        }
-        "left ear" | "right ear" => {
-            let side = if body_part.starts_with("left") { "Left" } else { "Right" };
-            format!("{} Ear Deafened", side)
-        }
-        "jaw" => "Jaw Shattered".to_string(),
-        p if p.ends_with("arm") => {
-            let side = if p.starts_with("left") { "Left" } else { "Right" };
-            format!("{} Arm Disabled", side)
-        }
-        p if p.ends_with("leg") => {
-            let side = if p.starts_with("left") { "Left" } else { "Right" };
-            format!("{} Leg Disabled", side)
-        }
-        p if p.ends_with("hand") => {
-            let side = if p.starts_with("left") { "Left" } else { "Right" };
-            format!("{} Hand Disabled", side)
-        }
-        p if p.ends_with("foot") => {
-            let side = if p.starts_with("left") { "Left" } else { "Right" };
-            format!("{} Foot Disabled", side)
-        }
-        _ => format!("{} Disabled", body_part),
-    }
-}
+// `add_skill_experience_to_character` used to live here with its own private
+// copy of the XP curve. It has been folded into
+// `ironmud::progress::award_xp_to_character`, which is the single
+// implementation for every path that awards skill XP. Note the old copy also
+// silently dropped XP for a skill the character had never used (it created the
+// entry with `level: 0` and then returned without checking for a level-up);
+// the chokepoint handles first-use correctly.
 
 fn roll_random_body_part<R: rand::Rng>(rng: &mut R) -> String {
     // Weights total 100: torso 35, arms 12x2, legs 12x2, head 3, hands 4x2,
@@ -3607,6 +3935,13 @@ pub fn handle_synth_down(
     }
 }
 
+/// Kill a player at `room_id`. Delegates to the lib-side implementation.
+///
+/// There used to be a full copy here, and a second near-copy in
+/// `src/session/death.rs` for the ROOM_DEATH script path. They had drifted:
+/// only this one bumped the `deaths` counter and credited PvP worship, so
+/// walking into a death trap did not count as dying. The flow now lives in the
+/// lib once; this stays as the name the tick modules already import.
 pub fn process_player_death(
     db: &db::Db,
     connections: &SharedConnections,
@@ -3614,119 +3949,19 @@ pub fn process_player_death(
     room_id: &uuid::Uuid,
     state: &SharedState,
 ) -> Result<()> {
-    let char_name = char.name.clone();
-
-    // Snapshot engaged player attackers before combat state is cleared —
-    // enemy-god worship credit for PvP kills is awarded after the respawn
-    // save below.
-    let pvp_attackers: Vec<String> = char
-        .combat
-        .targets
-        .iter()
-        .filter(|t| t.target_type == CombatTargetType::Player)
-        .filter_map(|t| t.target_name.clone())
-        .collect();
-
-    // Release any mobiles this player had charmed.
-    break_all_charms_by_player(db, &char_name);
-
-    // Send death messages
-    send_message_to_character(connections, &char_name, "You have died!");
-    broadcast_to_room_except(connections, room_id, &format!("{} has died!", char_name), &char_name);
-
-    // Create corpse using builder
-    let mut corpse = CorpseBuilder::for_player(&char_name, *room_id, char.gold as i64).build();
-    let corpse_id = corpse.id;
-
-    // Transfer inventory to corpse (source of truth is ItemLocation::Inventory)
-    if let Ok(inventory_items) = db.get_items_in_inventory(&char_name) {
-        for item in inventory_items {
-            let item_id = item.id;
-            let mut updated_item = item;
-            updated_item.location = ItemLocation::Container(corpse_id);
-            let _ = db.save_item_data(updated_item);
-            corpse.container_contents.push(item_id);
-        }
-    }
-
-    // Transfer equipment to corpse (source of truth is ItemLocation::Equipped)
-    if let Ok(equipped_items) = db.get_equipped_items(&char_name) {
-        for item in equipped_items {
-            let item_id = item.id;
-            let mut updated_item = item;
-            updated_item.location = ItemLocation::Container(corpse_id);
-            let _ = db.save_item_data(updated_item);
-            corpse.container_contents.push(item_id);
-        }
-    }
-
-    // Save corpse
-    db.save_item_data(corpse)?;
-
-    // Clear character's gold (inventory items already moved to corpse above)
-    char.gold = 0;
-
-    // Respawn character
-    let spawn_room = char.spawn_room_id.unwrap_or_else(|| db.resolve_starting_room_id());
-
-    char.current_room_id = spawn_room;
-    char.hp = char.max_hp / 4;
-    if char.hp < 1 {
-        char.hp = 1;
-    }
-    char.is_unconscious = false;
-    char.bleedout_rounds_remaining = 0;
-    char.wounds.clear();
-    char.ongoing_effects.clear();
-    // A respawned synth boots clean: no shutdown countdown, no malfunction
-    // flags (the chassis tick re-derives stages from the new HP).
-    if let Some(s) = char.synth_state.as_mut() {
-        ironmud::synth::reset_synth_state_on_death(s);
-    }
-    char.active_buffs
-        .retain(|b| b.source != ironmud::types::SYNTH_MALFUNCTION_SOURCE);
-    char.combat.in_combat = false;
-    char.combat.targets.clear();
-    char.combat.stun_rounds_remaining = 0;
-    char.combat.ammo_depleted = 0;
-
-    // Clear environmental/illness conditions
-    char.is_wet = false;
-    char.wet_level = 0;
-    char.cold_exposure = 0;
-    char.heat_exposure = 0;
-    char.illness_progress = 0;
-    char.has_illness = false;
-    char.has_hypothermia = false;
-    char.has_frostbite.clear();
-    char.has_heat_exhaustion = false;
-    char.has_heat_stroke = false;
-    char.food_sick = false;
-
-    db.save_character_data(char.clone())?;
-    sync_character_to_session(connections, &char, state);
-
-    // Send respawn message
-    send_message_to_character(connections, &char_name, "You awaken at your spawn point...");
-    send_message_to_character(connections, &char_name, &format!("You have {} HP.", char.hp));
-
-    // Enemy-god worship credit for the killers. Runs after the victim's
-    // save+sync above; the killers' own rounds load fresh state, so the
-    // favor write isn't clobbered by end-of-round saves.
-    for killer in pvp_attackers {
-        ironmud::script::worship::handle_pvp_kill_credit(db, connections, &killer, &char_name);
-    }
-
-    Ok(())
+    ironmud::session::death::process_player_death(db, connections, state, char, room_id)
 }
 
 /// Process mobile death: create corpse with items
+/// Returns the id of the corpse it created, so a caller that credited the kill
+/// can report what dropped without re-scanning the room for a corpse it can't
+/// reliably identify. Callers that don't need it can ignore the value.
 pub fn process_mobile_death(
     db: &db::Db,
     connections: &SharedConnections,
     mobile: &mut MobileData,
     room_id: &uuid::Uuid,
-) -> Result<()> {
+) -> Result<uuid::Uuid> {
     debug!("process_mobile_death: starting for {}", mobile.name);
     let mobile_name = mobile.name.clone();
     let mobile_display = mobile.display_name().to_string();
@@ -3812,7 +4047,7 @@ pub fn process_mobile_death(
     db.delete_mobile(&mobile.id)?;
     debug!("process_mobile_death: mobile deleted, returning");
 
-    Ok(())
+    Ok(corpse_id)
 }
 
 /// Process arrow recovery from a dead mobile's embedded projectiles.

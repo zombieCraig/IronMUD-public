@@ -17,6 +17,7 @@ use super::{
     notify_builders,
     validate::{DESCRIPTION_MAX, NAME_MAX, SHORT_DESC_MAX, check_text_len},
 };
+use crate::types::Authored;
 use crate::types::{QuestData, QuestObjective, QuestReward};
 
 pub fn routes() -> Router<Arc<ApiState>> {
@@ -76,6 +77,15 @@ pub enum RewardRequest {
     LearnRecipe {
         recipe_id: String,
     },
+    /// Shift the player's morality slider. Clamped to `[-200, 200]`.
+    Morality {
+        delta: i32,
+    },
+    /// Shift the player's standing with a faction. Clamped to `[-1000, 1000]`.
+    Reputation {
+        faction: String,
+        delta: i32,
+    },
     EmbraceClan {
         clan: String,
     },
@@ -113,6 +123,7 @@ pub struct CreateQuestRequest {
     pub duration_secs: Option<i64>,
     #[serde(default)]
     pub achievement_set_prereq: Option<AchievementSetPrereqRequest>,
+    pub reputation_prereq: Option<ReputationPrereqRequest>,
 }
 
 #[derive(Deserialize)]
@@ -130,6 +141,28 @@ pub struct UpdateQuestRequest {
     pub min_player_skill_total: Option<i32>,
     pub duration_secs: Option<i64>,
     pub achievement_set_prereq: Option<AchievementSetPrereqRequest>,
+    pub reputation_prereq: Option<ReputationPrereqRequest>,
+}
+
+/// Wire shape for `reputation_prereq`. An empty `faction` clears the gate on
+/// update.
+#[derive(Deserialize)]
+pub struct ReputationPrereqRequest {
+    #[serde(default)]
+    pub faction: String,
+    #[serde(default)]
+    pub min_value: i32,
+}
+
+fn convert_reputation_prereq(req: &ReputationPrereqRequest) -> Option<crate::types::ReputationPrereq> {
+    let faction = req.faction.trim().to_lowercase();
+    if faction.is_empty() {
+        return None;
+    }
+    Some(crate::types::ReputationPrereq {
+        faction,
+        min_value: crate::reputation::clamp(req.min_value),
+    })
 }
 
 /// Wire shape for `achievement_set_prereq`. Empty `keys` or non-positive
@@ -268,6 +301,27 @@ fn convert_reward(req: &RewardRequest) -> Result<QuestReward, ApiError> {
                 recipe_id: recipe_id.clone(),
             })
         }
+        RewardRequest::Morality { delta } => {
+            if *delta == 0 {
+                return Err(ApiError::InvalidInput("Morality delta must be non-zero".into()));
+            }
+            Ok(QuestReward::Morality {
+                delta: crate::morality::clamp(*delta),
+            })
+        }
+        RewardRequest::Reputation { faction, delta } => {
+            let trimmed = faction.trim().to_lowercase();
+            if trimmed.is_empty() {
+                return Err(ApiError::InvalidInput("Reputation faction required".into()));
+            }
+            if *delta == 0 {
+                return Err(ApiError::InvalidInput("Reputation delta must be non-zero".into()));
+            }
+            Ok(QuestReward::Reputation {
+                faction: trimmed,
+                delta: crate::reputation::clamp(*delta),
+            })
+        }
         RewardRequest::EmbraceClan { clan } => {
             let trimmed = clan.trim().to_lowercase();
             if trimmed.is_empty() {
@@ -364,7 +418,10 @@ async fn create_quest(
         .collect::<Result<Vec<_>, _>>()?;
     let rewards = req.rewards.iter().map(convert_reward).collect::<Result<Vec<_>, _>>()?;
 
-    let quest = QuestData {
+    let mut quest = QuestData {
+        authored_by: None,
+        last_edited_by: None,
+        origin: Default::default(),
         vnum: req.vnum,
         name: req.name,
         keywords: req.keywords,
@@ -383,8 +440,11 @@ async fn create_quest(
         min_player_skill_total: req.min_player_skill_total,
         duration_secs: req.duration_secs.and_then(|n| if n <= 0 { None } else { Some(n) }),
         achievement_set_prereq: req.achievement_set_prereq.as_ref().and_then(convert_achievement_set),
+        reputation_prereq: req.reputation_prereq.as_ref().and_then(convert_reputation_prereq),
     };
 
+    // Attribution: see src/attribution.rs.
+    quest.stamp_created(&user.api_key.owner_character);
     state
         .db
         .save_quest_data(&quest)
@@ -463,7 +523,12 @@ async fn update_quest(
     if let Some(set_req) = req.achievement_set_prereq {
         quest.achievement_set_prereq = convert_achievement_set(&set_req);
     }
+    if let Some(rep_req) = req.reputation_prereq {
+        quest.reputation_prereq = convert_reputation_prereq(&rep_req);
+    }
 
+    // Attribution: see src/attribution.rs.
+    quest.stamp_edited(&user.api_key.owner_character);
     state
         .db
         .save_quest_data(&quest)

@@ -18,6 +18,7 @@ export declare const questToolDefinitions: ({
             min_player_skill_total?: undefined;
             duration_secs?: undefined;
             achievement_set_prereq?: undefined;
+            reputation_prereq?: undefined;
         };
         required?: undefined;
     };
@@ -44,6 +45,7 @@ export declare const questToolDefinitions: ({
             min_player_skill_total?: undefined;
             duration_secs?: undefined;
             achievement_set_prereq?: undefined;
+            reputation_prereq?: undefined;
         };
         required: string[];
     };
@@ -212,6 +214,8 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            delta?: undefined;
+                            faction?: undefined;
                             clan?: undefined;
                             discipline?: undefined;
                         };
@@ -234,6 +238,8 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            delta?: undefined;
+                            faction?: undefined;
                             clan?: undefined;
                             discipline?: undefined;
                         };
@@ -256,6 +262,8 @@ export declare const questToolDefinitions: ({
                             qty?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            delta?: undefined;
+                            faction?: undefined;
                             clan?: undefined;
                             discipline?: undefined;
                         };
@@ -275,6 +283,8 @@ export declare const questToolDefinitions: ({
                             qty?: undefined;
                             skill?: undefined;
                             recipe_id?: undefined;
+                            delta?: undefined;
+                            faction?: undefined;
                             clan?: undefined;
                             discipline?: undefined;
                         };
@@ -294,6 +304,53 @@ export declare const questToolDefinitions: ({
                             qty?: undefined;
                             skill?: undefined;
                             key?: undefined;
+                            delta?: undefined;
+                            faction?: undefined;
+                            clan?: undefined;
+                            discipline?: undefined;
+                        };
+                        required: string[];
+                    } | {
+                        type: string;
+                        properties: {
+                            kind: {
+                                const: string;
+                            };
+                            delta: {
+                                type: string;
+                                description: string;
+                            };
+                            amount?: undefined;
+                            vnum?: undefined;
+                            qty?: undefined;
+                            skill?: undefined;
+                            key?: undefined;
+                            recipe_id?: undefined;
+                            faction?: undefined;
+                            clan?: undefined;
+                            discipline?: undefined;
+                        };
+                        required: string[];
+                    } | {
+                        type: string;
+                        properties: {
+                            kind: {
+                                const: string;
+                            };
+                            faction: {
+                                type: string;
+                                description: string;
+                            };
+                            delta: {
+                                type: string;
+                                description: string;
+                            };
+                            amount?: undefined;
+                            vnum?: undefined;
+                            qty?: undefined;
+                            skill?: undefined;
+                            key?: undefined;
+                            recipe_id?: undefined;
                             clan?: undefined;
                             discipline?: undefined;
                         };
@@ -315,6 +372,8 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            delta?: undefined;
+                            faction?: undefined;
                             discipline?: undefined;
                         };
                         required: string[];
@@ -334,6 +393,8 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            delta?: undefined;
+                            faction?: undefined;
                             clan?: undefined;
                         };
                         required: string[];
@@ -371,6 +432,19 @@ export declare const questToolDefinitions: ({
                         };
                     };
                     min_count: {
+                        type: string;
+                    };
+                };
+                required: string[];
+            };
+            reputation_prereq: {
+                type: string;
+                description: string;
+                properties: {
+                    faction: {
+                        type: string;
+                    };
+                    min_value: {
                         type: string;
                     };
                 };
@@ -544,6 +618,8 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            delta?: undefined;
+                            faction?: undefined;
                             clan?: undefined;
                             discipline?: undefined;
                         };
@@ -566,6 +642,8 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            delta?: undefined;
+                            faction?: undefined;
                             clan?: undefined;
                             discipline?: undefined;
                         };
@@ -588,6 +666,8 @@ export declare const questToolDefinitions: ({
                             qty?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            delta?: undefined;
+                            faction?: undefined;
                             clan?: undefined;
                             discipline?: undefined;
                         };
@@ -607,6 +687,8 @@ export declare const questToolDefinitions: ({
                             qty?: undefined;
                             skill?: undefined;
                             recipe_id?: undefined;
+                            delta?: undefined;
+                            faction?: undefined;
                             clan?: undefined;
                             discipline?: undefined;
                         };
@@ -626,6 +708,53 @@ export declare const questToolDefinitions: ({
                             qty?: undefined;
                             skill?: undefined;
                             key?: undefined;
+                            delta?: undefined;
+                            faction?: undefined;
+                            clan?: undefined;
+                            discipline?: undefined;
+                        };
+                        required: string[];
+                    } | {
+                        type: string;
+                        properties: {
+                            kind: {
+                                const: string;
+                            };
+                            delta: {
+                                type: string;
+                                description: string;
+                            };
+                            amount?: undefined;
+                            vnum?: undefined;
+                            qty?: undefined;
+                            skill?: undefined;
+                            key?: undefined;
+                            recipe_id?: undefined;
+                            faction?: undefined;
+                            clan?: undefined;
+                            discipline?: undefined;
+                        };
+                        required: string[];
+                    } | {
+                        type: string;
+                        properties: {
+                            kind: {
+                                const: string;
+                            };
+                            faction: {
+                                type: string;
+                                description: string;
+                            };
+                            delta: {
+                                type: string;
+                                description: string;
+                            };
+                            amount?: undefined;
+                            vnum?: undefined;
+                            qty?: undefined;
+                            skill?: undefined;
+                            key?: undefined;
+                            recipe_id?: undefined;
                             clan?: undefined;
                             discipline?: undefined;
                         };
@@ -647,6 +776,8 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            delta?: undefined;
+                            faction?: undefined;
                             discipline?: undefined;
                         };
                         required: string[];
@@ -666,6 +797,8 @@ export declare const questToolDefinitions: ({
                             skill?: undefined;
                             key?: undefined;
                             recipe_id?: undefined;
+                            delta?: undefined;
+                            faction?: undefined;
                             clan?: undefined;
                         };
                         required: string[];
@@ -703,6 +836,19 @@ export declare const questToolDefinitions: ({
                         };
                     };
                     min_count: {
+                        type: string;
+                    };
+                };
+                required: string[];
+            };
+            reputation_prereq: {
+                type: string;
+                description: string;
+                properties: {
+                    faction: {
+                        type: string;
+                    };
+                    min_value: {
                         type: string;
                     };
                 };

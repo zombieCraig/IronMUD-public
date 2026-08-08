@@ -27,13 +27,13 @@ use ironmud::{
 
 use ironmud::script;
 use ticks::{
-    register_all_heartbeats, run_aging_tick, run_bleeding_tick, run_blood_tick, run_chassis_tick, run_combat_tick,
-    run_corpse_decay_tick, run_donation_decay_tick, run_drowning_tick, run_exposure_tick, run_garden_tick,
-    run_heartbeat_watchdog, run_hunger_tick, run_hunting_tick, run_migration_tick, run_mobile_effects_tick,
-    run_mutation_tick, run_periodic_trigger_tick, run_psyche_tick, run_pursuit_tick, run_quest_tick, run_rage_tick,
-    run_regen_tick, run_rent_tick, run_resolve_tick, run_rot_tick, run_routine_tick, run_simulation_tick,
-    run_slow_move_tick, run_spawn_tick, run_spoilage_tick, run_sun_tick, run_thirst_tick, run_time_tick,
-    run_transport_tick, run_wander_tick, run_worship_tick,
+    register_all_heartbeats, run_aging_tick, run_bleeding_tick, run_blood_tick, run_build_score_tick, run_chassis_tick,
+    run_combat_tick, run_corpse_decay_tick, run_donation_decay_tick, run_drowning_tick, run_exposure_tick,
+    run_garden_tick, run_heartbeat_watchdog, run_hunger_tick, run_hunting_tick, run_leaderboard_tick,
+    run_migration_tick, run_mobile_effects_tick, run_mutation_tick, run_periodic_trigger_tick, run_psyche_tick,
+    run_pursuit_tick, run_quest_tick, run_rage_tick, run_regen_tick, run_rent_tick, run_resolve_tick, run_rot_tick,
+    run_routine_tick, run_simulation_tick, run_slow_move_tick, run_spawn_tick, run_spoilage_tick, run_sun_tick,
+    run_thirst_tick, run_time_tick, run_transport_tick, run_wander_tick, run_worship_tick,
 };
 
 #[derive(Parser, Debug)]
@@ -162,6 +162,8 @@ async fn main() -> Result<()> {
     let tick_db33 = db.clone(); // Clone db for synth chassis tick
     let tick_db34 = db.clone(); // Clone db for werewolf rage tick
     let tick_db35 = db.clone(); // Clone db for worship anger tick
+    let tick_db36 = db.clone(); // Clone db for leaderboard scan tick
+    let tick_db37 = db.clone(); // Clone db for builder score scan tick
     let api_db = db.clone(); // Clone db for REST API
 
     let connections = Arc::new(Mutex::new(HashMap::new()));
@@ -173,6 +175,10 @@ async fn main() -> Result<()> {
     let _ = ironmud::social::actions::init_global(socials.clone());
 
     let state = Arc::new(Mutex::new(World {
+        build_tracks: Vec::new(),
+        world_report: Default::default(),
+        build_scores: Default::default(),
+        audit_ctx: Default::default(),
         engine,
         db,
         connections: connections.clone(),
@@ -185,6 +191,7 @@ async fn main() -> Result<()> {
         race_definitions: HashMap::new(),
         mutation_definitions: HashMap::new(),
         language_definitions: HashMap::new(),
+        faction_definitions: HashMap::new(),
         recipes: HashMap::new(),
         spell_definitions: HashMap::new(),
         achievement_definitions: HashMap::new(),
@@ -196,6 +203,7 @@ async fn main() -> Result<()> {
         shutdown_cancel_sender: None, // Set after shutdown channel is created
         ip_limiter: Arc::new(ironmud::ratelimit::IpRateLimiter::new()),
         command_throttle: Arc::new(ironmud::throttle::CommandThrottle::new()),
+        leaderboards: ironmud::leaderboard::Leaderboards::default(),
     }));
 
     // Register types and functions
@@ -252,8 +260,9 @@ async fn main() -> Result<()> {
 
     // Start background spawn tick
     let spawn_connections = connections.clone();
+    let spawn_state = state.clone();
     tokio::spawn(async move {
-        run_spawn_tick(tick_db, spawn_connections).await;
+        run_spawn_tick(tick_db, spawn_connections, spawn_state).await;
     });
 
     // Start background periodic trigger tick
@@ -477,8 +486,28 @@ async fn main() -> Result<()> {
     // Start background worship anger tick (missed god tribute escalates:
     // warning -> curse -> smite -> opt-in permanent smite)
     let worship_connections = connections.clone();
+    let worship_state = state.clone();
     tokio::spawn(async move {
-        run_worship_tick(tick_db35, worship_connections).await;
+        run_worship_tick(tick_db35, worship_connections, worship_state).await;
+    });
+
+    // Start background leaderboard tick (full character scan, rebuilds the
+    // cached `top` boards). Deliberately the slowest read in the server and
+    // deliberately never on a command path.
+    let leaderboard_state = state.clone();
+    tokio::spawn(async move {
+        run_leaderboard_tick(tick_db36, leaderboard_state).await;
+    });
+
+    // Start background builder-score tick. Same shape and same cadence as the
+    // leaderboard scan: a full-world read that must never happen on a command.
+    // It also reconciles each builder's `build.*` counters, which is why it
+    // needs connections — an out-of-band character write on an online player
+    // has to go through the session copy.
+    let build_score_connections = connections.clone();
+    let build_score_state = state.clone();
+    tokio::spawn(async move {
+        run_build_score_tick(tick_db37, build_score_connections, build_score_state).await;
     });
 
     // Start control socket listener for out-of-process admin commands.

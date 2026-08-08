@@ -55,6 +55,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     let cloned_db = db.clone();
     engine.register_fn("create_area", move |name: String, prefix: String| {
         let area = AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: uuid::Uuid::new_v4(),
             name,
             prefix,
@@ -106,7 +109,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     engine.register_fn(
         "create_area_with_owner",
         move |name: String, prefix: String, owner: String| {
+            // Attribution: the creating builder is known right here, so the
+            // stamp goes on at construction rather than being bolted on by
+            // the script that called us. See src/attribution.rs.
             let area = AreaData {
+                authored_by: if owner.is_empty() { None } else { Some(owner.clone()) },
+                last_edited_by: if owner.is_empty() { None } else { Some(owner.clone()) },
+                origin: crate::types::ContentOrigin::Builder,
                 id: uuid::Uuid::new_v4(),
                 name,
                 prefix,

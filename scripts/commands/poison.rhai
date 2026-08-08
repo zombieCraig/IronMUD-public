@@ -133,8 +133,5 @@ fn run_command(args, connection_id) {
     send_client_message(connection_id, "\x1b[0;32mYou carefully lace " + target.name + " with poison.\x1b[0m");
     broadcast_to_room_except(char.current_room_id, connection_id, char.name + " quietly tampers with " + target.name + ".");
 
-    let leveled = add_skill_experience(char.name, "thievery", 4);
-    if leveled {
-        send_client_message(connection_id, "\x1b[1;33mYour thievery skill has improved!\x1b[0m");
-    }
+    add_skill_experience(char.name, "thievery", 4, "stealth");
 }

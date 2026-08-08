@@ -1,6 +1,7 @@
 //! Area-level types: builder permissions, area-wide flags, immigration
 //! configuration, and the `AreaData` aggregate itself.
 
+use super::provenance::ContentOrigin;
 use super::{ClimateProfile, CombatZoneType, ForageEntry, RoomFlags, SimulationConfig};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -205,4 +206,17 @@ pub struct AreaData {
     pub max_mobiles: Option<i32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_spawn_points: Option<i32>,
+
+    // === Provenance (see src/types/provenance.rs) ===
+    /// Builder who first created this. `None` = unclaimed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authored_by: Option<String>,
+    /// Builder who last changed it. An edit never reassigns `authored_by`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_edited_by: Option<String>,
+    /// Where this content came from. Only `Builder` counts toward a score.
+    #[serde(default)]
+    pub origin: ContentOrigin,
 }
+
+crate::impl_authored!(AreaData);

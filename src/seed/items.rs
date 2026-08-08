@@ -8,6 +8,9 @@ use crate::types::*;
 /// Callers then modify only the fields they need.
 fn item(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str, item_type: ItemType) -> ItemData {
     ItemData {
+        authored_by: None,
+        last_edited_by: None,
+        origin: Default::default(),
         id,
         name: name.to_string(),
         short_desc: short_desc.to_string(),

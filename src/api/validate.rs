@@ -67,6 +67,18 @@ pub fn check_shop_rate(field: &str, val: i32) -> Result<i32, ApiError> {
     Ok(val)
 }
 
+/// A commission above 100% would pay the seller negative gold; a negative one
+/// would mint it. Both are clamped at the write surface, in the same place and
+/// for the same reason the achievement `trait_points` clamp lives here.
+pub fn check_commission_pct(field: &str, val: i32) -> Result<i32, ApiError> {
+    if !(0..=100).contains(&val) {
+        return Err(ApiError::InvalidInput(format!(
+            "{field} must be between 0 and 100 (got {val})"
+        )));
+    }
+    Ok(val)
+}
+
 /// Reject text fields whose UTF-8 byte length exceeds `max`.
 pub fn check_text_len(field: &str, value: &str, max: usize) -> Result<(), ApiError> {
     if value.len() > max {

@@ -6,12 +6,12 @@
 // — these helpers operate on raw post data; the calling script is
 // responsible for admin checks.
 
-use crate::BoardPost;
 use crate::db::Db;
+use crate::{BoardPost, SharedConnections, SharedState};
 use rhai::Engine;
 use std::sync::Arc;
 
-pub fn register(engine: &mut Engine, db: Arc<Db>) {
+pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, state: SharedState) {
     // ========== Query ==========
 
     // count_board_posts_for(board_vnum) -> i64
@@ -76,6 +76,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // ItemData.board_max_messages on the board prototype (None defaults
     // to Db::DEFAULT_BOARD_MAX_MESSAGES = 60).
     let cloned_db = db.clone();
+    let post_conns = connections.clone();
+    let post_state = state.clone();
     engine.register_fn(
         "add_board_post",
         move |board_vnum: String, author: String, subject: String, body: String| -> bool {
@@ -84,8 +86,19 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 .ok()
                 .flatten()
                 .and_then(|item| item.board_max_messages);
-            let post = BoardPost::new(board_vnum, author, subject, body);
-            cloned_db.store_board_post(post, max).is_ok()
+            let post = BoardPost::new(board_vnum, author.clone(), subject, body);
+            if cloned_db.store_board_post(post, max).is_err() {
+                return false;
+            }
+            crate::script::achievements::notify_counter_core(
+                &cloned_db,
+                &post_conns,
+                &post_state,
+                &author,
+                "board.posts",
+                1,
+            );
+            true
         },
     );
 

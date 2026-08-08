@@ -508,7 +508,7 @@ fn do_wear(rest: &str, ctx: &EvalCtx, fire_type: crate::types::ItemTriggerType) 
     // Fire any equip-side DG triggers on the item itself (buff stamping is
     // automatic via the db layer). `fire_type` is OnWear for `wear` and
     // OnWield for `wield`.
-    super::fire_item_dg_triggers(&ctx.db, &ctx.connections, &item, fire_type, "");
+    super::fire_item_dg_triggers(&ctx.db, &ctx.connections, &ctx.state, &item, fire_type, "");
 }
 
 /// `remove <item>` — move the named item from the mob's equipped set
@@ -534,6 +534,7 @@ fn do_remove(rest: &str, ctx: &EvalCtx) {
     super::fire_item_dg_triggers(
         &ctx.db,
         &ctx.connections,
+        &ctx.state,
         &item,
         crate::types::ItemTriggerType::OnRemove,
         "",
@@ -850,11 +851,12 @@ fn do_order(rest: &str, ctx: &EvalCtx) {
                 || m.keywords.iter().any(|k| k.to_ascii_lowercase().starts_with(&lower)))
     });
     let Some(target) = target else { return };
-    // Re-dispatch with the target as self. Keep the connections + db
-    // shared; only swap the self-bindings.
+    // Re-dispatch with the target as self. Keep the world handles shared;
+    // only swap the self-bindings.
     let sub_ctx = EvalCtx {
         db: ctx.db.clone(),
         connections: ctx.connections.clone(),
+        state: ctx.state.clone(),
         self_kind: SelfKind::Mob,
         self_id: target.id,
         self_name: target.name.clone(),
@@ -1068,9 +1070,11 @@ mod tests {
         let path = temp.path().to_owned();
         let db = Arc::new(crate::db::Db::open(&path).expect("open db"));
         let connections: crate::SharedConnections = Arc::new(Mutex::new(HashMap::new()));
+        let state = crate::World::minimal_shared((*db).clone(), connections.clone());
         EvalCtx {
             db,
             connections,
+            state,
             self_kind: SelfKind::Mob,
             self_id: mob.id,
             self_name: mob.name.clone(),

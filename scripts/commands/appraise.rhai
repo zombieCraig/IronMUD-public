@@ -68,7 +68,10 @@ fn run_command(args, connection_id) {
     }
 
     // Calculate price
-    let buy_rate = shopkeeper.shop_buy_rate;
+    // Quote the price the player would actually be paid: the same rate
+    // `sell` uses, charisma and faction standing included. Reading the raw
+    // shop_buy_rate here made appraise quote a number sell then contradicted.
+    let buy_rate = shop_rate_for(shopkeeper.shop_buy_rate, char.name, shopkeeper.id, false);
     let price = calculate_buy_price(item.value, buy_rate);
 
     if price <= 0 {

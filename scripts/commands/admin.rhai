@@ -166,6 +166,10 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if subcommand == "reputation" || subcommand == "standing" {
+        handle_reputation(connection_id, args, char);
+        return;
+    }
     if subcommand == "morality" {
         handle_morality(connection_id, args, char);
         return;
@@ -476,6 +480,78 @@ fn handle_morality(connection_id, args, admin_char) {
     let new_val = adjust_morality(target_data.name, delta);
     let tier = get_morality_tier(target_data.name);
     send_client_message(connection_id, "Adjusted " + target_data.name + " morality by " + delta + " -> " + new_val + " (" + tier + ").");
+}
+
+// `admin reputation <player> [<faction> [+/-<delta> | set <value>]]` — inspect
+// or correct a player's faction standing.
+//
+// The delta form goes through the same chokepoint quests and kill credit use,
+// so opposed factions move and the player is told. `set` writes an absolute
+// value with no opposition transfer, because an absolute correction is a fix
+// rather than an act in the world.
+fn handle_reputation(connection_id, args, admin_char) {
+    let parts = args.split(" ");
+    if parts.len() < 2 || parts[1] == "" {
+        send_client_message(connection_id, "Usage: admin reputation <player> [<faction> [+/-<delta> | set <value>]]");
+        return;
+    }
+    let target_name = parts[1];
+    let target_data = get_character_data(target_name);
+    if target_data == () {
+        send_client_message(connection_id, "No character named '" + target_name + "' found.");
+        return;
+    }
+
+    if parts.len() < 3 || parts[2] == "" {
+        let factions = get_reputation_factions(target_data.name);
+        if factions.len() == 0 {
+            send_client_message(connection_id, target_data.name + " has no faction standings.");
+            return;
+        }
+        let out = target_data.name + " standings:\n";
+        for key in factions {
+            out += "  " + pad_right(key, 20) + pad_right(get_reputation_label(target_data.name, key), 12)
+                + get_reputation(target_data.name, key) + "\n";
+        }
+        send_client_message(connection_id, out);
+        return;
+    }
+
+    let faction = parts[2].to_lower();
+    if parts.len() < 4 || parts[3] == "" {
+        send_client_message(connection_id, target_data.name + " / " + get_faction_name(faction) + ": "
+            + get_reputation_label(target_data.name, faction) + " (" + get_reputation(target_data.name, faction) + ")");
+        return;
+    }
+
+    let action = parts[3].to_lower();
+    if action == "set" {
+        if parts.len() < 5 {
+            send_client_message(connection_id, "Usage: admin reputation " + target_name + " " + faction + " set <value>");
+            return;
+        }
+        let v = try_parse_int(parts[4]);
+        if v == () {
+            send_client_message(connection_id, "Value must be an integer.");
+            return;
+        }
+        if !set_reputation(target_data.name, faction, v) {
+            send_client_message(connection_id, "Failed to set standing.");
+            return;
+        }
+        send_client_message(connection_id, "Set " + target_data.name + " / " + faction + " to "
+            + get_reputation(target_data.name, faction) + " (" + get_reputation_label(target_data.name, faction) + ").");
+        return;
+    }
+
+    let delta = try_parse_int(action);
+    if delta == () {
+        send_client_message(connection_id, "Delta must be an integer (e.g. +50, -100) or 'set <value>'.");
+        return;
+    }
+    let new_val = adjust_reputation(target_data.name, faction, delta);
+    send_client_message(connection_id, "Adjusted " + target_data.name + " / " + faction + " by " + delta
+        + " -> " + new_val + " (" + get_reputation_label(target_data.name, faction) + ").");
 }
 
 // `admin ticks` — show liveness for every background tick. Healthy
@@ -941,7 +1017,12 @@ fn handle_account(connection_id, args, admin_char) {
         let d = account.character_defaults;
         if d.is_set {
             output += "Character Defaults:\n";
-            output += "  prompt=" + (if d.prompt_mode == "" { "default" } else { d.prompt_mode }) + " colors=" + d.colors_enabled + " mxp=" + d.mxp_enabled + "\n";
+            // A custom format overrides the preset, so it is what a new alt
+            // will actually see.
+            let prompt_label = d.prompt_mode;
+            if prompt_label == "" { prompt_label = "default"; }
+            if d.prompt_format != "" { prompt_label = d.prompt_format; }
+            output += "  prompt=" + prompt_label + " colors=" + d.colors_enabled + " mxp=" + d.mxp_enabled + "\n";
             output += "  abbrev=" + d.abbrev_enabled + " helpline=" + d.helpline_enabled + " summonable=" + d.summonable + "\n";
             output += "  automap=" + d.automap_enabled + " radius=" + d.automap_radius + " ascii=" + d.ascii_map + "\n";
         }

@@ -89,8 +89,8 @@ pub mod vars;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::SharedConnections;
 use crate::db::Db;
+use crate::{SharedConnections, SharedState};
 
 /// What kind of entity a DG script is `%self%`-bound to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -131,11 +131,22 @@ impl ActorRef {
 /// Runtime context for one DG script invocation. Holds the world handles,
 /// the `%self%` binding, and any event-supplied actors / args.
 ///
-/// Cloned cheaply — `Arc<Db>` and `SharedConnections` are reference-counted.
+/// Cloned cheaply — `Arc<Db>`, `SharedConnections` and `SharedState` are all
+/// reference-counted.
 #[derive(Clone)]
 pub struct EvalCtx {
     pub db: Arc<Db>,
     pub connections: SharedConnections,
+    /// World handle. Carried so DG commands can reach the lib-side helpers
+    /// that need it — `progress::notify_xp_achievements` and
+    /// `progress::is_language_skill` in particular, which is what let DG skill
+    /// XP start firing achievements and honouring the language traits.
+    ///
+    /// **Never lock this while holding the connections lock, or vice versa.**
+    /// Nothing in the interpreter holds either lock across a command, so the
+    /// helpers called from `cmds.rs` are free to take them in whatever order
+    /// they need.
+    pub state: SharedState,
     pub self_kind: SelfKind,
     pub self_id: Uuid,
     /// Cached `%self%` data fields (name, vnum, room) snapshotted at fire
@@ -383,6 +394,7 @@ pub fn fire_room_dg(
     connection_id: &str,
     db: Arc<Db>,
     connections: SharedConnections,
+    state: SharedState,
     authored_by: Option<String>,
     elevated: bool,
     context_vars: std::collections::HashMap<String, String>,
@@ -391,6 +403,7 @@ pub fn fire_room_dg(
     let ctx = EvalCtx {
         db,
         connections,
+        state,
         self_kind: SelfKind::Room,
         self_id: room.id,
         self_name: room.title.clone(),
@@ -418,6 +431,7 @@ pub fn fire_item_dg(
     connection_id: &str,
     db: Arc<Db>,
     connections: SharedConnections,
+    state: SharedState,
     authored_by: Option<String>,
     elevated: bool,
     context_vars: std::collections::HashMap<String, String>,
@@ -431,6 +445,7 @@ pub fn fire_item_dg(
     let ctx = EvalCtx {
         db,
         connections,
+        state,
         self_kind: SelfKind::Obj,
         self_id: item.id,
         self_name: item.name.clone(),
@@ -458,6 +473,7 @@ pub fn fire_mobile_dg(
     connection_id: &str,
     db: Arc<Db>,
     connections: SharedConnections,
+    state: SharedState,
     authored_by: Option<String>,
     elevated: bool,
     context_vars: std::collections::HashMap<String, String>,
@@ -466,6 +482,7 @@ pub fn fire_mobile_dg(
     let ctx = EvalCtx {
         db,
         connections,
+        state,
         self_kind: SelfKind::Mob,
         self_id: mobile.id,
         self_name: mobile.name.clone(),
@@ -492,6 +509,7 @@ pub fn fire_mobile_dg(
 pub fn fire_item_dg_triggers(
     db: &Arc<Db>,
     connections: &SharedConnections,
+    state: &SharedState,
     item: &crate::types::ItemData,
     trig_type: crate::types::ItemTriggerType,
     connection_id: &str,
@@ -510,6 +528,7 @@ pub fn fire_item_dg_triggers(
             connection_id,
             db.clone(),
             connections.clone(),
+            state.clone(),
             t.authored_by.clone(),
             t.elevated,
             std::collections::HashMap::new(),
@@ -525,6 +544,7 @@ pub fn fire_item_dg_triggers(
 pub fn fire_room_dg_triggers(
     db: &Arc<Db>,
     connections: &SharedConnections,
+    state: &SharedState,
     room: &crate::types::RoomData,
     trig_type: crate::types::TriggerType,
     connection_id: &str,
@@ -554,6 +574,7 @@ pub fn fire_room_dg_triggers(
         let ctx = EvalCtx {
             db: db.clone(),
             connections: connections.clone(),
+            state: state.clone(),
             self_kind: SelfKind::Room,
             self_id: room.id,
             self_name: room.title.clone(),
@@ -587,6 +608,7 @@ pub fn fire_room_dg_triggers(
 pub fn fire_mobile_dg_triggers(
     db: &Arc<Db>,
     connections: &SharedConnections,
+    state: &SharedState,
     mobile: &crate::types::MobileData,
     trig_type: crate::types::MobileTriggerType,
     connection_id: &str,
@@ -597,6 +619,7 @@ pub fn fire_mobile_dg_triggers(
     fire_mobile_dg_triggers_with_context(
         db,
         connections,
+        state,
         mobile,
         trig_type,
         connection_id,
@@ -613,6 +636,7 @@ pub fn fire_mobile_dg_triggers(
 pub fn fire_mobile_dg_triggers_with_context(
     db: &Arc<Db>,
     connections: &SharedConnections,
+    state: &SharedState,
     mobile: &crate::types::MobileData,
     trig_type: crate::types::MobileTriggerType,
     connection_id: &str,
@@ -640,6 +664,7 @@ pub fn fire_mobile_dg_triggers_with_context(
         let ctx = EvalCtx {
             db: db.clone(),
             connections: connections.clone(),
+            state: state.clone(),
             self_kind: SelfKind::Mob,
             self_id: mobile.id,
             self_name: mobile.name.clone(),
@@ -679,6 +704,7 @@ pub fn fire_oncommand_for_player(
     arg: &str,
     db: &Arc<Db>,
     connections: &SharedConnections,
+    state: &SharedState,
 ) -> bool {
     // Snapshot what we need from the session under one lock.
     let (char_name, room_id) = {
@@ -700,6 +726,7 @@ pub fn fire_oncommand_for_player(
         if fire_room_dg_triggers(
             db,
             connections,
+            state,
             &room,
             crate::types::TriggerType::OnCommand,
             &conn_id_str,
@@ -717,6 +744,7 @@ pub fn fire_oncommand_for_player(
             if fire_mobile_dg_triggers(
                 db,
                 connections,
+                state,
                 &mob,
                 crate::types::MobileTriggerType::OnCommand,
                 &conn_id_str,
@@ -740,7 +768,7 @@ pub fn fire_oncommand_for_player(
     for item in items {
         // Items don't have OnCommand args in Phase 3 yet — fire helper does
         // its own keyword gating via the trigger's args[0].
-        if fire_item_dg_oncommand(db, connections, &item, &conn_id_str, cmd, cmd_canonical, arg) {
+        if fire_item_dg_oncommand(db, connections, state, &item, &conn_id_str, cmd, cmd_canonical, arg) {
             cancelled = true;
         }
     }
@@ -754,6 +782,7 @@ pub fn fire_oncommand_for_player(
 fn fire_item_dg_oncommand(
     db: &Arc<Db>,
     connections: &SharedConnections,
+    state: &SharedState,
     item: &crate::types::ItemData,
     connection_id: &str,
     cmd: &str,
@@ -781,6 +810,7 @@ fn fire_item_dg_oncommand(
         let ctx = EvalCtx {
             db: db.clone(),
             connections: connections.clone(),
+            state: state.clone(),
             self_kind: SelfKind::Obj,
             self_id: item.id,
             self_name: item.name.clone(),
@@ -925,9 +955,11 @@ mod tests {
         let path = temp.path().to_owned();
         let db = Arc::new(Db::open(&path).expect("open db"));
         let connections: SharedConnections = Arc::new(Mutex::new(HashMap::new()));
+        let state = crate::World::minimal_shared((*db).clone(), connections.clone());
         EvalCtx {
             db,
             connections,
+            state,
             self_kind,
             self_id,
             self_name: self_name.to_string(),
@@ -1096,56 +1128,11 @@ end";
         ctx: &EvalCtx,
         ch: &crate::types::CharacterData,
     ) -> (String, tokio::sync::mpsc::UnboundedReceiver<String>) {
-        use std::collections::VecDeque;
         let conn_id = Uuid::new_v4();
         let (tx_client, rx_client) = tokio::sync::mpsc::unbounded_channel::<String>();
         let (tx_input, _rx_input) = tokio::sync::mpsc::channel::<crate::InputEvent>(1);
-        let session = crate::PlayerSession {
-            character: Some(ch.clone()),
-            sender: tx_client,
-            raw_sender: None,
-            input_sender: tx_input,
-            addr: "127.0.0.1:0".parse().expect("addr"),
-            olc_mode: None,
-            olc_buffer: Vec::new(),
-            olc_edit_room: None,
-            olc_edit_item: None,
-            olc_edit_board_vnum: None,
-            olc_board_subject: None,
-            olc_edit_mobile: None,
-            olc_edit_trigger_host: None,
-            olc_edit_trigger_index: None,
-            olc_edit_proto_vnum: None,
-            olc_dialogue_node_name: None,
-            olc_extra_keywords: Vec::new(),
-            olc_undo_buffer: None,
-            wizard_data: None,
-            mxp_enabled: false,
-            colors_enabled: true,
-            show_room_flags: false,
-            telnet_state: crate::telnet::TelnetState::new(),
-            input_buffer: String::new(),
-            cursor_pos: 0,
-            command_history: VecDeque::new(),
-            history_index: None,
-            saved_input: String::new(),
-            escape_state: crate::telnet::EscapeState::Normal,
-            pending_ai_request: None,
-            pending_ai_response: None,
-            pending_ai_target: None,
-            fishing_state: None,
-            afk: false,
-            last_activity_time: 0,
-            abbrev_enabled: true,
-            map_legend_shown: false,
-            dialogue_partner_id: None,
-            account_id: None,
-            account_name: None,
-            slow_move_completing: false,
-            disconnected_at: None,
-            session_started_at: None,
-            modern_editor: None,
-        };
+        let mut session = crate::PlayerSession::new_for_test(tx_client, tx_input);
+        session.character = Some(ch.clone());
         ctx.connections.lock().expect("lock conns").insert(conn_id, session);
         (conn_id.to_string(), rx_client)
     }
@@ -1323,6 +1310,78 @@ end";
         assert_eq!(vars::resolve("m.level", &ctx, &state), "5");
         assert_eq!(vars::resolve("m.name", &ctx, &state), "a grizzled guard");
         assert_eq!(vars::resolve("m.vnum", &ctx, &state), "3001");
+    }
+
+    /// A DG-granted skill level unlocks a `skill_reached` achievement.
+    ///
+    /// Until `EvalCtx` carried `SharedState`, `award_skill_xp` could not reach
+    /// `progress::notify_xp_achievements` at all, so a builder could write a
+    /// trainer script that visibly raised a skill and silently failed to award
+    /// the badge attached to that exact rung.
+    #[test]
+    fn dg_awarded_skill_xp_unlocks_a_skill_reached_achievement() {
+        use crate::{AchievementCategory, AchievementCriterion, AchievementDef, AchievementReward, AchievementSource};
+
+        let mut ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), "swim coach");
+        let area = Uuid::new_v4();
+        let room = build_room_in_area(&ctx.db, area);
+        ctx.self_room = Some(room);
+
+        // The rung the script is about to clear.
+        let def = AchievementDef {
+            key: "first_stroke".to_string(),
+            name: "First Stroke".to_string(),
+            description: "Reach swimming 1.".to_string(),
+            category: AchievementCategory::Skill,
+            criterion: AchievementCriterion::SkillReached {
+                skill: "swimming".to_string(),
+                level: 1,
+            },
+            reward: AchievementReward {
+                title: "the Wader".to_string(),
+                item_vnum: None,
+                gold: None,
+                morality_delta: 0,
+                trait_points: 0,
+            },
+            hidden: false,
+            source: AchievementSource::Json {
+                file: "test.json".to_string(),
+            },
+        };
+        ctx.state
+            .lock()
+            .expect("world lock")
+            .achievement_definitions
+            .insert(def.key.clone(), def);
+
+        let pc: crate::types::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "zombieCraig",
+            "password_hash": "",
+            "current_room_id": room,
+        }))
+        .expect("build pc");
+        ctx.db.save_character_data(pc.clone()).expect("save pc");
+        let (conn_id, _rx) = register_online_player(&ctx, &pc);
+        ctx.actor = Some(ActorRef::Player {
+            connection_id: conn_id,
+            char_id: Uuid::new_v4(),
+            name: "zombieCraig".to_string(),
+        });
+
+        // 100 XP is exactly the 0 -> 1 rung on the shared curve.
+        assert_eq!(fire_dg("award_skill_xp %actor% swimming 100", &ctx), Outcome::Done);
+
+        let ch = ctx
+            .db
+            .get_character_data("zombiecraig")
+            .expect("read pc")
+            .expect("pc exists");
+        assert_eq!(ch.skills.get("swimming").expect("skill row").level, 1);
+        assert!(
+            ch.achievements_unlocked.contains_key("first_stroke"),
+            "the DG award must fire skill_reached, not just move the number"
+        );
     }
 
     #[test]
@@ -2059,6 +2118,7 @@ end";
         let cancelled = fire_mobile_dg_triggers(
             &ctx.db,
             &ctx.connections,
+            &ctx.state,
             &mob,
             crate::MobileTriggerType::OnCommand,
             "",
@@ -2104,6 +2164,7 @@ end";
         let cancelled = fire_mobile_dg_triggers_with_context(
             &ctx.db,
             &ctx.connections,
+            &ctx.state,
             &god,
             crate::MobileTriggerType::OnPray,
             "",
@@ -2252,8 +2313,23 @@ end";
             .collect()
     }
 
+    /// The builder debug log is a process-global ring buffer, and its dedup
+    /// rule is "identical to the *previous* line". Tests that assert against
+    /// it therefore cannot run concurrently with each other: a warning emitted
+    /// by another test lands between two of this one's and breaks the
+    /// consecutiveness the dedup depends on. Every test that reads or writes
+    /// that log takes this lock first.
+    static BUILDER_LOG_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Take the builder-log lock, ignoring poisoning — a panic in one of these
+    /// tests must not cascade into spurious failures in the rest.
+    fn builder_log_guard() -> std::sync::MutexGuard<'static, ()> {
+        BUILDER_LOG_TESTS.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     #[test]
     fn warn_builder_surfaces_unknown_command() {
+        let _guard = builder_log_guard();
         let tag = "warnbuilder-unknown-cmd";
         let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), tag);
         let body = "totallybogusverb foo bar";
@@ -2268,6 +2344,7 @@ end";
 
     #[test]
     fn warn_builder_dedups_consecutive_identical_errors() {
+        let _guard = builder_log_guard();
         let tag = "warnbuilder-dedup";
         let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), tag);
         let body = "alsogibberish";
@@ -2290,6 +2367,7 @@ end";
 
     #[test]
     fn warn_builder_surfaces_parse_error() {
+        let _guard = builder_log_guard();
         let tag = "warnbuilder-parse-error";
         let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), tag);
         // Unclosed `if` triggers a parse error.
@@ -2305,6 +2383,7 @@ end";
 
     #[test]
     fn warn_builder_silent_on_gameplay_state_lookups() {
+        let _guard = builder_log_guard();
         // `mkill target_not_in_room` should NOT surface — that's
         // gameplay state, not an author error.
         let tag = "warnbuilder-gameplay-silent";
@@ -2410,6 +2489,7 @@ end";
 
     #[test]
     fn percent_verb_survives_substitution() {
+        let _guard = builder_log_guard();
         // Regression: `%send% %actor% msg` must dispatch to cmd_send,
         // not be eaten by vars::substitute as a bare-name lookup of
         // "send" that then leaves the player name as the verb.
@@ -2441,6 +2521,7 @@ end";
 
     #[test]
     fn warn_builder_surfaces_remote_empty_var_name() {
+        let _guard = builder_log_guard();
         let tag = "warnbuilder-remote-emptyvar";
         let ctx = make_ctx(SelfKind::Mob, Uuid::new_v4(), tag);
         // `remote` with no var name token.

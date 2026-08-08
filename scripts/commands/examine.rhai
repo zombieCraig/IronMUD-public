@@ -652,7 +652,7 @@ fn examine_deity_presence(mobile, connection_id) {
             if overdue > 0 {
                 output += "\n\x1b[33mThis is your god — and your tribute is " + overdue + " day(s) overdue.\x1b[0m";
             } else {
-                output += "\nThis is your god. Your tribute is current. Favor: " + get_worship_favor(viewer.name) + ".";
+                output += "\nThis is your god. Your tribute is current. Standing: " + get_worship_standing(viewer.name) + ".";
             }
         }
     }
@@ -742,13 +742,7 @@ fn examine_show_mobile(mobile, connection_id) {
 
 fn examine_mobile_health(mobile) {
     if mobile.max_hp <= 0 { return ""; }
-    let percent = (mobile.hp * 100) / mobile.max_hp;
-    if percent >= 100 { return "\n\n" + mobile.name + " is in perfect health."; }
-    if percent >= 75 { return "\n\n" + mobile.name + " has a few scratches."; }
-    if percent >= 50 { return "\n\n" + mobile.name + " has some wounds."; }
-    if percent >= 25 { return "\n\n" + mobile.name + " is badly wounded."; }
-    if percent > 0 { return "\n\n" + mobile.name + " is barely holding on."; }
-    return "\n\n" + mobile.name + " appears to be dead.";
+    return "\n\n" + condition_sentence(mobile.name, mobile.hp, mobile.max_hp);
 }
 
 fn examine_mobile_wounds(mobile) {
@@ -852,13 +846,7 @@ fn examine_player_identity(other_char) {
 
 fn examine_player_health(other_char) {
     if other_char.max_hp <= 0 { return ""; }
-    let percent = (other_char.hp * 100) / other_char.max_hp;
-    if percent >= 100 { return "\n\n" + other_char.name + " is in perfect health."; }
-    if percent >= 75 { return "\n\n" + other_char.name + " has a few scratches."; }
-    if percent >= 50 { return "\n\n" + other_char.name + " has some wounds."; }
-    if percent >= 25 { return "\n\n" + other_char.name + " is badly wounded."; }
-    if percent > 0 { return "\n\n" + other_char.name + " is barely holding on."; }
-    return "\n\n" + other_char.name + " appears to be dead.";
+    return "\n\n" + condition_sentence(other_char.name, other_char.hp, other_char.max_hp);
 }
 
 fn examine_player_wounds(other_char) {

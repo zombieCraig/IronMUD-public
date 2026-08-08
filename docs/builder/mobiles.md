@@ -148,13 +148,32 @@ Mobiles produced by the [immigration system](areas.md#immigration-migrant-spawni
 Flag 'sentinel' set to: ON
 ```
 
+## Faction
+
+`medit <id> faction <key|clear>` tags a mobile as a member of a group. The tag
+is lowercased on save, and three separate systems read it:
+
+1. **Helper allies** — mobiles sharing a tag defend each other (below).
+2. **Player standing** — killing this mobile costs the player 5 points of
+   reputation with the faction and buys standing with that faction's declared
+   enemies. See **[Factions and Reputation](factions.md)**.
+3. **Aggro** — a faction whose `hostile_at` threshold the player has fallen
+   below attacks on sight, with or without an aggression flag.
+
+A tag with no entry in `scripts/data/factions.json` still works for all three:
+it simply has no display name, no enemies, and default thresholds. Declare the
+faction when you want opposition, lore, custom hostility, or shop pricing.
+
+`clear` / `none` removes the tag and opts the mobile out of all of it, which
+is the default and the right answer for wildlife.
+
 ## Helper System
 
 Mobiles flagged `helper` join combat to defend allies who are being attacked by a player. The scan runs once per round on the same room only; helpers do not chase across rooms or intervene in NPC-vs-NPC combat.
 
 | Subcommand | Usage | Description |
 |------------|-------|-------------|
-| `faction` | `medit <id> faction <tag\|clear>` | Set or clear the helper-system ally tag |
+| `faction` | `medit <id> faction <key\|clear>` | Set or clear the faction tag (see [Faction](#faction) above) |
 
 **Ally rule:**
 - Both mobs share the same `faction` string (case-insensitive) → ally.
@@ -170,7 +189,51 @@ Mobiles flagged `helper` join combat to defend allies who are being attacked by 
 
 Now attacking either goblin pulls both into the fight. A nearby `town_guard` with `faction = town_guard` ignores the goblin brawl entirely.
 
-CircleMUD imports leave `faction` empty so stock content (goblins in goblin caves, guards in barracks rooms) Just Works via the fallback.
+CircleMUD imports leave `faction` empty so stock content (goblins in goblin caves, guards in barracks rooms) Just Works via the fallback. Tagging imported mobs is how you opt a zone into the reputation system after the fact.
+
+## Alignment
+
+`medit <id> alignment <-200..200>` sets a mobile's **moral weight** — how much
+killing it says about the killer. It uses the same scale as player morality
+(see [the morality slider](../player-guide.md)): negative is evil, positive is
+good, and **0, the default, means the kill carries no moral charge at all**.
+
+Killing a mobile pushes the killer toward the *opposite* pole, scaled by how
+strongly the victim was aligned:
+
+| Mobile alignment | Killer moves |
+|---|---|
+| −25 … −49 | +1 |
+| −50 … −99 | +1 |
+| −100 … −149 | +2 |
+| −150 … −199 | +3 |
+| −200 | +4 |
+
+Positive alignments mirror this in the other direction. Anything inside
+±24 — the neutral band — moves nothing.
+
+Three consequences worth planning around:
+
+- **Leave vermin and constructs at 0.** Rats, training dummies, and animated
+  brooms should not drift a player's alignment. The default already does this,
+  so you only need to act when a mobile genuinely has a moral character.
+- **It takes roughly 25 kills of the worst thing in the world** to move a
+  character from Neutral to a Pure tier. Alignment is meant to read as a career,
+  not an errand. Resist the urge to inflate individual values to make it move
+  faster.
+- **It brings the `aggro_good` / `aggro_evil` / `aggro_neutral` flags to life.**
+  Those flags have always read the player's morality; until alignment existed
+  nothing during normal play moved it, so they effectively never fired. Now that
+  a player's deeds shift the slider, a mobile flagged `aggro_evil` will start
+  attacking players who have earned it. (Those flags were doubly dead: the
+  wander tick also gated the whole aggression scan on `aggressive`/rage/memory,
+  so a mobile whose only reason to attack was an alignment flag never reached
+  the code that reads it. Both sites now ask the same question.)
+
+CircleMUD imports fill this in automatically: the `.mob` alignment column
+(`[-1000, 1000]`) is rescaled by 5 onto IronMUD's range, so a stock alignment
+900 wizard arrives at 180. Before this field existed the importer logged that
+number and threw it away.
 
 ## Dialogue System
 

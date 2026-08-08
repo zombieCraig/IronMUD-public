@@ -31,6 +31,15 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             q.min_player_skill_total.unwrap_or(0) as i64
         })
         .register_get("duration_secs", |q: &mut QuestData| q.duration_secs.unwrap_or(0))
+        .register_get("reputation_prereq_faction", |q: &mut QuestData| {
+            q.reputation_prereq
+                .as_ref()
+                .map(|r| r.faction.clone())
+                .unwrap_or_default()
+        })
+        .register_get("reputation_prereq_value", |q: &mut QuestData| {
+            q.reputation_prereq.as_ref().map(|r| r.min_value).unwrap_or(0) as i64
+        })
         .register_get("keywords", |q: &mut QuestData| {
             q.keywords.iter().map(|s| Dynamic::from(s.clone())).collect::<Array>()
         });
@@ -274,6 +283,30 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         );
     }
 
+    // set_quest_reputation_prereq(vnum, faction, min_value) -> String.
+    // An empty faction clears the gate.
+    {
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "set_quest_reputation_prereq",
+            move |vnum: String, faction: String, min_value: i64| -> String {
+                let mut q = match cloned_db.get_quest_data(&vnum) {
+                    Ok(Some(q)) => q,
+                    _ => return format!("no such quest `{}`", vnum),
+                };
+                q.reputation_prereq =
+                    crate::reputation::normalize(Some(&faction)).map(|faction| crate::types::ReputationPrereq {
+                        faction,
+                        min_value: crate::reputation::clamp(min_value.clamp(i32::MIN as i64, i32::MAX as i64) as i32),
+                    });
+                if let Err(e) = cloned_db.save_quest_data(&q) {
+                    return format!("save error: {}", e);
+                }
+                String::new()
+            },
+        );
+    }
+
     // set_quest_duration(vnum, secs) -> String — 0 or negative clears (no expiry).
     {
         let cloned_db = db.clone();
@@ -449,6 +482,28 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     }
     {
         let cloned_db = db.clone();
+        engine.register_fn("add_quest_reward_morality", move |vnum: String, delta: i64| -> String {
+            let delta = crate::morality::clamp(delta.clamp(i32::MIN as i64, i32::MAX as i64) as i32);
+            push_reward(&cloned_db, &vnum, QuestReward::Morality { delta })
+        });
+    }
+    {
+        // add_quest_reward_reputation(vnum, faction, delta) -> String
+        let cloned_db = db.clone();
+        engine.register_fn(
+            "add_quest_reward_reputation",
+            move |vnum: String, faction: String, delta: i64| -> String {
+                let faction = faction.trim().to_lowercase();
+                if faction.is_empty() {
+                    return "faction required".to_string();
+                }
+                let delta = crate::reputation::clamp(delta.clamp(i32::MIN as i64, i32::MAX as i64) as i32);
+                push_reward(&cloned_db, &vnum, QuestReward::Reputation { faction, delta })
+            },
+        );
+    }
+    {
+        let cloned_db = db.clone();
         engine.register_fn(
             "add_quest_reward_embrace_clan",
             move |vnum: String, clan: String| -> String {
@@ -589,9 +644,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     }
 
     // quest_credit_mob_kill(killer_name, mob_proto_vnum) -> bool
-    // Single-killer convenience used from script-side kill sites (bash,
-    // backstab, etc.) that don't share the combat tick's damaged_by map.
+    // Used from script-side kill sites (bash, backstab, etc.) that don't share
+    // the combat tick's damaged_by map.
     // Returns true (always — the underlying handle_mob_kill is best-effort).
+    //
+    // Credits the killer's party in their current room, not just the killer:
+    // a backstab finishing a mob the group softened is the same kill the
+    // combat tick would have credited party-wide, and a quest that ticked for
+    // everyone on a sword blow but only the rogue on a backstab would be an
+    // accident of which code path landed the last hit. Without a damaged_by
+    // map the party term is all this site has, which is exactly the case
+    // `kill_credit` was written to cover.
     {
         let cloned_db = db.clone();
         let cloned_conns = connections.clone();
@@ -599,15 +662,28 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         engine.register_fn(
             "quest_credit_mob_kill",
             move |killer_name: String, mob_proto_vnum: String| -> bool {
-                let damaged_by: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
-                crate::quest::handle_mob_kill(
-                    &cloned_db,
-                    &cloned_conns,
-                    &cloned_state,
-                    &killer_name,
-                    &mob_proto_vnum,
-                    &damaged_by,
-                );
+                let room_id = {
+                    let guard = match cloned_conns.lock() {
+                        Ok(g) => g,
+                        Err(_) => return true,
+                    };
+                    guard.values().find_map(|s| {
+                        s.character
+                            .as_ref()
+                            .filter(|c| c.name.eq_ignore_ascii_case(&killer_name))
+                            .map(|c| c.current_room_id)
+                    })
+                };
+                let participants = match room_id {
+                    Some(room) => {
+                        crate::group::kill_credit(&cloned_conns, &std::collections::HashMap::new(), &killer_name, &room)
+                            .participants
+                    }
+                    // Offline or sessionless killer (a DG script, a test): the
+                    // killer alone, which is what this site always did.
+                    None => vec![killer_name.to_lowercase()],
+                };
+                crate::quest::handle_mob_kill(&cloned_db, &cloned_conns, &cloned_state, &participants, &mob_proto_vnum);
                 true
             },
         );
@@ -818,6 +894,10 @@ fn format_reward(reward: &QuestReward) -> String {
         QuestReward::SkillXp { skill, amount } => format!("{} {} xp", amount, skill),
         QuestReward::Achievement { key } => format!("achievement {}", key),
         QuestReward::LearnRecipe { recipe_id } => format!("recipe {}", recipe_id),
+        QuestReward::Morality { delta } => format!("morality {}{}", if *delta > 0 { "+" } else { "" }, delta),
+        QuestReward::Reputation { faction, delta } => {
+            format!("reputation {} {}{}", faction, if *delta > 0 { "+" } else { "" }, delta)
+        }
         QuestReward::EmbraceClan { clan } => format!("embrace clan {}", clan),
         QuestReward::EmbraceAnarch { discipline } => match discipline {
             Some(d) => format!("embrace anarch ({})", d),

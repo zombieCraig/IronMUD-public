@@ -937,79 +937,14 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // ========== Critical Effect Functions (Phase 8) ==========
 
     // roll_critical_effect(damage_type) -> String
-    // Rolls d4 to determine critical effect type based on damage type
-    // Returns damage-type-specific effect names
+    // Rolls d4 against the shared crit table in `crate::combat_text`, which the
+    // combat tick rolls from too. Returns a damage-type-specific effect key.
     engine.register_fn("roll_critical_effect", |damage_type: String| -> String {
         let mut rng = rand::thread_rng();
-        let roll = rng.gen_range(1..=4);
-        match damage_type.to_lowercase().as_str() {
-            "slashing" => match roll {
-                1 => "deep_laceration",
-                2 => "severed_tendon",
-                3 => "arterial_cut",
-                _ => "clean",
-            },
-            "piercing" => match roll {
-                1 => "punctured_organ",
-                2 => "impaled",
-                3 => "nerve_strike",
-                _ => "clean",
-            },
-            "bludgeoning" => match roll {
-                1 => "broken_bone",
-                2 => "concussion",
-                3 => "crushed",
-                _ => "clean",
-            },
-            "fire" => match roll {
-                1 => "severe_burn",
-                2 => "ignited",
-                3 => "charred",
-                _ => "clean",
-            },
-            "cold" => match roll {
-                1 => "frozen_limb",
-                2 => "hypothermic_shock",
-                3 => "frostbitten",
-                _ => "clean",
-            },
-            "lightning" => match roll {
-                1 => "electrocuted",
-                2 => "nerve_damage",
-                3 => "cardiac_shock",
-                _ => "clean",
-            },
-            "poison" => match roll {
-                1 => "venom_surge",
-                2 => "toxic_shock",
-                3 => "paralysis",
-                _ => "clean",
-            },
-            "acid" => match roll {
-                1 => "acid_burn",
-                2 => "corroded_armor",
-                3 => "dissolved_flesh",
-                _ => "clean",
-            },
-            "bite" => match roll {
-                1 => "mauled",
-                2 => "lockjaw",
-                3 => "severed_chunk",
-                _ => "clean",
-            },
-            "ballistic" => match roll {
-                1 => "through_and_through",
-                2 => "shrapnel",
-                3 => "bullet_lodged",
-                _ => "clean",
-            },
-            _ => match roll {
-                1 => "bleeding",
-                2 => "stun",
-                3 => "disable",
-                _ => "clean",
-            },
-        }
+        crate::combat_text::roll_crit_effect(
+            crate::types::DamageType::from_str(&damage_type).unwrap_or_default(),
+            rng.gen_range(1..=4),
+        )
         .to_string()
     });
 
@@ -2587,6 +2522,9 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
                 .unwrap_or(0);
 
             let corpse = ItemData {
+                authored_by: None,
+                last_edited_by: None,
+                origin: Default::default(),
                 id: Uuid::new_v4(),
                 name: format!("corpse of {}", name),
                 short_desc: format!("The corpse of {} lies here.", name),

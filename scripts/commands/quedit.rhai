@@ -22,6 +22,9 @@
 //   quedit <vnum> reward add skill <skill_key> <amount>
 //   quedit <vnum> reward add achievement <key>
 //   quedit <vnum> reward add recipe <recipe_id>
+//   quedit <vnum> reward add morality <delta>
+//   quedit <vnum> reward add reputation <faction> <delta>
+//   quedit <vnum> reputation <faction> <min_value>
 //   quedit <vnum> reward add embrace_clan <brujah|toreador|ventrue|nosferatu|gangrel>
 //   quedit <vnum> reward remove <idx>
 //   quedit <vnum> delete
@@ -44,7 +47,7 @@ fn run_command(args, connection_id) {
     }
 
     if parts[0] == "create" {
-        handle_create(parts, connection_id);
+        handle_create(parts, char, connection_id);
         return;
     }
 
@@ -55,6 +58,13 @@ fn run_command(args, connection_id) {
     }
 
     let sub = parts[1];
+
+    // Attribution: one stamp per editor. `show` returns just below without
+    // ever reaching a setter, so it is excluded. See src/attribution.rs.
+    if sub != "show" {
+        stamp_content_edited("quest", vnum, char.name);
+        note_grade_before("quest", vnum, connection_id);
+    }
 
     if sub == "show" { show_quest(vnum, connection_id); return; }
     if sub == "delete" { handle_delete(vnum, connection_id); return; }
@@ -101,6 +111,33 @@ fn run_command(args, connection_id) {
         report(err, "Prereq quest " + label + ".", connection_id);
         return;
     }
+    if sub == "reputation" || sub == "standing" || sub == "rep" {
+        if parts.len() < 3 {
+            send_client_message(connection_id, "Usage: quedit <vnum> reputation <faction> <min_value>   (or 'clear')");
+            send_client_message(connection_id, "  Gates the offer on the player's standing with that faction.");
+            send_client_message(connection_id, "  50 = Accepted, 200 = Honored, 500 = Revered. Negative values gate");
+            send_client_message(connection_id, "  on not having wronged them.");
+            return;
+        }
+        let faction = parts[2].to_lower();
+        if faction == "clear" || faction == "none" {
+            let err = set_quest_reputation_prereq(vnum, "", 0);
+            report(err, "Reputation prereq cleared.", connection_id);
+            return;
+        }
+        if parts.len() < 4 {
+            send_client_message(connection_id, "Usage: quedit <vnum> reputation " + faction + " <min_value>");
+            return;
+        }
+        let v = try_parse_int(parts[3]);
+        if v == () {
+            send_client_message(connection_id, "Invalid number.");
+            return;
+        }
+        let err = set_quest_reputation_prereq(vnum, faction, v);
+        report(err, "Reputation prereq set: " + faction + " >= " + v + ".", connection_id);
+        return;
+    }
     if sub == "min_skill" {
         if parts.len() < 3 {
             send_client_message(connection_id, "Usage: quedit <vnum> min_skill <n>  (0 clears)");
@@ -136,7 +173,7 @@ fn run_command(args, connection_id) {
     send_help(connection_id);
 }
 
-fn handle_create(parts, connection_id) {
+fn handle_create(parts, char, connection_id) {
     if parts.len() < 3 {
         send_client_message(connection_id, "Usage: quedit create <vnum> <name...>");
         return;
@@ -144,6 +181,10 @@ fn handle_create(parts, connection_id) {
     let vnum = parts[1];
     let name = join_from(parts, 2);
     let err = create_quest(vnum, name);
+    if err == "" {
+        // Attribution: claim the quest for its creator. See src/attribution.rs.
+        stamp_content_created("quest", vnum, char.name);
+    }
     report(err, "Created quest " + vnum + " (" + name + ").", connection_id);
 }
 
@@ -244,7 +285,7 @@ fn handle_reward(vnum, parts, connection_id) {
     let action = parts[2];
     if action == "add" {
         if parts.len() < 4 {
-            send_client_message(connection_id, "Usage: quedit <vnum> reward add gold|item|skill|achievement|recipe|embrace_clan ...");
+            send_client_message(connection_id, "Usage: quedit <vnum> reward add gold|item|skill|achievement|recipe|morality|reputation|embrace_clan ...");
             return;
         }
         let kind = parts[3];
@@ -285,6 +326,36 @@ fn handle_reward(vnum, parts, connection_id) {
             }
             let err = add_quest_reward_achievement(vnum, parts[4]);
             report(err, "Added achievement reward.", connection_id);
+            return;
+        }
+        if kind == "morality" || kind == "align" || kind == "alignment" {
+            if parts.len() < 5 {
+                send_client_message(connection_id, "Usage: quedit <vnum> reward add morality <delta>");
+                send_client_message(connection_id, "  Positive pushes toward Good, negative toward Evil. Clamped to -200..200.");
+                return;
+            }
+            let delta = try_parse_int(parts[4]);
+            if delta == () {
+                send_client_message(connection_id, "Invalid number.");
+                return;
+            }
+            let err = add_quest_reward_morality(vnum, delta);
+            report(err, "Added morality reward.", connection_id);
+            return;
+        }
+        if kind == "reputation" || kind == "standing" || kind == "rep" {
+            if parts.len() < 6 {
+                send_client_message(connection_id, "Usage: quedit <vnum> reward add reputation <faction> <delta>");
+                send_client_message(connection_id, "  Opposed factions move the other way. Clamped to -1000..1000.");
+                return;
+            }
+            let delta = try_parse_int(parts[5]);
+            if delta == () {
+                send_client_message(connection_id, "Invalid number.");
+                return;
+            }
+            let err = add_quest_reward_reputation(vnum, parts[4].to_lower(), delta);
+            report(err, "Added reputation reward.", connection_id);
             return;
         }
         if kind == "recipe" {
@@ -337,6 +408,8 @@ fn show_quest(vnum, connection_id) {
     out += "Repeatable: " + (if quest.repeatable { "yes" } else { "no" }) + "\n";
     out += "Prereq: " + (if quest.prereq_quest_vnum == "" { "(none)" } else { quest.prereq_quest_vnum }) + "\n";
     out += "Min skill total: " + (if quest.min_player_skill_total == 0 { "(none)" } else { "" + quest.min_player_skill_total }) + "\n";
+    out += "Reputation gate: " + (if quest.reputation_prereq_faction == "" { "(none)" }
+        else { quest.reputation_prereq_faction + " >= " + quest.reputation_prereq_value }) + "\n";
     out += "Duration: " + (if quest.duration_secs == 0 { "(none)" } else { "" + quest.duration_secs + " seconds" }) + "\n";
     let kws = quest.keywords;
     let kw_str = "";
@@ -383,13 +456,14 @@ fn send_help(connection_id) {
         "  quedit <vnum> repeatable on|off",
         "  quedit <vnum> prereq <quest_vnum|clear>",
         "  quedit <vnum> min_skill <n>     (sum of skill levels; 0 clears)",
+        "  quedit <vnum> reputation <faction> <min>   (standing gate; 'clear' removes)",
         "  quedit <vnum> duration <secs>   (0 clears, no expiry)",
         "  quedit <vnum> objective add kill <mob_vnum> <count>",
         "  quedit <vnum> objective add bring <item_vnum> <qty> [<return_mob>]",
         "  quedit <vnum> objective add visit <room_vnum>",
         "  quedit <vnum> objective add flag <var> <value>",
         "  quedit <vnum> objective remove <idx>",
-        "  quedit <vnum> reward add gold|item|skill|achievement|recipe|embrace_clan ...",
+        "  quedit <vnum> reward add gold|item|skill|achievement|recipe|morality|reputation|embrace_clan ...",
         "  quedit <vnum> reward remove <idx>",
         "  quedit <vnum> delete",
     ];

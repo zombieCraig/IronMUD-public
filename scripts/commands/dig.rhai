@@ -143,6 +143,18 @@ fn run_command(args, connection_id) {
 
     // Create the new room
     let new_room = create_room(title, "This room has no description yet.");
+
+    // Attribution: claim the room for whoever dug it. See src/attribution.rs.
+    //
+    // Only for a builder. `dig` is access:user (it is also the treasure-digging
+    // verb) and the can_edit_area gate above only runs when the current room
+    // belongs to an area — so in an area-less room any player can reach this
+    // line. Stamping unconditionally would let them mint scored, self-credited
+    // Builder-origin content. Left unstamped it is Unknown, which counts for
+    // nobody, which is the right answer.
+    if char.is_builder || char.is_admin {
+        stamp_content_created("room", "" + new_room.id, char.name);
+    }
     let new_room_id = new_room.id;
 
     // Check if current room is a property template room

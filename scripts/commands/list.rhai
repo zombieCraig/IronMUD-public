@@ -8,6 +8,18 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // A consignment broker is the third kind of counter, and it does not
+    // displace the other two: a mob can be both a shopkeeper and a broker, and
+    // a broker can simply be standing next to an unrelated merchant. So the
+    // shelf is *appended* to whichever page we build, under one continuous
+    // numbering that `buy <n>` reads the same way.
+    //
+    // This used to be an early return per branch, which meant any shopkeeper in
+    // the room made every shelf in it unreachable — including the shelf of a
+    // mob that was itself the shopkeeper, which the builder guide documents as
+    // supported.
+    let broker = find_consignment_broker_in_room(char.current_room_id);
+
     // First, check for a shopkeeper
     let shopkeeper = find_shopkeeper_in_room(char.current_room_id);
     if shopkeeper != () {
@@ -20,22 +32,27 @@ fn run_command(args, connection_id) {
             }
             return;
         }
-        show_shopkeeper_list(shopkeeper, char, connection_id);
+        show_shopkeeper_list(shopkeeper, char, broker, connection_id);
         return;
     }
 
     // Next, check for a vending machine
     let vending = find_vending_machine_in_room(char.current_room_id);
     if vending != () {
-        show_vending_list(vending, char, connection_id);
+        show_vending_list(vending, char, broker, connection_id);
+        return;
+    }
+
+    if broker != () {
+        show_consignment_only(broker, connection_id);
         return;
     }
 
     send_client_message(connection_id, "There is no shopkeeper or vending machine here.");
 }
 
-fn show_shopkeeper_list(shopkeeper, char, connection_id) {
-    let sell_rate = shop_charisma_rate(shopkeeper.shop_sell_rate, get_effective_charisma(char.name), true, shopkeeper.flags.no_charm);
+fn show_shopkeeper_list(shopkeeper, char, broker, connection_id) {
+    let sell_rate = shop_rate_for(shopkeeper.shop_sell_rate, char.name, shopkeeper.id, true);
     let stock = shopkeeper.shop_stock;
     let inventory = get_shop_inventory(shopkeeper.id);
 
@@ -81,13 +98,15 @@ fn show_shopkeeper_list(shopkeeper, char, connection_id) {
         output += "  (nothing for sale)\n";
     }
 
+    output += consignment_section(broker, index);
+
     output += "\nYour gold: " + char.gold;
     output += "\n\nUse 'buy <item>' or 'buy <index>' to purchase.";
 
     send_client_message(connection_id, output);
 }
 
-fn show_vending_list(vending, char, connection_id) {
+fn show_vending_list(vending, char, broker, connection_id) {
     let sell_rate = vending.vending_sell_rate;
     let stock = vending.vending_stock;
 
@@ -110,6 +129,8 @@ fn show_vending_list(vending, char, connection_id) {
     if !has_items {
         output += "  (nothing for sale)\n";
     }
+
+    output += consignment_section(broker, index);
 
     output += "\nYour gold: " + char.gold;
     output += "\n\nUse 'buy <item>' or 'buy <index>' to purchase.";
@@ -156,4 +177,39 @@ fn get_item_info_suffix(item) {
     if item.medical_tier == 2 { tier_name = "Intermediate"; }
     if item.medical_tier == 3 { tier_name = "Advanced"; }
     return " [" + tier_name + "]";
+}
+
+// The consignment shelf, rendered as a section of a larger page.
+//
+// `start_index` is where the enclosing page's numbering left off, so the shelf
+// continues it rather than restarting at 1 — `buy <n>` resolves the same way,
+// walking the shop's own entries first and handing anything past them here.
+// Returns "" when there is no broker or nothing on the shelf, so a caller can
+// append unconditionally.
+fn consignment_section(broker, start_index) {
+    if broker == () {
+        return "";
+    }
+    let listings = consignments_at(broker.id);
+    if listings.len() == 0 {
+        return "";
+    }
+
+    let output = "\nOn consignment at " + broker.name + ":\n";
+    let n = start_index;
+    for listing in listings {
+        output += "  " + n + ". " + listing.item_name + " — " + listing.price + " gold (from " + listing.seller + ")\n";
+        n += 1;
+    }
+    return output;
+}
+
+// A broker with no shop or vending machine beside it gets a page of its own.
+fn show_consignment_only(broker, connection_id) {
+    let section = consignment_section(broker, 1);
+    if section == "" {
+        send_client_message(connection_id, broker.name + " has nothing on consignment right now.");
+        return;
+    }
+    send_client_message(connection_id, "=== " + broker.name + " ===" + section + "\nUse 'buy <number>' to take one.");
 }

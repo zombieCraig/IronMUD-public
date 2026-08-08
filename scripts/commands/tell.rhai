@@ -79,9 +79,9 @@ fn run_command(args, connection_id) {
         let effective = if speaker_skill < listener_skill { speaker_skill } else { listener_skill };
         heard = garble_language(heard, language_key, effective);
         if listener_skill >= 1 {
-            add_skill_experience(actual_name, language_key, 1);
+            add_skill_experience(actual_name, language_key, 1, "language");
         }
-        add_skill_experience(char.name, language_key, 1);
+        add_skill_experience(char.name, language_key, 1, "language");
     }
 
     // Apply ear garbling for recipient

@@ -54,6 +54,22 @@ export class IronMUDApiClient {
             throw error;
         }
     }
+    /// Endpoints that answer with `{success, message}` rather than a payload —
+    /// the bounty lifecycle calls, where a refusal ("somebody already claimed
+    /// that") is a normal outcome and not an error.
+    async outcomeRequest(path, data) {
+        try {
+            const response = await this.client.post(path, data);
+            return response.data;
+        }
+        catch (error) {
+            if (error instanceof AxiosError) {
+                const apiError = error.response?.data?.error;
+                throw new Error(apiError?.message || error.message || "API request failed");
+            }
+            throw error;
+        }
+    }
     async listRequest(path) {
         try {
             const response = await this.client.get(path);
@@ -420,6 +436,52 @@ export class IronMUDApiClient {
         return this.request("delete", `/areas/${areaId}/forage/${forageType}/${encodeURIComponent(vnum)}`);
     }
     // Bug Reports (approved only - see admin approval gate)
+    // === Bounties (the builder help-wanted board) ===
+    async listBounties(params) {
+        const q = new URLSearchParams();
+        if (params.status)
+            q.set("status", params.status);
+        if (params.claimed_by)
+            q.set("claimed_by", params.claimed_by);
+        if (params.limit !== undefined)
+            q.set("limit", String(params.limit));
+        const query = q.toString();
+        return this.listRequest(`/bounties${query ? `?${query}` : ""}`);
+    }
+    async getBounty(ticket) {
+        return this.request("get", `/bounties/${ticket}`);
+    }
+    // === Content auditor ===
+    //
+    // Read-only. `auditWorld` and `auditArea` are full-world reads — deliberate
+    // sweeps, not something to poll.
+    async auditEntity(kind, key) {
+        return this.request("get", `/audit/${kind}/${encodeURIComponent(key)}`);
+    }
+    async auditArea(key) {
+        return this.request("get", `/audit/area/${encodeURIComponent(key)}`);
+    }
+    async auditWorld() {
+        return this.request("get", "/audit/world");
+    }
+    async getWorldReport() {
+        return this.request("get", "/audit/report");
+    }
+    async getBuildTracks() {
+        return this.listRequest("/audit/tracks");
+    }
+    async postBounty(body) {
+        return this.request("post", "/bounties", body);
+    }
+    // The acting builder is the API key's owner character, resolved server-side.
+    // It is deliberately not a parameter: submitting is what decides who gets
+    // paid.
+    async claimBounty(ticket) {
+        return this.outcomeRequest(`/bounties/${ticket}/claim`, {});
+    }
+    async submitBounty(ticket, linked) {
+        return this.outcomeRequest(`/bounties/${ticket}/submit`, { linked });
+    }
     async listBugReports(status) {
         const params = new URLSearchParams();
         if (status)

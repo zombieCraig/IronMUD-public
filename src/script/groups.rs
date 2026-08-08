@@ -55,30 +55,21 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     });
 
     // get_group_members_in_room(leader_name, room_id) -> Array of grouped members in same room
+    //
+    // Thin wrapper over `crate::group::group_members_in_room`. The kill-credit
+    // path needs the same answer from Rust, and two implementations of "who is
+    // in this party, here" would drift the moment one of them gained a rule.
     let conns = connections.clone();
     engine.register_fn(
         "get_group_members_in_room",
         move |leader_name: String, room_id: String| -> rhai::Array {
-            let leader_lower = leader_name.to_lowercase();
             let room_uuid = match uuid::Uuid::parse_str(&room_id) {
                 Ok(uuid) => uuid,
                 Err(_) => return rhai::Array::new(),
             };
-            let conns_guard = conns.lock().unwrap();
-            conns_guard
-                .values()
-                .filter_map(|session| {
-                    session.character.as_ref().and_then(|char| {
-                        if char.is_grouped && char.current_room_id == room_uuid {
-                            if let Some(ref following) = char.following {
-                                if following.to_lowercase() == leader_lower {
-                                    return Some(rhai::Dynamic::from(char.name.clone()));
-                                }
-                            }
-                        }
-                        None
-                    })
-                })
+            crate::group::group_members_in_room(&conns, &leader_name, &room_uuid)
+                .into_iter()
+                .map(rhai::Dynamic::from)
                 .collect()
         },
     );
@@ -113,63 +104,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     );
 
     // get_group_leader(char_name) -> String
-    // Returns the ultimate leader (follows the chain up), empty string if not following anyone
+    // Returns the ultimate leader (follows the chain up), empty string if not following anyone.
+    // Wrapper over `crate::group::group_leader` for the same reason as above.
     let conns = connections.clone();
     engine.register_fn("get_group_leader", move |char_name: String| -> String {
-        let char_lower = char_name.to_lowercase();
-        let conns_guard = conns.lock().unwrap();
-
-        // Find the character's following field
-        let mut current_following: Option<String> = None;
-        for session in conns_guard.values() {
-            if let Some(ref char) = session.character {
-                if char.name.to_lowercase() == char_lower {
-                    current_following = char.following.clone();
-                    break;
-                }
-            }
-        }
-
-        // If not following anyone, return empty
-        let mut leader = match current_following {
-            Some(name) => name,
-            None => return String::new(),
-        };
-
-        // Follow the chain up (with cycle detection)
-        let mut visited = std::collections::HashSet::new();
-        visited.insert(char_lower);
-
-        loop {
-            let leader_lower = leader.to_lowercase();
-            if visited.contains(&leader_lower) {
-                // Cycle detected, return current leader
-                return leader;
-            }
-            visited.insert(leader_lower.clone());
-
-            // Find leader's following field
-            let mut leader_following: Option<String> = None;
-            for session in conns_guard.values() {
-                if let Some(ref char) = session.character {
-                    if char.name.to_lowercase() == leader_lower {
-                        leader_following = char.following.clone();
-                        break;
-                    }
-                }
-            }
-
-            match leader_following {
-                Some(next_leader) => {
-                    // Leader is also following someone
-                    leader = next_leader;
-                }
-                None => {
-                    // This is the ultimate leader
-                    return leader;
-                }
-            }
-        }
+        crate::group::group_leader(&conns, &char_name)
     });
 
     // ========== Follower/Group Modification Functions ==========
@@ -375,6 +314,162 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             }
         }
         0
+    });
+
+    // get_group_panel(char_name) -> Array of Maps, one per party member
+    //
+    // Fields: name, is_you, role ("leader"|"member"|"following"), here,
+    // hp, max_hp, condition, condition_color, stamina, max_stamina, position,
+    // fighting (Array).
+    //
+    // Everything but `fighting` is read from the session copies, which are
+    // authoritative for anyone online and free — the panel is a status display
+    // and must not cost a character deserialize per member per look.
+    //
+    // The asker leads the list, then the leader, then the rest; `group` renders
+    // in that order so a member always finds themselves at the top.
+    let conns = connections.clone();
+    let db_clone = db.clone();
+    engine.register_fn("get_group_panel", move |char_name: String| -> rhai::Array {
+        let leader = crate::group::group_leader(&conns, &char_name);
+        let leader = if leader.is_empty() { char_name.clone() } else { leader };
+
+        // Snapshot everyone online out of the lock in one pass, so neither the
+        // chain walks nor the per-room mobile reads below happen while holding
+        // it. `std::sync::Mutex` is not reentrant and `group_leader` takes the
+        // same lock.
+        let (asker_room, online): (Option<uuid::Uuid>, Vec<crate::types::CharacterData>) = {
+            let Ok(guard) = conns.lock() else {
+                return rhai::Array::new();
+            };
+            let asker_room = guard.values().find_map(|s| {
+                s.character
+                    .as_ref()
+                    .filter(|c| c.name.eq_ignore_ascii_case(&char_name))
+                    .map(|c| c.current_room_id)
+            });
+            let online: Vec<crate::types::CharacterData> =
+                guard.values().filter_map(|s| s.character.as_ref()).cloned().collect();
+            (asker_room, online)
+        };
+
+        // Membership walks each candidate's whole follow chain rather than
+        // comparing one hop. With a one-hop test, a second-level follower in
+        // an A <- B <- C chain was missing from their *own* panel — the one row
+        // the panel promises to put first.
+        let members: Vec<crate::types::CharacterData> = online
+            .into_iter()
+            .filter(|c| {
+                c.name.eq_ignore_ascii_case(&leader)
+                    || crate::group::group_leader(&conns, &c.name).eq_ignore_ascii_case(&leader)
+            })
+            .collect();
+
+        // Asker first, then the leader, then everyone else by name so the
+        // ordering does not shuffle between two consecutive `group` calls.
+        let mut ordered = members;
+        ordered.sort_by(|a, b| {
+            let rank = |c: &crate::types::CharacterData| {
+                if c.name.eq_ignore_ascii_case(&char_name) {
+                    0
+                } else if c.name.eq_ignore_ascii_case(&leader) {
+                    1
+                } else {
+                    2
+                }
+            };
+            rank(a)
+                .cmp(&rank(b))
+                .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+        });
+
+        // One mobile read per distinct room, not per member: a party is
+        // usually all in one room, and this is a status display that a player
+        // can spam.
+        let mut room_mobs: std::collections::HashMap<uuid::Uuid, std::collections::HashMap<uuid::Uuid, String>> =
+            std::collections::HashMap::new();
+        for c in &ordered {
+            room_mobs.entry(c.current_room_id).or_insert_with(|| {
+                db_clone
+                    .get_mobiles_in_room(&c.current_room_id)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|mob| (mob.id, mob.name))
+                    .collect()
+            });
+        }
+
+        ordered
+            .into_iter()
+            .map(|c| {
+                let mut m = rhai::Map::new();
+                let is_leader = c.name.eq_ignore_ascii_case(&leader);
+                m.insert("name".into(), rhai::Dynamic::from(c.name.clone()));
+                m.insert(
+                    "is_you".into(),
+                    rhai::Dynamic::from(c.name.eq_ignore_ascii_case(&char_name)),
+                );
+                m.insert(
+                    "role".into(),
+                    rhai::Dynamic::from(
+                        if is_leader {
+                            "leader"
+                        } else if c.is_grouped {
+                            "member"
+                        } else {
+                            "following"
+                        }
+                        .to_string(),
+                    ),
+                );
+                m.insert(
+                    "here".into(),
+                    rhai::Dynamic::from(asker_room.is_some_and(|r| r == c.current_room_id)),
+                );
+                m.insert("hp".into(), rhai::Dynamic::from(c.hp as i64));
+                m.insert("max_hp".into(), rhai::Dynamic::from(c.max_hp as i64));
+                // Band *and* colour come from `combat_text`, which owns every
+                // health-presentation table in the game. The script gets them
+                // as data and concatenates; it must never grow its own
+                // thresholds or its own palette.
+                let condition = crate::combat_text::Condition::from_hp(c.hp, c.max_hp);
+                m.insert("condition".into(), rhai::Dynamic::from(condition.tag().to_string()));
+                m.insert(
+                    "condition_color".into(),
+                    rhai::Dynamic::from(condition.color().to_string()),
+                );
+                m.insert("stamina".into(), rhai::Dynamic::from(c.stamina as i64));
+                m.insert("max_stamina".into(), rhai::Dynamic::from(c.max_stamina as i64));
+                m.insert("position".into(), rhai::Dynamic::from(c.position.to_string()));
+
+                // Role legibility: what this member is swinging at. Read from
+                // their own `combat.targets`, which is the only honest source —
+                // a mobile's Player target carries no identity at all
+                // (`target_id` is nil, `target_name` is None; the tick resolves
+                // a victim by scanning the room at swing time), so a
+                // "who is the ghoul focusing" column would be invented.
+                //
+                // What each member is attacking is still the thing a party
+                // needs: it is how you see the group has split across three
+                // mobs instead of focusing one.
+                let names = room_mobs.get(&c.current_room_id);
+                let fighting: rhai::Array = if c.combat.in_combat {
+                    c.combat
+                        .targets
+                        .iter()
+                        .filter_map(|t| match t.target_type {
+                            crate::types::CombatTargetType::Player => t.target_name.clone(),
+                            crate::types::CombatTargetType::Mobile => names.and_then(|n| n.get(&t.target_id)).cloned(),
+                        })
+                        .map(rhai::Dynamic::from)
+                        .collect()
+                } else {
+                    rhai::Array::new()
+                };
+                m.insert("fighting".into(), rhai::Dynamic::from(fighting));
+                rhai::Dynamic::from(m)
+            })
+            .collect()
     });
 
     // add_character_gold(char_name, amount) -> bool

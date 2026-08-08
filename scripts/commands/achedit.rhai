@@ -14,6 +14,7 @@
 //   achedit <key> reward gold <amount>     # Set gold reward (0 clears)
 //   achedit <key> reward item <vnum>       # Set item reward (empty clears)
 //   achedit <key> reward morality <delta>  # Shift player morality at unlock (+good/-evil, 0 clears)
+//   achedit <key> reward traitpoints <n>   # Grant spendable trait points at unlock (0 clears)
 //   achedit <key> criterion manual         # Set manual award criterion
 //   achedit <key> criterion counter <k> <n> # Set counter criterion (key + threshold)
 //   achedit <key> criterion skill <k> <n>  # Set skill criterion (skill + level)
@@ -146,7 +147,7 @@ fn handle_hidden(key, parts, connection_id) {
 
 fn handle_reward(key, parts, connection_id) {
     if parts.len() < 3 {
-        send_client_message(connection_id, "Usage: achedit <key> reward title|gold|item ...");
+        send_client_message(connection_id, "Usage: achedit <key> reward title|gold|item|morality|traitpoints ...");
         return;
     }
     let kind = parts[2].to_lower();
@@ -174,6 +175,14 @@ fn handle_reward(key, parts, connection_id) {
         let delta = try_parse_int(parts[3]);
         let err = set_achievement_reward_morality(key, delta);
         report(err, "Reward morality delta updated.", connection_id);
+    } else if kind == "traitpoints" || kind == "points" {
+        if parts.len() < 4 {
+            send_client_message(connection_id, "Usage: achedit <key> reward traitpoints <n>");
+            return;
+        }
+        let pts = try_parse_int(parts[3]);
+        let err = set_achievement_reward_trait_points(key, pts);
+        report(err, "Reward trait points updated.", connection_id);
     } else {
         send_client_message(connection_id, "Unknown reward kind: " + kind);
     }
@@ -275,6 +284,11 @@ fn show_achievement(key, connection_id) {
     if rew["morality_delta"] != 0 {
         out += olc::c_label("  Morality:  ", connection_id) + rew["morality_delta"] + "\n";
     }
+    // `> 0`, matching the unlock guard — a legacy negative value is not a
+    // reward and must not be shown as one.
+    if rew["trait_points"] > 0 {
+        out += olc::c_label("  Traits:    ", connection_id) + rew["trait_points"] + " point(s)\n";
+    }
 
     send_client_message(connection_id, out);
 }
@@ -335,6 +349,7 @@ fn send_help(connection_id) {
         "  achedit <key> reward gold <amount>     # Set gold reward",
         "  achedit <key> reward item <vnum>       # Set item reward",
         "  achedit <key> reward morality <delta>  # Shift morality at unlock (+good/-evil, 0 clears)",
+        "  achedit <key> reward traitpoints <n>   # Grant trait points at unlock (0 clears)",
         "  achedit <key> criterion manual         # Set manual award criterion",
         "  achedit <key> criterion counter <k> <n> # Set counter criterion",
         "  achedit <key> criterion skill <k> <n>  # Set skill criterion",

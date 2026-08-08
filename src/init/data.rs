@@ -442,11 +442,102 @@ pub fn load_game_data(state: SharedState) -> Result<()> {
     // collision, with a warning). Builds the counter-key index used by
     // `notify_achievement_counter`.
     load_achievements(&mut world);
+    load_build_tracks(&mut world);
+
+    // Load faction definitions. Optional: an untagged world runs fine, and a
+    // faction tag with no entry still works with defaults.
+    load_factions(&mut world);
 
     // Load builder-published custom skill metadata from the sled tree.
     load_custom_skills(&mut world);
 
     Ok(())
+}
+
+/// Load faction definitions from `scripts/data/factions.json`.
+///
+/// Absent file, unreadable file and parse failure all leave the registry
+/// empty, which is a working state: `MobileData.faction` keeps its original
+/// helper-aggro meaning, and every tag falls back to
+/// `FactionDefinition::unregistered`. Only opposition, display names and
+/// per-faction thresholds are lost, so a broken file degrades the world
+/// rather than stopping it — but it is logged at error level, because a
+/// builder who wrote the file meant it to load.
+fn load_factions(world: &mut crate::World) {
+    let path = "scripts/data/factions.json";
+    let content = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(_) => {
+            info!("No faction definitions at {}", path);
+            return;
+        }
+    };
+    match serde_json::from_str::<Vec<crate::reputation::FactionDefinition>>(&content) {
+        Ok(list) => {
+            for mut def in list {
+                def.key = def.key.to_lowercase();
+                if world.faction_definitions.contains_key(&def.key) {
+                    tracing::warn!("Duplicate faction key '{}' in {}", def.key, path);
+                }
+                world.faction_definitions.insert(def.key.clone(), def);
+            }
+            info!(
+                "Loaded {} faction definitions from {}",
+                world.faction_definitions.len(),
+                path
+            );
+            // An `opposed` key nothing declares is not an error — reputation
+            // works fine with an unregistered tag — but it is almost always a
+            // typo, and the failure is silent and confusing: the player picks
+            // up standing with a faction that has no mobs, which then shows on
+            // `standing` and gets its own leaderboard. Checked after the whole
+            // file is loaded so declaration order does not matter.
+            let declared: Vec<String> = world.faction_definitions.keys().cloned().collect();
+            for key in &declared {
+                let def = &world.faction_definitions[key];
+                for other in &def.opposed {
+                    let other = other.to_lowercase();
+                    if !world.faction_definitions.contains_key(&other) {
+                        tracing::warn!(
+                            "Faction '{}' is opposed to '{}', which no faction declares — typo? \
+                             (standing will still move, under that exact key)",
+                            key,
+                            other
+                        );
+                    }
+                }
+            }
+        }
+        Err(e) => error!("Failed to parse {}: {}", path, e),
+    }
+}
+
+/// Load builder progress tracks from `scripts/data/build_tracks/`.
+///
+/// Definitions only. Progress is never stored: a track asks a question about
+/// the content that exists right now, and caching the answer would just be a
+/// second thing to keep in sync with the world.
+fn load_build_tracks(world: &mut crate::World) {
+    let mut tracks: Vec<crate::build_tracks::TrackDef> = Vec::new();
+    let dir = std::path::Path::new("scripts/data/build_tracks");
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_none_or(|e| e != "json") {
+                continue;
+            }
+            match std::fs::read_to_string(&path)
+                .map_err(|e| e.to_string())
+                .and_then(|c| serde_json::from_str::<crate::build_tracks::TrackDef>(&c).map_err(|e| e.to_string()))
+            {
+                Ok(def) => tracks.push(def),
+                Err(e) => tracing::warn!("Failed to load build track {}: {}", path.display(), e),
+            }
+        }
+    }
+    tracks.sort_by(|a, b| a.key.cmp(&b.key));
+    tracing::info!("Loaded {} builder progress track(s)", tracks.len());
+    world.build_tracks = tracks;
 }
 
 /// Load achievement definitions into the world. JSON files in

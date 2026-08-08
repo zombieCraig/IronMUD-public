@@ -299,7 +299,7 @@ fn cmd_send(connection_id, char, args) {
 
     // Deduct gold
     let price = check.price;
-    if price > 0 { add_character_gold(char.name, -price); }
+    if price > 0 { add_character_gold(char.name, -price); notify_achievement_counter(char.name, "gold.spent", price); }
 
     // Send the mail
     let result = send_mail(char.name, recipient, message);
@@ -554,7 +554,7 @@ fn handle_compose_mode(args, connection_id) {
 
         // Deduct gold
         let price = check.price;
-        if price > 0 { add_character_gold(char.name, -price); }
+        if price > 0 { add_character_gold(char.name, -price); notify_achievement_counter(char.name, "gold.spent", price); }
 
         // Send mail (with or without attachments)
         let result = "";

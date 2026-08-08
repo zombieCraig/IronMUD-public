@@ -90,8 +90,5 @@ fn run_command(args, connection_id) {
     send_client_message(connection_id, "You carefully apply " + poison_name + " to your " + weapon_name + ". (" + charges + " envenomed charges)");
     broadcast_to_room_awake(char.current_room_id, char.name + " carefully applies something to their weapon.", char.name);
 
-    let leveled = add_skill_experience(char.name, "thievery", 8);
-    if leveled {
-        send_client_message(connection_id, "Your thievery skill has improved!");
-    }
+    add_skill_experience(char.name, "thievery", 8, "stealth");
 }

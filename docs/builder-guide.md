@@ -264,6 +264,42 @@ MXP enabled. Clickable links are now active.
 
 Click room names to teleport, click flags to toggle, etc.
 
+## Checking Your Work
+
+`build audit` grades content and tells you what to fix next:
+
+```
+build audit               the room you are standing in
+build audit area          the area you are standing in
+build audit world         everything
+world                     how far along the whole world is
+build next                the one thing worth doing next
+```
+
+Stuck for what to build? `build next` names one thing and the command that does
+it — see [Progress Tracks](builder/tracks.md).
+
+Need something built that you are not going to build yourself? `bounty post`
+asks for it, and the content auditor keeps its own half of the board stocked —
+see [Bounty Board](builder/bounties.md).
+
+Findings come in three severities — `BLOCKER` (broken as shipped), `warn` (a
+player will notice), `polish` (a suggestion) — and every entity gets a letter
+from a single threshold table. A bare-but-valid room is a C by design.
+
+`build` on its own is your sheet: points, what you have made, where you stand.
+Points come from a scan of what currently exists rather than from a tally of
+edits, so re-saving earns nothing and deleting lowers the number — see
+[Builder Score](builder/score.md).
+
+Full check catalogue and the rule for adding a check:
+[Content Audit](builder/audit.md).
+
+The report also names who built the thing. Creating content claims it; editing
+someone else's never takes it from them, and content that shipped with the
+engine or came in through an importer is credited to nobody by design — see
+[Attribution](builder/attribution.md).
+
 ## Best Practices
 
 1. **Use descriptive vnums** - `healing_potion` not `pot1`
@@ -271,6 +307,7 @@ Click room names to teleport, click flags to toggle, etc.
 3. **Test as a player** - Walk through without builder commands
 4. **Use spawn points** - Keep areas populated automatically
 5. **Add extra descriptions** - Let players examine mentioned objects
+6. **Run `build audit`** - Before calling an area done, and after every session
 
 ## Cyberware (Ripperdocs)
 
@@ -296,6 +333,13 @@ plus `get_cyberware_state` / `has_cyberware` /
 - [Property Templates](builder/properties.md) - Creating rentable player housing
 - [Triggers](builder/triggers.md) - Adding scripted behaviors
 - [Recipe Editing](builder/recipes.md) - Creating crafting recipes
+- [Consignment Brokers](builder/consignment.md) - NPCs that host the player market
+- [Content Audit](builder/audit.md) - `build audit`, the check catalogue, and how grades work
+- [Attribution](builder/attribution.md) - Who built what, and which content counts
+- [Builder Score](builder/score.md) - Points, boards, achievements, and the grade toast
+- [World Rating](builder/world-rating.md) - How far along the world is, and the milestone wall
+- [Progress Tracks](builder/tracks.md) - `build next`, area readiness, and the Builder's Path
+- [Bounty Board](builder/bounties.md) - Asking for work, claiming it, and getting paid in builder points
 
 ## Claude Code Integration
 

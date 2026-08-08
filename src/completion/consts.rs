@@ -27,6 +27,8 @@ pub const MEDIT_SUBCOMMANDS: &[&str] = &[
     "hp",
     "damage",
     "ac",
+    "alignment",
+    "faction",
     "damtype",
     "creature",
     "stat",
@@ -61,6 +63,7 @@ pub const MOBILE_FLAGS: &[&str] = &[
     "aggro_evil",
     "aggro_good",
     "aggro_neutral",
+    "consignment",
     "aware",
     "can_open_doors",
     "cant_swim",
@@ -115,6 +118,8 @@ pub const SHOP_SUBCOMMANDS: &[&str] = &[
     "preset",
     "minvalue",
     "maxvalue",
+    "commission",
+    "listingcap",
 ];
 
 /// Shop categories actions
@@ -605,13 +610,36 @@ pub const WEAR_SLOTS: &[&str] = &[
 pub const SPAWN_ENTITY_TYPES: &[&str] = &["mobile", "item"];
 
 /// Set command subcommands (available to all users)
-pub const SET_SUBCOMMANDS_BASE: &[&str] = &["mxp", "color", "afk", "helpline"];
+pub const SET_SUBCOMMANDS_BASE: &[&str] = &["mxp", "color", "afk", "helpline", "xpfeed"];
+
+/// `prompt` subcommands. A custom format is typed rather than completed —
+/// there is nothing sensible to offer for an arbitrary format string — so
+/// this is the presets plus the two ways out.
+pub const PROMPT_SUBCOMMANDS: &[&str] = &["simple", "verbose", "tokens", "default"];
+
+/// `build <subcommand>`.
+pub const BUILD_SUBCOMMANDS: &[&str] = &["audit", "who", "next", "track"];
+
+/// `build audit <target>`. `here` and `world` take no argument; the rest want
+/// a vnum, which completion cannot supply without knowing the area.
+/// `bounty <subcommand>`.
+pub const BOUNTY_SUBCOMMANDS: &[&str] = &[
+    "list", "mine", "show", "post", "claim", "drop", "submit", "accept", "reject", "done", "help",
+];
+
+/// `world <subcommand>`.
+pub const WORLD_SUBCOMMANDS: &[&str] = &["milestones"];
+
+pub const BUILD_AUDIT_TARGETS: &[&str] = &["here", "room", "item", "mob", "quest", "area", "world"];
 
 /// Set command subcommands (builder-only)
 pub const SET_SUBCOMMANDS_BUILDER: &[&str] = &["roomflags", "builderdebug"];
 
 /// Set command toggle values
 pub const SET_TOGGLE_VALUES: &[&str] = &["on", "off"];
+
+/// Values for `set xpfeed`, which is three-way rather than a toggle.
+pub const SET_XPFEED_VALUES: &[&str] = &["off", "brief", "full"];
 
 /// Rcopy categories
 pub const RCOPY_CATEGORIES: &[&str] = &[
@@ -668,6 +696,7 @@ pub const ADMIN_SUBCOMMANDS: &[&str] = &[
     "config",
     "ticks",
     "morality",
+    "reputation",
     "loadout",
     "help",
 ];
@@ -821,6 +850,15 @@ pub const ESCROW_SUBCOMMANDS: &[&str] = &["retrieve"];
 /// MOTD command subcommands
 pub const MOTD_SUBCOMMANDS: &[&str] = &["show", "edit", "clear", "help"];
 
+/// `locate <what>`. The aliases are here rather than only in the script so tab
+/// completion and the command agree on what it accepts.
+pub const LOCATE_TARGETS: &[&str] = &["corpse", "body", "remains"];
+
+/// `consignments <subcommand>`. Withdrawal has two spellings because
+/// `unconsign` is the verb a player reaches for and `take` is the one they find
+/// while looking at the list.
+pub const CONSIGNMENTS_SUBCOMMANDS: &[&str] = &["take", "withdraw"];
+
 /// Bugs command subcommands
 pub const BUGS_SUBCOMMANDS: &[&str] = &[
     "list", "read", "approve", "note", "status", "priority", "close", "delete", "help",
@@ -897,7 +935,7 @@ pub const ACHIEVEMENT_CATEGORIES: &[&str] = &[
 ];
 
 /// Achievement reward subcommands
-pub const ACHIEVEMENT_REWARD_ACTIONS: &[&str] = &["title", "gold", "item", "morality"];
+pub const ACHIEVEMENT_REWARD_ACTIONS: &[&str] = &["title", "gold", "item", "morality", "traitpoints"];
 
 /// Achievement criterion subcommands
 pub const ACHIEVEMENT_CRITERION_ACTIONS: &[&str] = &["manual", "counter", "skill", "recipe", "lease", "gold"];

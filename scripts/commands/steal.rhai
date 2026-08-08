@@ -158,10 +158,7 @@ fn run_command(args, connection_id) {
             attempt_steal_item(char, connection_id, target_is_player, target_player_name, target_mobile_id, target_mobile_name);
         }
         // Award XP
-        let leveled = add_skill_experience(char.name, "thievery", 10);
-        if leveled {
-            send_client_message(connection_id, "Your thievery skill has improved!");
-        }
+        add_skill_experience(char.name, "thievery", 10, "stealth");
     } else {
         // Failed steal
         break_stealth(char.name);
@@ -192,10 +189,7 @@ fn run_command(args, connection_id) {
         }
 
         // Award small XP on failure to allow progression from level 0
-        let leveled = add_skill_experience(char.name, "thievery", 1);
-        if leveled {
-            send_client_message(connection_id, "Your thievery skill has improved!");
-        }
+        add_skill_experience(char.name, "thievery", 1, "stealth");
     }
 }
 

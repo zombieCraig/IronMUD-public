@@ -8,6 +8,9 @@ use anyhow::Result;
 pub fn seed_areas(db: &Db) -> Result<()> {
     let areas = vec![
         AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: seed_uuid("area:oakvale"),
             name: "Oakvale Village".to_string(),
             prefix: "oakvale".to_string(),
@@ -51,6 +54,9 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             max_spawn_points: None,
         },
         AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: seed_uuid("area:whisperwood"),
             name: "Whispering Woods".to_string(),
             prefix: "whisperwood".to_string(),
@@ -95,6 +101,9 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             max_spawn_points: None,
         },
         AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: seed_uuid("area:ironkeep"),
             name: "Iron Keep".to_string(),
             prefix: "ironkeep".to_string(),
@@ -136,6 +145,9 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             max_spawn_points: None,
         },
         AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: seed_uuid("area:shadowfang"),
             name: "Shadowfang Caves".to_string(),
             prefix: "shadowfang".to_string(),
@@ -179,6 +191,9 @@ pub fn seed_areas(db: &Db) -> Result<()> {
             max_spawn_points: None,
         },
         AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: seed_uuid("area:hilltop"),
             name: "Hilltop Farm".to_string(),
             prefix: "hilltop".to_string(),

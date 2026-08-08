@@ -200,6 +200,51 @@ Difficulty affects the quality of crafted items:
 
 When enabled, players automatically learn the recipe when they reach the required skill level.
 
+## Discovery by Experiment
+
+Players can work a recipe out for themselves with `experiment <item>,
+<item>, ...`. The named items are consumed whether or not the attempt lands,
+and a recipe is matched only when those items fill its ingredient list
+**exactly** — every ingredient covered, nothing left over. That strictness is
+what stops the command degenerating into "carry one of everything and mash
+the button."
+
+A recipe is discoverable when all of these hold:
+
+| Condition | Why |
+|---|---|
+| The player has not already learned it | Nothing left to discover |
+| It has at least one ingredient | Nothing to name |
+| No ingredient is a liquid (`@liquid:...`) | Liquids are measured out of containers, which the command cannot name |
+| Its ingredient slots total 12 or fewer | Matching is exhaustive; beyond that it is not a thing anyone guesses |
+
+`quantity` expands into separate slots, so `2x @log` means the player types
+two logs. **Tools are still required** — an experiment that needs a forge
+needs a forge — but finding that out costs the player the materials, so that
+the command cannot be used as a free oracle.
+
+Two fields shape the odds:
+
+- **`skill_required`** is a hard gate. Below it the player is told their
+  hands are not practised enough, and the materials are lost. At it they
+  have an even chance; every level above adds 10 percentage points.
+- **`difficulty`** subtracts 5 points per step above 1. The result is
+  clamped to 15–95, so nothing is ever certain or hopeless.
+
+A failure with the right materials pays a quarter of `base_xp` (minimum 1),
+so experimenting teaches something even when it does not land — but never
+enough to beat crafting known recipes as a way to raise the skill.
+
+Discovery routes through the same path as any other way of learning a
+recipe, so the `recipes.learned` counter and the `recipe_learned`
+achievement hook fire normally. A separate `recipes.discovered` counter
+records only the ones the player worked out unaided.
+
+**Authoring for discovery.** A recipe whose ingredients are guessable from
+the fiction is the one worth setting `auto_learn: false` on — the player
+finding it is the content. A recipe with six interchangeable category
+ingredients is not discoverable in practice, and should be taught.
+
 ## Listing Recipes
 
 ```

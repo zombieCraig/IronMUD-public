@@ -119,6 +119,9 @@ pub(super) fn translate_quest(q: &IrQuest, warnings: &mut Vec<Warning>) -> Optio
     };
 
     let quest_data = QuestData {
+        authored_by: None,
+        last_edited_by: None,
+        origin: crate::types::ContentOrigin::Import,
         vnum,
         name,
         keywords,
@@ -133,6 +136,7 @@ pub(super) fn translate_quest(q: &IrQuest, warnings: &mut Vec<Warning>) -> Optio
         min_player_skill_total: None,
         duration_secs: None,
         achievement_set_prereq: None,
+        reputation_prereq: None,
     };
 
     Some(PlannedQuest {

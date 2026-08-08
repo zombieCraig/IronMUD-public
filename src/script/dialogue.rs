@@ -82,8 +82,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             };
             set_session_dialogue_partner(&conns, conn_uuid, Some(mob.id));
             let mut ch_mut = ch;
+            let skills_before = crate::progress::skill_level_snapshot(&ch_mut);
             let view = enter_root_or_keep(&cloned_db, &conns, &st, &mut ch_mut, &mob);
-            save_character_and_sync(&cloned_db, &conns, conn_uuid, ch_mut);
+            let talker = ch_mut.name.clone();
+            save_character_and_sync(&cloned_db, &conns, &st, conn_uuid, ch_mut, &skills_before);
+            // After the save: this writes the character too, and the save
+            // above would overwrite it if the order were reversed.
+            crate::script::achievements::notify_npc_talked_to_core(&cloned_db, &conns, &st, &talker, &mob.vnum);
             out.insert("ok".into(), rhai::Dynamic::from(true));
             out.insert("mob_id".into(), rhai::Dynamic::from(mob.id.to_string()));
             out.insert("mob_short_desc".into(), rhai::Dynamic::from(mob.short_desc.clone()));
@@ -142,6 +147,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 }
                 for mob in candidates {
                     let mut ch_mut = ch.clone();
+                    let skills_before = crate::progress::skill_level_snapshot(&ch_mut);
                     let cur_node = current_node_for(&ch_mut, &mob);
                     let tree = mob.dialogue_tree.as_ref().unwrap();
                     let node = match tree.nodes.get(&cur_node) {
@@ -170,7 +176,12 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                             false,
                         ),
                     };
-                    save_character_and_sync(&cloned_db, &conns, conn_uuid, ch_mut);
+                    let talker = ch_mut.name.clone();
+                    save_character_and_sync(&cloned_db, &conns, &st, conn_uuid, ch_mut, &skills_before);
+                    // `say <keyword>` can open a conversation without going
+                    // through `talk`, so this path counts too — otherwise the
+                    // counter would miss every NPC first addressed by keyword.
+                    crate::script::achievements::notify_npc_talked_to_core(&cloned_db, &conns, &st, &talker, &mob.vnum);
                     if finished {
                         set_session_dialogue_partner(&conns, conn_uuid, None);
                     }
@@ -216,6 +227,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                 _ => return err(out, "partner gone"),
             };
             let mut ch_mut = ch;
+            let skills_before = crate::progress::skill_level_snapshot(&ch_mut);
             let cur_node = current_node_for(&ch_mut, &mob);
             let tree = mob.dialogue_tree.as_ref().unwrap();
             let node = match tree.nodes.get(&cur_node) {
@@ -242,7 +254,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                     false,
                 ),
             };
-            save_character_and_sync(&cloned_db, &conns, conn_uuid, ch_mut);
+            save_character_and_sync(&cloned_db, &conns, &st, conn_uuid, ch_mut, &skills_before);
             if finished {
                 set_session_dialogue_partner(&conns, conn_uuid, None);
             }
@@ -280,12 +292,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             let mut exit_msg = String::new();
             if let Some(mob) = cloned_db.get_mobile_data(&partner_id).ok().flatten() {
                 if let Some(mut ch) = get_character_for_conn(&conns, conn_uuid) {
+                    let skills_before = crate::progress::skill_level_snapshot(&ch);
                     let cur = current_node_for(&ch, &mob);
                     exit_msg = exit_node(&cloned_db, &conns, &st, &mut ch, &mob, &cur);
                     if let Some(state) = ch.dialogue_pair_state.get_mut(&mob.vnum) {
                         state.current_node = None;
                     }
-                    save_character_and_sync(&cloned_db, &conns, conn_uuid, ch);
+                    save_character_and_sync(&cloned_db, &conns, &st, conn_uuid, ch, &skills_before);
                 }
                 out.insert("ok".into(), rhai::Dynamic::from(true));
                 out.insert("mob_id".into(), rhai::Dynamic::from(mob.id.to_string()));
@@ -860,6 +873,9 @@ fn summarize_condition(c: &DialogueCondition) -> String {
         DialogueCondition::QuestChoiceEquals { quest_vnum, key, value } => {
             format!("quest_choice_equals {}:{} == {}", quest_vnum, key, value)
         }
+        DialogueCondition::ReputationAtLeast { faction, value } => {
+            format!("reputation_at_least {} {}", faction, value)
+        }
     }
 }
 
@@ -890,6 +906,16 @@ fn summarize_effect(e: &DialogueEffect) -> String {
         }
         DialogueEffect::InstallCyberware { vnum } => format!("install_cyberware {}", vnum),
         DialogueEffect::CyberwareTherapy { points } => format!("cyberware_therapy {}", points),
+        DialogueEffect::Morality { delta } => format!("morality {}{}", if *delta > 0 { "+" } else { "" }, delta),
+        DialogueEffect::Reputation { faction, delta } => {
+            format!("reputation {} {}{}", faction, if *delta > 0 { "+" } else { "" }, delta)
+        }
+        DialogueEffect::TeachSkill {
+            skill,
+            amount,
+            cap,
+            gold_cost,
+        } => format!("teach_skill {} {} {} {}", skill, amount, cap, gold_cost),
     }
 }
 
@@ -946,6 +972,16 @@ fn parse_choice_condition(kind: &str, args: &str) -> Result<DialogueCondition, S
             Ok(DialogueCondition::SkillAtLeast {
                 key: parts[0].to_string(),
                 level,
+            })
+        }
+        "reputation_at_least" | "reputationatleast" | "reputation" | "standing" => {
+            need(2, "<faction> <value>")?;
+            let value = parts[1]
+                .parse::<i32>()
+                .map_err(|_| "value must be an integer".to_string())?;
+            Ok(DialogueCondition::ReputationAtLeast {
+                faction: parts[0].to_lowercase(),
+                value: crate::reputation::clamp(value),
             })
         }
         "counter_at_least" | "counteratleast" | "counter" => {
@@ -1091,8 +1127,58 @@ fn parse_choice_effect(kind: &str, args: &str) -> Result<DialogueEffect, String>
                 .map_err(|_| "points must be an integer".to_string())?;
             Ok(DialogueEffect::CyberwareTherapy { points })
         }
+        "morality" | "align" | "alignment" => {
+            need(1, "<delta>")?;
+            let delta = parts[0]
+                .parse::<i32>()
+                .map_err(|_| "delta must be an integer".to_string())?;
+            if delta == 0 {
+                return Err("delta must be non-zero".to_string());
+            }
+            Ok(DialogueEffect::Morality {
+                delta: crate::morality::clamp(delta),
+            })
+        }
+        "reputation" | "standing" | "faction" => {
+            need(2, "<faction> <delta>")?;
+            let delta = parts[1]
+                .parse::<i32>()
+                .map_err(|_| "delta must be an integer".to_string())?;
+            if delta == 0 {
+                return Err("delta must be non-zero".to_string());
+            }
+            Ok(DialogueEffect::Reputation {
+                faction: parts[0].to_lowercase(),
+                delta: crate::reputation::clamp(delta),
+            })
+        }
+        "teach_skill" | "teachskill" => {
+            need(2, "<skill_key> <amount> [cap] [gold_cost]")?;
+            let amount = parts[1]
+                .parse::<i32>()
+                .map_err(|_| "amount must be an integer".to_string())?;
+            let cap = match parts.get(2) {
+                Some(s) => s.parse::<i32>().map_err(|_| "cap must be an integer".to_string())?,
+                None => 1,
+            };
+            let gold_cost = match parts.get(3) {
+                Some(s) => s
+                    .parse::<i32>()
+                    .map_err(|_| "gold_cost must be an integer".to_string())?,
+                None => 0,
+            };
+            if gold_cost < 0 {
+                return Err("gold_cost cannot be negative".to_string());
+            }
+            Ok(DialogueEffect::TeachSkill {
+                skill: parts[0].to_string(),
+                amount,
+                cap,
+                gold_cost,
+            })
+        }
         other => Err(format!(
-            "unknown effect kind `{}` (use set_flag|clear_flag|give_item|take_item|award_skill_xp|set_counter|increment_counter|offer_quest|complete_quest|abandon_quest|install_cyberware|cyberware_therapy; use `tree set <json>` or MCP for set_dg_var / fire_dg_trigger / set_quest_choice)",
+            "unknown effect kind `{}` (use set_flag|clear_flag|give_item|take_item|award_skill_xp|set_counter|increment_counter|offer_quest|complete_quest|abandon_quest|install_cyberware|cyberware_therapy|teach_skill|morality; use `tree set <json>` or MCP for set_dg_var / fire_dg_trigger / set_quest_choice)",
             other
         )),
     }
@@ -1249,6 +1335,7 @@ fn walk_choice_internal(
         return DialogueDispatch::Fallthrough;
     };
 
+    let skills_before = crate::progress::skill_level_snapshot(&ch);
     let cur = current_node_for(&ch, &mob);
     let tree = mob.dialogue_tree.as_ref().unwrap();
     let Some(node) = tree.nodes.get(&cur) else {
@@ -1277,7 +1364,7 @@ fn walk_choice_internal(
             false,
         ),
     };
-    save_character_and_sync(db, connections, connection_id, ch);
+    save_character_and_sync(db, connections, state, connection_id, ch, &skills_before);
     if finished {
         clear_partner(connections, connection_id);
     }
@@ -1330,6 +1417,7 @@ fn walk_keyword_internal(
         return DialogueDispatch::Fallthrough;
     };
 
+    let skills_before = crate::progress::skill_level_snapshot(&ch);
     let cur = current_node_for(&ch, &mob);
     let tree = mob.dialogue_tree.as_ref().unwrap();
     let Some(node) = tree.nodes.get(&cur) else {
@@ -1356,7 +1444,7 @@ fn walk_keyword_internal(
             false,
         ),
     };
-    save_character_and_sync(db, connections, connection_id, ch);
+    save_character_and_sync(db, connections, state, connection_id, ch, &skills_before);
     if finished {
         clear_partner(connections, connection_id);
     }
@@ -1399,12 +1487,13 @@ fn exit_internal(
     if let Some(mob) = db.get_mobile_data(&partner_id).ok().flatten() {
         let mut exit_msg = String::new();
         if let Some(mut ch) = get_character_for_conn(connections, connection_id) {
+            let skills_before = crate::progress::skill_level_snapshot(&ch);
             let cur = current_node_for(&ch, &mob);
             exit_msg = exit_node(db, connections, state, &mut ch, &mob, &cur);
             if let Some(s) = ch.dialogue_pair_state.get_mut(&mob.vnum) {
                 s.current_node = None;
             }
-            save_character_and_sync(db, connections, connection_id, ch);
+            save_character_and_sync(db, connections, state, connection_id, ch, &skills_before);
         }
         if !exit_msg.is_empty() {
             // on_exit effect-messages are bracketed status lines ("[ You
@@ -1499,17 +1588,42 @@ fn get_character_for_conn(connections: &SharedConnections, conn_id: Uuid) -> Opt
     conns.get(&conn_id).and_then(|s| s.character.clone())
 }
 
-/// Persist `ch` to the DB AND write it back to `session.character`.
+/// Persist `ch` to the DB, write it back to `session.character`, and fire the
+/// achievement hooks any skill gained during the walk implies.
+///
 /// Dialogue walks mutate `dialogue_pair_state.current_node` on a clone of the
 /// session character; without syncing the session, the next input clones the
 /// stale pre-walk view and the player gets stuck on the root node.
-fn save_character_and_sync(db: &Db, connections: &SharedConnections, conn_id: Uuid, ch: CharacterData) {
+///
+/// `skills_before` is [`crate::progress::skill_level_snapshot`] taken before
+/// the effects ran. It is a parameter rather than something each caller
+/// remembers to follow up with, because forgetting is exactly what went wrong:
+/// `award_skill_xp` below is the pure-mutation form and documents that its
+/// caller must fire `notify_xp_achievements` once it has persisted — and no
+/// caller ever did, so a mentor lesson (`DialogueEffect::TeachSkill`) that
+/// pushed foraging to 3 never unlocked `novice_forager`. The quest and DG
+/// paths were correct because they route through the `progress::award_xp`
+/// facade; dialogue cannot, since it owns `ch` and saves it here. Making the
+/// snapshot an argument means the save cannot happen without the question
+/// being answered.
+fn save_character_and_sync(
+    db: &Db,
+    connections: &SharedConnections,
+    state: &SharedState,
+    conn_id: Uuid,
+    ch: CharacterData,
+    skills_before: &std::collections::HashMap<String, i32>,
+) {
     let _ = db.save_character_data(ch.clone());
+    let char_name = ch.name.clone();
     if let Ok(mut conns) = connections.lock() {
         if let Some(session) = conns.get_mut(&conn_id) {
-            session.character = Some(ch);
+            session.character = Some(ch.clone());
         }
     }
+    // After the save, for the standing reason: these hooks write the character
+    // out-of-band and the save above would clobber them.
+    crate::progress::notify_skill_level_gains(db, connections, state, &char_name, skills_before, &ch);
 }
 
 fn find_mob_in_room_with_tree(db: &Db, room_id: Uuid, keyword: &str) -> Option<MobileData> {
@@ -1965,6 +2079,12 @@ fn evaluate_condition(cond: &DialogueCondition, ch: &CharacterData, mob: &Mobile
             .get(key)
             .map(|v| *v as i32 >= *value)
             .unwrap_or(false),
+        // A faction the player has never dealt with reads 0, so this is true
+        // by default for any non-positive threshold — which is the right
+        // reading of "you have not wronged us".
+        DialogueCondition::ReputationAtLeast { faction, value } => {
+            crate::reputation::standing(&ch.reputation, faction) >= *value
+        }
         DialogueCondition::DgVarEquals { scope, key, value } => match scope {
             DgScope::Player => ch.dg_vars.get(key).map(|v| v == value).unwrap_or(false),
             DgScope::Mob => mob.dg_vars.get(key).map(|v| v == value).unwrap_or(false),
@@ -1999,27 +2119,46 @@ fn evaluate_condition(cond: &DialogueCondition, ch: &CharacterData, mob: &Mobile
     }
 }
 
-/// Award skill XP to a character, leveling up at the 100-XP threshold and
-/// capping at level 10. Returns a player-facing level-up announcement on
-/// level gain, else `None`. Shared by the `award_skill_xp` dialogue effect
-/// and the DG Scripts command of the same name — both must route through
-/// here rather than mutate `ch.skills` directly so the level-up cadence
-/// stays consistent across content paths.
-pub(crate) fn award_skill_xp(ch: &mut CharacterData, skill: &str, amount: i32) -> Option<String> {
-    let key = skill.to_lowercase();
-    let entry = ch.skills.entry(key.clone()).or_insert(crate::SkillProgress::default());
-    if entry.level >= 10 {
-        return None;
-    }
-    entry.experience += amount;
-    let mut leveled = false;
-    while entry.experience >= 100 && entry.level < 10 {
-        entry.experience -= 100;
-        entry.level += 1;
-        leveled = true;
-    }
-    if leveled {
-        Some(format!("[ Your {} skill increases. ]", key))
+/// Award skill XP to a character in place. Shared by the `award_skill_xp`
+/// dialogue effect and the DG Scripts command of the same name — both route
+/// through here rather than mutating `ch.skills` directly.
+///
+/// This used to carry its own flat 100-XP-per-level loop, which diverged from
+/// the real `xp_for_level` curve used by combat and the Rhai path (at level 9
+/// the real cost is 3300, so content XP advanced 33x too fast at the top end)
+/// and skipped the learning-rate traits entirely. Both are now the
+/// chokepoint's job; this is a thin adapter over it.
+///
+/// Returns the outcome rather than a message so the caller can both render the
+/// unified level-up text and — once it has persisted `ch` — fire
+/// `progress::notify_xp_achievements`. Ordering matters: the achievement hook
+/// writes to the character out-of-band, so a later save of a stale `ch` would
+/// clobber it.
+///
+/// Resolves `is_language` from the world's language table, so a dialogue tree
+/// that teaches a tongue applies `linguist` / `tongue_tied` exactly as the Rhai
+/// path does. This was the last place the trait divergence the chokepoint set
+/// out to kill still survived.
+///
+/// Deliberately still the pure-mutation form rather than the
+/// `progress::award_xp` facade: the caller owns `ch` and persists it, and a
+/// facade that loads and saves its own copy would be clobbered by that later
+/// save.
+pub(crate) fn award_skill_xp(
+    state: &SharedState,
+    ch: &mut CharacterData,
+    skill: &str,
+    amount: i32,
+) -> crate::progress::XpOutcome {
+    let is_language = crate::progress::is_language_skill(state, skill);
+    crate::progress::award_xp_to_character(ch, skill, amount, is_language)
+}
+
+/// Player-facing announcement for a content-granted skill gain, or `None` when
+/// the award did not clear a level.
+fn skill_xp_message(skill: &str, outcome: &crate::progress::XpOutcome) -> Option<String> {
+    if outcome.leveled {
+        Some(crate::progress::format_level_up(skill, outcome, true))
     } else {
         None
     }
@@ -2116,7 +2255,9 @@ fn apply_effect(
                 Some(format!("[ Tried to take {} {}; only {} taken ]", qty, vnum, taken))
             }
         }
-        DialogueEffect::AwardSkillXp { skill, amount } => award_skill_xp(ch, skill, *amount),
+        DialogueEffect::AwardSkillXp { skill, amount } => {
+            skill_xp_message(skill, &award_skill_xp(state, ch, skill, *amount))
+        }
         DialogueEffect::SetCounter { key, value } => {
             ch.achievement_counters.insert(key.clone(), (*value).max(0) as u32);
             None
@@ -2236,6 +2377,7 @@ fn apply_effect(
                 crate::script::dg::fire_mobile_dg_triggers(
                     &db_arc,
                     &conns_dummy,
+                    state,
                     &mob_now,
                     trig_type,
                     &conn_str,
@@ -2288,6 +2430,97 @@ fn apply_effect(
                     humanity, max
                 ))
             }
+        }
+        DialogueEffect::Morality { delta } => {
+            // Pure adjust rather than `morality::apply_delta`: the framework
+            // persists `ch` after effects run, and an out-of-band write would
+            // be overwritten by that save.
+            let before = ch.morality;
+            let after = crate::morality::adjust(before, *delta);
+            if after == before {
+                return None; // already pinned at a bound
+            }
+            ch.morality = after;
+            let mut msg = format!(
+                "[ Morality {}{} \u{2192} {} ]",
+                if *delta > 0 { "+" } else { "" },
+                delta,
+                after
+            );
+            if let Some(line) = crate::morality::tier_shift_message(before, after) {
+                msg.push('\n');
+                msg.push_str(line);
+            }
+            Some(msg)
+        }
+        DialogueEffect::Reputation { faction, delta } => {
+            // Same reasoning as Morality above: pure mutation, because the
+            // framework's own save of `ch` follows. `adjust_with_opposition`
+            // is `reputation::apply_delta`'s arithmetic without the IO.
+            let moved = crate::reputation::adjust_with_opposition(state, &mut ch.reputation, faction, *delta);
+            if moved.is_empty() {
+                return None; // unknown faction, zero delta, or already pinned
+            }
+            Some(crate::reputation::describe_moves(state, &moved))
+        }
+        DialogueEffect::TeachSkill {
+            skill,
+            amount,
+            cap,
+            gold_cost,
+        } => {
+            // A transaction, so every refusal says why. Both checks run before
+            // any mutation: a lesson that cannot land costs nothing.
+            let level = ch.skills.get(&skill.to_lowercase()).map(|s| s.level).unwrap_or(0);
+            if level >= *cap {
+                return Some(format!(
+                    "[ There is nothing more I can teach you about {} — you are already at {}. ]",
+                    crate::progress::skill_display_name(skill),
+                    level
+                ));
+            }
+            if ch.gold < *gold_cost {
+                return Some(format!(
+                    "[ The lesson costs {} gold; you have {}. ]",
+                    gold_cost, ch.gold
+                ));
+            }
+            ch.gold -= *gold_cost;
+            if *gold_cost > 0 {
+                // Mirrors the IncrementCounter effect above: bump in memory and
+                // let the framework's post-effect save persist it. Routing
+                // through `notify_counter_core` here would write out-of-band and
+                // that save would overwrite it — the cost is that a `gold.spent`
+                // achievement is evaluated on the player's next bump elsewhere
+                // rather than on this one.
+                let spent = ch.achievement_counters.entry("gold.spent".to_string()).or_insert(0);
+                *spent = spent.saturating_add((*gold_cost).max(0) as u32);
+            }
+
+            let outcome = award_skill_xp(state, ch, skill, *amount);
+
+            // Report `outcome.applied`, not `amount`: the learning traits have
+            // already been applied, and printing the pre-trait figure is exactly
+            // the contradiction the script-side XP lines were removed for.
+            let mut msg = if *gold_cost > 0 {
+                format!(
+                    "[ You pay {} gold for the lesson. +{} {} XP. ]",
+                    gold_cost,
+                    outcome.applied,
+                    crate::progress::skill_display_name(skill)
+                )
+            } else {
+                format!(
+                    "[ The lesson is free. +{} {} XP. ]",
+                    outcome.applied,
+                    crate::progress::skill_display_name(skill)
+                )
+            };
+            if let Some(banner) = skill_xp_message(skill, &outcome) {
+                msg.push('\n');
+                msg.push_str(&banner);
+            }
+            Some(msg)
         }
     }
 }
@@ -2472,9 +2705,14 @@ mod tests {
 
     #[test]
     fn award_skill_xp_partial_gain_returns_none() {
+        let (db, _t) = open_temp_db("award");
+        let (_conns, state) = dummy_conns_and_state(&db);
         let mut ch = make_character("test");
-        let msg = award_skill_xp(&mut ch, "medical", 50);
-        assert!(msg.is_none(), "partial XP should not announce");
+        let outcome = award_skill_xp(&state, &mut ch, "medical", 50);
+        assert!(
+            skill_xp_message("medical", &outcome).is_none(),
+            "partial XP should not announce"
+        );
         let entry = ch.skills.get("medical").expect("skill row created");
         assert_eq!(entry.experience, 50);
         assert_eq!(entry.level, 0);
@@ -2482,20 +2720,72 @@ mod tests {
 
     #[test]
     fn award_skill_xp_levels_at_100() {
+        let (db, _t) = open_temp_db("award");
+        let (_conns, state) = dummy_conns_and_state(&db);
         let mut ch = make_character("test");
-        let msg = award_skill_xp(&mut ch, "Medical", 100);
-        assert_eq!(
-            msg.as_deref(),
-            Some("[ Your medical skill increases. ]"),
-            "level-up message uses lower-cased key"
-        );
+        let outcome = award_skill_xp(&state, &mut ch, "Medical", 100);
+        let msg = skill_xp_message("medical", &outcome).expect("level-up announces");
+        assert!(msg.contains("Your Medical skill rises to 1."));
         let entry = ch.skills.get("medical").expect("skill row created");
         assert_eq!(entry.experience, 0);
-        assert_eq!(entry.level, 1);
+        assert_eq!(entry.level, 1, "the 0->1 rung costs 100 on the real curve too");
+    }
+
+    #[test]
+    fn award_skill_xp_follows_the_real_curve_not_flat_hundred() {
+        // Regression guard for the divergence this path used to carry: a flat
+        // 100-per-level loop would have taken a level-3 skill to level 8 here.
+        let (db, _t) = open_temp_db("award");
+        let (_conns, state) = dummy_conns_and_state(&db);
+        let mut ch = make_character("test");
+        ch.skills.insert(
+            "medical".to_string(),
+            crate::SkillProgress {
+                level: 3,
+                experience: 0,
+            },
+        );
+        let outcome = award_skill_xp(&state, &mut ch, "medical", 500);
+        assert!(!outcome.leveled, "500 XP does not clear the 550-XP rung at level 3");
+        assert_eq!(ch.skills.get("medical").expect("row").level, 3);
+    }
+
+    /// Content-granted language XP applies `linguist` / `tongue_tied`.
+    ///
+    /// This path used to hardcode `is_language = false`, so a dialogue tree or
+    /// DG script that taught a tongue paid the flat rate while the identical
+    /// award from a `say` paid the trait-modified one — the last surviving
+    /// corner of the trait divergence the chokepoint was built to remove.
+    #[test]
+    fn award_skill_xp_applies_the_language_traits() {
+        let (db, _t) = open_temp_db("award");
+        let (_conns, state) = dummy_conns_and_state(&db);
+        state.lock().expect("world lock").language_definitions.insert(
+            "elvish".to_string(),
+            crate::LanguageDefinition {
+                key: "elvish".to_string(),
+                display_name: "Elvish".to_string(),
+                description: String::new(),
+                is_lingua_franca: false,
+                phonetic_words: Vec::new(),
+            },
+        );
+
+        let mut ch = make_character("test");
+        ch.traits.push("linguist".to_string());
+        assert_eq!(award_skill_xp(&state, &mut ch, "elvish", 10).applied, 15);
+
+        // ...and leaves a non-language skill alone, so the flag really is
+        // being resolved rather than blanket-applied.
+        let mut ch2 = make_character("test");
+        ch2.traits.push("linguist".to_string());
+        assert_eq!(award_skill_xp(&state, &mut ch2, "medical", 10).applied, 10);
     }
 
     #[test]
     fn award_skill_xp_capped_at_level_10() {
+        let (db, _t) = open_temp_db("award");
+        let (_conns, state) = dummy_conns_and_state(&db);
         let mut ch = make_character("test");
         ch.skills.insert(
             "medical".to_string(),
@@ -2504,8 +2794,11 @@ mod tests {
                 experience: 0,
             },
         );
-        let msg = award_skill_xp(&mut ch, "medical", 500);
-        assert!(msg.is_none(), "no announce at level cap");
+        let outcome = award_skill_xp(&state, &mut ch, "medical", 500);
+        assert!(
+            skill_xp_message("medical", &outcome).is_none(),
+            "no announce at level cap"
+        );
         let entry = ch.skills.get("medical").expect("skill row preserved");
         assert_eq!(entry.level, 10, "level stays at cap");
         assert_eq!(entry.experience, 0, "XP not accumulated past cap");
@@ -2533,32 +2826,7 @@ mod tests {
     fn dummy_conns_and_state(db: &Db) -> (SharedConnections, SharedState) {
         use std::sync::{Arc, Mutex};
         let conns: SharedConnections = Arc::new(Mutex::new(HashMap::new()));
-        let world = crate::World {
-            engine: rhai::Engine::new(),
-            db: db.clone(),
-            connections: conns.clone(),
-            scripts: HashMap::new(),
-            command_metadata: HashMap::new(),
-            socials: crate::social::actions::SocialRegistry::default(),
-            class_definitions: HashMap::new(),
-            trait_definitions: HashMap::new(),
-            race_suggestions: Vec::new(),
-            race_definitions: HashMap::new(),
-            mutation_definitions: HashMap::new(),
-            language_definitions: HashMap::new(),
-            recipes: HashMap::new(),
-            spell_definitions: HashMap::new(),
-            achievement_definitions: HashMap::new(),
-            achievement_index_by_counter: HashMap::new(),
-            custom_skill_definitions: HashMap::new(),
-            transports: HashMap::new(),
-            chat_sender: None,
-            shutdown_sender: None,
-            shutdown_cancel_sender: None,
-            ip_limiter: Arc::new(crate::ratelimit::IpRateLimiter::new()),
-            command_throttle: Arc::new(crate::throttle::CommandThrottle::new()),
-        };
-        let state: SharedState = Arc::new(Mutex::new(world));
+        let state = crate::World::minimal_shared(db.clone(), conns.clone());
         (conns, state)
     }
 
@@ -3525,6 +3793,460 @@ mod tests {
         );
         assert!(msg.expect("message").contains("buy it from my stock"));
         assert!(ch.cyberware_state.is_none());
+    }
+
+    /// A paid lesson: gold out, XP in, and the transaction is reported with
+    /// the *post-trait* figure so the number the player reads is the number
+    /// they got.
+    #[test]
+    fn teach_skill_charges_gold_and_awards_xp() {
+        let (db, _temp) = open_temp_db("teach");
+        let (conns, st) = dummy_conns_and_state(&db);
+        let mut ch = make_character("student");
+        ch.gold = 200;
+        ch.traits.push("prodigy".to_string());
+        let mob = MobileData::new("swim coach".into());
+
+        let msg = apply_effect(
+            &db,
+            &conns,
+            &st,
+            &mut ch,
+            &mob,
+            &DialogueEffect::TeachSkill {
+                skill: "swimming".into(),
+                amount: 40,
+                cap: 3,
+                gold_cost: 50,
+            },
+        )
+        .expect("message");
+
+        assert_eq!(ch.gold, 150);
+        assert_eq!(ch.skills.get("swimming").expect("row").experience, 60);
+        assert!(msg.contains("You pay 50 gold"), "{msg}");
+        assert!(
+            msg.contains("+60 swimming XP"),
+            "must report the post-trait figure, got: {msg}"
+        );
+        assert_eq!(
+            ch.achievement_counters.get("gold.spent").copied(),
+            Some(50),
+            "tuition is gold spent like any other purchase"
+        );
+    }
+
+    /// A mentor lesson that pushes a skill over a rung must unlock the
+    /// achievement waiting there.
+    ///
+    /// This is the regression test for the one path the Tier 0 XP chokepoint
+    /// did not actually cover. `award_skill_xp` is the pure-mutation form and
+    /// documented that its caller should fire `notify_xp_achievements` after
+    /// persisting — and no caller ever did, so every dialogue-granted skill
+    /// gain, including the whole `TeachSkill` mentor feature, awarded the XP,
+    /// printed the level-up banner, and silently failed to unlock anything.
+    /// The quest and DG paths were fine because they route through the
+    /// `progress::award_xp` facade; dialogue cannot, because it owns `ch` and
+    /// saves it itself. `save_character_and_sync` now takes the pre-walk skill
+    /// snapshot so the question cannot go unanswered.
+    #[test]
+    fn a_lesson_that_crosses_a_rung_unlocks_the_achievement_waiting_there() {
+        use crate::types::{
+            AchievementCategory, AchievementCriterion, AchievementDef, AchievementReward, AchievementSource,
+        };
+
+        let (db, _temp) = open_temp_db("teach_achievement");
+        let (conns, st) = dummy_conns_and_state(&db);
+        {
+            let mut world = st.lock().expect("world");
+            world.achievement_definitions.insert(
+                "novice_swimmer".to_string(),
+                AchievementDef {
+                    key: "novice_swimmer".to_string(),
+                    name: "Novice Swimmer".to_string(),
+                    description: "Reached swimming 1.".to_string(),
+                    category: AchievementCategory::Skill,
+                    criterion: AchievementCriterion::SkillReached {
+                        skill: "swimming".to_string(),
+                        level: 1,
+                    },
+                    reward: AchievementReward {
+                        title: "the Swimmer".to_string(),
+                        item_vnum: None,
+                        gold: None,
+                        morality_delta: 0,
+                        trait_points: 0,
+                    },
+                    hidden: false,
+                    source: AchievementSource::Json {
+                        file: "test.json".to_string(),
+                    },
+                },
+            );
+        }
+
+        let mut ch = make_character("student");
+        db.save_character_data(ch.clone()).expect("seed character");
+        let mob = MobileData::new("swim coach".into());
+
+        // Exactly the shape a live dialogue walk has: snapshot, apply effects
+        // against the owned character, then save through the chokepoint.
+        let skills_before = crate::progress::skill_level_snapshot(&ch);
+        apply_effect(
+            &db,
+            &conns,
+            &st,
+            &mut ch,
+            &mob,
+            &DialogueEffect::TeachSkill {
+                skill: "swimming".into(),
+                amount: 500,
+                cap: 3,
+                gold_cost: 0,
+            },
+        )
+        .expect("the lesson lands");
+        assert!(
+            ch.skills.get("swimming").expect("row").level >= 1,
+            "the lesson has to actually cross the rung for this test to mean anything"
+        );
+
+        save_character_and_sync(&db, &conns, &st, Uuid::nil(), ch, &skills_before);
+
+        let stored = db.get_character_data("student").expect("load").expect("present");
+        assert!(
+            stored.achievements_unlocked.contains_key("novice_swimmer"),
+            "a mentor lesson that reaches swimming 1 must unlock the swimming-1 achievement; \
+             got {:?}",
+            stored.achievements_unlocked.keys().collect::<Vec<_>>()
+        );
+    }
+
+    /// The cap is what stops gold buying mastery. At it, the lesson is refused
+    /// and — the part that matters — nothing is charged.
+    #[test]
+    fn teach_skill_refuses_at_the_cap_without_charging() {
+        let (db, _temp) = open_temp_db("teach_cap");
+        let (conns, st) = dummy_conns_and_state(&db);
+        let mut ch = make_character("student");
+        ch.gold = 200;
+        ch.skills.insert(
+            "swimming".into(),
+            crate::SkillProgress {
+                level: 3,
+                experience: 0,
+            },
+        );
+        let mob = MobileData::new("swim coach".into());
+
+        let msg = apply_effect(
+            &db,
+            &conns,
+            &st,
+            &mut ch,
+            &mob,
+            &DialogueEffect::TeachSkill {
+                skill: "swimming".into(),
+                amount: 40,
+                cap: 3,
+                gold_cost: 50,
+            },
+        )
+        .expect("message");
+
+        assert!(msg.contains("nothing more I can teach you"), "{msg}");
+        assert_eq!(ch.gold, 200, "a refused lesson is free");
+        assert_eq!(ch.skills.get("swimming").expect("row").experience, 0);
+    }
+
+    #[test]
+    fn teach_skill_refuses_an_unaffordable_lesson_without_charging() {
+        let (db, _temp) = open_temp_db("teach_poor");
+        let (conns, st) = dummy_conns_and_state(&db);
+        let mut ch = make_character("student");
+        ch.gold = 10;
+        let mob = MobileData::new("swim coach".into());
+
+        let msg = apply_effect(
+            &db,
+            &conns,
+            &st,
+            &mut ch,
+            &mob,
+            &DialogueEffect::TeachSkill {
+                skill: "swimming".into(),
+                amount: 40,
+                cap: 3,
+                gold_cost: 50,
+            },
+        )
+        .expect("message");
+
+        assert!(msg.contains("costs 50 gold; you have 10"), "{msg}");
+        assert_eq!(ch.gold, 10);
+        assert!(ch.skills.get("swimming").is_none(), "no skill row on a refusal");
+    }
+
+    /// A free lesson is a legitimate quest reward, and must not claim a payment
+    /// that never happened or count toward gold spent.
+    #[test]
+    fn teach_skill_with_no_cost_is_a_free_lesson() {
+        let (db, _temp) = open_temp_db("teach_free");
+        let (conns, st) = dummy_conns_and_state(&db);
+        let mut ch = make_character("student");
+        ch.gold = 0;
+        let mob = MobileData::new("mentor".into());
+
+        let msg = apply_effect(
+            &db,
+            &conns,
+            &st,
+            &mut ch,
+            &mob,
+            &DialogueEffect::TeachSkill {
+                skill: "medical".into(),
+                amount: 100,
+                cap: 5,
+                gold_cost: 0,
+            },
+        )
+        .expect("message");
+
+        assert!(msg.contains("The lesson is free"), "{msg}");
+        // 100 clears the 0 -> 1 rung, so the level-up banner rides along.
+        assert!(msg.contains("Your Medical skill rises to 1."), "{msg}");
+        assert!(ch.achievement_counters.get("gold.spent").is_none());
+    }
+
+    /// The dialogue effect uses the pure `adjust`, not `morality::apply_delta`:
+    /// the framework persists `ch` after effects run, so an out-of-band write
+    /// would be overwritten by that save.
+    #[test]
+    fn morality_effect_shifts_the_slider_on_the_held_character() {
+        let (db, _temp) = open_temp_db("morality_fx");
+        let (conns, st) = dummy_conns_and_state(&db);
+        let mut ch = make_character("penitent");
+        ch.morality = 20;
+        let mob = MobileData::new("priest".into());
+
+        let msg =
+            apply_effect(&db, &conns, &st, &mut ch, &mob, &DialogueEffect::Morality { delta: 10 }).expect("message");
+
+        assert_eq!(ch.morality, 30);
+        assert!(msg.contains("Morality +10"), "{msg}");
+        // 20 -> 30 crosses Neutral into Good1, so the feel line rides along.
+        assert!(msg.contains("quiet warmth"), "{msg}");
+    }
+
+    #[test]
+    fn morality_effect_is_quiet_within_a_tier_and_inert_at_the_bound() {
+        let (db, _temp) = open_temp_db("morality_quiet");
+        let (conns, st) = dummy_conns_and_state(&db);
+        let mob = MobileData::new("priest".into());
+
+        let mut ch = make_character("penitent");
+        ch.morality = 30;
+        let msg =
+            apply_effect(&db, &conns, &st, &mut ch, &mob, &DialogueEffect::Morality { delta: 5 }).expect("message");
+        assert_eq!(ch.morality, 35);
+        assert!(!msg.contains("warmth"), "a sub-tier nudge must not announce: {msg}");
+
+        let mut pinned = make_character("saint");
+        pinned.morality = crate::morality::MORALITY_MAX;
+        assert!(
+            apply_effect(
+                &db,
+                &conns,
+                &st,
+                &mut pinned,
+                &mob,
+                &DialogueEffect::Morality { delta: 10 }
+            )
+            .is_none(),
+            "a move that changes nothing says nothing"
+        );
+        assert_eq!(pinned.morality, crate::morality::MORALITY_MAX);
+    }
+
+    /// Same reason as the Morality effect: pure mutation on the held
+    /// character, because the framework's own save follows.
+    #[test]
+    fn reputation_effect_moves_standing_and_the_faction_it_opposes() {
+        let (db, _temp) = open_temp_db("reputation_fx");
+        let (conns, st) = dummy_conns_and_state(&db);
+        {
+            let mut w = st.lock().unwrap();
+            w.faction_definitions.insert(
+                "iron_guard".to_string(),
+                crate::reputation::FactionDefinition {
+                    name: "The Iron Guard".into(),
+                    opposed: vec!["bandits".into()],
+                    ..crate::reputation::FactionDefinition::unregistered("iron_guard")
+                },
+            );
+        }
+        let mut ch = make_character("courier");
+        let mob = MobileData::new("sergeant".into());
+
+        let msg = apply_effect(
+            &db,
+            &conns,
+            &st,
+            &mut ch,
+            &mob,
+            &DialogueEffect::Reputation {
+                faction: "iron_guard".into(),
+                delta: 60,
+            },
+        )
+        .expect("message");
+
+        assert_eq!(crate::reputation::standing(&ch.reputation, "iron_guard"), 60);
+        assert_eq!(
+            crate::reputation::standing(&ch.reputation, "bandits"),
+            -30,
+            "half of the gain lands on the rival, the other way up"
+        );
+        assert!(msg.contains("The Iron Guard +60"), "{msg}");
+        // 0 -> 60 crosses Neutral into Accepted, so the band line rides along.
+        assert!(msg.contains("now count you Accepted"), "{msg}");
+    }
+
+    #[test]
+    fn reputation_effect_is_quiet_within_a_band_and_inert_at_the_bound() {
+        let (db, _temp) = open_temp_db("reputation_quiet");
+        let (conns, st) = dummy_conns_and_state(&db);
+        let mob = MobileData::new("sergeant".into());
+
+        let mut ch = make_character("courier");
+        ch.reputation.insert("iron_guard".into(), 60);
+        let msg = apply_effect(
+            &db,
+            &conns,
+            &st,
+            &mut ch,
+            &mob,
+            &DialogueEffect::Reputation {
+                faction: "iron_guard".into(),
+                delta: 10,
+            },
+        )
+        .expect("message");
+        assert_eq!(crate::reputation::standing(&ch.reputation, "iron_guard"), 70);
+        assert!(
+            !msg.contains("now count you"),
+            "a sub-band nudge must not announce: {msg}"
+        );
+
+        let mut pinned = make_character("hero");
+        pinned
+            .reputation
+            .insert("iron_guard".into(), crate::reputation::REPUTATION_MAX);
+        assert!(
+            apply_effect(
+                &db,
+                &conns,
+                &st,
+                &mut pinned,
+                &mob,
+                &DialogueEffect::Reputation {
+                    faction: "iron_guard".into(),
+                    delta: 10,
+                }
+            )
+            .is_none(),
+            "a move that changes nothing says nothing"
+        );
+    }
+
+    #[test]
+    fn reputation_effect_and_condition_round_trip_through_the_text_form() {
+        let parsed = parse_choice_effect("reputation", "Iron_Guard -25").expect("parse");
+        assert!(matches!(
+            &parsed,
+            DialogueEffect::Reputation { faction, delta } if faction == "iron_guard" && *delta == -25
+        ));
+        assert_eq!(summarize_effect(&parsed), "reputation iron_guard -25");
+        assert!(
+            parse_choice_effect("reputation", "iron_guard 0").is_err(),
+            "a no-op effect is a typo"
+        );
+        assert!(parse_choice_effect("reputation", "iron_guard").is_err());
+
+        let cond = parse_choice_condition("reputation_at_least", "Iron_Guard 50").expect("parse");
+        assert!(matches!(
+            &cond,
+            DialogueCondition::ReputationAtLeast { faction, value } if faction == "iron_guard" && *value == 50
+        ));
+        assert_eq!(summarize_condition(&cond), "reputation_at_least iron_guard 50");
+    }
+
+    #[test]
+    fn reputation_condition_reads_a_stranger_as_neutral() {
+        let (db, _temp) = open_temp_db("reputation_cond");
+        let mob = MobileData::new("sergeant".into());
+        let mut ch = make_character("courier");
+
+        let gate = |v: i32| DialogueCondition::ReputationAtLeast {
+            faction: "iron_guard".into(),
+            value: v,
+        };
+        // Never dealt with them: standing reads 0.
+        assert!(!evaluate_condition(&gate(1), &ch, &mob, &db), "0 does not meet 1");
+        assert!(
+            evaluate_condition(&gate(0), &ch, &mob, &db),
+            "and a non-positive gate is 'you have not wronged us'"
+        );
+        assert!(evaluate_condition(&gate(-100), &ch, &mob, &db));
+
+        ch.reputation.insert("iron_guard".into(), 50);
+        assert!(evaluate_condition(&gate(50), &ch, &mob, &db), "the floor is inclusive");
+        assert!(!evaluate_condition(&gate(51), &ch, &mob, &db));
+    }
+
+    #[test]
+    fn morality_effect_round_trips_through_the_text_form() {
+        let parsed = parse_choice_effect("morality", "-15").expect("parse");
+        assert!(matches!(&parsed, DialogueEffect::Morality { delta } if *delta == -15));
+        assert_eq!(summarize_effect(&parsed), "morality -15");
+        assert_eq!(
+            summarize_effect(&parse_choice_effect("morality", "15").expect("parse")),
+            "morality +15"
+        );
+
+        // Out of range is clamped, not rejected — the slider has hard bounds
+        // and a builder overshooting them means "as far as it goes".
+        assert!(matches!(
+            parse_choice_effect("morality", "9999").expect("parse"),
+            DialogueEffect::Morality { delta } if delta == crate::morality::MORALITY_MAX
+        ));
+        assert!(
+            parse_choice_effect("morality", "0").is_err(),
+            "a no-op reward is a typo"
+        );
+        assert!(parse_choice_effect("morality", "").is_err());
+    }
+
+    #[test]
+    fn teach_skill_round_trips_through_the_text_form() {
+        let parsed = parse_choice_effect("teach_skill", "swimming 40 3 50").expect("parse");
+        assert!(matches!(
+            &parsed,
+            DialogueEffect::TeachSkill { skill, amount, cap, gold_cost }
+                if skill == "swimming" && *amount == 40 && *cap == 3 && *gold_cost == 50
+        ));
+        assert_eq!(summarize_effect(&parsed), "teach_skill swimming 40 3 50");
+
+        // cap and gold_cost are optional; a mentor who names no ceiling
+        // teaches the first rung only.
+        let bare = parse_choice_effect("teach_skill", "swimming 40").expect("parse bare");
+        assert!(matches!(
+            &bare,
+            DialogueEffect::TeachSkill { cap, gold_cost, .. } if *cap == 1 && *gold_cost == 0
+        ));
+
+        assert!(parse_choice_effect("teach_skill", "swimming 40 3 -5").is_err());
+        assert!(parse_choice_effect("teach_skill", "swimming").is_err());
     }
 
     #[test]

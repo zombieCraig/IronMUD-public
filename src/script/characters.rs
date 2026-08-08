@@ -36,6 +36,13 @@ fn sum_stat_with_boost(
     }
 }
 
+/// Effective charisma (base + gear + buffs), for Rust callers. Exposed to Rhai
+/// as `get_effective_charisma`; shop pricing needs the same number without
+/// going back through the engine.
+pub(crate) fn effective_charisma(db: &Db, char_name: &str) -> i64 {
+    sum_stat_with_boost(db, char_name, crate::EffectType::CharismaBoost, |c| c.stat_cha)
+}
+
 /// A character's *effective* trait id set: their chosen `traits` plus any
 /// `granted_traits` from their race and class definitions, deduped. This is the
 /// single mechanism that makes race/class-granted traits behave like chosen
@@ -1960,50 +1967,18 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         }
     });
 
+    // The five money bindings below are thin wrappers over `crate::purse`,
+    // which owns the one rule they all have to obey: a write to an online
+    // player must reach `session.character`, or the next tick flush reverts it.
+    // `add_character_gold` used to be the only one that got that right, and the
+    // four bank bindings quietly did not — see the module docs on `purse`.
+
     // set_character_gold(char_name, gold) -> bool
     let cloned_db = db.clone();
     let cloned_conns = connections.clone();
     let state_clone = state.clone();
     engine.register_fn("set_character_gold", move |char_name: String, gold: i64| -> bool {
-        match cloned_db.get_character_data(&char_name.to_lowercase()) {
-            Ok(Some(mut char)) => {
-                char.gold = gold as i32;
-                let new_gold = char.gold;
-                let prev_high = char.gold_high_water;
-                let crossed_high = new_gold > prev_high;
-                if crossed_high {
-                    char.gold_high_water = new_gold;
-                }
-                let saved = cloned_db.save_character_data(char).is_ok();
-                if saved {
-                    if let Ok(mut conns) = cloned_conns.lock() {
-                        for (_, session) in conns.iter_mut() {
-                            if let Some(ref mut sc) = session.character {
-                                if sc.name.to_lowercase() == char_name.to_lowercase() {
-                                    sc.gold = new_gold;
-                                    if crossed_high {
-                                        sc.gold_high_water = new_gold;
-                                    }
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    if crossed_high {
-                        crate::script::achievements::notify_event_core(
-                            &cloned_db,
-                            &cloned_conns,
-                            &state_clone,
-                            &char_name,
-                            "gold_high_water",
-                            &new_gold.to_string(),
-                        );
-                    }
-                }
-                saved
-            }
-            _ => false,
-        }
+        crate::purse::set_gold(&cloned_db, &cloned_conns, &state_clone, &char_name, gold)
     });
 
     // add_character_gold(char_name, amount) -> bool (returns false if would go negative)
@@ -2011,49 +1986,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     let cloned_conns = connections.clone();
     let state_clone = state.clone();
     engine.register_fn("add_character_gold", move |char_name: String, amount: i64| -> bool {
-        match cloned_db.get_character_data(&char_name.to_lowercase()) {
-            Ok(Some(mut char)) => {
-                let new_gold = char.gold as i64 + amount;
-                if new_gold < 0 {
-                    return false;
-                }
-                char.gold = new_gold as i32;
-                let final_gold = char.gold;
-                let prev_high = char.gold_high_water;
-                let crossed_high = final_gold > prev_high;
-                if crossed_high {
-                    char.gold_high_water = final_gold;
-                }
-                let saved = cloned_db.save_character_data(char).is_ok();
-                if saved {
-                    if let Ok(mut conns) = cloned_conns.lock() {
-                        for (_, session) in conns.iter_mut() {
-                            if let Some(ref mut sc) = session.character {
-                                if sc.name.to_lowercase() == char_name.to_lowercase() {
-                                    sc.gold = final_gold;
-                                    if crossed_high {
-                                        sc.gold_high_water = final_gold;
-                                    }
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    if crossed_high {
-                        crate::script::achievements::notify_event_core(
-                            &cloned_db,
-                            &cloned_conns,
-                            &state_clone,
-                            &char_name,
-                            "gold_high_water",
-                            &final_gold.to_string(),
-                        );
-                    }
-                }
-                saved
-            }
-            _ => false,
-        }
+        crate::purse::add_gold(&cloned_db, &cloned_conns, &state_clone, &char_name, amount)
     });
 
     // ========== Bank Functions ==========
@@ -2069,68 +2002,30 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
 
     // set_bank_gold(char_name, amount) -> bool
     let cloned_db = db.clone();
+    let cloned_conns = connections.clone();
     engine.register_fn("set_bank_gold", move |char_name: String, amount: i64| -> bool {
-        match cloned_db.get_character_data(&char_name.to_lowercase()) {
-            Ok(Some(mut char)) => {
-                char.bank_gold = amount;
-                cloned_db.save_character_data(char).is_ok()
-            }
-            _ => false,
-        }
+        crate::purse::set_bank(&cloned_db, &cloned_conns, &char_name, amount)
     });
 
     // add_bank_gold(char_name, amount) -> bool (returns false if would go negative)
     let cloned_db = db.clone();
+    let cloned_conns = connections.clone();
     engine.register_fn("add_bank_gold", move |char_name: String, amount: i64| -> bool {
-        match cloned_db.get_character_data(&char_name.to_lowercase()) {
-            Ok(Some(mut char)) => {
-                let new_gold = char.bank_gold + amount;
-                if new_gold < 0 {
-                    return false;
-                }
-                char.bank_gold = new_gold;
-                cloned_db.save_character_data(char).is_ok()
-            }
-            _ => false,
-        }
+        crate::purse::add_bank(&cloned_db, &cloned_conns, &char_name, amount)
     });
 
     // transfer_to_bank(char_name, amount) -> bool (moves gold from pocket to bank)
     let cloned_db = db.clone();
+    let cloned_conns = connections.clone();
     engine.register_fn("transfer_to_bank", move |char_name: String, amount: i64| -> bool {
-        if amount <= 0 {
-            return false;
-        }
-        match cloned_db.get_character_data(&char_name.to_lowercase()) {
-            Ok(Some(mut char)) => {
-                if (char.gold as i64) < amount {
-                    return false;
-                }
-                char.gold -= amount as i32;
-                char.bank_gold += amount;
-                cloned_db.save_character_data(char).is_ok()
-            }
-            _ => false,
-        }
+        crate::purse::deposit(&cloned_db, &cloned_conns, &char_name, amount)
     });
 
     // transfer_from_bank(char_name, amount) -> bool (moves gold from bank to pocket)
     let cloned_db = db.clone();
+    let cloned_conns = connections.clone();
     engine.register_fn("transfer_from_bank", move |char_name: String, amount: i64| -> bool {
-        if amount <= 0 {
-            return false;
-        }
-        match cloned_db.get_character_data(&char_name.to_lowercase()) {
-            Ok(Some(mut char)) => {
-                if char.bank_gold < amount {
-                    return false;
-                }
-                char.bank_gold -= amount;
-                char.gold += amount as i32;
-                cloned_db.save_character_data(char).is_ok()
-            }
-            _ => false,
-        }
+        crate::purse::withdraw(&cloned_db, &cloned_conns, &char_name, amount)
     });
 
     // ========== Skill System Functions ==========
@@ -2235,105 +2130,187 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         },
     );
 
-    // add_skill_experience(char_name, skill_name, amount) -> bool (returns true if leveled up)
+    // add_skill_experience(char_name, skill_name, amount) -> bool (true if leveled up)
+    //
+    // Forwarding shim over the `crate::progress` chokepoint. Kept so the ~60
+    // existing Rhai call sites keep working unchanged; scripts that want the
+    // full outcome should call `award_xp` instead. The chokepoint now also
+    // emits the player-facing feedback, so callers no longer need to hand-roll
+    // their own level-up message — see the note on `award_xp` below.
+    //
+    // The three-argument form reports as `admin`, which batches. That is the
+    // right default for an unlabelled award: batching is the conservative
+    // choice, since the worst case is a line that appears at the next prompt
+    // rather than one that interrupts. Scripts whose award is a one-shot
+    // milestone (a craft, a treatment, a rite) should use the four-argument
+    // form below so the player sees it attached to the act that earned it.
     let cloned_db = db.clone();
     let cloned_conns = connections.clone();
     let state_clone = state.clone();
     engine.register_fn(
         "add_skill_experience",
         move |char_name: String, skill_name: String, amount: i64| -> bool {
-            match cloned_db.get_character_data(&char_name.to_lowercase()) {
-                Ok(Some(mut char)) => {
-                    let skill_key = skill_name.to_lowercase();
-                    let entry = char
-                        .skills
-                        .entry(skill_key.clone())
-                        .or_insert(crate::SkillProgress::default());
-
-                    // Don't add XP if already at max level
-                    if entry.level >= 10 {
-                        let _ = cloned_db.save_character_data(char);
-                        return false;
-                    }
-
-                    // Apply skill XP trait modifiers
-                    let has_prodigy = char.traits.iter().any(|t| t == "prodigy");
-                    let has_quick_study = char.traits.iter().any(|t| t == "quick_study");
-                    let has_slow_learner = char.traits.iter().any(|t| t == "slow_learner");
-                    let mut xp = amount as i32;
-                    if has_prodigy {
-                        xp = xp * 150 / 100;
-                    }
-                    // +50%
-                    else if has_quick_study {
-                        xp = xp * 125 / 100;
-                    } // +25%
-                    if has_slow_learner {
-                        xp = xp * 65 / 100;
-                    } // -35%
-                    // Language-only modifiers, stacked multiplicatively on top of
-                    // the general learning traits.
-                    let is_lang = state_clone
-                        .lock()
-                        .ok()
-                        .map(|w| w.language_definitions.contains_key(&skill_key))
-                        .unwrap_or(false);
-                    if is_lang {
-                        if char.traits.iter().any(|t| t == "linguist") {
-                            xp = xp * 150 / 100;
-                        }
-                        if char.traits.iter().any(|t| t == "tongue_tied") {
-                            xp = xp * 65 / 100;
-                        }
-                    }
-                    xp = xp.max(1);
-                    entry.experience += xp;
-
-                    let mut leveled_up = false;
-                    loop {
-                        let xp_needed = xp_for_level(entry.level);
-                        if xp_needed == 0 || entry.experience < xp_needed || entry.level >= 10 {
-                            break;
-                        }
-                        entry.experience -= xp_needed;
-                        entry.level += 1;
-                        leveled_up = true;
-                        if entry.level >= 10 {
-                            entry.experience = 0; // No XP overflow at max
-                            break;
-                        }
-                    }
-
-                    let final_level = entry.level;
-                    let _ = cloned_db.save_character_data(char);
-
-                    if leveled_up {
-                        crate::script::achievements::notify_event_core(
-                            &cloned_db,
-                            &cloned_conns,
-                            &state_clone,
-                            &char_name,
-                            "skill_reached",
-                            &format!("{}:{}", skill_key, final_level),
-                        );
-                        if final_level >= 10 {
-                            crate::script::achievements::notify_counter_core(
-                                &cloned_db,
-                                &cloned_conns,
-                                &state_clone,
-                                &char_name,
-                                "skills_maxed",
-                                1,
-                            );
-                        }
-                    }
-
-                    leveled_up
-                }
-                _ => false,
-            }
+            crate::progress::award_xp(
+                &cloned_db,
+                &cloned_conns,
+                &state_clone,
+                &char_name,
+                &skill_name,
+                amount as i32,
+                crate::progress::XpSource::Admin,
+            )
+            .leveled
         },
     );
+
+    // add_skill_experience(char_name, skill_name, amount, source) -> bool
+    //
+    // Same shim, with the award's provenance declared. `source` is one of
+    // combat/quest/dialogue/craft/gather/medical/stealth/language/movement/
+    // teach/ritual/admin; an unknown value degrades to "admin" rather than
+    // dropping the award. Use `award_xp` instead when the caller needs the
+    // outcome map rather than just "did it level".
+    let cloned_db = db.clone();
+    let cloned_conns = connections.clone();
+    let state_clone = state.clone();
+    engine.register_fn(
+        "add_skill_experience",
+        move |char_name: String, skill_name: String, amount: i64, source: String| -> bool {
+            crate::progress::award_xp(
+                &cloned_db,
+                &cloned_conns,
+                &state_clone,
+                &char_name,
+                &skill_name,
+                amount as i32,
+                crate::progress::XpSource::from_str_lossy(&source),
+            )
+            .leveled
+        },
+    );
+
+    // award_xp(char_name, skill_name, amount, source) -> Map
+    //   { applied, level, before_level, leveled, maxed, experience, to_next }
+    // The full-fidelity entry point. `source` is one of combat/quest/dialogue/
+    // craft/gather/medical/stealth/language/movement/teach/admin and only
+    // affects presentation; an unknown value degrades to "admin" rather than
+    // dropping the award.
+    let cloned_db = db.clone();
+    let cloned_conns = connections.clone();
+    let state_clone = state.clone();
+    engine.register_fn(
+        "award_xp",
+        move |char_name: String, skill_name: String, amount: i64, source: String| -> rhai::Map {
+            let outcome = crate::progress::award_xp(
+                &cloned_db,
+                &cloned_conns,
+                &state_clone,
+                &char_name,
+                &skill_name,
+                amount as i32,
+                crate::progress::XpSource::from_str_lossy(&source),
+            );
+            let mut out = rhai::Map::new();
+            out.insert("applied".into(), rhai::Dynamic::from(outcome.applied as i64));
+            out.insert("before_level".into(), rhai::Dynamic::from(outcome.before_level as i64));
+            out.insert("level".into(), rhai::Dynamic::from(outcome.after_level as i64));
+            out.insert("experience".into(), rhai::Dynamic::from(outcome.experience as i64));
+            out.insert("to_next".into(), rhai::Dynamic::from(outcome.to_next as i64));
+            out.insert("leveled".into(), rhai::Dynamic::from(outcome.leveled));
+            out.insert("maxed".into(), rhai::Dynamic::from(outcome.maxed));
+            out
+        },
+    );
+
+    // get_xp_feed(connection_id) -> String  ("off" | "brief" | "full")
+    // Normalised through XpFeed so an empty/legacy field reads as "brief"
+    // rather than leaking the raw storage value to scripts.
+    let conns = connections.clone();
+    engine.register_fn("get_xp_feed", move |connection_id: String| -> String {
+        if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+            let conns_lock = conns.lock().unwrap();
+            if let Some(session) = conns_lock.get(&conn_id) {
+                if let Some(ref char) = session.character {
+                    return crate::progress::XpFeed::from_field(&char.xp_feed)
+                        .as_field()
+                        .to_string();
+                }
+            }
+        }
+        "brief".to_string()
+    });
+
+    // set_xp_feed(connection_id, mode) -> bool
+    // Rejects anything that isn't a known mode so a typo doesn't silently
+    // reset the player to the default.
+    let conns = connections.clone();
+    let cloned_db = db.clone();
+    engine.register_fn("set_xp_feed", move |connection_id: String, mode: String| -> bool {
+        let lc = mode.to_lowercase();
+        if !matches!(lc.as_str(), "off" | "brief" | "full") {
+            return false;
+        }
+        if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+            let mut conns_lock = conns.lock().unwrap();
+            if let Some(session) = conns_lock.get_mut(&conn_id) {
+                if let Some(ref mut char) = session.character {
+                    char.xp_feed = lc;
+                    let _ = cloned_db.save_character_data(char.clone());
+                    // Anything already batched belongs to the old mode.
+                    session.xp_buffer.clear();
+                    return true;
+                }
+            }
+        }
+        false
+    });
+
+    // ========== Prompt Format ==========
+
+    // validate_prompt_format(format) -> String
+    // "" when the format is usable; otherwise the one line to show the
+    // player. Validation lives in Rust so the token table stays the single
+    // source of truth — a script that re-listed the tokens would drift the
+    // first time one was added.
+    engine.register_fn("validate_prompt_format", |format: String| -> String {
+        match crate::prompt::validate(&format) {
+            Ok(()) => String::new(),
+            Err(msg) => msg,
+        }
+    });
+
+    // prompt_token_lines(connection_id) -> Array of String
+    // The `prompt tokens` listing, marked for whether each token has
+    // anything to say about *this* character.
+    let conns = connections.clone();
+    engine.register_fn("prompt_token_lines", move |connection_id: String| -> rhai::Array {
+        let ctx = (|| {
+            let conn_id = uuid::Uuid::parse_str(&connection_id).ok()?;
+            let conns_lock = conns.lock().unwrap();
+            let session = conns_lock.get(&conn_id)?;
+            let char = session.character.as_ref()?;
+            Some(crate::prompt::PromptContext::from_character(
+                char,
+                session.colors_enabled,
+            ))
+        })()
+        .unwrap_or_default();
+        crate::prompt::token_lines(&ctx)
+            .into_iter()
+            .map(rhai::Dynamic::from)
+            .collect()
+    });
+
+    // default_prompt_format(mode) -> String
+    // The stored text behind the `simple` / `verbose` presets, so a player
+    // who wants to tweak one can start from it rather than retype it.
+    engine.register_fn("default_prompt_format", |mode: String| -> String {
+        if mode.to_lowercase() == "verbose" {
+            crate::prompt::VERBOSE_FORMAT.to_string()
+        } else {
+            crate::prompt::SIMPLE_FORMAT.to_string()
+        }
+    });
 
     // ========== Trait Effect Sum Function ==========
 
@@ -2846,6 +2823,66 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             _ => 0,
         }
     });
+
+    // get_renown(char_name) -> Map
+    //   { total, skill_levels, mastered, core_skill_levels, core_mastered,
+    //     core_skill_count, achievements, quests, spell_levels }
+    // Derived breadth score — stored nowhere, gates nothing. See
+    // `crate::progress::renown` for the weighting rationale.
+    //
+    // The `core_*` figures are the ones a bar or an "N of M" count must use:
+    // the plain totals include languages and builder skills and so have no
+    // fixed denominator. `core_skill_count` ships the denominator alongside
+    // them so a script cannot pair them with a stale one.
+    let cloned_db = db.clone();
+    engine.register_fn("get_renown", move |char_name: String| -> rhai::Map {
+        let r = match cloned_db.get_character_data(&char_name.to_lowercase()) {
+            Ok(Some(c)) => crate::progress::renown(&c),
+            _ => crate::progress::Renown::default(),
+        };
+        let mut out = rhai::Map::new();
+        out.insert("total".into(), rhai::Dynamic::from(r.total as i64));
+        out.insert("skill_levels".into(), rhai::Dynamic::from(r.skill_levels as i64));
+        out.insert("mastered".into(), rhai::Dynamic::from(r.mastered as i64));
+        out.insert(
+            "core_skill_levels".into(),
+            rhai::Dynamic::from(r.core_skill_levels as i64),
+        );
+        out.insert("core_mastered".into(), rhai::Dynamic::from(r.core_mastered as i64));
+        out.insert(
+            "core_skill_count".into(),
+            rhai::Dynamic::from(crate::progress::CORE_SKILLS.len() as i64),
+        );
+        out.insert("achievements".into(), rhai::Dynamic::from(r.achievements as i64));
+        out.insert("quests".into(), rhai::Dynamic::from(r.quests as i64));
+        out.insert("spell_levels".into(), rhai::Dynamic::from(r.spell_levels as i64));
+        out
+    });
+
+    // get_live_seconds_played(connection_id, character) -> i64
+    // `CharacterData.total_seconds_played` only advances when `flush_play_time`
+    // runs on quit, so a player who has never logged out reads zero. This folds
+    // in the current session's elapsed time for display without mutating or
+    // persisting anything.
+    let conns = connections.clone();
+    engine.register_fn(
+        "get_live_seconds_played",
+        move |connection_id: String, character: crate::CharacterData| -> i64 {
+            let mut total = character.total_seconds_played;
+            if let Ok(conn_id) = uuid::Uuid::parse_str(&connection_id) {
+                if let Ok(connections) = conns.lock() {
+                    if let Some(start) = connections.get(&conn_id).and_then(|s| s.session_started_at) {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs() as i64)
+                            .unwrap_or(start);
+                        total = total.saturating_add((now - start).max(0));
+                    }
+                }
+            }
+            total
+        },
+    );
 
     // get_effective_max_hp(char_name) -> i64
     // Base max_hp plus sum of `EffectType::MaxHpBonus` buffs (stamped from
@@ -3569,6 +3606,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // at bound spawn point). Used by go.rhai when a player enters a ROOM_DEATH room.
     let cloned_db = db.clone();
     let conns = connections.clone();
+    let cloned_state = state.clone();
     engine.register_fn("apply_room_death", move |connection_id: String| -> bool {
         let conn_uuid = match uuid::Uuid::parse_str(&connection_id) {
             Ok(u) => u,
@@ -3587,7 +3625,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             let room_id = char.current_room_id;
             (char, room_id)
         };
-        match crate::session::kill_player_at_room(&cloned_db, &conns, &mut char, &room_id, &connection_id) {
+        match crate::session::kill_player_at_room(&cloned_db, &conns, &cloned_state, &mut char, &room_id) {
             Ok(()) => true,
             Err(e) => {
                 tracing::error!("apply_room_death failed for {}: {}", char.name, e);

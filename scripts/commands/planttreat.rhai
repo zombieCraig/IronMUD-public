@@ -97,17 +97,12 @@ fn run_command(args, connection_id) {
     let xp = 10 * severity_mult;
     if xp < 1 { xp = 1; }
 
-    let leveled_up = add_skill_experience(char.name, "gardening", xp);
+    add_skill_experience(char.name, "gardening", xp, "gather");
     let updated_char = get_character_data(char.name);
     if updated_char != () {
         set_player_character(connection_id, updated_char);
     }
 
-    send_client_message(connection_id, "You treat the " + target_proto.name + "'s " + target_plant.infestation + " infestation with " + treatment.name + ". (+" + xp + " Gardening XP)");
+    send_client_message(connection_id, "You treat the " + target_proto.name + "'s " + target_plant.infestation + " infestation with " + treatment.name + ".");
     broadcast_to_room(char.current_room_id, char.name + " treats a " + target_proto.name + " for infestation.", char.name);
-
-    if leveled_up {
-        let new_level = get_skill_level(char.name, "gardening");
-        send_client_message(connection_id, "\n*** Your Gardening skill increased to level " + new_level + "! ***");
-    }
 }

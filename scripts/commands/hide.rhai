@@ -72,17 +72,11 @@ fn run_command(args, connection_id) {
         send_client_message(connection_id, "You conceal yourself in the shadows.");
 
         // Award stealth XP
-        let leveled = add_skill_experience(char.name, "stealth", 5);
-        if leveled {
-            send_client_message(connection_id, "Your stealth skill has improved!");
-        }
+        add_skill_experience(char.name, "stealth", 5, "stealth");
     } else {
         send_client_message(connection_id, "You try to hide but can't find adequate concealment.");
 
         // Award small XP on failure to allow progression from level 0
-        let leveled = add_skill_experience(char.name, "stealth", 1);
-        if leveled {
-            send_client_message(connection_id, "Your stealth skill has improved!");
-        }
+        add_skill_experience(char.name, "stealth", 1, "stealth");
     }
 }

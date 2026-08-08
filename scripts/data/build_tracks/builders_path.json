@@ -1,0 +1,122 @@
+{
+  "key": "builders_path",
+  "name": "The Builder's Path",
+  "description": "Do you know what this engine can do? Each step is a system most worlds never touch. Ship one of each and you will have learned the engine and produced content doing it.",
+  "scope": "builder",
+  "steps": [
+    {
+      "key": "first_room",
+      "label": "Build a room",
+      "predicate": { "kind": "count", "of": "room", "min": 1 },
+      "hint": "`redit create <title>`, or `dig <dir> <title>` to attach it as you go."
+    },
+    {
+      "key": "extra_desc",
+      "label": "Something worth examining",
+      "predicate": { "kind": "has_system", "system": "extra_desc" },
+      "hint": "`redit extradesc add <keywords>` rewards the players who look."
+    },
+    {
+      "key": "seasonal",
+      "label": "A room that changes with the season",
+      "predicate": { "kind": "has_system", "system": "seasonal_desc" },
+      "hint": "`redit spring|summer|autumn|winter` — the season system exists and almost nothing uses it."
+    },
+    {
+      "key": "door",
+      "label": "A door",
+      "predicate": { "kind": "has_system", "system": "door" },
+      "hint": "`redit door <dir> <name>`, and give it a key with `redit key <dir> <vnum>`."
+    },
+    {
+      "key": "contextual_verb",
+      "label": "A room you can do something in",
+      "predicate": { "kind": "has_system", "system": "contextual_verb" },
+      "hint": "`redit verb add pull` declares it; a DG OnCommand trigger makes it do something."
+    },
+    {
+      "key": "mobile",
+      "label": "Build a mobile",
+      "predicate": { "kind": "count", "of": "mobile", "min": 1 },
+      "hint": "`medit create <name>`. Put every noun in its short description into its keywords."
+    },
+    {
+      "key": "dialogue",
+      "label": "An NPC who answers a keyword",
+      "predicate": { "kind": "has_system", "system": "dialogue" },
+      "hint": "`medit <vnum> dialogue add <keyword> <response>`."
+    },
+    {
+      "key": "dialogue_tree",
+      "label": "An NPC with a real conversation",
+      "predicate": { "kind": "has_system", "system": "dialogue_tree" },
+      "hint": "Branching dialogue with conditions and effects. The deepest thing the NPC system does — see docs/builder/dialogue-trees.md."
+    },
+    {
+      "key": "routine",
+      "label": "An NPC with somewhere to be",
+      "predicate": { "kind": "has_system", "system": "routine" },
+      "hint": "`medit <vnum> routine add <hour> <room> <activity>` — a world where people keep hours feels alive."
+    },
+    {
+      "key": "shop",
+      "label": "A shop that sells something",
+      "predicate": { "kind": "has_system", "system": "shop" },
+      "hint": "Set the shopkeeper flag, then `medit <vnum> shop stock add <item vnum>`."
+    },
+    {
+      "key": "faction",
+      "label": "An NPC who belongs to something",
+      "predicate": { "kind": "has_system", "system": "faction" },
+      "hint": "`medit <vnum> faction <tag>` — reputation, aggro and shop pricing all read it."
+    },
+    {
+      "key": "alignment",
+      "label": "An NPC killing carries moral weight",
+      "predicate": { "kind": "has_system", "system": "alignment" },
+      "hint": "`medit <vnum> alignment <-200..200>`. Zero means nobody thought about it."
+    },
+    {
+      "key": "item",
+      "label": "Build an item",
+      "predicate": { "kind": "count", "of": "item", "min": 1 },
+      "hint": "`oedit create <name>`, then set a real type."
+    },
+    {
+      "key": "item_affect",
+      "label": "An item that does something when worn",
+      "predicate": { "kind": "has_system", "system": "item_affect" },
+      "hint": "`oedit <vnum> affect add <stat> <amount>` — affects become buffs on equip."
+    },
+    {
+      "key": "container",
+      "label": "Something to put things in",
+      "predicate": { "kind": "has_system", "system": "container" },
+      "hint": "`oedit <vnum> type container`, then set capacity."
+    },
+    {
+      "key": "quest",
+      "label": "Write a quest",
+      "predicate": { "kind": "count", "of": "quest", "min": 1 },
+      "hint": "`quedit create <vnum> <name>`, add objectives and rewards, hang it on a giver."
+    },
+    {
+      "key": "multi_step_quest",
+      "label": "A quest with more than one step",
+      "predicate": { "kind": "has_system", "system": "multi_step_quest" },
+      "hint": "Two objectives make a story; one makes an errand."
+    },
+    {
+      "key": "area",
+      "label": "Found an area of your own",
+      "predicate": { "kind": "count", "of": "area", "min": 1 },
+      "hint": "`acreate <prefix> <name>` — it names you as owner."
+    },
+    {
+      "key": "forage",
+      "label": "An area you can forage in",
+      "predicate": { "kind": "has_system", "system": "forage" },
+      "hint": "`aedit forage wilderness add <item vnum> <min skill> <rarity>`."
+    }
+  ]
+}

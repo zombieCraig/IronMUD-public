@@ -219,6 +219,15 @@ fn get_from_container(char, item_keyword, container_keyword, connection_id) {
         return;
     }
 
+    // Loot protection. `corpse_loot_block_reason` is the one place the rule
+    // lives; it returns "" for anything that is not a protected player corpse,
+    // so this guard is safe in front of every container.
+    let blocked = corpse_loot_block_reason(char.name, container.id);
+    if blocked != "" {
+        send_client_message(connection_id, blocked);
+        return;
+    }
+
     // Special handling for getting gold from corpses
     if container.flags.is_corpse && (item_keyword == "gold" || item_keyword == "coins" || item_keyword == "gold coins") {
         let gold = take_corpse_gold(container.id, char.name);
@@ -563,15 +572,28 @@ fn get_from_all_containers(char, item_keyword, container_filter, connection_id) 
 
     // Filter to open containers only
     let containers = [];
+    // A protected corpse is skipped rather than aborting the sweep — `get all
+    // from all.corpse` after a party wipe should still empty your own body.
+    // The reason is kept so the sweep can explain itself if it finds nothing.
+    let blocked_msg = "";
     for item in matching {
         if !item.is_container { continue; }
         // Skip closed non-corpse containers
         if !item.flags.is_corpse && item.container_closed { continue; }
+        let blocked = corpse_loot_block_reason(char.name, item.id);
+        if blocked != "" {
+            if blocked_msg == "" { blocked_msg = blocked; }
+            continue;
+        }
         containers.push(item);
     }
 
     if containers.len() == 0 {
-        send_client_message(connection_id, "You don't see any " + container_filter + " containers here.");
+        if blocked_msg != "" {
+            send_client_message(connection_id, blocked_msg);
+        } else {
+            send_client_message(connection_id, "You don't see any " + container_filter + " containers here.");
+        }
         return;
     }
 

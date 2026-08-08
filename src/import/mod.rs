@@ -683,6 +683,9 @@ pub struct PlannedMobile {
     pub damage_dice: String,
     pub armor_class: i32,
     pub gold: i32,
+    /// Moral weight on IronMUD's `[-200, 200]` scale, rescaled from
+    /// CircleMUD's `[-1000, 1000]` alignment column.
+    pub alignment: i32,
     pub flags: crate::types::MobileFlags,
     /// World-wide cap derived from accumulated max(circle_max) across all
     /// M-resets for this vnum. None = unlimited.

@@ -212,6 +212,11 @@ export declare const achievementToolDefinitions: ({
                         type: string;
                         description: string;
                     };
+                    trait_points: {
+                        type: string;
+                        minimum: number;
+                        description: string;
+                    };
                 };
                 required: string[];
             };

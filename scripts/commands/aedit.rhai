@@ -187,6 +187,14 @@ fn run_command(args, connection_id) {
         subcommand = parts[subcommand_start].to_lower();
     }
 
+    // Attribution: one stamp per editor, after the permission gate. Read-only
+    // subcommands are excluded so viewing an area never counts as touching it.
+    // See src/attribution.rs.
+    if subcommand != "" && subcommand != "show" {
+        stamp_content_edited("area", "" + area.id, char.name);
+        note_grade_before("area", "" + area.id, connection_id);
+    }
+
     // Show properties if no subcommand
     if subcommand == "" || subcommand == "show" {
         let output = olc::c_header("=== Area Editor ===", connection_id) + "\n";

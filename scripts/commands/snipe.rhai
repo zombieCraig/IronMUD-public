@@ -128,10 +128,10 @@ fn do_snipe_hit(char, mobile, target_info, weapon_info, ammo_info, direction, op
     let base_damage = calculate_damage(weapon_info.dice_count, weapon_info.dice_sides, weapon_info.damage_bonus + ammo_info.ammo_bonus);
     let is_crit = check_critical_hit(get_skill_level(char.name, "ranged"));
     let damage = base_damage;
-    let crit_text = "";
+    let crit_effect = "";
     if is_crit {
         damage = calculate_crit_damage(damage, get_skill_level(char.name, "ranged"));
-        crit_text = " \x1b[1;33m[CRITICAL]\x1b[0m";
+        crit_effect = roll_critical_effect(weapon_info.damage_type);
     }
 
     let body_part = roll_random_body_part();
@@ -156,25 +156,27 @@ fn do_snipe_hit(char, mobile, target_info, weapon_info, ammo_info, direction, op
         save_mobile_data(mobile);
     }
 
-    // Apply crit effects via Rust functions
+    // Apply crit effects via Rust functions. The effect was rolled above so
+    // the message below can name it.
     if is_crit && !blocked {
-        apply_snipe_crit(target_info.target_id, body_part, weapon_info.damage_type, char.name);
+        apply_crit_by_type(target_info.target_id, body_part, crit_effect, get_skill_level(char.name, "ranged"));
     }
 
+    let crit_tag = crit_text(is_crit, crit_effect, body_part, blocked, weapon_info.damage_type);
+
     if !blocked && damage > 0 {
-        let leveled = add_skill_experience(char.name, "ranged", 10);
-        if leveled { send_client_message(connection_id, "\x1b[1;33mYour ranged skill has improved!\x1b[0m"); }
+        add_skill_experience(char.name, "ranged", 10, "combat");
     }
 
     // Messages — body-part contextual
     broadcast_to_room_awake(char.current_room_id, char.name + " fires to the " + direction + ".", char.name);
     let projectile = projectile_name(ammo_info.rtype);
     if blocked {
-        send_snipe_blocked_messages(connection_id, target_room_id, projectile, mobile.name, body_part, direction, opposite_dir, armor_name, crit_text);
+        send_snipe_blocked_messages(connection_id, target_room_id, projectile, mobile.name, body_part, direction, opposite_dir, armor_name, crit_tag);
     } else if damage > 0 {
         let severity = snipe_get_severity(damage, weapon_info);
-        let verb = snipe_hit_verb(ammo_info.rtype, severity);
-        send_snipe_hit_messages(connection_id, target_room_id, projectile, verb, mobile.name, body_part, direction, opposite_dir, damage, crit_text);
+        let verb = ranged_hit_verb(ammo_info.rtype, severity);
+        send_snipe_hit_messages(connection_id, target_room_id, projectile, verb, mobile.name, body_part, direction, opposite_dir, damage, crit_tag);
     }
 
     // Apply ammo special effects on hit (not blocked)
@@ -246,90 +248,25 @@ fn snipe_get_ammo_vnum(weapon_info, ammo_info) {
     return "";
 }
 
-fn apply_snipe_crit(target_id, body_part, damage_type, attacker_name) {
-    let effect = roll_critical_effect(damage_type);
-    let skill = get_skill_level(attacker_name, "ranged");
-    apply_crit_by_type(target_id, body_part, effect, skill);
-}
-
 fn apply_crit_by_type(target_id, body_part, effect, skill) {
-    // Stun effects
-    if is_stun_type(effect) {
-        apply_mobile_stun(target_id, get_crit_stun_rounds(skill));
-        return;
-    }
-    // Bleed effects
-    if is_bleed_type(effect) {
-        add_mobile_wound_bleeding(target_id, body_part, get_crit_bleeding_severity(skill));
-        return;
-    }
-    // Disable effects
-    if is_disable_type(effect) {
-        escalate_mobile_wound_to_severe(target_id, body_part);
-        return;
-    }
-    // Combined stun+bleed
-    if effect == "impaled" || effect == "bullet_lodged" {
+    // Classification lives in Rust (`src/combat_text.rs`) alongside the effect
+    // table it comes from, so the flavour name and the mechanic cannot drift.
+    let mechanic = crit_mechanic(effect);
+    if mechanic == "stun" { apply_mobile_stun(target_id, get_crit_stun_rounds(skill)); return; }
+    if mechanic == "bleed" { add_mobile_wound_bleeding(target_id, body_part, get_crit_bleeding_severity(skill)); return; }
+    if mechanic == "disable" { escalate_mobile_wound_to_severe(target_id, body_part); return; }
+    if mechanic == "stun_bleed" {
         apply_mobile_stun(target_id, get_crit_stun_rounds(skill));
         add_mobile_wound_bleeding(target_id, body_part, 2);
         return;
     }
-    // Ongoing damage effects
-    apply_crit_ongoing(target_id, body_part, effect, skill);
-}
-
-fn is_stun_type(e) {
-    if e == "concussion" { return true; }
-    if e == "hypothermic_shock" { return true; }
-    if e == "electrocuted" { return true; }
-    if e == "toxic_shock" { return true; }
-    if e == "nerve_strike" { return true; }
-    if e == "stun" { return true; }
-    if e == "lockjaw" { return true; }
-    return false;
-}
-
-fn is_bleed_type(e) {
-    if e == "deep_laceration" { return true; }
-    if e == "arterial_cut" { return true; }
-    if e == "punctured_organ" { return true; }
-    if e == "dissolved_flesh" { return true; }
-    if e == "bleeding" { return true; }
-    if e == "mauled" { return true; }
-    if e == "through_and_through" { return true; }
-    return false;
-}
-
-fn is_disable_type(e) {
-    if e == "severed_tendon" { return true; }
-    if e == "frozen_limb" { return true; }
-    if e == "nerve_damage" { return true; }
-    if e == "paralysis" { return true; }
-    if e == "charred" { return true; }
-    if e == "corroded_armor" { return true; }
-    if e == "broken_bone" { return true; }
-    if e == "disable" { return true; }
-    if e == "severed_chunk" { return true; }
-    if e == "shrapnel" { return true; }
-    return false;
-}
-
-fn apply_crit_ongoing(target_id, body_part, effect, skill) {
-    let element = "fire";
-    if effect == "frostbitten" { element = "cold"; }
-    if effect == "venom_surge" { element = "poison"; }
-    if effect == "acid_burn" { element = "acid"; }
-
-    if effect == "ignited" {
+    if mechanic == "ongoing" { apply_mobile_ongoing_effect(target_id, crit_ongoing_element(effect), 3, 3, body_part); return; }
+    if mechanic == "ongoing_stun" {
         apply_mobile_stun(target_id, get_crit_stun_rounds(skill));
-        apply_mobile_ongoing_effect(target_id, element, 3, 3, body_part);
+        apply_mobile_ongoing_effect(target_id, crit_ongoing_element(effect), 3, 3, body_part);
         return;
     }
-    if effect == "severe_burn" || effect == "frostbitten" || effect == "venom_surge" || effect == "acid_burn" {
-        let dmg = 3;
-        if effect == "frostbitten" { dmg = 2; }
-        apply_mobile_ongoing_effect(target_id, element, 3, dmg, body_part);
-    }
+    // "clean" - bonus damage only, no secondary effect
 }
 
 fn resolve_aftermath(char, mobile, target_info, noise_level, opposite_dir, target_room_id, any_hit) {
@@ -581,26 +518,11 @@ fn projectile_name(rtype) {
     return "projectile";
 }
 
+// The verb table that used to sit here (snipe_hit_verb) duplicated the one in
+// the combat tick and in shoot.rhai. It now comes from src/combat_text.rs as
+// `ranged_hit_verb`, alongside the shared `hit_severity` banding.
 fn snipe_get_severity(damage, weapon_info) {
-    let max_damage = weapon_info.dice_count * weapon_info.dice_sides;
-    if max_damage <= 0 { return "medium"; }
-    if damage <= max_damage / 4 { return "low"; }
-    if damage > (max_damage * 3) / 4 { return "high"; }
-    return "medium";
-}
-
-fn snipe_hit_verb(rtype, severity) {
-    if severity == "low" {
-        if rtype == "crossbow" { return "nicks"; }
-        return "grazes";
-    }
-    if severity == "medium" {
-        if rtype == "bow" { return "lodges in"; }
-        if rtype == "crossbow" { return "punches into"; }
-        return "rips into";
-    }
-    if rtype == "bow" { return "punches through"; }
-    return "tears through";
+    return hit_severity(damage, weapon_info.dice_count * weapon_info.dice_sides);
 }
 
 fn send_snipe_blocked_messages(connection_id, target_room_id, projectile, mob_name, body_part, direction, opposite_dir, armor_name, crit_text) {

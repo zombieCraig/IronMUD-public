@@ -1453,6 +1453,9 @@ mod pair_housing_tests {
 
     fn mk_area(db: &Db) -> AreaData {
         let area = AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: Uuid::new_v4(),
             name: "Test Area".to_string(),
             prefix: "test".to_string(),
@@ -1501,6 +1504,9 @@ mod pair_housing_tests {
         let mut flags = RoomFlags::default();
         flags.liveable = capacity > 0;
         let room = RoomData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: Uuid::new_v4(),
             title: format!("room {}", vnum),
             description: String::new(),

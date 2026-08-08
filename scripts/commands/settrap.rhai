@@ -123,8 +123,5 @@ fn run_command(args, connection_id) {
     send_client_message(connection_id, "You carefully set a " + trap_type + " trap.");
     broadcast_to_room_awake(room_id, char.name + " is doing something on the ground.", char.name);
 
-    let leveled = add_skill_experience(char.name, "thievery", 10);
-    if leveled {
-        send_client_message(connection_id, "Your thievery skill has improved!");
-    }
+    add_skill_experience(char.name, "thievery", 10, "stealth");
 }

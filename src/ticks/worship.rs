@@ -6,14 +6,14 @@ use tokio::time::{Duration, interval};
 use tracing::error;
 
 use ironmud::worship::{WORSHIP_TICK_INTERVAL_SECS, process_worship_tick};
-use ironmud::{SharedConnections, db};
+use ironmud::{SharedConnections, SharedState, db};
 
-pub async fn run_worship_tick(db: db::Db, connections: SharedConnections) {
+pub async fn run_worship_tick(db: db::Db, connections: SharedConnections, state: SharedState) {
     let mut ticker = interval(Duration::from_secs(WORSHIP_TICK_INTERVAL_SECS));
     loop {
         ticker.tick().await;
         crate::ticks::heartbeat::beat("worship");
-        if let Err(e) = process_worship_tick(&db, &connections) {
+        if let Err(e) = process_worship_tick(&db, &connections, &state) {
             error!("Worship tick error: {}", e);
         }
     }

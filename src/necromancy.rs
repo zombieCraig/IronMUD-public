@@ -24,6 +24,7 @@ use rand::Rng;
 use uuid::Uuid;
 
 use crate::db::Db;
+use crate::{SharedConnections, SharedState};
 
 /// Builder-tunable costs for one rite (passed from the item's DG trigger /
 /// the Rhai caller, with the adapters supplying defaults).
@@ -70,7 +71,19 @@ fn refuse(msg: &str) -> RaiseOutcome {
 
 /// Perform the raise-dead rite for `caster_name` on a corpse matching
 /// `corpse_keyword` in the caster's current room. See module docs.
-pub fn raise_dead_from_corpse(db: &Db, caster_name: &str, corpse_keyword: &str, p: RaiseParams) -> RaiseOutcome {
+///
+/// `state` is optional because the DG adapter's `EvalCtx` does not carry
+/// `SharedState`. Without it the mastery XP is still awarded and reported;
+/// only the `skill_reached` achievement hook is skipped. The Rhai adapter
+/// passes it, so the common path is complete.
+pub fn raise_dead_from_corpse(
+    db: &Db,
+    connections: &SharedConnections,
+    state: Option<&SharedState>,
+    caster_name: &str,
+    corpse_keyword: &str,
+    p: RaiseParams,
+) -> RaiseOutcome {
     if corpse_keyword.trim().is_empty() {
         return refuse("Raise which corpse?");
     }
@@ -184,8 +197,23 @@ pub fn raise_dead_from_corpse(db: &Db, caster_name: &str, corpse_keyword: &str, 
         crate::morality::MORALITY_MIN as i64,
         crate::morality::MORALITY_MAX as i64,
     ) as i32;
-    let _ = crate::script::dialogue::award_skill_xp(&mut ch, MASTERY_SKILL, p.mastery_xp);
+    // Mastery XP goes through the progression chokepoint's mutation half, so
+    // the caster sees the same feed and the same level-up banner as any other
+    // skill. Reporting is split from the mutation for the usual reason: the
+    // achievement hook writes the character out of band, so it has to run
+    // after the wholesale save below or the save clobbers it.
+    let xp = crate::progress::award_xp_to_character(&mut ch, MASTERY_SKILL, p.mastery_xp, false);
     let _ = db.save_character_data(ch);
+    crate::progress::report_xp(
+        connections,
+        caster_name,
+        MASTERY_SKILL,
+        &xp,
+        crate::progress::XpSource::Ritual,
+    );
+    if let Some(state) = state {
+        crate::progress::notify_xp_achievements(db, connections, state, caster_name, MASTERY_SKILL, &xp);
+    }
 
     RaiseOutcome {
         success: true,
@@ -230,6 +258,12 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let db = Db::open(temp.path()).expect("open db");
         (db, temp)
+    }
+
+    /// Nobody online — these tests assert on DB state, not on the messages
+    /// `report_xp` would send.
+    fn conns() -> SharedConnections {
+        std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()))
     }
 
     fn make_char(db: &Db, name: &str, room: Uuid, mana: i32, necro: i32, magic: i32) {
@@ -282,7 +316,7 @@ mod tests {
         place_corpse(&db, room, "test:zombie");
         make_char(&db, "Necro", room, 100, 0, 10); // necromancy 0 < corpse level 5
 
-        let out = raise_dead_from_corpse(&db, "Necro", "corpse", params());
+        let out = raise_dead_from_corpse(&db, &conns(), None, "Necro", "corpse", params());
         assert!(!out.success);
         assert!(out.minion_id.is_none());
         // Pre-cast refusal spends nothing.
@@ -299,7 +333,7 @@ mod tests {
             .unwrap();
         make_char(&db, "Necro", room, 100, 10, 10);
 
-        let out = raise_dead_from_corpse(&db, "Necro", "corpse", params());
+        let out = raise_dead_from_corpse(&db, &conns(), None, "Necro", "corpse", params());
         assert!(!out.success);
         assert!(out.caster_msg.contains("fallen adventurer"));
     }
@@ -326,7 +360,7 @@ mod tests {
         });
         db.save_mobile_data(existing).unwrap();
 
-        let out = raise_dead_from_corpse(&db, "Necro", "corpse", params());
+        let out = raise_dead_from_corpse(&db, &conns(), None, "Necro", "corpse", params());
         assert!(!out.success);
         assert!(out.caster_msg.contains("cannot bind another"));
     }
@@ -343,7 +377,7 @@ mod tests {
             place_corpse(&db, room, "test:zombie");
             make_char(&db, "Necro", room, 100, 5, 20);
 
-            let out = raise_dead_from_corpse(&db, "Necro", "corpse", params());
+            let out = raise_dead_from_corpse(&db, &conns(), None, "Necro", "corpse", params());
             if !out.success {
                 continue;
             }

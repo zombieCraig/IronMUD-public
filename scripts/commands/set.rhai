@@ -88,6 +88,11 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    if setting_name == "xpfeed" {
+        handle_xpfeed(connection_id, value_arg);
+        return;
+    }
+
     if setting_name == "gender" {
         handle_gender(connection_id, args);
         return;
@@ -190,6 +195,11 @@ fn show_settings_table(connection_id, is_builder, is_admin) {
     let ne_toggle = make_toggle_link("set new_editor", ne_val, connection_id);
     output += "  " + pad_right("new_editor", 14) + pad_right(ne_toggle, 10);
     output += "[BETA] Use the modern full-screen multi-line editor\n";
+
+    // XP feed verbosity (off/brief/full) — three-way, so no toggle link
+    let xf_val = get_xp_feed(connection_id);
+    output += "  " + pad_right("xpfeed", 14) + pad_right(xf_val, 10);
+    output += "Skill XP feedback: off, brief (batched) or full\n";
 
     // Gender (free string)
     let gender_val = "(unset)";
@@ -642,6 +652,33 @@ fn handle_bloodfeed(connection_id, value_arg) {
     }
 
     send_client_message(connection_id, "Usage: set bloodfeed willing|off");
+}
+
+fn handle_xpfeed(connection_id, value_arg) {
+    let current = get_xp_feed(connection_id);
+
+    if value_arg == "" {
+        send_client_message(connection_id, "XP feed is currently '" + current + "'.");
+        send_client_message(connection_id, "Usage: set xpfeed off|brief|full");
+        send_client_message(connection_id, "");
+        send_client_message(connection_id, "  off   - no skill XP messages at all.");
+        send_client_message(connection_id, "  brief - one batched line per skill, shown just above the prompt.");
+        send_client_message(connection_id, "  full  - every award reported the moment it happens.");
+        send_client_message(connection_id, "");
+        send_client_message(connection_id, "Level-ups are announced in both 'brief' and 'full'; 'off' silences everything.");
+        return;
+    }
+
+    if set_xp_feed(connection_id, value_arg) {
+        if value_arg == "off" {
+            send_client_message(connection_id, "XP feed off. Skill gains and level-ups will pass silently.");
+        } else {
+            send_client_message(connection_id, "XP feed set to '" + value_arg + "'.");
+        }
+        return;
+    }
+
+    send_client_message(connection_id, "Usage: set xpfeed off|brief|full");
 }
 
 fn handle_automap(connection_id, value_arg) {

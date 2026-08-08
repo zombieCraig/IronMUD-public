@@ -1,6 +1,7 @@
 //! Writer layer: turns a [`Plan`] into either a dry-run report or a series
 //! of Sled writes via [`crate::db::Db`].
 
+use crate::types::ContentOrigin;
 use std::collections::HashMap;
 use std::path::Path;
 
@@ -156,6 +157,9 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
     for a in &plan.areas {
         let id = Uuid::new_v4();
         let area = AreaData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: ContentOrigin::Import,
             id,
             name: a.name.clone(),
             prefix: a.prefix.clone(),
@@ -226,6 +230,9 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
             doors_map.insert(d.direction.clone(), build_door_state(d, key_lookup));
         }
         let room = RoomData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: ContentOrigin::Import,
             id,
             title: r.title.clone(),
             description: r.description.clone(),
@@ -320,7 +327,8 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
     // separate index needs rebuilding.
     let mut written_mobiles = 0usize;
     for m in &plan.mobiles {
-        let mobile = build_mobile(m);
+        let mut mobile = build_mobile(m);
+        mobile.origin = ContentOrigin::Import;
         db.save_mobile_data(mobile)
             .with_context(|| format!("saving mobile {}", m.vnum))?;
         written_mobiles += 1;
@@ -333,6 +341,7 @@ pub fn apply(db: &Db, plan: &Plan, warnings: &[Warning]) -> Result<ReportSummary
     for it in &plan.items {
         let mut item = it.data.clone();
         item.id = Uuid::new_v4();
+        item.origin = ContentOrigin::Import;
         db.save_item_data(item)
             .with_context(|| format!("saving item {}", it.vnum))?;
         written_items += 1;
@@ -567,6 +576,7 @@ fn build_mobile(p: &PlannedMobile) -> MobileData {
     m.damage_dice = p.damage_dice.clone();
     m.armor_class = p.armor_class;
     m.gold = p.gold;
+    m.alignment = p.alignment;
     m.flags = p.flags.clone();
     m.world_max_count = p.world_max_count;
     m.active_buffs = p.active_buffs.clone();

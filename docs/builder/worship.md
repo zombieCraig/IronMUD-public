@@ -76,8 +76,35 @@ Blessing buffs last one tribute interval and carry source
   escalates: Curse, deeper Curse, then a full smite on every offense after.
   The pact never breaks.
 
-Favor is a positive currency for DG scripts to spend; nothing consumes it
-by default.
+Favor is a currency for DG scripts to spend; nothing consumes it by default.
+
+### Standing tiers
+
+Players never see the raw number on its own — `worship` and `examine` show a
+named tier, with the score in parentheses for anyone optimising:
+
+| Favor | Tier | |
+|-------|------|--|
+| `<= -100` | Anathema | No offering will be accepted. |
+| `-99 … -25` | Disfavored | Regard has soured. |
+| `-24 … 24` | Unproven | The starting band. |
+| `25 … 99` | Noticed | |
+| `100 … 249` | Favored | |
+| `250 … 499` | Blessed | |
+| `>= 500` | Exalted | |
+
+The bands are asymmetric because favor starts at 0 and normally only rises;
+it goes negative only through deliberate faith offences, so the negative side
+is short and steep.
+
+Crossing a boundary — in either direction, from any source including
+`worship_favor` — announces itself to the player. Moves inside a band are
+silent, so a run of +5 minion kills does not narrate every kill.
+
+Favor is **not** clamped. Morality is a bounded slider by design; favor is an
+earned currency with no ceiling in the fiction, and a clamp would silently
+rewrite whatever existing worlds have accumulated. The ladder simply tops out
+at Exalted.
 
 ## DG scripting
 
@@ -101,7 +128,9 @@ worship_smite %actor% 3          * fire the punishment ladder (severity 1-4)
 ```
 
 DG variables: `%actor.worship_god%` (vnum, empty if godless),
-`%actor.worship_favor%`, `%actor.worship_offenses%`, `%self.patron_god%`,
+`%actor.worship_favor%` (raw integer), `%actor.worship_favor_tier%`
+(`anathema`/`disfavored`/`unproven`/`noticed`/`favored`/`blessed`/`exalted` —
+prefer this over numeric comparisons), `%actor.worship_offenses%`, `%self.patron_god%`,
 `%self.is_deity%`, `%self.deity_epithet%`.
 
 Example — a blood god that takes HP instead of gold:

@@ -129,6 +129,23 @@ pub enum CompletionType {
     BankSubcommand,
     EscrowSubcommand,
     MotdSubcommand,
+    PromptSubcommand,
+    /// `top <board>` — a leaderboard name.
+    TopBoard,
+    /// `build <subcommand>`.
+    BuildSubcommand,
+    /// `build audit <target>` — what to grade.
+    BuildAuditTarget,
+    /// `world <subcommand>`.
+    WorldSubcommand,
+    /// `bounty <subcommand>`.
+    BountySubcommand,
+    /// `standing <faction>` — a declared faction key.
+    FactionKey,
+    /// `locate <what>` — the things a divination can find.
+    LocateTarget,
+    /// `consignments <subcommand>`.
+    ConsignmentsSubcommand,
     BugsSubcommand,
     BugStatusFilter,
     BugPriorityValue,

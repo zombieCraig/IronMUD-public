@@ -1,5 +1,14 @@
 // scripts/commands/group.rhai
-// Manage party/group membership
+// Manage party/group membership, and show the party status panel.
+//
+// The panel reads `get_group_panel`, which builds every row from the live
+// session copies — a status display a player can spam must not cost a
+// character load per member. Health bands and their colours come from that
+// binding too, sourced from `src/combat_text.rs`; this script never decides
+// what "Bloodied" means or what colour it is.
+
+import "progress_ui" as ui;
+import "text" as text;
 
 fn try_add_follower_to_group(follower_name, leader_name) {
     let follower_conn = find_player_connection_by_name(follower_name);
@@ -93,59 +102,54 @@ fn run_command(args, connection_id) {
     }
 }
 
+// One row of the panel. Split out because the row is four conditional
+// fragments and Rhai's expression complexity limit dislikes them inline.
+fn render_member_row(row) {
+    let label = text::pad_right(row.name, 14);
+
+    // A member in another room has no vitals worth printing — they are not in
+    // the fight, and showing their HP invites the party to react to a number
+    // that has nothing to do with what is in front of them.
+    if !row.here {
+        return "  " + label + "(elsewhere)";
+    }
+
+    let bar = ui::build_bar_of_width(row.hp, row.max_hp, 10);
+    let band = row.condition_color + text::pad_right(row.condition, 10) + "\x1b[0m";
+    let stam = text::pad_left("" + row.stamina, 3) + "/" + text::pad_right("" + row.max_stamina, 3);
+    return "  " + label + bar + " " + band + " ST " + stam + " " + row.position;
+}
+
+fn render_member_tags(row) {
+    let tag = "";
+    if row.role == "leader" { tag += " (Leader)"; }
+    if row.role == "following" { tag += " (Following)"; }
+    if row.is_you { tag += " <-- You"; }
+    return tag;
+}
+
 fn show_group_status(char, connection_id) {
-    let leader_name = get_group_leader(char.name);
+    let rows = get_group_panel(char.name);
 
-    if leader_name == "" {
-        // We are the leader (or not in any group)
-        let followers = get_followers(char.name);
-        let members = get_group_members(char.name);
-
-        if followers.len() == 0 {
-            send_client_message(connection_id, "You are not in a group.");
-            return;
-        }
-
-        let output = "Your group:\n";
-        output += "  " + char.name + " (Leader)\n";
-
-        for follower in followers {
-            let is_member = false;
-            for m in members {
-                if m.to_lower() == follower.to_lower() {
-                    is_member = true;
-                }
-            }
-
-            if is_member {
-                output += "  " + follower + " (Member)\n";
-            } else {
-                output += "  " + follower + " (Following)\n";
-            }
-        }
-
-        send_client_message(connection_id, output);
+    // A panel of one is not a group. `get_group_panel` always returns at least
+    // the asker, so the emptiness test is on the size, not on the array.
+    if rows.len() < 2 {
+        send_client_message(connection_id, "You are not in a group.");
         return;
     }
 
-    // We are a follower
+    let leader_name = get_group_leader(char.name);
+    if leader_name == "" { leader_name = char.name; }
+
     let output = "Group led by " + leader_name + ":\n";
-    output += "  " + leader_name + " (Leader)\n";
-
-    let followers = get_followers(leader_name);
-    let members = get_group_members(leader_name);
-
-    for follower in followers {
-        let is_member = false;
-        for m in members {
-            if m.to_lower() == follower.to_lower() {
-                is_member = true;
-            }
+    for row in rows {
+        output += render_member_row(row) + render_member_tags(row) + "\n";
+        // Role legibility: what each member is actually swinging at. This is
+        // how a party sees it has split across three mobs instead of focusing
+        // one, which no other display shows.
+        if row.fighting.len() > 0 {
+            output += "                fighting " + row.fighting.join(", ") + "\n";
         }
-
-        let status = if is_member { "(Member)" } else { "(Following)" };
-        let you_tag = if follower.to_lower() == char.name.to_lower() { " <-- You" } else { "" };
-        output += "  " + follower + " " + status + you_tag + "\n";
     }
 
     send_client_message(connection_id, output);

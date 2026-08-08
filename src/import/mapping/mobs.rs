@@ -195,14 +195,10 @@ pub(super) fn map_mob(
 
     // Numeric stats with no IronMUD equivalent. Most are silently dropped;
     // a few warn so builders know to revisit balance.
-    if mob.alignment != 0 {
-        warnings.push(Warning::new(
-            WarningKind::Info,
-            Severity::Info,
-            mob.source.clone(),
-            format!("alignment {} dropped (IronMUD has no alignment system)", mob.alignment),
-        ));
-    }
+    // CircleMUD alignment is [-1000, 1000]; IronMUD morality is [-200, 200].
+    // Divide by 5 so a stock "pure evil" mob lands on IronMUD's own pure-evil
+    // threshold rather than being clamped flat with everything below it.
+    let alignment = crate::morality::clamp(mob.alignment / 5);
     // CircleMUD SEX field: 1 → male, 2 → female, 0/other → unset.
     // Stamps a default Characteristics on the prototype with the gender
     // field set; DG `%self.heshe%`/`.sex%` reads it via resolved_gender().
@@ -258,6 +254,7 @@ pub(super) fn map_mob(
             damage_dice: mob.damage_dice.clone(),
             armor_class: mob.ac,
             gold,
+            alignment,
             flags,
             world_max_count: None,
             active_buffs,

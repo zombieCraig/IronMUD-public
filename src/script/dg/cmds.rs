@@ -423,12 +423,15 @@ fn cmd_damage(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
 }
 
 /// `award_skill_xp <target> <skill_key> <amount>` — grant XP on a custom
-/// skill to a player, leveling up at the 100-XP threshold (cap level 10).
-/// Routes through [`crate::script::dialogue::award_skill_xp`] so the
-/// cadence matches the `award_skill_xp` dialogue effect. Players only —
-/// mob targets silently no-op (mobs have no skill table). The level-up
-/// announcement (`[ Your <skill> skill increases. ]`) is sent to the
-/// player on level gain.
+/// skill to a player, on the shared `xp_for_level` curve (cap level 10).
+/// Routes through the [`crate::progress::award_xp`] facade, so a DG-granted
+/// gain now does everything every other award path does: applies the learning
+/// traits (including `linguist` / `tongue_tied` when the key names a
+/// language), reports through the player's `xpfeed` preference, keeps the
+/// live session copy coherent, and — the gap this closes — fires
+/// `skill_reached` / `skills_maxed`, so a DG script can unlock an achievement.
+///
+/// Players only; mob targets silently no-op (mobs have no skill table).
 ///
 /// This is the canonical XP-grant path for scripts. Future content
 /// (tool/kit OnUse triggers, hand-authored quest hooks) should call here
@@ -453,23 +456,22 @@ fn cmd_award_skill_xp(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
     let Some(actor) = resolve_target(&target_tok, ctx) else {
         return Ok(());
     };
-    let (connection_id, player_name) = match actor {
-        ActorRef::Player {
-            connection_id, name, ..
-        } if !name.is_empty() => (connection_id, name),
+    let player_name = match actor {
+        ActorRef::Player { name, .. } if !name.is_empty() => name,
         _ => return Ok(()),
     };
-    let Ok(Some(mut ch)) = ctx.db.get_character_data(&player_name) else {
-        return Ok(());
-    };
-    let msg = crate::script::dialogue::award_skill_xp(&mut ch, &skill_tok, amount);
-    let _ = ctx.db.save_character_data(ch);
-    if let Some(text) = msg {
-        if !connection_id.is_empty() {
-            // send_client_message appends the newline; don't add our own.
-            crate::send_client_message(&ctx.connections, connection_id, text);
-        }
-    }
+    crate::progress::award_xp(
+        &ctx.db,
+        &ctx.connections,
+        &ctx.state,
+        &player_name,
+        &skill_tok,
+        amount,
+        // Same bucket as the dialogue effect this mirrors: a one-shot,
+        // content-authored grant, so it reports where it happened rather
+        // than batching to the next prompt.
+        crate::progress::XpSource::Dialogue,
+    );
     Ok(())
 }
 
@@ -911,6 +913,11 @@ fn cmd_raise_dead(rest: &str, ctx: &EvalCtx) -> Result<(), String> {
 
     let outcome = crate::necromancy::raise_dead_from_corpse(
         &ctx.db,
+        &ctx.connections,
+        // `EvalCtx` carries no `SharedState`, so the mastery XP is awarded and
+        // reported but its `skill_reached` hook is skipped — the same gap
+        // `cmd_award_skill_xp` documents.
+        None,
         &name,
         &corpse_kw,
         crate::necromancy::RaiseParams {

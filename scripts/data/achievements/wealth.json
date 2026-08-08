@@ -1,0 +1,140 @@
+[
+  {
+    "key": "first_purse",
+    "name": "First Purse",
+    "description": "Hold 100 gold at once.",
+    "category": "wealth",
+    "criterion": {
+      "kind": "gold_held",
+      "amount": 100
+    },
+    "reward": {
+      "title": "the Thrifty"
+    }
+  },
+  {
+    "key": "comfortable",
+    "name": "Comfortable",
+    "description": "Hold 1,000 gold at once.",
+    "category": "wealth",
+    "criterion": {
+      "kind": "gold_held",
+      "amount": 1000
+    },
+    "reward": {
+      "title": "the Comfortable"
+    }
+  },
+  {
+    "key": "well_heeled",
+    "name": "Well Heeled",
+    "description": "Hold 10,000 gold at once.",
+    "category": "wealth",
+    "criterion": {
+      "kind": "gold_held",
+      "amount": 10000
+    },
+    "reward": {
+      "title": "the Well-Heeled"
+    }
+  },
+  {
+    "key": "magnate",
+    "name": "Magnate",
+    "description": "Hold 100,000 gold at once.",
+    "category": "wealth",
+    "criterion": {
+      "kind": "gold_held",
+      "amount": 100000
+    },
+    "reward": {
+      "title": "the Magnate"
+    }
+  },
+  {
+    "key": "landed",
+    "name": "Landed",
+    "description": "Take out a lease on a property.",
+    "category": "wealth",
+    "criterion": {
+      "kind": "owned_lease"
+    },
+    "reward": {
+      "title": "the Landed"
+    }
+  },
+  {
+    "key": "landlord",
+    "name": "Landlord",
+    "description": "Take out leases on three properties.",
+    "category": "wealth",
+    "criterion": {
+      "kind": "counter",
+      "counter": "leases.bought",
+      "threshold": 3
+    },
+    "reward": {
+      "title": "the Landlord"
+    }
+  },
+  {
+    "key": "property_baron",
+    "name": "Property Baron",
+    "description": "Take out leases on ten properties.",
+    "category": "wealth",
+    "criterion": {
+      "kind": "counter",
+      "counter": "leases.bought",
+      "threshold": 10
+    },
+    "reward": {
+      "title": "the Baron",
+      "gold": 5000,
+      "trait_points": 1
+    }
+  },
+  {
+    "key": "paying_customer",
+    "name": "Paying Customer",
+    "description": "Spend 1,000 gold.",
+    "category": "wealth",
+    "criterion": {
+      "kind": "counter",
+      "counter": "gold.spent",
+      "threshold": 1000
+    },
+    "reward": {
+      "title": "the Patron"
+    }
+  },
+  {
+    "key": "big_spender",
+    "name": "Big Spender",
+    "description": "Spend 50,000 gold.",
+    "category": "wealth",
+    "criterion": {
+      "kind": "counter",
+      "counter": "gold.spent",
+      "threshold": 50000
+    },
+    "reward": {
+      "title": "the Big Spender"
+    }
+  },
+  {
+    "key": "keeps_the_lights_on",
+    "name": "Keeps the Lights On",
+    "description": "Spend 250,000 gold.",
+    "category": "wealth",
+    "criterion": {
+      "kind": "counter",
+      "counter": "gold.spent",
+      "threshold": 250000
+    },
+    "reward": {
+      "title": "the Benefactor",
+      "gold": 10000,
+      "trait_points": 1
+    }
+  }
+]

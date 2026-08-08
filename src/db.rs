@@ -5,9 +5,9 @@ use std::path::Path;
 use std::sync::Arc; // Import Arc
 
 use crate::{
-    AchievementDef, ApiKey, AreaData, BoardPost, CharacterData, CustomSkillDefinition, EscrowData, ItemData,
-    ItemLocation, ItemType, LeaseData, MailMessage, MobileData, PlantInstance, PlantPrototype, PropertyTemplate,
-    Recipe, RoomData, STARTING_ROOM_ID, ShopPreset, SpawnEntityType, SpawnPointData, TransportData,
+    AchievementDef, ApiKey, AreaData, BoardPost, CharacterData, ConsignmentListing, CustomSkillDefinition, EscrowData,
+    ItemData, ItemLocation, ItemType, LeaseData, MailMessage, MobileData, PlantInstance, PlantPrototype,
+    PropertyTemplate, Recipe, RoomData, STARTING_ROOM_ID, ShopPreset, SpawnEntityType, SpawnPointData, TransportData,
 };
 use uuid::Uuid;
 
@@ -39,6 +39,7 @@ pub struct Db {
     property_templates: Arc<Tree>,
     leases: Arc<Tree>,
     escrow: Arc<Tree>,
+    consignments: Arc<Tree>,
     // API key system
     api_keys: Arc<Tree>,
     // Shop buy presets
@@ -57,6 +58,11 @@ pub struct Db {
     plant_prototypes: Arc<Tree>,
     // Bug reporting system
     bug_reports: Arc<Tree>,
+    /// World-level milestones: what the world has become, and who was carrying
+    /// it when it crossed. See src/world_milestones.rs.
+    world_milestones: Arc<Tree>,
+    /// The builder help-wanted board. See src/bounty.rs.
+    build_requests: Arc<Tree>,
     // DG Scripts global variable store (key = var name, value = string).
     // Backs `global <var>` declarations in the DG interpreter.
     dg_globals: Arc<Tree>,
@@ -151,6 +157,7 @@ impl Db {
         let property_templates = db.open_tree("property_templates")?;
         let leases = db.open_tree("leases")?;
         let escrow = db.open_tree("escrow")?;
+        let consignments = db.open_tree("consignments")?;
         let api_keys = db.open_tree("api_keys")?;
         let shop_presets = db.open_tree("shop_presets")?;
         let mail = db.open_tree("mail")?;
@@ -159,6 +166,8 @@ impl Db {
         let plants = db.open_tree("plants")?;
         let plant_prototypes = db.open_tree("plant_prototypes")?;
         let bug_reports = db.open_tree("bug_reports")?;
+        let world_milestones = db.open_tree("world_milestones")?;
+        let build_requests = db.open_tree("build_requests")?;
         let dg_globals = db.open_tree("dg_globals")?;
         let dg_trigger_protos = db.open_tree("dg_trigger_protos")?;
         let achievements = db.open_tree("achievements")?;
@@ -186,6 +195,7 @@ impl Db {
             property_templates: Arc::new(property_templates),
             leases: Arc::new(leases),
             escrow: Arc::new(escrow),
+            consignments: Arc::new(consignments),
             api_keys: Arc::new(api_keys),
             shop_presets: Arc::new(shop_presets),
             mail: Arc::new(mail),
@@ -194,6 +204,8 @@ impl Db {
             plants: Arc::new(plants),
             plant_prototypes: Arc::new(plant_prototypes),
             bug_reports: Arc::new(bug_reports),
+            world_milestones: Arc::new(world_milestones),
+            build_requests: Arc::new(build_requests),
             dg_globals: Arc::new(dg_globals),
             dg_trigger_protos: Arc::new(dg_trigger_protos),
             achievements: Arc::new(achievements),
@@ -3576,6 +3588,58 @@ impl Db {
         Ok(escrows)
     }
 
+    // === Consignment Methods ===
+
+    pub fn get_consignment(&self, id: &Uuid) -> Result<Option<ConsignmentListing>> {
+        match self.consignments.get(id.as_bytes())? {
+            Some(ivec) => Ok(Some(serde_json::from_slice(&ivec)?)),
+            None => Ok(None),
+        }
+    }
+
+    pub fn save_consignment(&self, listing: &ConsignmentListing) -> Result<()> {
+        self.consignments
+            .insert(listing.id.as_bytes(), serde_json::to_vec(listing)?)?;
+        Ok(())
+    }
+
+    pub fn delete_consignment(&self, id: &Uuid) -> Result<bool> {
+        Ok(self.consignments.remove(id.as_bytes())?.is_some())
+    }
+
+    pub fn list_all_consignments(&self) -> Result<Vec<ConsignmentListing>> {
+        let mut out = Vec::new();
+        for entry in self.consignments.iter() {
+            let (_key, value) = entry?;
+            out.push(serde_json::from_slice(&value)?);
+        }
+        Ok(out)
+    }
+
+    /// Every listing on one broker's shelf, oldest first so the shop page is
+    /// stable between two `list` calls.
+    pub fn get_consignments_by_broker(&self, broker_vnum: &str) -> Result<Vec<ConsignmentListing>> {
+        let vnum = broker_vnum.to_lowercase();
+        let mut out: Vec<ConsignmentListing> = self
+            .list_all_consignments()?
+            .into_iter()
+            .filter(|l| l.broker_vnum.to_lowercase() == vnum)
+            .collect();
+        out.sort_by_key(|l| l.listed_at);
+        Ok(out)
+    }
+
+    pub fn get_consignments_by_seller(&self, seller_name: &str) -> Result<Vec<ConsignmentListing>> {
+        let name = seller_name.to_lowercase();
+        let mut out: Vec<ConsignmentListing> = self
+            .list_all_consignments()?
+            .into_iter()
+            .filter(|l| l.seller_name.to_lowercase() == name)
+            .collect();
+        out.sort_by_key(|l| l.listed_at);
+        Ok(out)
+    }
+
     // === API Key Methods ===
 
     /// Save an API key
@@ -3972,6 +4036,115 @@ impl Db {
     }
 
     /// Store a new bug report
+    // === World milestones ===
+
+    /// Keys of every milestone the world has crossed.
+    ///
+    /// Reads the keys rather than the records on purpose: this is what decides
+    /// whether a milestone fires again, and a record that fails to deserialise
+    /// would silently drop out of [`Self::list_world_milestones`] and get
+    /// re-announced with a fresh date and a fresh contributor list. A key
+    /// cannot be defeated that way.
+    pub fn world_milestone_keys(&self) -> Result<std::collections::HashSet<String>> {
+        let mut out = std::collections::HashSet::new();
+        for entry in self.world_milestones.iter().keys() {
+            out.insert(String::from_utf8_lossy(&entry?).into_owned());
+        }
+        Ok(out)
+    }
+
+    /// Every milestone the world has crossed, oldest first.
+    pub fn list_world_milestones(&self) -> Result<Vec<crate::world_milestones::WorldMilestone>> {
+        let mut out: Vec<crate::world_milestones::WorldMilestone> = self
+            .world_milestones
+            .iter()
+            .values()
+            .filter_map(|v| v.ok())
+            .filter_map(|v| serde_json::from_slice(&v).ok())
+            .collect();
+        out.sort_by_key(|m| m.unlocked_at);
+        Ok(out)
+    }
+
+    pub fn get_world_milestone(&self, key: &str) -> Result<Option<crate::world_milestones::WorldMilestone>> {
+        match self.world_milestones.get(key.as_bytes())? {
+            Some(v) => Ok(serde_json::from_slice(&v)?),
+            None => Ok(None),
+        }
+    }
+
+    /// Insert or replace. Callers check first — a milestone is crossed once,
+    /// and re-recording it would reset both the date and the credit.
+    pub fn save_world_milestone(&self, milestone: &crate::world_milestones::WorldMilestone) -> Result<()> {
+        self.world_milestones
+            .insert(milestone.key.as_bytes(), serde_json::to_vec(milestone)?)?;
+        self.world_milestones.flush()?;
+        Ok(())
+    }
+
+    // === Build requests (the bounty board) ===
+
+    pub fn list_build_requests(&self) -> Result<Vec<crate::types::BuildRequest>> {
+        let mut out: Vec<crate::types::BuildRequest> = self
+            .build_requests
+            .iter()
+            .values()
+            .filter_map(|v| v.ok())
+            .filter_map(|v| serde_json::from_slice(&v).ok())
+            .collect();
+        out.sort_by_key(|r| r.ticket_number);
+        Ok(out)
+    }
+
+    pub fn get_build_request(&self, id: &Uuid) -> Result<Option<crate::types::BuildRequest>> {
+        match self.build_requests.get(id.as_bytes())? {
+            Some(v) => Ok(serde_json::from_slice(&v)?),
+            None => Ok(None),
+        }
+    }
+
+    pub fn get_build_request_by_ticket(&self, ticket: i64) -> Result<Option<crate::types::BuildRequest>> {
+        Ok(self
+            .list_build_requests()?
+            .into_iter()
+            .find(|r| r.ticket_number == ticket))
+    }
+
+    pub fn save_build_request(&self, request: &crate::types::BuildRequest) -> Result<()> {
+        self.build_requests
+            .insert(request.id.as_bytes(), serde_json::to_vec(request)?)?;
+        self.build_requests.flush()?;
+        Ok(())
+    }
+
+    pub fn delete_build_request(&self, id: &Uuid) -> Result<bool> {
+        let existed = self.build_requests.remove(id.as_bytes())?.is_some();
+        self.build_requests.flush()?;
+        Ok(existed)
+    }
+
+    /// Next free ticket number, the same way [`Self::next_bug_ticket_number`]
+    /// does it: a persisted counter, floored by a scan of what exists.
+    ///
+    /// The counter is what makes deletion safe — `max(existing) + 1` alone
+    /// hands out a deleted ticket's number again, and the scan is what makes a
+    /// lost or hand-edited counter safe. Neither is sufficient on its own.
+    pub fn next_build_request_ticket(&self) -> Result<i64> {
+        let current = self
+            .get_setting("build_request_ticket_counter")?
+            .and_then(|s| s.parse::<i64>().ok())
+            .unwrap_or(0);
+        let max_existing = self
+            .list_build_requests()?
+            .iter()
+            .map(|r| r.ticket_number)
+            .max()
+            .unwrap_or(0);
+        let next = std::cmp::max(current, max_existing) + 1;
+        self.set_setting("build_request_ticket_counter", &next.to_string())?;
+        Ok(next)
+    }
+
     pub fn store_bug_report(&self, report: crate::BugReport) -> Result<()> {
         let key = report.id.as_bytes();
         let value = serde_json::to_vec(&report)?;

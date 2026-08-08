@@ -47,6 +47,7 @@ Conditions are evaluated when classifying a choice for display. All conditions o
 | `quest_active` | `vnum` | Player has this quest in their active list. |
 | `quest_complete` | `vnum` | Player has completed this quest at least once. |
 | `quest_completable` | `vnum` | Quest is active AND every objective is satisfied — gate the "I'm ready to turn it in" branch. |
+| `reputation_at_least` | `faction`, `value` | Player's standing with the faction meets the threshold. 50 is Accepted, 200 Honored, 500 Revered; a faction the player has never dealt with reads 0, so any non-positive threshold passes by default. See [Factions](factions.md). |
 
 ## Effects
 
@@ -58,7 +59,10 @@ Effects fire when a choice is selected, in declared order. They also fire from n
 | `clear_flag` | `name`, `scope` | Clears a flag. |
 | `give_item` | `vnum`, `qty` | Spawns and gives. Tells the player on failure (e.g., bad vnum) but doesn't block subsequent effects. |
 | `take_item` | `vnum`, `qty` | Removes from the player's inventory. No-op message if the player doesn't have the items. |
-| `award_skill_xp` | `skill`, `amount` | 100 XP = 1 level, capped at level 10. |
+| `award_skill_xp` | `skill`, `amount` | Awards XP on the shared `xp_for_level` curve (the cost per rung rises; 100 clears level 0 but not level 3), capped at level 10. The learning traits apply. |
+| `teach_skill` | `skill`, `amount`, `cap`, `gold_cost` | A paid lesson. Charges `gold_cost`, then awards `amount` XP — but only while the player is below `cap`. At or above `cap` it refuses with a message and charges nothing, as does an insufficient purse. `cap` defaults to 1, `gold_cost` to 0. |
+| `morality` | `delta` | Shifts the alignment slider, clamped to `[-200, 200]`. A tier crossing prints the matching "feel" line; smaller nudges are silent. |
+| `reputation` | `faction`, `delta` | Shifts standing with a faction, clamped to `[-1000, 1000]`, and moves that faction's declared enemies the opposite way. Crossing a band announces itself; smaller nudges are silent. Combat can only *lower* standing, so this and the quest reward are the only ways it rises — use this when the goodwill is in the conversation itself. |
 | `set_counter` | `key`, `value` | Sets an achievement counter. |
 | `increment_counter` | `key`, `by` | Adds to a counter. |
 | `set_dg_var` | `scope` (`player`/`mob`), `key`, `value` | Writes a DG variable. Pair with `dg_var_equals` conditions or with the quest `flag` objective. |
@@ -107,6 +111,7 @@ The OLC editor lives in `medit`. The full subcommand set:
 | `quest_complete` | `<quest_vnum>` | |
 | `quest_completable` | `<quest_vnum>` | |
 | `has_achievement` | `<achievement_key>` | |
+| `reputation_at_least` | `<faction> <value>` | 50 Accepted, 200 Honored, 500 Revered. |
 
 ### Inline effect kinds (`addfx`)
 
@@ -116,7 +121,10 @@ The OLC editor lives in `medit`. The full subcommand set:
 | `clear_flag` | `<name> [local\|global]` | |
 | `give_item` | `<vnum> [qty]` | |
 | `take_item` | `<vnum> [qty]` | |
-| `award_skill_xp` | `<skill_key> <amount>` | 100 XP = 1 level (cap 10). |
+| `award_skill_xp` | `<skill_key> <amount>` | Shared XP curve, cap level 10. |
+| `teach_skill` | `<skill_key> <amount> [cap] [gold_cost]` | Paid lesson. `cap` defaults to 1, `gold_cost` to 0. |
+| `morality` | `<delta>` | Non-zero. Clamped to `[-200, 200]`. |
+| `reputation` | `<faction> <delta>` | Non-zero. Clamped to `[-1000, 1000]`. Opposed factions move too. |
 | `set_counter` | `<counter_key> <value>` | |
 | `increment_counter` | `<counter_key> [by]` | `by` defaults to 1. |
 | `offer_quest` | `<quest_vnum>` | |
@@ -249,6 +257,44 @@ A guard captain who offers a quest, gates the turn-in branch on completion of th
 The three "bandits" choices on the greeting node are mutually exclusive: the engine picks the first whose conditions pass. Order matters — the `quest_complete` line shows for finished players, the `quest_active` line for in-progress, and the unconditional one for everyone else.
 
 The `turnin` choice is gated on `quest_completable` — it's invisible until the player has actually killed five brutes and is carrying the banner. Selecting it fires `complete_quest`, which validates objectives, prints the quest's `completion` text, and grants rewards.
+
+## Worked Example — A Mentor NPC
+
+`teach_skill` turns any NPC into a trainer. The pattern is three lines of OLC:
+
+```
+medit coach tree addnode greeting The old swimmer looks you over. "Water scares you, doesn't it?"
+medit coach tree addchoice greeting lesson "Teach me to swim." goto lesson
+medit coach tree addfx greeting 0 teach_skill swimming 100 3 50
+```
+
+That is a lesson costing 50 gold and worth 100 swimming XP, offered until the
+player reaches swimming 3. Past that the choice still appears but the effect
+refuses with a line and takes no gold.
+
+Three things make this worth reaching for over `award_skill_xp`:
+
+- **The cap keeps teaching honest.** A mentor raises a skill *toward* a
+  ceiling and then has nothing left to sell, so gold can buy a foundation but
+  never mastery. Set `cap` low — the interesting levels should cost play, not
+  coin.
+- **It is a gold sink with a destination.** The player has to be standing in
+  front of a specific NPC, which gives a reason to travel and a reason to talk
+  to the population the simulation is already running.
+- **Refusals speak.** Too poor, or already taught, both produce a message.
+  A silent no-op reads as a bug.
+
+To hide the choice entirely once the player has outgrown it, gate it the
+normal way — `skill_at_least` on the condition is the inverse of what you
+want, so instead give the mentor a second node and branch on it:
+
+```
+medit coach tree addcond greeting 0 skill_at_least swimming 3
+```
+
+...on a *different* choice that says "you've learned all I can teach", listed
+before the lesson choice. The engine picks the first choice whose conditions
+pass, so ordering does the work.
 
 ## Worked Example — OLC Only
 

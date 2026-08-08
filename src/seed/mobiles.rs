@@ -12,6 +12,9 @@ use super::seed_uuid;
 /// Callers then modify only the fields they need.
 fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -> MobileData {
     MobileData {
+        authored_by: None,
+        last_edited_by: None,
+        origin: Default::default(),
         id,
         name: name.to_string(),
         short_desc: short_desc.to_string(),
@@ -61,6 +64,8 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
         shop_deny_categories: Vec::new(),
         shop_min_value: 0,
         shop_max_value: 0,
+        consignment_commission_pct: 10,
+        consignment_max_listings_per_player: 0,
         healer_type: String::new(),
         healing_free: false,
         healing_cost_multiplier: 100,
@@ -95,6 +100,7 @@ fn mobile(id: Uuid, vnum: &str, name: &str, short_desc: &str, long_desc: &str) -
         characteristics: None,
         household_id: None,
         faction: None,
+        alignment: 0,
         relationships: Vec::new(),
         resident_of: None,
         social: None,

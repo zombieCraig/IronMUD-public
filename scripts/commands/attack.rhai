@@ -3,34 +3,6 @@
 
 // === Damage-type verb helpers (use early returns to avoid Rhai complexity limits) ===
 
-fn get_hit_verb(damage_type) {
-    if damage_type == "slashing" { return "slash"; }
-    if damage_type == "piercing" { return "stab"; }
-    if damage_type == "bludgeoning" { return "crush"; }
-    if damage_type == "fire" { return "burn"; }
-    if damage_type == "cold" { return "freeze"; }
-    if damage_type == "lightning" { return "shock"; }
-    if damage_type == "poison" { return "poison"; }
-    if damage_type == "acid" { return "corrode"; }
-    if damage_type == "bite" { return "bite"; }
-    if damage_type == "ballistic" { return "shoot"; }
-    return "hit";
-}
-
-fn get_hit_verb_third(damage_type) {
-    if damage_type == "slashing" { return "slashes"; }
-    if damage_type == "piercing" { return "stabs"; }
-    if damage_type == "bludgeoning" { return "crushes"; }
-    if damage_type == "fire" { return "burns"; }
-    if damage_type == "cold" { return "freezes"; }
-    if damage_type == "lightning" { return "shocks"; }
-    if damage_type == "poison" { return "poisons"; }
-    if damage_type == "acid" { return "corrodes"; }
-    if damage_type == "bite" { return "bites"; }
-    if damage_type == "ballistic" { return "shoots"; }
-    return "hits";
-}
-
 fn get_graze_verb(damage_type) {
     if damage_type == "slashing" { return "nick"; }
     if damage_type == "piercing" { return "scratch"; }
@@ -364,17 +336,15 @@ fn execute_attack_vs_mobile(attacker, target_info, connection_id) {
 
     // Award XP for successful hit
     if !armor_result.blocked && armor_result.damage_taken > 0 {
-        let leveled = add_skill_experience(attacker.name, weapon_info.skill, 10);
-        if leveled {
-            send_client_message(connection_id, "\x1b[1;33mYour " + weapon_info.skill + " skill has improved!\x1b[0m");
-        }
+        add_skill_experience(attacker.name, weapon_info.skill, 10, "combat");
     }
 
     // Send combat messages
     send_hit_messages(attacker, mobile.name, weapon_info.name, body_part,
                       armor_result.damage_taken, combat_result,
                       armor_result.blocked, armor_result.armor_name,
-                      weapon_info.damage_type, connection_id);
+                      weapon_info.damage_type,
+                      weapon_info.dice_count * weapon_info.dice_sides, connection_id);
 
     // Check if target died
     if mobile.hp <= 0 {
@@ -533,17 +503,15 @@ fn execute_attack_vs_player(attacker, target_info, connection_id) {
 
     // Award XP for successful hit
     if !armor_result.blocked && armor_result.damage_taken > 0 {
-        let leveled = add_skill_experience(attacker.name, weapon_info.skill, 10);
-        if leveled {
-            send_client_message(connection_id, "\x1b[1;33mYour " + weapon_info.skill + " skill has improved!\x1b[0m");
-        }
+        add_skill_experience(attacker.name, weapon_info.skill, 10, "combat");
     }
 
     // Send combat messages
     send_hit_messages(attacker, target.name, weapon_info.name, body_part,
                       armor_result.damage_taken, combat_result,
                       armor_result.blocked, armor_result.armor_name,
-                      weapon_info.damage_type, connection_id);
+                      weapon_info.damage_type,
+                      weapon_info.dice_count * weapon_info.dice_sides, connection_id);
 
     // Target dropped to 0 from this swing. Route through the same
     // unconscious -> bleedout -> process_player_death flow as PvE and as
@@ -733,87 +701,22 @@ fn send_miss_messages(attacker, target_name, connection_id) {
 }
 
 // Send hit messages
-fn send_hit_messages(attacker, target_name, weapon_name, body_part, damage, combat_result, blocked, armor_name, damage_type, connection_id) {
-    let crit_text = get_crit_text(combat_result.is_crit, combat_result.crit_effect, body_part, blocked, damage_type);
+fn send_hit_messages(attacker, target_name, weapon_name, body_part, damage, combat_result, blocked, armor_name, damage_type, max_damage, connection_id) {
+    // Rendered by src/combat_text.rs so the combat tick and this command print
+    // the same sentence for the same event.
+    let crit_tag = crit_text(combat_result.is_crit, combat_result.crit_effect, body_part, blocked, damage_type);
 
     if blocked {
-        send_blocked_messages(attacker, target_name, weapon_name, body_part, armor_name, crit_text, damage_type, connection_id);
+        send_blocked_messages(attacker, target_name, weapon_name, body_part, armor_name, crit_tag, damage_type, connection_id);
         return;
     }
 
     if damage > 0 {
-        send_damage_messages(attacker, target_name, weapon_name, body_part, damage, crit_text, damage_type, connection_id);
+        send_damage_messages(attacker, target_name, weapon_name, body_part, damage, crit_tag, damage_type, max_damage, connection_id);
         return;
     }
 
     send_graze_messages(attacker, target_name, weapon_name, body_part, damage_type, connection_id);
-}
-
-fn get_crit_text(is_crit, crit_effect, body_part, blocked, damage_type) {
-    if !is_crit { return ""; }
-    if blocked { return " \x1b[1;33m[CRITICAL - Blocked!]\x1b[0m"; }
-    return get_typed_crit_text(crit_effect, body_part, damage_type);
-}
-
-fn get_crit_color(damage_type) {
-    if damage_type == "fire" { return "\x1b[1;31m"; }
-    if damage_type == "cold" { return "\x1b[1;36m"; }
-    if damage_type == "poison" { return "\x1b[1;32m"; }
-    if damage_type == "acid" { return "\x1b[1;32m"; }
-    if damage_type == "lightning" { return "\x1b[1;34m"; }
-    if damage_type == "bite" { return "\x1b[1;31m"; }
-    if damage_type == "ballistic" { return "\x1b[1;37m"; }
-    return "\x1b[1;33m";
-}
-
-fn get_typed_crit_text(effect, body_part, damage_type) {
-    let color = get_crit_color(damage_type);
-    let reset = "\x1b[0m";
-    // Slashing
-    if effect == "deep_laceration" { return " " + color + "[CRITICAL - Deep Laceration! Heavy bleeding!]" + reset; }
-    if effect == "severed_tendon" { return " " + color + "[CRITICAL - Severed Tendon! " + body_part + " disabled!]" + reset; }
-    if effect == "arterial_cut" { return " " + color + "[CRITICAL - Arterial Cut! Severe bleeding!]" + reset; }
-    // Piercing
-    if effect == "punctured_organ" { return " " + color + "[CRITICAL - Punctured Organ! Internal bleeding!]" + reset; }
-    if effect == "impaled" { return " " + color + "[CRITICAL - Impaled! Stunned and bleeding!]" + reset; }
-    if effect == "nerve_strike" { return " " + color + "[CRITICAL - Nerve Strike! Stunned!]" + reset; }
-    // Bludgeoning
-    if effect == "broken_bone" { return " " + color + "[CRITICAL - Broken Bone! " + body_part + " disabled!]" + reset; }
-    if effect == "concussion" { return " " + color + "[CRITICAL - Concussion! Stunned!]" + reset; }
-    if effect == "crushed" { return " " + color + "[CRITICAL - Crushed! Devastating blow!]" + reset; }
-    // Fire
-    if effect == "severe_burn" { return " " + color + "[CRITICAL - Severe Burn! Ongoing fire damage!]" + reset; }
-    if effect == "ignited" { return " " + color + "[CRITICAL - Ignited! Burning and stunned!]" + reset; }
-    if effect == "charred" { return " " + color + "[CRITICAL - Charred! " + body_part + " disabled!]" + reset; }
-    // Cold
-    if effect == "frozen_limb" { return " " + color + "[CRITICAL - Frozen Limb! " + body_part + " disabled!]" + reset; }
-    if effect == "hypothermic_shock" { return " " + color + "[CRITICAL - Hypothermic Shock! Stunned!]" + reset; }
-    if effect == "frostbitten" { return " " + color + "[CRITICAL - Frostbitten! Ongoing cold damage!]" + reset; }
-    // Lightning
-    if effect == "electrocuted" { return " " + color + "[CRITICAL - Electrocuted! Stunned!]" + reset; }
-    if effect == "nerve_damage" { return " " + color + "[CRITICAL - Nerve Damage! " + body_part + " disabled!]" + reset; }
-    if effect == "cardiac_shock" { return " " + color + "[CRITICAL - Cardiac Shock! Devastating jolt!]" + reset; }
-    // Poison
-    if effect == "venom_surge" { return " " + color + "[CRITICAL - Venom Surge! Ongoing poison damage!]" + reset; }
-    if effect == "toxic_shock" { return " " + color + "[CRITICAL - Toxic Shock! Stunned!]" + reset; }
-    if effect == "paralysis" { return " " + color + "[CRITICAL - Paralysis! " + body_part + " disabled!]" + reset; }
-    // Acid
-    if effect == "acid_burn" { return " " + color + "[CRITICAL - Acid Burn! Ongoing acid damage!]" + reset; }
-    if effect == "corroded_armor" { return " " + color + "[CRITICAL - Corroded! " + body_part + " disabled!]" + reset; }
-    if effect == "dissolved_flesh" { return " " + color + "[CRITICAL - Dissolved Flesh! Heavy bleeding!]" + reset; }
-    // Bite
-    if effect == "mauled" { return " " + color + "[CRITICAL - Mauled! Heavy bleeding!]" + reset; }
-    if effect == "lockjaw" { return " " + color + "[CRITICAL - Lockjaw! Clamped and stunned!]" + reset; }
-    if effect == "severed_chunk" { return " " + color + "[CRITICAL - Chunk Torn Away! " + body_part + " disabled!]" + reset; }
-    // Ballistic
-    if effect == "through_and_through" { return " " + color + "[CRITICAL - Through and Through! Heavy bleeding!]" + reset; }
-    if effect == "shrapnel" { return " " + color + "[CRITICAL - Shrapnel! " + body_part + " disabled!]" + reset; }
-    if effect == "bullet_lodged" { return " " + color + "[CRITICAL - Bullet Lodged! Stunned and bleeding!]" + reset; }
-    // Legacy/default
-    if effect == "bleeding" { return " \x1b[1;33m[CRITICAL - Bleeding!]\x1b[0m"; }
-    if effect == "stun" { return " \x1b[1;33m[CRITICAL - Stun!]\x1b[0m"; }
-    if effect == "disable" { return " \x1b[1;33m[CRITICAL - " + body_part + " Disabled!]\x1b[0m"; }
-    return " \x1b[1;33m[CRITICAL]\x1b[0m";
 }
 
 fn send_blocked_messages(attacker, target_name, weapon_name, body_part, armor_name, crit_text, damage_type, connection_id) {
@@ -828,9 +731,12 @@ fn send_blocked_messages(attacker, target_name, weapon_name, body_part, armor_na
     broadcast_to_room_awake(attacker.current_room_id, room_msg, attacker.name);
 }
 
-fn send_damage_messages(attacker, target_name, weapon_name, body_part, damage, crit_text, damage_type, connection_id) {
-    let verb = get_hit_verb(damage_type);
-    let verb_third = get_hit_verb_third(damage_type);
+fn send_damage_messages(attacker, target_name, weapon_name, body_part, damage, crit_text, damage_type, max_damage, connection_id) {
+    // Severity comes from src/combat_text.rs so the opening swing reads the
+    // same way as every subsequent round resolved by the combat tick.
+    let severity = hit_severity(damage, max_damage);
+    let verb = melee_hit_verb(damage_type, severity);
+    let verb_third = melee_hit_verb_third(damage_type, severity);
     let attacker_msg = "You " + verb + " " + target_name + "'s " + body_part + " with your " + weapon_name;
     attacker_msg += " for " + damage + " damage!" + crit_text;
     send_client_message(connection_id, attacker_msg);
@@ -882,22 +788,20 @@ fn apply_crit_effects_to_mobile(target_id, body_part, combat_result) {
 }
 
 fn apply_typed_crit_mobile(target_id, body_part, effect, value) {
-    // Stun effects
-    if is_stun_effect(effect) { apply_mobile_stun(target_id, value); return; }
-    // Bleed effects
-    if is_bleed_effect(effect) { add_mobile_wound_bleeding(target_id, body_part, value); return; }
-    // Disable effects
-    if is_disable_effect(effect) { escalate_mobile_wound_to_severe(target_id, body_part); return; }
-    // Stun+bleed combo effects
-    if is_stun_bleed_effect(effect) { apply_mobile_stun(target_id, value); add_mobile_wound_bleeding(target_id, body_part, 2); return; }
-    // Ongoing damage effects
-    if is_ongoing_effect(effect) { apply_mobile_ongoing_from_crit(target_id, body_part, effect, value); return; }
-    // Ongoing+stun combo
-    if is_ongoing_stun_effect(effect) { apply_mobile_stun(target_id, value); apply_mobile_ongoing_from_crit(target_id, body_part, effect, 3); return; }
-    // "clean" or "crushed"/"cardiac_shock" - just bonus damage, no secondary
+    let mechanic = crit_mechanic(effect);
+    if mechanic == "stun" { apply_mobile_stun(target_id, value); return; }
+    if mechanic == "bleed" { add_mobile_wound_bleeding(target_id, body_part, value); return; }
+    if mechanic == "disable" { escalate_mobile_wound_to_severe(target_id, body_part); return; }
+    if mechanic == "stun_bleed" { apply_mobile_stun(target_id, value); add_mobile_wound_bleeding(target_id, body_part, 2); return; }
+    if mechanic == "ongoing" { apply_mobile_ongoing_effect(target_id, crit_ongoing_element(effect), 3, value, body_part); return; }
+    if mechanic == "ongoing_stun" {
+        apply_mobile_stun(target_id, value);
+        apply_mobile_ongoing_effect(target_id, crit_ongoing_element(effect), 3, 3, body_part);
+        return;
+    }
+    // "clean" - bonus damage only, no secondary effect
 }
 
-// Apply typed critical effects to a player target
 fn apply_crit_effects_to_player(target_name, body_part, combat_result) {
     let effect = combat_result.crit_effect;
     let value = combat_result.crit_effect_value;
@@ -905,87 +809,18 @@ fn apply_crit_effects_to_player(target_name, body_part, combat_result) {
 }
 
 fn apply_typed_crit_player(target_name, body_part, effect, value) {
-    if is_stun_effect(effect) { apply_stun(target_name, value); return; }
-    if is_bleed_effect(effect) { add_wound_bleeding(target_name, body_part, value); return; }
-    if is_disable_effect(effect) { escalate_wound_to_severe(target_name, body_part); return; }
-    if is_stun_bleed_effect(effect) { apply_stun(target_name, value); add_wound_bleeding(target_name, body_part, 2); return; }
-    if is_ongoing_effect(effect) { apply_player_ongoing_from_crit(target_name, body_part, effect, value); return; }
-    if is_ongoing_stun_effect(effect) { apply_stun(target_name, value); apply_player_ongoing_from_crit(target_name, body_part, effect, 3); return; }
-}
-
-// Effect classification helpers (early-return pattern to avoid complexity limit)
-fn is_stun_effect(effect) {
-    if effect == "concussion" { return true; }
-    if effect == "hypothermic_shock" { return true; }
-    if effect == "electrocuted" { return true; }
-    if effect == "toxic_shock" { return true; }
-    if effect == "nerve_strike" { return true; }
-    if effect == "stun" { return true; }
-    if effect == "lockjaw" { return true; }
-    return false;
-}
-
-fn is_bleed_effect(effect) {
-    if effect == "deep_laceration" { return true; }
-    if effect == "arterial_cut" { return true; }
-    if effect == "punctured_organ" { return true; }
-    if effect == "dissolved_flesh" { return true; }
-    if effect == "bleeding" { return true; }
-    if effect == "mauled" { return true; }
-    if effect == "through_and_through" { return true; }
-    return false;
-}
-
-fn is_disable_effect(effect) {
-    if effect == "severed_tendon" { return true; }
-    if effect == "frozen_limb" { return true; }
-    if effect == "nerve_damage" { return true; }
-    if effect == "paralysis" { return true; }
-    if effect == "charred" { return true; }
-    if effect == "corroded_armor" { return true; }
-    if effect == "broken_bone" { return true; }
-    if effect == "disable" { return true; }
-    if effect == "severed_chunk" { return true; }
-    if effect == "shrapnel" { return true; }
-    return false;
-}
-
-fn is_stun_bleed_effect(effect) {
-    if effect == "impaled" { return true; }
-    if effect == "bullet_lodged" { return true; }
-    return false;
-}
-
-fn is_ongoing_effect(effect) {
-    if effect == "severe_burn" { return true; }
-    if effect == "frostbitten" { return true; }
-    if effect == "venom_surge" { return true; }
-    if effect == "acid_burn" { return true; }
-    return false;
-}
-
-fn is_ongoing_stun_effect(effect) {
-    if effect == "ignited" { return true; }
-    return false;
-}
-
-fn get_ongoing_element(effect) {
-    if effect == "severe_burn" { return "fire"; }
-    if effect == "ignited" { return "fire"; }
-    if effect == "frostbitten" { return "cold"; }
-    if effect == "venom_surge" { return "poison"; }
-    if effect == "acid_burn" { return "acid"; }
-    return "fire";
-}
-
-fn apply_mobile_ongoing_from_crit(target_id, body_part, effect, damage) {
-    let element = get_ongoing_element(effect);
-    apply_mobile_ongoing_effect(target_id, element, 3, damage, body_part);
-}
-
-fn apply_player_ongoing_from_crit(target_name, body_part, effect, damage) {
-    let element = get_ongoing_element(effect);
-    apply_ongoing_effect(target_name, element, 3, damage, body_part);
+    let mechanic = crit_mechanic(effect);
+    if mechanic == "stun" { apply_stun(target_name, value); return; }
+    if mechanic == "bleed" { add_wound_bleeding(target_name, body_part, value); return; }
+    if mechanic == "disable" { escalate_wound_to_severe(target_name, body_part); return; }
+    if mechanic == "stun_bleed" { apply_stun(target_name, value); add_wound_bleeding(target_name, body_part, 2); return; }
+    if mechanic == "ongoing" { apply_ongoing_effect(target_name, crit_ongoing_element(effect), 3, value, body_part); return; }
+    if mechanic == "ongoing_stun" {
+        apply_stun(target_name, value);
+        apply_ongoing_effect(target_name, crit_ongoing_element(effect), 3, 3, body_part);
+        return;
+    }
+    // "clean" - bonus damage only, no secondary effect
 }
 
 // God mode: instant divine smite against a mobile

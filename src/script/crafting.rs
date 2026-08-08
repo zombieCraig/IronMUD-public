@@ -1,9 +1,9 @@
 // src/script/crafting.rs
 // Crafting and cooking recipe functions
 
-use crate::SharedState;
 use crate::db::Db;
 use crate::{ItemData, ItemLocation, ItemType, Recipe, RecipeIngredient, RecipeTool, ToolLocation};
+use crate::{SharedConnections, SharedState};
 use rhai::Engine;
 use std::sync::Arc;
 
@@ -76,7 +76,7 @@ pub fn build_crafted_item_from_prototype(prototype: &ItemData, char_name: &str, 
 }
 
 /// Register crafting-related functions
-pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
+pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, state: SharedState) {
     // ========== Crafting/Cooking Recipe Functions ==========
 
     // Register Recipe type with getters
@@ -211,6 +211,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // learn_recipe(char_name, recipe_id) -> bool
     let cloned_db = db.clone();
     let cloned_state = state.clone();
+    let cloned_conns = connections.clone();
     engine.register_fn("learn_recipe", move |char_name: String, recipe_id: String| -> bool {
         // Verify recipe exists
         {
@@ -223,10 +224,181 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
         // Add to character's learned recipes
         match cloned_db.get_character_data(&char_name.to_lowercase()) {
             Ok(Some(mut char)) => {
-                char.learned_recipes.insert(recipe_id);
-                cloned_db.save_character_data(char).is_ok()
+                // Only notify on a genuinely new recipe, so re-reading a book
+                // does not re-fire the achievement hook or the counter.
+                let is_new = char.learned_recipes.insert(recipe_id.clone());
+                if !cloned_db.save_character_data(char).is_ok() {
+                    return false;
+                }
+                if is_new {
+                    crate::script::achievements::notify_event_core(
+                        &cloned_db,
+                        &cloned_conns,
+                        &cloned_state,
+                        &char_name,
+                        "recipe_learned",
+                        &recipe_id,
+                    );
+                    crate::script::achievements::notify_counter_core(
+                        &cloned_db,
+                        &cloned_conns,
+                        &cloned_state,
+                        &char_name,
+                        "recipes.learned",
+                        1,
+                    );
+                }
+                true
             }
             _ => false,
+        }
+    });
+
+    // ========== Experiment (recipe discovery) ==========
+
+    // resolve_experiment_materials(char_name, keywords) -> Map
+    //   { ok: bool, missing: String, item_ids: Array<String> }
+    //
+    // Resolves each keyword to a *distinct* inventory item, so `experiment
+    // log, log` names two logs rather than the same one twice — which the
+    // per-call `find_item_in_inventory` cannot do, and which recipes with a
+    // quantity above one need.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "resolve_experiment_materials",
+        move |char_name: String, keywords: rhai::Array| -> rhai::Map {
+            let mut out = rhai::Map::new();
+            let items = match cloned_db.get_items_in_inventory(&char_name.to_lowercase()) {
+                Ok(items) => items,
+                Err(_) => Vec::new(),
+            };
+            let mut taken: Vec<uuid::Uuid> = Vec::new();
+            let mut ids: rhai::Array = rhai::Array::new();
+
+            for kw in keywords {
+                let kw = match kw.into_string() {
+                    Ok(k) => k,
+                    Err(_) => continue,
+                };
+                let kw_lower = kw.to_lowercase();
+                let found = items.iter().find(|item| {
+                    !item.is_prototype
+                        && !taken.contains(&item.id)
+                        && crate::script::items::item_matches_keyword(&item.name, &item.keywords, &kw_lower)
+                });
+                match found {
+                    Some(item) => {
+                        taken.push(item.id);
+                        ids.push(rhai::Dynamic::from(item.id.to_string()));
+                    }
+                    None => {
+                        out.insert("ok".into(), rhai::Dynamic::from(false));
+                        out.insert("missing".into(), rhai::Dynamic::from(kw));
+                        out.insert("item_ids".into(), rhai::Dynamic::from(rhai::Array::new()));
+                        return out;
+                    }
+                }
+            }
+
+            out.insert("ok".into(), rhai::Dynamic::from(true));
+            out.insert("missing".into(), rhai::Dynamic::from(String::new()));
+            out.insert("item_ids".into(), rhai::Dynamic::from(ids));
+            out
+        },
+    );
+
+    // experiment_match(char_name, item_ids) -> Map
+    //   { kind: "exact" | "partial" | "none", recipe_id: String, missing: i64 }
+    //
+    // The matching itself lives in `crate::experiment` so it can be tested
+    // without a world: assigning items to ingredient slots needs
+    // backtracking, and that is not something to write twice or in Rhai.
+    let cloned_db = db.clone();
+    let cloned_state = state.clone();
+    engine.register_fn(
+        "experiment_match",
+        move |char_name: String, item_ids: rhai::Array| -> rhai::Map {
+            let mut out = rhai::Map::new();
+            out.insert("kind".into(), rhai::Dynamic::from("none".to_string()));
+            out.insert("recipe_id".into(), rhai::Dynamic::from(String::new()));
+            out.insert("missing".into(), rhai::Dynamic::from(0_i64));
+
+            let character = match cloned_db.get_character_data(&char_name.to_lowercase()) {
+                Ok(Some(c)) => c,
+                _ => return out,
+            };
+
+            let mut facts: Vec<crate::experiment::ItemFacts> = Vec::new();
+            for id_dyn in item_ids {
+                let id_str = match id_dyn.into_string() {
+                    Ok(s) => s,
+                    Err(_) => return out,
+                };
+                let uuid = match uuid::Uuid::parse_str(&id_str) {
+                    Ok(u) => u,
+                    Err(_) => return out,
+                };
+                match cloned_db.get_item_data(&uuid) {
+                    Ok(Some(item)) => facts.push(crate::experiment::ItemFacts {
+                        id: id_str,
+                        vnum: item.vnum.clone(),
+                        categories: item.categories.clone(),
+                    }),
+                    _ => return out,
+                }
+            }
+
+            // Copy the registry out and match outside the lock. The search is
+            // read-only, so nothing needs the lock held across it — and it is
+            // the one command path that can do real work per candidate recipe,
+            // so holding the World mutex through it would stall every other
+            // player rather than just this one.
+            let recipes = {
+                let world = cloned_state.lock().unwrap();
+                world.recipes.clone()
+            };
+            // Auto-learn recipes the player already has the skill for are
+            // known too, or an experiment would charge materials to discover
+            // something the skill ladder already granted.
+            let known = crate::experiment::effective_known(&recipes, &character.learned_recipes, &character.skills);
+            let found = crate::experiment::find_match(&recipes, &known, &facts);
+
+            match found {
+                crate::experiment::Match::Exact { recipe_id } => {
+                    out.insert("kind".into(), rhai::Dynamic::from("exact".to_string()));
+                    out.insert("recipe_id".into(), rhai::Dynamic::from(recipe_id));
+                }
+                crate::experiment::Match::Partial { recipe_id, missing } => {
+                    out.insert("kind".into(), rhai::Dynamic::from("partial".to_string()));
+                    out.insert("recipe_id".into(), rhai::Dynamic::from(recipe_id));
+                    out.insert("missing".into(), rhai::Dynamic::from(missing as i64));
+                }
+                crate::experiment::Match::None => {}
+            }
+            out
+        },
+    );
+
+    // experiment_success_chance(skill_level, recipe_id) -> i64  (percent)
+    let cloned_state = state.clone();
+    engine.register_fn(
+        "experiment_success_chance",
+        move |skill_level: i64, recipe_id: String| -> i64 {
+            let world = cloned_state.lock().unwrap();
+            match world.recipes.get(&recipe_id) {
+                Some(r) => crate::experiment::success_chance(skill_level as i32, r) as i64,
+                None => 0,
+            }
+        },
+    );
+
+    // experiment_consolation_xp(recipe_id) -> i64
+    let cloned_state = state.clone();
+    engine.register_fn("experiment_consolation_xp", move |recipe_id: String| -> i64 {
+        let world = cloned_state.lock().unwrap();
+        match world.recipes.get(&recipe_id) {
+            Some(r) => crate::experiment::consolation_xp(r) as i64,
+            None => 0,
         }
     });
 

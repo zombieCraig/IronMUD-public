@@ -203,6 +203,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             };
             let prefs = AccountPreferences {
                 prompt_mode: character.prompt_mode.clone(),
+                prompt_format: character.prompt_format.clone(),
                 colors_enabled: snap.colors_enabled,
                 mxp_enabled: snap.mxp_enabled,
                 abbrev_enabled: snap.abbrev_enabled,
@@ -256,6 +257,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             };
             let d = &account.character_defaults;
             character.prompt_mode = d.prompt_mode.clone();
+            character.prompt_format = d.prompt_format.clone();
             character.helpline_enabled = d.helpline_enabled;
             character.summonable = d.summonable;
             character.automap_enabled = d.automap_enabled;
@@ -318,7 +320,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             if !d.is_set {
                 return "(no defaults saved — run `set defaults save` to capture this character's preferences)".to_string();
             }
-            let prompt_label = if d.prompt_mode.is_empty() {
+            // A stored custom format is what the alt will actually get, so
+            // show that rather than the preset it overrides.
+            let prompt_label = if !d.prompt_format.is_empty() {
+                d.prompt_format.as_str()
+            } else if d.prompt_mode.is_empty() {
                 "default"
             } else {
                 d.prompt_mode.as_str()

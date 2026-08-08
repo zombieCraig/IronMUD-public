@@ -12,6 +12,9 @@ use crate::types::{
 /// Helper to create a room with common defaults filled in
 fn room(id: Uuid, area_id: Uuid, vnum: &str, title: &str, description: &str) -> RoomData {
     RoomData {
+        authored_by: None,
+        last_edited_by: None,
+        origin: Default::default(),
         id,
         title: title.to_string(),
         description: description.to_string(),
@@ -71,6 +74,9 @@ fn seed_oakvale(db: &Db) -> Result<usize> {
 
     // --- Town Square ---
     let square = RoomData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
         id: square_id,
         title: "Town Square".to_string(),
         description: "You stand in the heart of Oakvale Village. Cobblestones worn smooth by countless travelers spread out beneath your feet. A weathered stone fountain burbles in the center, surrounded by timber-framed buildings with flower boxes in the windows. Merchant stalls line the eastern edge, and the comforting smell of fresh bread drifts from somewhere nearby.".to_string(),

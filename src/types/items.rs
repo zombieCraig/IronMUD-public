@@ -5,6 +5,7 @@
 //! its default-effects table), gold-pile description helpers, and the
 //! `ItemData` aggregate that ties them together.
 
+use super::provenance::ContentOrigin;
 use super::{
     BodyPart, DamageType, EffectType, ExtraDesc, ItemAffect, ItemEffect, ItemTrigger, OnHitEffect, WeaponSkill,
     WearLocation,
@@ -601,6 +602,11 @@ pub struct ItemFlags {
     pub corpse_gold: i64, // Gold carried by the corpse
     #[serde(default)]
     pub corpse_source_vnum: Option<String>, // Source mob prototype vnum (for animate_dead). None on player/legacy corpses.
+    /// Highest decay-warning threshold already sent to this corpse's owner, as
+    /// a percentage of the decay window. Lives on the item rather than in the
+    /// tick so a restart does not re-send every warning the owner already had.
+    #[serde(default)]
+    pub corpse_warned_pct: i32,
     #[serde(default)]
     pub broken: bool, // Broken arrows/bolts cannot be used as ammo
     // Gardening system flags
@@ -947,6 +953,17 @@ pub struct ItemData {
     /// implements RED's one-speedware rule generically.
     #[serde(default)]
     pub cyber_exclusive_tag: String,
+
+    // === Provenance (see src/types/provenance.rs) ===
+    /// Builder who first created this. `None` = unclaimed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authored_by: Option<String>,
+    /// Builder who last changed it. An edit never reassigns `authored_by`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_edited_by: Option<String>,
+    /// Where this content came from. Only `Builder` counts toward a score.
+    #[serde(default)]
+    pub origin: ContentOrigin,
 }
 
 fn default_vending_sell_rate() -> i32 {
@@ -956,6 +973,9 @@ fn default_vending_sell_rate() -> i32 {
 impl ItemData {
     pub fn new(name: String, short_desc: String, long_desc: String) -> Self {
         ItemData {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             id: Uuid::new_v4(),
             name,
             short_desc,
@@ -1129,3 +1149,5 @@ impl ItemData {
         }
     }
 }
+
+crate::impl_authored!(ItemData);

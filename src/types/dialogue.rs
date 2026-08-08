@@ -135,6 +135,18 @@ pub enum DialogueCondition {
         key: String,
         value: String,
     },
+    /// True when the player's standing with `faction` is at least `value`.
+    ///
+    /// A faction the player has never dealt with reads 0, so the natural gate
+    /// for "prove yourself to us first" is any positive threshold, and a
+    /// negative one gates on *not* having wronged them. Compare raw standing
+    /// rather than tier names so a builder can gate mid-band; the tier
+    /// constants in `crate::reputation` are the values to reach for
+    /// (`ACCEPTED_FLOOR` = 50).
+    ReputationAtLeast {
+        faction: String,
+        value: i32,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -221,6 +233,57 @@ pub enum DialogueEffect {
         #[serde(default = "default_qty_one")]
         points: i32,
     },
+    /// Pay an NPC mentor for a lesson: charge `gold_cost`, then award `amount`
+    /// skill XP — but only while the player is below `cap`.
+    ///
+    /// `cap` is what keeps teaching from replacing play. A mentor raises a
+    /// skill *toward* a ceiling and then has nothing left to offer, so gold
+    /// can buy a foundation but never mastery. At or above `cap` the effect
+    /// no-ops with a line and charges nothing.
+    ///
+    /// Unlike `AwardSkillXp` this is a transaction, so it fails loudly:
+    /// too poor, or already taught, both produce a message rather than
+    /// silence. Gold is taken first and only on a lesson that will land.
+    /// Shift the player's morality slider by `delta`, clamped into
+    /// `[-200, 200]`. Crossing a tier boundary announces itself; sub-tier
+    /// nudges are silent, so a tree can nudge freely without spamming.
+    ///
+    /// The conversational counterpart to `QuestReward::Morality`: use it when
+    /// the moral weight is in the choice itself — informing on a friend,
+    /// sparing a prisoner — rather than in completing a quest.
+    Morality {
+        delta: i32,
+    },
+    /// Shift the player's standing with `faction` by `delta`, clamped into
+    /// `[-1000, 1000]`, and propagate the opposite way to that faction's
+    /// declared enemies. Crossing a band announces itself; moves inside one
+    /// are silent.
+    ///
+    /// Combat can only *lower* standing, so this and `QuestReward::Reputation`
+    /// are the two ways it rises. Use this when the goodwill is in the
+    /// conversation itself — carrying a message, naming an informant — and the
+    /// quest reward when it is in finishing the job.
+    Reputation {
+        faction: String,
+        delta: i32,
+    },
+    TeachSkill {
+        skill: String,
+        amount: i32,
+        /// Highest skill level this mentor will teach to. Defaults to the
+        /// first rung: a mentor who names no ceiling is an introduction, not
+        /// a career.
+        #[serde(default = "default_teach_cap")]
+        cap: i32,
+        /// Tuition. Zero is legal — a free lesson is a fine quest reward.
+        #[serde(default)]
+        gold_cost: i32,
+    },
+}
+
+/// A mentor with no declared ceiling teaches to level 1 and no further.
+fn default_teach_cap() -> i32 {
+    1
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]

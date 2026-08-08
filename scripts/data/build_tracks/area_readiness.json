@@ -1,0 +1,68 @@
+{
+  "key": "area_readiness",
+  "name": "Area Readiness",
+  "description": "Is this area finished? Every step is something a player would notice the absence of.",
+  "scope": "area",
+  "steps": [
+    {
+      "key": "rooms",
+      "label": "Twenty rooms",
+      "predicate": { "kind": "count", "of": "room", "min": 20 },
+      "hint": "`dig <dir> <title>` builds outward from where you stand."
+    },
+    {
+      "key": "no_holes",
+      "label": "No exits into the void",
+      "predicate": { "kind": "no_finding", "code": "room.dangling_exit" },
+      "hint": "`build audit area` names them."
+    },
+    {
+      "key": "no_orphans",
+      "label": "Every room reachable",
+      "predicate": { "kind": "no_finding", "code": "area.orphan_rooms" },
+      "hint": "A room nobody can walk to is a room nobody sees. `link` connects it."
+    },
+    {
+      "key": "described",
+      "label": "Every room described",
+      "predicate": { "kind": "no_finding", "code": "room.no_desc" },
+      "hint": "`redit desc` opens the editor."
+    },
+    {
+      "key": "populated",
+      "label": "Five mobile prototypes",
+      "predicate": { "kind": "count", "of": "mobile", "min": 5 },
+      "hint": "`medit create <name>` claims a new one for you."
+    },
+    {
+      "key": "furnished",
+      "label": "Ten item prototypes",
+      "predicate": { "kind": "count", "of": "item", "min": 10 },
+      "hint": "`oedit create <name>`."
+    },
+    {
+      "key": "spawns",
+      "label": "Things actually appear",
+      "predicate": { "kind": "no_finding", "code": "area.no_spawn_points" },
+      "hint": "Prototypes without spawn points never enter the world. `spedit`."
+    },
+    {
+      "key": "quest",
+      "label": "A reason to come here",
+      "predicate": { "kind": "count", "of": "quest", "min": 1 },
+      "hint": "`quedit create <vnum> <name>`, then hang it on a mobile with `medit ... dialogue`."
+    },
+    {
+      "key": "level_range",
+      "label": "A level range set",
+      "predicate": { "kind": "no_finding", "code": "area.no_level_range" },
+      "hint": "`aedit levels <min> <max>` — nothing else tells players who this is for."
+    },
+    {
+      "key": "graded_rooms",
+      "label": "Eight rooms in ten grade C or better",
+      "predicate": { "kind": "grade_ratio", "of": "room", "min_letter": "C", "ratio": 0.8 },
+      "hint": "`build audit area` lists the worst first."
+    }
+  ]
+}

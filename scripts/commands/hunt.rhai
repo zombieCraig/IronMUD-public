@@ -89,8 +89,5 @@ fn run_command(args, connection_id) {
         }
     }
 
-    let leveled = add_skill_experience(char.name, "tracking", 5);
-    if leveled {
-        send_client_message(connection_id, "Your tracking skill has improved!");
-    }
+    add_skill_experience(char.name, "tracking", 5, "gather");
 }

@@ -42,8 +42,9 @@ use aedit::complete_aedit;
 use bpredit::complete_bpredit;
 use medit::complete_medit;
 use misc::{
-    complete_bank, complete_bugs, complete_escrow, complete_mail, complete_motd, complete_pedit, complete_press,
-    complete_property, complete_set,
+    complete_bank, complete_bounty, complete_bugs, complete_build, complete_consignments, complete_escrow,
+    complete_locate, complete_mail, complete_motd, complete_pedit, complete_press, complete_prompt, complete_property,
+    complete_set, complete_standing, complete_top, complete_world,
 };
 use oedit::complete_oedit;
 use plantedit::complete_plantedit;
@@ -76,6 +77,7 @@ pub fn complete(
     race_ids: &[String],
     achievement_keys: &[String],
     custom_skill_keys: &[String],
+    faction_keys: &[String],
     is_builder: bool,
 ) -> CompletionResult {
     // Get the portion of input up to cursor
@@ -321,6 +323,38 @@ pub fn complete(
                     if command.to_lowercase() == "escrow" {
                         return complete_escrow(&words, completing_word);
                     }
+                    // Handle prompt command
+                    if command.to_lowercase() == "prompt" {
+                        return complete_prompt(&words, completing_word);
+                    }
+                    // Handle top command
+                    if command.to_lowercase() == "top" {
+                        return complete_top(&words, completing_word);
+                    }
+                    // Handle build command
+                    if command.to_lowercase() == "build" {
+                        return complete_build(&words, completing_word);
+                    }
+                    // Handle world command
+                    if command.to_lowercase() == "world" {
+                        return complete_world(&words, completing_word);
+                    }
+                    // Handle bounty command
+                    if command.to_lowercase() == "bounty" {
+                        return complete_bounty(&words, completing_word);
+                    }
+                    // Handle standing command
+                    if command.to_lowercase() == "standing" {
+                        return complete_standing(&words, completing_word, faction_keys);
+                    }
+                    // Handle consignments command
+                    if command.to_lowercase() == "consignments" {
+                        return complete_consignments(&words, completing_word);
+                    }
+                    // Handle locate command
+                    if command.to_lowercase() == "locate" {
+                        return complete_locate(&words, completing_word);
+                    }
                     // Handle motd command
                     if command.to_lowercase() == "motd" {
                         return complete_motd(&words, completing_word);
@@ -378,6 +412,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert_eq!(result.completions.len(), 3);
@@ -401,6 +436,7 @@ mod tests {
             11,
             &commands,
             &room_vnums,
+            &[],
             &[],
             &[],
             &[],
@@ -459,6 +495,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert_eq!(result.completions.len(), 2);
@@ -471,6 +508,7 @@ mod tests {
             "go nor",
             6,
             &commands,
+            &[],
             &[],
             &[],
             &[],
@@ -523,6 +561,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"trigger".to_string()));
@@ -542,6 +581,7 @@ mod tests {
             &[],
             &[],
             &mobile_vnums,
+            &[],
             &[],
             &[],
             &[],
@@ -589,6 +629,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"greet".to_string()));
@@ -608,6 +649,7 @@ mod tests {
             &[],
             &[],
             &mobile_vnums,
+            &[],
             &[],
             &[],
             &[],
@@ -656,6 +698,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"type".to_string()));
@@ -674,6 +717,7 @@ mod tests {
             &commands,
             &[],
             &item_vnums,
+            &[],
             &[],
             &[],
             &[],
@@ -722,6 +766,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"add".to_string()));
@@ -755,6 +800,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"get".to_string()));
@@ -770,6 +816,7 @@ mod tests {
             "redit tr",
             8,
             &commands,
+            &[],
             &[],
             &[],
             &[],
@@ -819,6 +866,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"dark".to_string()));
@@ -834,6 +882,7 @@ mod tests {
             "redit extra li",
             14,
             &commands,
+            &[],
             &[],
             &[],
             &[],
@@ -883,6 +932,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"add".to_string()));
@@ -898,6 +948,7 @@ mod tests {
             "redit trigger add en",
             20,
             &commands,
+            &[],
             &[],
             &[],
             &[],
@@ -948,6 +999,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"permission".to_string()));
@@ -968,6 +1020,7 @@ mod tests {
             &[],
             &[],
             &area_prefixes,
+            &[],
             &[],
             &[],
             &[],
@@ -1013,6 +1066,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"create".to_string()));
@@ -1028,6 +1082,7 @@ mod tests {
             "spedit list mo",
             14,
             &commands,
+            &[],
             &[],
             &[],
             &[],
@@ -1078,6 +1133,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"town:plaza".to_string()));
@@ -1095,6 +1151,7 @@ mod tests {
             27,
             &commands,
             &room_vnums,
+            &[],
             &[],
             &[],
             &[],
@@ -1145,6 +1202,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"town:guard".to_string()));
@@ -1179,6 +1237,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"town:sword".to_string()));
@@ -1194,6 +1253,7 @@ mod tests {
             "spedit delete mo",
             16,
             &commands,
+            &[],
             &[],
             &[],
             &[],
@@ -1243,6 +1303,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"all".to_string())); // filter
@@ -1275,6 +1336,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"add".to_string()));
@@ -1290,6 +1352,7 @@ mod tests {
             "set ",
             4,
             &commands,
+            &[],
             &[],
             &[],
             &[],
@@ -1342,6 +1405,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             true,
         );
         assert!(result.completions.contains(&"mxp".to_string()));
@@ -1360,6 +1424,7 @@ mod tests {
             "set m",
             5,
             &commands,
+            &[],
             &[],
             &[],
             &[],
@@ -1410,6 +1475,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"on".to_string()));
@@ -1426,6 +1492,7 @@ mod tests {
             "set mxp o",
             9,
             &commands,
+            &[],
             &[],
             &[],
             &[],
@@ -1477,6 +1544,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"self".to_string()));
@@ -1507,6 +1575,7 @@ mod tests {
             &[],
             &[],
             &online_players,
+            &[],
             &[],
             &[],
             &[],
@@ -1546,6 +1615,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"head".to_string()));
@@ -1577,6 +1647,7 @@ mod tests {
             &[],
             &[],
             &online_players,
+            &[],
             &[],
             &[],
             &[],
@@ -1619,6 +1690,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"heat_exhaustion".to_string()));
@@ -1654,6 +1726,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"town:guard".to_string()));
@@ -1671,6 +1744,7 @@ mod tests {
             &commands,
             &[],
             &item_vnums,
+            &[],
             &[],
             &[],
             &[],
@@ -1718,6 +1792,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"smith:longsword".to_string()));
@@ -1750,6 +1825,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"list".to_string()));
@@ -1770,6 +1846,7 @@ mod tests {
             &[],
             &[],
             &area_prefixes,
+            &[],
             &[],
             &[],
             &[],
@@ -1824,6 +1901,7 @@ mod tests {
             &[],
             &achievement_keys,
             &[],
+            &[],
             true,
         );
         assert!(result.completions.contains(&"create".to_string()));
@@ -1865,6 +1943,7 @@ mod tests {
             &[],
             &achievement_keys,
             &[],
+            &[],
             true,
         );
         assert!(result.completions.contains(&"first_blood".to_string()));
@@ -1894,6 +1973,7 @@ mod tests {
             &[],
             &[],
             &online_players,
+            &[],
             &[],
             &[],
             &[],
@@ -1932,6 +2012,7 @@ mod tests {
             &[],
             &[],
             &[],
+            &[],
             false,
         );
         assert!(result.completions.contains(&"send".to_string()));
@@ -1955,6 +2036,7 @@ mod tests {
             &[],
             &[],
             &online_players,
+            &[],
             &[],
             &[],
             &[],

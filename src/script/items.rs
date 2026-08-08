@@ -60,9 +60,186 @@ pub(crate) fn item_matches_keyword(name: &str, keywords: &[String], kw_lower: &s
     false
 }
 
+/// Would `char_name` still be within their carry limit holding `item`?
+///
+/// A free function rather than only a Rhai binding because the consignment
+/// market moves items straight into an inventory from Rust — `buy` and
+/// `unconsign` both do — and those two must not be the way around a limit
+/// every other acquisition respects.
+pub fn can_carry(db: &Db, char_name: &str, item: &ItemData) -> bool {
+    let Ok(Some(char)) = db.get_character_data(&char_name.to_lowercase()) else {
+        return false;
+    };
+    let max_carry = 50 + (char.stat_str as i64 * 10);
+    let current_weight = calculate_total_carry_weight(db, char_name);
+
+    // A container weighs what it holds, too.
+    let mut item_weight = item.weight as i64;
+    if item.item_type == ItemType::Container {
+        item_weight += calculate_container_contents_weight(db, item);
+    }
+
+    current_weight + item_weight <= max_carry
+}
+
 /// Register item-related functions
-pub fn register(engine: &mut Engine, db: Arc<Db>) {
+pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConnections) {
     // ========== Item System Functions ==========
+
+    // find_own_corpses(char_name) -> Array of Maps
+    //
+    // Fields per corpse: room ("The Old Bridge"), area ("Riverwatch", "" when
+    // the room has none), remaining_secs (until it rots, -1 when unknown).
+    //
+    // Deliberately reports the *location*, never a route. A path would turn the
+    // corpse run into a formality, and the run is the drama the whole death
+    // rework is buying — knowing where it is and having to get there is the
+    // point.
+    {
+        let cloned_db = db.clone();
+        let conns_for_prune = connections.clone();
+        engine.register_fn("find_own_corpses", move |char_name: String| -> rhai::Array {
+            let decay: i64 = cloned_db
+                .get_setting_or_default("player_corpse_decay_secs", "3600")
+                .ok()
+                .and_then(|s| s.parse::<i64>().ok())
+                .unwrap_or(3600)
+                .max(60);
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
+
+            // Read from the character's own `corpse_ids` rather than scanning
+            // the item tree. `locate` has no cost and no cooldown, and
+            // `list_all_items` is the heaviest read the server performs — one
+            // player leaning on the key would have deserialized every item in
+            // the world, repeatedly, for a two-line answer.
+            let Ok(Some(owner)) = cloned_db.get_character_data(&char_name.to_lowercase()) else {
+                return rhai::Array::new();
+            };
+            let corpses: Vec<crate::types::ItemData> = owner
+                .corpse_ids
+                .iter()
+                .filter_map(|id| cloned_db.get_item_data(id).ok().flatten())
+                .filter(|i| i.flags.is_corpse && i.flags.corpse_is_player)
+                .collect();
+
+            // Prune ids that no longer resolve — a corpse that rotted while the
+            // owner was offline, or one an admin purged. Done on read so no
+            // other path has to remember, and only written when something
+            // actually went stale.
+            // Through `apply_to_character`, not `update_character`: the caller
+            // is by definition online, and a DB-only write to an online player
+            // is reverted by the next session flush.
+            if corpses.len() != owner.corpse_ids.len() {
+                let live: Vec<uuid::Uuid> = corpses.iter().map(|c| c.id).collect();
+                crate::script::achievements::apply_to_character(&cloned_db, &conns_for_prune, &char_name, |c| {
+                    let before = c.corpse_ids.len();
+                    c.corpse_ids.retain(|id| live.contains(id));
+                    c.corpse_ids.len() != before
+                });
+            }
+
+            corpses
+                .into_iter()
+                .filter_map(|corpse| {
+                    let crate::types::ItemLocation::Room(room_id) = corpse.location else {
+                        // A corpse someone has already dragged into a container
+                        // or an inventory is not somewhere a divination can
+                        // point to. Better silent than wrong.
+                        return None;
+                    };
+                    let room = cloned_db.get_room_data(&room_id).ok().flatten();
+                    let area = room
+                        .as_ref()
+                        .and_then(|r| r.area_id)
+                        .and_then(|aid| cloned_db.get_area_data(&aid).ok().flatten())
+                        .map(|a| a.name)
+                        .unwrap_or_default();
+                    let mut m = rhai::Map::new();
+                    m.insert(
+                        "room".into(),
+                        rhai::Dynamic::from(
+                            room.map(|r| r.title)
+                                .unwrap_or_else(|| "somewhere unmapped".to_string()),
+                        ),
+                    );
+                    m.insert("area".into(), rhai::Dynamic::from(area));
+                    let remaining = decay - (now - corpse.flags.corpse_created_at);
+                    m.insert("remaining_secs".into(), rhai::Dynamic::from(remaining.max(0)));
+                    Some(rhai::Dynamic::from(m))
+                })
+                .collect()
+        });
+    }
+
+    // corpse_loot_block_reason(char_name, item_id) -> String
+    //
+    // Empty when the character may open this container; otherwise the sentence
+    // to print instead. One binding rather than a bool so the rule *and* its
+    // wording live in Rust — a refusal that does not say how long is left
+    // teaches nothing, and four scripts inventing four phrasings is how a rule
+    // becomes four rules.
+    //
+    // This is the single chokepoint for corpse loot protection. Every path that
+    // reaches into a container someone else's death filled must ask here:
+    // `get <item> from <corpse>`, `get all from`, `look in`, `put ... in`.
+    //
+    // Only *player* corpses are ever protected. A mob corpse belongs to whoever
+    // walks up to it, exactly as before.
+    {
+        let cloned_db = db.clone();
+        let conns = connections.clone();
+        engine.register_fn(
+            "corpse_loot_block_reason",
+            move |char_name: String, item_id: String| -> String {
+                let uuid = match uuid::Uuid::parse_str(&item_id) {
+                    Ok(u) => u,
+                    Err(_) => return String::new(),
+                };
+                let item = match cloned_db.get_item_data(&uuid) {
+                    Ok(Some(i)) => i,
+                    // A container we cannot read is not ours to refuse; the
+                    // caller's own "you don't see that" handling is correct.
+                    _ => return String::new(),
+                };
+                if !item.flags.is_corpse || !item.flags.corpse_is_player {
+                    return String::new();
+                }
+
+                let window = cloned_db
+                    .get_setting_or_default(
+                        "player_corpse_loot_protect_secs",
+                        &crate::corpse::DEFAULT_LOOT_PROTECT_SECS.to_string(),
+                    )
+                    .ok()
+                    .and_then(|s| s.parse::<i64>().ok())
+                    .unwrap_or(crate::corpse::DEFAULT_LOOT_PROTECT_SECS);
+
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0);
+                let age = now - item.flags.corpse_created_at;
+                if !crate::corpse::is_loot_protected(age, window) {
+                    return String::new();
+                }
+
+                let owner = &item.flags.corpse_owner;
+                if owner.eq_ignore_ascii_case(&char_name) {
+                    return String::new();
+                }
+                // The owner's group can carry the body home for them, which is
+                // the whole reason the window is worth having rather than a
+                // flat "owner only".
+                if crate::group::in_same_party(&conns, &char_name, owner) {
+                    return String::new();
+                }
+                crate::corpse::loot_protected_line(owner, window - age)
+            },
+        );
+    }
 
     // Register ItemFlags type with getters/setters
     engine.register_type_with_name::<ItemFlags>("ItemFlags");
@@ -4022,31 +4199,13 @@ pub fn register(engine: &mut Engine, db: Arc<Db>) {
     // Check if picking up the item would cause overload
     let cloned_db = db.clone();
     engine.register_fn("can_carry_item", move |char_name: String, item_id: String| -> bool {
-        let char = match cloned_db.get_character_data(&char_name.to_lowercase()) {
-            Ok(Some(c)) => c,
-            _ => return false,
+        let Ok(item_uuid) = uuid::Uuid::parse_str(&item_id) else {
+            return false;
         };
-
-        let item_uuid = match uuid::Uuid::parse_str(&item_id) {
-            Ok(u) => u,
-            Err(_) => return false,
+        let Ok(Some(item)) = cloned_db.get_item_data(&item_uuid) else {
+            return false;
         };
-
-        let item = match cloned_db.get_item_data(&item_uuid) {
-            Ok(Some(i)) => i,
-            _ => return false,
-        };
-
-        let max_carry = 50 + (char.stat_str as i64 * 10);
-        let current_weight = calculate_total_carry_weight(&cloned_db, &char_name);
-
-        // Calculate item weight (including contents if container)
-        let mut item_weight = item.weight as i64;
-        if item.item_type == ItemType::Container {
-            item_weight += calculate_container_contents_weight(&cloned_db, &item);
-        }
-
-        current_weight + item_weight <= max_carry
+        can_carry(&cloned_db, &char_name, &item)
     });
 
     // get_encumbrance_movement_penalty(char_name) -> i64
@@ -4270,7 +4429,7 @@ fn set_item_cast_on_use_impl(
 }
 
 // Helper function to calculate container contents weight
-fn calculate_container_contents_weight(db: &Arc<Db>, container: &ItemData) -> i64 {
+fn calculate_container_contents_weight(db: &Db, container: &ItemData) -> i64 {
     let mut weight: i64 = 0;
     for item_id in &container.container_contents {
         if let Ok(Some(item)) = db.get_item_data(item_id) {
@@ -4285,7 +4444,7 @@ fn calculate_container_contents_weight(db: &Arc<Db>, container: &ItemData) -> i6
 }
 
 // Helper function to calculate total carry weight for a character
-fn calculate_total_carry_weight(db: &Arc<Db>, char_name: &str) -> i64 {
+fn calculate_total_carry_weight(db: &Db, char_name: &str) -> i64 {
     let mut total_weight: i64 = 0;
 
     // Get inventory items

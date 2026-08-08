@@ -84,6 +84,15 @@ fn run_command(args, connection_id) {
         return;
     }
 
+    // Butchering destroys the corpse, so it has to respect loot protection or
+    // it becomes the way around it. `get_material_type` falls through to
+    // "humanoid", which means a player's body is a valid target here.
+    let blocked = corpse_loot_block_reason(char.name, corpse_id);
+    if blocked != "" {
+        send_client_message(connection_id, blocked);
+        return;
+    }
+
     // Check if already skinned
     if get_item_flag(corpse_id, "is_skinned") {
         send_client_message(connection_id, "This corpse has already been butchered.");
@@ -159,8 +168,5 @@ fn run_command(args, connection_id) {
         }
     }
 
-    let leveled = add_skill_experience(char.name, "tracking", 8);
-    if leveled {
-        send_client_message(connection_id, "Your tracking skill has improved!");
-    }
+    add_skill_experience(char.name, "tracking", 8, "gather");
 }

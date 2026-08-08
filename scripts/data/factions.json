@@ -1,0 +1,57 @@
+[
+  {
+    "key": "town_watch",
+    "name": "The Town Watch",
+    "description": "Underpaid, over-extended, and the only thing standing between the settled roads and everything that walks them.",
+    "opposed": ["bandits", "undead"],
+    "opposition_ratio": 50,
+    "hostile_at": -200,
+    "price_swing": 20
+  },
+  {
+    "key": "bandits",
+    "name": "The Roadmen",
+    "description": "Not an organisation so much as an understanding between everyone who works the passes.",
+    "opposed": ["town_watch", "merchants"],
+    "opposition_ratio": 50,
+    "hostile_at": -100,
+    "price_swing": 25
+  },
+  {
+    "key": "merchants",
+    "name": "The Merchant Concord",
+    "description": "They keep two ledgers: one for goods, and one for who has cost them goods.",
+    "opposed": ["bandits"],
+    "opposition_ratio": 50,
+    "hostile_at": -400,
+    "price_swing": 30
+  },
+  {
+    "key": "camarilla",
+    "name": "The Camarilla",
+    "description": "The Masquerade holds because they hold it. They notice who else has been noticing.",
+    "opposed": ["vampire_hunters"],
+    "opposition_ratio": 50,
+    "hostile_at": -300,
+    "price_swing": 20
+  },
+  {
+    "key": "vampire_hunters",
+    "name": "The Vigil",
+    "description": "They keep lists. Being on one is not the same as being hunted, but it is the first half of it.",
+    "opposed": ["camarilla"],
+    "opposition_ratio": 50,
+    "hostile_at": -300,
+    "price_swing": 15
+  },
+  {
+    "key": "undead",
+    "name": "The Restless",
+    "description": "Whatever it is that keeps them walking, it is not interested in negotiating.",
+    "opposed": ["town_watch"],
+    "opposition_ratio": 50,
+    "hostile_at": -200,
+    "always_hostile": true,
+    "price_swing": 0
+  }
+]

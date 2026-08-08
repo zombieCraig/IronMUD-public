@@ -1,12 +1,12 @@
 // src/script/mobiles.rs
 // Mobile/NPC system functions
 
-use crate::SharedState;
 use crate::db::Db;
 use crate::{
     ActivityState, CreatureType, DamageType, EffectType, MobileData, MobileFlags, RememberedEnemy, RoutineEntry,
     find_active_entry,
 };
+use crate::{SharedConnections, SharedState};
 use rhai::Engine;
 
 use crate::script::items::{on_hit_effect_to_map, parse_on_hit_array};
@@ -135,7 +135,7 @@ mod memory_tests {
 }
 
 /// Register mobile-related functions
-pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
+pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, state: SharedState) {
     // ========== Mobile/NPC System ==========
 
     // Register MobileFlags type with getters/setters
@@ -178,7 +178,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
         holy_vulnerable,
         aggro_good,
         aggro_evil,
-        aggro_neutral
+        aggro_neutral,
+        consignment
     );
 
     // Register MobileData type
@@ -215,6 +216,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
         armor_class,
         hit_modifier,
         gold,
+        alignment,
         stat_str,
         stat_dex,
         stat_con,
@@ -226,6 +228,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
         healing_cost_multiplier,
         shop_min_value,
         shop_max_value,
+        consignment_commission_pct,
+        consignment_max_listings_per_player,
         perception
     );
 
@@ -642,6 +646,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
     // is responsible for relaying `message` to the caster and broadcasting
     // `room_message` to the room.
     let cloned_db = db.clone();
+    let cloned_conns = connections.clone();
+    let cloned_state = state.clone();
     engine.register_fn(
         "raise_dead_from_corpse",
         move |char_name: String,
@@ -652,6 +658,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
               -> rhai::Dynamic {
             let outcome = crate::necromancy::raise_dead_from_corpse(
                 &cloned_db,
+                &cloned_conns,
+                Some(&cloned_state),
                 &char_name,
                 &corpse_keyword,
                 crate::necromancy::RaiseParams {
@@ -857,6 +865,20 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
         false
     });
 
+    // set_mobile_alignment(mobile_id, alignment) -> bool. Clamped to the
+    // morality range so a mob's moral weight can never exceed a player's own
+    // scale — the kill-credit maths reads both against the same bounds.
+    let cloned_db = db.clone();
+    engine.register_fn("set_mobile_alignment", move |mobile_id: String, alignment: i64| {
+        if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
+            if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
+                mobile.alignment = crate::morality::clamp(alignment.clamp(i32::MIN as i64, i32::MAX as i64) as i32);
+                return cloned_db.save_mobile_data(mobile).is_ok();
+            }
+        }
+        false
+    });
+
     // set_mobile_hit_modifier(mobile_id, hit_modifier) -> bool. Clamped.
     let cloned_db = db.clone();
     engine.register_fn(
@@ -1022,6 +1044,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
                         "aggro_good" | "aggrgood" => mobile.flags.aggro_good = value,
                         "aggro_evil" | "aggrevil" => mobile.flags.aggro_evil = value,
                         "aggro_neutral" | "aggrneutral" => mobile.flags.aggro_neutral = value,
+                        "consignment" | "broker" => mobile.flags.consignment = value,
                         "tameable" => mobile.flags.tameable = value,
                         _ => return false,
                     }
@@ -1108,12 +1131,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, state: SharedState) {
         },
     );
 
-    // set_mobile_faction(mobile_id, value) -> bool. Empty string clears to None.
+    // set_mobile_faction(mobile_id, value) -> bool. Empty/blank clears to None.
+    //
+    // Normalised to lowercase on the way in: the tag is now a lookup key into
+    // the faction registry and each player's reputation map, both of which are
+    // lowercase, so storing "Iron_Guard" here would work by accident rather
+    // than by construction.
     let cloned_db = db.clone();
     engine.register_fn("set_mobile_faction", move |mobile_id: String, value: String| -> bool {
         if let Ok(uuid) = uuid::Uuid::parse_str(&mobile_id) {
             if let Ok(Some(mut mobile)) = cloned_db.get_mobile_data(&uuid) {
-                mobile.faction = if value.is_empty() { None } else { Some(value) };
+                mobile.faction = crate::reputation::normalize(Some(&value));
                 return cloned_db.save_mobile_data(mobile).is_ok();
             }
         }

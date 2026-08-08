@@ -134,7 +134,8 @@ fn run_command(args, connection_id) {
     // Award XP
     let xp = target_proto.base_xp * items_given;
     if xp < 1 { xp = 1; }
-    let leveled_up = add_skill_experience(char.name, "gardening", xp);
+    let leveled_up = add_skill_experience(char.name, "gardening", xp, "gather");
+    notify_achievement_counter(char.name, "plants.harvested", 1);
     let updated_char = get_character_data(char.name);
     if updated_char != () {
         set_player_character(connection_id, updated_char);
@@ -151,13 +152,13 @@ fn run_command(args, connection_id) {
         count_msg = "" + items_given + "x ";
     }
 
-    send_client_message(connection_id, "You harvest " + count_msg + harvest_item_name + " from the " + target_proto.name + "!" + transition_msg + " (+" + xp + " Gardening XP)");
+    send_client_message(connection_id, "You harvest " + count_msg + harvest_item_name + " from the " + target_proto.name + "!" + transition_msg + "");
     broadcast_to_room(char.current_room_id, char.name + " harvests from a " + target_proto.name + ".", char.name);
 
     if leveled_up {
-        let new_level = get_skill_level(char.name, "gardening");
-        let level_msg = get_level_up_message(new_level);
-        send_client_message(connection_id, "\n*** Your Gardening skill increased to level " + new_level + "! ***");
+        // Banner comes from the progress chokepoint; this is the
+        // per-skill flavour line, which is unique to this skill.
+        let level_msg = get_level_up_message(get_skill_level(char.name, "gardening"));
         if level_msg != "" {
             send_client_message(connection_id, level_msg);
         }

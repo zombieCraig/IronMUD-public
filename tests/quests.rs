@@ -27,6 +27,10 @@ fn empty_connections() -> SharedConnections {
 
 fn make_state(db: &Db, connections: &SharedConnections) -> ironmud::SharedState {
     Arc::new(Mutex::new(ironmud::World {
+        build_tracks: Vec::new(),
+        world_report: Default::default(),
+        build_scores: Default::default(),
+        audit_ctx: Default::default(),
         engine: rhai::Engine::new(),
         db: db.clone(),
         connections: connections.clone(),
@@ -39,6 +43,7 @@ fn make_state(db: &Db, connections: &SharedConnections) -> ironmud::SharedState 
         race_definitions: HashMap::new(),
         mutation_definitions: HashMap::new(),
         language_definitions: HashMap::new(),
+        faction_definitions: HashMap::new(),
         recipes: HashMap::new(),
         spell_definitions: HashMap::new(),
         achievement_definitions: HashMap::new(),
@@ -50,6 +55,7 @@ fn make_state(db: &Db, connections: &SharedConnections) -> ironmud::SharedState 
         shutdown_cancel_sender: None,
         ip_limiter: Arc::new(ironmud::ratelimit::IpRateLimiter::new()),
         command_throttle: Arc::new(ironmud::throttle::CommandThrottle::new()),
+        leaderboards: ironmud::leaderboard::Leaderboards::default(),
     }))
 }
 
@@ -132,15 +138,15 @@ fn quest_kill_listener_increments_progress() {
 
         let conns = empty_connections();
         let state = make_state(&db, &conns);
-        ironmud::quest::handle_mob_kill(&db, &conns, &state, "bob", "179", &HashMap::new());
-        ironmud::quest::handle_mob_kill(&db, &conns, &state, "bob", "179", &HashMap::new());
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, &["bob".to_string()], "179");
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, &["bob".to_string()], "179");
 
         let ch = db.get_character_data("bob").unwrap().unwrap();
         let progress = ch.active_quests.get("qst:2").expect("active");
         assert_eq!(progress.kill_progress.get("179").copied(), Some(2));
 
         // Third kill auto-completes (only objective is kill).
-        ironmud::quest::handle_mob_kill(&db, &conns, &state, "bob", "179", &HashMap::new());
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, &["bob".to_string()], "179");
         let ch = db.get_character_data("bob").unwrap().unwrap();
         assert!(!ch.active_quests.contains_key("qst:2"));
         assert!(ch.completed_quests.contains("qst:2"));
@@ -244,7 +250,7 @@ fn quest_completion_grants_skill_xp() {
         ironmud::quest::offer(&db, "eve", "qst:5");
         let conns = empty_connections();
         let state = make_state(&db, &conns);
-        ironmud::quest::handle_mob_kill(&db, &conns, &state, "eve", "200", &HashMap::new());
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, &["eve".to_string()], "200");
 
         let ch = db.get_character_data("eve").unwrap().unwrap();
         assert!(ch.completed_quests.contains("qst:5"));
@@ -269,7 +275,7 @@ fn quest_repeatable_can_re_accept_after_completion() {
         ironmud::quest::offer(&db, "frank", "qst:6");
         let conns = empty_connections();
         let state = make_state(&db, &conns);
-        ironmud::quest::handle_mob_kill(&db, &conns, &state, "frank", "300", &HashMap::new());
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, &["frank".to_string()], "300");
         let ch = db.get_character_data("frank").unwrap().unwrap();
         assert!(ch.completed_quests.contains("qst:6"));
         assert!(!ch.active_quests.contains_key("qst:6"));
@@ -295,7 +301,7 @@ fn quest_non_repeatable_refuses_re_accept() {
         ironmud::quest::offer(&db, "gina", "qst:7");
         let conns = empty_connections();
         let state = make_state(&db, &conns);
-        ironmud::quest::handle_mob_kill(&db, &conns, &state, "gina", "400", &HashMap::new());
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, &["gina".to_string()], "400");
         let err = ironmud::quest::offer(&db, "gina", "qst:7");
         assert!(err.contains("already completed"));
     }));
@@ -318,8 +324,8 @@ fn quest_abandon_drops_progress() {
         // Make some progress, then abandon.
         let conns = empty_connections();
         let state = make_state(&db, &conns);
-        ironmud::quest::handle_mob_kill(&db, &conns, &state, "henry", "500", &HashMap::new());
-        ironmud::quest::handle_mob_kill(&db, &conns, &state, "henry", "500", &HashMap::new());
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, &["henry".to_string()], "500");
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, &["henry".to_string()], "500");
         let ch = db.get_character_data("henry").unwrap().unwrap();
         assert_eq!(
             ch.active_quests.get("qst:8").unwrap().kill_progress.get("500").copied(),
@@ -379,7 +385,11 @@ fn quest_party_credit_advances_all_damagers() {
         damaged_by.insert("alice".to_string(), 30);
         damaged_by.insert("bob".to_string(), 20);
 
-        ironmud::quest::handle_mob_kill(&db, &conns, &state, "bob", "hydra", &damaged_by);
+        // The recipient set is now resolved by `group::kill_credit` and handed
+        // to the listener, rather than derived inside it — so the fan-out this
+        // test covers runs through the seam the combat tick uses.
+        let credit = ironmud::group::kill_credit(&conns, &damaged_by, "bob", &uuid::Uuid::nil());
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, &credit.participants, "hydra");
 
         let alice = db.get_character_data("alice").unwrap().unwrap();
         let bob = db.get_character_data("bob").unwrap().unwrap();
@@ -564,6 +574,61 @@ fn quest_offer_blocked_by_achievement_set_prereq() {
     result.unwrap();
 }
 
+/// Item 13: reputation_prereq gates `offer` on faction standing, and on the
+/// offer cue so a questgiver the player cannot yet satisfy doesn't advertise.
+#[test]
+fn quest_offer_blocked_by_reputation_prereq() {
+    let (db, _temp) = fresh_db("offer_reputation");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut q = make_quest("qst:trusted", "A Word In Private");
+        q.giver_mob_vnum = Some("mob:sergeant".into());
+        q.reputation_prereq = Some(ironmud::types::ReputationPrereq {
+            faction: "iron_guard".into(),
+            min_value: ironmud::reputation::ACCEPTED_FLOOR,
+        });
+        q.objectives.push(QuestObjective::KillMob {
+            vnum: "deserter".into(),
+            count: 1,
+        });
+        db.save_quest_data(&q).expect("save");
+        save_character(&db, "courier");
+
+        // A faction you have never dealt with reads 0, so the gate holds.
+        let err = ironmud::quest::offer(&db, "courier", "qst:trusted");
+        assert!(err.contains("don't trust you"), "got: {}", err);
+        assert!(
+            ironmud::quest::describe_quest_offers(&db, "courier", "mob:sergeant").is_none(),
+            "a quest the player cannot accept must not advertise itself"
+        );
+
+        // Just short of the threshold: still refused.
+        let mut ch = db.get_character_data("courier").unwrap().unwrap();
+        ch.reputation
+            .insert("iron_guard".into(), ironmud::reputation::ACCEPTED_FLOOR - 1);
+        db.save_character_data(ch).unwrap();
+        assert!(ironmud::quest::offer(&db, "courier", "qst:trusted").contains("don't trust you"));
+
+        // At the floor: the gate opens, and so does the cue.
+        let mut ch = db.get_character_data("courier").unwrap().unwrap();
+        ch.reputation
+            .insert("iron_guard".into(), ironmud::reputation::ACCEPTED_FLOOR);
+        db.save_character_data(ch).unwrap();
+        assert_eq!(
+            ironmud::quest::describe_quest_offers(&db, "courier", "mob:sergeant").as_deref(),
+            Some("(has a quest for you)")
+        );
+        assert_eq!(ironmud::quest::offer(&db, "courier", "qst:trusted"), "");
+        assert!(
+            db.get_character_data("courier")
+                .unwrap()
+                .unwrap()
+                .active_quests
+                .contains_key("qst:trusted")
+        );
+    }));
+    result.unwrap();
+}
+
 /// §4.E.5: KillAnyMob accumulates a shared counter across the listed vnums
 /// and auto-completes a kill-only quest when the threshold is met.
 #[test]
@@ -583,8 +648,8 @@ fn quest_kill_any_mob_objective_accumulates_and_completes() {
         let state = make_state(&db, &conns);
         // Two kills across different vnums in the set both credit the shared
         // counter.
-        ironmud::quest::handle_mob_kill(&db, &conns, &state, "deputy", "hunter_a", &HashMap::new());
-        ironmud::quest::handle_mob_kill(&db, &conns, &state, "deputy", "hunter_c", &HashMap::new());
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, &["deputy".to_string()], "hunter_a");
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, &["deputy".to_string()], "hunter_c");
 
         let ch = db.get_character_data("deputy").unwrap().unwrap();
         let progress = ch.active_quests.get("qst:bounty").expect("active");
@@ -596,13 +661,13 @@ fn quest_kill_any_mob_objective_accumulates_and_completes() {
         );
 
         // A kill of a vnum NOT in the set is ignored.
-        ironmud::quest::handle_mob_kill(&db, &conns, &state, "deputy", "innocent", &HashMap::new());
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, &["deputy".to_string()], "innocent");
         let ch = db.get_character_data("deputy").unwrap().unwrap();
         let progress = ch.active_quests.get("qst:bounty").unwrap();
         assert_eq!(progress.kill_any_progress.get(&key).copied(), Some(2));
 
         // Third in-set kill hits the threshold and auto-completes.
-        ironmud::quest::handle_mob_kill(&db, &conns, &state, "deputy", "hunter_b", &HashMap::new());
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, &["deputy".to_string()], "hunter_b");
         let ch = db.get_character_data("deputy").unwrap().unwrap();
         assert!(!ch.active_quests.contains_key("qst:bounty"));
         assert!(ch.completed_quests.contains("qst:bounty"));
@@ -774,7 +839,7 @@ fn quest_complete_grants_achievement_reward_via_try_complete() {
         }
 
         // Listener path advances + auto-completes (kill-only quest).
-        ironmud::quest::handle_mob_kill(&db, &conns, &state, "hero", "9001", &HashMap::new());
+        ironmud::quest::handle_mob_kill(&db, &conns, &state, &["hero".to_string()], "9001");
 
         let ch = db.get_character_data("hero").unwrap().unwrap();
         assert!(ch.completed_quests.contains("qst:50"));

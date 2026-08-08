@@ -208,7 +208,7 @@ fn run_command(args, connection_id) {
     let xp_gained = (base_xp * rarity_mult * skill_diminish) / 100;
     if xp_gained < 1 { xp_gained = 1; }
 
-    let leveled_up = add_skill_experience(char.name, "foraging", xp_gained);
+    let leveled_up = add_skill_experience(char.name, "foraging", xp_gained, "gather");
 
     // Refresh session with updated character data (including new skills)
     let updated_char = get_character_data(char.name);
@@ -222,13 +222,13 @@ fn run_command(args, connection_id) {
     if forage_rarity == "rare" { rarity_prefix = "an excellent "; }
     if forage_rarity == "legendary" { rarity_prefix = "an incredible "; }
 
-    send_client_message(connection_id, "You found " + rarity_prefix + found_item.name + "! (+" + xp_gained + " Foraging XP)");
+    send_client_message(connection_id, "You found " + rarity_prefix + found_item.name + "!");
     broadcast_to_room(char.current_room_id, char.name + " finds something interesting!", char.name);
 
     if leveled_up {
-        let new_level = get_skill_level(char.name, "foraging");
-        let level_msg = get_level_up_message(new_level);
-        send_client_message(connection_id, "\n*** Your Foraging skill increased to level " + new_level + "! ***");
+        // Banner comes from the progress chokepoint; this is the
+        // per-skill flavour line, which is unique to this skill.
+        let level_msg = get_level_up_message(get_skill_level(char.name, "foraging"));
         if level_msg != "" {
             send_client_message(connection_id, level_msg);
         }

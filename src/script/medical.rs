@@ -228,6 +228,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
         },
     );
 
+    // `get_xp_feed` / `set_xp_feed` used to be registered here. They are
+    // progression settings, not medical ones — they now live in
+    // `src/script/characters.rs` beside `award_xp`, which is the code they
+    // actually govern.
+
     // is_new_editor_enabled(connection_id) -> bool
     let conns = connections.clone();
     engine.register_fn("is_new_editor_enabled", move |connection_id: String| -> bool {

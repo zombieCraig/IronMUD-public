@@ -595,10 +595,7 @@ fn run_command(args, connection_id) {
     // Swimming XP from water traversal
     if is_shallow || is_deep || is_underwater {
         let swim_xp = if is_underwater { 15 } else if is_deep { 10 } else { 5 };
-        let leveled = add_skill_experience(char.name, "swimming", swim_xp);
-        if leveled {
-            send_client_message(connection_id, "\x1b[1;33mYour swimming skill has improved!\x1b[0m");
-        }
+        add_skill_experience(char.name, "swimming", swim_xp, "movement");
     }
 
     // Underwater entry warning

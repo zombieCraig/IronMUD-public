@@ -91,7 +91,7 @@ fn run_command(args, connection_id) {
             heard = garble_language(heard, language_key, effective);
             // Listener gains a bit of XP if they have at least token exposure.
             if listener_skill >= 1 {
-                add_skill_experience(listener_name, language_key, 1);
+                add_skill_experience(listener_name, language_key, 1, "language");
             }
         }
         let ear_penalty = get_ear_wound_penalty(listener_name);
@@ -106,7 +106,7 @@ fn run_command(args, connection_id) {
 
     // Speaker XP gain: only on non-lingua-franca and below cap.
     if !is_lingua_franca(language_key) {
-        add_skill_experience(char.name, language_key, 1);
+        add_skill_experience(char.name, language_key, 1, "language");
     }
 
     // Check dialogue trees first (overlay; falls through to flat dialogue map on miss)

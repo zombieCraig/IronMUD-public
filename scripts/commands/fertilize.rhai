@@ -79,17 +79,12 @@ fn run_command(args, connection_id) {
 
     // Award XP
     let xp = 3;
-    let leveled_up = add_skill_experience(char.name, "gardening", xp);
+    add_skill_experience(char.name, "gardening", xp, "gather");
     let updated_char = get_character_data(char.name);
     if updated_char != () {
         set_player_character(connection_id, updated_char);
     }
 
-    send_client_message(connection_id, "You apply " + fertilizer.name + " to the " + target_proto.name + ". Growth will be boosted for " + fertilizer.fertilizer_duration + " game hours. (+" + xp + " Gardening XP)");
+    send_client_message(connection_id, "You apply " + fertilizer.name + " to the " + target_proto.name + ". Growth will be boosted for " + fertilizer.fertilizer_duration + " game hours.");
     broadcast_to_room(char.current_room_id, char.name + " fertilizes a " + target_proto.name + ".", char.name);
-
-    if leveled_up {
-        let new_level = get_skill_level(char.name, "gardening");
-        send_client_message(connection_id, "\n*** Your Gardening skill increased to level " + new_level + "! ***");
-    }
 }

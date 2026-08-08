@@ -1,6 +1,7 @@
 //! Quest system types: prototypes, objectives, rewards, and per-player
 //! active progress.
 
+use super::provenance::ContentOrigin;
 use super::serde_defaults::default_qty_one;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -53,6 +54,46 @@ pub struct QuestData {
     /// ordering, only a threshold.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub achievement_set_prereq: Option<AchievementSetPrereq>,
+    /// Faction standing gate: the quest is only offerable once the player's
+    /// reputation with `faction` reaches `min_value`.
+    ///
+    /// A faction the player has never dealt with reads 0, so a positive
+    /// threshold is "prove yourself to us first" and a negative one is "we
+    /// will not deal with someone who has wronged us this badly". This is the
+    /// gate that lets a faction have a quest line at all rather than a single
+    /// tier of errands.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reputation_prereq: Option<ReputationPrereq>,
+
+    // === Provenance (see src/types/provenance.rs) ===
+    /// Builder who first created this. `None` = unclaimed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub authored_by: Option<String>,
+    /// Builder who last changed it. An edit never reassigns `authored_by`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_edited_by: Option<String>,
+    /// Where this content came from. Only `Builder` counts toward a score.
+    #[serde(default)]
+    pub origin: ContentOrigin,
+}
+
+/// Faction standing gate on a quest. See `QuestData.reputation_prereq`.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ReputationPrereq {
+    #[serde(default)]
+    pub faction: String,
+    #[serde(default)]
+    pub min_value: i32,
+}
+
+impl ReputationPrereq {
+    /// Is this gate satisfied? An empty `faction` is treated as no gate.
+    pub fn is_satisfied(&self, reputation: &HashMap<String, i32>) -> bool {
+        if self.faction.trim().is_empty() {
+            return true;
+        }
+        crate::reputation::standing(reputation, &self.faction) >= self.min_value
+    }
 }
 
 /// Set-count achievement gate. The quest is offerable when at least
@@ -87,6 +128,9 @@ impl AchievementSetPrereq {
 impl QuestData {
     pub fn new(vnum: String, name: String) -> Self {
         Self {
+            authored_by: None,
+            last_edited_by: None,
+            origin: Default::default(),
             vnum,
             name,
             keywords: Vec::new(),
@@ -101,6 +145,7 @@ impl QuestData {
             min_player_skill_total: None,
             duration_secs: None,
             achievement_set_prereq: None,
+            reputation_prereq: None,
         }
     }
 }
@@ -161,6 +206,26 @@ pub enum QuestReward {
     },
     LearnRecipe {
         recipe_id: String,
+    },
+    /// Shift the player's morality slider. Positive pushes toward Good,
+    /// negative toward Evil; the result is clamped into `[-200, 200]`. A
+    /// tier crossing announces itself, sub-tier nudges are silent.
+    ///
+    /// The narrative counterpart to kill credit: a quest whose resolution is
+    /// a moral choice should move the slider by its ending, not by what the
+    /// player killed getting there.
+    Morality {
+        delta: i32,
+    },
+    /// Shift the player's standing with `faction`, propagating the opposite
+    /// way to that faction's declared enemies. Clamped into `[-1000, 1000]`.
+    ///
+    /// Combat can only lower standing, so this and
+    /// `DialogueEffect::Reputation` are the two ways it rises. Use this when
+    /// the goodwill is in finishing the job.
+    Reputation {
+        faction: String,
+        delta: i32,
     },
     /// Grants the named clan to a thinblood vampire. Adds the matching
     /// `clan_<name>` trait, seeds 1 dot of the clan's first registered
@@ -229,3 +294,5 @@ pub struct ActiveQuest {
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub choice_vars: HashMap<String, String>,
 }
+
+crate::impl_authored!(QuestData);

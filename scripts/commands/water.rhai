@@ -106,7 +106,7 @@ fn run_command(args, connection_id) {
 
     // Award small XP
     let xp = 2;
-    let leveled_up = add_skill_experience(char.name, "gardening", xp);
+    add_skill_experience(char.name, "gardening", xp, "gather");
     let updated_char = get_character_data(char.name);
     if updated_char != () {
         set_player_character(connection_id, updated_char);
@@ -116,13 +116,8 @@ fn run_command(args, connection_id) {
     let tool_msg = " with " + source.name;
     let effect_msg = build_effect_message(liquid_type, effect);
 
-    send_client_message(connection_id, "You water the " + target_proto.name + tool_msg + ". (+" + xp + " Gardening XP)" + effect_msg);
+    send_client_message(connection_id, "You water the " + target_proto.name + tool_msg + "." + effect_msg);
     broadcast_to_room(char.current_room_id, char.name + " waters a " + target_proto.name + ".", char.name);
-
-    if leveled_up {
-        let new_level = get_skill_level(char.name, "gardening");
-        send_client_message(connection_id, "\n*** Your Gardening skill increased to level " + new_level + "! ***");
-    }
 }
 
 fn find_target_plant(plants, keyword) {

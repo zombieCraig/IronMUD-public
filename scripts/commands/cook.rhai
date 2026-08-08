@@ -2,6 +2,8 @@
 // cook <recipe_name> - Prepare food using the cooking skill
 // Requires: Known recipe, required skill level, ingredients, tools
 
+import "crafting" as craftlib;
+
 fn get_level_up_message(level) {
     if level == 1 { return "You learn the basics of food preparation."; }
     if level == 2 { return "Your cooking technique improves."; }
@@ -114,34 +116,6 @@ fn get_items_to_consume(result, found, quantity) {
     return [false, result.item_ids];
 }
 
-fn get_tool_name(tool) {
-    if tool.vnum != () { return tool.vnum; }
-    if tool.category != () { return tool.category; }
-    return "unknown";
-}
-
-fn get_location_hint(tool) {
-    if tool.location == "Room" { return " (in room)"; }
-    if tool.location == "Inventory" { return " (in inventory)"; }
-    return "";
-}
-
-fn get_missing_tools_message(recipe, char_name, room_id) {
-    let missing = [];
-    for tool in recipe.tools {
-        let found = find_tool(char_name, room_id, tool);
-        if found == () {
-            let name = get_tool_name(tool);
-            let hint = get_location_hint(tool);
-            missing.push(name + hint);
-        }
-    }
-    if missing.len() > 0 {
-        return "Missing tools: " + missing.join(", ");
-    }
-    return "";
-}
-
 fn run_command(args, connection_id) {
     let char = get_player_character(connection_id);
     if char == () {
@@ -246,38 +220,22 @@ fn run_command(args, connection_id) {
         }
     }
 
-    // Check tools
-    let tool_ids = [];
-    let total_tool_quality = 0;
-    let tool_count = 0;
-
-    for tool in recipe.tools {
-        let found = find_tool(char.name, char.current_room_id, tool);
-        if found == () {
-            let missing_msg = get_missing_tools_message(recipe, char.name, char.current_room_id);
-            send_client_message(connection_id, "You don't have the required tools.");
-            send_client_message(connection_id, missing_msg);
-            return;
-        }
-        tool_ids.push(found);
-        let quality = get_item_quality(found);
-        total_tool_quality += quality;
-        tool_count += 1;
+    // Check tools. Locating them and averaging their condition is shared
+    // with `cook` and `experiment` (scripts/lib/crafting.rhai).
+    let tools = craftlib::gather_tools(recipe, char.name, char.current_room_id);
+    if !tools.ok {
+        send_client_message(connection_id, "You don't have the required tools.");
+        send_client_message(connection_id, tools.message);
+        return;
     }
 
-    // Calculate average qualities
     let avg_ingredient_quality = 50; // Default if no ingredients
     if ingredient_count > 0 {
         avg_ingredient_quality = total_ingredient_quality / ingredient_count;
     }
 
-    let avg_tool_quality = 50; // Default if no tools
-    if tool_count > 0 {
-        avg_tool_quality = total_tool_quality / tool_count;
-    }
-
     // Calculate quality tier
-    let quality_tier = calculate_craft_quality(skill_level, avg_tool_quality, avg_ingredient_quality, recipe.difficulty);
+    let quality_tier = calculate_craft_quality(skill_level, tools.avg_quality, avg_ingredient_quality, recipe.difficulty);
 
     // Consume regular ingredients (items are deleted)
     if all_ingredient_ids.len() > 0 {
@@ -298,13 +256,7 @@ fn run_command(args, connection_id) {
     }
 
     // Spawn the cooked item(s)
-    let items_created = [];
-    for i in 0..recipe.output_quantity {
-        let item = spawn_crafted_item(recipe.output_vnum, char.name, quality_tier);
-        if item != () {
-            items_created.push(item);
-        }
-    }
+    let items_created = craftlib::spawn_outputs(recipe, char.name, quality_tier);
 
     if items_created.len() == 0 {
         send_client_message(connection_id, "Failed to create the food. The prototype '" + recipe.output_vnum + "' may not exist.");
@@ -334,7 +286,8 @@ fn run_command(args, connection_id) {
         xp_gained = 1; // Minimum 1 XP if recipe has any base XP
     }
 
-    let leveled_up = add_skill_experience(char.name, "cooking", xp_gained);
+    let leveled_up = add_skill_experience(char.name, "cooking", xp_gained, "craft");
+    notify_achievement_counter(char.name, "meals.cooked", 1);
 
     // Refresh session with updated character data (including new skills)
     let updated_char = get_character_data(char.name);
@@ -342,13 +295,12 @@ fn run_command(args, connection_id) {
         set_player_character(connection_id, updated_char);
     }
 
-    send_client_message(connection_id, "You gain " + xp_gained + " cooking experience.");
-
+    // See craft.rhai: the progression feed owns the XP number now, and it is
+    // the post-trait one.
     if leveled_up {
-        let new_level = get_skill_level(char.name, "cooking");
-        let level_msg = get_level_up_message(new_level);
-        send_client_message(connection_id, "\n*** LEVEL UP! ***");
-        send_client_message(connection_id, "Your cooking skill is now level " + new_level + "!");
+        // Banner comes from the progress chokepoint; this is the
+        // per-skill flavour line, which is unique to this skill.
+        let level_msg = get_level_up_message(get_skill_level(char.name, "cooking"));
         if level_msg != "" {
             send_client_message(connection_id, level_msg);
         }

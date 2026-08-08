@@ -33,6 +33,7 @@ fn make_def_counter(key: &str, name: &str, counter: &str, threshold: u32, title:
             item_vnum: None,
             gold: None,
             morality_delta: 0,
+            trait_points: 0,
         },
         hidden: false,
         source: AchievementSource::Json {
@@ -56,6 +57,7 @@ fn make_def_skill(key: &str, name: &str, skill: &str, level: i32, title: &str) -
             item_vnum: None,
             gold: None,
             morality_delta: 0,
+            trait_points: 0,
         },
         hidden: false,
         source: AchievementSource::Json {
@@ -76,6 +78,7 @@ fn make_def_manual(key: &str, name: &str, title: &str) -> AchievementDef {
             item_vnum: None,
             gold: None,
             morality_delta: 0,
+            trait_points: 0,
         },
         hidden: false,
         source: AchievementSource::Db {
@@ -100,6 +103,10 @@ fn build_state(db: Db, defs: Vec<AchievementDef>) -> (SharedState, SharedConnect
 
     let connections: SharedConnections = Arc::new(Mutex::new(HashMap::new()));
     let world = World {
+        build_tracks: Vec::new(),
+        world_report: Default::default(),
+        build_scores: Default::default(),
+        audit_ctx: Default::default(),
         engine: Engine::new(),
         db,
         connections: connections.clone(),
@@ -112,6 +119,7 @@ fn build_state(db: Db, defs: Vec<AchievementDef>) -> (SharedState, SharedConnect
         race_definitions: HashMap::new(),
         mutation_definitions: HashMap::new(),
         language_definitions: HashMap::new(),
+        faction_definitions: HashMap::new(),
         recipes: HashMap::new(),
         spell_definitions: HashMap::new(),
         achievement_definitions,
@@ -123,6 +131,7 @@ fn build_state(db: Db, defs: Vec<AchievementDef>) -> (SharedState, SharedConnect
         shutdown_cancel_sender: None,
         ip_limiter: Arc::new(ironmud::ratelimit::IpRateLimiter::new()),
         command_throttle: Arc::new(ironmud::throttle::CommandThrottle::new()),
+        leaderboards: ironmud::leaderboard::Leaderboards::default(),
     };
     (Arc::new(Mutex::new(world)), connections)
 }
@@ -487,7 +496,20 @@ fn test_item_reward_delivered_to_inventory() {
 fn test_seed_json_files_parse() {
     use std::fs;
 
-    for filename in ["combat.json", "skill.json"] {
+    // Every JSON file in the directory, so a new seed file cannot ship
+    // unparsed. Listing them by name is what let the empty exploration
+    // category sit unnoticed.
+    let mut filenames: Vec<String> = fs::read_dir("scripts/data/achievements")
+        .expect("read achievements dir")
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.ends_with(".json"))
+        .collect();
+    filenames.sort();
+    assert!(filenames.len() >= 5, "expected seed files, found {:?}", filenames);
+
+    let mut seen_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for filename in filenames {
         let path = format!("scripts/data/achievements/{}", filename);
         let content = fs::read_to_string(&path).expect(&format!("read {}", path));
         let parsed: Vec<AchievementDef> =
@@ -501,6 +523,520 @@ fn test_seed_json_files_parse() {
                 "achievement {} must have a title reward (slice 1 contract)",
                 def.key
             );
+            assert!(
+                seen_keys.insert(def.key.to_lowercase()),
+                "duplicate achievement key {} — the loader keys by name, so one would shadow the other",
+                def.key
+            );
         }
     }
+}
+
+#[test]
+fn test_distinct_sets_count_breadth_not_repetition() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(temp.path()).expect("open DB");
+        db.save_character_data(make_character("mimic")).expect("save");
+
+        let (state, connections) = build_state(
+            db.clone(),
+            vec![
+                make_def_counter("first_words", "First Words", "socials.distinct", 2, "the Expressive"),
+                make_def_counter("introductions", "Introductions", "npcs.talked_to", 2, "the Introduced"),
+            ],
+        );
+
+        // The whole point of a set: spamming one verb must not advance it.
+        for _ in 0..10 {
+            script::achievements::notify_social_used_core(&db, &connections, &state, "mimic", "smile");
+        }
+        let ch = db.get_character_data("mimic").expect("load").expect("present");
+        assert_eq!(ch.achievement_counters.get("socials.distinct"), Some(&1));
+        assert!(ch.achievements_unlocked.is_empty(), "one verb is not two");
+
+        // Case folds, so `SMILE` is the same verb.
+        assert!(!script::achievements::notify_social_used_core(
+            &db,
+            &connections,
+            &state,
+            "mimic",
+            "SMILE"
+        ));
+
+        assert!(script::achievements::notify_social_used_core(
+            &db,
+            &connections,
+            &state,
+            "mimic",
+            "bow"
+        ));
+        let ch = db.get_character_data("mimic").expect("load").expect("present");
+        assert_eq!(ch.achievement_counters.get("socials.distinct"), Some(&2));
+        assert!(ch.achievements_unlocked.contains_key("first_words"));
+
+        // NPCs key on prototype vnum, so re-meeting a respawned mob is free.
+        for _ in 0..5 {
+            script::achievements::notify_npc_talked_to_core(&db, &connections, &state, "mimic", "baker_01");
+        }
+        let ch = db.get_character_data("mimic").expect("load").expect("present");
+        assert_eq!(ch.achievement_counters.get("npcs.talked_to"), Some(&1));
+
+        script::achievements::notify_npc_talked_to_core(&db, &connections, &state, "mimic", "smith_02");
+        let ch = db.get_character_data("mimic").expect("load").expect("present");
+        assert_eq!(ch.achievement_counters.get("npcs.talked_to"), Some(&2));
+        assert!(ch.achievements_unlocked.contains_key("introductions"));
+
+        // A mob with no vnum (an unsaved instance) must not create a blank
+        // entry that silently counts as an acquaintance.
+        assert!(!script::achievements::notify_npc_talked_to_core(
+            &db,
+            &connections,
+            &state,
+            "mimic",
+            ""
+        ));
+        let ch = db.get_character_data("mimic").expect("load").expect("present");
+        assert_eq!(ch.npcs_talked_to.len(), 2);
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+/// Read every `.rs` under `src/` and every `.rhai` under `scripts/` into one
+/// string, for the "is this identifier referenced anywhere" seed checks below.
+fn engine_sources() -> String {
+    use std::fs;
+
+    fn collect(dir: &std::path::Path, exts: &[&str], out: &mut String) {
+        for entry in fs::read_dir(dir).expect("read dir").flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect(&path, exts, out);
+            } else if path.extension().is_some_and(|e| exts.iter().any(|x| e == *x)) {
+                out.push_str(&fs::read_to_string(&path).unwrap_or_default());
+            }
+        }
+    }
+
+    let mut sources = String::new();
+    collect(std::path::Path::new("src"), &["rs"], &mut sources);
+    collect(std::path::Path::new("scripts"), &["rhai"], &mut sources);
+    sources
+}
+
+/// A `skill_reached` criterion naming a skill nothing awards XP to is
+/// unreachable. `swordmaster` shipped for months waiting on a skill called
+/// "swords"; the real key is `long_blades`.
+#[test]
+fn test_seed_skills_exist_in_the_engine() {
+    use std::fs;
+
+    let sources = engine_sources();
+
+    for entry in fs::read_dir("scripts/data/achievements").expect("read dir").flatten() {
+        let path = entry.path();
+        if path.extension().is_none_or(|e| e != "json") {
+            continue;
+        }
+        let content = fs::read_to_string(&path).expect("read seed file");
+        let parsed: Vec<AchievementDef> = serde_json::from_str(&content).expect("parse seed file");
+        for def in parsed {
+            if let AchievementCriterion::SkillReached { skill, .. } = &def.criterion {
+                assert!(
+                    sources.contains(&format!("\"{}\"", skill)),
+                    "achievement {} waits on skill `{}`, which the engine never names",
+                    def.key,
+                    skill
+                );
+            }
+        }
+    }
+}
+
+/// Every counter a seed achievement waits on must actually be bumped
+/// somewhere in the engine. A definition pointing at a counter no code writes
+/// is unreachable content that looks shipped.
+#[test]
+fn test_seed_counters_are_written_by_the_engine() {
+    use std::fs;
+
+    let sources = engine_sources();
+
+    for entry in fs::read_dir("scripts/data/achievements").expect("read dir").flatten() {
+        let path = entry.path();
+        if path.extension().is_none_or(|e| e != "json") {
+            continue;
+        }
+        let content = fs::read_to_string(&path).expect("read seed file");
+        let parsed: Vec<AchievementDef> = serde_json::from_str(&content).expect("parse seed file");
+        for def in parsed {
+            if let AchievementCriterion::Counter { counter, .. } = &def.criterion {
+                // `kills.<vnum>` buckets are generated per mob at kill time.
+                if counter.starts_with("kills.") {
+                    continue;
+                }
+                assert!(
+                    sources.contains(&format!("\"{}\"", counter)),
+                    "achievement {} waits on counter `{}`, which nothing in src/ writes",
+                    def.key,
+                    counter
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn test_room_visit_bumps_the_exploration_counter_once_per_room() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(temp.path()).expect("open DB");
+        db.save_character_data(make_character("scout")).expect("save");
+
+        let (state, connections) = build_state(
+            db.clone(),
+            vec![make_def_counter(
+                "first_steps",
+                "First Steps",
+                "rooms.visited",
+                2,
+                "the Curious",
+            )],
+        );
+
+        let a = uuid::Uuid::new_v4();
+        let b = uuid::Uuid::new_v4();
+
+        assert!(script::achievements::notify_room_visited_core(
+            &db,
+            &connections,
+            &state,
+            "scout",
+            &a
+        ));
+        // Re-entering a known room must not count again, or the threshold
+        // would be reachable by pacing back and forth in one corridor.
+        assert!(!script::achievements::notify_room_visited_core(
+            &db,
+            &connections,
+            &state,
+            "scout",
+            &a
+        ));
+        let ch = db.get_character_data("scout").expect("load").expect("present");
+        assert_eq!(ch.achievement_counters.get("rooms.visited"), Some(&1));
+        assert!(ch.achievements_unlocked.is_empty(), "not at threshold yet");
+
+        assert!(script::achievements::notify_room_visited_core(
+            &db,
+            &connections,
+            &state,
+            "scout",
+            &b
+        ));
+        let ch = db.get_character_data("scout").expect("load").expect("present");
+        assert_eq!(ch.achievement_counters.get("rooms.visited"), Some(&2));
+        assert!(ch.achievements_unlocked.contains_key("first_steps"));
+        assert_eq!(ch.rooms_visited.len(), 2);
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+/// Characters predating the counter already have a full `rooms_visited` set.
+/// The first new room they find must reconcile the counter to the set size,
+/// not leave them re-walking the world from one.
+#[test]
+fn test_room_visit_backfills_the_counter_for_existing_characters() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(temp.path()).expect("open DB");
+        let mut ch = make_character("veteran");
+        for _ in 0..9 {
+            ch.rooms_visited.insert(uuid::Uuid::new_v4());
+        }
+        assert!(ch.achievement_counters.get("rooms.visited").is_none());
+        db.save_character_data(ch).expect("save");
+
+        let (state, connections) = build_state(
+            db.clone(),
+            vec![make_def_counter(
+                "first_steps",
+                "First Steps",
+                "rooms.visited",
+                10,
+                "the Curious",
+            )],
+        );
+
+        assert!(script::achievements::notify_room_visited_core(
+            &db,
+            &connections,
+            &state,
+            "veteran",
+            &uuid::Uuid::new_v4()
+        ));
+
+        let ch = db.get_character_data("veteran").expect("load").expect("present");
+        assert_eq!(ch.achievement_counters.get("rooms.visited"), Some(&10));
+        assert!(ch.achievements_unlocked.contains_key("first_steps"));
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+#[test]
+fn test_lease_and_recipe_events_reach_their_criteria() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(temp.path()).expect("open DB");
+        db.save_character_data(make_character("tenant")).expect("save");
+
+        let mut any_lease = make_def_counter("landed", "Landed", "unused", 1, "the Landed");
+        any_lease.criterion = AchievementCriterion::OwnedLease { area_vnum: None };
+        let mut midgaard_lease = make_def_counter("burgher", "Burgher", "unused", 1, "the Burgher");
+        midgaard_lease.criterion = AchievementCriterion::OwnedLease {
+            area_vnum: Some("midgaard".to_string()),
+        };
+        let mut recipe = make_def_counter("baker", "Baker", "unused", 1, "the Baker");
+        recipe.criterion = AchievementCriterion::LearnedRecipe {
+            recipe_key: "bread".to_string(),
+        };
+
+        let (state, connections) = build_state(db.clone(), vec![any_lease, midgaard_lease, recipe]);
+
+        // A lease in another area satisfies the any-area criterion only.
+        script::achievements::notify_event_core(&db, &connections, &state, "tenant", "lease_bought", "newthalos");
+        let ch = db.get_character_data("tenant").expect("load").expect("present");
+        assert!(ch.achievements_unlocked.contains_key("landed"));
+        assert!(!ch.achievements_unlocked.contains_key("burgher"));
+
+        script::achievements::notify_event_core(&db, &connections, &state, "tenant", "lease_bought", "midgaard");
+        let ch = db.get_character_data("tenant").expect("load").expect("present");
+        assert!(ch.achievements_unlocked.contains_key("burgher"));
+
+        script::achievements::notify_event_core(&db, &connections, &state, "tenant", "recipe_learned", "stew");
+        let ch = db.get_character_data("tenant").expect("load").expect("present");
+        assert!(!ch.achievements_unlocked.contains_key("baker"), "wrong recipe");
+
+        script::achievements::notify_event_core(&db, &connections, &state, "tenant", "recipe_learned", "bread");
+        let ch = db.get_character_data("tenant").expect("load").expect("present");
+        assert!(ch.achievements_unlocked.contains_key("baker"));
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+/// Trait points are the only achievement reward that changes what a character
+/// can *become*, so the grant has to survive the unlock pipeline and land on
+/// the spendable pool the `traits` command reads.
+#[test]
+fn test_trait_point_reward_lands_on_the_character() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(temp.path()).expect("open DB");
+        let mut ch = make_character("builder");
+        ch.trait_points = 4;
+        db.save_character_data(ch).expect("save");
+
+        let mut def = make_def_counter("compleat", "The Compleat", "skills_maxed", 1, "the Compleat");
+        def.reward.trait_points = 3;
+        let (state, connections) = build_state(db.clone(), vec![def]);
+
+        script::achievements::notify_counter_core(&db, &connections, &state, "builder", "skills_maxed", 1);
+
+        let ch = db.get_character_data("builder").expect("load").expect("present");
+        assert!(ch.achievements_unlocked.contains_key("compleat"));
+        assert_eq!(ch.trait_points, 7, "grant adds to the existing pool");
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+/// Re-firing the counter must not pay out again. Trait points are permanent
+/// build currency, so a repeatable grant would be an unbounded exploit.
+#[test]
+fn test_trait_point_reward_pays_out_once() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(temp.path()).expect("open DB");
+        db.save_character_data(make_character("grinder")).expect("save");
+
+        let mut def = make_def_counter("scourge", "Scourge", "kills.any", 1, "the Scourge");
+        def.reward.trait_points = 2;
+        let (state, connections) = build_state(db.clone(), vec![def]);
+
+        for _ in 0..5 {
+            script::achievements::notify_counter_core(&db, &connections, &state, "grinder", "kills.any", 1);
+        }
+
+        let ch = db.get_character_data("grinder").expect("load").expect("present");
+        assert_eq!(ch.achievement_counters.get("kills.any"), Some(&5));
+        assert_eq!(ch.trait_points, 12, "10 starting points plus one 2-point grant");
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+/// A negative grant is refused rather than applied. Nothing in the editing
+/// surfaces can write one, but a hand-edited JSON file can, and deducting
+/// build currency on what the player just read as a reward is a trap.
+#[test]
+fn test_negative_trait_point_reward_is_ignored() {
+    let temp = tempfile::tempdir().expect("create temp dir");
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let db = Db::open(temp.path()).expect("open DB");
+        let mut ch = make_character("victim");
+        ch.trait_points = 1;
+        db.save_character_data(ch).expect("save");
+
+        let mut def = make_def_manual("cursed", "Cursed", "the Cursed");
+        def.reward.trait_points = -5;
+        let (state, connections) = build_state(db.clone(), vec![def]);
+
+        script::achievements::award_core(&db, &connections, &state, "victim", "cursed", true);
+
+        let ch = db.get_character_data("victim").expect("load").expect("present");
+        assert!(ch.achievements_unlocked.contains_key("cursed"), "unlock still happens");
+        assert_eq!(ch.trait_points, 1, "no deduction");
+    }));
+
+    if let Err(e) = result {
+        std::panic::resume_unwind(e);
+    }
+}
+
+/// Zero is the default and must not serialize, so the ~76 definitions that
+/// grant no points stay unchanged on disk.
+#[test]
+fn test_trait_points_default_to_zero_and_round_trip() {
+    let bare: AchievementReward =
+        serde_json::from_value(serde_json::json!({ "title": "the Plain" })).expect("parse bare reward");
+    assert_eq!(bare.trait_points, 0);
+
+    let granting: AchievementReward = serde_json::from_value(serde_json::json!({
+        "title": "the Compleat",
+        "trait_points": 3
+    }))
+    .expect("parse granting reward");
+    assert_eq!(granting.trait_points, 3);
+
+    let serialized = serde_json::to_value(&bare).expect("serialize");
+    assert!(
+        serialized.get("trait_points").is_none(),
+        "zero trait_points should not serialize"
+    );
+}
+
+/// The seed grants are meant to sit at the top of a long ladder, never on an
+/// individual skill mastery -- that axis is already paid by the `skills_maxed`
+/// ladder, and double-dipping it would flood the economy.
+#[test]
+fn test_seed_trait_point_grants_stay_scarce_and_earned() {
+    use std::fs;
+
+    let mut total = 0;
+    let mut granting = Vec::new();
+
+    for entry in fs::read_dir("scripts/data/achievements").expect("read dir").flatten() {
+        let path = entry.path();
+        if path.extension().is_none_or(|e| e != "json") {
+            continue;
+        }
+        let content = fs::read_to_string(&path).expect("read seed file");
+        let parsed: Vec<AchievementDef> = serde_json::from_str(&content).expect("parse seed file");
+        for def in parsed {
+            let points = def.reward.trait_points;
+            assert!(points >= 0, "{} grants negative trait points", def.key);
+            if points == 0 {
+                continue;
+            }
+            total += points;
+            assert!(
+                !matches!(def.criterion, AchievementCriterion::SkillReached { .. }),
+                "{} grants trait points for a single skill mastery; that axis belongs to skills_maxed",
+                def.key
+            );
+            granting.push(def.key);
+        }
+    }
+
+    // A character starts with 10. The whole earnable pool roughly doubles a
+    // build over a full career -- generous enough to matter, tight enough
+    // that it stays a choice.
+    assert!(
+        (10..=30).contains(&total),
+        "seed trait-point pool is {} across {:?}; expected 10-30",
+        total,
+        granting
+    );
+}
+
+/// `add_character_gold` bumps `gold.earned` on a credit and leaves it alone on
+/// a debit. The counter is the mirror of `gold.spent`, which the buy / rent /
+/// identify scripts already bump; without it a "lifetime earnings" achievement
+/// has nothing to read.
+#[test]
+fn adding_gold_bumps_the_earned_counter_but_spending_does_not() {
+    let temp = tempfile::tempdir().expect("temp dir");
+    let db = Db::open(temp.path()).expect("open db");
+    let (state, connections) = build_state(db.clone(), vec![]);
+
+    let mut ch = make_character("midas");
+    ch.gold = 100;
+    db.save_character_data(ch).expect("save");
+
+    let mut engine = Engine::new();
+    script::characters::register(&mut engine, Arc::new(db.clone()), connections.clone(), state.clone());
+
+    assert!(
+        engine
+            .eval::<bool>(r#"add_character_gold("midas", 40)"#)
+            .expect("credit"),
+    );
+    let counted = |db: &Db| {
+        db.get_character_data("midas")
+            .expect("read")
+            .expect("exists")
+            .achievement_counters
+            .get("gold.earned")
+            .copied()
+            .unwrap_or(0)
+    };
+    assert_eq!(counted(&db), 40, "a credit counts the amount, not the event");
+
+    assert!(
+        engine
+            .eval::<bool>(r#"add_character_gold("midas", -25)"#)
+            .expect("debit"),
+    );
+    assert_eq!(counted(&db), 40, "spending must not add to lifetime earnings");
+
+    // And it accumulates rather than overwriting.
+    assert!(
+        engine
+            .eval::<bool>(r#"add_character_gold("midas", 10)"#)
+            .expect("second credit"),
+    );
+    assert_eq!(counted(&db), 50);
 }

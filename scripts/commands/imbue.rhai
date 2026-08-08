@@ -121,8 +121,5 @@ fn run_command(args, connection_id) {
     send_client_message(connection_id, "\x1b[0;32mYou carefully coat " + ammo.name + " with " + vial.name + "." + count_msg + "\x1b[0m");
     broadcast_to_room_awake(char.current_room_id, char.name + " carefully coats their ammunition with something.", char.name);
 
-    let leveled = add_skill_experience(char.name, "thievery", 8);
-    if leveled {
-        send_client_message(connection_id, "\x1b[1;33mYour thievery skill has improved!\x1b[0m");
-    }
+    add_skill_experience(char.name, "thievery", 8, "stealth");
 }

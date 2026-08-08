@@ -175,30 +175,26 @@ fn process_stabilize_success(char, target_name, target_conn, target_type, target
     let severity_bonus = bleeding_amount * 3;
     let xp_gained = base_xp + severity_bonus;
 
-    let leveled_up = add_skill_experience(char.name, "medical", xp_gained);
+    add_skill_experience(char.name, "medical", xp_gained, "medical");
 
     let updated_char = get_character_data(char.name);
     if updated_char != () {
         set_player_character(connection_id, updated_char);
     }
 
-    send_stabilize_success_messages(char, target_name, target_conn, target_type, tool, xp_gained, is_self, connection_id);
-
-    if leveled_up {
-        send_client_message(connection_id, "Your medical skill has improved!");
-    }
+    send_stabilize_success_messages(char, target_name, target_conn, target_type, tool, is_self, connection_id);
 }
 
-fn send_stabilize_success_messages(char, target_name, target_conn, target_type, tool, xp_gained, is_self, connection_id) {
+fn send_stabilize_success_messages(char, target_name, target_conn, target_type, tool, is_self, connection_id) {
     if is_self {
         send_client_message(connection_id, "You quickly apply pressure and bandage your wounds with your " + tool.name + ".");
-        send_client_message(connection_id, "The bleeding has stopped! (+" + xp_gained + " Medical XP)");
+        send_client_message(connection_id, "The bleeding has stopped!");
         broadcast_to_room(char.current_room_id, char.name + " hastily bandages their wounds.", char.name);
         return;
     }
 
     send_client_message(connection_id, "You quickly apply pressure and bandage " + target_name + "'s wounds with your " + tool.name + ".");
-    send_client_message(connection_id, "The bleeding has stopped! (+" + xp_gained + " Medical XP)");
+    send_client_message(connection_id, "The bleeding has stopped!");
 
     // Only send messages to target if it's a player
     if target_type == "player" {
@@ -211,30 +207,26 @@ fn send_stabilize_success_messages(char, target_name, target_conn, target_type, 
 
 fn process_stabilize_failure(char, target_name, target_conn, target_type, tool, is_self, connection_id) {
     let xp_gained = 3;
-    let leveled_up = add_skill_experience(char.name, "medical", xp_gained);
+    add_skill_experience(char.name, "medical", xp_gained, "medical");
 
     let updated_char = get_character_data(char.name);
     if updated_char != () {
         set_player_character(connection_id, updated_char);
     }
 
-    send_stabilize_failure_messages(char, target_name, target_conn, target_type, tool, xp_gained, is_self, connection_id);
-
-    if leveled_up {
-        send_client_message(connection_id, "Your medical skill has improved!");
-    }
+    send_stabilize_failure_messages(char, target_name, target_conn, target_type, tool, is_self, connection_id);
 }
 
-fn send_stabilize_failure_messages(char, target_name, target_conn, target_type, tool, xp_gained, is_self, connection_id) {
+fn send_stabilize_failure_messages(char, target_name, target_conn, target_type, tool, is_self, connection_id) {
     if is_self {
         send_client_message(connection_id, "You try to bandage your wounds with your " + tool.name + ", but the bandage slips.");
-        send_client_message(connection_id, "You couldn't stop the bleeding. (+" + xp_gained + " Medical XP)");
+        send_client_message(connection_id, "You couldn't stop the bleeding.");
         broadcast_to_room(char.current_room_id, char.name + " fumbles with their bandages.", char.name);
         return;
     }
 
     send_client_message(connection_id, "You try to bandage " + target_name + "'s wounds with your " + tool.name + ", but the bandage slips.");
-    send_client_message(connection_id, "You couldn't stop the bleeding. (+" + xp_gained + " Medical XP)");
+    send_client_message(connection_id, "You couldn't stop the bleeding.");
 
     // Only send messages to target if it's a player
     if target_type == "player" {

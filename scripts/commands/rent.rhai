@@ -110,6 +110,7 @@ fn run_command(args, connection_id) {
     // Actually create the lease
     // Deduct gold first
     add_character_gold(char.name, -cost);
+    notify_achievement_counter(char.name, "gold.spent", cost);
 
     // Create the lease (this instances the rooms)
     let lease = create_lease(target_template.vnum, char.name, agent.id, char.current_room_id);

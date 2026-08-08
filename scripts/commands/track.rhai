@@ -123,15 +123,9 @@ fn run_command(args, connection_id) {
     if !found {
         send_client_message(connection_id, "You cannot find any trace of " + target_name + ".");
         // Award small XP for the attempt
-        let leveled = add_skill_experience(char.name, "tracking", 2);
-        if leveled {
-            send_client_message(connection_id, "Your tracking skill has improved!");
-        }
+        add_skill_experience(char.name, "tracking", 2, "gather");
         return;
     }
 
-    let leveled = add_skill_experience(char.name, "tracking", 5);
-    if leveled {
-        send_client_message(connection_id, "Your tracking skill has improved!");
-    }
+    add_skill_experience(char.name, "tracking", 5, "gather");
 }

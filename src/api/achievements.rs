@@ -206,7 +206,15 @@ async fn update_achievement(
     if let Some(criterion) = req.criterion {
         def.criterion = criterion;
     }
-    if let Some(reward) = req.reward {
+    if let Some(mut reward) = req.reward {
+        // `achedit` refuses a negative trait-point reward outright; the REST
+        // body assigns the whole struct, so without this the API (and the MCP
+        // server, which is a client of it) is the one way to store a value the
+        // unlock pipeline then silently ignores. Clamp rather than reject —
+        // the intent of a negative grant is unambiguously "no grant".
+        if reward.trait_points < 0 {
+            reward.trait_points = 0;
+        }
         def.reward = reward;
     }
     if let Some(hidden) = req.hidden {

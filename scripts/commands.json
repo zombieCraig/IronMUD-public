@@ -147,6 +147,10 @@
     "access": "user",
     "description": "Check the time by looking at the sky"
   },
+  "top": {
+    "access": "user",
+    "description": "See the leaderboards, and where you stand on them"
+  },
   "traits": {
     "access": "user",
     "description": "Spend remaining trait points or view your traits"
@@ -548,6 +552,10 @@
     "access": "user",
     "description": "Create items using the crafting skill"
   },
+  "experiment": {
+    "access": "user",
+    "description": "Combine materials to work out a recipe for yourself"
+  },
   "read": {
     "access": "user",
     "description": "Read an item (may learn recipes from books)"
@@ -732,6 +740,18 @@
   "bank": {
     "access": "user",
     "description": "Banking - deposit, withdraw, check balance"
+  },
+  "bounty": {
+    "access": "builder",
+    "description": "The builder help-wanted board - post, claim and fill requests for content, paid in builder points"
+  },
+  "world": {
+    "access": "builder",
+    "description": "The world's rating and milestone wall - 'world' for how far along it is, 'world milestones' for the wall"
+  },
+  "build": {
+    "access": "builder",
+    "description": "Builder tools - 'build audit [here|room|item|mob|quest|area|world]' grades content and lists what to fix"
   },
   "shoot": {
     "access": "user",
@@ -964,5 +984,25 @@
   "quedit": {
     "access": "builder",
     "description": "Create or edit quests"
+  },
+  "standing": {
+    "access": "user",
+    "description": "See how each faction regards you"
+  },
+  "locate": {
+    "access": "user",
+    "description": "Ask your god where your corpse fell"
+  },
+  "consign": {
+    "access": "user",
+    "description": "Leave an item with a broker for another player to buy"
+  },
+  "consignments": {
+    "access": "user",
+    "description": "See what you have out with brokers, or take one back"
+  },
+  "unconsign": {
+    "access": "user",
+    "description": "Take one of your listings back off a broker's shelf"
   }
 }

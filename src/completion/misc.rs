@@ -12,15 +12,143 @@ pub(super) fn complete_set(words: &[&str], completing_word: bool, is_builder: bo
         available.extend(SET_SUBCOMMANDS_BUILDER);
     }
 
+    // Most settings are on/off; `xpfeed` is three-way, so offering it a
+    // toggle pair would complete to values it rejects.
+    let values = |setting: &str| -> &'static [&'static str] {
+        if setting.eq_ignore_ascii_case("xpfeed") {
+            SET_XPFEED_VALUES
+        } else {
+            SET_TOGGLE_VALUES
+        }
+    };
+
     match words.len() {
         // set - show all available settings
         1 if !completing_word => all_static(&available, CompletionType::SetSubcommand),
         // set <partial_setting> - complete setting name
         2 if completing_word => filter_static(&available, &partial, CompletionType::SetSubcommand),
-        // set <setting> - show on/off options
-        2 if !completing_word => all_static(SET_TOGGLE_VALUES, CompletionType::SetSubcommand),
-        // set <setting> <partial_value> - complete on/off
-        3 if completing_word => filter_static(SET_TOGGLE_VALUES, &partial, CompletionType::SetSubcommand),
+        // set <setting> - show that setting's values
+        2 if !completing_word => all_static(values(words[1]), CompletionType::SetSubcommand),
+        // set <setting> <partial_value> - complete the value
+        3 if completing_word => filter_static(values(words[1]), &partial, CompletionType::SetSubcommand),
+        _ => CompletionResult::empty(),
+    }
+}
+
+/// Context-aware completion for the prompt command
+pub(super) fn complete_prompt(words: &[&str], completing_word: bool) -> CompletionResult {
+    let partial = get_partial(words, completing_word);
+
+    match words.len() {
+        1 if !completing_word => all_static(PROMPT_SUBCOMMANDS, CompletionType::PromptSubcommand),
+        2 if completing_word => filter_static(PROMPT_SUBCOMMANDS, &partial, CompletionType::PromptSubcommand),
+        _ => CompletionResult::empty(),
+    }
+}
+
+/// Context-aware completion for the top command.
+///
+/// The board names come from `leaderboard::completion_hints`, which derives
+/// them from the same constants the scan uses. Boards discovered from data
+/// are not offered here — `top boards` is the surface for those.
+pub(super) fn complete_top(words: &[&str], completing_word: bool) -> CompletionResult {
+    let partial = get_partial(words, completing_word);
+    let hints = crate::leaderboard::completion_hints();
+
+    match words.len() {
+        1 if !completing_word => all_static(&hints, CompletionType::TopBoard),
+        2 if completing_word => filter_static(&hints, &partial, CompletionType::TopBoard),
+        _ => CompletionResult::empty(),
+    }
+}
+
+/// Context-aware completion for the build command.
+///
+/// Stops at the target word. `build audit room <vnum>` would need the vnum
+/// list, and offering the wrong list is worse than offering none — the vnum
+/// completers already exist per-editor and belong there, not here.
+pub(super) fn complete_build(words: &[&str], completing_word: bool) -> CompletionResult {
+    let partial = get_partial(words, completing_word);
+
+    match words.len() {
+        1 if !completing_word => all_static(BUILD_SUBCOMMANDS, CompletionType::BuildSubcommand),
+        2 if completing_word => filter_static(BUILD_SUBCOMMANDS, &partial, CompletionType::BuildSubcommand),
+        2 if !completing_word && words[1].eq_ignore_ascii_case("audit") => {
+            all_static(BUILD_AUDIT_TARGETS, CompletionType::BuildAuditTarget)
+        }
+        3 if completing_word && words[1].eq_ignore_ascii_case("audit") => {
+            filter_static(BUILD_AUDIT_TARGETS, &partial, CompletionType::BuildAuditTarget)
+        }
+        _ => CompletionResult::empty(),
+    }
+}
+
+/// Context-aware completion for the bounty command.
+///
+/// Stops at the subcommand. Ticket numbers are not offered: the list is
+/// unbounded and a builder reads them off `bounty` anyway.
+pub(super) fn complete_bounty(words: &[&str], completing_word: bool) -> CompletionResult {
+    let partial = get_partial(words, completing_word);
+    match words.len() {
+        1 if !completing_word => all_static(BOUNTY_SUBCOMMANDS, CompletionType::BountySubcommand),
+        2 if completing_word => filter_static(BOUNTY_SUBCOMMANDS, &partial, CompletionType::BountySubcommand),
+        _ => CompletionResult::empty(),
+    }
+}
+
+/// Context-aware completion for the world command.
+pub(super) fn complete_world(words: &[&str], completing_word: bool) -> CompletionResult {
+    let partial = get_partial(words, completing_word);
+    match words.len() {
+        1 if !completing_word => all_static(WORLD_SUBCOMMANDS, CompletionType::WorldSubcommand),
+        2 if completing_word => filter_static(WORLD_SUBCOMMANDS, &partial, CompletionType::WorldSubcommand),
+        _ => CompletionResult::empty(),
+    }
+}
+
+/// Context-aware completion for the standing command.
+///
+/// Unlike `top`, whose board names are mostly named in code, factions are pure
+/// data — so this takes the declared keys from the world rather than deriving
+/// them from a constant. A faction tag nobody declared still works at the
+/// command; it just cannot be completed, which is the same trade `top` makes
+/// for boards discovered from character data.
+pub(super) fn complete_standing(words: &[&str], completing_word: bool, faction_keys: &[String]) -> CompletionResult {
+    let partial = get_partial(words, completing_word);
+
+    match words.len() {
+        1 if !completing_word => all_dynamic(faction_keys, CompletionType::FactionKey),
+        2 if completing_word => filter_dynamic(faction_keys, &partial, CompletionType::FactionKey),
+        _ => CompletionResult::empty(),
+    }
+}
+
+/// Context-aware completion for `locate`.
+pub(super) fn complete_locate(words: &[&str], completing_word: bool) -> CompletionResult {
+    let partial = get_partial(words, completing_word);
+
+    match words.len() {
+        1 if !completing_word => all_static(LOCATE_TARGETS, CompletionType::LocateTarget),
+        2 if completing_word => filter_static(LOCATE_TARGETS, &partial, CompletionType::LocateTarget),
+        _ => CompletionResult::empty(),
+    }
+}
+
+/// Context-aware completion for `consignments`.
+///
+/// Only the subcommand completes. The listing number that follows is a position
+/// in a list only the player can see, and offering "1 2 3" would be guessing at
+/// how much they have out.
+pub(super) fn complete_consignments(words: &[&str], completing_word: bool) -> CompletionResult {
+    let partial = get_partial(words, completing_word);
+
+    match words.len() {
+        1 if !completing_word => all_static(CONSIGNMENTS_SUBCOMMANDS, CompletionType::ConsignmentsSubcommand),
+        2 if completing_word => filter_static(
+            CONSIGNMENTS_SUBCOMMANDS,
+            &partial,
+            CompletionType::ConsignmentsSubcommand,
+        ),
         _ => CompletionResult::empty(),
     }
 }

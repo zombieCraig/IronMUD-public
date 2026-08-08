@@ -365,6 +365,7 @@ fn account_to_map(account: &crate::types::AccountData) -> rhai::Map {
     let d = &account.character_defaults;
     let mut prefs = rhai::Map::new();
     prefs.insert("prompt_mode".into(), rhai::Dynamic::from(d.prompt_mode.clone()));
+    prefs.insert("prompt_format".into(), rhai::Dynamic::from(d.prompt_format.clone()));
     prefs.insert("colors_enabled".into(), rhai::Dynamic::from(d.colors_enabled));
     prefs.insert("mxp_enabled".into(), rhai::Dynamic::from(d.mxp_enabled));
     prefs.insert("abbrev_enabled".into(), rhai::Dynamic::from(d.abbrev_enabled));

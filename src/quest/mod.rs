@@ -13,7 +13,7 @@ use crate::SharedState;
 use crate::db::Db;
 use crate::types::{
     ActiveQuest, CharacterData, ItemData, ItemLocation, MobileData, QuestData, QuestObjective, QuestReward,
-    SkillProgress, kill_any_key,
+    kill_any_key,
 };
 
 /// Send a single line to the named character if they're online. No-op if
@@ -156,6 +156,14 @@ pub fn offer(db: &Db, char_name: &str, vnum: &str) -> String {
                 "You haven't proven enough yet ({} / {} pieces in place).",
                 set.unlocked_count(&ch.achievements_unlocked),
                 set.min_count,
+            );
+        }
+    }
+    if let Some(rep) = &quest.reputation_prereq {
+        if !rep.is_satisfied(&ch.reputation) {
+            return format!(
+                "They don't trust you enough for that yet ({}).",
+                crate::reputation::LADDER.standing_line(crate::reputation::standing(&ch.reputation, &rep.faction)),
             );
         }
     }
@@ -326,6 +334,12 @@ pub fn try_complete(
         );
     }
 
+    // After the rewards, which each load and save the character independently
+    // — bumping first would be overwritten by the next reward's save.
+    // Counts turn-ins rather than distinct quests: a repeatable quest is meant
+    // to be repeated, and `completed_quests` already records the distinct set.
+    crate::script::achievements::notify_counter_core(db, connections, state, &ch.name, "quests.completed", 1);
+
     let line = format!("\x1b[1;33m[ Quest complete: {} ]\x1b[0m", quest.name);
     notify(connections, char_name, &line);
     true
@@ -397,38 +411,60 @@ fn apply_reward(
             }
         }
         QuestReward::SkillXp { skill, amount } => {
-            let key = skill.to_lowercase();
-            if let Ok(Some(mut ch)) = db.get_character_data(&char_name.to_lowercase()) {
-                let entry = ch.skills.entry(key.clone()).or_insert(SkillProgress::default());
-                if entry.level >= 10 {
-                    let _ = db.save_character_data(ch);
-                    return;
-                }
-                entry.experience += *amount;
-                let mut leveled = false;
-                while entry.experience >= 100 && entry.level < 10 {
-                    entry.experience -= 100;
-                    entry.level += 1;
-                    leveled = true;
-                }
-                let _ = db.save_character_data(ch);
-                if leveled {
-                    notify(
-                        connections,
-                        char_name,
-                        &format!("\x1b[1;33mYour {} skill has improved!\x1b[0m", key.replace('_', " ")),
-                    );
-                } else {
-                    notify(
-                        connections,
-                        char_name,
-                        &format!("[ +{} {} xp ]", amount, key.replace('_', " ")),
-                    );
-                }
-            }
+            // Was a hand-rolled flat-100-per-level loop that also skipped the
+            // `skill_reached` achievement hook entirely — so a quest reward
+            // could push a skill past an achievement threshold without ever
+            // unlocking it. Both are fixed by routing through the chokepoint,
+            // which also emits the player-facing feedback.
+            crate::progress::award_xp(
+                db,
+                connections,
+                state,
+                char_name,
+                skill,
+                *amount,
+                crate::progress::XpSource::Quest,
+            );
         }
         QuestReward::Achievement { key } => {
             crate::script::achievements::award_core(db, connections, state, char_name, key, true);
+        }
+        QuestReward::Morality { delta } => {
+            if let Some((_, after)) = crate::morality::apply_delta(db, connections, char_name, *delta) {
+                // apply_delta already sent the tier line when one was crossed;
+                // this is the receipt that the reward landed at all.
+                notify(
+                    connections,
+                    char_name,
+                    &format!(
+                        "[ Morality {}{} \u{2192} {} ]",
+                        if *delta > 0 { "+" } else { "" },
+                        delta,
+                        after
+                    ),
+                );
+            }
+        }
+        QuestReward::Reputation { faction, delta } => {
+            // Through the IO chokepoint: this runs outside any save of the
+            // character, and `apply_delta` handles opposition, the session
+            // sync and the band announcement in one place.
+            let moved = crate::reputation::apply_delta(db, connections, state, char_name, faction, *delta);
+            for (f, before, after) in &moved {
+                let d = after - before;
+                let label = crate::reputation::definition(state, f);
+                notify(
+                    connections,
+                    char_name,
+                    &format!(
+                        "[ {} {}{} \u{2192} {} ]",
+                        label.display(),
+                        if d > 0 { "+" } else { "" },
+                        d,
+                        after
+                    ),
+                );
+            }
         }
         QuestReward::LearnRecipe { recipe_id } => {
             if let Ok(Some(mut ch)) = db.get_character_data(&char_name.to_lowercase()) {
@@ -581,35 +617,33 @@ fn apply_reward(
 }
 
 /// Mob-death listener entry point. Increments `kill_progress` for every
-/// active quest whose `KillMob` objective matches `mob_proto_vnum`. Slice 3c:
-/// credits all players in `damaged_by` (any non-zero damage), plus the
-/// killing-blow `killer_name`. Sends a progress line, saves, and auto-completes
+/// active quest whose `KillMob` objective matches `mob_proto_vnum`, for every
+/// name in `participants`. Sends a progress line, saves, and auto-completes
 /// kill-only quests.
+///
+/// Takes the recipient list rather than deriving it. This function used to
+/// build the set itself from `damaged_by` plus the killer, which made quests
+/// the only kill consumer that credited a party — the counter, worship,
+/// morality and reputation all took the killing blow alone. The set now comes
+/// from [`crate::group::kill_credit`] so every consumer agrees on who took
+/// part, and this one is no longer the odd one out.
 pub fn handle_mob_kill(
     db: &Db,
     connections: &SharedConnections,
     state: &SharedState,
-    killer_name: &str,
+    participants: &[String],
     mob_proto_vnum: &str,
-    damaged_by: &std::collections::HashMap<String, i32>,
 ) {
     if mob_proto_vnum.is_empty() {
         return;
     }
-    // Build deduped recipient list: every name in damaged_by + the killer.
-    let mut recipients: std::collections::HashSet<String> = damaged_by
-        .iter()
-        .filter(|(_, dmg)| **dmg > 0)
-        .map(|(name, _)| name.to_lowercase())
-        .collect();
-    if !killer_name.is_empty() {
-        recipients.insert(killer_name.to_lowercase());
-    }
-    if recipients.is_empty() {
-        return;
-    }
-    for name in recipients {
-        credit_one_kill(db, connections, state, &name, mob_proto_vnum);
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for name in participants {
+        let lower = name.to_lowercase();
+        if !seen.insert(lower.clone()) {
+            continue;
+        }
+        credit_one_kill(db, connections, state, &lower, mob_proto_vnum);
     }
 }
 
@@ -952,6 +986,11 @@ pub fn describe_quest_offers(db: &Db, viewer_name: &str, mob_vnum: &str) -> Opti
             }
             if let Some(set) = &q.achievement_set_prereq {
                 if !set.is_satisfied(&ch.achievements_unlocked) {
+                    continue;
+                }
+            }
+            if let Some(rep) = &q.reputation_prereq {
+                if !rep.is_satisfied(&ch.reputation) {
                     continue;
                 }
             }

@@ -54,6 +54,12 @@ fn process_rent_tick(db: &db::Db, connections: &SharedConnections) -> Result<()>
     // Check for expired escrow entries
     process_expired_escrow(db, connections, now)?;
 
+    // Consignment listings that nobody bought. Handled here rather than in
+    // their own tick because the destination is escrow, whose expiry this
+    // function already owns — two holding pens for "items the game is keeping
+    // for a player" would be one too many.
+    ironmud::consignment::process_expired_consignments(db, connections, now)?;
+
     Ok(())
 }
 

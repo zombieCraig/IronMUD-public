@@ -4,39 +4,327 @@
     "name": "First Blood",
     "description": "Land the killing blow on your first hostile creature.",
     "category": "combat",
-    "criterion": { "kind": "counter", "counter": "kills.any", "threshold": 1 },
-    "reward": { "title": "the Bloodied" }
+    "criterion": {
+      "kind": "counter",
+      "counter": "kills.any",
+      "threshold": 1
+    },
+    "reward": {
+      "title": "the Bloodied"
+    }
+  },
+  {
+    "key": "blooded",
+    "name": "Blooded",
+    "description": "Defeat 10 hostile creatures.",
+    "category": "combat",
+    "criterion": {
+      "kind": "counter",
+      "counter": "kills.any",
+      "threshold": 10
+    },
+    "reward": {
+      "title": "the Blooded"
+    }
   },
   {
     "key": "veteran_slayer",
     "name": "Veteran Slayer",
     "description": "Defeat 50 hostile creatures.",
     "category": "combat",
-    "criterion": { "kind": "counter", "counter": "kills.any", "threshold": 50 },
-    "reward": { "title": "the Veteran" }
+    "criterion": {
+      "kind": "counter",
+      "counter": "kills.any",
+      "threshold": 50
+    },
+    "reward": {
+      "title": "the Veteran"
+    }
   },
   {
     "key": "hunter_hundred",
     "name": "Hunter of a Hundred",
     "description": "Defeat 100 hostile creatures.",
     "category": "combat",
-    "criterion": { "kind": "counter", "counter": "kills.any", "threshold": 100 },
-    "reward": { "title": "the Hunter" }
+    "criterion": {
+      "kind": "counter",
+      "counter": "kills.any",
+      "threshold": 100
+    },
+    "reward": {
+      "title": "the Hunter"
+    }
   },
   {
     "key": "master_at_arms",
     "name": "Master at Arms",
     "description": "Defeat 500 hostile creatures.",
     "category": "combat",
-    "criterion": { "kind": "counter", "counter": "kills.any", "threshold": 500 },
-    "reward": { "title": "Master at Arms" }
+    "criterion": {
+      "kind": "counter",
+      "counter": "kills.any",
+      "threshold": 500
+    },
+    "reward": {
+      "title": "Master at Arms",
+      "gold": 1000
+    }
   },
   {
     "key": "scourge",
     "name": "Scourge",
     "description": "Defeat 1000 hostile creatures.",
     "category": "combat",
-    "criterion": { "kind": "counter", "counter": "kills.any", "threshold": 1000 },
-    "reward": { "title": "the Scourge" }
+    "criterion": {
+      "kind": "counter",
+      "counter": "kills.any",
+      "threshold": 1000
+    },
+    "reward": {
+      "title": "the Scourge",
+      "gold": 5000,
+      "trait_points": 2
+    }
+  },
+  {
+    "key": "knifework",
+    "name": "Knifework",
+    "description": "Reach level 5 with short blades.",
+    "category": "combat",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "short_blades",
+      "level": 5
+    },
+    "reward": {
+      "title": "the Knife"
+    }
+  },
+  {
+    "key": "shadow_blade",
+    "name": "Shadow of the Blade",
+    "description": "Master short blades.",
+    "category": "combat",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "short_blades",
+      "level": 10
+    },
+    "reward": {
+      "title": "the Shadow Blade"
+    }
+  },
+  {
+    "key": "swordhand",
+    "name": "Swordhand",
+    "description": "Reach level 5 with long blades.",
+    "category": "combat",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "long_blades",
+      "level": 5
+    },
+    "reward": {
+      "title": "the Swordhand"
+    }
+  },
+  {
+    "key": "swordmaster",
+    "name": "Swordmaster",
+    "description": "Master long blades.",
+    "category": "combat",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "long_blades",
+      "level": 10
+    },
+    "reward": {
+      "title": "the Swordmaster"
+    }
+  },
+  {
+    "key": "ironhand",
+    "name": "Ironhand",
+    "description": "Master short blunt weapons.",
+    "category": "combat",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "short_blunt",
+      "level": 10
+    },
+    "reward": {
+      "title": "the Ironhand"
+    }
+  },
+  {
+    "key": "earthshaker",
+    "name": "Earthshaker",
+    "description": "Master long blunt weapons.",
+    "category": "combat",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "long_blunt",
+      "level": 10
+    },
+    "reward": {
+      "title": "the Earthshaker"
+    }
+  },
+  {
+    "key": "spearwall",
+    "name": "Spearwall",
+    "description": "Master polearms.",
+    "category": "combat",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "polearms",
+      "level": 10
+    },
+    "reward": {
+      "title": "the Spearwall"
+    }
+  },
+  {
+    "key": "bare_knuckle",
+    "name": "Bare Knuckle",
+    "description": "Reach level 5 unarmed.",
+    "category": "combat",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "unarmed",
+      "level": 5
+    },
+    "reward": {
+      "title": "the Bare-Knuckled"
+    }
+  },
+  {
+    "key": "empty_hand",
+    "name": "Empty Hand",
+    "description": "Master unarmed combat.",
+    "category": "combat",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "unarmed",
+      "level": 10
+    },
+    "reward": {
+      "title": "of the Empty Hand"
+    }
+  },
+  {
+    "key": "marksman",
+    "name": "Marksman",
+    "description": "Reach level 5 with ranged weapons.",
+    "category": "combat",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "ranged",
+      "level": 5
+    },
+    "reward": {
+      "title": "the Marksman"
+    }
+  },
+  {
+    "key": "deadeye",
+    "name": "Deadeye",
+    "description": "Master ranged weapons.",
+    "category": "combat",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "ranged",
+      "level": 10
+    },
+    "reward": {
+      "title": "the Deadeye"
+    }
+  },
+  {
+    "key": "battlebreaker",
+    "name": "Battlebreaker",
+    "description": "Reach level 5 with the bash skill.",
+    "category": "combat",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "bash",
+      "level": 5
+    },
+    "reward": {
+      "title": "the Battlebreaker"
+    }
+  },
+  {
+    "key": "arcanist",
+    "name": "Arcanist",
+    "description": "Reach level 5 in magic.",
+    "category": "combat",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "magic",
+      "level": 5
+    },
+    "reward": {
+      "title": "the Arcanist"
+    }
+  },
+  {
+    "key": "archmage",
+    "name": "Archmage",
+    "description": "Master the magic skill.",
+    "category": "combat",
+    "criterion": {
+      "kind": "skill_reached",
+      "skill": "magic",
+      "level": 10
+    },
+    "reward": {
+      "title": "the Archmage",
+      "gold": 1000
+    }
+  },
+  {
+    "key": "first_incantation",
+    "name": "First Incantation",
+    "description": "Cast your first spell.",
+    "category": "combat",
+    "criterion": {
+      "kind": "counter",
+      "counter": "spells.cast",
+      "threshold": 1
+    },
+    "reward": {
+      "title": "the Initiate"
+    }
+  },
+  {
+    "key": "practised_caster",
+    "name": "Practised Caster",
+    "description": "Cast 250 spells.",
+    "category": "combat",
+    "criterion": {
+      "kind": "counter",
+      "counter": "spells.cast",
+      "threshold": 250
+    },
+    "reward": {
+      "title": "the Practised"
+    }
+  },
+  {
+    "key": "weaver_of_power",
+    "name": "Weaver of Power",
+    "description": "Cast 1000 spells.",
+    "category": "combat",
+    "criterion": {
+      "kind": "counter",
+      "counter": "spells.cast",
+      "threshold": 1000
+    },
+    "reward": {
+      "title": "the Weaver",
+      "gold": 2000,
+      "trait_points": 2
+    }
   }
 ]

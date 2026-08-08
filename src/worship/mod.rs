@@ -7,13 +7,15 @@
 //! stage triggers exactly once per lapse. Paying tribute (or atoning)
 //! resets the stage to 0 and the ladder re-arms.
 
-use crate::SharedConnections;
+pub mod favor;
+
 use crate::db::Db;
 use crate::script::worship::{
     current_absolute_day, deity_config_by_vnum, god_display_name, send_to_player, set_worship_anger_stage,
     smite_worshiper,
 };
 use crate::types::MobileTriggerType;
+use crate::{SharedConnections, SharedState};
 use anyhow::Result;
 use std::sync::Arc;
 
@@ -35,7 +37,7 @@ pub fn stage_for_overdue(overdue_days: i64) -> i32 {
 /// Scan online worshipers and escalate any whose tribute has lapsed.
 /// Offline players escalate on their first tick back online — the day
 /// math is absolute, so nothing is missed, only deferred.
-pub fn process_worship_tick(db: &Db, connections: &SharedConnections) -> Result<()> {
+pub fn process_worship_tick(db: &Db, connections: &SharedConnections, state: &SharedState) -> Result<()> {
     let today = current_absolute_day(db);
     // Snapshot names under the lock, then release it — the capability fns
     // called during escalation take the connections lock themselves.
@@ -49,7 +51,7 @@ pub fn process_worship_tick(db: &Db, connections: &SharedConnections) -> Result<
             .collect()
     };
     for name in worshipers {
-        process_worshiper(db, connections, &name, today);
+        process_worshiper(db, connections, state, &name, today);
     }
     Ok(())
 }
@@ -57,7 +59,7 @@ pub fn process_worship_tick(db: &Db, connections: &SharedConnections) -> Result<
 /// Escalate one worshiper if their overdue days imply a higher ladder stage
 /// than the one already fired. Public so integration tests can drive it
 /// directly (works for offline/DB-only characters too).
-pub fn process_worshiper(db: &Db, connections: &SharedConnections, char_name: &str, today: i64) {
+pub fn process_worshiper(db: &Db, connections: &SharedConnections, state: &SharedState, char_name: &str, today: i64) {
     let character = match db
         .get_character_data(&char_name.to_lowercase())
         .ok()
@@ -107,7 +109,7 @@ pub fn process_worshiper(db: &Db, connections: &SharedConnections, char_name: &s
         stage => {
             // Stages 3-4: give the god's OnSmite DG trigger first refusal.
             // Return(0) from the trigger cancels the default smite.
-            if !fire_on_smite(db, connections, char_name, &worship.god_vnum, stage, overdue) {
+            if !fire_on_smite(db, connections, state, char_name, &worship.god_vnum, stage, overdue) {
                 smite_worshiper(db, connections, char_name, stage);
             }
         }
@@ -119,6 +121,7 @@ pub fn process_worshiper(db: &Db, connections: &SharedConnections, char_name: &s
 fn fire_on_smite(
     db: &Db,
     connections: &SharedConnections,
+    state: &SharedState,
     char_name: &str,
     god_vnum: &str,
     severity: i32,
@@ -147,6 +150,7 @@ fn fire_on_smite(
     crate::script::dg::fire_mobile_dg_triggers_with_context(
         &db_arc,
         connections,
+        state,
         &god,
         MobileTriggerType::OnSmite,
         &connection_id,
@@ -253,30 +257,31 @@ mod tests {
     fn ladder_fires_each_stage_once_and_tribute_rearms() {
         let (db, _t) = open_temp();
         let conns = empty_connections();
+        let state = crate::World::minimal_shared(db.clone(), conns.clone());
         god_proto(&db, "pantheon:stern");
         let mut c = base_char("lapsed");
         c.worship = Some(WorshipState::new("pantheon:stern", 0));
         db.save_character_data(c).unwrap();
 
         // Day 4: 1 day overdue (interval 3) -> stage 1, warning only.
-        process_worshiper(&db, &conns, "lapsed", 4);
+        process_worshiper(&db, &conns, &state, "lapsed", 4);
         let c = db.get_character_data("lapsed").unwrap().unwrap();
         assert_eq!(c.worship.as_ref().unwrap().anger_stage, 1);
         assert!(c.active_buffs.is_empty());
 
         // Same day again: no re-fire.
-        process_worshiper(&db, &conns, "lapsed", 4);
+        process_worshiper(&db, &conns, &state, "lapsed", 4);
         let c = db.get_character_data("lapsed").unwrap().unwrap();
         assert_eq!(c.worship.as_ref().unwrap().anger_stage, 1);
 
         // Day 6: 3 days overdue -> stage 2 (forsaken: curse).
-        process_worshiper(&db, &conns, "lapsed", 6);
+        process_worshiper(&db, &conns, &state, "lapsed", 6);
         let c = db.get_character_data("lapsed").unwrap().unwrap();
         assert_eq!(c.worship.as_ref().unwrap().anger_stage, 2);
         assert!(c.active_buffs.iter().any(|b| b.effect_type == EffectType::Curse));
 
         // Day 9: 6 days overdue -> stage 3 smite (blind + hp damage).
-        process_worshiper(&db, &conns, "lapsed", 9);
+        process_worshiper(&db, &conns, &state, "lapsed", 9);
         let c = db.get_character_data("lapsed").unwrap().unwrap();
         assert_eq!(c.worship.as_ref().unwrap().anger_stage, 3);
         assert!(c.active_buffs.iter().any(|b| b.effect_type == EffectType::Blind));
@@ -284,7 +289,7 @@ mod tests {
 
         // Day 13: 10 days overdue -> stage 4, but permanent smite is off by
         // default so it lands as a repeat severity-3 smite.
-        process_worshiper(&db, &conns, "lapsed", 13);
+        process_worshiper(&db, &conns, &state, "lapsed", 13);
         let c = db.get_character_data("lapsed").unwrap().unwrap();
         assert_eq!(c.worship.as_ref().unwrap().anger_stage, 4);
         let blind = c
@@ -304,13 +309,14 @@ mod tests {
     fn offline_jump_lands_on_highest_stage_only() {
         let (db, _t) = open_temp();
         let conns = empty_connections();
+        let state = crate::World::minimal_shared(db.clone(), conns.clone());
         god_proto(&db, "pantheon:stern");
         let mut c = base_char("absent");
         c.worship = Some(WorshipState::new("pantheon:stern", 0));
         db.save_character_data(c).unwrap();
 
         // Long absence: straight to stage 4 in one pass, no intermediate spam.
-        process_worshiper(&db, &conns, "absent", 50);
+        process_worshiper(&db, &conns, &state, "absent", 50);
         let c = db.get_character_data("absent").unwrap().unwrap();
         assert_eq!(c.worship.as_ref().unwrap().anger_stage, 4);
     }

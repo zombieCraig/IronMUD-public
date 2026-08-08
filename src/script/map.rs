@@ -24,8 +24,8 @@ use std::sync::Arc;
 use rhai::Engine;
 use uuid::Uuid;
 
-use crate::SharedConnections;
 use crate::db::Db;
+use crate::{SharedConnections, SharedState};
 
 pub const DEFAULT_RADIUS: i32 = 5;
 pub const AUTOMAP_DEFAULT_RADIUS: i32 = 3;
@@ -556,7 +556,7 @@ pub fn render_map_for_player_with_options(
     render_map(&layout, show_legend, colors_enabled, ascii_only)
 }
 
-pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnections) {
+pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, state: SharedState) {
     // map_enabled() -> bool
     {
         let db = db.clone();
@@ -579,7 +579,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
     // `map_legend_shown` so subsequent renders elide the legend.
     {
         let db = db.clone();
-        let connections = _connections.clone();
+        let connections = connections.clone();
         engine.register_fn(
             "render_map_for_session",
             move |connection_id: String, radius: i64| -> String {
@@ -634,6 +634,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
     // mark_room_visited(player_name, room_id) -> bool (true if newly inserted)
     {
         let db = db.clone();
+        let connections = connections.clone();
+        let state = state.clone();
         engine.register_fn(
             "mark_room_visited",
             move |player_name: String, room_id: String| -> bool {
@@ -641,23 +643,20 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
                     Ok(u) => u,
                     Err(_) => return false,
                 };
-                let mut ch = match db.get_character_data(&player_name.to_lowercase()) {
-                    Ok(Some(c)) => c,
-                    _ => return false,
-                };
-                if ch.rooms_visited.insert(rid) {
-                    let _ = db.save_character_data(ch);
-                    true
-                } else {
-                    false
-                }
+                crate::script::achievements::notify_room_visited_core(
+                    &db,
+                    &connections,
+                    &state,
+                    &player_name.to_lowercase(),
+                    &rid,
+                )
             },
         );
     }
 
     // is_automap_enabled(connection_id) -> bool
     {
-        let connections = _connections.clone();
+        let connections = connections.clone();
         engine.register_fn("is_automap_enabled", move |connection_id: String| -> bool {
             let conn_uuid = match Uuid::parse_str(&connection_id) {
                 Ok(u) => u,
@@ -677,7 +676,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
     // set_automap_enabled_for(connection_id, on) -> bool (success)
     {
         let db = db.clone();
-        let connections = _connections.clone();
+        let connections = connections.clone();
         engine.register_fn(
             "set_automap_enabled_for",
             move |connection_id: String, value: bool| -> bool {
@@ -718,7 +717,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
 
     // get_automap_radius_for(connection_id) -> i64 (defaults to AUTOMAP_DEFAULT_RADIUS)
     {
-        let connections = _connections.clone();
+        let connections = connections.clone();
         engine.register_fn("get_automap_radius_for", move |connection_id: String| -> i64 {
             let conn_uuid = match Uuid::parse_str(&connection_id) {
                 Ok(u) => u,
@@ -739,7 +738,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
     // Clamps to [1, 8].
     {
         let db = db.clone();
-        let connections = _connections.clone();
+        let connections = connections.clone();
         engine.register_fn(
             "set_automap_radius_for",
             move |connection_id: String, radius: i64| -> bool {
@@ -781,7 +780,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
 
     // is_ascii_map_for(connection_id) -> bool
     {
-        let connections = _connections.clone();
+        let connections = connections.clone();
         engine.register_fn("is_ascii_map_for", move |connection_id: String| -> bool {
             let conn_uuid = match Uuid::parse_str(&connection_id) {
                 Ok(u) => u,
@@ -801,7 +800,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, _connections: SharedConnection
     // set_ascii_map_for(connection_id, on) -> bool (success)
     {
         let db = db.clone();
-        let connections = _connections.clone();
+        let connections = connections.clone();
         engine.register_fn("set_ascii_map_for", move |connection_id: String, value: bool| -> bool {
             let conn_uuid = match Uuid::parse_str(&connection_id) {
                 Ok(u) => u,

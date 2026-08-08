@@ -330,15 +330,52 @@ pub fn record_tribute(db: &Db, connections: &SharedConnections, char_name: &str)
 }
 
 /// Adjust favor (positive or negative). Returns false without a pact.
+///
+/// Announces a tier crossing when the move causes one. Every favor mutation
+/// in the codebase routes its reporting through [`announce_favor_shift`] so a
+/// player cannot rise into Blessed silently on one path and loudly on another.
 pub fn add_worship_favor(db: &Db, connections: &SharedConnections, char_name: &str, amount: i32) -> bool {
-    mutate_character(db, connections, char_name, |ch| match ch.worship {
+    let mut shift: Option<(String, i32, i32)> = None;
+    let ok = mutate_character(db, connections, char_name, |ch| match ch.worship {
         Some(ref mut w) => {
+            let before = w.favor;
             w.favor = w.favor.saturating_add(amount);
+            shift = Some((w.god_vnum.clone(), before, w.favor));
             true
         }
         None => false,
     })
-    .unwrap_or(false)
+    .unwrap_or(false);
+    if let Some((god_vnum, before, after)) = shift {
+        announce_favor_shift(db, connections, char_name, &god_vnum, before, after);
+    }
+    ok
+}
+
+/// Emit the tier-crossing line for a favor move, if it crossed one.
+///
+/// Separate from the mutation because the two other favor sites (faith
+/// offences, PvP kill credit) change favor inside a `mutate_character`
+/// closure that is also doing other bookkeeping. Calling `add_worship_favor`
+/// from inside one of those would mean a second load-mutate-save of the same
+/// character; they capture before/after instead and call this afterwards.
+pub fn announce_favor_shift(
+    db: &Db,
+    connections: &SharedConnections,
+    char_name: &str,
+    god_vnum: &str,
+    before: i32,
+    after: i32,
+) {
+    // Resolving the god's name is a DB read, so only do it once we know
+    // there is something to say.
+    if crate::worship::favor::tier_shift_message("", before, after).is_none() {
+        return;
+    }
+    let god_name = god_display_name(db, god_vnum);
+    if let Some(line) = crate::worship::favor::tier_shift_message(&god_name, before, after) {
+        send_to_player(connections, char_name, &line);
+    }
 }
 
 /// Record that an anger-ladder stage has fired (worship tick bookkeeping).
@@ -502,10 +539,13 @@ pub fn punish_faith_offense(
     if god_vnum != target_god_vnum {
         return String::new();
     }
+    let mut favor_shift = (0, 0);
     let offenses = mutate_character(db, connections, attacker_name, |ch| match ch.worship {
         Some(ref mut w) => {
             w.coworshiper_offenses = w.coworshiper_offenses.saturating_add(1);
+            let before = w.favor;
             w.favor = w.favor.saturating_sub(if w.coworshiper_offenses >= 2 { 15 } else { 5 });
+            favor_shift = (before, w.favor);
             w.coworshiper_offenses
         }
         None => 0,
@@ -514,6 +554,9 @@ pub fn punish_faith_offense(
     if offenses == 0 {
         return String::new();
     }
+    // Before the offence flavour below, so the player reads the standing they
+    // just lost and then what it cost them.
+    announce_favor_shift(db, connections, attacker_name, &god_vnum, favor_shift.0, favor_shift.1);
     let god_name = {
         let n = god_display_name(db, &god_vnum);
         if n.is_empty() { "your god".to_string() } else { n }
@@ -626,6 +669,7 @@ pub fn handle_pvp_kill_credit(db: &Db, connections: &SharedConnections, killer_n
     }
     let today = current_absolute_day(db);
     let victim_key = victim_name.to_lowercase();
+    let mut favor_shift = (0, 0);
     let credited = mutate_character(db, connections, killer_name, |ch| match ch.worship {
         Some(ref mut w) => {
             if w.pvp_credit_days.get(&victim_key) == Some(&today) {
@@ -633,7 +677,9 @@ pub fn handle_pvp_kill_credit(db: &Db, connections: &SharedConnections, killer_n
             }
             w.pvp_credit_days.insert(victim_key.clone(), today);
             w.pvp_credit_days.retain(|_, d| today - *d <= PVP_CREDIT_RETENTION_DAYS);
+            let before = w.favor;
             w.favor = w.favor.saturating_add(FAVOR_PER_ENEMY_WORSHIPER);
+            favor_shift = (before, w.favor);
             true
         }
         None => false,
@@ -651,6 +697,7 @@ pub fn handle_pvp_kill_credit(db: &Db, connections: &SharedConnections, killer_n
             if god_name.is_empty() { "Your god" } else { &god_name },
         ),
     );
+    announce_favor_shift(db, connections, killer_name, &god_vnum, favor_shift.0, favor_shift.1);
 }
 
 fn deduct_gold(ch: &mut CharacterData, mut cost: i64) {
@@ -745,6 +792,60 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             .map(|w| w.favor as i64)
             .unwrap_or(0)
     });
+
+    // get_worship_standing(char_name) -> "Favored (127)"
+    // What a display should print instead of the raw favor integer.
+    let d = db.clone();
+    let co = connections.clone();
+    engine.register_fn("get_worship_standing", move |char_name: String| -> String {
+        let favor = read_character(&d, &co, &char_name)
+            .and_then(|c| c.worship)
+            .map(|w| w.favor)
+            .unwrap_or(0);
+        crate::worship::favor::standing_line(favor)
+    });
+
+    // get_worship_favor_tier(char_name) -> "favored"
+    // The snake_case key, for scripts branching on standing.
+    let d = db.clone();
+    let co = connections.clone();
+    engine.register_fn("get_worship_favor_tier", move |char_name: String| -> String {
+        let favor = read_character(&d, &co, &char_name)
+            .and_then(|c| c.worship)
+            .map(|w| w.favor)
+            .unwrap_or(0);
+        crate::worship::favor::FavorTier::from_value(favor).key().to_string()
+    });
+
+    // worship_favor_at_least(char_name, tier_key) -> bool
+    //
+    // The generic favor gate. Comparison happens here rather than in a script
+    // because the ladder's *order* is the thing being asked about, and a script
+    // that branches on tier keys would be a second copy of it — the exact drift
+    // `src/tiers.rs` exists to prevent (and the one `standing.rhai` had to have
+    // fixed in the Tier 1 review).
+    //
+    // An unrecognised `tier_key` refuses. A gate whose threshold is misspelled
+    // should stay shut, not swing open.
+    let d = db.clone();
+    let co = connections.clone();
+    engine.register_fn(
+        "worship_favor_at_least",
+        move |char_name: String, tier_key: String| -> bool {
+            let Some(required) = crate::worship::favor::FavorTier::from_key(&tier_key) else {
+                return false;
+            };
+            let Some(ch) = read_character(&d, &co, &char_name) else {
+                return false;
+            };
+            // No god, no favor to draw on — worshipping nothing is not the same
+            // as worshipping badly.
+            let Some(w) = ch.worship else {
+                return false;
+            };
+            crate::worship::favor::FavorTier::from_value(w.favor) >= required
+        },
+    );
 
     let d = db.clone();
     let co = connections.clone();
@@ -1177,6 +1278,28 @@ mod tests {
         DeityConfig::default()
     }
 
+    /// Put `name` on the connections map with a real client channel, so the
+    /// tier-shift announcements `send_to_player` emits can be asserted on.
+    /// The rest of the favor tests use `empty_connections()`, where every
+    /// send is a silent no-op.
+    fn online(conns: &SharedConnections, ch: &CharacterData) -> tokio::sync::mpsc::UnboundedReceiver<String> {
+        let (tx_client, rx_client) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let (tx_input, _rx_input) = tokio::sync::mpsc::channel::<crate::InputEvent>(1);
+        let mut session = crate::PlayerSession::new_for_test(tx_client, tx_input);
+        session.character = Some(ch.clone());
+        conns.lock().unwrap().insert(uuid::Uuid::new_v4(), session);
+        rx_client
+    }
+
+    /// Everything the player has been sent so far, joined.
+    fn drain(rx: &mut tokio::sync::mpsc::UnboundedReceiver<String>) -> String {
+        let mut out = String::new();
+        while let Ok(msg) = rx.try_recv() {
+            out.push_str(&msg);
+        }
+        out
+    }
+
     #[test]
     fn pact_requires_rank_god() {
         let (db, _t) = open_temp();
@@ -1459,5 +1582,122 @@ mod tests {
         handle_pvp_kill_credit(&db, &conns, "crusader", "pilgrim");
         let c = db.get_character_data("crusader").unwrap().unwrap();
         assert_eq!(c.worship.as_ref().unwrap().favor, FAVOR_PER_ENEMY_WORSHIPER);
+    }
+
+    #[test]
+    fn crossing_a_band_announces_and_staying_inside_one_does_not() {
+        let (db, _t) = open_temp();
+        let conns = empty_connections();
+        god_proto(&db, "pantheon:kaleth", default_god_cfg());
+        let mut c = base_char("acolyte");
+        c.worship = Some(WorshipState::new("pantheon:kaleth", 0));
+        db.save_character_data(c.clone()).unwrap();
+        let mut rx = online(&conns, &c);
+
+        // 0 -> 20 stays inside Unproven.
+        add_worship_favor(&db, &conns, "acolyte", 20);
+        assert_eq!(drain(&mut rx), "", "a move inside one band must stay silent");
+
+        // 20 -> 30 crosses into Noticed.
+        add_worship_favor(&db, &conns, "acolyte", 10);
+        let out = drain(&mut rx);
+        assert!(out.contains("raises you to Noticed."), "got: {:?}", out);
+        assert!(out.contains("god-pantheon:kaleth"), "names the god: {:?}", out);
+    }
+
+    #[test]
+    fn a_faith_offense_announces_the_fall() {
+        let (db, _t) = open_temp();
+        let conns = empty_connections();
+        god_proto(&db, "pantheon:oath", default_god_cfg());
+        let mut c = base_char("backslider");
+        c.hp = 100;
+        c.max_hp = 100;
+        let mut w = WorshipState::new("pantheon:oath", 0);
+        // Just inside Noticed: the first -5 offense drops them out of it.
+        w.favor = 25;
+        c.worship = Some(w);
+        db.save_character_data(c.clone()).unwrap();
+        let mut rx = online(&conns, &c);
+
+        assert_eq!(
+            punish_faith_offense(&db, &conns, "backslider", "pantheon:oath"),
+            "first"
+        );
+        let out = drain(&mut rx);
+        assert!(out.contains("casts you down to Unproven."), "got: {:?}", out);
+        // The standing loss is reported before the offense flavour, so the
+        // player reads what they lost and then what it cost.
+        let fall = out.find("casts you down").expect("fall line");
+        let flavour = out.find("cold displeasure").expect("offense line");
+        assert!(fall < flavour, "standing loss should come first: {:?}", out);
+    }
+
+    #[test]
+    fn a_pvp_kill_credit_announces_through_the_same_ladder() {
+        let (db, _t) = open_temp();
+        let conns = empty_connections();
+        let mut cfg = default_god_cfg();
+        cfg.enemy_god_vnums = vec!["pantheon:dark".to_string()];
+        god_proto(&db, "pantheon:light", cfg);
+        god_proto(&db, "pantheon:dark", default_god_cfg());
+
+        let mut killer = base_char("crusader");
+        let mut w = WorshipState::new("pantheon:light", 0);
+        // 10 + 25 = 35 crosses out of Unproven.
+        w.favor = 10;
+        killer.worship = Some(w);
+        db.save_character_data(killer.clone()).unwrap();
+        let mut victim = base_char("heretic");
+        victim.worship = Some(WorshipState::new("pantheon:dark", 0));
+        db.save_character_data(victim).unwrap();
+        let mut rx = online(&conns, &killer);
+
+        handle_pvp_kill_credit(&db, &conns, "crusader", "heretic");
+        let out = drain(&mut rx);
+        assert!(out.contains("raises you to Noticed."), "got: {:?}", out);
+
+        // The uncredited repeat must not re-announce.
+        handle_pvp_kill_credit(&db, &conns, "crusader", "heretic");
+        assert_eq!(drain(&mut rx), "");
+    }
+
+    #[test]
+    fn an_npc_kill_credit_announces_through_the_same_ladder() {
+        let (db, _t) = open_temp();
+        let conns = empty_connections();
+        let mut cfg = default_god_cfg();
+        cfg.enemy_god_vnums = vec!["pantheon:dark".to_string()];
+        god_proto(&db, "pantheon:light", cfg);
+        god_proto(&db, "pantheon:dark", default_god_cfg());
+
+        let mut minion = MobileData::new("dark acolyte".to_string());
+        minion.vnum = "dark:acolyte".to_string();
+        minion.is_prototype = true;
+        minion.patron_god_vnum = Some("pantheon:dark".to_string());
+        db.save_mobile_data(minion).unwrap();
+
+        let mut c = base_char("paladin");
+        let mut w = WorshipState::new("pantheon:light", 0);
+        w.favor = 96; // +5 crosses 100 into Favored
+        c.worship = Some(w);
+        db.save_character_data(c.clone()).unwrap();
+        let mut rx = online(&conns, &c);
+
+        handle_npc_kill_credit(&db, &conns, "paladin", "dark:acolyte");
+        let out = drain(&mut rx);
+        assert!(out.contains("raises you to Favored."), "got: {:?}", out);
+    }
+
+    #[test]
+    fn a_godless_character_is_never_announced_at() {
+        let (db, _t) = open_temp();
+        let conns = empty_connections();
+        let c = base_char("heathen");
+        db.save_character_data(c.clone()).unwrap();
+        let mut rx = online(&conns, &c);
+
+        assert!(!add_worship_favor(&db, &conns, "heathen", 500));
+        assert_eq!(drain(&mut rx), "");
     }
 }

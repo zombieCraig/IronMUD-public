@@ -157,6 +157,9 @@ fn run_command(args, connection_id) {
             set_mobile_area_id(mobile.id, new_area_id);
         }
 
+        // Attribution: claim the prototype for its creator. See src/attribution.rs.
+        stamp_content_created("mobile", "" + mobile.id, char.name);
+
         // Re-fetch to get updated data for display
         let mobile = get_mobile_data(mobile.id);
         send_client_message(connection_id, "Created mobile prototype with vnum: " + vnum + "\n");
@@ -216,6 +219,11 @@ fn run_command(args, connection_id) {
             return;
         }
     }
+
+    // Attribution: one stamp per editor, after the permission gate and after
+    // the read-only subcommands have returned. See src/attribution.rs.
+    stamp_content_edited("mobile", "" + mobile.id, char.name);
+    note_grade_before("mobile", "" + mobile.id, connection_id);
 
     // Handle subcommands
     handle_subcommand(mobile, mobile_id, subcommand, parts, char, connection_id);
@@ -282,6 +290,7 @@ fn dispatch_combat_subcommand(uuid, subcommand, parts, connection_id) {
     if subcommand == "hp" { handle_hp_subcommand(uuid, parts, connection_id); return true; }
     if subcommand == "damage" { handle_damage_subcommand(uuid, parts, connection_id); return true; }
     if subcommand == "ac" { handle_ac_subcommand(uuid, parts, connection_id); return true; }
+    if subcommand == "alignment" || subcommand == "align" { handle_alignment_subcommand(uuid, parts, connection_id); return true; }
     if subcommand == "damtype" { handle_damtype_subcommand(uuid, parts, connection_id); return true; }
     if subcommand == "creature" || subcommand == "biology" { handle_creature_subcommand(uuid, parts, connection_id); return true; }
     if subcommand == "stat" { handle_stat_subcommand(uuid, parts, connection_id); return true; }
@@ -380,11 +389,17 @@ fn tree_help(display_id, connection_id) {
         + "  medit " + display_id + " tree editchoice <node> <index> once <on|off>\n"
         + "  medit " + display_id + " tree addcond <node> <choice_idx> <kind> [args...]\n"
         + "    kinds: flag_set|flag_unset|has_item|skill_at_least|counter_at_least|\n"
-        + "           quest_active|quest_complete|quest_completable|has_achievement\n"
+        + "           quest_active|quest_complete|quest_completable|has_achievement|\n"
+        + "           reputation_at_least\n"
+        + "    reputation_at_least <faction> <value>  - 50 Accepted, 200 Honored, 500 Revered\n"
         + "  medit " + display_id + " tree delcond <node> <choice_idx> <cond_idx>\n"
         + "  medit " + display_id + " tree addfx <node> <choice_idx> <kind> [args...]\n"
-        + "    kinds: set_flag|clear_flag|give_item|take_item|award_skill_xp|\n"
+        + "    kinds: set_flag|clear_flag|give_item|take_item|award_skill_xp|teach_skill|\n"
+        + "           morality|reputation|\n"
         + "           set_counter|increment_counter|offer_quest|complete_quest|abandon_quest\n"
+        + "    teach_skill <skill> <amount> [cap] [gold_cost] - paid lesson, refused at cap\n"
+        + "    morality <delta>  - shift the alignment slider; tier crossings announce\n"
+        + "    reputation <faction> <delta> - standing with a group; opposed factions move too\n"
         + "  medit " + display_id + " tree delfx <node> <choice_idx> <fx_idx>\n"
         + "  medit " + display_id + " tree set <json>         - Replace whole tree from JSON\n"
         + "  medit " + display_id + " tree clear              - Remove the dialogue tree";
@@ -997,6 +1012,36 @@ fn handle_ac_subcommand(mobile_id, parts, connection_id) {
     send_client_message(connection_id, "Armor class set to: " + ac);
 }
 
+fn handle_alignment_subcommand(mobile_id, parts, connection_id) {
+    if parts.len() < 3 {
+        send_client_message(connection_id, "Usage: medit " + mobile_id + " alignment <-200..200>");
+        send_client_message(connection_id, "  Moral weight of killing this mobile. Negative is evil, positive good.");
+        send_client_message(connection_id, "  0 (the default) means the kill carries no moral charge at all.");
+        return;
+    }
+    let value = try_parse_int(parts[2]);
+    if value == () {
+        send_client_message(connection_id, "Invalid number.");
+        return;
+    }
+    set_mobile_alignment(mobile_id, value);
+    let stored = get_mobile_data(mobile_id).alignment;
+    send_client_message(connection_id, "Alignment set to: " + stored + " (" + describe_alignment(stored) + ")");
+}
+
+// Player-facing band names for a mobile's moral weight. Mirrors the tier
+// thresholds in src/morality.rs; a mobile is described by where its value
+// would place a *character* on the same scale.
+fn describe_alignment(value) {
+    if value <= -100 { return "pure evil"; }
+    if value <= -50 { return "evil"; }
+    if value <= -25 { return "wicked"; }
+    if value < 25 { return "neutral"; }
+    if value < 50 { return "decent"; }
+    if value < 100 { return "good"; }
+    return "pure good";
+}
+
 fn handle_gold_subcommand(mobile_id, parts, connection_id) {
     if parts.len() < 3 {
         send_client_message(connection_id, "Usage: medit " + mobile_id + " gold <amount>");
@@ -1103,17 +1148,36 @@ fn handle_faction_subcommand(mobile_id, parts, connection_id) {
     if parts.len() < 3 {
         let current = get_mobile_faction(mobile_id);
         let shown = if current == "" { "(none)" } else { current };
-        send_client_message(connection_id, "Faction: " + shown + "\nUsage: medit " + mobile_id + " faction <tag|clear>");
+        let out = "Faction: " + shown + "\nUsage: medit " + mobile_id + " faction <key|clear>"
+            + "\n  Killing this mobile costs the player standing with its faction and"
+            + "\n  buys standing with that faction's declared enemies. Members also"
+            + "\n  defend one another, and a faction that hates a player attacks on sight.";
+        let known = list_faction_keys();
+        if known.len() > 0 {
+            out += "\n  Declared factions: " + olc::join_array(known);
+            out += "\n  A key with no entry in scripts/data/factions.json still works — it";
+            out += "\n  simply has no opposites and no display name.";
+        }
+        send_client_message(connection_id, out);
         return;
     }
     let value = parts[2];
-    if value.to_lower() == "clear" || value == "" {
+    if value.to_lower() == "clear" || value.to_lower() == "none" || value == "" {
         set_mobile_faction(mobile_id, "");
         send_client_message(connection_id, "Faction cleared.");
         return;
     }
-    set_mobile_faction(mobile_id, value);
-    send_client_message(connection_id, "Faction set to: " + value);
+    if !set_mobile_faction(mobile_id, value) {
+        send_client_message(connection_id, "Failed to set faction.");
+        return;
+    }
+    let stored = get_mobile_faction(mobile_id);
+    let label = get_faction_name(stored);
+    if label == stored {
+        send_client_message(connection_id, "Faction set to: " + stored + " (undeclared — no opposites, no display name)");
+    } else {
+        send_client_message(connection_id, "Faction set to: " + stored + " (" + label + ")");
+    }
 }
 
 fn handle_language_subcommand(mobile_id, parts, connection_id) {
@@ -1270,7 +1334,7 @@ fn handle_flag_subcommand(mobile_id, parts, connection_id) {
     // Validate all names before changing anything.
     for name in flag_names {
         if get_mobile_flag_value(mobile, name) == () {
-            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, helper, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim, poisonous, fiery, chilling, corrosive, shocking, unique, stay_zone, aware, memory, no_sleep, no_blind, no_bash, no_summon, no_charm, no_fear, hostile_on_steal, tameable, undead, vampire, holy_vulnerable, aggro_good, aggro_evil, aggro_neutral");
+            send_client_message(connection_id, "Unknown flag: " + name + "\nAvailable: aggressive, sentinel, scavenger, shopkeeper, no_attack, healer, helper, leasing_agent, cowardly, can_open_doors, guard, thief, cant_swim, poisonous, fiery, chilling, corrosive, shocking, unique, stay_zone, aware, memory, no_sleep, no_blind, no_bash, no_summon, no_charm, no_fear, hostile_on_steal, tameable, undead, vampire, holy_vulnerable, aggro_good, aggro_evil, aggro_neutral, consignment");
             return;
         }
     }
@@ -1328,6 +1392,7 @@ fn get_mobile_flag_value(mobile, flag_name) {
     if flag_name == "aggro_good" || flag_name == "aggrgood" { return flags.aggro_good; }
     if flag_name == "aggro_evil" || flag_name == "aggrevil" { return flags.aggro_evil; }
     if flag_name == "aggro_neutral" || flag_name == "aggrneutral" { return flags.aggro_neutral; }
+    if flag_name == "consignment" || flag_name == "broker" { return flags.consignment; }
     return ();
 }
 
@@ -1428,11 +1493,26 @@ fn show_mobile_properties(mobile, mobile_id, connection_id) {
     output += olc::c_label("Hit Modifier: ", connection_id) + olc::c_value("" + mobile.hit_modifier, connection_id) + "\n";
     output += olc::c_label("Perception: ", connection_id) + olc::c_value("" + mobile.perception, connection_id) + "\n";
     output += olc::c_label("Gold: ", connection_id) + olc::c_value("" + mobile.gold, connection_id) + "\n";
+    if mobile.alignment != 0 {
+        output += olc::c_label("Alignment: ", connection_id) + olc::c_value("" + mobile.alignment + " (" + describe_alignment(mobile.alignment) + ")", connection_id) + "\n";
+    }
     if mobile.has_world_max_count {
         output += olc::c_label("World Max: ", connection_id) + olc::c_value("" + mobile.world_max_count + " live copies", connection_id) + "\n";
     }
     if mobile.faction != "" {
-        output += olc::c_label("Faction: ", connection_id) + olc::c_value(mobile.faction, connection_id) + "\n";
+        let fname = get_faction_name(mobile.faction);
+        let shown = mobile.faction;
+        if fname != mobile.faction { shown += " (" + fname + ")"; }
+        let foes = get_faction_opposed(mobile.faction);
+        if foes.len() > 0 {
+            let line = "";
+            for f in foes {
+                if line != "" { line += ", "; }
+                line += f;
+            }
+            shown += " vs " + line;
+        }
+        output += olc::c_label("Faction: ", connection_id) + olc::c_value(shown, connection_id) + "\n";
     }
     if mobile.has_spoken_language {
         let lang_label = get_language_display_name(mobile.spoken_language);
@@ -1549,6 +1629,7 @@ fn build_flags_display(mobile) {
     if flags.aggro_good { flag_str += "aggro_good "; }
     if flags.aggro_evil { flag_str += "aggro_evil "; }
     if flags.aggro_neutral { flag_str += "aggro_neutral "; }
+    if flags.consignment { flag_str += "consignment "; }
     if flag_str == "" { flag_str = "(none)"; }
     output += flag_str + "\n";
     return output;
@@ -1574,9 +1655,10 @@ fn build_commands_help(mobile_id, mobile) {
     output += "  medit " + display_id + " creature <type>          (base biology: mortal/animal/insect/...)\n";
     output += "  medit " + display_id + " ac <value>\n";
     output += "  medit " + display_id + " gold <amount>            (gold dropped on death)\n";
+    output += "  medit " + display_id + " alignment <-200..200>    (moral weight of killing it; 0 = none)\n";
     output += "  medit " + display_id + " perception <0-10>       (stealth detection ability)\n";
     output += "  medit " + display_id + " world_max <n>           (cap live copies world-wide; 0 = unlimited)\n";
-    output += "  medit " + display_id + " faction <tag|clear>     (helper system: matching tags ally)\n";
+    output += "  medit " + display_id + " faction <key|clear>     (group: allies, player standing, aggro)\n";
     output += "  medit " + display_id + " language <key|clear>    (spoken language)\n";
     output += "  medit " + display_id + " position <standing|sitting|sleeping>\n";
     output += "  medit " + display_id + " gender <male|female|nonbinary|clear>\n";
@@ -1733,6 +1815,7 @@ fn show_mobile_flags(mobile, mobile_id, connection_id) {
     output += build_flag_line("aggro_good", flags.aggro_good, "Attacks any player in the Good morality range (above +24)", display_id, connection_id);
     output += build_flag_line("aggro_evil", flags.aggro_evil, "Attacks any player in the Evil morality range (below -24)", display_id, connection_id);
     output += build_flag_line("aggro_neutral", flags.aggro_neutral, "Attacks any player in the Neutral morality band (-24..+24)", display_id, connection_id);
+    output += build_flag_line("consignment", flags.consignment, "Accepts player consignments (see the commission and listingcap subcommands)", display_id, connection_id);
 
     send_mxp_message(connection_id, output);
 }
@@ -1834,6 +1917,14 @@ fn handle_shop_subcommand(mobile, mobile_id, parts, connection_id) {
         handle_shop_minvalue(mobile_id, parts, connection_id);
         return;
     }
+    if shop_cmd == "commission" {
+        handle_shop_commission(mobile_id, parts, connection_id);
+        return;
+    }
+    if shop_cmd == "listingcap" {
+        handle_shop_listingcap(mobile_id, parts, connection_id);
+        return;
+    }
     if shop_cmd == "maxvalue" {
         handle_shop_maxvalue(mobile_id, parts, connection_id);
         return;
@@ -1860,6 +1951,23 @@ fn show_shop_config(mobile, mobile_id, connection_id) {
     if !flags.shopkeeper {
         output += olc::c_warn("*** WARNING: 'shopkeeper' flag is OFF ***", connection_id) + "\n";
         output += "Enable with: medit " + display_id + " flag shopkeeper on\n\n";
+    }
+
+    // Consignment is independent of shopkeeper: a broker can be a pure
+    // middleman, or a shopkeeper that also runs a shelf. Only mention it when
+    // it is on, so an ordinary shop's page does not grow a line about a system
+    // it does not use.
+    if flags.consignment {
+        output += "Consignment: ON, " + mobile.consignment_commission_pct + "% commission";
+        if mobile.consignment_max_listings_per_player > 0 {
+            output += ", " + mobile.consignment_max_listings_per_player + " listings per player";
+        } else {
+            output += ", shared listing default";
+        }
+        output += "\n";
+        if mobile.vnum == "" {
+            output += olc::c_warn("*** No vnum: this broker will refuse every consignment ***", connection_id) + "\n";
+        }
     }
 
     output += "Buy Rate: " + mobile.shop_buy_rate + "% (paid to players selling items)\n";
@@ -1956,6 +2064,8 @@ fn show_shop_config(mobile, mobile_id, connection_id) {
     output += "\nCommands:\n";
     output += "  medit " + display_id + " shop stock add|remove <vnum>\n";
     output += "  medit " + display_id + " shop buyrate <0-100>\n";
+    output += "  medit " + display_id + " shop commission <0-100>   (consignment brokers)\n";
+    output += "  medit " + display_id + " shop listingcap <n>       (0 = shared default)\n";
     output += "  medit " + display_id + " shop sellrate <50+>\n";
     output += "  medit " + display_id + " shop buys all|none|add|remove <type>\n";
     output += "  medit " + display_id + " shop categories add|remove|clear <cat>\n";
@@ -2041,6 +2151,53 @@ fn handle_shop_buyrate(mobile_id, parts, connection_id) {
         send_client_message(connection_id, "Buy rate set to " + rate + "%.");
     } else {
         send_client_message(connection_id, "Failed to set buy rate.");
+    }
+}
+
+// Consignment: the broker's cut of each player-to-player sale. This is the
+// player economy's gold sink, so it is a builder decision, not a constant.
+fn handle_shop_commission(mobile_id, parts, connection_id) {
+    if parts.len() < 4 {
+        send_client_message(connection_id, "Usage: medit " + mobile_id + " shop commission 0-100");
+        return;
+    }
+    let pct = try_parse_int(parts[3]);
+    if pct == () {
+        send_client_message(connection_id, "Invalid number.");
+        return;
+    }
+    if pct < 0 || pct > 100 {
+        send_client_message(connection_id, "Commission must be between 0 and 100.");
+        return;
+    }
+    if set_consignment_commission(mobile_id, pct) {
+        send_client_message(connection_id, "Consignment commission set to " + pct + "%.");
+    } else {
+        send_client_message(connection_id, "Failed to set commission.");
+    }
+}
+
+// How many listings one player may hold on this broker. 0 uses the shared
+// default, so a builder only has to think about it when they want a tighter
+// shelf than the game's.
+fn handle_shop_listingcap(mobile_id, parts, connection_id) {
+    if parts.len() < 4 {
+        send_client_message(connection_id, "Usage: medit " + mobile_id + " shop listingcap 0-100");
+        return;
+    }
+    let cap = try_parse_int(parts[3]);
+    if cap == () || cap < 0 {
+        send_client_message(connection_id, "Invalid number.");
+        return;
+    }
+    if set_consignment_listing_cap(mobile_id, cap) {
+        if cap == 0 {
+            send_client_message(connection_id, "Listing cap cleared; the shared default applies.");
+        } else {
+            send_client_message(connection_id, "Listing cap set to " + cap + " per player.");
+        }
+    } else {
+        send_client_message(connection_id, "Failed to set listing cap.");
     }
 }
 

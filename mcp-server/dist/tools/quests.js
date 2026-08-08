@@ -110,6 +110,32 @@ const rewardSchema = {
         {
             type: "object",
             properties: {
+                kind: { const: "morality" },
+                delta: {
+                    type: "number",
+                    description: "Shift the player's morality slider. Positive pushes toward Good, negative toward Evil; clamped to [-200, 200]. Crossing a tier announces itself, sub-tier nudges are silent. Use when the moral weight is in the quest's resolution rather than in what the player killed getting there.",
+                },
+            },
+            required: ["kind", "delta"],
+        },
+        {
+            type: "object",
+            properties: {
+                kind: { const: "reputation" },
+                faction: {
+                    type: "string",
+                    description: "Faction key, matching MobileData.faction and an entry in scripts/data/factions.json.",
+                },
+                delta: {
+                    type: "number",
+                    description: "Shift standing with that faction, clamped to [-1000, 1000]. The faction's declared enemies move the opposite way, scaled by its opposition_ratio. Combat can only LOWER standing, so this and the reputation dialogue effect are the only ways it rises. 50 is Accepted, 200 Honored, 500 Revered.",
+                },
+            },
+            required: ["kind", "faction", "delta"],
+        },
+        {
+            type: "object",
+            properties: {
                 kind: { const: "embrace_clan" },
                 clan: {
                     type: "string",
@@ -193,6 +219,15 @@ export const questToolDefinitions = [
                     },
                     required: ["keys", "min_count"],
                 },
+                reputation_prereq: {
+                    type: "object",
+                    description: "Faction standing gate: the quest is only offerable once the player's reputation with `faction` reaches `min_value` (50 Accepted, 200 Honored, 500 Revered). A faction the player has never dealt with reads 0, so a positive threshold means 'prove yourself first' and a negative one means 'we will not deal with someone who has wronged us this badly'. Empty faction clears the gate.",
+                    properties: {
+                        faction: { type: "string" },
+                        min_value: { type: "number" },
+                    },
+                    required: ["faction", "min_value"],
+                },
             },
             required: ["vnum", "name"],
         },
@@ -224,6 +259,15 @@ export const questToolDefinitions = [
                         min_count: { type: "number" },
                     },
                     required: ["keys", "min_count"],
+                },
+                reputation_prereq: {
+                    type: "object",
+                    description: "Faction standing gate. Pass {faction: \"\", min_value: 0} to clear.",
+                    properties: {
+                        faction: { type: "string" },
+                        min_value: { type: "number" },
+                    },
+                    required: ["faction", "min_value"],
                 },
             },
             required: ["vnum"],

@@ -51,6 +51,13 @@ pub struct AchievementReward {
     /// unlock pipeline. Defaults to 0 (no shift).
     #[serde(default, skip_serializing_if = "is_zero_i32")]
     pub morality_delta: i32,
+    /// Optional trait points granted at unlock, spendable via the `traits`
+    /// command. Negative values are rejected at the editing surfaces rather
+    /// than clamped at unlock: an achievement that *takes* build currency
+    /// would be a trap, and a character below zero points cannot buy the
+    /// negative traits that would earn their way back. Defaults to 0.
+    #[serde(default, skip_serializing_if = "is_zero_i32")]
+    pub trait_points: i32,
 }
 
 fn is_zero_i32(v: &i32) -> bool {

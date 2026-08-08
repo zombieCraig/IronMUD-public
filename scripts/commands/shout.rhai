@@ -78,7 +78,7 @@ fn run_command(args, connection_id) {
             let effective = if speaker_lang_skill < listener_skill { speaker_lang_skill } else { listener_skill };
             heard = garble_language(heard, language_key, effective);
             if listener_skill >= 1 {
-                add_skill_experience(listener_name, language_key, 1);
+                add_skill_experience(listener_name, language_key, 1, "language");
             }
         }
         let ear_penalty = get_ear_wound_penalty(listener_name);
@@ -89,7 +89,7 @@ fn run_command(args, connection_id) {
     if source_soundproof {
         send_client_message(connection_id, "Your shout dies in the silence of this place.");
         if lang_active {
-            add_skill_experience(char.name, language_key, 1);
+            add_skill_experience(char.name, language_key, 1, "language");
         }
         return;
     }
@@ -120,7 +120,7 @@ fn run_command(args, connection_id) {
                 let effective = if speaker_lang_skill < listener_skill { speaker_lang_skill } else { listener_skill };
                 heard = garble_language(heard, language_key, effective);
                 if listener_skill >= 1 {
-                    add_skill_experience(listener_name, language_key, 1);
+                    add_skill_experience(listener_name, language_key, 1, "language");
                 }
             }
             let ear_penalty = get_ear_wound_penalty(listener_name);
@@ -130,6 +130,6 @@ fn run_command(args, connection_id) {
     }
 
     if lang_active {
-        add_skill_experience(char.name, language_key, 1);
+        add_skill_experience(char.name, language_key, 1, "language");
     }
 }

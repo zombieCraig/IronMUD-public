@@ -46,6 +46,7 @@ import type {
   AddSpawnDependencyRequest,
   SpawnEntityRequest,
   BugReport,
+  BuildRequest,
   UpdateBugReportRequest,
   AddBugNoteRequest,
   Achievement,
@@ -129,6 +130,25 @@ export class IronMUDApiClient {
         throw new Error(
           apiError?.message || error.message || "API request failed"
         );
+      }
+      throw error;
+    }
+  }
+
+  /// Endpoints that answer with `{success, message}` rather than a payload —
+  /// the bounty lifecycle calls, where a refusal ("somebody already claimed
+  /// that") is a normal outcome and not an error.
+  private async outcomeRequest(
+    path: string,
+    data: unknown
+  ): Promise<{ success: boolean; message: string }> {
+    try {
+      const response = await this.client.post<{ success: boolean; message: string }>(path, data);
+      return response.data;
+    } catch (error) {
+      if (error instanceof AxiosError) {
+        const apiError = error.response?.data?.error;
+        throw new Error(apiError?.message || error.message || "API request failed");
       }
       throw error;
     }
@@ -860,6 +880,71 @@ export class IronMUDApiClient {
   }
 
   // Bug Reports (approved only - see admin approval gate)
+  // === Bounties (the builder help-wanted board) ===
+
+  async listBounties(params: {
+    status?: string;
+    claimed_by?: string;
+    limit?: number;
+  }): Promise<BuildRequest[]> {
+    const q = new URLSearchParams();
+    if (params.status) q.set("status", params.status);
+    if (params.claimed_by) q.set("claimed_by", params.claimed_by);
+    if (params.limit !== undefined) q.set("limit", String(params.limit));
+    const query = q.toString();
+    return this.listRequest<BuildRequest>(`/bounties${query ? `?${query}` : ""}`);
+  }
+
+  async getBounty(ticket: number): Promise<BuildRequest> {
+    return this.request<BuildRequest>("get", `/bounties/${ticket}`);
+  }
+
+  // === Content auditor ===
+  //
+  // Read-only. `auditWorld` and `auditArea` are full-world reads — deliberate
+  // sweeps, not something to poll.
+
+  async auditEntity(kind: string, key: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(
+      "get",
+      `/audit/${kind}/${encodeURIComponent(key)}`
+    );
+  }
+
+  async auditArea(key: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>(
+      "get",
+      `/audit/area/${encodeURIComponent(key)}`
+    );
+  }
+
+  async auditWorld(): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>("get", "/audit/world");
+  }
+
+  async getWorldReport(): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>("get", "/audit/report");
+  }
+
+  async getBuildTracks(): Promise<Record<string, unknown>[]> {
+    return this.listRequest<Record<string, unknown>>("/audit/tracks");
+  }
+
+  async postBounty(body: Record<string, unknown>): Promise<BuildRequest> {
+    return this.request<BuildRequest>("post", "/bounties", body);
+  }
+
+  // The acting builder is the API key's owner character, resolved server-side.
+  // It is deliberately not a parameter: submitting is what decides who gets
+  // paid.
+  async claimBounty(ticket: number) {
+    return this.outcomeRequest(`/bounties/${ticket}/claim`, {});
+  }
+
+  async submitBounty(ticket: number, linked: string[]) {
+    return this.outcomeRequest(`/bounties/${ticket}/submit`, { linked });
+  }
+
   async listBugReports(status?: string): Promise<BugReport[]> {
     const params = new URLSearchParams();
     if (status) params.set("status", status);

@@ -197,7 +197,7 @@ fn run_command(args, connection_id) {
         if item != () {
             // Handle corpses specially - show contents
             if item.flags.is_corpse {
-                look_at_corpse(item, connection_id);
+                look_at_corpse(char, item, connection_id);
                 return;
             }
             // Fire on_look trigger - return 0 from the trigger cancels the default look output
@@ -353,17 +353,11 @@ fn look_in_container(char, keyword, connection_id) {
     send_client_message(connection_id, output);
 }
 
-// Get health status text based on HP percentage
+// Health status text. The ladder lives in src/combat_text.rs so `look`,
+// `examine`, `lore` and the combat prompt cannot drift apart.
 fn get_health_status(current_hp, max_hp, name) {
     if max_hp <= 0 { return ""; }
-    let percent = (current_hp * 100) / max_hp;
-
-    if percent >= 100 { return name + " is in perfect health."; }
-    if percent >= 75 { return name + " has a few scratches."; }
-    if percent >= 50 { return name + " has some wounds."; }
-    if percent >= 25 { return name + " is badly wounded."; }
-    if percent > 0 { return name + " is barely holding on."; }
-    return name + " appears to be dead.";
+    return condition_sentence(name, current_hp, max_hp);
 }
 
 // Format visible wounds for display
@@ -735,10 +729,19 @@ fn join_item_list(items) {
 }
 
 // Display a corpse's description and contents
-fn look_at_corpse(corpse, connection_id) {
+fn look_at_corpse(char, corpse, connection_id) {
     let output = corpse.long_desc;
     if output == "" {
         output = "The lifeless body lies here.";
+    }
+
+    // A protected corpse still shows its description — you can see the body,
+    // you just cannot go through it. Hiding the body would be a lie about the
+    // room; hiding the inventory is the actual rule.
+    let blocked = corpse_loot_block_reason(char.name, corpse.id);
+    if blocked != "" {
+        send_client_message(connection_id, output + "\n\n" + blocked);
+        return;
     }
 
     // Show gold if any

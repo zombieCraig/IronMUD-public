@@ -3,13 +3,13 @@
 
 use crate::db::Db;
 use crate::types::ItemLocation;
-use crate::{MailMessage, SharedConnections};
+use crate::{MailMessage, SharedConnections, SharedState};
 use rhai::Engine;
 use std::sync::Arc;
 use uuid::Uuid;
 
 /// Register mail-related functions
-pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections) {
+pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections, state: SharedState) {
     // ========== Configuration Getters ==========
 
     // get_stamp_price() -> i64
@@ -145,6 +145,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // Returns "ok" on success, or error message on failure
     // Handles auto-delete of oldest read message when mailbox is full
     let cloned_db = db.clone();
+    let mail_conns = connections.clone();
+    let mail_state = state.clone();
     engine.register_fn(
         "send_mail",
         move |sender: String, recipient: String, body: String| -> String {
@@ -178,9 +180,19 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             }
 
             // Create and store the message
-            let message = MailMessage::new(sender, recipient, body);
+            let message = MailMessage::new(sender.clone(), recipient, body);
             match cloned_db.store_mail(message) {
-                Ok(()) => "ok".to_string(),
+                Ok(()) => {
+                    crate::script::achievements::notify_counter_core(
+                        &cloned_db,
+                        &mail_conns,
+                        &mail_state,
+                        &sender,
+                        "mail.sent",
+                        1,
+                    );
+                    "ok".to_string()
+                }
                 Err(_) => "Failed to send mail.".to_string(),
             }
         },
@@ -286,6 +298,8 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     // On failure best-effort restores any parked items to the sender's inventory.
     // ids is a rhai::Array of UUID strings.
     let cloned_db = db.clone();
+    let attach_conns = connections.clone();
+    let attach_state = state.clone();
     engine.register_fn(
         "send_mail_with_attachments",
         move |sender: String, recipient: String, body: String, ids: rhai::Array| -> String {
@@ -357,7 +371,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
             // Store the message.
             let message = MailMessage::with_attachments(sender.clone(), recipient, body, parsed_ids);
             match cloned_db.store_mail(message) {
-                Ok(()) => "ok".to_string(),
+                Ok(()) => {
+                    crate::script::achievements::notify_counter_core(
+                        &cloned_db,
+                        &attach_conns,
+                        &attach_state,
+                        &sender,
+                        "mail.sent",
+                        1,
+                    );
+                    "ok".to_string()
+                }
                 Err(_) => {
                     for back in &parked {
                         let _ = cloned_db.move_item_to_inventory(back, &sender);
