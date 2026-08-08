@@ -201,7 +201,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
     );
 
     // Read-only bool getters
-    register_bool_ro!(engine, MobileData, is_prototype, healing_free, pursuit_certain);
+    // `is_unconscious` is `#[serde(skip)]` combat state, not a saved field, but
+    // scripts still read it — `drag` decides whether a mob can walk on its own
+    // from exactly this bit.
+    register_bool_ro!(
+        engine,
+        MobileData,
+        is_prototype,
+        healing_free,
+        pursuit_certain,
+        is_unconscious
+    );
 
     // Read-only i32 fields exposed as i64
     register_i32_ro!(

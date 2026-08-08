@@ -114,13 +114,21 @@ fn show_wall(connection_id) {
     let done_count = 0;
 
     for row in rows {
-        if row.unlocked {
+        // `met` as well as `unlocked`: recording is a tick behind, and a wall
+        // that reads only the record lists "355 / 100" under Ahead.
+        if row.unlocked || row.met {
             done_count += 1;
             done += "  \x1b[1;32m*\x1b[0m " + text::pad_right(row.name, 26);
             if row.contributors.len() > 0 {
                 done += "\x1b[0;37m" + credit_names(row.contributors) + "\x1b[0m";
-            } else {
+            } else if row.adopted {
+                // Not "nobody was credited" — this was already true before the
+                // milestone system ever looked at this world.
+                done += "\x1b[90m(already true when this world was adopted)\x1b[0m";
+            } else if row.unlocked {
                 done += "\x1b[90m(nobody was credited)\x1b[0m";
+            } else {
+                done += "\x1b[90m(reached — recording on the next survey)\x1b[0m";
             }
             done += "\n";
         } else {

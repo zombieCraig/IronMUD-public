@@ -6,17 +6,35 @@ that decides whether a piece of content is any good — the command owns the
 words and the layout and nothing else.
 
 ```
-build audit               grade the room you are standing in
-build audit room  <vnum>  grade one room
-build audit item  <vnum>  grade one item prototype
-build audit mob   <vnum>  grade one mobile prototype
-build audit quest <vnum>  grade one quest
-build audit area [<key>]  grade an area and everything in it
-build audit world         grade the whole world
+build audit                grade the room you are standing in
+build audit room [<vnum>]  grade one room, or the one you are in
+build audit item  <what>   grade one item prototype
+build audit mob   <what>   grade one mobile prototype
+build audit quest <vnum>   grade one quest
+build audit area [<key>]   grade an area and everything in it
+build audit world          grade the whole world
 ```
 
 `build` on its own prints the world rating and the usage. All of it is
 builder access.
+
+## Naming the thing
+
+`<what>` is a vnum **or the keyword of something standing or lying in the
+room**. A builder auditing a mob is almost always looking at it, and `mob
+baker` is what they would type at every other command in the game.
+
+The vnum is tried first. Letting a keyword shadow one would make
+`build audit item town:sword` mean different things depending on what happened
+to be on the floor. Only when nothing matches does the room get a look.
+
+What grades is the **prototype**, not the instance you pointed at: an instance
+has no quality of its own, and the thing a builder can fix is the prototype.
+
+Tab completion offers the same two sources in the same order — room contents
+first, then the world's vnums — so what you can see wins the unique-completion
+shortcut. `build audit room` completes room vnums, `quest` completes quest
+vnums, `area` completes area prefixes.
 
 ## Severities
 

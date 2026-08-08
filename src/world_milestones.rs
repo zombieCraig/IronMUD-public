@@ -41,13 +41,49 @@ pub struct WorldMilestone {
     /// Builders carrying a score when it crossed.
     #[serde(default)]
     pub contributors: Vec<String>,
+    /// Already true the first time this world was evaluated, rather than
+    /// reached while the server was watching.
+    ///
+    /// Worth recording rather than inferring from an empty contributor list: an
+    /// adopted milestone and one crossed by builders nobody credited look
+    /// identical otherwise, and the wall should not tell an operator "nobody
+    /// was credited" for something that was simply true before it started
+    /// counting.
+    #[serde(default)]
+    pub adopted: bool,
 }
+
+/// Set once the milestone system has evaluated a world at least once.
+///
+/// The marker is what separates *adopting* a world from *crossing* a rung in
+/// it, and there is no way to tell those apart from the world alone: a world
+/// with 355 rooms looks identical whether it grew that way while the server was
+/// running or arrived that way from an importer.
+const ADOPTED_SETTING: &str = "world_milestones_adopted";
 
 /// Evaluate every goal, record what is newly met, credit the builders, and
 /// tell everyone who can hear it.
 ///
 /// Returns the milestones unlocked by *this* call — empty on every run after
 /// the first that crossed them, which is what makes it safe to run every tick.
+///
+/// # Adopting an existing world
+///
+/// The first evaluation against any database **records everything already met,
+/// silently**: no banners, no per-builder awards, contributors left empty.
+/// Every evaluation after that announces normally.
+///
+/// This is the only honest answer to "what does a world that already has 355
+/// rooms deserve?". Refusing to record until a builder is on the board — which
+/// is what this used to do — leaves an imported or long-running world reporting
+/// `0 of 17` next to a wall that plainly shows `355 / 100`, and it never
+/// resolves, because imported content credits nobody by design. Announcing them
+/// all instead is the opposite failure: a boot-time storm of banners for things
+/// nobody in the room did.
+///
+/// So: adopt the world as it is, quietly, and start reporting from there. The
+/// milestones a world *reaches while you are running it* are the ones that
+/// announce, which is what makes an announcement mean something.
 pub fn evaluate(
     db: &Db,
     connections: &SharedConnections,
@@ -58,27 +94,18 @@ pub fn evaluate(
     now: i64,
 ) -> Result<Vec<String>> {
     let already = db.world_milestone_keys()?;
+    let adopting = db.get_setting(ADOPTED_SETTING)?.is_none();
 
+    // `WorldFacts` counts content of every origin, because the size of the
+    // world is the size of the world. `contributors` is origin-gated, so on an
+    // imported world the two disagree completely and this is empty. That is a
+    // fact about who gets credited, not a reason to withhold the record.
     let contributors: Vec<String> = scores
         .ranked()
         .into_iter()
         .filter(|b| b.total > 0)
         .map(|b| b.name.clone())
         .collect();
-
-    // Nothing is recorded until somebody has built something.
-    //
-    // `WorldFacts` counts content of every origin, because the size of the
-    // world is the size of the world. `contributors` is origin-gated. Import a
-    // CircleMUD world and the two disagree completely: a dozen milestones are
-    // met on the first tick, every one of them announced, permanently consumed,
-    // and credited to nobody — which is the exact opposite of a record of
-    // building. Holding them until at least one builder is on the board costs a
-    // real world nothing (the first hand-built room releases them) and spares
-    // an imported one a boot-time storm of achievements nobody earned.
-    if contributors.is_empty() {
-        return Ok(Vec::new());
-    }
 
     let mut fresh = Vec::new();
     for (key, goal) in WORLD_GOALS {
@@ -88,9 +115,16 @@ pub fn evaluate(
         db.save_world_milestone(&WorldMilestone {
             key: (*key).to_string(),
             unlocked_at: now,
-            contributors: contributors.clone(),
+            // Nobody is credited for a world that was already this size when
+            // the system first looked at it.
+            contributors: if adopting { Vec::new() } else { contributors.clone() },
+            adopted: adopting,
         })?;
         fresh.push((*key).to_string());
+
+        if adopting {
+            continue;
+        }
 
         // The one interruption in the whole builder tier. A milestone is rare
         // by construction — every threshold sits above what the demo world
@@ -113,6 +147,20 @@ pub fn evaluate(
         }
     }
 
+    if adopting {
+        db.set_setting(ADOPTED_SETTING, &now.to_string())?;
+        if !fresh.is_empty() {
+            tracing::info!(
+                "World milestones: adopted {} already-met milestone(s) on first evaluation. \
+                 Milestones reached from here on will be announced.",
+                fresh.len()
+            );
+        }
+        // Adopted, not unlocked. The caller uses this to say what just
+        // happened, and nothing just happened.
+        return Ok(Vec::new());
+    }
+
     Ok(fresh)
 }
 
@@ -122,11 +170,27 @@ pub struct MilestoneRow {
     pub goal: WorldGoal,
     pub unlocked_at: Option<i64>,
     pub contributors: Vec<String>,
+    /// Already true when this world was first evaluated. See
+    /// [`WorldMilestone::adopted`].
+    pub adopted: bool,
     pub have: i64,
     pub want: i64,
     /// Progress as a human reads it. Tier goals are rendered with their tier
     /// names — "Village / Town" says something, "3 / 4" says nothing.
     pub progress_text: String,
+}
+
+impl MilestoneRow {
+    /// Does the world meet this right now?
+    ///
+    /// Separate from `unlocked_at`, which says whether it has been *recorded*.
+    /// Recording happens on a five-minute tick, so for a window after a world
+    /// crosses something the two disagree — and a wall that reads only the
+    /// record lists "355 / 100" as still ahead of you, which is the one thing
+    /// it must never do.
+    pub fn met(&self) -> bool {
+        self.have >= self.want
+    }
 }
 
 pub fn wall(db: &Db, facts: &WorldFacts, rating: &WorldRating) -> Result<Vec<MilestoneRow>> {
@@ -162,6 +226,7 @@ pub fn wall(db: &Db, facts: &WorldFacts, rating: &WorldRating) -> Result<Vec<Mil
                 goal: *goal,
                 unlocked_at: rec.map(|m| m.unlocked_at),
                 contributors: rec.map(|m| m.contributors.clone()).unwrap_or_default(),
+                adopted: rec.is_some_and(|m| m.adopted),
                 have,
                 want,
                 progress_text,

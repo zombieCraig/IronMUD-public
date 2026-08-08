@@ -688,10 +688,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
             .map(|row| {
                 let mut m = Map::new();
                 let def = crate::script::achievements::describe(&cloned_state, &row.key);
+                // Whether the world meets it *right now*, which is not the same
+                // as whether it has been recorded — recording is a tick behind.
+                // The wall reads both, so it never lists "355 / 100" as
+                // something still ahead of you.
+                let met = row.met();
                 m.insert("key".into(), Dynamic::from(row.key.clone()));
                 m.insert("name".into(), Dynamic::from(def.unwrap_or(row.key)));
                 m.insert("unlocked".into(), Dynamic::from(row.unlocked_at.is_some()));
                 m.insert("unlocked_at".into(), Dynamic::from(row.unlocked_at.unwrap_or(0)));
+                m.insert("met".into(), Dynamic::from(met));
+                m.insert("adopted".into(), Dynamic::from(row.adopted));
                 let contributors: Array = row.contributors.into_iter().map(Dynamic::from).collect();
                 m.insert("contributors".into(), Dynamic::from(contributors));
                 m.insert("have".into(), Dynamic::from(row.have));

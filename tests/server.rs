@@ -809,10 +809,12 @@ fn test_scripts_access_registered_properties() {
         ("get_mobile_data", "MobileData"),
         ("get_mobile_by_id", "MobileData"),
         ("find_mobile_by_keyword_anywhere", "MobileData"),
+        ("find_mobile_by_keyword", "MobileData"),
         ("spawn_mobile_from_prototype", "MobileData"),
         ("find_item_in_room", "ItemData"),
         ("get_room_data", "RoomData"),
         ("get_room_by_id", "RoomData"),
+        ("get_room_by_vnum", "RoomData"),
         ("get_character_data", "CharacterData"),
         ("get_character", "CharacterData"),
     ]

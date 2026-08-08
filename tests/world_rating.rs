@@ -166,6 +166,11 @@ fn crossing_a_threshold_records_it_once_with_the_builders_who_were_there() {
     builder(&db, "Ana");
     let (connections, state) = shared(&db);
 
+    // Adopt the (empty) world first. The very first evaluation against any
+    // database records what is already met without announcing it, so a real
+    // *crossing* has to happen after that — see `world_milestones::evaluate`.
+    tick(&db, &connections, &state, 1000);
+
     area_with_rooms(&db, "big", "Ana", 100);
     tick(&db, &connections, &state, 5000);
 
@@ -208,13 +213,16 @@ fn a_milestone_stays_recorded_even_if_the_world_shrinks_back() {
 }
 
 #[test]
-fn an_imported_world_does_not_unlock_milestones_nobody_earned() {
-    // `WorldFacts` counts content of every origin, because the size of the
-    // world is the size of the world. `contributors` is origin-gated. Import a
-    // CircleMUD world and the two disagree completely: a dozen milestones met
-    // on the first tick, all announced, all permanently consumed, all credited
-    // to nobody. Milestones wait for a builder to be on the board — the first
-    // hand-built room releases them.
+fn an_existing_world_is_adopted_at_its_real_size_and_credits_nobody() {
+    // The case that matters most in practice: somebody points this at a world
+    // that already has hundreds of rooms.
+    //
+    // It must *record* what that world has already reached — anything else
+    // leaves the wall reporting "0 of 17" beside a line reading "355 / 100",
+    // and on imported content it never resolves, because imported content
+    // credits nobody by design. And it must record it **quietly**, crediting
+    // nobody, because a boot-time storm of banners for things nobody in the
+    // room did is the opposite failure.
     let (db, _t) = fresh_db();
     let (connections, state) = shared(&db);
     let area_id = Uuid::new_v4();
@@ -234,21 +242,58 @@ fn an_imported_world_does_not_unlock_milestones_nobody_earned() {
     }
 
     tick(&db, &connections, &state, 7000);
+    let adopted = db
+        .get_world_milestone("world_hundred_rooms")
+        .unwrap()
+        .expect("an existing world was not credited with the rooms it plainly has");
     assert!(
-        db.get_world_milestone("world_hundred_rooms").unwrap().is_none(),
-        "an import unlocked a milestone with nobody to credit for it"
+        adopted.contributors.is_empty(),
+        "imported content credited somebody: {:?}",
+        adopted.contributors
     );
 
-    // One builder with one scored room is enough to release the wall: the
-    // world really does have those rooms, and now somebody is building it.
+    // And adoption happens once. A builder arriving later does not get
+    // retroactive credit for a world that was already this size.
     builder(&db, "Ana");
     area_with_rooms(&db, "ana", "Ana", 1);
     tick(&db, &connections, &state, 7100);
-    let m = db
-        .get_world_milestone("world_hundred_rooms")
-        .unwrap()
-        .expect("a builder on the board should release the milestone");
-    assert_eq!(m.contributors, vec!["Ana".to_string()]);
+    let after = db.get_world_milestone("world_hundred_rooms").unwrap().unwrap();
+    assert_eq!(after.unlocked_at, 7000, "adoption was re-run");
+    assert!(after.contributors.is_empty(), "credit was backdated to a late arrival");
+}
+
+#[test]
+fn adoption_is_silent_but_a_later_crossing_is_not() {
+    // The whole point of the marker: `evaluate` returns nothing on the run that
+    // adopts a world, and returns the crossing on any run after it. The return
+    // value is what the caller announces from, so this is the difference
+    // between a quiet startup and seventeen banners nobody earned.
+    let (db, _t) = fresh_db();
+    builder(&db, "Ana");
+    let (connections, state) = shared(&db);
+    area_with_rooms(&db, "big", "Ana", 110);
+
+    let facts = WorldSnapshot::load(&db).unwrap().facts();
+    let rating = rating_of(&db);
+    let scores = ironmud::build_score::compute(&WorldSnapshot::load(&db).unwrap(), &Default::default(), 1);
+
+    let adopting =
+        ironmud::world_milestones::evaluate(&db, &connections, &state, &facts, &rating, &scores, 1000).unwrap();
+    assert!(adopting.is_empty(), "adopting an existing world announced {adopting:?}");
+    assert!(
+        db.get_world_milestone("world_hundred_rooms").unwrap().is_some(),
+        "adoption did not record"
+    );
+
+    // Now cross something the world had not reached.
+    area_with_rooms(&db, "more", "Ana", 400);
+    let facts = WorldSnapshot::load(&db).unwrap().facts();
+    let crossed =
+        ironmud::world_milestones::evaluate(&db, &connections, &state, &facts, &rating, &scores, 2000).unwrap();
+    assert!(
+        crossed.contains(&"world_five_hundred_rooms".to_string()),
+        "a real crossing was not announced: {crossed:?}"
+    );
 }
 
 #[test]
@@ -349,10 +394,16 @@ fn milestone_evaluation_is_cheap_to_repeat() {
     let (db, _t) = fresh_db();
     builder(&db, "Ana");
     let (connections, state) = shared(&db);
-    area_with_rooms(&db, "big", "Ana", 100);
 
-    let facts = WorldSnapshot::load(&db).unwrap().facts();
+    // Adopt an empty world first, so what follows is a crossing rather than
+    // the one-time adoption pass.
+    let empty_facts = WorldSnapshot::load(&db).unwrap().facts();
     let rating = rating_of(&db);
+    let empty_scores = build_score::compute(&WorldSnapshot::load(&db).unwrap(), &HashMap::new(), 1);
+    ironmud::world_milestones::evaluate(&db, &connections, &state, &empty_facts, &rating, &empty_scores, 50).unwrap();
+
+    area_with_rooms(&db, "big", "Ana", 100);
+    let facts = WorldSnapshot::load(&db).unwrap().facts();
     let scores = build_score::compute(&WorldSnapshot::load(&db).unwrap(), &HashMap::new(), 1);
 
     let first = ironmud::world_milestones::evaluate(&db, &connections, &state, &facts, &rating, &scores, 100).unwrap();
@@ -437,5 +488,51 @@ fn the_world_command_renders_the_wall_with_progress() {
     assert!(
         out.contains("Village / Town"),
         "tier progress read as raw indices:\n{out}"
+    );
+}
+
+#[test]
+fn a_world_that_already_has_the_rooms_does_not_list_them_as_ahead() {
+    // The bug this pins, verbatim from a real world:
+    //
+    //   World Milestones  0 of 17
+    //   Ahead
+    //     - A Hundred Rooms           355 / 100
+    //
+    // Two faults at once. Milestones were withheld from a world nobody had
+    // scored on, so nothing ever recorded; and the wall split on *recorded*
+    // rather than on *met*, so a goal the world had plainly passed was listed
+    // as still ahead of it. Either one alone produces the same nonsense line.
+    let (db, _t) = fresh_db();
+    let area_id = Uuid::new_v4();
+    db.save_area_data(serde_json::from_value(json!({"id": area_id, "name": "Old", "prefix": "old"})).unwrap())
+        .unwrap();
+    for i in 0..150 {
+        // Unattributed, like everything in a world that predates attribution.
+        let r: RoomData = serde_json::from_value(json!({
+            "id": Uuid::new_v4(),
+            "title": format!("Room {i}"),
+            "description": "A room from a world that existed long before any of this did.",
+            "exits": {},
+            "area_id": area_id,
+        }))
+        .unwrap();
+        db.save_room_data(r).unwrap();
+    }
+
+    let out = run_world_command(&db, "milestones");
+    let ahead = out.split("Ahead").nth(1).unwrap_or("");
+    // Line-wise, not substring: "150 / 1000" contains "150 / 100".
+    assert!(
+        !ahead.lines().any(|l| l.contains("world_hundred_rooms")),
+        "a goal the world has already met was listed as ahead of it:\n{out}"
+    );
+    assert!(
+        !out.contains("0 of 17"),
+        "a world with 150 rooms was credited with nothing:\n{out}"
+    );
+    assert!(
+        out.contains("adopted"),
+        "adopted milestones should say so rather than reading as uncredited:\n{out}"
     );
 }

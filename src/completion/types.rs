@@ -136,6 +136,8 @@ pub enum CompletionType {
     BuildSubcommand,
     /// `build audit <target>` — what to grade.
     BuildAuditTarget,
+    /// `build audit quest <vnum>`.
+    QuestVnum,
     /// `world <subcommand>`.
     WorldSubcommand,
     /// `bounty <subcommand>`.

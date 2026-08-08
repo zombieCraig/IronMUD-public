@@ -6,12 +6,16 @@
 //   build track [area]        - your path, or an area's readiness checklist
 //   build credits [area]      - who built what, here or in a named area
 //   build audit               - grade the room you are standing in
-//   build audit room  <vnum>  - grade one room
-//   build audit item  <vnum>  - grade one item prototype
-//   build audit mob   <vnum>  - grade one mobile prototype
+//   build audit room [<vnum>] - grade one room, or the one you are in
+//   build audit item  <what>  - grade one item prototype
+//   build audit mob   <what>  - grade one mobile prototype
 //   build audit quest <vnum>  - grade one quest
 //   build audit area [<key>]  - grade an area and everything in it
 //   build audit world         - grade the whole world
+//
+// `<what>` is a vnum, or the keyword of something standing or lying in the
+// room. A builder auditing a mob is almost always looking at it, and `mob
+// baker` is what they would type at any other command.
 //
 // The grades come from `src/audit.rs`, which is the only place in the codebase
 // that decides whether a piece of content is any good. This script owns the
@@ -87,12 +91,13 @@ fn usage() {
     out += "  build track [area]        your path, or an area readiness checklist\n";
     out += "  build credits [area]      who built what, here or in an area\n";
     out += "  build audit               grade the room you are in\n";
-    out += "  build audit room <vnum>   grade one room\n";
-    out += "  build audit item <vnum>   grade one item prototype\n";
-    out += "  build audit mob <vnum>    grade one mobile prototype\n";
+    out += "  build audit room [<vnum>] grade one room, or the one you are in\n";
+    out += "  build audit item <what>   grade one item prototype\n";
+    out += "  build audit mob <what>    grade one mobile prototype\n";
     out += "  build audit quest <vnum>  grade one quest\n";
     out += "  build audit area [<key>]  grade an area and its contents\n";
-    out += "  build audit world         grade the whole world";
+    out += "  build audit world         grade the whole world\n";
+    out += "  \x1b[0;37m<what> is a vnum, or the keyword of something in this room.\x1b[0m";
     return out;
 }
 
@@ -131,11 +136,40 @@ fn do_audit(char, rest, connection_id) {
         send_client_message(connection_id, usage());
         return;
     }
-    if key == "" {
-        send_client_message(connection_id, "Which " + kind + "? `build audit " + what + " <vnum>`");
+    // `build audit room` with nothing after it means the room you are in —
+    // the same default as bare `build audit`, and the one an operator reaches
+    // for when they have just walked somewhere.
+    if key == "" && kind == "room" {
+        audit_current_room(char, connection_id);
         return;
     }
-    show_entity(kind, key, connection_id);
+    if key == "" {
+        send_client_message(connection_id, "Which " + kind + "? `build audit " + what + " <vnum|keyword>`");
+        return;
+    }
+    show_entity(kind, key, connection_id, char);
+}
+
+// A vnum, or the keyword of something in the room.
+//
+// The vnum is tried first: it is the explicit form, and letting a keyword
+// shadow one would make `build audit item town:sword` mean different things
+// depending on what happened to be on the floor. Only when nothing matches
+// does the room get a look, and then it is the instance's *prototype* that
+// grades — an instance has no quality of its own to report.
+fn resolve_in_room(kind, key, char) {
+    let room_id = "" + char.current_room_id;
+    if kind == "item" {
+        let found = find_item_in_room(room_id, key);
+        if found == () { return ""; }
+        return found.vnum;
+    }
+    if kind == "mobile" {
+        let found = find_mobile_by_keyword(key, get_mobiles_in_room(room_id));
+        if found == () { return ""; }
+        return found.vnum;
+    }
+    return "";
 }
 
 // Rhai's expression-complexity limit bites on long if-else chains; early
@@ -173,7 +207,7 @@ fn audit_current_room(char, connection_id) {
         send_client_message(connection_id, "You are nowhere the auditor can see.");
         return;
     }
-    show_entity("room", "" + char.current_room_id, connection_id);
+    show_entity("room", "" + char.current_room_id, connection_id, char);
 }
 
 // ===== rendering =====
@@ -248,8 +282,12 @@ fn tally_line(blockers, warns, polish) {
 
 // ===== one entity =====
 
-fn show_entity(kind, key, connection_id) {
+fn show_entity(kind, key, connection_id, char) {
     let report = audit_entity(kind, key);
+    if !report.found {
+        let vnum = resolve_in_room(kind, key, char);
+        if vnum != "" { report = audit_entity(kind, vnum); }
+    }
     if !report.found {
         send_client_message(connection_id, "No " + kind + " matches '" + key + "'.");
         return;

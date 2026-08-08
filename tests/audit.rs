@@ -247,6 +247,89 @@ fn build_audit_with_no_argument_grades_the_room_you_are_in() {
 }
 
 #[test]
+fn build_audit_room_with_no_vnum_grades_the_room_you_are_in() {
+    // `build audit` already defaults here; `build audit room` naming the kind
+    // and nothing else used to answer "Which room?" while standing in one.
+    let (db, _t) = seeded_db();
+    let out = run_build_command(&db, "audit room");
+    assert!(out.contains("(room "), "expected a room heading:\n{out}");
+    assert!(!out.contains("Which room"), "the kind-only form should not ask:\n{out}");
+}
+
+/// The room `run_build_command` stands its builder in.
+fn harness_room(db: &Db) -> Uuid {
+    db.list_all_rooms()
+        .expect("rooms")
+        .into_iter()
+        .next()
+        .expect("a room")
+        .id
+}
+
+#[test]
+fn build_audit_mob_takes_a_keyword_from_the_room_and_grades_the_prototype() {
+    let (db, _t) = seeded_db();
+    let room_id = harness_room(&db);
+
+    let proto = db
+        .list_all_mobiles()
+        .expect("mobiles")
+        .into_iter()
+        .find(|m| m.is_prototype && !m.vnum.is_empty())
+        .expect("the demo world ships mobile prototypes");
+
+    let mut instance = proto.clone();
+    instance.id = Uuid::new_v4();
+    instance.is_prototype = false;
+    instance.current_room_id = Some(room_id);
+    instance.keywords = vec!["auditbait".to_string()];
+    db.save_mobile_data(instance).expect("save instance");
+
+    let out = run_build_command(&db, "audit mob auditbait");
+    // The heading carries the prototype's vnum: an instance has no quality of
+    // its own, so resolving a keyword must climb to what a builder can fix.
+    assert!(
+        out.contains(&format!("(mobile {})", proto.vnum)),
+        "expected the prototype heading for {}:\n{out}",
+        proto.vnum
+    );
+}
+
+#[test]
+fn build_audit_item_takes_a_keyword_from_the_room() {
+    let (db, _t) = seeded_db();
+    let room_id = harness_room(&db);
+
+    let proto = db
+        .list_all_items()
+        .expect("items")
+        .into_iter()
+        .find(|i| i.is_prototype && i.vnum.is_some())
+        .expect("the demo world ships item prototypes");
+    let vnum = proto.vnum.clone().expect("filtered on Some");
+
+    let mut instance = proto.clone();
+    instance.id = Uuid::new_v4();
+    instance.is_prototype = false;
+    instance.location = ironmud::types::ItemLocation::Room(room_id);
+    instance.keywords = vec!["auditbait".to_string()];
+    db.save_item_data(instance).expect("save instance");
+
+    let out = run_build_command(&db, "audit item auditbait");
+    assert!(
+        out.contains(&format!("(item {vnum})")),
+        "expected the prototype heading for {vnum}:\n{out}"
+    );
+}
+
+#[test]
+fn a_keyword_that_matches_nothing_in_the_room_still_reports_a_miss() {
+    let (db, _t) = seeded_db();
+    let out = run_build_command(&db, "audit mob nothinglikethis");
+    assert!(out.contains("No mobile matches"), "unexpected output:\n{out}");
+}
+
+#[test]
 fn build_audit_on_a_missing_vnum_says_so_instead_of_grading_nothing() {
     let (db, _t) = seeded_db();
     let out = run_build_command(&db, "audit room no-such-vnum");

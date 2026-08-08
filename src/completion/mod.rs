@@ -55,31 +55,71 @@ use summon::complete_summon;
 use tedit::complete_tedit;
 use treat::complete_treat;
 
-pub fn complete(
-    input: &str,
-    cursor_pos: usize,
-    available_commands: &[String],
-    room_vnums: &[String],
-    item_vnums: &[String],
-    mobile_vnums: &[String],
-    area_prefixes: &[String],
-    recipe_vnums: &[String],
-    transport_vnums: &[String],
-    property_template_vnums: &[String],
-    shop_preset_vnums: &[String],
-    plant_vnums: &[String],
-    spell_names: &[String],
-    language_keys: &[String],
-    online_players: &[String],
-    mobs_in_room: &[String],
-    // class_ids / race_ids drive `admin loadout class|race <id>` completion.
-    class_ids: &[String],
-    race_ids: &[String],
-    achievement_keys: &[String],
-    custom_skill_keys: &[String],
-    faction_keys: &[String],
-    is_builder: bool,
-) -> CompletionResult {
+/// Everything the completer is allowed to know about the world and the player.
+///
+/// This was twenty-one positional parameters, and every new completion source
+/// meant editing fifty call sites to add another `&[]`. A struct with `Default`
+/// makes the next source one field and one line at the one real caller — the
+/// tests name only what they exercise.
+///
+/// All fields are `Copy`, so `complete` destructures it into the locals its
+/// body already used.
+#[derive(Default, Clone, Copy)]
+pub struct CompletionData<'a> {
+    pub available_commands: &'a [String],
+    pub room_vnums: &'a [String],
+    pub item_vnums: &'a [String],
+    pub mobile_vnums: &'a [String],
+    pub area_prefixes: &'a [String],
+    pub recipe_vnums: &'a [String],
+    pub transport_vnums: &'a [String],
+    pub property_template_vnums: &'a [String],
+    pub shop_preset_vnums: &'a [String],
+    pub plant_vnums: &'a [String],
+    pub quest_vnums: &'a [String],
+    pub spell_names: &'a [String],
+    pub language_keys: &'a [String],
+    pub online_players: &'a [String],
+    /// Keywords of the mobiles standing in the player's room.
+    pub mobs_in_room: &'a [String],
+    /// Keywords of the items lying in the player's room.
+    pub items_in_room: &'a [String],
+    /// class_ids / race_ids drive `admin loadout class|race <id>` completion.
+    pub class_ids: &'a [String],
+    pub race_ids: &'a [String],
+    pub achievement_keys: &'a [String],
+    pub custom_skill_keys: &'a [String],
+    pub faction_keys: &'a [String],
+    pub is_builder: bool,
+}
+
+pub fn complete(input: &str, cursor_pos: usize, data: &CompletionData) -> CompletionResult {
+    let &CompletionData {
+        available_commands,
+        room_vnums,
+        item_vnums,
+        mobile_vnums,
+        area_prefixes,
+        recipe_vnums,
+        transport_vnums,
+        property_template_vnums,
+        shop_preset_vnums,
+        plant_vnums,
+        spell_names,
+        language_keys,
+        online_players,
+        mobs_in_room,
+        class_ids,
+        race_ids,
+        achievement_keys,
+        custom_skill_keys,
+        faction_keys,
+        is_builder,
+        // `quest_vnums` / `items_in_room` are read straight off `data` by the
+        // sub-completer that wants them.
+        ..
+    } = data;
+
     // Get the portion of input up to cursor
     let input_to_cursor = if cursor_pos <= input.len() {
         &input[..cursor_pos]
@@ -333,7 +373,7 @@ pub fn complete(
                     }
                     // Handle build command
                     if command.to_lowercase() == "build" {
-                        return complete_build(&words, completing_word);
+                        return complete_build(&words, completing_word, data);
                     }
                     // Handle world command
                     if command.to_lowercase() == "world" {
@@ -394,26 +434,10 @@ mod tests {
         let result = complete(
             "lo",
             2,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                ..Default::default()
+            },
         );
         assert_eq!(result.completions.len(), 3);
         assert!(result.completions.contains(&"look".to_string()));
@@ -434,26 +458,11 @@ mod tests {
         let result = complete(
             "rgoto town:",
             11,
-            &commands,
-            &room_vnums,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                room_vnums: &room_vnums,
+                ..Default::default()
+            },
         );
         assert_eq!(result.completions.len(), 2);
         assert!(result.completions.contains(&"town:square".to_string()));
@@ -477,26 +486,10 @@ mod tests {
         let result = complete(
             "",
             0,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                ..Default::default()
+            },
         );
         assert_eq!(result.completions.len(), 2);
     }
@@ -507,26 +500,10 @@ mod tests {
         let result = complete(
             "go nor",
             6,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                ..Default::default()
+            },
         );
         assert_eq!(result.completions.len(), 3); // north, northeast, northwest
         assert!(result.completions.contains(&"north".to_string()));
@@ -543,26 +520,11 @@ mod tests {
         let result = complete(
             "medit town:guard tr",
             19,
-            &commands,
-            &[],
-            &[],
-            &mobile_vnums,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                mobile_vnums: &mobile_vnums,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"trigger".to_string()));
         assert_eq!(result.completion_type, CompletionType::MeditSubcommand);
@@ -577,26 +539,11 @@ mod tests {
         let result = complete(
             "medit town:guard trigger a",
             26,
-            &commands,
-            &[],
-            &[],
-            &mobile_vnums,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                mobile_vnums: &mobile_vnums,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"add".to_string()));
         assert_eq!(result.completion_type, CompletionType::TriggerAction);
@@ -611,26 +558,11 @@ mod tests {
         let result = complete(
             "medit town:guard trigger add gr",
             31,
-            &commands,
-            &[],
-            &[],
-            &mobile_vnums,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                mobile_vnums: &mobile_vnums,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"greet".to_string()));
         assert_eq!(result.completion_type, CompletionType::TriggerType);
@@ -645,26 +577,11 @@ mod tests {
         let result = complete(
             "medit town:guard trigger add greet @say",
             39,
-            &commands,
-            &[],
-            &[],
-            &mobile_vnums,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                mobile_vnums: &mobile_vnums,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"@say_greeting".to_string()));
         assert!(result.completions.contains(&"@say_random".to_string()));
@@ -680,26 +597,11 @@ mod tests {
         let result = complete(
             "oedit town:sword ty",
             19,
-            &commands,
-            &[],
-            &item_vnums,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                item_vnums: &item_vnums,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"type".to_string()));
         assert_eq!(result.completion_type, CompletionType::OeditSubcommand);
@@ -714,26 +616,11 @@ mod tests {
         let result = complete(
             "oedit town:sword type ar",
             24,
-            &commands,
-            &[],
-            &item_vnums,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                item_vnums: &item_vnums,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"armor".to_string()));
         assert_eq!(result.completion_type, CompletionType::ItemType);
@@ -748,26 +635,11 @@ mod tests {
         let result = complete(
             "oedit town:sword trigger a",
             26,
-            &commands,
-            &[],
-            &item_vnums,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                item_vnums: &item_vnums,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"add".to_string()));
         assert_eq!(result.completion_type, CompletionType::ItemTriggerAction);
@@ -782,26 +654,11 @@ mod tests {
         let result = complete(
             "oedit town:sword trigger add ge",
             31,
-            &commands,
-            &[],
-            &item_vnums,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                item_vnums: &item_vnums,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"get".to_string()));
         assert_eq!(result.completion_type, CompletionType::ItemTriggerType);
@@ -815,26 +672,10 @@ mod tests {
         let result = complete(
             "redit tr",
             8,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"trigger".to_string()));
         assert_eq!(result.completion_type, CompletionType::ReditSubcommand);
@@ -848,26 +689,10 @@ mod tests {
         let result = complete(
             "redit flag da",
             13,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"dark".to_string()));
         assert_eq!(result.completion_type, CompletionType::RoomFlag);
@@ -881,26 +706,10 @@ mod tests {
         let result = complete(
             "redit extra li",
             14,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"list".to_string()));
         assert_eq!(result.completion_type, CompletionType::ExtraDescAction);
@@ -914,26 +723,10 @@ mod tests {
         let result = complete(
             "redit trigger a",
             15,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"add".to_string()));
         assert_eq!(result.completion_type, CompletionType::RoomTriggerAction);
@@ -947,26 +740,10 @@ mod tests {
         let result = complete(
             "redit trigger add en",
             20,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"enter".to_string()));
         assert_eq!(result.completion_type, CompletionType::RoomTriggerType);
@@ -981,26 +758,11 @@ mod tests {
         let result = complete(
             "aedit town pe",
             13,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &area_prefixes,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                area_prefixes: &area_prefixes,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"permission".to_string()));
         assert_eq!(result.completion_type, CompletionType::AeditSubcommand);
@@ -1015,26 +777,11 @@ mod tests {
         let result = complete(
             "aedit town permission ow",
             24,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &area_prefixes,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                area_prefixes: &area_prefixes,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"owner_only".to_string()));
         assert_eq!(result.completion_type, CompletionType::PermissionLevel);
@@ -1048,26 +795,10 @@ mod tests {
         let result = complete(
             "spedit cr",
             9,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"create".to_string()));
         assert_eq!(result.completion_type, CompletionType::SpeditSubcommand);
@@ -1081,26 +812,10 @@ mod tests {
         let result = complete(
             "spedit list mo",
             14,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"mobs".to_string()));
         assert_eq!(result.completion_type, CompletionType::SpeditFilter);
@@ -1115,26 +830,11 @@ mod tests {
         let result = complete(
             "spedit create town:p",
             20,
-            &commands,
-            &room_vnums,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                room_vnums: &room_vnums,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"town:plaza".to_string()));
         assert_eq!(result.completion_type, CompletionType::RoomVnum);
@@ -1149,26 +849,11 @@ mod tests {
         let result = complete(
             "spedit create town:plaza mo",
             27,
-            &commands,
-            &room_vnums,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                room_vnums: &room_vnums,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"mobile".to_string()));
         assert_eq!(result.completion_type, CompletionType::SpawnEntityType);
@@ -1184,26 +869,12 @@ mod tests {
         let result = complete(
             "spedit create town:plaza mobile town:g",
             38,
-            &commands,
-            &room_vnums,
-            &[],
-            &mobile_vnums,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                room_vnums: &room_vnums,
+                mobile_vnums: &mobile_vnums,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"town:guard".to_string()));
         assert_eq!(result.completion_type, CompletionType::MobileVnum);
@@ -1219,26 +890,12 @@ mod tests {
         let result = complete(
             "spedit create town:plaza item town:sw",
             37,
-            &commands,
-            &room_vnums,
-            &item_vnums,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                room_vnums: &room_vnums,
+                item_vnums: &item_vnums,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"town:sword".to_string()));
         assert_eq!(result.completion_type, CompletionType::ItemVnum);
@@ -1252,26 +909,10 @@ mod tests {
         let result = complete(
             "spedit delete mo",
             16,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"mobs".to_string()));
         assert_eq!(result.completion_type, CompletionType::SpeditFilter);
@@ -1285,26 +926,10 @@ mod tests {
         let result = complete(
             "spedit dep a",
             12,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"all".to_string())); // filter
         assert!(result.completions.contains(&"add".to_string())); // dep action
@@ -1318,26 +943,10 @@ mod tests {
         let result = complete(
             "spedit dep mobs a",
             17,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"add".to_string()));
         assert_eq!(result.completion_type, CompletionType::SpeditDepAction);
@@ -1351,26 +960,10 @@ mod tests {
         let result = complete(
             "set ",
             4,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"mxp".to_string()));
         assert!(result.completions.contains(&"color".to_string()));
@@ -1387,26 +980,11 @@ mod tests {
         let result = complete(
             "set ",
             4,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            true,
+            &CompletionData {
+                available_commands: &commands,
+                is_builder: true,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"mxp".to_string()));
         assert!(result.completions.contains(&"color".to_string()));
@@ -1423,26 +1001,10 @@ mod tests {
         let result = complete(
             "set m",
             5,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"mxp".to_string()));
         assert!(!result.completions.contains(&"color".to_string()));
@@ -1457,26 +1019,10 @@ mod tests {
         let result = complete(
             "set mxp ",
             8,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"on".to_string()));
         assert!(result.completions.contains(&"off".to_string()));
@@ -1491,26 +1037,10 @@ mod tests {
         let result = complete(
             "set mxp o",
             9,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"on".to_string()));
         assert!(result.completions.contains(&"off".to_string()));
@@ -1526,26 +1056,11 @@ mod tests {
         let result = complete(
             "treat ",
             6,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &online_players,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                online_players: &online_players,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"self".to_string()));
         assert!(result.completions.contains(&"Alice".to_string()));
@@ -1562,26 +1077,11 @@ mod tests {
         let result = complete(
             "treat se",
             8,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &online_players,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                online_players: &online_players,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"self".to_string()));
         assert!(!result.completions.contains(&"Alice".to_string()));
@@ -1597,26 +1097,11 @@ mod tests {
         let result = complete(
             "treat self ",
             11,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &online_players,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                online_players: &online_players,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"head".to_string()));
         assert!(result.completions.contains(&"torso".to_string()));
@@ -1634,26 +1119,11 @@ mod tests {
         let result = complete(
             "treat self le",
             13,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &online_players,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                online_players: &online_players,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"leftarm".to_string()));
         assert!(result.completions.contains(&"leftleg".to_string()));
@@ -1672,26 +1142,11 @@ mod tests {
         let result = complete(
             "treat self heat",
             15,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &online_players,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                online_players: &online_players,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"heat_exhaustion".to_string()));
         assert!(result.completions.contains(&"heat_stroke".to_string()));
@@ -1708,26 +1163,11 @@ mod tests {
         let result = complete(
             "medit ",
             6,
-            &commands,
-            &[],
-            &[],
-            &mobile_vnums,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                mobile_vnums: &mobile_vnums,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"town:guard".to_string()));
         assert!(result.completions.contains(&"town:merchant".to_string()));
@@ -1741,26 +1181,11 @@ mod tests {
         let result = complete(
             "oedit ",
             6,
-            &commands,
-            &[],
-            &item_vnums,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                item_vnums: &item_vnums,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"town:sword".to_string()));
         assert!(result.completions.contains(&"town:shield".to_string()));
@@ -1774,26 +1199,11 @@ mod tests {
         let result = complete(
             "recedit ",
             8,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &recipe_vnums,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                recipe_vnums: &recipe_vnums,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"smith:longsword".to_string()));
         assert!(result.completions.contains(&"cook:stew".to_string()));
@@ -1807,26 +1217,11 @@ mod tests {
         let result = complete(
             "bpredit ",
             8,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &shop_preset_vnums,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                shop_preset_vnums: &shop_preset_vnums,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"list".to_string()));
         assert!(result.completions.contains(&"create".to_string()));
@@ -1841,26 +1236,11 @@ mod tests {
         let result = complete(
             "aedit ",
             6,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &area_prefixes,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                area_prefixes: &area_prefixes,
+                ..Default::default()
+            },
         );
         // Both subcommands and area prefixes should be offered.
         assert!(result.completions.contains(&"town".to_string()));
@@ -1883,26 +1263,12 @@ mod tests {
         let result = complete(
             "achedit ",
             8,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &achievement_keys,
-            &[],
-            &[],
-            true,
+            &CompletionData {
+                available_commands: &commands,
+                achievement_keys: &achievement_keys,
+                is_builder: true,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"create".to_string()));
         assert!(result.completions.contains(&"list".to_string()));
@@ -1925,26 +1291,12 @@ mod tests {
         let result = complete(
             "achedit fi",
             10,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &achievement_keys,
-            &[],
-            &[],
-            true,
+            &CompletionData {
+                available_commands: &commands,
+                achievement_keys: &achievement_keys,
+                is_builder: true,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"first_blood".to_string()));
         assert!(result.completions.contains(&"first_kill".to_string()));
@@ -1960,26 +1312,11 @@ mod tests {
         let result = complete(
             "mail ",
             5,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &online_players,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                online_players: &online_players,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"check".to_string()));
         assert!(result.completions.contains(&"list".to_string()));
@@ -1994,26 +1331,11 @@ mod tests {
         let result = complete(
             "mail se",
             7,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &online_players,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                online_players: &online_players,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"send".to_string()));
         assert!(!result.completions.contains(&"list".to_string()));
@@ -2023,29 +1345,70 @@ mod tests {
         let result = complete(
             "mail send ",
             10,
-            &commands,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &online_players,
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            &[],
-            false,
+            &CompletionData {
+                available_commands: &commands,
+                online_players: &online_players,
+                ..Default::default()
+            },
         );
         assert!(result.completions.contains(&"Alice".to_string()));
         assert!(result.completions.contains(&"Bob".to_string()));
         assert_eq!(result.completion_type, CompletionType::PlayerName);
+    }
+
+    #[test]
+    fn test_complete_build_audit_kind_and_key() {
+        let commands = vec!["build".to_string()];
+        let room_vnums = vec!["town:square".to_string(), "town:tavern".to_string()];
+        let mobile_vnums = vec!["town:baker".to_string(), "forest:wolf".to_string()];
+        let item_vnums = vec!["town:sword".to_string()];
+        let quest_vnums = vec!["town:lost_cat".to_string()];
+        let mobs_in_room = vec!["baker".to_string(), "dog".to_string()];
+        let items_in_room = vec!["lantern".to_string()];
+
+        let data = CompletionData {
+            available_commands: &commands,
+            room_vnums: &room_vnums,
+            mobile_vnums: &mobile_vnums,
+            item_vnums: &item_vnums,
+            quest_vnums: &quest_vnums,
+            mobs_in_room: &mobs_in_room,
+            items_in_room: &items_in_room,
+            ..Default::default()
+        };
+
+        // The kind itself.
+        let result = complete("build audit ", 12, &data);
+        assert!(result.completions.contains(&"room".to_string()));
+        assert!(result.completions.contains(&"world".to_string()));
+        assert_eq!(result.completion_type, CompletionType::BuildAuditTarget);
+
+        // Room keys come from the world's room vnums.
+        let result = complete("build audit room town:", 22, &data);
+        assert!(result.completions.contains(&"town:square".to_string()));
+        assert!(!result.completions.contains(&"town:baker".to_string()));
+        assert_eq!(result.completion_type, CompletionType::RoomVnum);
+
+        // Mob keys offer what is in the room ahead of the world's vnums.
+        let result = complete("build audit mob ", 16, &data);
+        assert_eq!(result.completions.first(), Some(&"baker".to_string()));
+        assert!(result.completions.contains(&"forest:wolf".to_string()));
+        assert_eq!(result.completion_type, CompletionType::MobileVnum);
+
+        // A partial matching both a room keyword and a vnum keeps both.
+        let result = complete("build audit mob b", 17, &data);
+        assert_eq!(result.completions, vec!["baker".to_string()]);
+
+        let result = complete("build audit item l", 18, &data);
+        assert_eq!(result.completions, vec!["lantern".to_string()]);
+        assert_eq!(result.completion_type, CompletionType::ItemVnum);
+
+        let result = complete("build audit quest ", 18, &data);
+        assert_eq!(result.completions, vec!["town:lost_cat".to_string()]);
+        assert_eq!(result.completion_type, CompletionType::QuestVnum);
+
+        // `here` and `world` take no key.
+        let result = complete("build audit world ", 18, &data);
+        assert!(result.is_empty());
     }
 }

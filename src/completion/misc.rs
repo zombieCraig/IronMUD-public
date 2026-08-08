@@ -1,3 +1,4 @@
+use super::CompletionData;
 use super::consts::*;
 use super::helpers::*;
 use super::types::*;
@@ -64,21 +65,60 @@ pub(super) fn complete_top(words: &[&str], completing_word: bool) -> CompletionR
 
 /// Context-aware completion for the build command.
 ///
-/// Stops at the target word. `build audit room <vnum>` would need the vnum
-/// list, and offering the wrong list is worse than offering none — the vnum
-/// completers already exist per-editor and belong there, not here.
-pub(super) fn complete_build(words: &[&str], completing_word: bool) -> CompletionResult {
+/// `build audit <kind> <key>` completes the key too, from the same list the
+/// command will resolve it against. For items and mobiles that is the room's
+/// contents **first** — a builder auditing something almost always has it in
+/// front of them, and `sword` is what they would type at any other command —
+/// then the world's prototype vnums.
+///
+/// Room keywords go in ahead of vnums deliberately: with a partial that matches
+/// both, the thing you can see wins the unique-completion shortcut.
+pub(super) fn complete_build(words: &[&str], completing_word: bool, data: &CompletionData) -> CompletionResult {
     let partial = get_partial(words, completing_word);
+
+    // `build audit <kind> <partial>` — which list the key comes from.
+    let keys_for = |kind: &str| -> (&[String], CompletionType) {
+        match kind.to_lowercase().as_str() {
+            "room" => (data.room_vnums, CompletionType::RoomVnum),
+            "item" | "object" | "obj" => (data.item_vnums, CompletionType::ItemVnum),
+            "mob" | "mobile" | "npc" => (data.mobile_vnums, CompletionType::MobileVnum),
+            "quest" => (data.quest_vnums, CompletionType::QuestVnum),
+            "area" | "zone" => (data.area_prefixes, CompletionType::AreaPrefix),
+            _ => (&[], CompletionType::None),
+        }
+    };
+
+    // What is standing or lying in the room, for the kinds that can be there.
+    let in_room = |kind: &str| -> &[String] {
+        match kind.to_lowercase().as_str() {
+            "item" | "object" | "obj" => data.items_in_room,
+            "mob" | "mobile" | "npc" => data.mobs_in_room,
+            _ => &[],
+        }
+    };
+
+    let key_completions = |kind: &str, partial: &str| -> CompletionResult {
+        let (vnums, comp_type) = keys_for(kind);
+        let mut out: Vec<String> = Vec::new();
+        for k in in_room(kind).iter().chain(vnums.iter()) {
+            if k.to_lowercase().starts_with(partial) && !out.iter().any(|s| s.eq_ignore_ascii_case(k)) {
+                out.push(k.clone());
+            }
+        }
+        CompletionResult::new(out, partial, comp_type)
+    };
+
+    let is_audit = words.len() >= 2 && words[1].eq_ignore_ascii_case("audit");
 
     match words.len() {
         1 if !completing_word => all_static(BUILD_SUBCOMMANDS, CompletionType::BuildSubcommand),
         2 if completing_word => filter_static(BUILD_SUBCOMMANDS, &partial, CompletionType::BuildSubcommand),
-        2 if !completing_word && words[1].eq_ignore_ascii_case("audit") => {
-            all_static(BUILD_AUDIT_TARGETS, CompletionType::BuildAuditTarget)
-        }
-        3 if completing_word && words[1].eq_ignore_ascii_case("audit") => {
+        2 if !completing_word && is_audit => all_static(BUILD_AUDIT_TARGETS, CompletionType::BuildAuditTarget),
+        3 if completing_word && is_audit => {
             filter_static(BUILD_AUDIT_TARGETS, &partial, CompletionType::BuildAuditTarget)
         }
+        3 if !completing_word && is_audit => key_completions(words[2], ""),
+        4 if completing_word && is_audit => key_completions(words[2], &partial),
         _ => CompletionResult::empty(),
     }
 }

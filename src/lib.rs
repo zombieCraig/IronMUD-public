@@ -2210,10 +2210,12 @@ pub async fn handle_connection(
                 property_template_vnums,
                 shop_preset_vnums,
                 plant_vnums,
+                quest_vnums,
                 spell_names,
                 language_keys,
                 online_players,
                 mobs_in_room,
+                items_in_room,
                 class_ids,
                 race_ids,
                 achievement_keys,
@@ -2342,6 +2344,14 @@ pub async fn handle_connection(
                     .filter_map(|p| p.vnum.clone())
                     .collect();
 
+                let quest_vnums: Vec<String> = world
+                    .db
+                    .list_all_quests()
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|q| q.vnum.clone())
+                    .collect();
+
                 let spell_names: Vec<String> = world.spell_definitions.values().map(|s| s.name.clone()).collect();
 
                 let language_keys: Vec<String> = world.language_definitions.keys().cloned().collect();
@@ -2356,34 +2366,38 @@ pub async fn handle_connection(
                         .collect()
                 };
 
-                // Mobs in this player's current room (for `talk <mob>` completion).
-                let mobs_in_room: Vec<String> = {
-                    let conns = connections.lock().unwrap();
-                    let room_id_opt = conns
-                        .get(&connection_id)
-                        .and_then(|s| s.character.as_ref())
-                        .map(|c| c.current_room_id);
-                    drop(conns);
-                    if let Some(room_id) = room_id_opt {
-                        if room_id != Uuid::nil() {
-                            world
-                                .db
-                                .get_mobiles_in_room(&room_id)
-                                .unwrap_or_default()
-                                .into_iter()
-                                .filter(|m| !m.is_prototype)
-                                .flat_map(|m| {
-                                    let mut keys = m.keywords.clone();
-                                    keys.push(m.name);
-                                    keys
-                                })
-                                .collect()
-                        } else {
-                            Vec::new()
-                        }
-                    } else {
-                        Vec::new()
+                // What is standing and lying in this player's current room:
+                // mobs for `talk <mob>`, both for `build audit mob|item <kw>`,
+                // which resolves a keyword against the room before the world.
+                let (mobs_in_room, items_in_room): (Vec<String>, Vec<String>) = match current_room_id {
+                    Some(room_id) if room_id != Uuid::nil() => {
+                        let mobs = world
+                            .db
+                            .get_mobiles_in_room(&room_id)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter(|m| !m.is_prototype)
+                            .flat_map(|m| {
+                                let mut keys = m.keywords.clone();
+                                keys.push(m.name);
+                                keys
+                            })
+                            .collect();
+                        let items = world
+                            .db
+                            .get_items_in_room(&room_id)
+                            .unwrap_or_default()
+                            .into_iter()
+                            .filter(|i| !i.is_prototype && !i.flags.buried)
+                            .flat_map(|i| {
+                                let mut keys = i.keywords.clone();
+                                keys.push(i.name);
+                                keys
+                            })
+                            .collect();
+                        (mobs, items)
                     }
+                    _ => (Vec::new(), Vec::new()),
                 };
 
                 let has_builder_access = is_builder || is_admin;
@@ -2405,10 +2419,12 @@ pub async fn handle_connection(
                     property_template_vnums,
                     shop_preset_vnums,
                     plant_vnums,
+                    quest_vnums,
                     spell_names,
                     language_keys,
                     online_players,
                     mobs_in_room,
+                    items_in_room,
                     class_ids,
                     race_ids,
                     achievement_keys,
@@ -2422,26 +2438,30 @@ pub async fn handle_connection(
             let result = completion::complete(
                 &current_input,
                 cursor_pos,
-                &available_commands,
-                &room_vnums,
-                &item_vnums,
-                &mobile_vnums,
-                &area_prefixes,
-                &recipe_vnums,
-                &transport_vnums,
-                &property_template_vnums,
-                &shop_preset_vnums,
-                &plant_vnums,
-                &spell_names,
-                &language_keys,
-                &online_players,
-                &mobs_in_room,
-                &class_ids,
-                &race_ids,
-                &achievement_keys,
-                &custom_skill_keys,
-                &faction_keys,
-                has_builder_access,
+                &completion::CompletionData {
+                    available_commands: &available_commands,
+                    room_vnums: &room_vnums,
+                    item_vnums: &item_vnums,
+                    mobile_vnums: &mobile_vnums,
+                    area_prefixes: &area_prefixes,
+                    recipe_vnums: &recipe_vnums,
+                    transport_vnums: &transport_vnums,
+                    property_template_vnums: &property_template_vnums,
+                    shop_preset_vnums: &shop_preset_vnums,
+                    plant_vnums: &plant_vnums,
+                    quest_vnums: &quest_vnums,
+                    spell_names: &spell_names,
+                    language_keys: &language_keys,
+                    online_players: &online_players,
+                    mobs_in_room: &mobs_in_room,
+                    items_in_room: &items_in_room,
+                    class_ids: &class_ids,
+                    race_ids: &race_ids,
+                    achievement_keys: &achievement_keys,
+                    custom_skill_keys: &custom_skill_keys,
+                    faction_keys: &faction_keys,
+                    is_builder: has_builder_access,
+                },
             );
 
             if result.is_empty() {

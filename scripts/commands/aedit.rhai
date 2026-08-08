@@ -683,7 +683,7 @@ fn handle_donation_subcommand(area, args, connection_id) {
     }
 
     if set_area_donation_room(area.id, args[0]) {
-        send_client_message(connection_id, "Donation room set to: " + args[0] + " (" + dest.name + ")");
+        send_client_message(connection_id, "Donation room set to: " + args[0] + " (" + dest.title + ")");
     } else {
         send_client_message(connection_id, "Failed to update donation room.");
     }
@@ -722,7 +722,7 @@ fn handle_starting_room_subcommand(area, args, connection_id) {
     }
 
     if set_area_starting_room(area.id, args[0]) {
-        send_client_message(connection_id, "Starting room set to: " + args[0] + " (" + dest.name + ")");
+        send_client_message(connection_id, "Starting room set to: " + args[0] + " (" + dest.title + ")");
     } else {
         send_client_message(connection_id, "Failed to update starting room.");
     }

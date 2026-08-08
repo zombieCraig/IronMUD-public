@@ -82,7 +82,7 @@ When one crosses:
 
 1. it is recorded once, in the `world_milestones` sled tree, with the date;
 2. every builder carrying a score at that moment is listed as a contributor;
-3. all builders are told, via `broadcast_to_builders` — the only interruption
+3. all builders are told, via `announce_to_builders` — the only interruption
    in the whole builder tier, and it is allowed because milestones are rare by
    construction;
 4. each contributor is awarded the matching achievement through the normal
@@ -92,9 +92,35 @@ A milestone **stays recorded even if the world shrinks back**. The world did
 pass a thousand rooms; deleting them afterwards does not un-happen it. The
 builder score already handles the "you no longer own this" half.
 
-A milestone crossed with no scoring builder behind it — an imported world does
-exactly this — credits nobody rather than failing. It still belongs to the
-world; it just has no name on it.
+## Pointing this at a world that already exists
+
+Most worlds this runs against were not built under it. Somebody imports a
+CircleMUD area set, or upgrades a server that has been accumulating rooms for
+years, and on the first boot the world already has 355 rooms and eleven areas.
+
+**The first evaluation against any database adopts that world silently.**
+Everything already met is recorded, with no banners, no per-builder awards, and
+no contributors — the wall shows those rows as *"already true when this world
+was adopted"*, which is the honest description. Every evaluation after that
+announces normally.
+
+Two failures this avoids, both of which were shipped at some point:
+
+- Refusing to record until a builder is on the board leaves an imported world
+  reporting `0 of 17` beside a line reading `355 / 100`, and it never resolves,
+  because imported content credits nobody by design.
+- Recording and announcing them all produces a boot-time storm of banners for
+  things nobody in the room did, permanently consuming the milestones on the
+  way past.
+
+The marker is the `world_milestones_adopted` setting. There is no way to tell
+adoption from a crossing by looking at the world alone — a world with 355 rooms
+looks the same whether it grew that way while the server was watching or arrived
+that way — so it has to be remembered rather than inferred.
+
+The wall reads **met-ness as well as recorded-ness**, so a goal the world has
+passed never appears under "Ahead" during the five-minute window before the
+survey records it.
 
 ## Adding a milestone
 

@@ -618,10 +618,8 @@ pub const SET_SUBCOMMANDS_BASE: &[&str] = &["mxp", "color", "afk", "helpline", "
 pub const PROMPT_SUBCOMMANDS: &[&str] = &["simple", "verbose", "tokens", "default"];
 
 /// `build <subcommand>`.
-pub const BUILD_SUBCOMMANDS: &[&str] = &["audit", "who", "next", "track"];
+pub const BUILD_SUBCOMMANDS: &[&str] = &["audit", "who", "next", "track", "credits"];
 
-/// `build audit <target>`. `here` and `world` take no argument; the rest want
-/// a vnum, which completion cannot supply without knowing the area.
 /// `bounty <subcommand>`.
 pub const BOUNTY_SUBCOMMANDS: &[&str] = &[
     "list", "mine", "show", "post", "claim", "drop", "submit", "accept", "reject", "done", "help",
@@ -630,6 +628,9 @@ pub const BOUNTY_SUBCOMMANDS: &[&str] = &[
 /// `world <subcommand>`.
 pub const WORLD_SUBCOMMANDS: &[&str] = &["milestones"];
 
+/// `build audit <target>`. `here` and `world` take no argument; the rest take a
+/// key, which `complete_build` supplies from the world's vnums and — for items
+/// and mobiles — the contents of the room the builder is standing in.
 pub const BUILD_AUDIT_TARGETS: &[&str] = &["here", "room", "item", "mob", "quest", "area", "world"];
 
 /// Set command subcommands (builder-only)
