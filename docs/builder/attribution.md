@@ -41,7 +41,49 @@ That second rule is deliberate in both directions:
 The consequence worth knowing: a builder who takes an unattributed area and
 rebuilds it from scratch gets no credit for it. That is the conservative side
 of a call that cannot be made correctly from a database predating attribution.
-An explicit claim surface is the honest fix if it becomes a real problem.
+`build claim` is the way out — see below.
+
+## Claiming an area
+
+```
+build claim [area]
+```
+
+Puts your name on every unattributed row in an area you own: the area itself,
+its rooms, its item and mobile prototypes, and the quests its mobiles give.
+With no argument it claims the area you are standing in.
+
+This is the one command that bridges the ACL and the credit, and it is worth
+being clear about why they are separate at all:
+
+| Field | Is | Set by |
+|---|---|---|
+| `AreaData.owner` | an **ACL** — who may edit | `acreate`, `aedit owner`, API `create_area` |
+| `authored_by` | a **credit** — who built it | a create, once; `build claim` |
+
+Owning an area has never made you its author, and an audit finding used to
+imply otherwise. Deriving credit from ownership at read time was the obvious
+alternative and it is the wrong one: credit would then move every time the keys
+changed hands, and handing a colleague edit rights would hand them your
+authorship.
+
+What a claim will **not** do:
+
+- **Reassign anything that already names an author.** Not even to the owner.
+- **Take seed or imported content.** A claim sets `origin = builder`, and
+  `builder` is the only origin that scores — so if a claim could touch imported
+  rows, one `build claim` over an imported area would be a cheat code for
+  exactly the thing `origin` exists to prevent. Those rows are counted back to
+  you in the output instead.
+
+Only the owner of record, or an admin, can claim. An area with **no** owner
+cannot be claimed by anyone: with nobody on record as responsible for it there
+is nothing to base a claim on, and first-come-first-served over a shared world
+is how one builder ends up credited with everything nobody stamped. Set an
+owner first with `aedit owner <name>`.
+
+Running it twice is safe; the second run finds everything authored and claims
+nothing.
 
 Read-only subcommands (`redit` with no argument, `oedit <vnum> show`,
 `quedit <vnum> show`, …) never record an edit. Looking at a room is not

@@ -300,10 +300,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
         let Ok(snapshot) = WorldSnapshot::load(&cloned_db) else {
             return not_found(&key);
         };
-        let needle = key.trim().to_lowercase();
-        let found = snapshot.areas.iter().find(|a| {
-            a.id.to_string() == needle || a.prefix.to_lowercase() == needle || a.name.to_lowercase() == needle
-        });
+        let found = snapshot.areas.iter().find(|a| scan::area_matches(a, &key));
         let Some(area) = found else {
             return not_found(&key);
         };
@@ -478,6 +475,83 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
         m
     });
 
+    // claim_area_content(area_key, builder_name) -> Map
+    //
+    // #{found, allowed, reason, area, name, rooms, items, mobiles, quests,
+    // areas, total, already_credited, skipped_seed, skipped_import}.
+    //
+    // The bridge between the ACL and the credit, and the only one. Ownership is
+    // what makes the claim honest: a builder who owns an area is on record as
+    // responsible for it, so letting them put their name on its unattributed
+    // rows asserts nothing the world did not already say. An *unowned* area is
+    // therefore not claimable — with no owner there is no such record, and
+    // first-come-first-served over a shared world is how one builder ends up
+    // credited with everything nobody got around to stamping.
+    //
+    // Authorisation lives here rather than in the script because
+    // `attribution::claim_area` will claim for anyone, and a permission check
+    // in Rhai is a permission check a future caller can forget.
+    let cloned_db = db.clone();
+    engine.register_fn("claim_area_content", move |area_key: String, builder: String| -> Map {
+        let mut m = Map::new();
+        let deny = |m: &mut Map, reason: &str| {
+            m.insert("found".into(), Dynamic::from(true));
+            m.insert("allowed".into(), Dynamic::from(false));
+            m.insert("reason".into(), Dynamic::from(reason.to_string()));
+        };
+
+        let Ok(snapshot) = WorldSnapshot::load(&cloned_db) else {
+            m.insert("found".into(), Dynamic::from(false));
+            return m;
+        };
+        let Some(area) = snapshot.areas.iter().find(|a| scan::area_matches(a, &area_key)) else {
+            m.insert("found".into(), Dynamic::from(false));
+            return m;
+        };
+
+        // Admins pass, mirroring `can_edit_area`. Everyone else must be the
+        // owner of record.
+        let is_admin = matches!(cloned_db.get_character_data(builder.trim()), Ok(Some(c)) if c.is_admin);
+        if !is_admin {
+            match area.owner.as_deref().filter(|o| !o.trim().is_empty()) {
+                None => {
+                    deny(&mut m, "unowned");
+                    return m;
+                }
+                Some(owner) if !owner.eq_ignore_ascii_case(builder.trim()) => {
+                    deny(&mut m, "not_owner");
+                    m.insert("owner".into(), Dynamic::from(owner.to_string()));
+                    return m;
+                }
+                Some(_) => {}
+            }
+        }
+
+        let Ok(outcome) = attribution::claim_area(&cloned_db, area.id, builder.trim()) else {
+            m.insert("found".into(), Dynamic::from(false));
+            return m;
+        };
+
+        m.insert("found".into(), Dynamic::from(true));
+        m.insert("allowed".into(), Dynamic::from(true));
+        m.insert("reason".into(), Dynamic::from(String::new()));
+        m.insert("area".into(), Dynamic::from(area.prefix.clone()));
+        m.insert("name".into(), Dynamic::from(area.name.trim().to_string()));
+        m.insert("areas".into(), Dynamic::from(outcome.claimed.areas as i64));
+        m.insert("rooms".into(), Dynamic::from(outcome.claimed.rooms as i64));
+        m.insert("items".into(), Dynamic::from(outcome.claimed.items as i64));
+        m.insert("mobiles".into(), Dynamic::from(outcome.claimed.mobiles as i64));
+        m.insert("quests".into(), Dynamic::from(outcome.claimed.quests as i64));
+        m.insert("total".into(), Dynamic::from(outcome.claimed.total() as i64));
+        m.insert(
+            "already_credited".into(),
+            Dynamic::from(outcome.already_credited as i64),
+        );
+        m.insert("skipped_seed".into(), Dynamic::from(outcome.skipped_seed as i64));
+        m.insert("skipped_import".into(), Dynamic::from(outcome.skipped_import as i64));
+        m
+    });
+
     // get_area_credits(area_key) -> Map
     //
     // #{found, area, name, total, uncredited, authors: [#{name, rooms, items,
@@ -500,14 +574,11 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
             return m;
         };
 
-        let key = area_key.trim().to_lowercase();
+        let key = area_key.trim().to_string();
         let area = if key.is_empty() {
             None
         } else {
-            let found = snapshot
-                .areas
-                .iter()
-                .find(|a| a.prefix.to_lowercase() == key || a.name.to_lowercase() == key || a.id.to_string() == key);
+            let found = snapshot.areas.iter().find(|a| scan::area_matches(a, &key));
             match found {
                 Some(a) => Some(a),
                 None => {
@@ -736,10 +807,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
         let ctx = snapshot.ctx();
 
         let facts = if want == crate::build_tracks::TrackScope::Area {
-            let needle = key.trim().to_lowercase();
-            let Some(area) = snapshot.areas.iter().find(|a| {
-                a.id.to_string() == needle || a.prefix.to_lowercase() == needle || a.name.to_lowercase() == needle
-            }) else {
+            let Some(area) = snapshot.areas.iter().find(|a| scan::area_matches(a, &key)) else {
                 return Array::new();
             };
             crate::build_tracks::area_facts(&snapshot, area, ctx)

@@ -2,11 +2,26 @@
 
 use super::helpers::find_common_prefix;
 
+/// What kind of thing a completion candidate is, for display purposes only.
+/// Never affects matching, ordering, or dispatch — only the colour the
+/// candidate is painted with in the multi-match list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CompletionCategory {
+    #[default]
+    Plain,
+    /// A virtual social entry (`CommandMeta.kind == Some("social")`).
+    Social,
+    // Reserved for later: Builder, Admin, Contextual.
+}
+
 /// Result of a completion request
 #[derive(Debug, Clone)]
 pub struct CompletionResult {
     /// List of possible completions
     pub completions: Vec<String>,
+    /// Display category per completion. Always the same length as
+    /// `completions`; all-`Plain` unless a completer says otherwise.
+    pub categories: Vec<CompletionCategory>,
     /// Common prefix shared by all completions (for auto-complete)
     pub common_prefix: String,
     /// The type of completion being offered
@@ -19,6 +34,7 @@ impl CompletionResult {
     pub fn empty() -> Self {
         Self {
             completions: Vec::new(),
+            categories: Vec::new(),
             common_prefix: String::new(),
             completion_type: CompletionType::None,
             partial: String::new(),
@@ -26,13 +42,36 @@ impl CompletionResult {
     }
 
     pub fn new(completions: Vec<String>, partial: &str, completion_type: CompletionType) -> Self {
+        let categories = vec![CompletionCategory::Plain; completions.len()];
+        Self::new_categorized(completions, categories, partial, completion_type)
+    }
+
+    /// Like `new`, but each candidate carries a display category.
+    pub fn new_categorized(
+        completions: Vec<String>,
+        categories: Vec<CompletionCategory>,
+        partial: &str,
+        completion_type: CompletionType,
+    ) -> Self {
+        debug_assert_eq!(
+            completions.len(),
+            categories.len(),
+            "completion categories must be 1:1 with completions"
+        );
         let common_prefix = find_common_prefix(&completions);
         Self {
             completions,
+            categories,
             common_prefix,
             completion_type,
             partial: partial.to_string(),
         }
+    }
+
+    /// Category for candidate `i`, defaulting to `Plain` if the categories
+    /// vec is short (belt-and-braces for a hand-built result).
+    pub fn category_at(&self, i: usize) -> CompletionCategory {
+        self.categories.get(i).copied().unwrap_or_default()
     }
 
     pub fn is_empty(&self) -> bool {

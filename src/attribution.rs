@@ -186,6 +186,135 @@ impl StampCounts {
 /// This is why the seed pass is a sweep rather than a stamp inside each
 /// `seed_*` function: one call site that cannot be forgotten when a sixth
 /// seed module is added, and one that is safe to re-run.
+/// What a claim took, and what it deliberately left alone.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ClaimOutcome {
+    pub claimed: StampCounts,
+    /// Already names an author. Never reassigned, not even to the area owner.
+    pub already_credited: usize,
+    pub skipped_seed: usize,
+    pub skipped_import: usize,
+}
+
+/// What a claim should do with one entity.
+enum Verdict {
+    Claim,
+    AlreadyCredited,
+    Seed,
+    Import,
+}
+
+/// The whole anti-cheat rule, in one place so five loops cannot drift.
+///
+/// `stamp_created` sets `origin = Builder`, and `Builder` is the only origin
+/// that [`ContentOrigin::counts_for_score`] accepts — so claiming *is* the act
+/// that converts content into score. That makes the origin filter the load-
+/// bearing part of this function rather than a nicety: without it, claiming an
+/// imported area turns 679 machine-translated items into 679 credited builds,
+/// which is the exact failure `crate::types::provenance` was written to
+/// prevent. Seed and import content is reported back to the claimant and never
+/// stamped.
+///
+/// `Builder` origin with no author should not exist, but if it does it is
+/// unattributed builder work and claimable — the bar is machine provenance,
+/// not the absence of a stamp.
+fn verdict(e: &dyn Authored) -> Verdict {
+    if e.authored_by().is_some() {
+        return Verdict::AlreadyCredited;
+    }
+    match e.origin() {
+        ContentOrigin::Seed => Verdict::Seed,
+        ContentOrigin::Import => Verdict::Import,
+        ContentOrigin::Unknown | ContentOrigin::Builder => Verdict::Claim,
+    }
+}
+
+/// Claim every unattributed row in one area for `builder`.
+///
+/// The explicit claim surface. `AreaData.owner` is an ACL and `authored_by` is
+/// a credit, and nothing bridged them — so a builder who owned an area built
+/// before attribution existed could never be credited for it, because
+/// `stamp_created` refuses to overwrite and `stamp_edited` never reassigns.
+/// Guessing the bridge at read time was the alternative and it is worse: it
+/// makes credit a derivative of an ACL, so handing someone the keys would hand
+/// them the authorship too.
+///
+/// **Authorisation is the caller's job** and must not be skipped — see the
+/// `claim_area_content` binding in `crate::script::build`. This function will
+/// claim an area for anyone.
+///
+/// Idempotent: a second run finds every row authored and claims nothing.
+pub fn claim_area(db: &Db, area_id: Uuid, builder: &str) -> Result<ClaimOutcome> {
+    let mut out = ClaimOutcome::default();
+    if builder.trim().is_empty() {
+        return Ok(out);
+    }
+
+    macro_rules! sweep {
+        ($rows:expr, $save:expr, $counter:ident) => {
+            for mut e in $rows {
+                match verdict(&e) {
+                    Verdict::Claim => {
+                        e.stamp_created(builder);
+                        #[allow(clippy::redundant_closure_call)]
+                        ($save)(&mut e)?;
+                        out.claimed.$counter += 1;
+                    }
+                    Verdict::AlreadyCredited => out.already_credited += 1,
+                    Verdict::Seed => out.skipped_seed += 1,
+                    Verdict::Import => out.skipped_import += 1,
+                }
+            }
+        };
+    }
+
+    let in_area = |owner: Option<Uuid>| owner == Some(area_id);
+
+    sweep!(
+        db.list_all_areas()?.into_iter().filter(|a| a.id == area_id),
+        |e: &mut crate::types::AreaData| db.save_area_data(e.clone()),
+        areas
+    );
+    sweep!(
+        db.list_all_rooms()?.into_iter().filter(|r| in_area(r.area_id)),
+        |e: &mut crate::types::RoomData| db.save_room_data(e.clone()),
+        rooms
+    );
+    // Prototypes only. An instance is spawned content, not authored content —
+    // the same filter `WorldSnapshot::load` applies, and claiming instances
+    // would credit a builder once per spawn.
+    sweep!(
+        db.list_all_items()?
+            .into_iter()
+            .filter(|i| i.is_prototype && in_area(i.area_id)),
+        |e: &mut crate::types::ItemData| db.save_item_data(e.clone()),
+        items
+    );
+    let mobiles: Vec<crate::types::MobileData> = db
+        .list_all_mobiles()?
+        .into_iter()
+        .filter(|m| m.is_prototype && in_area(m.area_id))
+        .collect();
+    // A quest has no `area_id`; it belongs to whichever area its giver lives
+    // in. Same association `get_area_credits` makes, taken before the sweep
+    // consumes the list.
+    let givers: std::collections::HashSet<String> = mobiles.iter().map(|m| m.vnum.clone()).collect();
+    sweep!(
+        mobiles.into_iter(),
+        |e: &mut crate::types::MobileData| db.save_mobile_data(e.clone()),
+        mobiles
+    );
+    sweep!(
+        db.list_all_quests()?
+            .into_iter()
+            .filter(|q| q.giver_mob_vnum.as_deref().is_some_and(|v| givers.contains(v))),
+        |e: &mut crate::types::QuestData| db.save_quest_data(e),
+        quests
+    );
+
+    Ok(out)
+}
+
 pub fn stamp_unattributed(db: &Db, origin: ContentOrigin) -> Result<StampCounts> {
     let mut counts = StampCounts::default();
 

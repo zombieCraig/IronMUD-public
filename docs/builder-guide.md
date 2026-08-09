@@ -297,7 +297,9 @@ Full check catalogue and the rule for adding a check:
 
 The report also names who built the thing. Creating content claims it; editing
 someone else's never takes it from them, and content that shipped with the
-engine or came in through an importer is credited to nobody by design — see
+engine or came in through an importer is credited to nobody by design. Owning
+an area is not the same as having built it — if an area you own predates
+attribution, `build claim` puts your name on its unattributed work. See
 [Attribution](builder/attribution.md).
 
 ## Best Practices

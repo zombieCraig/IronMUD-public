@@ -110,7 +110,7 @@
       "key": "area",
       "label": "Found an area of your own",
       "predicate": { "kind": "count", "of": "area", "min": 1 },
-      "hint": "`acreate <prefix> <name>` — it names you as owner."
+      "hint": "`acreate <prefix> <name>`. Own one already? `build claim` credits it to you."
     },
     {
       "key": "forage",

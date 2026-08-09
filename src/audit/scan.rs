@@ -44,6 +44,25 @@ pub struct WorldSnapshot {
     ctx: std::sync::OnceLock<AuditCtx>,
 }
 
+/// Does this area answer to `needle`? Matches uuid, prefix or name.
+///
+/// Case- and whitespace-insensitive on *both* sides. Every call site trimmed
+/// the needle and none of them trimmed the stored value, which is not a
+/// symmetry anyone can be relied on to remember: an area name arrives from the
+/// REST/MCP path length-checked but otherwise verbatim
+/// (`crate::api::areas` create/update, and `set_area_name`), so a name with a
+/// leading space is a name no lookup could reach. One predicate, five callers.
+pub fn area_matches(area: &AreaData, needle: &str) -> bool {
+    let needle = needle.trim();
+    if needle.is_empty() {
+        return false;
+    }
+    let lower = needle.to_lowercase();
+    area.id.to_string() == lower
+        || area.prefix.trim().to_lowercase() == lower
+        || area.name.trim().to_lowercase() == lower
+}
+
 impl WorldSnapshot {
     pub fn load(db: &Db) -> Result<WorldSnapshot> {
         let areas = db.list_all_areas()?;
@@ -342,9 +361,10 @@ pub fn scan_entity_with_ctx(
         EntityKind::Area => {
             let snapshot = WorldSnapshot::load(db)?;
             let ctx = snapshot.ctx();
-            let found = snapshot.areas.iter().find(|a| {
-                as_uuid == Some(a.id) || a.prefix.to_lowercase() == key_lower || a.name.to_lowercase() == key_lower
-            });
+            let found = snapshot
+                .areas
+                .iter()
+                .find(|a| as_uuid == Some(a.id) || area_matches(a, key));
             Ok(found.map(|a| {
                 let report = scan_area(&snapshot, a, ctx);
                 EntityAudit {
@@ -481,4 +501,56 @@ pub fn grade_change_line(db: &Db, pending: &PendingAudit, ctx: &AuditCtx) -> Opt
         after.name.trim(),
         after.grade.letter
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn area(name: &str, prefix: &str) -> AreaData {
+        serde_json::from_value(json!({
+            "id": Uuid::new_v4(),
+            "name": name,
+            "prefix": prefix,
+        }))
+        .expect("area fixture")
+    }
+
+    #[test]
+    fn an_area_answers_to_prefix_name_and_uuid() {
+        let a = area("Dungeon Crawl Level 1", "dungeon1");
+        assert!(area_matches(&a, "dungeon1"));
+        assert!(area_matches(&a, "DUNGEON1"));
+        assert!(area_matches(&a, "Dungeon Crawl Level 1"));
+        assert!(area_matches(&a, "dungeon crawl level 1"));
+        assert!(area_matches(&a, &a.id.to_string()));
+    }
+
+    #[test]
+    fn padding_on_the_stored_name_does_not_hide_an_area() {
+        // The reported bug. Every call site trimmed the needle and none of them
+        // trimmed the stored value, so an area whose name picked up a leading
+        // space through the API path was unreachable by name.
+        let a = area(" Dungeon Crawl Level 1", "dungeon1");
+        assert!(area_matches(&a, "Dungeon Crawl Level 1"));
+        assert!(area_matches(&a, " Dungeon Crawl Level 1 "));
+        assert!(area_matches(&a, "dungeon1"));
+    }
+
+    #[test]
+    fn a_different_area_does_not_match() {
+        let a = area("Midgaard", "midgaard");
+        assert!(!area_matches(&a, "dungeon1"));
+        assert!(!area_matches(&a, "midg"));
+    }
+
+    #[test]
+    fn an_empty_needle_matches_nothing() {
+        // An area with an empty prefix must not become the answer to every
+        // keyless lookup in the world.
+        let a = area("Nameless", "");
+        assert!(!area_matches(&a, ""));
+        assert!(!area_matches(&a, "   "));
+    }
 }

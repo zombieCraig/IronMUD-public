@@ -5,6 +5,7 @@
 //   build next                - the one thing worth doing next
 //   build track [area]        - your path, or an area's readiness checklist
 //   build credits [area]      - who built what, here or in a named area
+//   build claim [area]        - claim unattributed work in an area you own
 //   build audit               - grade the room you are standing in
 //   build audit room [<vnum>] - grade one room, or the one you are in
 //   build audit item  <what>  - grade one item prototype
@@ -69,6 +70,12 @@ fn run_command(args, connection_id) {
         show_credits(char, rest, connection_id);
         return;
     }
+    if verb == "claim" {
+        let rest = "";
+        if parts.len() > 1 { rest = build_rest(parts, 1); }
+        do_claim(char, rest, connection_id);
+        return;
+    }
     if verb == "audit" {
         let rest = [];
         let i = 1;
@@ -90,6 +97,7 @@ fn usage() {
     out += "  build next                the one thing worth doing next\n";
     out += "  build track [area]        your path, or an area readiness checklist\n";
     out += "  build credits [area]      who built what, here or in an area\n";
+    out += "  build claim [area]        put your name on unattributed work you own\n";
     out += "  build audit               grade the room you are in\n";
     out += "  build audit room [<vnum>] grade one room, or the one you are in\n";
     out += "  build audit item <what>   grade one item prototype\n";
@@ -122,6 +130,11 @@ fn do_audit(char, rest, connection_id) {
         return;
     }
     if what == "area" || what == "zone" {
+        // An area key is prose — `build audit area Dungeon Crawl Level 1` has
+        // to reach the whole tail. Item and mobile keys deliberately do not:
+        // they feed `find_item_in_room` / `find_mobile_by_keyword`, which take
+        // one keyword with an optional `N.` prefix.
+        if rest.len() > 1 { key = build_rest(rest, 1); }
         if key == "" { key = current_area_key(char); }
         if key == "" {
             send_client_message(connection_id, "This room belongs to no area. Try `build audit area <name>`.");
@@ -193,11 +206,19 @@ fn resolve_kind(word) {
     return "";
 }
 
+// The key every `[area]`-taking subcommand defaults to when you give it none.
+//
+// The prefix, not the name. A prefix is one token that a builder chose to be
+// typed; a name is prose, and an area name that picked up a stray leading space
+// somewhere in the API path is a name no lookup will match. `area_matches` on
+// the Rust side now trims both ends, but the prefix is still the better key
+// because it is the one an operator would have typed by hand.
 fn current_area_key(char) {
     let room = get_room_data(char.current_room_id);
     if room == () { return ""; }
     let area = get_area_data(room.area_id);
     if area == () { return ""; }
+    if area.prefix != "" { return area.prefix; }
     return area.name;
 }
 
@@ -587,6 +608,82 @@ fn show_credits(char, area_key, connection_id) {
     if credits.uncredited > 0 {
         out += "\x1b[90m" + credits.uncredited + " unattributed — seed, import, or built before\n";
         out += "attribution existed. It counts toward nobody's score.\x1b[0m";
+    }
+    send_client_message(connection_id, out);
+}
+
+// `build claim [area]` — the bridge between owning an area and being credited
+// for it.
+//
+// Two fields have always been disjoint on purpose: `owner` is an ACL, and
+// `authored_by` is a credit that a create stamps once and nothing afterwards
+// moves. That leaves an area built before attribution existed permanently
+// uncredited, because there is no edit you can make that would claim it. This
+// is the one command that can, and it is deliberately explicit rather than a
+// read-time guess: credit derived from an ACL would move every time the keys
+// changed hands.
+//
+// What it will not do: reassign anything that already names an author, and
+// take seed or imported content. Those are counted back to you instead, so the
+// numbers add up and nobody has to wonder what happened to the rest.
+fn do_claim(char, area_key, connection_id) {
+    if !char.build_mode {
+        send_client_message(connection_id, "You must be in build mode to claim content.");
+        return;
+    }
+
+    let key = area_key;
+    if key == "" { key = current_area_key(char); }
+    if key == "" {
+        send_client_message(connection_id, "This room belongs to no area. Try `build claim <area>`.");
+        return;
+    }
+
+    let result = claim_area_content(key, char.name);
+    if !result.found {
+        send_client_message(connection_id, "No area matches '" + key + "'.");
+        return;
+    }
+    if !result.allowed {
+        let out = "";
+        if result.reason == "unowned" {
+            out = "\x1b[1;31mThat area has no owner.\x1b[0m\n";
+            out += "\x1b[90mClaiming is gated on ownership — with nobody on record as\n";
+            out += "responsible for an area, there is nothing to base a claim on.\n";
+            out += "Set an owner first: `aedit owner <name>`.\x1b[0m";
+        } else {
+            out = "\x1b[1;31mThat area belongs to " + result.owner + ".\x1b[0m\n";
+            out += "\x1b[90mOnly the owner of record, or an admin, can claim its work.\x1b[0m";
+        }
+        send_client_message(connection_id, out);
+        return;
+    }
+
+    let out = "\x1b[1;36mClaim — " + result.name + "\x1b[0m\n";
+    if result.total == 0 {
+        out += "\x1b[90mNothing here to claim. Everything is either already credited\n";
+        out += "or came from the seed world or an importer.\x1b[0m\n";
+    } else {
+        out += "You are now credited for \x1b[1;33m" + result.total + "\x1b[0m pieces of content:\n";
+        if result.areas > 0 { out += "  the area itself\n"; }
+        if result.rooms > 0 { out += "  " + result.rooms + " rooms\n"; }
+        if result.items > 0 { out += "  " + result.items + " items\n"; }
+        if result.mobiles > 0 { out += "  " + result.mobiles + " mobiles\n"; }
+        if result.quests > 0 { out += "  " + result.quests + " quests\n"; }
+    }
+
+    let skipped = result.already_credited + result.skipped_seed + result.skipped_import;
+    if skipped > 0 {
+        out += "\x1b[90m";
+        if result.already_credited > 0 {
+            out += result.already_credited + " already names a builder — a claim never takes that.\n";
+        }
+        let machine = result.skipped_seed + result.skipped_import;
+        if machine > 0 {
+            out += machine + " shipped with the engine or came from an importer, so it\n";
+            out += "credits nobody and counts toward nobody's score.\n";
+        }
+        out += "\x1b[0m";
     }
     send_client_message(connection_id, out);
 }

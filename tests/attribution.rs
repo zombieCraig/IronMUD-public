@@ -122,6 +122,107 @@ fn content_refs_parse_by_kind_and_reject_a_bad_uuid() {
 }
 
 // ===========================================================================
+// Claiming an area
+// ===========================================================================
+
+fn save_area(db: &Db, name: &str, prefix: &str) -> Uuid {
+    let id = Uuid::new_v4();
+    let area = serde_json::from_value(json!({"id": id, "name": name, "prefix": prefix})).expect("area fixture");
+    db.save_area_data(area).expect("save area");
+    id
+}
+
+fn save_room_in(db: &Db, area_id: Option<Uuid>, title: &str) -> Uuid {
+    let id = Uuid::new_v4();
+    let room: RoomData = serde_json::from_value(json!({
+        "id": id,
+        "title": title,
+        "description": "A room.",
+        "exits": {},
+        "area_id": area_id,
+    }))
+    .expect("room fixture");
+    db.save_room_data(room).expect("save room");
+    id
+}
+
+#[test]
+fn claiming_an_area_takes_its_unattributed_rows_and_nothing_else() {
+    let (db, _t) = fresh_db();
+    let area = save_area(&db, "Dungeon Crawl Level 1", "dungeon1");
+    let other = save_area(&db, "Midgaard", "midgaard");
+
+    let mine = save_room_in(&db, Some(area), "The Entrance");
+    let theirs = save_room_in(&db, Some(area), "The Vault");
+    let elsewhere = save_room_in(&db, Some(other), "Market Square");
+    let unhomed = save_room_in(&db, None, "Limbo");
+    attribution::stamp_created(&db, &ContentRef::Room(theirs), "Bo").unwrap();
+
+    let out = attribution::claim_area(&db, area, "zombieCraig").unwrap();
+    // The area row itself plus the one unattributed room in it.
+    assert_eq!(out.claimed.areas, 1);
+    assert_eq!(out.claimed.rooms, 1);
+    assert_eq!(out.already_credited, 1);
+
+    let p = attribution::read(&db, &ContentRef::Room(mine)).unwrap().unwrap();
+    assert_eq!(p.authored_by.as_deref(), Some("zombieCraig"));
+    assert_eq!(p.origin, ContentOrigin::Builder, "a claim must make it count");
+
+    let p = attribution::read(&db, &ContentRef::Room(theirs)).unwrap().unwrap();
+    assert_eq!(p.authored_by.as_deref(), Some("Bo"), "a claim reassigned authorship");
+
+    for outside in [elsewhere, unhomed] {
+        let p = attribution::read(&db, &ContentRef::Room(outside)).unwrap().unwrap();
+        assert_eq!(p.authored_by, None, "a claim reached outside its area");
+    }
+}
+
+#[test]
+fn claiming_never_takes_seed_or_imported_content() {
+    // The anti-cheat. `stamp_created` sets Builder origin, and Builder origin
+    // is what scores — so if a claim were allowed to touch imported rows, one
+    // `build claim` over an imported area would be a cheat code.
+    let (db, _t) = fresh_db();
+    let area = save_area(&db, "Imported Zone", "imported");
+    let room = save_room_in(&db, Some(area), "A Translated Room");
+    attribution::stamp_unattributed(&db, ContentOrigin::Import).unwrap();
+
+    let out = attribution::claim_area(&db, area, "zombieCraig").unwrap();
+    assert_eq!(out.claimed.total(), 0);
+    assert_eq!(out.skipped_import, 2, "the area row and the room");
+
+    let p = attribution::read(&db, &ContentRef::Room(room)).unwrap().unwrap();
+    assert_eq!(p.origin, ContentOrigin::Import);
+    assert_eq!(p.authored_by, None);
+    assert!(!p.origin.counts_for_score());
+}
+
+#[test]
+fn claiming_twice_claims_nothing_the_second_time() {
+    let (db, _t) = fresh_db();
+    let area = save_area(&db, "Dungeon Crawl Level 1", "dungeon1");
+    save_room_in(&db, Some(area), "The Entrance");
+
+    let first = attribution::claim_area(&db, area, "zombieCraig").unwrap();
+    let second = attribution::claim_area(&db, area, "zombieCraig").unwrap();
+    assert_eq!(first.claimed.total(), 2);
+    assert_eq!(second.claimed.total(), 0);
+    assert_eq!(second.already_credited, 2);
+}
+
+#[test]
+fn a_blank_builder_name_claims_nothing_from_an_area() {
+    let (db, _t) = fresh_db();
+    let area = save_area(&db, "Dungeon Crawl Level 1", "dungeon1");
+    let room = save_room_in(&db, Some(area), "The Entrance");
+
+    let out = attribution::claim_area(&db, area, "  ").unwrap();
+    assert_eq!(out.claimed.total(), 0);
+    let p = attribution::read(&db, &ContentRef::Room(room)).unwrap().unwrap();
+    assert_eq!(p.authored_by, None);
+}
+
+// ===========================================================================
 // The guard the whole feature exists for
 // ===========================================================================
 
@@ -203,6 +304,22 @@ fn seeding_twice_does_not_restamp_anything() {
 /// missing one is invisible until a builder notices their work credits nobody.
 /// Nothing static catches that, so it is driven here.
 fn run_olc(db: &Db, command: &str, args: &str) -> String {
+    let room_id = db
+        .list_all_rooms()
+        .expect("rooms")
+        .into_iter()
+        .next()
+        .map(|r| r.id)
+        .unwrap_or_else(Uuid::new_v4);
+    run_olc_as(db, command, args, "Ana", room_id, false)
+}
+
+/// [`run_olc`] as a named builder, standing somewhere specific.
+///
+/// `build claim` needs all three: it defaults its key to the area of the room
+/// you are in, gates on `build_mode`, and authorises against the area owner by
+/// name.
+fn run_olc_as(db: &Db, command: &str, args: &str, who: &str, room_id: Uuid, build_mode: bool) -> String {
     use ironmud::{PlayerSession, World};
     use std::sync::{Arc, Mutex};
 
@@ -213,18 +330,12 @@ fn run_olc(db: &Db, command: &str, args: &str) -> String {
     let (in_tx, _in_rx) = tokio::sync::mpsc::channel(8);
     let conn_id = Uuid::new_v4();
     let mut session = PlayerSession::new_for_test(out_tx, in_tx);
-    let room_id = db
-        .list_all_rooms()
-        .expect("rooms")
-        .into_iter()
-        .next()
-        .map(|r| r.id)
-        .unwrap_or_else(Uuid::new_v4);
     session.character = Some(
         serde_json::from_value(json!({
-            "name": "Ana",
+            "name": who,
             "password_hash": "",
             "is_builder": true,
+            "build_mode": build_mode,
             "current_room_id": room_id,
         }))
         .expect("character"),
@@ -491,4 +602,68 @@ fn build_credits_names_the_builders_and_counts_what_is_unattributed() {
     // And the world-wide form works without standing anywhere.
     let world = run_olc(&db, "build", "credits world");
     assert!(world.contains("Credits"), "world credits did not render:\n{world}");
+}
+
+#[test]
+fn build_claim_credits_the_owner_for_the_area_they_are_standing_in() {
+    // End to end through the real script, because the binding is resolved at
+    // call time: a typo in `claim_area_content` compiles fine and fails only
+    // when a builder types the command.
+    let (db, _t) = fresh_db();
+    let area_id = save_area(&db, " Dungeon Crawl Level 1", "dungeon1");
+    let mut area = db.get_area_data(&area_id).unwrap().unwrap();
+    area.owner = Some("zombieCraig".into());
+    db.save_area_data(area).unwrap();
+    let room = save_room_in(&db, Some(area_id), "The Entrance");
+
+    let out = run_olc_as(&db, "build", "claim", "zombieCraig", room, true);
+    assert!(out.contains("Claim"), "no header:\n{out}");
+
+    let p = attribution::read(&db, &ContentRef::Room(room)).unwrap().unwrap();
+    assert_eq!(p.authored_by.as_deref(), Some("zombieCraig"), "{out}");
+    assert_eq!(p.origin, ContentOrigin::Builder);
+}
+
+#[test]
+fn build_claim_refuses_someone_who_does_not_own_the_area() {
+    let (db, _t) = fresh_db();
+    let area_id = save_area(&db, "Dungeon Crawl Level 1", "dungeon1");
+    let mut area = db.get_area_data(&area_id).unwrap().unwrap();
+    area.owner = Some("zombieCraig".into());
+    db.save_area_data(area).unwrap();
+    let room = save_room_in(&db, Some(area_id), "The Entrance");
+
+    let out = run_olc_as(&db, "build", "claim", "Interloper", room, true);
+    assert!(out.contains("zombieCraig"), "the refusal should name the owner:\n{out}");
+
+    let p = attribution::read(&db, &ContentRef::Room(room)).unwrap().unwrap();
+    assert_eq!(p.authored_by, None, "a non-owner claimed the area:\n{out}");
+}
+
+#[test]
+fn build_claim_refuses_an_unowned_area() {
+    let (db, _t) = fresh_db();
+    let area_id = save_area(&db, "Dungeon Crawl Level 1", "dungeon1");
+    let room = save_room_in(&db, Some(area_id), "The Entrance");
+
+    let out = run_olc_as(&db, "build", "claim", "Opportunist", room, true);
+    assert!(out.contains("no owner"), "{out}");
+
+    let p = attribution::read(&db, &ContentRef::Room(room)).unwrap().unwrap();
+    assert_eq!(p.authored_by, None, "an unowned area was claimable:\n{out}");
+}
+
+#[test]
+fn build_audit_area_resolves_the_area_you_are_standing_in() {
+    // The reported bug: the key defaulted to the area *name*, and this area's
+    // name has a leading space, so the lookup missed and the command said
+    // "No area matches ' Dungeon Crawl Level 1'."
+    let (db, _t) = fresh_db();
+    let area_id = save_area(&db, " Dungeon Crawl Level 1", "dungeon1");
+    let room = save_room_in(&db, Some(area_id), "The Entrance");
+
+    for args in ["audit area", "audit area dungeon1", "audit area Dungeon Crawl Level 1"] {
+        let out = run_olc_as(&db, "build", args, "zombieCraig", room, true);
+        assert!(!out.contains("No area matches"), "`build {args}` failed:\n{out}");
+    }
 }

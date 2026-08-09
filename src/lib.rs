@@ -2190,11 +2190,18 @@ pub async fn handle_connection(
         // Handle Tab completion
         if matches!(event, InputEvent::Tab) {
             // Get current input buffer and cursor position
-            let (current_input, cursor_pos, window_width) = {
+            let (current_input, cursor_pos, window_width, colors_enabled) = {
                 let conns = connections.lock().unwrap();
                 conns
                     .get(&connection_id)
-                    .map(|s| (s.input_buffer.clone(), s.cursor_pos, s.telnet_state.window_width))
+                    .map(|s| {
+                        (
+                            s.input_buffer.clone(),
+                            s.cursor_pos,
+                            s.telnet_state.window_width,
+                            s.colors_enabled,
+                        )
+                    })
                     .unwrap_or_default()
             };
 
@@ -2221,6 +2228,7 @@ pub async fn handle_connection(
                 achievement_keys,
                 custom_skill_keys,
                 faction_keys,
+                social_commands,
                 has_builder_access,
             ) = {
                 let world = state.lock().unwrap();
@@ -2239,7 +2247,7 @@ pub async fn handle_connection(
                         .unwrap_or((false, false))
                 };
 
-                let mut available_commands: Vec<String> = world
+                let visible: Vec<(&String, &CommandMeta)> = world
                     .command_metadata
                     .iter()
                     .filter(|(_, meta)| match meta.access.as_str() {
@@ -2249,8 +2257,20 @@ pub async fn handle_connection(
                         "admin" => is_admin,
                         _ => true,
                     })
-                    .map(|(name, _)| name.clone())
                     .collect();
+
+                let mut available_commands: Vec<String> = visible.iter().map(|(name, _)| (*name).clone()).collect();
+
+                // Socials are virtual `command_metadata` entries tagged
+                // `kind = "social"` (see `register_socials_in_command_metadata`).
+                // Sorted so the completer can binary-search it when tinting
+                // the candidate list.
+                let mut social_commands: Vec<String> = visible
+                    .iter()
+                    .filter(|(_, meta)| meta.kind.as_deref() == Some("social"))
+                    .map(|(name, _)| name.to_lowercase())
+                    .collect();
+                social_commands.sort();
 
                 // Append the player's current room contextual verbs (deduped).
                 // Runtime dispatch is still handled by DG OnCommand triggers;
@@ -2430,6 +2450,7 @@ pub async fn handle_connection(
                     achievement_keys,
                     custom_skill_keys,
                     faction_keys,
+                    social_commands,
                     has_builder_access,
                 )
             };
@@ -2460,6 +2481,7 @@ pub async fn handle_connection(
                     achievement_keys: &achievement_keys,
                     custom_skill_keys: &custom_skill_keys,
                     faction_keys: &faction_keys,
+                    social_commands: &social_commands,
                     is_builder: has_builder_access,
                 },
             );
@@ -2512,7 +2534,7 @@ pub async fn handle_connection(
                 let _ = tx_client.send(String::from_utf8_lossy(&redraw).into_owned());
             } else {
                 // Multiple matches - show list and complete common prefix
-                let display = completion::format_completions(&result, window_width);
+                let display = completion::format_completions(&result, window_width, colors_enabled);
 
                 // Complete to common prefix if it's longer than what we have
                 let to_add = if result.common_prefix.len() > result.partial.len() {

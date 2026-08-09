@@ -404,12 +404,34 @@ fn keywords_cover(keywords: &[String], word: &str) -> bool {
         .any(|k| k == word || (k.len() >= KEYWORD_MATCH_FLOOR && (k.contains(word) || word.contains(&k))))
 }
 
+/// Everything a player can actually type to reach an entity.
+///
+/// `item_matches_keyword` (`crate::script::items`) tests `name` by substring
+/// *before* it consults `keywords`, and mobile lookup calls the same function
+/// — so an item named "a bull whip" answers to `get whip` with no keywords set
+/// at all. A lint that ignores `name` reports a blocker on content that works,
+/// which is worse than no lint: it teaches builders that the auditor is wrong.
+///
+/// Name tokens skip the [`NOUN_STOPWORDS`] filter that [`salient_words`]
+/// applies. That filter exists to decide which words a builder *ought* to have
+/// covered; this list is what the engine will match, and the engine does not
+/// consult a stopword table.
+fn addressable_terms(name: &str, keywords: &[String]) -> Vec<String> {
+    let mut terms: Vec<String> = keywords.to_vec();
+    terms.extend(
+        name.split(|c: char| !c.is_alphabetic())
+            .filter(|w| !w.is_empty())
+            .map(|w| w.to_lowercase()),
+    );
+    terms
+}
+
 /// The shared "can a player type this name?" check.
 ///
-/// Every salient noun in the display string must be reachable through
-/// `keywords`, or the entity is on screen and unaddressable — the single most
-/// common builder mistake in this codebase, and the reason it is a lint rather
-/// than a convention.
+/// Every salient noun in the display string must be reachable through the
+/// addressable terms, or the entity is on screen and unaddressable — the
+/// single most common builder mistake in this codebase, and the reason it is a
+/// lint rather than a convention.
 fn check_keyword_coverage(findings: &mut Vec<Finding>, code: &'static str, display: &str, keywords: &[String]) {
     let missing: Vec<String> = salient_words(display)
         .into_iter()
@@ -622,13 +644,14 @@ pub fn audit_item(item: &ItemData) -> Grade {
         ));
     }
 
-    if item.keywords.is_empty() {
+    let item_terms = addressable_terms(&item.name, &item.keywords);
+    if item_terms.is_empty() {
         f.push(blocker(
             "item.no_keywords",
-            "No keywords: nothing a player types can refer to this item.",
+            "No name and no keywords: nothing a player types can refer to this item.",
         ));
     } else {
-        check_keyword_coverage(&mut f, "item.keywords_miss_nouns", &item.short_desc, &item.keywords);
+        check_keyword_coverage(&mut f, "item.keywords_miss_nouns", &item.short_desc, &item_terms);
     }
 
     match item.item_type {
@@ -759,13 +782,14 @@ pub fn audit_mobile(mob: &MobileData) -> Grade {
         ));
     }
 
-    if mob.keywords.is_empty() {
+    let mob_terms = addressable_terms(&mob.name, &mob.keywords);
+    if mob_terms.is_empty() {
         f.push(blocker(
             "mobile.no_keywords",
-            "No keywords: a player can see this mobile but cannot target it.",
+            "No name and no keywords: a player can see this mobile but cannot target it.",
         ));
     } else {
-        check_keyword_coverage(&mut f, "mobile.keywords_miss_nouns", &mob.short_desc, &mob.keywords);
+        check_keyword_coverage(&mut f, "mobile.keywords_miss_nouns", &mob.short_desc, &mob_terms);
     }
 
     if mob.level <= 0 {
@@ -1031,10 +1055,20 @@ pub fn audit_area(area: &AreaData, contents: &AreaContents) -> Grade {
     if area.theme.trim().is_empty() {
         f.push(polish("area.no_theme", "No theme set."));
     }
+    // Owner is an ACL and `authored_by` is a credit — two findings, because
+    // they are two different problems with two different fixes. The old single
+    // finding said setting an owner would get you credited, which was never
+    // true of any code path and sent builders to `aedit owner` for a problem
+    // only `build claim` can solve.
     if area.owner.is_none() {
         f.push(polish(
             "area.no_owner",
-            "Unowned: nobody is credited for this area and any builder can edit it.",
+            "Unowned: any builder can edit it. Set one with `aedit owner <name>`.",
+        ));
+    } else if area.authored_by.is_none() {
+        f.push(polish(
+            "area.unattributed",
+            "Owned but uncredited: it counts toward nobody's score. `build claim`.",
         ));
     }
 
@@ -1539,6 +1573,9 @@ mod tests {
 
     #[test]
     fn a_noun_missing_from_keywords_is_reported() {
+        // Fixture name is "a goblin guard", short_desc "A goblin guard leans on
+        // a rusted pike." With only "goblin" in keywords, "pike" is genuinely
+        // unreachable — but "guard" is not, because the name matches it.
         let g = audit_mobile(&mobile(json!({"keywords": ["goblin"]})));
         assert!(g.has("mobile.keywords_miss_nouns"));
         let msg = &g
@@ -1547,7 +1584,8 @@ mod tests {
             .find(|f| f.code == "mobile.keywords_miss_nouns")
             .unwrap()
             .message;
-        assert!(msg.contains("guard"), "{msg}");
+        assert!(msg.contains("pike"), "{msg}");
+        assert!(!msg.contains("guard"), "the name already reaches it: {msg}");
     }
 
     #[test]
@@ -1574,10 +1612,31 @@ mod tests {
     }
 
     #[test]
-    fn a_mobile_with_no_keywords_is_blocked_not_warned() {
+    fn the_name_is_addressable_so_empty_keywords_are_not_a_blocker() {
+        // `item_matches_keyword` tests `name` by substring before it looks at
+        // `keywords`, and mobile lookup calls it — so "a goblin guard" answers
+        // to `kill guard` with no keywords at all. Blocking that is the auditor
+        // reporting a fault in working content.
         let g = audit_mobile(&mobile(json!({"keywords": []})));
-        assert!(g.has("mobile.no_keywords"));
-        assert!(!g.has("mobile.keywords_miss_nouns"));
+        assert!(!g.has("mobile.no_keywords"), "{:?}", g.findings);
+        // The nouns the name does *not* reach are still the real signal.
+        assert!(g.has("mobile.keywords_miss_nouns"));
+    }
+
+    #[test]
+    fn nothing_addressable_at_all_is_still_a_blocker() {
+        let g = audit_mobile(&mobile(json!({"name": "", "keywords": []})));
+        assert!(g.has("mobile.no_keywords"), "{:?}", g.findings);
+    }
+
+    #[test]
+    fn a_name_covering_every_noun_clears_the_check() {
+        let g = audit_mobile(&mobile(json!({
+            "name": "a goblin guard with a rusted pike",
+            "keywords": [],
+        })));
+        assert!(!g.has("mobile.no_keywords"), "{:?}", g.findings);
+        assert!(!g.has("mobile.keywords_miss_nouns"), "{:?}", g.findings);
     }
 
     #[test]
@@ -1605,6 +1664,36 @@ mod tests {
     }
 
     // --- items ---------------------------------------------------------------
+
+    #[test]
+    fn an_item_named_for_itself_needs_no_keywords() {
+        // The reported case: a real area full of F-graded items whose names
+        // matched their short descs, all of them perfectly targetable in game.
+        let g = audit_item(&item(json!({
+            "name": "a bull whip",
+            "short_desc": "A bull whip lies here.",
+            "keywords": [],
+        })));
+        assert!(!g.has("item.no_keywords"), "{:?}", g.findings);
+        assert!(!g.has("item.keywords_miss_nouns"), "{:?}", g.findings);
+    }
+
+    #[test]
+    fn an_item_whose_name_shares_nothing_with_its_short_desc_is_warned() {
+        let g = audit_item(&item(json!({
+            "name": "widget",
+            "short_desc": "A bull whip lies here.",
+            "keywords": [],
+        })));
+        assert!(!g.has("item.no_keywords"), "{:?}", g.findings);
+        assert!(g.has("item.keywords_miss_nouns"), "{:?}", g.findings);
+    }
+
+    #[test]
+    fn an_item_with_neither_name_nor_keywords_is_blocked() {
+        let g = audit_item(&item(json!({"name": "", "keywords": []})));
+        assert!(g.has("item.no_keywords"), "{:?}", g.findings);
+    }
 
     #[test]
     fn a_weapon_with_no_dice_is_blocked() {

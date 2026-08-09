@@ -12,8 +12,8 @@ mod helpers;
 mod types;
 
 pub use consts::MOBILE_FLAGS;
-pub use helpers::format_completions;
-pub use types::{ArgumentContext, CompletionResult, CompletionType};
+pub use helpers::{category_ansi, format_completions};
+pub use types::{ArgumentContext, CompletionCategory, CompletionResult, CompletionType};
 
 use consts::DIRECTIONS;
 use consts::SKILL_NAMES;
@@ -90,7 +90,26 @@ pub struct CompletionData<'a> {
     pub achievement_keys: &'a [String],
     pub custom_skill_keys: &'a [String],
     pub faction_keys: &'a [String],
+    /// Lowercased, **sorted** names of commands whose `CommandMeta.kind` is
+    /// `"social"`. Display only — it tints the completion list so a player
+    /// can tell the emote `reconnect` from a real action. Never affects
+    /// matching or ordering.
+    pub social_commands: &'a [String],
     pub is_builder: bool,
+}
+
+/// Tag each command candidate by whether it is a virtual social entry.
+fn categorize_commands(commands: &[String], social_commands: &[String]) -> Vec<CompletionCategory> {
+    commands
+        .iter()
+        .map(|cmd| {
+            if social_commands.binary_search(&cmd.to_lowercase()).is_ok() {
+                CompletionCategory::Social
+            } else {
+                CompletionCategory::Plain
+            }
+        })
+        .collect()
 }
 
 pub fn complete(input: &str, cursor_pos: usize, data: &CompletionData) -> CompletionResult {
@@ -114,6 +133,7 @@ pub fn complete(input: &str, cursor_pos: usize, data: &CompletionData) -> Comple
         achievement_keys,
         custom_skill_keys,
         faction_keys,
+        social_commands,
         is_builder,
         // `quest_vnums` / `items_in_room` are read straight off `data` by the
         // sub-completer that wants them.
@@ -136,7 +156,9 @@ pub fn complete(input: &str, cursor_pos: usize, data: &CompletionData) -> Comple
     match words.len() {
         0 => {
             // Empty input - return all commands
-            CompletionResult::new(available_commands.to_vec(), "", CompletionType::Command)
+            let matches = available_commands.to_vec();
+            let categories = categorize_commands(&matches, social_commands);
+            CompletionResult::new_categorized(matches, categories, "", CompletionType::Command)
         }
         1 if completing_word => {
             // Completing first word (command name)
@@ -146,7 +168,8 @@ pub fn complete(input: &str, cursor_pos: usize, data: &CompletionData) -> Comple
                 .filter(|cmd| cmd.to_lowercase().starts_with(&partial))
                 .cloned()
                 .collect();
-            CompletionResult::new(matches, &partial, CompletionType::Command)
+            let categories = categorize_commands(&matches, social_commands);
+            CompletionResult::new_categorized(matches, categories, &partial, CompletionType::Command)
         }
         _ => {
             // Completing an argument
@@ -444,6 +467,58 @@ mod tests {
         assert!(result.completions.contains(&"login".to_string()));
         assert!(result.completions.contains(&"logout".to_string()));
         assert_eq!(result.completion_type, CompletionType::Command);
+    }
+
+    #[test]
+    fn test_command_completion_tags_socials() {
+        let commands = vec![
+            "read".to_string(),
+            "reconnect".to_string(),
+            "recline".to_string(),
+            "rest".to_string(),
+        ];
+        // Sorted, lowercase — the contract `categorize_commands` relies on.
+        let socials = vec!["recline".to_string(), "reconnect".to_string()];
+
+        let result = complete(
+            "re",
+            2,
+            &CompletionData {
+                available_commands: &commands,
+                social_commands: &socials,
+                ..Default::default()
+            },
+        );
+
+        // Matching is untouched: same candidates, same order.
+        assert_eq!(result.completions, commands);
+        assert_eq!(
+            result.categories,
+            vec![
+                CompletionCategory::Plain,
+                CompletionCategory::Social,
+                CompletionCategory::Social,
+                CompletionCategory::Plain,
+            ]
+        );
+    }
+
+    #[test]
+    fn test_non_command_completions_are_plain() {
+        let commands = vec!["rgoto".to_string()];
+        let room_vnums = vec!["town:square".to_string(), "town:tavern".to_string()];
+
+        let result = complete(
+            "rgoto town:",
+            11,
+            &CompletionData {
+                available_commands: &commands,
+                room_vnums: &room_vnums,
+                ..Default::default()
+            },
+        );
+        assert_eq!(result.completions.len(), 2);
+        assert!(result.categories.iter().all(|c| *c == CompletionCategory::Plain));
     }
 
     #[test]

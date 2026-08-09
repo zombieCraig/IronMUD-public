@@ -2,7 +2,19 @@
 
 use unicode_width::UnicodeWidthStr;
 
-use super::types::{ArgumentContext, CompletionResult, CompletionType};
+use super::types::{ArgumentContext, CompletionCategory, CompletionResult, CompletionType};
+
+const ANSI_RESET: &str = "\x1b[0m";
+
+/// The single place a completion category maps to an escape sequence.
+/// Bright cyan for socials so `re<TAB>` visibly separates the emote
+/// `reconnect` from real actions like `rest`.
+pub fn category_ansi(category: CompletionCategory) -> &'static str {
+    match category {
+        CompletionCategory::Plain => "",
+        CompletionCategory::Social => "\x1b[1;36m",
+    }
+}
 
 /// Get the argument context for a command
 pub fn get_argument_context(command: &str) -> ArgumentContext {
@@ -120,8 +132,13 @@ pub fn find_common_prefix(strings: &[String]) -> String {
     first[..prefix_len].to_string()
 }
 
-/// Format completion result for display
-pub fn format_completions(result: &CompletionResult, max_width: u16) -> String {
+/// Format completion result for display.
+///
+/// Column maths always uses the *plain* display width, so the grid lines up
+/// identically whether or not colour is on. Colour, when enabled, wraps only
+/// the candidate text — the reset lands before the padding so no attribute
+/// bleeds across the gutter.
+pub fn format_completions(result: &CompletionResult, max_width: u16, colors_enabled: bool) -> String {
     if result.is_empty() {
         return String::new();
     }
@@ -138,18 +155,112 @@ pub fn format_completions(result: &CompletionResult, max_width: u16) -> String {
 
     // Format as columns with proper padding for display width
     let mut lines = Vec::new();
-    for chunk in result.completions.chunks(cols) {
+    for (chunk_idx, chunk) in result.completions.chunks(cols).enumerate() {
         let line: Vec<String> = chunk
             .iter()
-            .map(|s| {
+            .enumerate()
+            .map(|(i, s)| {
                 // Pad to col_width based on display width, not byte length
                 let display_len = s.width();
                 let padding = col_width.saturating_sub(display_len);
-                format!("{}{}", s, " ".repeat(padding))
+                let color = if colors_enabled {
+                    category_ansi(result.category_at(chunk_idx * cols + i))
+                } else {
+                    ""
+                };
+                if color.is_empty() {
+                    format!("{}{}", s, " ".repeat(padding))
+                } else {
+                    format!("{}{}{}{}", color, s, ANSI_RESET, " ".repeat(padding))
+                }
             })
             .collect();
         lines.push(line.join(""));
     }
 
     lines.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn strip_ansi(s: &str) -> String {
+        let mut out = String::new();
+        let mut in_escape = false;
+        for c in s.chars() {
+            if c == '\x1b' {
+                in_escape = true;
+            } else if in_escape {
+                if c == 'm' {
+                    in_escape = false;
+                }
+            } else {
+                out.push(c);
+            }
+        }
+        out
+    }
+
+    fn mixed() -> CompletionResult {
+        CompletionResult::new_categorized(
+            vec![
+                "read".to_string(),
+                "reconnect".to_string(),
+                "recline".to_string(),
+                "rest".to_string(),
+            ],
+            vec![
+                CompletionCategory::Plain,
+                CompletionCategory::Social,
+                CompletionCategory::Social,
+                CompletionCategory::Plain,
+            ],
+            "re",
+            CompletionType::Command,
+        )
+    }
+
+    #[test]
+    fn colors_off_emits_no_escapes() {
+        let out = format_completions(&mixed(), 80, false);
+        assert!(!out.contains('\x1b'), "expected plain output, got {:?}", out);
+        assert_eq!(
+            out, "read       reconnect  recline    rest       ",
+            "plain rendering must be unchanged"
+        );
+    }
+
+    #[test]
+    fn socials_are_wrapped_in_bright_cyan() {
+        let out = format_completions(&mixed(), 80, true);
+        assert!(out.contains("\x1b[1;36mreconnect\x1b[0m"));
+        assert!(out.contains("\x1b[1;36mrecline\x1b[0m"));
+        // Plain entries stay untouched.
+        assert!(!out.contains("\x1b[1;36mread"));
+        assert!(!out.contains("\x1b[1;36mrest"));
+    }
+
+    #[test]
+    fn color_does_not_disturb_column_alignment() {
+        let plain = format_completions(&mixed(), 80, false);
+        let colored = format_completions(&mixed(), 80, true);
+        assert_eq!(strip_ansi(&colored), plain);
+    }
+
+    #[test]
+    fn alignment_holds_when_the_grid_wraps() {
+        // col_width = 9 + 2 = 11, so a 24-col window fits 2 per row.
+        let plain = format_completions(&mixed(), 24, false);
+        let colored = format_completions(&mixed(), 24, true);
+        assert_eq!(plain.lines().count(), 2);
+        assert_eq!(strip_ansi(&colored), plain);
+    }
+
+    #[test]
+    fn empty_and_unique_results_render_nothing() {
+        assert_eq!(format_completions(&CompletionResult::empty(), 80, true), "");
+        let unique = CompletionResult::new(vec!["wave".to_string()], "wa", CompletionType::Command);
+        assert_eq!(format_completions(&unique, 80, true), "");
+    }
 }

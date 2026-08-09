@@ -32,7 +32,10 @@ You don't see them here.
   `help` listing intentionally omits them so it stays scannable; only the
   `socials` entry shows up there.
 - Tab completion still resolves social prefixes (e.g. `wa<TAB>` → `wave`)
-  alongside built-in commands.
+  alongside built-in commands. In the multi-match list socials are painted
+  bright cyan (driven by the same `kind = "social"` tag `help` filters on),
+  so players can see that `reconnect` is an emote and not a real action.
+  The tint honours the player's `color` setting.
 - Each social has a position requirement (most need standing; some like
   `groan` work while sitting). Sleeping blocks almost every social.
 - A handful of socials are flagged `hide=true` and only render to the

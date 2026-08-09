@@ -618,7 +618,7 @@ pub const SET_SUBCOMMANDS_BASE: &[&str] = &["mxp", "color", "afk", "helpline", "
 pub const PROMPT_SUBCOMMANDS: &[&str] = &["simple", "verbose", "tokens", "default"];
 
 /// `build <subcommand>`.
-pub const BUILD_SUBCOMMANDS: &[&str] = &["audit", "who", "next", "track", "credits"];
+pub const BUILD_SUBCOMMANDS: &[&str] = &["audit", "who", "next", "track", "credits", "claim"];
 
 /// `bounty <subcommand>`.
 pub const BOUNTY_SUBCOMMANDS: &[&str] = &[

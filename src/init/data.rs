@@ -48,6 +48,58 @@ pub fn register_socials_in_command_metadata(
     }
 }
 
+#[cfg(test)]
+mod social_metadata_tests {
+    use super::*;
+
+    /// The `kind = "social"` tag is what `help` filters on and what tints
+    /// socials in the tab-completion list. If the real data ever stopped
+    /// producing it, both would silently degrade to "everything looks the
+    /// same" rather than fail.
+    #[test]
+    fn shipped_socials_are_tagged_and_never_shadow_a_real_command() {
+        let socials = crate::social::actions::registry();
+        assert!(socials.len() > 100, "expected the imported tbaMUD social table");
+
+        let mut metadata = load_command_metadata().expect("scripts/commands.json");
+        let real_command_count = metadata.len();
+        assert!(
+            metadata.values().all(|m| m.kind.is_none()),
+            "commands.json entries must not claim kind"
+        );
+
+        register_socials_in_command_metadata(&socials, &mut metadata);
+
+        let tagged = metadata
+            .values()
+            .filter(|m| m.kind.as_deref() == Some("social"))
+            .count();
+        assert!(tagged > 100, "socials should be tagged, got {tagged}");
+        assert_eq!(
+            metadata.len(),
+            real_command_count + tagged,
+            "registration must only add entries"
+        );
+
+        // A representative social is present, tagged, and login-gated.
+        // Entries are keyed by `lookup_key()` (the canonical name), not the
+        // abbrev — the shipped table calls this one `waves`.
+        let waves = metadata.get("waves").expect("`waves` should be a virtual social");
+        assert_eq!(waves.kind.as_deref(), Some("social"));
+        assert_eq!(waves.access, "user");
+
+        // A real command with a same-named social keeps its JSON definition.
+        for (name, meta) in &metadata {
+            if meta.kind.as_deref() == Some("social") {
+                assert!(
+                    !std::path::Path::new(&format!("scripts/commands/{name}.rhai")).exists(),
+                    "`{name}` has a real script and must not be tagged social"
+                );
+            }
+        }
+    }
+}
+
 /// Parse a JSON object into `HashMap<String, T>`, skipping keys that start with `_`
 /// so files may carry sibling documentation fields like `"_doc": "..."`.
 fn parse_doc_tolerant_map<T: serde::de::DeserializeOwned>(

@@ -555,9 +555,12 @@ You bow deeply.
 You smile at yourself.
 ```
 
-Tab-completion lists socials alongside built-in commands. Most socials
-require you to be standing — `groan` works while sitting; almost
-nothing works while sleeping.
+Tab-completion lists socials alongside built-in commands, but shows them
+in bright cyan so you can tell them apart at a glance — pressing TAB on
+`re` marks `reconnect` and `recline` as socials while `rest` and `read`
+stay plain. The tint follows your `color` setting; with `color off` the
+list renders unstyled. Most socials require you to be standing — `groan`
+works while sitting; almost nothing works while sleeping.
 
 ## Items and Inventory
 

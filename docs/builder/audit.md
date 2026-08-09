@@ -105,9 +105,9 @@ rises with word count is a grade that rewards padding.
 | Code | Severity | Fires when |
 |---|---|---|
 | `mobile.no_name` / `no_short_desc` / `no_long_desc` | blocker | The field is empty or placeholder |
-| `mobile.no_keywords` | blocker | No keywords: visible but untargetable |
+| `mobile.no_keywords` | blocker | No name **and** no keywords: visible but untargetable |
 | `mobile.no_level` | blocker | Level 0 |
-| `mobile.keywords_miss_nouns` | warn | A salient noun in `short_desc` is not reachable through `keywords` |
+| `mobile.keywords_miss_nouns` | warn | A salient noun in `short_desc` is reachable through neither `name` nor `keywords` |
 | `mobile.no_damage_dice` | warn | Attackable mobile with no damage dice |
 | `mobile.shop_empty` | warn | Shopkeeper with no stock and no preset |
 | `mobile.healer_no_type` | warn | Healer flag with no healer type |
@@ -122,12 +122,19 @@ compounds are tolerated (`guards` covers `guard`), and a stopword list keeps
 verbs and articles out of it — but if a player can read a noun on screen, they
 must be able to type it.
 
+`name` counts as much as `keywords` here, because the engine matches it the
+same way: item and mobile lookup tests `name` by substring *before* it consults
+`keywords`, so "a bull whip" answers to `get whip` with no keywords set at all.
+The lint models what the engine does. Set keywords anyway when the name and the
+short description use different words for the same thing — that is the case
+these two findings exist to catch.
+
 ### Items
 
 | Code | Severity | Fires when |
 |---|---|---|
 | `item.no_name` / `no_short_desc` / `no_long_desc` | blocker | The field is empty or placeholder |
-| `item.no_keywords` | blocker | Nothing a player types refers to it |
+| `item.no_keywords` | blocker | No name **and** no keywords: nothing a player types refers to it |
 | `item.weapon_no_damage` | blocker | Weapon with no damage dice |
 | `item.armor_no_protection` | blocker | Armor with no AC and no affects |
 | `item.armor_no_wear_location` | blocker | Armor that cannot be worn |
@@ -170,7 +177,8 @@ must be able to type it.
 | `area.no_level_range` | warn | Nothing tells players who the area is for |
 | `area.no_quests` | polish | Nothing gives players a reason to come |
 | `area.no_theme` | polish | No theme set |
-| `area.no_owner` | polish | Nobody is credited and any builder can edit it |
+| `area.no_owner` | polish | No owner, so any builder can edit it |
+| `area.unattributed` | polish | Owned but uncredited — `build claim` |
 
 ### World
 
