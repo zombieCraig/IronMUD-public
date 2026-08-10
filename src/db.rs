@@ -49,6 +49,10 @@ pub struct Db {
     // Bulletin boards (gen_board parity). One flat tree keyed by
     // `BoardPost.id`; per-board lookup scans + filters by `board_vnum`.
     boards: Arc<Tree>,
+    // Reviewed audit findings, keyed by `AuditWaiver::key(code, target)` —
+    // the same `code@target` shape the bounty board dedupes on. The key is
+    // the dedupe: re-waiving the same finding overwrites rather than stacks.
+    audit_waivers: Arc<Tree>,
     // Player-organization clans. Keyed by uppercased tag (e.g. b"IRON").
     // ClanData.members is the authoritative roster; CharacterData.clan_tag
     // mirrors membership for fast `who`/gate lookups.
@@ -162,6 +166,7 @@ impl Db {
         let shop_presets = db.open_tree("shop_presets")?;
         let mail = db.open_tree("mail")?;
         let boards = db.open_tree("boards")?;
+        let audit_waivers = db.open_tree("audit_waivers")?;
         let clans = db.open_tree("clans")?;
         let plants = db.open_tree("plants")?;
         let plant_prototypes = db.open_tree("plant_prototypes")?;
@@ -200,6 +205,7 @@ impl Db {
             shop_presets: Arc::new(shop_presets),
             mail: Arc::new(mail),
             boards: Arc::new(boards),
+            audit_waivers: Arc::new(audit_waivers),
             clans: Arc::new(clans),
             plants: Arc::new(plants),
             plant_prototypes: Arc::new(plant_prototypes),
@@ -3948,6 +3954,51 @@ impl Db {
             }
         }
         Ok(removed)
+    }
+
+    // ========== Audit Waiver Functions ==========
+
+    /// Upsert a reviewed finding. Keyed on `code@target`, so re-waiving the
+    /// same finding after an edit replaces the record — including its
+    /// fingerprint — rather than leaving two judgements about one thing.
+    pub fn store_audit_waiver(&self, waiver: &crate::types::AuditWaiver) -> Result<()> {
+        let key = waiver.storage_key();
+        let value = serde_json::to_vec(waiver)?;
+        self.audit_waivers.insert(key.as_bytes(), value)?;
+        Ok(())
+    }
+
+    pub fn get_audit_waiver(&self, code: &str, target: &str) -> Result<Option<crate::types::AuditWaiver>> {
+        let key = crate::types::AuditWaiver::key(code, target);
+        match self.audit_waivers.get(key.as_bytes())? {
+            Some(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Every waiver, or only those in one area. Sorted by code then target so
+    /// `build waive list` reads the same way twice.
+    pub fn list_audit_waivers(&self, area_prefix: Option<&str>) -> Result<Vec<crate::types::AuditWaiver>> {
+        let filter = area_prefix.map(|p| p.trim().to_lowercase());
+        let mut out: Vec<crate::types::AuditWaiver> = Vec::new();
+        for entry in self.audit_waivers.iter() {
+            let (_key, value) = entry?;
+            let waiver: crate::types::AuditWaiver = serde_json::from_slice(&value)?;
+            if let Some(want) = &filter
+                && waiver.area_prefix.to_lowercase() != *want
+            {
+                continue;
+            }
+            out.push(waiver);
+        }
+        out.sort_by(|a, b| a.code.cmp(&b.code).then_with(|| a.target.cmp(&b.target)));
+        Ok(out)
+    }
+
+    /// Revoke a waiver. Returns true if one was removed.
+    pub fn delete_audit_waiver(&self, code: &str, target: &str) -> Result<bool> {
+        let key = crate::types::AuditWaiver::key(code, target);
+        Ok(self.audit_waivers.remove(key.as_bytes())?.is_some())
     }
 
     // ========== Clan Functions ==========

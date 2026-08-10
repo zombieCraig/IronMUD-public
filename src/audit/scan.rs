@@ -14,11 +14,23 @@ use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use super::{
-    AreaContents, AuditCtx, AuditEntry, AuditReport, EntityKind, Grade, WorldFacts, audit_item, audit_mobile,
-    audit_room, audit_world, report_area,
+    AreaContents, AuditCtx, AuditEntry, AuditReport, EntityKind, Grade, WaiverSet, WorldFacts, audit_item,
+    audit_mobile, audit_room, audit_world, report_area, report_area_with_waivers,
 };
 use crate::db::Db;
-use crate::types::{AreaData, Authored, ItemData, ItemType, MobileData, Provenance, QuestData, RoomData};
+use crate::types::{
+    AreaData, AuditWaiver, Authored, ItemData, ItemType, MobileData, Provenance, QuestData, RoomData, TransportData,
+};
+
+/// Every reviewed finding, keyed for lookup. Errors read as "no waivers" —
+/// an unreadable waiver tree must not stop the world from being audited.
+pub fn load_waivers(db: &Db) -> WaiverSet {
+    db.list_audit_waivers(None)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|w| (w.storage_key(), w))
+        .collect()
+}
 
 /// Everything the auditor needs, loaded once.
 ///
@@ -36,7 +48,14 @@ pub struct WorldSnapshot {
     pub spawn_counts: HashMap<Uuid, usize>,
     pub spawn_total: usize,
     pub recipe_count: usize,
-    pub transport_count: usize,
+    /// The transport network. Held whole rather than counted because
+    /// reachability needs the stop lists — see
+    /// [`AuditCtx::build_with_transports`].
+    pub transports: Vec<TransportData>,
+    /// Reviewed findings, applied by every `scan_*` entry point so that
+    /// suppression reaches the score, the rating, the tracks and the bounty
+    /// board without any of them knowing waivers exist.
+    pub waivers: WaiverSet,
     /// Built once, on first ask. Three callers want a context over one snapshot
     /// — the scorer, the quality figure and the bounty generator — and each
     /// rebuild hashes every room description and rebuilds the inbound map for
@@ -91,7 +110,8 @@ impl WorldSnapshot {
             spawn_counts,
             spawn_total,
             recipe_count: db.list_all_recipes().map(|v| v.len()).unwrap_or(0),
-            transport_count: db.list_all_transports().map(|v| v.len()).unwrap_or(0),
+            transports: db.list_all_transports().unwrap_or_default(),
+            waivers: load_waivers(db),
             ctx: std::sync::OnceLock::new(),
         })
     }
@@ -102,7 +122,8 @@ impl WorldSnapshot {
     /// context would call every exit leading out of the area dangling, which is
     /// the exact opposite of the truth.
     pub fn ctx(&self) -> &AuditCtx {
-        self.ctx.get_or_init(|| AuditCtx::build(&self.rooms))
+        self.ctx
+            .get_or_init(|| AuditCtx::build_with_transports(&self.rooms, &self.transports))
     }
 
     pub fn area_contents(&self, area_id: Uuid) -> AreaContentsOwned {
@@ -176,7 +197,7 @@ impl WorldSnapshot {
             quest_count: self.quests.len(),
             spawn_point_count: self.spawn_total,
             recipe_count: self.recipe_count,
-            transport_count: self.transport_count,
+            transport_count: self.transports.len(),
             post_office_rooms: self.rooms.iter().filter(|r| r.flags.post_office).count(),
             board_items: self.items.iter().filter(|i| i.item_type == ItemType::Board).count(),
             recall_rooms: self.rooms.iter().filter(|r| r.flags.spawn_point).count(),
@@ -211,10 +232,11 @@ impl AreaContentsOwned {
     }
 }
 
-/// Grade one area, with the world as context.
+/// Grade one area, with the world as context and the snapshot's waivers
+/// applied.
 pub fn scan_area(snapshot: &WorldSnapshot, area: &AreaData, ctx: &AuditCtx) -> AuditReport {
     let contents = snapshot.area_contents(area.id);
-    report_area(area, &contents.view(), ctx)
+    report_area_with_waivers(area, &contents.view(), ctx, &snapshot.waivers)
 }
 
 /// Grade the whole world: world-level checks plus one entry per area.
@@ -238,15 +260,19 @@ pub fn scan_world(snapshot: &WorldSnapshot) -> AuditReport {
     }
 
     for room in snapshot.rooms.iter().filter(|r| r.area_id.is_none()) {
+        let label = room.vnum.clone().unwrap_or_default();
         entries.push(AuditEntry {
             kind: EntityKind::Room,
-            label: room.vnum.clone().unwrap_or_default(),
+            grade: audit_room(room, ctx).apply_waivers(&label, &snapshot.waivers),
+            label,
             name: room.title.clone(),
-            grade: audit_room(room, ctx),
         });
     }
 
-    AuditReport::build("World", audit_world(&snapshot.facts()), entries)
+    // World-level findings belong to no area, so they are targeted by the
+    // literal `world` — the same target `BuildRequest` already stores for them.
+    let own = audit_world(&snapshot.facts()).apply_waivers("world", &snapshot.waivers);
+    AuditReport::build("World", own, entries)
 }
 
 /// One entity's verdict, plus who is responsible for it.
@@ -284,6 +310,10 @@ pub fn scan_entity_with_ctx(
 ) -> Result<Option<EntityAudit>> {
     let key_lower = key.trim().to_lowercase();
     let as_uuid = Uuid::parse_str(key.trim()).ok();
+    // A single-entity read has to load the waiver tree itself. It is keyed and
+    // small; the alternative is a grade here that disagrees with the same
+    // entity's row in `build audit area`.
+    let waivers = load_waivers(db);
 
     match kind {
         EntityKind::Room => {
@@ -309,15 +339,21 @@ pub fn scan_entity_with_ctx(
             let ctx = match ctx {
                 Some(c) => c,
                 None => {
-                    owned = AuditCtx::build(&db.list_all_rooms()?);
+                    owned = AuditCtx::build_with_transports(
+                        &db.list_all_rooms()?,
+                        &db.list_all_transports().unwrap_or_default(),
+                    );
                     &owned
                 }
             };
-            Ok(found.map(|r| EntityAudit {
-                label: r.vnum.clone().unwrap_or_else(|| r.id.to_string()),
-                name: r.title.clone(),
-                grade: audit_room(&r, ctx),
-                provenance: r.provenance(),
+            Ok(found.map(|r| {
+                let label = r.vnum.clone().unwrap_or_else(|| r.id.to_string());
+                EntityAudit {
+                    grade: audit_room(&r, ctx).apply_waivers(&label, &waivers),
+                    label,
+                    name: r.title.clone(),
+                    provenance: r.provenance(),
+                }
             }))
         }
         EntityKind::Item => {
@@ -326,11 +362,14 @@ pub fn scan_entity_with_ctx(
                 None => db.get_item_by_vnum(&key_lower)?,
             }
             .filter(|i| i.is_prototype);
-            Ok(found.map(|i| EntityAudit {
-                label: i.vnum.clone().unwrap_or_else(|| i.id.to_string()),
-                name: i.short_desc.clone(),
-                grade: audit_item(&i),
-                provenance: i.provenance(),
+            Ok(found.map(|i| {
+                let label = i.vnum.clone().unwrap_or_else(|| i.id.to_string());
+                EntityAudit {
+                    grade: audit_item(&i).apply_waivers(&label, &waivers),
+                    label,
+                    name: i.short_desc.clone(),
+                    provenance: i.provenance(),
+                }
             }))
         }
         EntityKind::Mobile => {
@@ -340,9 +379,9 @@ pub fn scan_entity_with_ctx(
             }
             .filter(|m| m.is_prototype);
             Ok(found.map(|m| EntityAudit {
+                grade: audit_mobile(&m).apply_waivers(&m.vnum, &waivers),
                 label: m.vnum.clone(),
                 name: m.short_desc.clone(),
-                grade: audit_mobile(&m),
                 provenance: m.provenance(),
             }))
         }
@@ -352,9 +391,9 @@ pub fn scan_entity_with_ctx(
                 .into_iter()
                 .find(|q| q.vnum.to_lowercase() == key_lower);
             Ok(found.map(|q| EntityAudit {
+                grade: super::audit_quest(&q).apply_waivers(&q.vnum, &waivers),
                 label: q.vnum.clone(),
                 name: q.name.clone(),
-                grade: super::audit_quest(&q),
                 provenance: q.provenance(),
             }))
         }
@@ -398,17 +437,20 @@ pub fn world_quality_pct(snapshot: &WorldSnapshot) -> i32 {
         }
     };
 
+    let w = &snapshot.waivers;
     for r in &snapshot.rooms {
-        tally(audit_room(r, ctx));
+        let label = r.vnum.clone().unwrap_or_default();
+        tally(audit_room(r, ctx).apply_waivers(&label, w));
     }
     for i in &snapshot.items {
-        tally(audit_item(i));
+        let label = i.vnum.clone().unwrap_or_default();
+        tally(audit_item(i).apply_waivers(&label, w));
     }
     for m in &snapshot.mobiles {
-        tally(audit_mobile(m));
+        tally(audit_mobile(m).apply_waivers(&m.vnum, w));
     }
     for q in &snapshot.quests {
-        tally(super::audit_quest(q));
+        tally(super::audit_quest(q).apply_waivers(&q.vnum, w));
     }
 
     if total == 0 {
@@ -553,4 +595,152 @@ mod tests {
         assert!(!area_matches(&a, ""));
         assert!(!area_matches(&a, "   "));
     }
+}
+
+// ===========================================================================
+// Locating a live finding
+// ===========================================================================
+
+/// A finding as it fires right now, with the identity a waiver needs.
+///
+/// A [`super::Finding`] on its own says what is wrong but not what it is wrong
+/// *about* — the entity is only known to whatever loop produced it. Waiving
+/// needs both halves at once, and so does every surface that offers waiving, so
+/// the pairing is named here rather than rebuilt per caller.
+pub struct FindingHit {
+    pub finding: super::Finding,
+    /// The waiver target: a vnum, an area prefix, or `world`.
+    pub target: String,
+    /// Display name, for the confirmation line.
+    pub name: String,
+    pub kind: String,
+    /// Owning area prefix. Empty for world-level findings.
+    pub area_prefix: String,
+}
+
+/// Grade an area with **no waivers applied**.
+///
+/// Waiving is the one operation that has to see through existing waivers: to
+/// re-waive a finding after an edit we need the message it fires with now, and
+/// `scan_area` has already hidden it.
+fn unwaived_area_report(snapshot: &WorldSnapshot, area: &AreaData) -> AuditReport {
+    let contents = snapshot.area_contents(area.id);
+    report_area(area, &contents.view(), snapshot.ctx())
+}
+
+fn world_hit(snapshot: &WorldSnapshot, code: &str) -> Option<FindingHit> {
+    super::audit_world(&snapshot.facts())
+        .findings
+        .into_iter()
+        .find(|f| f.code == code)
+        .map(|finding| FindingHit {
+            finding,
+            target: "world".to_string(),
+            name: "World".to_string(),
+            kind: "world".to_string(),
+            area_prefix: String::new(),
+        })
+}
+
+/// The single finding `(code, target)` names, or `None` if it is not firing.
+pub fn locate_live_finding(snapshot: &WorldSnapshot, code: &str, target: &str) -> Option<FindingHit> {
+    if target.eq_ignore_ascii_case("world") {
+        return world_hit(snapshot, code);
+    }
+    for area in &snapshot.areas {
+        let report = unwaived_area_report(snapshot, area);
+        if area.prefix.eq_ignore_ascii_case(target)
+            && let Some(finding) = report.own.findings.into_iter().find(|f| f.code == code)
+        {
+            return Some(FindingHit {
+                finding,
+                target: area.prefix.clone(),
+                name: area.name.clone(),
+                kind: "area".to_string(),
+                area_prefix: area.prefix.clone(),
+            });
+        }
+        for entry in report.entries {
+            if !entry.label.eq_ignore_ascii_case(target) {
+                continue;
+            }
+            if let Some(finding) = entry.grade.findings.into_iter().find(|f| f.code == code) {
+                return Some(FindingHit {
+                    finding,
+                    target: entry.label,
+                    name: entry.name,
+                    kind: entry.kind.key().to_string(),
+                    area_prefix: area.prefix.clone(),
+                });
+            }
+        }
+    }
+    None
+}
+
+/// Every entity currently raising `code`, optionally scoped to one area.
+///
+/// The list a builder reads before deciding a check is wrong about their
+/// content, and the list a bulk waive acts on — the same list, so what is shown
+/// is exactly what would be silenced.
+pub fn live_findings_by_code(snapshot: &WorldSnapshot, code: &str, area_key: &str) -> Vec<FindingHit> {
+    let mut out: Vec<FindingHit> = Vec::new();
+    let scoped = !area_key.is_empty();
+
+    if !scoped && let Some(hit) = world_hit(snapshot, code) {
+        out.push(hit);
+    }
+
+    for area in &snapshot.areas {
+        if scoped && !area_matches(area, area_key) {
+            continue;
+        }
+        let report = unwaived_area_report(snapshot, area);
+        if let Some(finding) = report.own.findings.into_iter().find(|f| f.code == code) {
+            out.push(FindingHit {
+                finding,
+                target: area.prefix.clone(),
+                name: area.name.clone(),
+                kind: "area".to_string(),
+                area_prefix: area.prefix.clone(),
+            });
+        }
+        for entry in report.entries {
+            let kind = entry.kind.key().to_string();
+            if let Some(finding) = entry.grade.findings.into_iter().find(|f| f.code == code) {
+                out.push(FindingHit {
+                    finding,
+                    target: entry.label,
+                    name: entry.name,
+                    kind,
+                    area_prefix: area.prefix.clone(),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// Every live finding in the world as `code@target -> message`.
+///
+/// What decides whether a stored waiver is still active, has gone stale (the
+/// message changed underneath it) or has been resolved (the finding stopped
+/// firing). One world load answers for a whole waiver list.
+pub fn live_finding_messages(snapshot: &WorldSnapshot) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    for f in super::audit_world(&snapshot.facts()).findings {
+        out.insert(AuditWaiver::key(f.code, "world"), f.message);
+    }
+    for area in &snapshot.areas {
+        let report = unwaived_area_report(snapshot, area);
+        for f in report.own.findings {
+            out.insert(AuditWaiver::key(f.code, &area.prefix), f.message);
+        }
+        for entry in report.entries {
+            for f in entry.grade.findings {
+                out.insert(AuditWaiver::key(f.code, &entry.label), f.message);
+            }
+        }
+    }
+    out
 }

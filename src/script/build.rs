@@ -17,11 +17,11 @@ use std::sync::Arc;
 
 use crate::SharedState;
 use crate::attribution::{self, ContentRef};
-use crate::audit::scan::{self, WorldSnapshot};
+use crate::audit::scan::{self, FindingHit, WorldSnapshot};
 use crate::audit::{self, AuditReport, EntityKind, Finding, Grade};
 use crate::build_score::{BuildScores, BuilderScore};
 use crate::db::Db;
-use crate::types::{Authored, ContentKind, Provenance};
+use crate::types::{AuditWaiver, Authored, ContentKind, Provenance};
 
 /// How many of the worst entries an area or world report carries back. A large
 /// area has hundreds of rooms and a script cannot show them all; the report
@@ -57,6 +57,10 @@ fn insert_grade(m: &mut Map, grade: &Grade) {
     );
     m.insert("clean".into(), Dynamic::from(grade.is_clean()));
     m.insert("findings".into(), Dynamic::from(findings_array(&grade.findings)));
+    // Reviewed false positives. Carried so a script can say how much it is not
+    // showing — a suppression nobody can see is a suppression nobody audits.
+    m.insert("reviewed".into(), Dynamic::from(grade.waived.len() as i64));
+    m.insert("waived".into(), Dynamic::from(findings_array(&grade.waived)));
 }
 
 /// The attribution fields, on any map that carries a grade.
@@ -87,9 +91,9 @@ fn not_found(key: &str) -> Map {
 }
 
 /// The worst entries of a report, already graded, as an array of maps.
-fn worst_array(report: &AuditReport) -> Array {
+fn worst_array(report: &AuditReport, limit: usize) -> Array {
     report
-        .worst(None, WORST_LIMIT)
+        .worst(None, limit)
         .into_iter()
         .map(|e| {
             let mut m = Map::new();
@@ -127,7 +131,7 @@ fn counts_map(report: &AuditReport) -> Map {
     m
 }
 
-fn report_map(report: &AuditReport, key: &str) -> Map {
+fn report_map(report: &AuditReport, key: &str, limit: usize) -> Map {
     let mut m = Map::new();
     m.insert("found".into(), Dynamic::from(true));
     m.insert("key".into(), Dynamic::from(key.to_string()));
@@ -142,16 +146,67 @@ fn report_map(report: &AuditReport, key: &str) -> Map {
     m.insert("warns".into(), Dynamic::from(w as i64));
     m.insert("polish".into(), Dynamic::from(p as i64));
     m.insert("clean".into(), Dynamic::from(b == 0 && w == 0));
+    // The same totals split by where they come from. The header used to print
+    // one number that matched neither the `Area` block below it nor the
+    // worst-first list, which reads as the report contradicting itself; naming
+    // the two halves is what makes them add up on screen.
+    let (ob, ow, op) = report.own_counts();
+    m.insert("own_blockers".into(), Dynamic::from(ob as i64));
+    m.insert("own_warns".into(), Dynamic::from(ow as i64));
+    m.insert("own_polish".into(), Dynamic::from(op as i64));
+    let (cb, cw, cp) = report.content_counts();
+    m.insert("content_blockers".into(), Dynamic::from(cb as i64));
+    m.insert("content_warns".into(), Dynamic::from(cw as i64));
+    m.insert("content_polish".into(), Dynamic::from(cp as i64));
+    m.insert("reviewed".into(), Dynamic::from(report.waived_count() as i64));
     // `findings` is the container's OWN findings. Children's findings are
     // summarised by `counts` and named by `worst`.
     m.insert("findings".into(), Dynamic::from(findings_array(&report.own.findings)));
+    m.insert("waived".into(), Dynamic::from(findings_array(&report.own.waived)));
     m.insert("counts".into(), Dynamic::from(counts_map(report)));
-    m.insert("worst".into(), Dynamic::from(worst_array(report)));
-    m.insert(
-        "truncated".into(),
-        Dynamic::from(report.worst(None, usize::MAX).len() > WORST_LIMIT),
-    );
+    m.insert("worst".into(), Dynamic::from(worst_array(report, limit)));
+    // How many entries carry a finding at all, so the footer can reconcile
+    // "showing 15 of 22" without the caller sorting the entry list twice.
+    let flagged = report.flagged_count(None);
+    m.insert("flagged".into(), Dynamic::from(flagged as i64));
+    m.insert("truncated".into(), Dynamic::from(flagged > limit));
     m
+}
+
+/// Why this builder may not waive this finding, or `None` if they may.
+///
+/// A blocker says the content is broken as shipped. That is exactly the
+/// judgement a builder under time pressure is most tempted to overrule and
+/// least well placed to, so it takes an admin — while warn and polish stay in
+/// the hands of whoever can edit the area, which is the whole point of the
+/// feature.
+fn waive_denial(snapshot: &WorldSnapshot, hit: &FindingHit, builder: &str, is_admin: bool) -> Option<String> {
+    if is_admin {
+        return None;
+    }
+    if hit.finding.severity == audit::Severity::Blocker {
+        return Some("blocker_needs_admin".to_string());
+    }
+    if hit.area_prefix.is_empty() {
+        // World-level findings belong to no builder.
+        return Some("world_needs_admin".to_string());
+    }
+    let area = snapshot
+        .areas
+        .iter()
+        .find(|a| a.prefix.eq_ignore_ascii_case(&hit.area_prefix))?;
+    if crate::api::auth::author_can_edit_area(builder, area) {
+        None
+    } else {
+        Some("not_permitted".to_string())
+    }
+}
+
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 /// One builder's sheet as a script sees it.
@@ -292,9 +347,24 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
     });
 
     // audit_area_report(key) -> Map
+    // audit_area_report(key, full) -> Map
     //
     // The area's own findings plus a rollup of everything in it: #{..., counts:
-    // #{room: #{total, good, ratio}, ...}, worst: [entry], truncated}.
+    // #{room: #{total, good, ratio}, ...}, worst: [entry], flagged, truncated}.
+    // `full` lifts the WORST_LIMIT cap for a builder working through the list.
+    let cloned_db = db.clone();
+    engine.register_fn("audit_area_report", move |key: String, full: bool| -> Map {
+        let Ok(snapshot) = WorldSnapshot::load(&cloned_db) else {
+            return not_found(&key);
+        };
+        let found = snapshot.areas.iter().find(|a| scan::area_matches(a, &key));
+        let Some(area) = found else {
+            return not_found(&key);
+        };
+        let ctx = snapshot.ctx();
+        let limit = if full { usize::MAX } else { WORST_LIMIT };
+        report_map(&scan::scan_area(&snapshot, area, ctx), &key, limit)
+    });
     let cloned_db = db.clone();
     engine.register_fn("audit_area_report", move |key: String| -> Map {
         let Ok(snapshot) = WorldSnapshot::load(&cloned_db) else {
@@ -305,7 +375,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
             return not_found(&key);
         };
         let ctx = snapshot.ctx();
-        report_map(&scan::scan_area(&snapshot, area, ctx), &key)
+        report_map(&scan::scan_area(&snapshot, area, ctx), &key, WORST_LIMIT)
     });
 
     // audit_world_report() -> Map
@@ -319,7 +389,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
         };
         let facts = snapshot.facts();
         let report = scan::scan_world(&snapshot);
-        let mut m = report_map(&report, "world");
+        let mut m = report_map(&report, "world", WORST_LIMIT);
 
         let mut f = Map::new();
         f.insert("areas".into(), Dynamic::from(facts.area_count as i64));
@@ -340,6 +410,17 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
         f.insert("unfiled_items".into(), Dynamic::from(facts.unfiled_items as i64));
         m.insert("facts".into(), Dynamic::from(f));
 
+        // The world header counts world-level findings plus each area's OWN
+        // findings, because `scan_world` grades areas with `as_grade()`. The
+        // rows below it count everything inside each area, so the rows have
+        // always summed to far more than the header. Both numbers are useful;
+        // shipping the deep total alongside is what lets the script label them
+        // instead of leaving a builder to spot the discrepancy.
+        // Seeded with the world's own findings, so the deep total is a strict
+        // superset of the header rather than a smaller number sitting under a
+        // larger one.
+        let mut deep = report.own_counts();
+        let mut reviewed = report.waived_count();
         let areas: Array = snapshot
             .areas
             .iter()
@@ -351,16 +432,289 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: crate::SharedConn
                 row.insert("score".into(), Dynamic::from(r.score as i64));
                 row.insert("letter".into(), Dynamic::from(r.letter.to_string()));
                 let (b, w, p) = r.severity_counts();
+                deep = (deep.0 + b, deep.1 + w, deep.2 + p);
+                reviewed += r.waived_count();
                 row.insert("blockers".into(), Dynamic::from(b as i64));
                 row.insert("warns".into(), Dynamic::from(w as i64));
                 row.insert("polish".into(), Dynamic::from(p as i64));
+                row.insert("reviewed".into(), Dynamic::from(r.waived_count() as i64));
                 row.insert("rooms".into(), Dynamic::from(r.count_of(EntityKind::Room) as i64));
                 Dynamic::from(row)
             })
             .collect();
+        m.insert("deep_blockers".into(), Dynamic::from(deep.0 as i64));
+        m.insert("deep_warns".into(), Dynamic::from(deep.1 as i64));
+        m.insert("deep_polish".into(), Dynamic::from(deep.2 as i64));
+        m.insert("reviewed".into(), Dynamic::from(reviewed as i64));
         m.insert("areas".into(), Dynamic::from(areas));
         m
     });
+
+    // =======================================================================
+    // Waivers — reviewed false positives
+    // =======================================================================
+
+    // audit_findings_by_code(code, area_key) -> Array
+    //
+    // Every entity currently raising one code, live findings only. `area_key`
+    // empty means the whole world. This is the discovery step before a bulk
+    // waive: a builder who has decided `item.keywords_miss_nouns` is wrong
+    // about their scenery wants to see all eight rows before silencing them.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "audit_findings_by_code",
+        move |code: String, area_key: String| -> Array {
+            let Ok(snapshot) = WorldSnapshot::load(&cloned_db) else {
+                return Array::new();
+            };
+            scan::live_findings_by_code(&snapshot, code.trim(), area_key.trim())
+                .into_iter()
+                .map(|hit| {
+                    let mut m = Map::new();
+                    m.insert("code".into(), Dynamic::from(hit.finding.code.to_string()));
+                    m.insert("severity".into(), Dynamic::from(hit.finding.severity.key().to_string()));
+                    m.insert("label".into(), Dynamic::from(hit.finding.severity.label().to_string()));
+                    m.insert("message".into(), Dynamic::from(hit.finding.message.clone()));
+                    m.insert("target".into(), Dynamic::from(hit.target.clone()));
+                    m.insert("name".into(), Dynamic::from(hit.name.clone()));
+                    m.insert("kind".into(), Dynamic::from(hit.kind.clone()));
+                    m.insert("area".into(), Dynamic::from(hit.area_prefix.clone()));
+                    Dynamic::from(m)
+                })
+                .collect()
+        },
+    );
+
+    // waive_finding(code, target, reason, builder) -> Map
+    //
+    // #{found, allowed, reason, code, target, area, severity, message}.
+    //
+    // Records a finding as reviewed and approved. Two rules make this safe to
+    // hand a builder rather than an admin:
+    //
+    //   * the finding must be firing right now — that is what supplies the
+    //     message the waiver fingerprints, and it stops anyone pre-silencing a
+    //     code they have never seen;
+    //   * a `blocker` needs an admin. Warn and polish are judgement calls a
+    //     builder is entitled to make about their own area; "this room is
+    //     unreachable" is not.
+    //
+    // Authorisation lives here, not in the script, for the same reason it does
+    // in `claim_area_content`: a permission check in Rhai is one a future
+    // caller can forget.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "waive_finding",
+        move |code: String, target: String, reason: String, builder: String| -> Map {
+            let mut m = Map::new();
+            let Ok(snapshot) = WorldSnapshot::load(&cloned_db) else {
+                m.insert("found".into(), Dynamic::from(false));
+                return m;
+            };
+            let code = code.trim();
+            let target = target.trim();
+            let Some(hit) = scan::locate_live_finding(&snapshot, code, target) else {
+                m.insert("found".into(), Dynamic::from(false));
+                return m;
+            };
+
+            let is_admin = matches!(cloned_db.get_character_data(builder.trim()), Ok(Some(c)) if c.is_admin);
+            if let Some(deny) = waive_denial(&snapshot, &hit, builder.trim(), is_admin) {
+                m.insert("found".into(), Dynamic::from(true));
+                m.insert("allowed".into(), Dynamic::from(false));
+                m.insert("reason".into(), Dynamic::from(deny));
+                m.insert("severity".into(), Dynamic::from(hit.finding.severity.key().to_string()));
+                return m;
+            }
+
+            let waiver = AuditWaiver {
+                code: hit.finding.code.to_string(),
+                target: hit.target.clone(),
+                area_prefix: hit.area_prefix.clone(),
+                reason: reason.trim().to_string(),
+                fingerprint: crate::types::fingerprint(hit.finding.code, &hit.finding.message),
+                severity: hit.finding.severity.key().to_string(),
+                reviewed_by: builder.trim().to_string(),
+                created_at: now_secs(),
+            };
+            if cloned_db.store_audit_waiver(&waiver).is_err() {
+                m.insert("found".into(), Dynamic::from(false));
+                return m;
+            }
+            m.insert("found".into(), Dynamic::from(true));
+            m.insert("allowed".into(), Dynamic::from(true));
+            m.insert("reason".into(), Dynamic::from(String::new()));
+            m.insert("code".into(), Dynamic::from(waiver.code.clone()));
+            m.insert("target".into(), Dynamic::from(waiver.target.clone()));
+            m.insert("area".into(), Dynamic::from(waiver.area_prefix.clone()));
+            m.insert("severity".into(), Dynamic::from(waiver.severity.clone()));
+            m.insert("message".into(), Dynamic::from(hit.finding.message.clone()));
+            m
+        },
+    );
+
+    // waive_findings_in_area(code, area_key, reason, builder) -> Map
+    //
+    // #{found, allowed, reason, area, code, waived, denied}. The bulk form:
+    // one code, every entity in one area currently raising it. Each target is
+    // authorised individually, so a mixed-severity code stops at the blockers
+    // instead of silently taking them along.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "waive_findings_in_area",
+        move |code: String, area_key: String, reason: String, builder: String| -> Map {
+            let mut m = Map::new();
+            let Ok(snapshot) = WorldSnapshot::load(&cloned_db) else {
+                m.insert("found".into(), Dynamic::from(false));
+                return m;
+            };
+            let code = code.trim();
+            let area_key = area_key.trim();
+            let Some(area) = snapshot.areas.iter().find(|a| scan::area_matches(a, area_key)) else {
+                m.insert("found".into(), Dynamic::from(false));
+                return m;
+            };
+            let hits = scan::live_findings_by_code(&snapshot, code, area_key);
+            if hits.is_empty() {
+                m.insert("found".into(), Dynamic::from(true));
+                m.insert("allowed".into(), Dynamic::from(false));
+                m.insert("reason".into(), Dynamic::from("not_firing".to_string()));
+                m.insert("area".into(), Dynamic::from(area.prefix.clone()));
+                return m;
+            }
+
+            let is_admin = matches!(cloned_db.get_character_data(builder.trim()), Ok(Some(c)) if c.is_admin);
+            let mut waived = 0i64;
+            let mut denied = 0i64;
+            let mut last_denial = String::new();
+            for hit in hits {
+                if let Some(reason) = waive_denial(&snapshot, &hit, builder.trim(), is_admin) {
+                    denied += 1;
+                    last_denial = reason;
+                    continue;
+                }
+                let waiver = AuditWaiver {
+                    code: hit.finding.code.to_string(),
+                    target: hit.target.clone(),
+                    area_prefix: hit.area_prefix.clone(),
+                    reason: reason.trim().to_string(),
+                    fingerprint: crate::types::fingerprint(hit.finding.code, &hit.finding.message),
+                    severity: hit.finding.severity.key().to_string(),
+                    reviewed_by: builder.trim().to_string(),
+                    created_at: now_secs(),
+                };
+                if cloned_db.store_audit_waiver(&waiver).is_ok() {
+                    waived += 1;
+                }
+            }
+            m.insert("found".into(), Dynamic::from(true));
+            m.insert("allowed".into(), Dynamic::from(waived > 0));
+            m.insert("reason".into(), Dynamic::from(last_denial));
+            m.insert("area".into(), Dynamic::from(area.prefix.clone()));
+            m.insert("code".into(), Dynamic::from(code.to_string()));
+            m.insert("waived".into(), Dynamic::from(waived));
+            m.insert("denied".into(), Dynamic::from(denied));
+            m
+        },
+    );
+
+    // list_audit_waivers(area_key) -> Array
+    //
+    // #{code, target, area, reason, reviewed_by, created_at, severity, state}
+    // where `state` is one of:
+    //
+    //   * `active`   — the finding still fires and the waiver still covers it;
+    //   * `stale`    — the finding fires but says something different now, so
+    //     the waiver no longer applies and the finding is live again;
+    //   * `resolved` — the finding stopped firing, so the waiver is dead weight.
+    //
+    // `stale` is the one that matters. A waiver is a judgement about a piece of
+    // text; edit the text and the judgement has to be made again, or a waiver
+    // written for "cannot address by tray" goes on hiding a genuine
+    // unaddressable rename years later.
+    let cloned_db = db.clone();
+    engine.register_fn("list_audit_waivers", move |area_key: String| -> Array {
+        let key = area_key.trim();
+        let filter = if key.is_empty() { None } else { Some(key) };
+        let Ok(waivers) = cloned_db.list_audit_waivers(filter) else {
+            return Array::new();
+        };
+        if waivers.is_empty() {
+            return Array::new();
+        }
+        // One world load for the whole list; `locate_finding` per waiver would
+        // re-read five trees per row.
+        let live = match WorldSnapshot::load(&cloned_db) {
+            Ok(s) => scan::live_finding_messages(&s),
+            Err(_) => Default::default(),
+        };
+        waivers
+            .into_iter()
+            .map(|w| {
+                let state = match live.get(&AuditWaiver::key(&w.code, &w.target)) {
+                    None => "resolved",
+                    Some(msg) if w.covers(msg) => "active",
+                    Some(_) => "stale",
+                };
+                let mut m = Map::new();
+                m.insert("code".into(), Dynamic::from(w.code.clone()));
+                m.insert("target".into(), Dynamic::from(w.target.clone()));
+                m.insert("area".into(), Dynamic::from(w.area_prefix.clone()));
+                m.insert("reason".into(), Dynamic::from(w.reason.clone()));
+                m.insert("reviewed_by".into(), Dynamic::from(w.reviewed_by.clone()));
+                m.insert("created_at".into(), Dynamic::from(w.created_at));
+                m.insert("severity".into(), Dynamic::from(w.severity.clone()));
+                m.insert("state".into(), Dynamic::from(state.to_string()));
+                Dynamic::from(m)
+            })
+            .collect()
+    });
+
+    // remove_audit_waiver(code, target, builder) -> Map
+    //
+    // #{found, allowed, reason}. Revoking suppression only ever re-exposes a
+    // finding, so anyone who could have written the waiver may remove it — and
+    // a waiver whose entity has since been deleted is removable by any builder,
+    // because otherwise it is unreachable forever.
+    let cloned_db = db.clone();
+    engine.register_fn(
+        "remove_audit_waiver",
+        move |code: String, target: String, builder: String| -> Map {
+            let mut m = Map::new();
+            let code = code.trim();
+            let target = target.trim();
+            let Ok(Some(waiver)) = cloned_db.get_audit_waiver(code, target) else {
+                m.insert("found".into(), Dynamic::from(false));
+                return m;
+            };
+            let is_admin = matches!(cloned_db.get_character_data(builder.trim()), Ok(Some(c)) if c.is_admin);
+            if !is_admin && !waiver.area_prefix.is_empty() {
+                let allowed = WorldSnapshot::load(&cloned_db)
+                    .ok()
+                    .and_then(|s| {
+                        s.areas
+                            .iter()
+                            .find(|a| scan::area_matches(a, &waiver.area_prefix))
+                            .map(|a| crate::api::auth::author_can_edit_area(builder.trim(), a))
+                    })
+                    // No such area any more: nothing left to protect.
+                    .unwrap_or(true);
+                if !allowed {
+                    m.insert("found".into(), Dynamic::from(true));
+                    m.insert("allowed".into(), Dynamic::from(false));
+                    m.insert("reason".into(), Dynamic::from("not_permitted".to_string()));
+                    return m;
+                }
+            }
+            let removed = cloned_db.delete_audit_waiver(code, target).unwrap_or(false);
+            m.insert("found".into(), Dynamic::from(removed));
+            m.insert("allowed".into(), Dynamic::from(removed));
+            m.insert("reason".into(), Dynamic::from(String::new()));
+            m.insert("code".into(), Dynamic::from(waiver.code));
+            m.insert("target".into(), Dynamic::from(waiver.target));
+            m
+        },
+    );
 
     // stamp_content_created(kind, id, builder_name) -> bool
     //

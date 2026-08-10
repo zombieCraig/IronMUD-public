@@ -12,7 +12,14 @@ build audit item  <what>   grade one item prototype
 build audit mob   <what>   grade one mobile prototype
 build audit quest <vnum>   grade one quest
 build audit area [<key>]   grade an area and everything in it
+build audit area <key> full  the same, with no cap on the list
 build audit world          grade the whole world
+build audit code <code> [area]  everything raising one finding code
+
+build waive <code> <target> <reason>    mark a finding reviewed
+build waive all <code> <area> <reason>  the same, area-wide
+build waive list [area]                 what has been reviewed
+build waive remove <code> <target>      put a finding back
 ```
 
 `build` on its own prints the world rating and the usage. All of it is
@@ -40,13 +47,22 @@ vnums, `area` completes area prefixes.
 
 | Severity | Means | Weight |
 |---|---|---|
-| `BLOCKER` | The content is broken or unusable as shipped | −45 |
+| `BLOCKER` | The content is broken or unusable as shipped | −60 |
 | `warn` | It works, but a player will notice something is missing | −15 |
 | `polish` | It is fine. It could be better | −6 |
 
 A grade starts at 100 and every finding deducts. **Polish findings are
 suggestions** — a room that is all polish is a finished room, and chasing them
-to zero is not the point. Two blockers floor an entity at F.
+to zero is not the point.
+
+**One blocker is an F.** 100 − 60 = 40, below the D floor, so a single blocker
+fails an entity without any special-casing — score and letter can never
+disagree. At the earlier weight of 45 a room with no exits scored 55 and graded
+D, which read as "mediocre" for content that does not work, and put a red
+blocker count in the header above a yellow row.
+
+Grade tags are tinted by the **worst finding on them**, not by the letter, so a
+red row and a red tally always mean the same thing.
 
 ## Letters
 
@@ -89,7 +105,7 @@ rises with word count is a grade that rewards padding.
 |---|---|---|
 | `room.no_title` | blocker | Title empty or placeholder |
 | `room.no_desc` | blocker | Description empty or placeholder |
-| `room.no_exits` | blocker | No exits (property templates exempt) |
+| `room.no_exits` | blocker | No exits (property templates and transport rooms exempt) |
 | `room.dangling_exit` | blocker | An exit points at a room that does not exist |
 | `room.thin_desc` | warn | Description under 80 characters |
 | `room.one_way_exit` | warn | An exit with no way back |
@@ -107,7 +123,7 @@ rises with word count is a grade that rewards padding.
 | `mobile.no_name` / `no_short_desc` / `no_long_desc` | blocker | The field is empty or placeholder |
 | `mobile.no_keywords` | blocker | No name **and** no keywords: visible but untargetable |
 | `mobile.no_level` | blocker | Level 0 |
-| `mobile.keywords_miss_nouns` | warn | A salient noun in `short_desc` is reachable through neither `name` nor `keywords` |
+| `mobile.keywords_miss_nouns` | warn | *Nothing* in the leading noun phrase of `short_desc` is reachable through `name` or `keywords` |
 | `mobile.no_damage_dice` | warn | Attackable mobile with no damage dice |
 | `mobile.shop_empty` | warn | Shopkeeper with no stock and no preset |
 | `mobile.healer_no_type` | warn | Healer flag with no healer type |
@@ -117,10 +133,21 @@ rises with word count is a grade that rewards padding.
 | `mobile.no_reward` | polish | Level 3+ combatant carrying no gold |
 | `mobile.no_alignment` | polish | Alignment 0: killing it carries no moral weight |
 
-`mobile.keywords_miss_nouns` is the check worth knowing about. Plurals and
-compounds are tolerated (`guards` covers `guard`), and a stopword list keeps
-verbs and articles out of it — but if a player can read a noun on screen, they
-must be able to type it.
+`mobile.keywords_miss_nouns` is the check worth knowing about. It fires only
+when **nothing** the entity is called can be typed — the actual defect, which is
+an entity on screen that no player can reach.
+
+Two things narrow it. The short description is cut at its first verb, because
+everything after that is prose about the surroundings: "A chrome neural jack
+rests on a sterile tray" is not an invitation to type `get sterile`. And only
+one word has to land — `get jack` works whether or not `chrome` is also a
+keyword.
+
+An earlier version demanded *every* long word in the short description and
+listed the misses. On real content that meant a warn per item for words like
+`tray` and `preservation`, which is a lint builders learn to skim past — and a
+lint that is usually wrong is worse than no lint. Plurals and compounds are
+still tolerated (`guards` covers `guard`).
 
 `name` counts as much as `keywords` here, because the engine matches it the
 same way: item and mobile lookup tests `name` by substring *before* it consults
@@ -136,16 +163,16 @@ these two findings exist to catch.
 | `item.no_name` / `no_short_desc` / `no_long_desc` | blocker | The field is empty or placeholder |
 | `item.no_keywords` | blocker | No name **and** no keywords: nothing a player types refers to it |
 | `item.weapon_no_damage` | blocker | Weapon with no damage dice |
-| `item.armor_no_protection` | blocker | Armor with no AC and no affects |
 | `item.armor_no_wear_location` | blocker | Armor that cannot be worn |
 | `item.container_no_capacity` | blocker | Container that holds nothing |
-| `item.liquid_no_capacity` | blocker | Liquid container with zero capacity |
+| `item.liquid_no_capacity` | blocker | Liquid container with zero capacity (`-1` = infinite source, allowed) |
 | `item.key_no_vnum` | blocker | A key no door can reference |
 | `item.keywords_miss_nouns` | warn | As for mobiles |
 | `item.weapon_no_skill` | warn | Wielding it trains nothing |
+| `item.armor_no_protection` | warn | Armor with no AC and no affects — expected for cosmetic clothing |
 | `item.food_no_nutrition` | warn | Food with no nutrition |
 | `item.note_empty` | warn | Note with no written content |
-| `item.untyped` | warn | Type `misc` with no affects, triggers or categories |
+| `item.untyped` | warn | Type `misc` with no affects, triggers or categories — and no extra description or `no_get` flag, both of which mark deliberate scenery |
 | `item.weightless` | warn | Wearable with zero weight |
 | `item.no_value` | warn | Value 0 and not flagged `no_sell` or `quest_item` |
 | `item.mxp_hazard` | warn | Raw `<` or `>` in a description |
@@ -170,15 +197,27 @@ these two findings exist to catch.
 | `area.no_name` | blocker | Name empty |
 | `area.no_rooms` | blocker | No rooms |
 | `area.no_spawn_points` | blocker | Prototypes exist but nothing spawns them |
-| `area.orphan_rooms` | blocker | Rooms unreachable from the rest of the area |
+| `area.orphan_rooms` | blocker | Rooms unreachable from the rest of the area, walking **or riding** |
 | `area.thin` | warn | Under 8 rooms |
 | `area.no_mobiles` / `area.no_items` | warn | No prototypes stamped to this area |
 | `area.no_description` | warn | No area description |
-| `area.no_level_range` | warn | Nothing tells players who the area is for |
+| `area.no_level_range` | warn | Nothing tells players who the area is for (safe zones exempt — no danger to advertise) |
 | `area.no_quests` | polish | Nothing gives players a reason to come |
 | `area.no_theme` | polish | No theme set |
 | `area.no_owner` | polish | No owner, so any builder can edit it |
 | `area.unattributed` | polish | Owned but uncredited — `build claim` |
+
+Reachability counts transports. `src/ticks/transport.rs` writes a stop's exit
+into the vehicle on arrival and clears it on departure, so a floor served only
+by the lift has no authored exit at all — and the car itself has none while it
+is moving. Reading `RoomExits` alone reported both as broken, and graded them
+differently depending on where the car happened to be. The auditor loads the
+transport network and treats every stop↔interior pair as a permanent link.
+
+With no `starting_room_vnum` set, "reachable" means the **largest connected
+component**. Walking from an arbitrary room means one disconnected closet can
+report every other room in the area as an orphan, and which room that is depends
+on database iteration order.
 
 ### World
 
@@ -195,6 +234,49 @@ these two findings exist to catch.
 | `world.no_bank` | polish | Banking commands unreachable |
 | `world.no_dialogue_trees` | polish | Every NPC is on flat keyword dialogue |
 | `world.no_recipes` / `world.no_transports` | polish | The system is unused |
+
+## Reviewed findings
+
+Every check is a lint, and every lint is eventually wrong about something a
+builder meant. Before waivers existed the only options were to change correct
+content or live with a permanently depressed grade, and both teach the same
+lesson: ignore the auditor.
+
+```
+build audit code item.keywords_miss_nouns plaza    see who raises it
+build waive item.keywords_miss_nouns plaza:coaster players call it a coaster
+build waive all item.keywords_miss_nouns plaza the nouns are room dressing
+build waive list plaza
+build waive remove item.keywords_miss_nouns plaza:coaster
+```
+
+A waived finding leaves the grade, the tallies, the world quality figure, the
+builder score and the bounty board — one chokepoint, so no surface can disagree
+with another. It is still *reported*, under a dim `Reviewed` heading with a
+count in the header, because a suppression nobody can see is a suppression
+nobody re-examines.
+
+**Scope.** A waiver is keyed on `(code, target)`, where `target` is the label
+the audit prints beside the finding: a vnum, an area prefix, or `world`. It
+silences one finding on one entity, never a code globally.
+
+**A reason is required.** A waiver with no reason is indistinguishable from a
+builder silencing an inconvenience.
+
+**The finding must be firing.** That is what supplies the message the waiver is
+a judgement about, and it stops anyone pre-silencing a code they have never seen.
+
+**Blockers need an admin.** A blocker says the content is broken as shipped —
+the judgement a builder under time pressure is most tempted to overrule and
+least well placed to. Warns and polish belong to whoever can edit the area,
+which is the whole point of the feature. World-level findings belong to no
+builder, so they need an admin too.
+
+**Waivers lapse.** Each one stores a fingerprint of the finding message it was
+granted against. Edit the short description a keyword waiver was written for and
+the message changes, the fingerprint stops matching, and the finding is live
+again. `build waive list` marks those `stale`, and ones whose finding stopped
+firing `fixed`.
 
 ## Adding a check
 
@@ -215,6 +297,7 @@ against, so it must not change once shipped.
 
 ```
 audit_room   audit_item   audit_mobile   audit_quest   audit_area   audit_world
+audit_findings_by_code    waive_finding    list_audit_waivers   remove_audit_waiver
 get_world_report                                                    get_build_tracks
 ```
 
@@ -228,10 +311,16 @@ grade on the next keystroke.
 per-entity checks cannot see: orphaned rooms, missing spawn points, an absent
 level range, a population of nobody.
 
+`waive_finding` follows the same two rules the in-game command does: the
+finding must be firing, and a blocker needs an admin key. An agent gets the
+same latitude a person does, and the same limit.
+
 The same routes are on the REST API under `/api/v1/audit/` — `/world`,
-`/report`, `/tracks`, `/area/:key`, and `/room|item|mobile|quest/:key`. All are
-reads. `/world` and `/area/:key` load five trees; they are deliberate sweeps,
-not something to poll.
+`/report`, `/tracks`, `/area/:key`, `/room|item|mobile|quest/:key` and
+`/code/:code`. Those are reads; `/world` and `/area/:key` load five trees, so
+they are deliberate sweeps, not something to poll. Waivers live at
+`/waivers` (`GET` to list, `POST` to create) and `/waivers/delete` (`POST` to
+revoke) — creating one needs write permission.
 
 Findings are engine-authored strings, so unlike the bounty board there is
 nothing here to treat as untrusted input. The entity *names* echoed inside a

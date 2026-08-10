@@ -1560,6 +1560,40 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [{ type: "text", text: JSON.stringify(report, null, 2) }],
         };
       }
+      case "audit_findings_by_code": {
+        const hits = await api.auditFindingsByCode(
+          args?.code as string,
+          args?.area as string | undefined
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(hits, null, 2) }],
+        };
+      }
+      case "waive_finding": {
+        const waiver = await api.waiveFinding(
+          args?.code as string,
+          args?.target as string,
+          args?.reason as string
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(waiver, null, 2) }],
+        };
+      }
+      case "list_audit_waivers": {
+        const waivers = await api.listAuditWaivers(args?.area as string | undefined);
+        return {
+          content: [{ type: "text", text: JSON.stringify(waivers, null, 2) }],
+        };
+      }
+      case "remove_audit_waiver": {
+        const outcome = await api.removeAuditWaiver(
+          args?.code as string,
+          args?.target as string
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(outcome, null, 2) }],
+        };
+      }
       case "get_world_report": {
         const report = await api.getWorldReport();
         return {

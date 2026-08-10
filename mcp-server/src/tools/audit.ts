@@ -95,6 +95,72 @@ export const auditToolDefinitions = [
     inputSchema: { type: "object", properties: {} },
   },
   {
+    name: "audit_findings_by_code",
+    description:
+      "Every entity currently raising one finding code, across the world or inside one area. " +
+      "The audit answers 'what is wrong with this thing'; this answers 'where else does this " +
+      "happen' — the question to ask before deciding a check is wrong about your content. It is " +
+      "also exactly the list `waive_finding` would silence one row at a time.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        code: { type: "string", description: "Finding code, e.g. 'item.keywords_miss_nouns'" },
+        area: { type: "string", description: "Optional area prefix to scope the search" },
+      },
+      required: ["code"],
+    },
+  },
+  {
+    name: "waive_finding",
+    description:
+      "Record a finding as reviewed and approved — a false positive. The finding leaves the " +
+      "grade, every tally and the bounty board, and is reported separately as reviewed so the " +
+      "suppression stays visible. Two rules: the finding must be firing right now (that is what " +
+      "supplies the text the waiver is a judgement about), and a `blocker` needs an admin key. " +
+      "A waiver lapses automatically if the text it was written about later changes, so it " +
+      "cannot go on hiding a different problem.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        code: { type: "string", description: "Finding code, e.g. 'item.keywords_miss_nouns'" },
+        target: {
+          type: "string",
+          description: "The entity the finding is about: a vnum, an area prefix, or 'world'",
+        },
+        reason: {
+          type: "string",
+          description: "Why this is not a defect. Required — an unexplained waiver is just silencing.",
+        },
+      },
+      required: ["code", "target", "reason"],
+    },
+  },
+  {
+    name: "list_audit_waivers",
+    description:
+      "Reviewed findings, world-wide or for one area. Use it to see what a grade is not showing " +
+      "before trusting the grade.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        area: { type: "string", description: "Optional area prefix" },
+      },
+    },
+  },
+  {
+    name: "remove_audit_waiver",
+    description:
+      "Revoke a waiver, putting the finding back in the grade and the tallies.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        code: { type: "string" },
+        target: { type: "string" },
+      },
+      required: ["code", "target"],
+    },
+  },
+  {
     name: "get_world_report",
     description:
       "How far along the world is: a named tier (Wilderness through World), the weighted " +

@@ -930,6 +930,43 @@ export class IronMUDApiClient {
     return this.listRequest<Record<string, unknown>>("/audit/tracks");
   }
 
+  // === Audit waivers ===
+  //
+  // A waiver silences exactly one finding on exactly one entity, and lapses if
+  // the text it was a judgement about changes. Writing one is a write, so it
+  // needs a key with write permission — and a blocker needs an admin key.
+
+  async auditFindingsByCode(code: string, area?: string): Promise<Record<string, unknown>[]> {
+    const query = area ? `?area=${encodeURIComponent(area)}` : "";
+    return this.listRequest<Record<string, unknown>>(
+      `/audit/code/${encodeURIComponent(code)}${query}`
+    );
+  }
+
+  async listAuditWaivers(area?: string): Promise<Record<string, unknown>[]> {
+    const query = area ? `?area=${encodeURIComponent(area)}` : "";
+    return this.listRequest<Record<string, unknown>>(`/audit/waivers${query}`);
+  }
+
+  async waiveFinding(
+    code: string,
+    target: string,
+    reason: string
+  ): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>("post", "/audit/waivers", {
+      code,
+      target,
+      reason,
+    });
+  }
+
+  async removeAuditWaiver(code: string, target: string): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>("post", "/audit/waivers/delete", {
+      code,
+      target,
+    });
+  }
+
   async postBounty(body: Record<string, unknown>): Promise<BuildRequest> {
     return this.request<BuildRequest>("post", "/bounties", body);
   }

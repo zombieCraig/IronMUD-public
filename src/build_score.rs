@@ -483,7 +483,7 @@ mod tests {
         Grade {
             score,
             letter: audit::letter_for(score),
-            findings: Vec::new(),
+            ..Default::default()
         }
     }
 

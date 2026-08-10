@@ -34,7 +34,10 @@
 
 pub mod scan;
 
-use crate::types::{AreaData, ItemData, ItemType, MobileData, QuestData, RoomData, RoomExits};
+use crate::types::{
+    AreaData, AuditWaiver, CombatZoneType, ItemData, ItemType, MobileData, QuestData, RoomData, RoomExits,
+    TransportData,
+};
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -77,13 +80,22 @@ impl Severity {
 
     /// Points deducted from a perfect 100.
     ///
-    /// Tuned so that two blockers floor an entity, and a bare-but-valid entity
-    /// — one that exists, is addressable, and does not lie to the engine, but
-    /// has no depth — lands around a C. That is the honest reading of such an
-    /// entity, and a scale that hands it a B is a scale nobody trusts.
+    /// Tuned so that a bare-but-valid entity — one that exists, is
+    /// addressable, and does not lie to the engine, but has no depth — lands
+    /// around a C. That is the honest reading of such an entity, and a scale
+    /// that hands it a B is a scale nobody trusts.
+    ///
+    /// The blocker weight is set so that **one blocker is an F on its own**:
+    /// `100 - 60 = 40`, which is below the `D` floor in [`LETTERS`]. At the
+    /// previous 45 a single blocker scored 55 and graded `D`, so "this room has
+    /// no exits" printed in the same colour as "no seasonal description" and
+    /// the red blocker tally in the header contradicted the yellow rows beneath
+    /// it. Making the weight carry that meaning keeps [`Grade::from_findings`]
+    /// purely additive — score and letter can never disagree, which a
+    /// letter-override would have broken.
     pub fn weight(self) -> i32 {
         match self {
-            Severity::Blocker => 45,
+            Severity::Blocker => 60,
             Severity::Warn => 15,
             Severity::Polish => 6,
         }
@@ -124,8 +136,15 @@ fn polish(code: &'static str, msg: impl Into<String>) -> Finding {
     Finding::new(code, Severity::Polish, msg)
 }
 
+/// Every waiver in play, keyed by [`AuditWaiver::key`].
+///
+/// A map rather than a list because [`Grade::apply_waivers`] runs once per
+/// entity over a world's worth of findings, and a linear scan per finding is
+/// the kind of thing that turns a 200ms audit into a 4s one.
+pub type WaiverSet = HashMap<String, AuditWaiver>;
+
 /// The verdict on one entity.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Grade {
     /// 0..=100.
     pub score: i32,
@@ -133,6 +152,11 @@ pub struct Grade {
     pub letter: char,
     /// Severity-ordered: blockers first.
     pub findings: Vec<Finding>,
+    /// Findings a builder reviewed and approved as false positives. They cost
+    /// nothing and appear in no tally, but they are kept rather than dropped so
+    /// that suppression is never invisible — every surface that prints a grade
+    /// can say how much it is not showing.
+    pub waived: Vec<Finding>,
 }
 
 impl Grade {
@@ -149,7 +173,39 @@ impl Grade {
             score,
             letter: letter_for(score),
             findings,
+            waived: Vec::new(),
         }
+    }
+
+    /// Move every reviewed finding for `target` out of the grade and recompute.
+    ///
+    /// This is the single chokepoint for suppression. It runs in the scan layer
+    /// rather than at each print site, so the builder score, world rating,
+    /// track predicates and the bounty generator all inherit it — the
+    /// alternative is a waiver that hides a finding from the report while a
+    /// bounty for it keeps reappearing on the board.
+    ///
+    /// A waiver only applies while its fingerprint matches: see
+    /// [`AuditWaiver::covers`].
+    pub fn apply_waivers(self, target: &str, waivers: &WaiverSet) -> Grade {
+        if waivers.is_empty() {
+            return self;
+        }
+        let Grade {
+            findings,
+            waived: mut already,
+            ..
+        } = self;
+        let mut live: Vec<Finding> = Vec::with_capacity(findings.len());
+        for f in findings {
+            match waivers.get(&AuditWaiver::key(f.code, target)) {
+                Some(w) if w.covers(&f.message) => already.push(f),
+                _ => live.push(f),
+            }
+        }
+        let mut grade = Grade::from_findings(live);
+        grade.waived = already;
+        grade
     }
 
     pub fn count(&self, severity: Severity) -> usize {
@@ -158,6 +214,12 @@ impl Grade {
 
     pub fn has(&self, code: &str) -> bool {
         self.findings.iter().any(|f| f.code == code)
+    }
+
+    /// The severity a code fired at, or `None` if it did not fire. Lets callers
+    /// distinguish "flagged" from "failed" without matching on the code twice.
+    pub fn severity_of(&self, code: &str) -> Option<Severity> {
+        self.findings.iter().find(|f| f.code == code).map(|f| f.severity)
     }
 
     /// True when nothing at or above `Warn` fires. "Clean" is deliberately not
@@ -219,6 +281,10 @@ pub struct AuditCtx {
     inbound: HashMap<Uuid, HashSet<Uuid>>,
     /// Normalised description hash -> how many rooms share it.
     desc_counts: HashMap<u64, usize>,
+    /// Every transport interior and every room a transport stops at.
+    transport_rooms: HashSet<Uuid>,
+    /// Interior <-> stop pairs, as permanent edges for reachability.
+    transport_edges: Vec<(Uuid, Uuid)>,
 }
 
 impl AuditCtx {
@@ -232,10 +298,32 @@ impl AuditCtx {
     /// area-scoped context will flag exits leaving the area as dangling, so
     /// callers auditing one area should still pass the full room set.
     pub fn build(rooms: &[RoomData]) -> AuditCtx {
+        AuditCtx::build_with_transports(rooms, &[])
+    }
+
+    /// [`AuditCtx::build`] plus the transport network.
+    ///
+    /// Transport exits do not exist in the authored data — `ticks::transport`
+    /// writes the stop<->interior exit pair on arrival and clears it on
+    /// departure. Reading only `RoomExits` therefore grades an elevator
+    /// differently depending on where the car happens to be when you look,
+    /// and reports rooms served only by that elevator as unreachable. The
+    /// network is a permanent fact about the world, so it belongs in the
+    /// context rather than in whatever exits are set this second.
+    pub fn build_with_transports(rooms: &[RoomData], transports: &[TransportData]) -> AuditCtx {
         let mut ctx = AuditCtx {
             linked: true,
             ..Default::default()
         };
+        for t in transports {
+            ctx.transport_rooms.insert(t.interior_room_id);
+            for stop in &t.stops {
+                ctx.transport_rooms.insert(stop.room_id);
+                // Interior <-> each stop. Stop-to-stop reachability falls out
+                // transitively through the interior.
+                ctx.transport_edges.push((t.interior_room_id, stop.room_id));
+            }
+        }
         for room in rooms {
             ctx.known_rooms.insert(room.id);
             // Property instances are excluded from the duplicate map. They copy
@@ -261,6 +349,12 @@ impl AuditCtx {
 
     fn knows(&self, id: Uuid) -> bool {
         self.known_rooms.contains(&id)
+    }
+
+    /// Is this room part of a transport network — a vehicle interior, or a
+    /// platform the vehicle docks at?
+    pub fn is_transport_room(&self, id: Uuid) -> bool {
+        self.transport_rooms.contains(&id)
     }
 
     /// Does `dest` exit back into `origin`? Reads the inbound map of `origin`,
@@ -373,10 +467,111 @@ const NOUN_STOPWORDS: &[&str] = &[
     "sell", "selling", "waiting", "leaning", "resting",
 ];
 
-/// Salient nouns in a display string that a player would reasonably try to
-/// address. Lowercased, stopwords and short words dropped.
-fn salient_words(display: &str) -> Vec<String> {
+/// Verbs that end the subject of a short description.
+///
+/// A short_desc is one sentence about a thing: `"<the thing> <does something>
+/// <somewhere>"`. Everything before the verb names the entity; everything after
+/// it is prose about the surroundings. "A chrome neural jack rests on a sterile
+/// tray." is not an invitation to type `get sterile`, and a lint that demands
+/// `sterile` as a keyword is a lint builders learn to ignore.
+///
+/// Only the third-person singular forms, plus the copulas. Bare forms are
+/// deliberately absent: "guard", "watch", "block" and "work" are all nouns as
+/// often as verbs, and "A goblin guard leans on a pike" would lose its head
+/// noun to a list that could not tell which one it was looking at. A short
+/// description whose subject is plural ("Two goblin guards block the road")
+/// therefore does not get cut — which costs nothing, because the check only
+/// fires when *no* candidate is addressable.
+const VERB_MARKERS: &[&str] = &[
+    "is",
+    "are",
+    "was",
+    "were",
+    "sits",
+    "rests",
+    "lies",
+    "lays",
+    "stands",
+    "hangs",
+    "waits",
+    "leans",
+    "floats",
+    "drifts",
+    "hums",
+    "glints",
+    "gleams",
+    "glows",
+    "shines",
+    "stares",
+    "pulses",
+    "flickers",
+    "sparkles",
+    "rattles",
+    "ticks",
+    "whirs",
+    "sways",
+    "seems",
+    "appears",
+    "looks",
+    "moves",
+    "walks",
+    "wanders",
+    "paces",
+    "watches",
+    "guards",
+    "blocks",
+    "holds",
+    "carries",
+    "wears",
+    "works",
+    "sells",
+    "tends",
+    "sleeps",
+    "crouches",
+    "perches",
+    "hovers",
+    "spins",
+    "burns",
+    "smoulders",
+    "smolders",
+    "waves",
+    "flutters",
+    "crackles",
+    "gutters",
+    "drips",
+    "trails",
+];
+
+/// The part of a display string that names the entity: everything before the
+/// first [`VERB_MARKERS`] word.
+///
+/// Returns the whole string when no verb is found — a bare noun phrase like
+/// "A rusty iron key" is entirely subject.
+fn leading_phrase(display: &str) -> &str {
+    let bytes = display.as_bytes();
+    let mut idx = 0usize;
+    while idx < bytes.len() {
+        // Advance over the run of alphabetic characters that forms one word.
+        let start = idx;
+        while idx < bytes.len() && (bytes[idx] as char).is_alphabetic() {
+            idx += 1;
+        }
+        if idx > start {
+            let word = display[start..idx].to_lowercase();
+            if VERB_MARKERS.contains(&word.as_str()) {
+                return &display[..start];
+            }
+        } else {
+            idx += 1;
+        }
+    }
     display
+}
+
+/// Words in a display string that a player might reasonably try to address.
+/// Lowercased, stopwords and short words dropped, cut off at the first verb.
+fn salient_words(display: &str) -> Vec<String> {
+    leading_phrase(display)
         .split(|c: char| !c.is_alphabetic())
         .filter(|w| w.len() >= 4)
         .map(|w| w.to_lowercase())
@@ -428,28 +623,36 @@ fn addressable_terms(name: &str, keywords: &[String]) -> Vec<String> {
 
 /// The shared "can a player type this name?" check.
 ///
-/// Every salient noun in the display string must be reachable through the
-/// addressable terms, or the entity is on screen and unaddressable — the
-/// single most common builder mistake in this codebase, and the reason it is a
-/// lint rather than a convention.
+/// Fires only when **nothing** in the entity's own noun phrase is addressable,
+/// which is the defect this lint exists to catch: an entity on screen that no
+/// player can reach with any word they can see. Being addressable by one word
+/// out of three is not a bug — `get jack` works whether or not `chrome` is also
+/// a keyword.
+///
+/// The earlier rule demanded *every* salient noun and reported the misses, which
+/// on real content meant a warn per item for words like `preservation` and
+/// `tray` that were never meant to be typed. A lint that is usually wrong is
+/// worse than no lint, because it teaches builders to skim past the ones that
+/// are right.
 fn check_keyword_coverage(findings: &mut Vec<Finding>, code: &'static str, display: &str, keywords: &[String]) {
-    let missing: Vec<String> = salient_words(display)
-        .into_iter()
-        .filter(|w| !keywords_cover(keywords, w))
-        .collect();
-    if missing.is_empty() {
+    let candidates = salient_words(display);
+    if candidates.is_empty() {
+        // Nothing in the phrase is long enough or specific enough to demand.
+        // Silence beats guessing.
         return;
     }
-    let mut shown: Vec<String> = missing.clone();
+    if candidates.iter().any(|w| keywords_cover(keywords, w)) {
+        return;
+    }
+    let mut shown: Vec<String> = candidates;
     shown.sort();
     shown.dedup();
     shown.truncate(3);
     findings.push(warn(
         code,
         format!(
-            "Players cannot address this by {}. Add {} to keywords.",
-            shown.join(", "),
-            if shown.len() == 1 { "it" } else { "them" }
+            "Players cannot address this at all. Add {} to keywords.",
+            shown.join(" or ")
         ),
     ));
 }
@@ -481,8 +684,10 @@ pub fn audit_room(room: &RoomData, ctx: &AuditCtx) -> Grade {
     let exits = exit_pairs(&room.exits);
 
     // A property template room legitimately has no exits until it is
-    // instantiated, so it is exempt rather than permanently failing.
-    if exits.is_empty() && !room.is_property_template && !room.property_entrance {
+    // instantiated, so it is exempt rather than permanently failing. A
+    // transport interior is the same story on a shorter clock: its exits exist
+    // only while the vehicle is docked.
+    if exits.is_empty() && !room.is_property_template && !room.property_entrance && !ctx.is_transport_room(room.id) {
         f.push(blocker(
             "room.no_exits",
             "This room has no exits. Link it with `dig` or `link`.",
@@ -670,10 +875,14 @@ pub fn audit_item(item: &ItemData) -> Grade {
             }
         }
         ItemType::Armor => {
+            // Warn, not blocker: `armor` doubles as the clothing type, and a
+            // purely cosmetic wearable (cloak, robe, badge) is legitimate
+            // content — it still shows in the equipment list and reads in a
+            // description. It is only worth a nudge, not a failing grade.
             if item.armor_class.unwrap_or(0) == 0 && item.affects.is_empty() {
-                f.push(blocker(
+                f.push(warn(
                     "item.armor_no_protection",
-                    "Armor with no armor class and no affects does nothing when worn.",
+                    "Armor with no armor class and no affects does nothing when worn — fine for cosmetic clothing, otherwise set an AC or an affect.",
                 ));
             }
             if item.wear_locations.is_empty() {
@@ -692,10 +901,12 @@ pub fn audit_item(item: &ItemData) -> Grade {
             }
         }
         ItemType::LiquidContainer => {
-            if item.liquid_max <= 0 {
+            // `liquid_max == -1` means an infinite source (fountain, sink, river):
+            // drink/fill/pour all special-case it, so it is valid, not empty.
+            if item.liquid_max == 0 || item.liquid_max < -1 {
                 f.push(blocker(
                     "item.liquid_no_capacity",
-                    "Liquid container with zero capacity can never be filled.",
+                    "Liquid container with zero capacity can never be filled. Use -1 for an infinite source.",
                 ));
             }
         }
@@ -718,10 +929,15 @@ pub fn audit_item(item: &ItemData) -> Grade {
             }
         }
         ItemType::Misc => {
-            if item.affects.is_empty() && item.triggers.is_empty() && item.categories.is_empty() {
+            // Extra descriptions and `no_get` are both a builder saying "this is
+            // set dressing, on purpose". A `misc` item you cannot pick up but
+            // can examine is scenery doing its job, not an untyped mistake.
+            let deliberate_scenery = !item.extra_descs.is_empty() || item.flags.no_get;
+            if item.affects.is_empty() && item.triggers.is_empty() && item.categories.is_empty() && !deliberate_scenery
+            {
                 f.push(warn(
                     "item.untyped",
-                    "Type is `misc` with no affects, triggers or categories — it is scenery. Set a real item type if it should do something.",
+                    "Type is `misc` with no affects, triggers or categories — it is scenery. Set a real item type if it should do something, or add an extra description / the no_get flag if it is deliberate set dressing.",
                 ));
             }
         }
@@ -936,15 +1152,20 @@ pub struct AreaContents<'a> {
 /// Rooms in this area that cannot be reached from its entrance by following
 /// exits. An orphan is content the player will never see.
 ///
-/// The walk starts at `starting_room_vnum` when the area declares one. Starting
-/// at whichever room the database happened to yield first is how a single
-/// disconnected room came to report *every other room in the area* as an
-/// orphan — a 45-point blocker on a perfectly connected place.
+/// The walk starts at `starting_room_vnum` when the area declares one, and
+/// otherwise covers the largest connected component. Starting at whichever room
+/// the database happened to yield first is how a single disconnected room came
+/// to report *every other room in the area* as an orphan — a blocker on a
+/// perfectly connected place, fired or not fired depending on iteration order.
 ///
 /// Property template rooms are excluded from both ends: they have no exits
 /// until they are instantiated, which is why `room.no_exits` already exempts
 /// them, and an area is not broken for containing one.
-fn orphan_rooms(rooms: &[RoomData], entrance_vnum: Option<&str>) -> Vec<Uuid> {
+///
+/// Transport links from the context count as edges. A floor served only by the
+/// elevator is reachable — the player presses a button — and reporting it as an
+/// orphan is the auditor not knowing how the world works.
+fn orphan_rooms(rooms: &[RoomData], entrance_vnum: Option<&str>, ctx: &AuditCtx) -> Vec<Uuid> {
     let rooms: Vec<&RoomData> = rooms.iter().filter(|r| !r.is_property_template).collect();
     if rooms.is_empty() {
         return Vec::new();
@@ -961,31 +1182,75 @@ fn orphan_rooms(rooms: &[RoomData], entrance_vnum: Option<&str>) -> Vec<Uuid> {
             }
         }
     }
-    let start = entrance_vnum
-        .and_then(|v| {
-            rooms
-                .iter()
-                .find(|r| r.vnum.as_deref().is_some_and(|rv| rv.eq_ignore_ascii_case(v)))
-        })
-        .unwrap_or(&rooms[0])
-        .id;
-    let mut seen: HashSet<Uuid> = HashSet::new();
-    let mut stack = vec![start];
-    seen.insert(start);
-    while let Some(cur) = stack.pop() {
-        for next in adj.get(&cur).into_iter().flatten() {
-            if seen.insert(*next) {
-                stack.push(*next);
-            }
+    // Transport edges are allowed to leave the area: a lift car parked in one
+    // area can be the only thing joining two halves of another. Only in-area
+    // rooms are ever reported, and out-of-area rooms contribute no exits of
+    // their own, so the walk stays bounded to the network.
+    for (a, b) in &ctx.transport_edges {
+        if ids.contains(a) || ids.contains(b) {
+            adj.entry(*a).or_default().push(*b);
+            adj.entry(*b).or_default().push(*a);
         }
     }
+    let walk = |start: Uuid| -> HashSet<Uuid> {
+        let mut seen: HashSet<Uuid> = HashSet::new();
+        let mut stack = vec![start];
+        seen.insert(start);
+        while let Some(cur) = stack.pop() {
+            for next in adj.get(&cur).into_iter().flatten() {
+                if seen.insert(*next) {
+                    stack.push(*next);
+                }
+            }
+        }
+        seen
+    };
+
+    // With an entrance declared, "reachable" means reachable from it — that is
+    // the builder telling us where players come in, and an area whose entrance
+    // is cut off from everything else really is broken.
+    let declared = entrance_vnum.and_then(|v| {
+        rooms
+            .iter()
+            .find(|r| r.vnum.as_deref().is_some_and(|rv| rv.eq_ignore_ascii_case(v)))
+    });
+    let seen = match declared {
+        Some(entrance) => walk(entrance.id),
+        // With no entrance, the answer is the *largest* connected component
+        // rather than whatever the walk happened to start from. Starting at an
+        // arbitrary room means one disconnected closet can report every other
+        // room in the area as an orphan, and which room that is depends on
+        // database iteration order — the same data grading differently across
+        // restarts. Ties go to the lowest vnum so a genuine tie is still
+        // decided the same way twice.
+        None => {
+            let mut best: Option<(usize, (String, Uuid), HashSet<Uuid>)> = None;
+            let mut visited: HashSet<Uuid> = HashSet::new();
+            for room in &rooms {
+                if visited.contains(&room.id) {
+                    continue;
+                }
+                let component = walk(room.id);
+                visited.extend(component.iter().copied());
+                let key = (room.vnum.clone().unwrap_or_default(), room.id);
+                let take = match &best {
+                    None => true,
+                    Some((len, best_key, _)) => component.len() > *len || (component.len() == *len && key < *best_key),
+                };
+                if take {
+                    best = Some((component.len(), key, component));
+                }
+            }
+            best.map(|(_, _, c)| c).unwrap_or_default()
+        }
+    };
     rooms.iter().map(|r| r.id).filter(|id| !seen.contains(id)).collect()
 }
 
 /// Minimum rooms before an area reads as a real place rather than a sketch.
 const AREA_ROOM_FLOOR: usize = 8;
 
-pub fn audit_area(area: &AreaData, contents: &AreaContents) -> Grade {
+pub fn audit_area(area: &AreaData, contents: &AreaContents, ctx: &AuditCtx) -> Grade {
     let mut f: Vec<Finding> = Vec::new();
 
     if is_blank(&area.name) {
@@ -1027,14 +1292,17 @@ pub fn audit_area(area: &AreaData, contents: &AreaContents) -> Grade {
     if is_blank(&area.description) {
         f.push(warn("area.no_description", "No area description."));
     }
-    if area.level_min == 0 && area.level_max == 0 {
+    // A level range is a danger warning. A safe zone has no danger to warn
+    // about, so demanding one there is asking a builder to invent a number that
+    // means nothing — the city everyone starts in is not "levels 1-5".
+    if area.level_min == 0 && area.level_max == 0 && area.combat_zone != CombatZoneType::Safe {
         f.push(warn(
             "area.no_level_range",
             "No level range set, so nothing can tell players who this area is for.",
         ));
     }
 
-    let orphans = orphan_rooms(contents.rooms, area.starting_room_vnum.as_deref());
+    let orphans = orphan_rooms(contents.rooms, area.starting_room_vnum.as_deref(), ctx);
     if !orphans.is_empty() {
         f.push(blocker(
             "area.orphan_rooms",
@@ -1179,6 +1447,7 @@ impl AuditReport {
             score: self.score,
             letter: self.letter,
             findings: self.own.findings.clone(),
+            waived: self.own.waived.clone(),
         }
     }
 
@@ -1206,10 +1475,27 @@ impl AuditReport {
     }
 
     pub fn severity_counts(&self) -> (usize, usize, usize) {
+        Self::tally(self.all_findings().into_iter().map(|(_, f)| f))
+    }
+
+    /// The container's own findings only — the ones printed under the `Area`
+    /// heading. Reported beside [`Self::severity_counts`] so a builder can see
+    /// that the header total is "mine plus my contents'" rather than a number
+    /// that disagrees with both lists beneath it.
+    pub fn own_counts(&self) -> (usize, usize, usize) {
+        Self::tally(self.own.findings.iter())
+    }
+
+    /// Findings on children only. Always `severity_counts - own_counts`.
+    pub fn content_counts(&self) -> (usize, usize, usize) {
+        Self::tally(self.entries.iter().flat_map(|e| e.grade.findings.iter()))
+    }
+
+    fn tally<'a>(findings: impl Iterator<Item = &'a Finding>) -> (usize, usize, usize) {
         let mut b = 0;
         let mut w = 0;
         let mut p = 0;
-        for (_, f) in self.all_findings() {
+        for f in findings {
             match f.severity {
                 Severity::Blocker => b += 1,
                 Severity::Warn => w += 1,
@@ -1218,48 +1504,88 @@ impl AuditReport {
         }
         (b, w, p)
     }
+
+    /// How many findings across this report a builder has reviewed and
+    /// approved. Printed so suppression is never silent.
+    pub fn waived_count(&self) -> usize {
+        self.own.waived.len() + self.entries.iter().map(|e| e.grade.waived.len()).sum::<usize>()
+    }
+
+    /// Entries carrying at least one live finding — the population `worst()`
+    /// samples from. The report footer needs this to say "15 of 22 shown"
+    /// without a second sort.
+    pub fn flagged_count(&self, kind: Option<EntityKind>) -> usize {
+        self.entries
+            .iter()
+            .filter(|e| kind.is_none_or(|k| e.kind == k))
+            .filter(|e| !e.grade.findings.is_empty())
+            .count()
+    }
 }
 
-/// Grade every entity in an area and roll it up.
+/// Grade every entity in an area and roll it up, with no waivers applied.
 pub fn report_area(area: &AreaData, contents: &AreaContents, ctx: &AuditCtx) -> AuditReport {
+    report_area_with_waivers(area, contents, ctx, &WaiverSet::new())
+}
+
+/// [`report_area`] honouring reviewed findings.
+///
+/// Waivers are applied here, entry by entry, because this is the only place
+/// that knows both the finding and the label it hangs off — a waiver is keyed
+/// on `(code, target)` and `target` *is* the entry label. Applying them any
+/// later would mean every consumer reimplementing the pairing; applying them
+/// any earlier is impossible.
+pub fn report_area_with_waivers(
+    area: &AreaData,
+    contents: &AreaContents,
+    ctx: &AuditCtx,
+    waivers: &WaiverSet,
+) -> AuditReport {
     let mut entries = Vec::new();
     for r in contents.rooms {
+        let label = r.vnum.clone().unwrap_or_else(|| short_id(r.id));
         entries.push(AuditEntry {
             kind: EntityKind::Room,
-            label: r.vnum.clone().unwrap_or_else(|| short_id(r.id)),
+            grade: audit_room(r, ctx).apply_waivers(&label, waivers),
+            label,
             name: r.title.clone(),
-            grade: audit_room(r, ctx),
         });
     }
     for m in contents.mobiles {
+        let label = if m.vnum.is_empty() {
+            short_id(m.id)
+        } else {
+            m.vnum.clone()
+        };
         entries.push(AuditEntry {
             kind: EntityKind::Mobile,
-            label: if m.vnum.is_empty() {
-                short_id(m.id)
-            } else {
-                m.vnum.clone()
-            },
+            grade: audit_mobile(m).apply_waivers(&label, waivers),
+            label,
             name: m.short_desc.clone(),
-            grade: audit_mobile(m),
         });
     }
     for i in contents.items {
+        let label = i.vnum.clone().unwrap_or_else(|| short_id(i.id));
         entries.push(AuditEntry {
             kind: EntityKind::Item,
-            label: i.vnum.clone().unwrap_or_else(|| short_id(i.id)),
+            grade: audit_item(i).apply_waivers(&label, waivers),
+            label,
             name: i.short_desc.clone(),
-            grade: audit_item(i),
         });
     }
     for q in contents.quests {
+        let label = q.vnum.clone();
         entries.push(AuditEntry {
             kind: EntityKind::Quest,
-            label: q.vnum.clone(),
+            grade: audit_quest(q).apply_waivers(&label, waivers),
+            label,
             name: q.name.clone(),
-            grade: audit_quest(q),
         });
     }
-    AuditReport::build(area.name.clone(), audit_area(area, contents), entries)
+    // An area's own findings are targeted by its prefix, which is what a
+    // builder types and what `BuildRequest.target` already stores for them.
+    let own = audit_area(area, contents, ctx).apply_waivers(&area.prefix, waivers);
+    AuditReport::build(area.name.clone(), own, entries)
 }
 
 fn short_id(id: Uuid) -> String {
@@ -1572,20 +1898,43 @@ mod tests {
     // --- mobiles -------------------------------------------------------------
 
     #[test]
-    fn a_noun_missing_from_keywords_is_reported() {
-        // Fixture name is "a goblin guard", short_desc "A goblin guard leans on
-        // a rusted pike." With only "goblin" in keywords, "pike" is genuinely
-        // unreachable — but "guard" is not, because the name matches it.
-        let g = audit_mobile(&mobile(json!({"keywords": ["goblin"]})));
-        assert!(g.has("mobile.keywords_miss_nouns"));
+    fn an_unaddressable_mobile_is_reported_and_names_the_words_to_add() {
+        // Fixture short_desc is "A goblin guard leans on a rusted pike." Nothing
+        // in `name` or `keywords` reaches "goblin" or "guard", so no word a
+        // player can see will refer to this mobile.
+        let g = audit_mobile(&mobile(json!({"name": "thing", "keywords": ["widget"]})));
+        assert!(g.has("mobile.keywords_miss_nouns"), "{:?}", g.findings);
         let msg = &g
             .findings
             .iter()
             .find(|f| f.code == "mobile.keywords_miss_nouns")
             .unwrap()
             .message;
-        assert!(msg.contains("pike"), "{msg}");
-        assert!(!msg.contains("guard"), "the name already reaches it: {msg}");
+        assert!(msg.contains("goblin") && msg.contains("guard"), "{msg}");
+        // "pike" is prose about the scenery, not part of what the mobile *is*,
+        // so it is never suggested.
+        assert!(!msg.contains("pike"), "prose after the verb is not a keyword: {msg}");
+    }
+
+    #[test]
+    fn prose_after_the_verb_is_not_demanded_as_a_keyword() {
+        // The lint used to require every long word in the short_desc. On real
+        // content that meant a warn per item for words like "tray" and
+        // "preservation", which is a lint builders learn to skim past.
+        let g = audit_item(&item(json!({
+            "name": "a neural jack",
+            "short_desc": "A chrome neural jack rests on a sterile tray.",
+            "keywords": ["jack"],
+        })));
+        assert!(!g.has("item.keywords_miss_nouns"), "{:?}", g.findings);
+    }
+
+    #[test]
+    fn one_addressable_word_is_enough() {
+        // `get jack` works whether or not `chrome` is also a keyword, so the
+        // entity is not defective and the auditor has nothing to say.
+        let g = audit_mobile(&mobile(json!({"keywords": ["goblin"]})));
+        assert!(!g.has("mobile.keywords_miss_nouns"), "{:?}", g.findings);
     }
 
     #[test]
@@ -1603,7 +1952,7 @@ mod tests {
         // "anything".contains("") is true, and one-letter keywords came close.
         // A check a builder can delete with junk is worse than no check.
         for junk in [json!([""]), json!(["e", "a", "o"]), json!(["x", ""])] {
-            let g = audit_mobile(&mobile(json!({"keywords": junk})));
+            let g = audit_mobile(&mobile(json!({"name": "thing", "keywords": junk})));
             assert!(
                 g.has("mobile.keywords_miss_nouns"),
                 "junk keywords {junk} silenced the check"
@@ -1619,8 +1968,9 @@ mod tests {
         // reporting a fault in working content.
         let g = audit_mobile(&mobile(json!({"keywords": []})));
         assert!(!g.has("mobile.no_keywords"), "{:?}", g.findings);
-        // The nouns the name does *not* reach are still the real signal.
-        assert!(g.has("mobile.keywords_miss_nouns"));
+        // And the name reaches "goblin" and "guard", so there is nothing left
+        // to report either.
+        assert!(!g.has("mobile.keywords_miss_nouns"), "{:?}", g.findings);
     }
 
     #[test]
@@ -1702,16 +2052,33 @@ mod tests {
     }
 
     #[test]
-    fn armor_needs_protection_and_a_slot() {
+    fn armor_needs_a_slot_and_is_nudged_about_protection() {
         let g = audit_item(&item(json!({
             "item_type": "armor",
             "damage_dice_count": 0,
             "damage_dice_sides": 0,
             "weapon_skill": null,
         })));
-        assert!(g.has("item.armor_no_protection"));
+        // Unwearable is broken; doing nothing when worn is only a nudge,
+        // because `armor` is also the clothing type.
         assert!(g.has("item.armor_no_wear_location"));
-        assert_eq!(g.letter, 'F');
+        assert_eq!(g.severity_of("item.armor_no_protection"), Some(Severity::Warn));
+    }
+
+    #[test]
+    fn cosmetic_clothing_is_not_failed_for_having_no_armor_class() {
+        // A magical cape with no AC and no affects: flavour, not a bug.
+        let g = audit_item(&item(json!({
+            "item_type": "armor",
+            "name": "a midnight cape",
+            "short_desc": "a midnight cape",
+            "damage_dice_count": 0,
+            "damage_dice_sides": 0,
+            "weapon_skill": null,
+            "wear_locations": ["back"],
+        })));
+        assert_eq!(g.count(Severity::Blocker), 0, "{:?}", g.findings);
+        assert!(letter_at_least(g.letter, 'C'), "graded {} ({})", g.letter, g.score);
     }
 
     #[test]
@@ -1767,8 +2134,8 @@ mod tests {
             grade: Grade::from_findings(vec![blocker("a", "x"), blocker("b", "y")]),
         };
         let r = AuditReport::build("area", own, vec![good, bad]);
-        // Own 100, children (100 + 10) / 2 = 55 -> 40 + 33 = 73.
-        assert_eq!(r.score, 73);
+        // Own 100, children (100 + 0) / 2 = 50 -> 40 + 30 = 70.
+        assert_eq!(r.score, 70);
     }
 
     #[test]
@@ -1789,7 +2156,7 @@ mod tests {
         let b = room(json!({"exits": {"south": a.id}}));
         let island = room(json!({}));
         let linked = vec![a.clone(), b, island.clone()];
-        let orphans = orphan_rooms(&linked, None);
+        let orphans = orphan_rooms(&linked, None, &AuditCtx::empty());
         assert_eq!(orphans, vec![island.id]);
     }
 
@@ -1797,7 +2164,7 @@ mod tests {
     fn reachability_is_undirected_so_a_one_way_entrance_is_not_an_orphan() {
         let a = room(json!({}));
         let b = room(json!({"exits": {"south": a.id}}));
-        assert!(orphan_rooms(&[a, b], None).is_empty());
+        assert!(orphan_rooms(&[a, b], None, &AuditCtx::empty()).is_empty());
     }
 
     #[test]
@@ -1810,12 +2177,12 @@ mod tests {
         let rooms = vec![island.clone(), hall, yard];
 
         assert_eq!(
-            orphan_rooms(&rooms, Some("hall")),
+            orphan_rooms(&rooms, Some("hall"), &AuditCtx::empty()),
             vec![island.id],
             "with an entrance declared, only the island is orphaned"
         );
         assert_eq!(
-            orphan_rooms(&rooms, Some("isle")).len(),
+            orphan_rooms(&rooms, Some("isle"), &AuditCtx::empty()).len(),
             2,
             "and this is the failure the entrance exists to prevent"
         );
@@ -1827,7 +2194,7 @@ mod tests {
         // exempts them, and an area is not broken for holding one.
         let hall = room(json!({"vnum": "hall"}));
         let template = room(json!({"vnum": "tpl", "is_property_template": true}));
-        assert!(orphan_rooms(&[hall, template], Some("hall")).is_empty());
+        assert!(orphan_rooms(&[hall, template], Some("hall"), &AuditCtx::empty()).is_empty());
     }
 
     // --- world ---------------------------------------------------------------

@@ -109,10 +109,15 @@ pub(super) fn complete_build(words: &[&str], completing_word: bool, data: &Compl
     };
 
     let is_audit = words.len() >= 2 && words[1].eq_ignore_ascii_case("audit");
+    let is_waive = words.len() >= 2 && words[1].eq_ignore_ascii_case("waive");
 
     match words.len() {
         1 if !completing_word => all_static(BUILD_SUBCOMMANDS, CompletionType::BuildSubcommand),
         2 if completing_word => filter_static(BUILD_SUBCOMMANDS, &partial, CompletionType::BuildSubcommand),
+        2 if !completing_word && is_waive => all_static(BUILD_WAIVE_SUBCOMMANDS, CompletionType::BuildSubcommand),
+        3 if completing_word && is_waive => {
+            filter_static(BUILD_WAIVE_SUBCOMMANDS, &partial, CompletionType::BuildSubcommand)
+        }
         2 if !completing_word && is_audit => all_static(BUILD_AUDIT_TARGETS, CompletionType::BuildAuditTarget),
         3 if completing_word && is_audit => {
             filter_static(BUILD_AUDIT_TARGETS, &partial, CompletionType::BuildAuditTarget)

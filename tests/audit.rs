@@ -16,7 +16,7 @@
 use ironmud::audit::scan::WorldSnapshot;
 use ironmud::audit::{self, AuditCtx, EntityKind, Severity, audit_room};
 use ironmud::db::Db;
-use ironmud::types::RoomData;
+use ironmud::types::{ItemData, ItemType, RoomData};
 use serde_json::json;
 use uuid::Uuid;
 
@@ -412,14 +412,481 @@ fn fixing_a_finding_always_raises_the_score() {
 fn severity_weights_stay_ordered() {
     assert!(Severity::Blocker.weight() > Severity::Warn.weight());
     assert!(Severity::Warn.weight() > Severity::Polish.weight());
-    // Two blockers must land an entity on F, or "broken" is survivable. The
-    // check is on the letter rather than the raw score because the letter is
-    // what every consumer reads.
+    // One blocker must land an entity on F. A blocker means the content is
+    // broken as shipped, and at the old weight of 45 it scored 55 and graded D
+    // — printed in the same colour band as a missing seasonal description,
+    // while the header above it counted the blocker in red.
     assert_eq!(
-        audit::letter_for(100 - Severity::Blocker.weight() * 2),
+        audit::letter_for(100 - Severity::Blocker.weight()),
         'F',
-        "two blockers no longer floor an entity"
+        "one blocker no longer fails an entity"
     );
-    // And one blocker alone must not — a single flaw is a D, not a write-off.
-    assert_ne!(audit::letter_for(100 - Severity::Blocker.weight()), 'F');
+    // A warn alone must not, or the two severities stop meaning different
+    // things.
+    assert_ne!(audit::letter_for(100 - Severity::Warn.weight()), 'F');
+}
+
+#[test]
+fn an_infinite_liquid_source_is_not_an_empty_container() {
+    // `liquid_max == -1` is the fountain/sink sentinel: drink, fill and pour
+    // all special-case it, so it must not be graded as "can never be filled".
+    let mut fountain = ItemData::new(
+        "dungeon sink".to_string(),
+        "A small sink is mounted on the wall.".to_string(),
+        "A small ceramic basin sits beneath a pair of iron pump handles.".to_string(),
+    );
+    fountain.item_type = ItemType::LiquidContainer;
+    fountain.liquid_max = -1;
+    fountain.liquid_current = -1;
+    assert!(!audit::audit_item(&fountain).has("item.liquid_no_capacity"));
+
+    // Zero capacity is still a blocker.
+    let mut empty = fountain.clone();
+    empty.liquid_max = 0;
+    empty.liquid_current = 0;
+    assert!(audit::audit_item(&empty).has("item.liquid_no_capacity"));
+
+    // So is any other negative — only -1 carries meaning.
+    let mut nonsense = fountain.clone();
+    nonsense.liquid_max = -5;
+    assert!(audit::audit_item(&nonsense).has("item.liquid_no_capacity"));
+}
+
+#[test]
+fn the_worst_list_prints_a_long_vnum_whole() {
+    // Thirty rooms called "Dungeon Hallway" are told apart by vnum and nothing
+    // else, so a truncated vnum makes the row unactionable — the builder cannot
+    // paste `dungeon1:du…` into `redit`.
+    let (db, _t) = seeded_db();
+    let area = db.list_all_areas().expect("areas").into_iter().next().expect("an area");
+
+    let long_vnum = format!("{}:dungeon_hallway_east_branch_27", area.prefix);
+    let mut hallway = room(json!({
+        "title": "Dungeon Hallway",
+        // Short enough to trip room.thin_desc, so the row lands in the worst list.
+        "description": "A hallway.",
+    }));
+    hallway.area_id = Some(area.id);
+    hallway.vnum = Some(long_vnum.clone());
+    let room_id = hallway.id;
+    db.save_room_data(hallway).expect("save room");
+    db.set_room_vnum(&room_id, &long_vnum).expect("index vnum");
+
+    let out = run_build_command(&db, &format!("audit area {}", area.name));
+    assert!(
+        out.contains(&long_vnum),
+        "the {}-char vnum was truncated:\n{out}",
+        long_vnum.len()
+    );
+}
+
+// ===========================================================================
+// Not knowing how the world works is a false positive
+// ===========================================================================
+
+/// An area with an elevator: two floors joined by nothing but the lift, plus
+/// the car itself. `docked` writes the exits the transport tick would have
+/// written on arrival; leaving it false is the in-transit state.
+fn elevator_world(db: &Db, docked: bool) -> (ironmud::types::AreaData, Uuid, Uuid, Uuid) {
+    let area: ironmud::types::AreaData = serde_json::from_value(json!({
+        "id": Uuid::new_v4(),
+        "name": "Iron Tower",
+        "prefix": "tower",
+        "combat_zone": "pve",
+        "level_min": 1,
+        "level_max": 5,
+    }))
+    .expect("area fixture");
+
+    let mut lobby = room(json!({"title": "Lobby", "vnum": "tower:lobby"}));
+    let mut penthouse = room(json!({"title": "Penthouse", "vnum": "tower:pent"}));
+    let mut car = room(json!({"title": "Elevator Car", "vnum": "tower:car"}));
+    for r in [&mut lobby, &mut penthouse, &mut car] {
+        r.area_id = Some(area.id);
+    }
+    if docked {
+        lobby.exits.custom.insert("in".into(), car.id);
+        car.exits.out = Some(lobby.id);
+    }
+    let (lobby_id, pent_id, car_id) = (lobby.id, penthouse.id, car.id);
+
+    let mut lift = ironmud::types::TransportData::new("the lift".into(), car_id);
+    lift.stops = vec![
+        ironmud::types::TransportStop {
+            room_id: lobby_id,
+            name: "Lobby".into(),
+            exit_direction: "in".into(),
+        },
+        ironmud::types::TransportStop {
+            room_id: pent_id,
+            name: "Penthouse".into(),
+            exit_direction: "in".into(),
+        },
+    ];
+
+    db.save_area_data(area.clone()).expect("save area");
+    for r in [lobby, penthouse, car] {
+        db.save_room_data(r).expect("save room");
+    }
+    db.save_transport(&lift).expect("save transport");
+    (area, lobby_id, pent_id, car_id)
+}
+
+#[test]
+fn a_floor_served_only_by_the_elevator_is_not_an_orphan() {
+    let (db, _t) = fresh_db();
+    let (area, _lobby, _pent, _car) = elevator_world(&db, true);
+
+    let snap = WorldSnapshot::load(&db).expect("snapshot");
+    let report = ironmud::audit::scan::scan_area(&snap, &area, snap.ctx());
+    assert!(
+        !report.own.has("area.orphan_rooms"),
+        "the penthouse is reachable by pressing a button: {:?}",
+        report.own.findings
+    );
+}
+
+#[test]
+fn the_elevator_car_grades_the_same_docked_or_in_transit() {
+    // `ticks::transport` writes the car's exits on arrival and clears them on
+    // departure, so reading `RoomExits` alone grades this room differently
+    // depending on where the car happens to be. A grade that moves on its own
+    // is a grade nobody can act on.
+    let mut grades = Vec::new();
+    for docked in [true, false] {
+        let (db, _t) = fresh_db();
+        let (area, _lobby, _pent, car_id) = elevator_world(&db, docked);
+        let snap = WorldSnapshot::load(&db).expect("snapshot");
+        let car = db.get_room_data(&car_id).expect("read").expect("car");
+        let g = audit_room(&car, snap.ctx());
+        assert!(
+            !g.has("room.no_exits"),
+            "docked={docked}: the car is a vehicle, not a sealed box: {:?}",
+            g.findings
+        );
+        let report = ironmud::audit::scan::scan_area(&snap, &area, snap.ctx());
+        assert!(!report.own.has("area.orphan_rooms"), "docked={docked}");
+        grades.push(g.letter);
+    }
+    assert_eq!(grades[0], grades[1], "the car's letter moved with the lift");
+}
+
+#[test]
+fn a_safe_zone_is_not_asked_for_a_level_range() {
+    // A level range is a danger warning, and the city everyone starts in has
+    // no danger to warn about.
+    let (db, _t) = fresh_db();
+    let mut area: ironmud::types::AreaData = serde_json::from_value(json!({
+        "id": Uuid::new_v4(),
+        "name": "IronMUD Plaza",
+        "prefix": "plaza",
+        "combat_zone": "safe",
+    }))
+    .expect("area fixture");
+    area.level_min = 0;
+    area.level_max = 0;
+    db.save_area_data(area.clone()).expect("save area");
+
+    let snap = WorldSnapshot::load(&db).expect("snapshot");
+    let safe = ironmud::audit::scan::scan_area(&snap, &area, snap.ctx());
+    assert!(!safe.own.has("area.no_level_range"), "{:?}", safe.own.findings);
+
+    // And a combat zone still is.
+    area.combat_zone = ironmud::types::CombatZoneType::Pve;
+    db.save_area_data(area.clone()).expect("save area");
+    let snap = WorldSnapshot::load(&db).expect("snapshot");
+    let pve = ironmud::audit::scan::scan_area(&snap, &area, snap.ctx());
+    assert!(pve.own.has("area.no_level_range"), "{:?}", pve.own.findings);
+}
+
+#[test]
+fn deliberate_scenery_is_not_an_untyped_item() {
+    // A `misc` item with an extra description is scenery doing its job. So is
+    // one flagged `no_get`. Both are a builder saying "on purpose".
+    let mut coaster = ItemData::new(
+        "a drink coaster".to_string(),
+        "A drink coaster lies here.".to_string(),
+        "A cork coaster, ringed by the ghosts of a hundred glasses.".to_string(),
+    );
+    coaster.item_type = ItemType::Misc;
+    assert!(
+        audit::audit_item(&coaster).has("item.untyped"),
+        "a bare misc item is still flagged"
+    );
+
+    let mut examined = coaster.clone();
+    examined.extra_descs.push(
+        serde_json::from_value(json!({"keywords": ["rings"], "description": "Overlapping stains."}))
+            .expect("extra desc"),
+    );
+    assert!(!audit::audit_item(&examined).has("item.untyped"));
+
+    let mut fixed = coaster.clone();
+    fixed.flags.no_get = true;
+    assert!(!audit::audit_item(&fixed).has("item.untyped"));
+}
+
+// ===========================================================================
+// Waivers — reviewed false positives
+// ===========================================================================
+
+/// An area with one item whose keywords reach nothing, so
+/// `item.keywords_miss_nouns` fires and there is something to review.
+fn unaddressable_item_world(db: &Db) -> (ironmud::types::AreaData, String) {
+    let area: ironmud::types::AreaData = serde_json::from_value(json!({
+        "id": Uuid::new_v4(),
+        "name": "IronMUD Plaza",
+        "prefix": "plaza",
+        "owner": "Zoe",
+        "permission_level": "trusted",
+    }))
+    .expect("area fixture");
+
+    let mut coaster = ItemData::new(
+        "widget".to_string(),
+        "A blackvien drink coaster rests on the bar.".to_string(),
+        "A cork coaster, ringed by the ghosts of a hundred glasses.".to_string(),
+    );
+    coaster.item_type = ItemType::Misc;
+    coaster.is_prototype = true;
+    coaster.area_id = Some(area.id);
+    coaster.vnum = Some("plaza:coaster".into());
+    coaster.keywords = vec!["widget".into()];
+
+    db.save_area_data(area.clone()).expect("save area");
+    db.save_item_data(coaster).expect("save item");
+    (area, "plaza:coaster".to_string())
+}
+
+fn item_grade(db: &Db, vnum: &str) -> ironmud::audit::Grade {
+    ironmud::audit::scan::scan_entity(db, EntityKind::Item, vnum)
+        .expect("scan")
+        .expect("item exists")
+        .grade
+}
+
+#[test]
+fn a_waived_finding_leaves_the_grade_the_tally_and_the_bounty_board() {
+    let (db, _t) = fresh_db();
+    let (area, vnum) = unaddressable_item_world(&db);
+
+    let before = item_grade(&db, &vnum);
+    let finding = before
+        .findings
+        .iter()
+        .find(|f| f.code == "item.keywords_miss_nouns")
+        .expect("the lint fires on this fixture")
+        .clone();
+
+    db.store_audit_waiver(&ironmud::types::AuditWaiver {
+        code: finding.code.to_string(),
+        target: vnum.clone(),
+        area_prefix: area.prefix.clone(),
+        reason: "the coaster answers to `coaster` in play".into(),
+        fingerprint: ironmud::types::fingerprint(finding.code, &finding.message),
+        severity: finding.severity.key().to_string(),
+        reviewed_by: "Zoe".into(),
+        created_at: 1,
+    })
+    .expect("store waiver");
+
+    let after = item_grade(&db, &vnum);
+    assert!(!after.has("item.keywords_miss_nouns"), "{:?}", after.findings);
+    assert_eq!(after.waived.len(), 1, "the waived finding is kept, not dropped");
+    assert!(after.score > before.score, "{} -> {}", before.score, after.score);
+
+    // And the area report agrees — one chokepoint, not one per surface.
+    let snap = WorldSnapshot::load(&db).expect("snapshot");
+    let report = ironmud::audit::scan::scan_area(&snap, &area, snap.ctx());
+    assert_eq!(report.waived_count(), 1);
+    let (_, warns, _) = report.severity_counts();
+    let unreviewed = report
+        .all_findings()
+        .iter()
+        .filter(|(_, f)| f.code == "item.keywords_miss_nouns")
+        .count();
+    assert_eq!(unreviewed, 0, "a waived finding still counted in the tally");
+    let _ = warns;
+}
+
+#[test]
+fn editing_the_text_a_waiver_was_written_about_revives_the_finding() {
+    // A waiver is a judgement about a piece of text. Change the text and the
+    // judgement has to be made again, or a waiver written for one wording goes
+    // on hiding a genuinely different problem years later.
+    let (db, _t) = fresh_db();
+    let (area, vnum) = unaddressable_item_world(&db);
+
+    let finding = item_grade(&db, &vnum)
+        .findings
+        .iter()
+        .find(|f| f.code == "item.keywords_miss_nouns")
+        .expect("fires")
+        .clone();
+    db.store_audit_waiver(&ironmud::types::AuditWaiver {
+        code: finding.code.to_string(),
+        target: vnum.clone(),
+        area_prefix: area.prefix,
+        reason: "reviewed".into(),
+        fingerprint: ironmud::types::fingerprint(finding.code, &finding.message),
+        severity: finding.severity.key().to_string(),
+        reviewed_by: "Zoe".into(),
+        created_at: 1,
+    })
+    .expect("store waiver");
+    assert!(!item_grade(&db, &vnum).has("item.keywords_miss_nouns"));
+
+    let mut item = db.get_item_by_vnum(&vnum).expect("read").expect("item");
+    item.short_desc = "A chrome neural jack rests on a sterile tray.".into();
+    db.save_item_data(item).expect("save item");
+
+    let after = item_grade(&db, &vnum);
+    assert!(
+        after.has("item.keywords_miss_nouns"),
+        "the waiver outlived the text it was about: {:?}",
+        after.findings
+    );
+    assert!(after.waived.is_empty());
+}
+
+#[test]
+fn a_waiver_is_scoped_to_one_entity_not_to_the_code() {
+    let (db, _t) = fresh_db();
+    let (area, vnum) = unaddressable_item_world(&db);
+
+    let mut other = db.get_item_by_vnum(&vnum).expect("read").expect("item");
+    other.id = Uuid::new_v4();
+    other.vnum = Some("plaza:mug".into());
+    db.save_item_data(other).expect("save item");
+
+    let finding = item_grade(&db, &vnum)
+        .findings
+        .iter()
+        .find(|f| f.code == "item.keywords_miss_nouns")
+        .expect("fires")
+        .clone();
+    db.store_audit_waiver(&ironmud::types::AuditWaiver {
+        code: finding.code.to_string(),
+        target: vnum.clone(),
+        area_prefix: area.prefix,
+        reason: "reviewed".into(),
+        fingerprint: ironmud::types::fingerprint(finding.code, &finding.message),
+        severity: finding.severity.key().to_string(),
+        reviewed_by: "Zoe".into(),
+        created_at: 1,
+    })
+    .expect("store waiver");
+
+    assert!(!item_grade(&db, &vnum).has("item.keywords_miss_nouns"));
+    assert!(
+        item_grade(&db, "plaza:mug").has("item.keywords_miss_nouns"),
+        "waiving one entity silenced another"
+    );
+}
+
+#[test]
+fn build_waive_records_a_review_and_the_finding_stops_printing() {
+    let (db, _t) = fresh_db();
+    // Unowned, so `author_can_edit_area` lets the test builder through.
+    let (_area, vnum) = unaddressable_item_world(&db);
+    let mut area = db.list_all_areas().expect("areas").remove(0);
+    area.owner = None;
+    db.save_area_data(area).expect("save area");
+
+    let listed = run_build_command(&db, "audit code item.keywords_miss_nouns");
+    assert!(listed.contains(&vnum), "the code listing did not find it:\n{listed}");
+
+    let out = run_build_command(
+        &db,
+        &format!("waive item.keywords_miss_nouns {vnum} players call it a coaster"),
+    );
+    assert!(out.contains("Reviewed."), "unexpected output:\n{out}");
+
+    let after = run_build_command(&db, &format!("audit item {vnum}"));
+    assert!(
+        !after.contains("warn    item.keywords_miss_nouns"),
+        "the waived finding is still listed as live:\n{after}"
+    );
+    assert!(after.contains("1 reviewed"), "the review is not counted:\n{after}");
+    assert!(
+        after.contains("Reviewed") && after.contains("item.keywords_miss_nouns"),
+        "the review is invisible — suppression has to stay auditable:\n{after}"
+    );
+
+    let list = run_build_command(&db, "waive list");
+    assert!(list.contains("item.keywords_miss_nouns"), "{list}");
+
+    let removed = run_build_command(&db, &format!("waive remove item.keywords_miss_nouns {vnum}"));
+    assert!(removed.contains("Restored."), "{removed}");
+    let back = run_build_command(&db, &format!("audit item {vnum}"));
+    assert!(back.contains("Players cannot address this"), "{back}");
+}
+
+#[test]
+fn a_non_admin_cannot_waive_a_blocker() {
+    // A blocker says the content is broken as shipped. That is the judgement a
+    // builder is most tempted to overrule and least well placed to.
+    let (db, _t) = fresh_db();
+    let area: ironmud::types::AreaData =
+        serde_json::from_value(json!({"id": Uuid::new_v4(), "name": "Tower", "prefix": "tower"})).expect("area");
+    let mut sealed = room(json!({"title": "Sealed Vault", "vnum": "tower:vault"}));
+    sealed.area_id = Some(area.id);
+    let id = sealed.id;
+    db.save_area_data(area).expect("save area");
+    db.save_room_data(sealed).expect("save room");
+    db.set_room_vnum(&id, "tower:vault").expect("index vnum");
+
+    let out = run_build_command(&db, "waive room.no_exits tower:vault it is an elevator stop");
+    assert!(out.contains("BLOCKER"), "expected a refusal explaining why:\n{out}");
+    assert!(
+        run_build_command(&db, "audit room tower:vault").contains("no exits"),
+        "the blocker was silenced by a non-admin"
+    );
+}
+
+#[test]
+fn waiving_a_finding_that_is_not_firing_is_refused() {
+    // The finding has to be live: that is what supplies the message the waiver
+    // fingerprints, and it stops anyone pre-silencing a code they have never
+    // seen fire.
+    let (db, _t) = fresh_db();
+    let (_area, vnum) = unaddressable_item_world(&db);
+    let out = run_build_command(&db, &format!("waive item.no_value {vnum} not for sale"));
+    assert!(out.contains("not firing"), "unexpected output:\n{out}");
+}
+
+#[test]
+fn build_waive_all_reviews_every_target_in_the_area_at_once() {
+    let (db, _t) = fresh_db();
+    let (_area, vnum) = unaddressable_item_world(&db);
+    let mut area = db.list_all_areas().expect("areas").remove(0);
+    area.owner = None;
+    db.save_area_data(area).expect("save area");
+
+    let mut second = db.get_item_by_vnum(&vnum).expect("read").expect("item");
+    second.id = Uuid::new_v4();
+    second.vnum = Some("plaza:mug".into());
+    db.save_item_data(second).expect("save item");
+
+    let out = run_build_command(
+        &db,
+        "waive all item.keywords_miss_nouns plaza the nouns are room dressing",
+    );
+    assert!(out.contains("Reviewed."), "unexpected output:\n{out}");
+    assert!(out.contains('2'), "both targets should have been reviewed:\n{out}");
+    assert!(!item_grade(&db, &vnum).has("item.keywords_miss_nouns"));
+    assert!(!item_grade(&db, "plaza:mug").has("item.keywords_miss_nouns"));
+}
+
+#[test]
+fn the_area_header_splits_its_tally_between_itself_and_its_contents() {
+    // The complaint this answers: a header reading "3 blocker" over a list in
+    // which only two rows were blockers, because the third belonged to the area
+    // itself and was printed in a different block.
+    let (db, _t) = seeded_db();
+    let out = run_build_command(&db, "audit area Oakvale Village");
+    assert!(
+        out.contains("on the area,") || out.contains("clean"),
+        "the split tally is missing:\n{out}"
+    );
 }

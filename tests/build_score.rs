@@ -440,7 +440,13 @@ fn a_grade_that_did_not_move_says_nothing() {
 
     let (db, _t) = fresh_db();
     let a = area(&db, "Home", None);
-    let mut room = good_room(a, "Ana", Uuid::new_v4());
+    // The neighbour has to exist, or the room starts out already carrying a
+    // `room.dangling_exit` blocker — and a blocker is an F on its own, so
+    // emptying the description would move it from F to F and announce nothing.
+    let neighbour = good_room(a, "Ana", Uuid::new_v4());
+    let neighbour_id = neighbour.id;
+    db.save_room_data(neighbour).unwrap();
+    let mut room = good_room(a, "Ana", neighbour_id);
     room.vnum = Some("home:track".into());
     let id = room.id;
     db.save_room_data(room).unwrap();

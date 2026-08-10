@@ -12,7 +12,13 @@
 //   build audit mob   <what>  - grade one mobile prototype
 //   build audit quest <vnum>  - grade one quest
 //   build audit area [<key>]  - grade an area and everything in it
+//   build audit area <key> full - the same, with no cap on the list
 //   build audit world         - grade the whole world
+//   build audit code <code> [area] - everything raising one finding code
+//   build waive <code> <target> <reason>   - mark a finding reviewed
+//   build waive all <code> <area> <reason> - the same, area-wide
+//   build waive list [area]                - reviewed findings
+//   build waive remove <code> <target>     - put a finding back
 //
 // `<what>` is a vnum, or the keyword of something standing or lying in the
 // room. A builder auditing a mob is almost always looking at it, and `mob
@@ -31,6 +37,14 @@
 //
 // Polish findings are suggestions. A room that is all polish is a finished
 // room, and chasing them to zero is not the point.
+//
+// A BLOCKER is an F on its own — one blocker deducts more than the D floor. If
+// a row is red, the content is broken as shipped, whatever else is on it.
+//
+// Every check is a lint, and every lint is eventually wrong about something a
+// builder meant. `build waive` is the answer to that: it records a finding as
+// reviewed, drops it from the grade and every tally, and revives it if the text
+// it was a judgement about ever changes.
 
 import "text" as text;
 
@@ -77,17 +91,37 @@ fn run_command(args, connection_id) {
         return;
     }
     if verb == "audit" {
-        let rest = [];
-        let i = 1;
-        while i < parts.len() {
-            rest.push(parts[i]);
-            i += 1;
-        }
-        do_audit(char, rest, connection_id);
+        do_audit(char, tail(parts, 1), connection_id);
+        return;
+    }
+    if verb == "waive" || verb == "review" {
+        do_waive(char, tail(parts, 1), connection_id);
         return;
     }
 
     send_client_message(connection_id, usage());
+}
+
+fn tail(parts, from) {
+    let out = [];
+    let i = from;
+    while i < parts.len() {
+        out.push(parts[i]);
+        i += 1;
+    }
+    return out;
+}
+
+// Everything before index `upto`. Used to lift a trailing modifier word off an
+// argument list before the rest of it is joined back into prose.
+fn tail_upto(parts, upto) {
+    let out = [];
+    let i = 0;
+    while i < upto {
+        out.push(parts[i]);
+        i += 1;
+    }
+    return out;
 }
 
 fn usage() {
@@ -105,7 +139,23 @@ fn usage() {
     out += "  build audit quest <vnum>  grade one quest\n";
     out += "  build audit area [<key>]  grade an area and its contents\n";
     out += "  build audit world         grade the whole world\n";
+    out += "  build audit code <code>   everything raising one finding code\n";
+    out += "  build waive ...           mark a finding reviewed — `build waive` for more\n";
     out += "  \x1b[0;37m<what> is a vnum, or the keyword of something in this room.\x1b[0m";
+    return out;
+}
+
+fn waive_usage() {
+    let out = "\x1b[1;36mbuild waive\x1b[0m — record a finding as reviewed\n";
+    out += "  build waive <code> <target> <reason>    one finding on one thing\n";
+    out += "  build waive all <code> <area> <reason>  that code, everywhere in an area\n";
+    out += "  build waive list [area]                 what has been waived\n";
+    out += "  build waive remove <code> <target>      put a finding back\n";
+    out += "\n";
+    out += "  \x1b[0;37m<target> is a vnum, an area prefix, or `world` — the label the audit\n";
+    out += "  prints beside the finding. Use `build audit code <code>` to list them.\n";
+    out += "  A reason is required. Blockers need an admin.\n";
+    out += "  A waiver lapses if the text it was written about changes.\x1b[0m";
     return out;
 }
 
@@ -129,18 +179,34 @@ fn do_audit(char, rest, connection_id) {
         show_world(connection_id);
         return;
     }
+    if what == "code" {
+        if key == "" {
+            send_client_message(connection_id, "Which code? `build audit code <code> [area]` — codes are the middle column of a findings list.");
+            return;
+        }
+        let scope = "";
+        if rest.len() > 2 { scope = build_rest(rest, 2); }
+        show_code(key.to_lower(), scope, connection_id);
+        return;
+    }
     if what == "area" || what == "zone" {
         // An area key is prose — `build audit area Dungeon Crawl Level 1` has
         // to reach the whole tail. Item and mobile keys deliberately do not:
         // they feed `find_item_in_room` / `find_mobile_by_keyword`, which take
         // one keyword with an optional `N.` prefix.
+        let full = false;
+        let last = rest.len() - 1;
+        if rest.len() > 2 && rest[last].to_lower() == "full" {
+            full = true;
+            rest = tail_upto(rest, last);
+        }
         if rest.len() > 1 { key = build_rest(rest, 1); }
         if key == "" { key = current_area_key(char); }
         if key == "" {
             send_client_message(connection_id, "This room belongs to no area. Try `build audit area <name>`.");
             return;
         }
-        show_area(key, connection_id);
+        show_area(key, full, connection_id);
         return;
     }
 
@@ -247,10 +313,20 @@ fn severity_colour(severity) {
     return "\x1b[0;36m";
 }
 
-// `C  62  [######----]`, coloured by letter. Every surface that shows a grade
-// uses this, so the bar and the letter can never disagree.
-fn grade_tag(score, letter) {
-    return letter_colour(letter) + letter + "\x1b[0m " + text::pad_left("" + score, 3)
+// `C  62  [######----]`, coloured by the worst thing on it. Every surface that
+// shows a grade uses this, so the bar and the letter can never disagree.
+//
+// The colour follows severity rather than the letter because those are two
+// different questions and only one of them is urgent. A header that tallied "3
+// blocker" in red over rows tinted by letter read as a contradiction — the
+// blockers were all there, on rows the colour scheme was calling merely
+// mediocre. Clean content falls back to the letter, which is the only case
+// where the letter is the whole story.
+fn grade_tag(score, letter, blockers, warns) {
+    let colour = letter_colour(letter);
+    if blockers > 0 { colour = severity_colour("blocker"); }
+    else if warns > 0 { colour = severity_colour("warn"); }
+    return colour + letter + "\x1b[0m " + text::pad_left("" + score, 3)
         + "  " + audit_grade_bar(score);
 }
 
@@ -280,6 +356,43 @@ fn column(value, width) {
     return text::pad_right(s, width);
 }
 
+// The label column holds a vnum, and a truncated vnum is useless — a builder
+// cannot paste `dungeon1:du…` into `redit`, and in an area full of near-identical
+// names (thirty hallways) the vnum is the only thing that identifies the row.
+// So it sizes itself to the widest vnum on screen rather than to a guess. The
+// cap stops one pathological vnum from squeezing every other column out.
+fn label_width(rows, floor) {
+    let w = floor;
+    for r in rows {
+        let n = ("" + r.label).len() + 1; // +1 so the widest label still gets a gap
+        if n > w { w = n; }
+    }
+    if w > 40 { w = 40; }
+    return w;
+}
+
+// What the label column takes, the name column gives up, so the line length
+// stays put. The name is only there for recognition — truncating it costs
+// nothing a builder needs.
+// `label_width` for rows keyed by `target` rather than `label` — a waiver
+// target is what a builder pastes into `build waive`, so truncating it makes
+// the row useless for the one thing it is there for.
+fn target_width(rows, floor) {
+    let w = floor;
+    for r in rows {
+        let n = ("" + r.target).len() + 1;
+        if n > w { w = n; }
+    }
+    if w > 40 { w = 40; }
+    return w;
+}
+
+fn name_width(budget, label_w) {
+    let w = budget - label_w;
+    if w < 12 { w = 12; }
+    return w;
+}
+
 fn plural(n, word) {
     if n == 1 { return "" + n + " " + word; }
     return "" + n + " " + word + "s";
@@ -301,6 +414,26 @@ fn tally_line(blockers, warns, polish) {
     return out;
 }
 
+// The header tally, split by where the findings live.
+//
+// A container's total is its own findings plus its contents'. Printing one
+// number and then two lists that each hold part of it is how "3 blocker" came
+// to look like it had lost one: the area's own blocker was in the `Area` block
+// and the other two were rows in `Worst first`. Naming the halves costs one
+// short parenthetical and removes the whole class of question.
+fn split_tally(report) {
+    let out = tally_line(report.blockers, report.warns, report.polish);
+    let own = report.own_blockers + report.own_warns + report.own_polish;
+    let content = report.content_blockers + report.content_warns + report.content_polish;
+    if own > 0 && content > 0 {
+        out += "  \x1b[0;37m(" + own + " on the area, " + content + " on its contents)\x1b[0m";
+    }
+    if report.reviewed > 0 {
+        out += "  \x1b[0;36m" + report.reviewed + " reviewed\x1b[0m";
+    }
+    return out;
+}
+
 // ===== one entity =====
 
 fn show_entity(kind, key, connection_id, char) {
@@ -318,11 +451,28 @@ fn show_entity(kind, key, connection_id, char) {
     if heading == "" { heading = "(unnamed)"; }
 
     let out = "\x1b[1;36m" + heading + "\x1b[0m  \x1b[0;37m(" + kind + " " + report.label + ")\x1b[0m\n";
-    out += "  " + grade_tag(report.score, report.letter) + "   "
-        + tally_line(report.blockers, report.warns, report.polish) + "\n";
+    out += "  " + grade_tag(report.score, report.letter, report.blockers, report.warns) + "   "
+        + tally_line(report.blockers, report.warns, report.polish);
+    if report.reviewed > 0 {
+        out += "  \x1b[0;36m" + report.reviewed + " reviewed\x1b[0m";
+    }
+    out += "\n";
     out += credit_line(report) + "\n";
     out += findings_block(report.findings);
+    out += reviewed_block(report.waived);
     send_client_message(connection_id, out);
+}
+
+// What has been waived on this entity. Printed dimly and after the live
+// findings, because it is a record rather than a task — but printed, because a
+// suppression nobody can see is a suppression nobody re-examines.
+fn reviewed_block(waived) {
+    if waived.len() == 0 { return ""; }
+    let out = "\n  \x1b[0;36mReviewed\x1b[0m\n";
+    for f in waived {
+        out += "  \x1b[0;37m" + text::pad_right("ok", 8) + column(f.code, 32) + f.message + "\x1b[0m\n";
+    }
+    return out;
 }
 
 // Who is responsible for this content, and whether it can be credited.
@@ -345,22 +495,23 @@ fn credit_line(report) {
 
 // ===== one area =====
 
-fn show_area(key, connection_id) {
-    let report = audit_area_report(key);
+fn show_area(key, full, connection_id) {
+    let report = audit_area_report(key, full);
     if !report.found {
         send_client_message(connection_id, "No area matches '" + key + "'.");
         return;
     }
 
     let out = "\x1b[1;36m" + report.name + "\x1b[0m\n";
-    out += "  " + grade_tag(report.score, report.letter) + "   "
-        + tally_line(report.blockers, report.warns, report.polish) + "\n\n";
+    out += "  " + grade_tag(report.score, report.letter, report.blockers, report.warns) + "   "
+        + split_tally(report) + "\n\n";
 
     out += contents_line(report.counts);
     out += "\n\x1b[1;37mArea\x1b[0m\n";
     out += findings_block(report.findings);
+    out += reviewed_block(report.waived);
 
-    out += worst_block(report);
+    out += worst_block(report, key);
     send_client_message(connection_id, out);
 }
 
@@ -379,22 +530,238 @@ fn contents_line(counts) {
     return out;
 }
 
-fn worst_block(report) {
+// Worst entities first, each with everything wrong with it.
+//
+// Only the first finding used to print, which is how a header could count 15
+// warns while the list showed six: a room with four findings contributed one
+// line. The extras are indented under their row and capped, so a single
+// pathological entity cannot push the rest off the screen.
+fn worst_block(report, key) {
     if report.worst.len() == 0 { return ""; }
-    let out = "\n\x1b[1;37mWorst first\x1b[0m\n";
+    let heading = "\n\x1b[1;37mWorst first\x1b[0m";
+    if report.truncated {
+        heading += "  \x1b[0;37m(" + report.worst.len() + " of " + report.flagged + " flagged)\x1b[0m";
+    }
+    let out = heading + "\n";
+    let lw = label_width(report.worst, 13);
+    let nw = name_width(41, lw);
     for e in report.worst {
         let top = "";
         if e.findings.len() > 0 { top = e.findings[0].message; }
-        out += "  " + letter_colour(e.letter) + e.letter + "\x1b[0m "
+        out += "  " + grade_row_letter(e) + " "
             + text::pad_left("" + e.score, 3) + "  "
             + column(e.kind, 8)
-            + column(e.label, 13)
-            + column(e.name, 28) + top + "\n";
+            + column(e.label, lw)
+            + column(e.name, nw) + top + "\n";
+        out += extra_findings(e.findings);
     }
     if report.truncated {
-        out += "  \x1b[0;37m...and more. Fix these first, then run it again.\x1b[0m\n";
+        out += "  \x1b[0;37mFix these first, then run it again — `build audit area "
+            + key + " full` for the rest.\x1b[0m\n";
     }
     return out;
+}
+
+// The letter for one worst-first row, tinted by what is actually wrong with it
+// rather than by the band the score landed in.
+fn grade_row_letter(e) {
+    let colour = letter_colour(e.letter);
+    if e.blockers > 0 { colour = severity_colour("blocker"); }
+    else if e.warns > 0 { colour = severity_colour("warn"); }
+    return colour + e.letter + "\x1b[0m";
+}
+
+// Findings two and beyond on a worst-first row, indented under it.
+fn extra_findings(findings) {
+    if findings.len() < 2 { return ""; }
+    let out = "";
+    let shown = findings.len();
+    if shown > 4 { shown = 4; }
+    let i = 1;
+    while i < shown {
+        let f = findings[i];
+        out += "        " + severity_colour(f.severity) + text::pad_right(f.label, 8)
+            + "\x1b[0m" + f.message + "\n";
+        i += 1;
+    }
+    if findings.len() > shown {
+        out += "        \x1b[0;37m+" + (findings.len() - shown) + " more\x1b[0m\n";
+    }
+    return out;
+}
+
+// ===== one code across many entities =====
+
+// Every entity currently raising one finding code.
+//
+// The audit answers "what is wrong with this thing"; this answers "where else
+// does this happen", which is the question a builder has right before deciding
+// a check is wrong about their content. It is also the list `build waive all`
+// acts on, so seeing it first is seeing exactly what would be silenced.
+fn show_code(code, scope, connection_id) {
+    let hits = audit_findings_by_code(code, scope);
+    if hits.len() == 0 {
+        let where_ = "the world";
+        if scope != "" { where_ = scope; }
+        send_client_message(connection_id, "Nothing in " + where_ + " raises `" + code + "` right now.");
+        return;
+    }
+
+    let out = "\x1b[1;36m" + code + "\x1b[0m";
+    if scope != "" { out += "  \x1b[0;37min " + scope + "\x1b[0m"; }
+    out += "  \x1b[0;37m" + hits.len() + " found\x1b[0m\n";
+    let lw = target_width(hits, 14);
+    for h in hits {
+        out += "  " + severity_colour(h.severity) + text::pad_right(h.label, 8) + "\x1b[0m"
+            + column(h.kind, 8)
+            + column(h.target, lw)
+            + h.name + "\n";
+    }
+    out += "\n  \x1b[0;37m`build waive " + code + " <target> <reason>` for one, or\n";
+    out += "  `build waive all " + code + " <area> <reason>` for all of them here.\x1b[0m";
+    send_client_message(connection_id, out);
+}
+
+// ===== waivers =====
+
+fn do_waive(char, rest, connection_id) {
+    if rest.len() == 0 {
+        send_client_message(connection_id, waive_usage());
+        return;
+    }
+    let verb = rest[0].to_lower();
+
+    if verb == "list" {
+        let scope = "";
+        if rest.len() > 1 { scope = build_rest(rest, 1); }
+        show_waivers(scope, connection_id);
+        return;
+    }
+    if verb == "remove" || verb == "delete" || verb == "undo" {
+        if rest.len() < 3 {
+            send_client_message(connection_id, "`build waive remove <code> <target>`");
+            return;
+        }
+        do_waive_remove(char, rest[1].to_lower(), rest[2], connection_id);
+        return;
+    }
+    if verb == "all" {
+        if rest.len() < 4 {
+            send_client_message(connection_id, "`build waive all <code> <area> <reason>` — a reason is required.");
+            return;
+        }
+        do_waive_all(char, rest[1].to_lower(), rest[2], build_rest(rest, 3), connection_id);
+        return;
+    }
+
+    if rest.len() < 3 {
+        send_client_message(connection_id, "`build waive <code> <target> <reason>` — a reason is required.");
+        return;
+    }
+    do_waive_one(char, verb, rest[1], build_rest(rest, 2), connection_id);
+}
+
+fn do_waive_one(char, code, target, reason, connection_id) {
+    let res = waive_finding(code, target, reason, char.name);
+    if !res.found {
+        send_client_message(connection_id, "`" + code + "` is not firing on `" + target
+            + "` right now. Nothing to review — check `build audit code " + code + "`.");
+        return;
+    }
+    if !res.allowed {
+        send_client_message(connection_id, waive_denial_text(res.reason, code, target));
+        return;
+    }
+    let out = "\x1b[0;32mReviewed.\x1b[0m " + res.code + " on " + res.target + " no longer counts.\n";
+    out += "  \x1b[0;37m" + res.message + "\x1b[0m\n";
+    out += "  \x1b[0;37mIt comes back if the text it was about changes. "
+        + "`build waive remove " + res.code + " " + res.target + "` to undo.\x1b[0m";
+    send_client_message(connection_id, out);
+}
+
+fn do_waive_all(char, code, area, reason, connection_id) {
+    let res = waive_findings_in_area(code, area, reason, char.name);
+    if !res.found {
+        send_client_message(connection_id, "No area matches '" + area + "'.");
+        return;
+    }
+    if res.waived == 0 {
+        if res.reason == "not_firing" {
+            send_client_message(connection_id, "Nothing in " + res.area + " raises `" + code + "` right now.");
+            return;
+        }
+        send_client_message(connection_id, waive_denial_text(res.reason, code, res.area));
+        return;
+    }
+    let out = "\x1b[0;32mReviewed.\x1b[0m " + res.waived + " × " + code + " in " + res.area + ".\n";
+    if res.denied > 0 {
+        out += "  \x1b[1;33m" + res.denied + " skipped\x1b[0m \x1b[0;37m— "
+            + waive_denial_text(res.reason, code, res.area) + "\x1b[0m";
+    }
+    send_client_message(connection_id, out);
+}
+
+fn do_waive_remove(char, code, target, connection_id) {
+    let res = remove_audit_waiver(code, target, char.name);
+    if !res.found {
+        send_client_message(connection_id, "No waiver on `" + code + "` for `" + target + "`.");
+        return;
+    }
+    if !res.allowed {
+        send_client_message(connection_id, waive_denial_text(res.reason, code, target));
+        return;
+    }
+    send_client_message(connection_id, "\x1b[0;32mRestored.\x1b[0m " + code + " on " + target + " counts again.");
+}
+
+// Why a waiver was refused, in words. The reasons are deliberately few: this is
+// the surface where a builder learns what they are and are not trusted with.
+fn waive_denial_text(reason, code, target) {
+    if reason == "blocker_needs_admin" {
+        return "`" + code + "` is a BLOCKER — the content is broken as shipped, not merely flagged. "
+            + "An admin has to sign that off.";
+    }
+    if reason == "world_needs_admin" {
+        return "World-level findings belong to no builder. An admin has to review those.";
+    }
+    if reason == "not_permitted" {
+        return "You cannot edit the area `" + target + "` belongs to, so you cannot review its findings.";
+    }
+    return "That could not be reviewed.";
+}
+
+fn show_waivers(scope, connection_id) {
+    let rows = list_audit_waivers(scope);
+    if rows.len() == 0 {
+        let where_ = "the world";
+        if scope != "" { where_ = scope; }
+        send_client_message(connection_id, "Nothing has been reviewed in " + where_ + ".");
+        return;
+    }
+
+    let out = "\x1b[1;36mReviewed findings\x1b[0m";
+    if scope != "" { out += "  \x1b[0;37min " + scope + "\x1b[0m"; }
+    out += "\n";
+    let stale = 0;
+    for w in rows {
+        if w.state == "stale" { stale += 1; }
+        out += "  " + waiver_state_tag(w.state) + " "
+            + column(w.code, 32)
+            + column(w.target, 16)
+            + column(w.reviewed_by, 12)
+            + "\x1b[0;37m" + w.reason + "\x1b[0m\n";
+    }
+    if stale > 0 {
+        out += "\n  \x1b[1;33m" + stale + " stale\x1b[0m \x1b[0;37m— the text changed, so the finding is "
+            + "back. Review it again or fix it.\x1b[0m";
+    }
+    send_client_message(connection_id, out);
+}
+
+fn waiver_state_tag(state) {
+    if state == "stale" { return "\x1b[1;33m" + text::pad_right("stale", 9) + "\x1b[0m"; }
+    if state == "resolved" { return "\x1b[0;32m" + text::pad_right("fixed", 9) + "\x1b[0m"; }
+    return "\x1b[0;36m" + text::pad_right("ok", 9) + "\x1b[0m";
 }
 
 // ===== the world =====
@@ -408,19 +775,36 @@ fn show_world(connection_id) {
 
     let f = report.facts;
     let out = "\x1b[1;36mWorld Audit\x1b[0m\n";
-    out += "  " + grade_tag(report.score, report.letter) + "   "
-        + tally_line(report.blockers, report.warns, report.polish) + "\n\n";
+    out += "  " + grade_tag(report.score, report.letter, report.blockers, report.warns) + "   "
+        + tally_line(report.blockers, report.warns, report.polish)
+        + "  \x1b[0;37m(world and area level)\x1b[0m\n";
+    // The header grades areas as units, so it counts each area's own findings
+    // and not its rooms'. The rows below count everything inside each area, and
+    // have therefore always summed to a much larger number. Both are worth
+    // knowing; only the unlabelled pair was confusing.
+    // Indented to sit under the first tally: 19 characters of grade tag plus
+    // the three-space gutter `grade_tag` callers use.
+    out += "  " + text::pad_left("", 19) + "   "
+        + tally_line(report.deep_blockers, report.deep_warns, report.deep_polish)
+        + "  \x1b[0;37m(everything, all the way down)\x1b[0m\n";
+    if report.reviewed > 0 {
+        out += "  " + text::pad_left("", 19) + "   \x1b[0;36m" + report.reviewed + " reviewed\x1b[0m\n";
+    }
+    out += "\n";
     out += facts_block(f);
 
     out += "\n\x1b[1;37mWorld\x1b[0m\n";
     out += findings_block(report.findings);
+    out += reviewed_block(report.waived);
 
-    out += "\n\x1b[1;37mAreas\x1b[0m\n";
+    out += "\n\x1b[1;37mAreas\x1b[0m  \x1b[0;37m(counting contents)\x1b[0m\n";
+    let lw = label_width(report.areas, 14);
+    let nw = name_width(40, lw);
     for a in report.areas {
-        out += "  " + letter_colour(a.letter) + a.letter + "\x1b[0m "
+        out += "  " + grade_row_letter(a) + " "
             + text::pad_left("" + a.score, 3) + "  "
-            + column(a.label, 14)
-            + column(a.name, 26)
+            + column(a.label, lw)
+            + column(a.name, nw)
             + text::pad_left("" + a.rooms, 4) + " rooms   "
             + tally_line(a.blockers, a.warns, a.polish) + "\n";
     }

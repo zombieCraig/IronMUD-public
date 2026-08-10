@@ -618,7 +618,7 @@ pub const SET_SUBCOMMANDS_BASE: &[&str] = &["mxp", "color", "afk", "helpline", "
 pub const PROMPT_SUBCOMMANDS: &[&str] = &["simple", "verbose", "tokens", "default"];
 
 /// `build <subcommand>`.
-pub const BUILD_SUBCOMMANDS: &[&str] = &["audit", "who", "next", "track", "credits", "claim"];
+pub const BUILD_SUBCOMMANDS: &[&str] = &["audit", "waive", "who", "next", "track", "credits", "claim"];
 
 /// `bounty <subcommand>`.
 pub const BOUNTY_SUBCOMMANDS: &[&str] = &[
@@ -631,7 +631,12 @@ pub const WORLD_SUBCOMMANDS: &[&str] = &["milestones"];
 /// `build audit <target>`. `here` and `world` take no argument; the rest take a
 /// key, which `complete_build` supplies from the world's vnums and — for items
 /// and mobiles — the contents of the room the builder is standing in.
-pub const BUILD_AUDIT_TARGETS: &[&str] = &["here", "room", "item", "mob", "quest", "area", "world"];
+pub const BUILD_AUDIT_TARGETS: &[&str] = &["here", "room", "item", "mob", "quest", "area", "world", "code"];
+
+/// `build waive <subcommand>`. The bare form takes a finding code, which is
+/// not completable — there is no list of live codes on the client side — so
+/// only the three verbs are offered.
+pub const BUILD_WAIVE_SUBCOMMANDS: &[&str] = &["list", "all", "remove"];
 
 /// Set command subcommands (builder-only)
 pub const SET_SUBCOMMANDS_BUILDER: &[&str] = &["roomflags", "builderdebug"];
