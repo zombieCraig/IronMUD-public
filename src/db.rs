@@ -1461,6 +1461,93 @@ impl Db {
         Ok(())
     }
 
+    /// File unstamped content under the area its vnum names: a room, item
+    /// prototype or mobile prototype with no `area_id` whose vnum reads
+    /// `islands:sow` belongs to the area whose prefix is `islands`.
+    ///
+    /// The API's create endpoints require a vnum and take `area_id` as
+    /// optional, so an area built through MCP files its rooms and orphans
+    /// every mob and item. The auditor reads membership by vnum now, but the
+    /// stored field is what `authorize_existing_area` and the per-area quotas
+    /// read — leaving it unset means anyone may edit another builder's mobs
+    /// and the area's prototypes count against nobody's cap.
+    ///
+    /// Only fills blanks: an explicit `area_id` is never overwritten, and a
+    /// prefix claimed by two areas is skipped rather than guessed at. Live
+    /// instances are left alone — they inherit from the prototype at spawn.
+    /// One-shot, guarded by a setting key. Wired in `main.rs` beside the
+    /// other `migrate_*` calls.
+    pub fn migrate_prototypes_to_vnum_areas(&self) -> Result<()> {
+        const MIGRATION_KEY: &str = "vnum_area_backfill_done";
+        if let Ok(Some(_)) = self.get_setting(MIGRATION_KEY) {
+            return Ok(());
+        }
+
+        // A prefix two areas answer to names neither of them.
+        let mut by_prefix: std::collections::HashMap<String, Option<Uuid>> = std::collections::HashMap::new();
+        for area in self.list_all_areas()? {
+            let prefix = area.prefix.trim().to_lowercase();
+            if prefix.is_empty() {
+                continue;
+            }
+            by_prefix
+                .entry(prefix)
+                .and_modify(|slot| *slot = None)
+                .or_insert(Some(area.id));
+        }
+        let area_for = |vnum: Option<&str>| -> Option<Uuid> {
+            let prefix = crate::audit::scan::vnum_area_prefix(vnum?)?;
+            by_prefix.get(&prefix).copied().flatten()
+        };
+
+        let mut rooms = 0usize;
+        for room in self.list_all_rooms()? {
+            if room.area_id.is_some() {
+                continue;
+            }
+            if let Some(area_id) = area_for(room.vnum.as_deref()) {
+                let mut room = room;
+                room.area_id = Some(area_id);
+                self.save_room_data(room)?;
+                rooms += 1;
+            }
+        }
+
+        let mut items = 0usize;
+        for item in self.list_all_items()? {
+            if !item.is_prototype || item.area_id.is_some() {
+                continue;
+            }
+            if let Some(area_id) = area_for(item.vnum.as_deref()) {
+                let mut item = item;
+                item.area_id = Some(area_id);
+                self.save_item_data(item)?;
+                items += 1;
+            }
+        }
+
+        let mut mobiles = 0usize;
+        for mobile in self.list_all_mobiles()? {
+            if !mobile.is_prototype || mobile.area_id.is_some() {
+                continue;
+            }
+            if let Some(area_id) = area_for(Some(mobile.vnum.as_str())) {
+                let mut mobile = mobile;
+                mobile.area_id = Some(area_id);
+                self.save_mobile_data(mobile)?;
+                mobiles += 1;
+            }
+        }
+
+        let _ = self.set_setting(MIGRATION_KEY, "1");
+        if rooms + items + mobiles > 0 {
+            tracing::info!(
+                "Filed {rooms} room(s), {items} item(s) and {mobiles} mobile(s) under the area their vnum names"
+            );
+        }
+        Ok(())
+    }
+
     // ========== Item Functions ==========
 
     /// Get item data by ID

@@ -123,6 +123,11 @@ async fn main() -> Result<()> {
     // setting key so it's a no-op after first successful run.
     db.migrate_item_legacy_bonuses_to_affects()?;
 
+    // File rooms and prototypes that carry an area's vnum prefix but no
+    // area_id under that area. One-shot; see the doc comment for why the
+    // stored field still matters now the auditor reads vnums.
+    db.migrate_prototypes_to_vnum_areas()?;
+
     // Rebuild vnum index from existing room data
     db.rebuild_vnum_index()?;
 

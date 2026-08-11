@@ -118,7 +118,11 @@ pub fn find_common_prefix(strings: &[String]) -> String {
     }
 
     let first = &strings[0];
-    let mut prefix_len = first.len();
+    // Characters throughout: `common_len` below counts characters, so seeding
+    // this with `first.len()` (bytes) and slicing by the result mixed the two
+    // — a single accented candidate made TAB either cut in the wrong place or
+    // panic outright.
+    let mut prefix_len = first.chars().count();
 
     for s in &strings[1..] {
         let common_len = first
@@ -129,7 +133,7 @@ pub fn find_common_prefix(strings: &[String]) -> String {
         prefix_len = prefix_len.min(common_len);
     }
 
-    first[..prefix_len].to_string()
+    crate::text::truncate_chars(first, prefix_len).to_string()
 }
 
 /// Format completion result for display.

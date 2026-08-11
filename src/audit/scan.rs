@@ -46,6 +46,9 @@ pub struct WorldSnapshot {
     pub quests: Vec<QuestData>,
     /// Spawn points per area id.
     pub spawn_counts: HashMap<Uuid, usize>,
+    /// Lowercased area prefix -> area id, for prototypes whose `area_id` is
+    /// unset but whose vnum names an area. See [`WorldSnapshot::owning_area`].
+    pub areas_by_prefix: HashMap<String, Uuid>,
     pub spawn_total: usize,
     pub recipe_count: usize,
     /// The transport network. Held whole rather than counted because
@@ -82,6 +85,15 @@ pub fn area_matches(area: &AreaData, needle: &str) -> bool {
         || area.name.trim().to_lowercase() == lower
 }
 
+/// The area prefix a vnum names: `islands:sow` -> `islands`.
+///
+/// A vnum with no colon names no area.
+pub fn vnum_area_prefix(vnum: &str) -> Option<String> {
+    vnum.split_once(':')
+        .map(|(p, _)| p.trim().to_lowercase())
+        .filter(|p| !p.is_empty())
+}
+
 impl WorldSnapshot {
     pub fn load(db: &Db) -> Result<WorldSnapshot> {
         let areas = db.list_all_areas()?;
@@ -90,11 +102,27 @@ impl WorldSnapshot {
         let mobiles: Vec<MobileData> = db.list_all_mobiles()?.into_iter().filter(|m| m.is_prototype).collect();
         let quests = db.list_all_quests()?;
 
+        let areas_by_prefix: HashMap<String, Uuid> = areas
+            .iter()
+            .filter(|a| !a.prefix.trim().is_empty())
+            .map(|a| (a.prefix.trim().to_lowercase(), a.id))
+            .collect();
+        // Same rule as `owning_area`, needed before the snapshot exists.
+        let resolve = |area_id: Option<Uuid>, vnum: Option<&str>| -> Option<Uuid> {
+            area_id.or_else(|| {
+                vnum.and_then(vnum_area_prefix)
+                    .and_then(|p| areas_by_prefix.get(&p).copied())
+            })
+        };
+
         let mut spawn_counts: HashMap<Uuid, usize> = HashMap::new();
         let spawns = db.list_all_spawn_points()?;
         let spawn_total = spawns.len();
         // A spawn point belongs to the area of the room it fires in.
-        let room_area: HashMap<Uuid, Option<Uuid>> = rooms.iter().map(|r| (r.id, r.area_id)).collect();
+        let room_area: HashMap<Uuid, Option<Uuid>> = rooms
+            .iter()
+            .map(|r| (r.id, resolve(r.area_id, r.vnum.as_deref())))
+            .collect();
         for sp in &spawns {
             if let Some(Some(area_id)) = room_area.get(&sp.room_id) {
                 *spawn_counts.entry(*area_id).or_insert(0) += 1;
@@ -108,6 +136,7 @@ impl WorldSnapshot {
             mobiles,
             quests,
             spawn_counts,
+            areas_by_prefix,
             spawn_total,
             recipe_count: db.list_all_recipes().map(|v| v.len()).unwrap_or(0),
             transports: db.list_all_transports().unwrap_or_default(),
@@ -126,24 +155,50 @@ impl WorldSnapshot {
             .get_or_init(|| AuditCtx::build_with_transports(&self.rooms, &self.transports))
     }
 
+    /// Which area a piece of content belongs to.
+    ///
+    /// `area_id` decides it when set. When it is not, the vnum does: a
+    /// prototype called `islands:sow` is Islands' whether or not anything ever
+    /// stamped it. MCP's `create_mobile`/`create_item` require a vnum and take
+    /// `area_id` as optional, so an area built through them files its rooms and
+    /// orphans every mob and item — and the area audit then reports the place
+    /// uninhabited with a sow standing in the room.
+    ///
+    /// An explicit `area_id` always wins; the vnum is only consulted when there
+    /// is nothing to contradict.
+    pub fn owning_area(&self, area_id: Option<Uuid>, vnum: Option<&str>) -> Option<Uuid> {
+        area_id.or_else(|| {
+            vnum.and_then(vnum_area_prefix)
+                .and_then(|p| self.areas_by_prefix.get(&p).copied())
+        })
+    }
+
+    fn mobile_area(&self, m: &MobileData) -> Option<Uuid> {
+        self.owning_area(m.area_id, Some(m.vnum.as_str()))
+    }
+
+    fn item_area(&self, i: &ItemData) -> Option<Uuid> {
+        self.owning_area(i.area_id, i.vnum.as_deref())
+    }
+
     pub fn area_contents(&self, area_id: Uuid) -> AreaContentsOwned {
         AreaContentsOwned {
             rooms: self
                 .rooms
                 .iter()
-                .filter(|r| r.area_id == Some(area_id))
+                .filter(|r| self.room_area(r) == Some(area_id))
                 .cloned()
                 .collect(),
             items: self
                 .items
                 .iter()
-                .filter(|i| i.area_id == Some(area_id))
+                .filter(|i| self.item_area(i) == Some(area_id))
                 .cloned()
                 .collect(),
             mobiles: self
                 .mobiles
                 .iter()
-                .filter(|m| m.area_id == Some(area_id))
+                .filter(|m| self.mobile_area(m) == Some(area_id))
                 .cloned()
                 .collect(),
             quests: self.quests_for_area(area_id),
@@ -158,7 +213,7 @@ impl WorldSnapshot {
         let givers: HashSet<&str> = self
             .mobiles
             .iter()
-            .filter(|m| m.area_id == Some(area_id))
+            .filter(|m| self.mobile_area(m) == Some(area_id))
             .map(|m| m.vnum.as_str())
             .collect();
         self.quests
@@ -168,17 +223,22 @@ impl WorldSnapshot {
             .collect()
     }
 
-    /// Rooms whose area is unset. They are real content that no area audit will
-    /// ever reach, so the world report has to account for them itself.
+    /// Rooms belonging to no area — by `area_id` or by vnum. They are real
+    /// content that no area audit will ever reach, so the world report has to
+    /// account for them itself.
     pub fn orphan_room_count(&self) -> usize {
-        self.rooms.iter().filter(|r| r.area_id.is_none()).count()
+        self.rooms.iter().filter(|r| self.room_area(r).is_none()).count()
+    }
+
+    fn room_area(&self, r: &RoomData) -> Option<Uuid> {
+        self.owning_area(r.area_id, r.vnum.as_deref())
     }
 
     pub fn facts(&self) -> WorldFacts {
-        let room_area: HashMap<Uuid, Option<Uuid>> = self.rooms.iter().map(|r| (r.id, r.area_id)).collect();
+        let room_area: HashMap<Uuid, Option<Uuid>> = self.rooms.iter().map(|r| (r.id, self.room_area(r))).collect();
         let mut connected: HashSet<Uuid> = HashSet::new();
         for room in &self.rooms {
-            let Some(home) = room.area_id else { continue };
+            let Some(home) = self.room_area(room) else { continue };
             for (_, dest) in super::exit_pairs(&room.exits) {
                 if let Some(Some(other)) = room_area.get(&dest)
                     && *other != home
@@ -204,8 +264,8 @@ impl WorldSnapshot {
             bank_rooms: self.rooms.iter().filter(|r| r.flags.bank).count(),
             connected_areas: connected.len(),
             dialogue_trees: self.mobiles.iter().filter(|m| m.dialogue_tree.is_some()).count(),
-            unfiled_mobiles: self.mobiles.iter().filter(|m| m.area_id.is_none()).count(),
-            unfiled_items: self.items.iter().filter(|i| i.area_id.is_none()).count(),
+            unfiled_mobiles: self.mobiles.iter().filter(|m| self.mobile_area(m).is_none()).count(),
+            unfiled_items: self.items.iter().filter(|i| self.item_area(i).is_none()).count(),
         }
     }
 }
@@ -259,7 +319,7 @@ pub fn scan_world(snapshot: &WorldSnapshot) -> AuditReport {
         });
     }
 
-    for room in snapshot.rooms.iter().filter(|r| r.area_id.is_none()) {
+    for room in snapshot.rooms.iter().filter(|r| snapshot.room_area(r).is_none()) {
         let label = room.vnum.clone().unwrap_or_default();
         entries.push(AuditEntry {
             kind: EntityKind::Room,

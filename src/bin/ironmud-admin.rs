@@ -774,15 +774,12 @@ fn base64_encode(bytes: &[u8]) -> String {
     result
 }
 
-/// Truncate a string to max_len, adding "..." if truncated
+/// Truncate a string to max_len, adding "..." if truncated.
+///
+/// Counted in characters and cut between them: this prints room titles and
+/// mob names, and slicing those by byte panicked on the first accented one.
 fn truncate_str(s: &str, max_len: usize) -> String {
-    if s.len() <= max_len {
-        s.to_string()
-    } else if max_len > 3 {
-        format!("{}...", &s[..max_len - 3])
-    } else {
-        s[..max_len].to_string()
-    }
+    ironmud::text::preview(s, max_len)
 }
 
 /// Format a Unix timestamp as a human-readable date

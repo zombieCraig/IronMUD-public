@@ -45,8 +45,14 @@ fn strip_comments(text: &str) -> String {
             }
             continue;
         }
-        out.push(bytes[i] as char);
-        i += 1;
+        // Copy one whole character. `bytes[i] as char` read each byte as
+        // latin-1, so a UTF-8 source file came out as mojibake — and, because
+        // the replacement re-encodes wider than the byte it replaced, it also
+        // slid every byte offset after it and with them the line numbers this
+        // function exists to keep accurate.
+        let ch = text[i..].chars().next().expect("i is always a char boundary");
+        out.push(ch);
+        i += ch.len_utf8();
     }
     out
 }
@@ -335,6 +341,19 @@ mod tests {
 
     fn p() -> PathBuf {
         PathBuf::from("/test/spec_assign.c")
+    }
+
+    #[test]
+    fn non_ascii_source_survives_comment_stripping() {
+        // The stripper copied one byte at a time as latin-1, so any UTF-8 in
+        // the source came out as mojibake — and, since the replacement
+        // re-encodes wider, it slid every byte offset after it and with them
+        // the line numbers the comment stripping exists to preserve.
+        let src = "/* le château */\nASSIGNMOB(1, garçon); // café\n";
+        let out = strip_comments(src);
+        assert!(out.contains("garçon"), "mojibake in {out:?}");
+        assert!(!out.contains("Ã"), "mojibake in {out:?}");
+        assert_eq!(out.lines().count(), src.lines().count(), "line mapping moved");
     }
 
     #[test]

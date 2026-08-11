@@ -465,7 +465,17 @@ async fn create_room(
         let defaults = area.default_room_flags.clone();
         (Some(uuid), defaults)
     } else {
-        (None, RoomFlags::default())
+        // No area named: the vnum's prefix names one. Same rule the auditor
+        // reads membership by — see `infer_area_from_vnum`.
+        match req
+            .vnum
+            .as_deref()
+            .and_then(|v| super::auth::infer_area_from_vnum(&state.db, &user, v))
+            .and_then(|id| state.db.get_area_data(&id).ok().flatten())
+        {
+            Some(area) => (Some(area.id), area.default_room_flags.clone()),
+            None => (None, RoomFlags::default()),
+        }
     };
 
     // Check vnum uniqueness if provided

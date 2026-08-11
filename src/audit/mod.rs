@@ -547,23 +547,28 @@ const VERB_MARKERS: &[&str] = &[
 ///
 /// Returns the whole string when no verb is found — a bare noun phrase like
 /// "A rusty iron key" is entirely subject.
+/// Walks characters, not bytes. Reading `bytes[idx] as char` treats a UTF-8
+/// continuation byte as a latin-1 character, and some of those are alphabetic
+/// — so a curly apostrophe or an em dash left `idx` mid-character and the
+/// slice below panicked. A builder's prose is full of both, and the panic
+/// took the connection down with it.
 fn leading_phrase(display: &str) -> &str {
-    let bytes = display.as_bytes();
-    let mut idx = 0usize;
-    while idx < bytes.len() {
-        // Advance over the run of alphabetic characters that forms one word.
-        let start = idx;
-        while idx < bytes.len() && (bytes[idx] as char).is_alphabetic() {
-            idx += 1;
+    let mut word_start: Option<usize> = None;
+    for (idx, ch) in display.char_indices() {
+        if ch.is_alphabetic() {
+            word_start.get_or_insert(idx);
+            continue;
         }
-        if idx > start {
-            let word = display[start..idx].to_lowercase();
-            if VERB_MARKERS.contains(&word.as_str()) {
-                return &display[..start];
-            }
-        } else {
-            idx += 1;
+        if let Some(start) = word_start.take()
+            && VERB_MARKERS.contains(&display[start..idx].to_lowercase().as_str())
+        {
+            return &display[..start];
         }
+    }
+    if let Some(start) = word_start
+        && VERB_MARKERS.contains(&display[start..].to_lowercase().as_str())
+    {
+        return &display[..start];
     }
     display
 }

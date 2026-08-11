@@ -95,6 +95,29 @@ pub fn parse_and_authorize_area(
     Ok(Some(uuid))
 }
 
+/// The area a new prototype belongs to when the caller named none: the one
+/// whose prefix its vnum uses.
+///
+/// `create_mobile`/`create_item` require a vnum and take `area_id` as
+/// optional, so an area built through the API files its rooms and leaves every
+/// mob and item an orphan — which reads to the auditor as an uninhabited area
+/// with nothing to find in it. A vnum of `islands:sow` says which area it is
+/// for as plainly as the field would.
+///
+/// Silent on anything doubtful: no prefix, no such area, or a caller without
+/// rights on it all leave the prototype an orphan rather than raising an error
+/// the caller never asked for. Only an `area_id` the caller passed themselves
+/// is worth a `Forbidden`.
+pub fn infer_area_from_vnum(db: &crate::db::Db, user: &AuthenticatedUser, vnum: &str) -> Option<uuid::Uuid> {
+    let prefix = crate::audit::scan::vnum_area_prefix(vnum)?;
+    let area = db
+        .list_all_areas()
+        .ok()?
+        .into_iter()
+        .find(|a| a.prefix.trim().to_lowercase() == prefix)?;
+    can_edit_area(user, &area).then_some(area.id)
+}
+
 /// Permission gate for mutating an existing prototype that may have an
 /// owning area. Orphans (None) are editable by any builder; stamped
 /// prototypes require `can_edit_area` rights. Returns Err(Forbidden)

@@ -154,11 +154,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                         let mut map = rhai::Map::new();
                         map.insert("ticket_number".into(), rhai::Dynamic::from(report.ticket_number));
                         map.insert("reporter".into(), rhai::Dynamic::from(report.reporter.clone()));
-                        let preview = if report.description.len() > 50 {
-                            format!("{}...", &report.description[..47])
-                        } else {
-                            report.description.clone()
-                        };
+                        let preview = crate::text::preview(&report.description, 50);
                         map.insert("preview".into(), rhai::Dynamic::from(preview));
                         map.insert(
                             "status".into(),

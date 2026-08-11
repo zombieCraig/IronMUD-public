@@ -140,12 +140,11 @@ pub fn complete(input: &str, cursor_pos: usize, data: &CompletionData) -> Comple
         ..
     } = data;
 
-    // Get the portion of input up to cursor
-    let input_to_cursor = if cursor_pos <= input.len() {
-        &input[..cursor_pos]
-    } else {
-        input
-    };
+    // Get the portion of input up to cursor. `cursor_pos` is a character
+    // index — `readline` moves it with `chars().nth` — so it cannot be used
+    // as a byte index: on a line with any non-ASCII character that cuts in
+    // the wrong place, and on some it panics.
+    let input_to_cursor = crate::text::truncate_chars(input, cursor_pos);
 
     // Split into words
     let words: Vec<&str> = input_to_cursor.split_whitespace().collect();
@@ -553,6 +552,38 @@ mod tests {
             "town:market".to_string(),
         ];
         assert_eq!(find_common_prefix(&strings), "town:");
+    }
+
+    #[test]
+    fn non_ascii_candidates_and_cursors_complete_instead_of_panicking() {
+        // `cursor_pos` is a character index — `readline` moves it with
+        // `chars().nth` — and `find_common_prefix` counted characters while
+        // slicing bytes. Either mix cuts in the wrong place on a line with a
+        // curly apostrophe or an accent, and lands mid-character often enough
+        // to panic the connection.
+        let strings = vec![
+            "café_bleu".to_string(),
+            "café_noir".to_string(),
+            "café_vert".to_string(),
+        ];
+        assert_eq!(find_common_prefix(&strings), "café_");
+
+        // The panicking shape: the shared prefix ends one character in, and
+        // that character is three bytes wide.
+        let accented = vec!["ébleu".to_string(), "énoir".to_string()];
+        assert_eq!(find_common_prefix(&accented), "é");
+
+        let commands = vec!["look".to_string()];
+        for (input, cursor) in [("look café", 9), ("look café", 7), ("look caf\u{e9}x", 4)] {
+            let _ = complete(
+                input,
+                cursor,
+                &CompletionData {
+                    available_commands: &commands,
+                    ..Default::default()
+                },
+            );
+        }
     }
 
     #[test]

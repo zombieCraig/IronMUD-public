@@ -85,13 +85,7 @@ pub fn register(engine: &mut Engine, db: Arc<Db>, connections: SharedConnections
                             .body
                             .lines()
                             .next()
-                            .map(|line| {
-                                if line.len() > 50 {
-                                    format!("{}...", &line[..47])
-                                } else {
-                                    line.to_string()
-                                }
-                            })
+                            .map(|line| crate::text::preview(line, 50))
                             .unwrap_or_else(|| "(empty)".to_string());
                         map.insert("preview".into(), rhai::Dynamic::from(preview));
                         map.insert("sent_at".into(), rhai::Dynamic::from(msg.sent_at));

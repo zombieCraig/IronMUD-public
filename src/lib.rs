@@ -59,6 +59,7 @@ pub mod social;
 pub mod spawn;
 pub mod synth;
 pub mod telnet;
+pub mod text;
 pub mod throttle;
 pub mod tiers;
 pub mod types;
@@ -1145,8 +1146,11 @@ pub fn force_save_editor(connection_id: ConnectionId, connections: &SharedConnec
             // 32 KB matches the inline `.save` arms in handle_connection.
             _ => 32 * 1024,
         };
+        // The cap is a storage limit, so it counts bytes — but it still has to
+        // land between characters, or a description ending on an em dash
+        // panics the save it was supposed to shorten.
         let (content, truncated) = if raw.len() > cap {
-            (raw[..cap].to_string(), true)
+            (crate::text::truncate_bytes(&raw, cap).to_string(), true)
         } else {
             (raw, false)
         };

@@ -581,8 +581,12 @@ fn strip_interps_for_arith(expr: &str) -> String {
                 continue;
             }
         }
-        out.push(bytes[i] as char);
-        i += 1;
+        // Copy one whole character. `bytes[i] as char` read each byte as
+        // latin-1, so an expression carrying any non-ASCII text came back as
+        // mojibake before the arithmetic check ever saw it.
+        let ch = expr[i..].chars().next().expect("i is always a char boundary");
+        out.push(ch);
+        i += ch.len_utf8();
     }
     out
 }
@@ -625,6 +629,15 @@ pub fn summarize(issues: &[Issue]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn arithmetic_stripping_leaves_non_ascii_text_alone() {
+        // It read each byte as latin-1, so an expression carrying any
+        // non-ASCII text reached the arithmetic check as mojibake.
+        let out = strip_interps_for_arith("%actor.name% mange un gâteau");
+        assert!(out.contains("gâteau"), "mojibake in {out:?}");
+        assert!(!out.contains("Ã"), "mojibake in {out:?}");
+    }
 
     #[test]
     fn flags_unknown_command() {

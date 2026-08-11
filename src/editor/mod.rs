@@ -1816,7 +1816,7 @@ fn compute_word_start(prefix_before_cursor: &str) -> usize {
 }
 
 fn char_index_to_byte(s: &str, char_idx: usize) -> usize {
-    s.char_indices().nth(char_idx).map(|(b, _)| b).unwrap_or(s.len())
+    crate::text::char_index_to_byte(s, char_idx)
 }
 
 fn byte_to_char_index(s: &str, byte_idx: usize) -> usize {

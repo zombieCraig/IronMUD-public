@@ -932,8 +932,10 @@ async fn create_mobile(
     check_text_len("short_desc", &req.short_desc, SHORT_DESC_MAX)?;
     check_text_len("long_desc", &req.long_desc, LONG_DESC_MAX)?;
 
-    // Optional area_id: if provided, caller must have edit rights on it.
-    let area_id = parse_and_authorize_area(&state.db, &user, req.area_id.as_deref())?;
+    // Optional area_id: if provided, caller must have edit rights on it. With
+    // none given, the vnum's prefix names the area — see `infer_area_from_vnum`.
+    let area_id = parse_and_authorize_area(&state.db, &user, req.area_id.as_deref())?
+        .or_else(|| super::auth::infer_area_from_vnum(&state.db, &user, &req.vnum));
 
     // Per-area soft cap on prototype count (F6). Orphans are uncapped.
     super::quotas::check_area_quota(&state.db, area_id, super::quotas::QuotaKind::Mobiles)?;

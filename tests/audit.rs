@@ -879,6 +879,143 @@ fn build_waive_all_reviews_every_target_in_the_area_at_once() {
 }
 
 #[test]
+fn a_prototype_belongs_to_the_area_its_vnum_names_even_unstamped() {
+    // Reported from a live server: `build audit area Islands` said "No mobile
+    // prototypes — the area is uninhabited" with a sow standing in the room.
+    // The API's create_mobile/create_item require a vnum and take area_id as
+    // optional, so an area built through MCP files its rooms and orphans
+    // everything else. The vnum names the area; the auditor now reads it.
+    let (db, _t) = fresh_db();
+    let area: ironmud::types::AreaData =
+        serde_json::from_value(json!({"id": Uuid::new_v4(), "name": "Islands", "prefix": "islands"}))
+            .expect("area fixture");
+    db.save_area_data(area.clone()).expect("save area");
+
+    let mut beach = room(json!({"title": "Sandy Beach", "vnum": "islands:sandy_beach_3"}));
+    beach.area_id = None;
+    db.save_room_data(beach).expect("save room");
+
+    let mut sow = ironmud::types::MobileData::new("sow".to_string());
+    sow.is_prototype = true;
+    sow.area_id = None;
+    sow.vnum = "islands:sow".to_string();
+    db.save_mobile_data(sow).expect("save mobile");
+
+    let mut shell = ItemData::new(
+        "shell".to_string(),
+        "A conch shell lies half-buried in the sand.".to_string(),
+        "A conch shell, its pink throat scoured pale by the surf.".to_string(),
+    );
+    shell.item_type = ItemType::Misc;
+    shell.is_prototype = true;
+    shell.area_id = None;
+    shell.vnum = Some("islands:shell".into());
+    db.save_item_data(shell).expect("save item");
+
+    let snap = WorldSnapshot::load(&db).expect("snapshot");
+    let contents = snap.area_contents(area.id);
+    assert_eq!(contents.mobiles.len(), 1, "the sow belongs to Islands");
+    assert_eq!(contents.items.len(), 1, "the shell belongs to Islands");
+    assert_eq!(contents.rooms.len(), 1);
+
+    let report = ironmud::audit::scan::scan_area(&snap, &area, snap.ctx());
+    assert!(!report.own.has("area.no_mobiles"), "{:?}", report.own.findings);
+    assert!(!report.own.has("area.no_items"), "{:?}", report.own.findings);
+
+    // And nothing is counted twice: content filed by vnum is not also unfiled.
+    let facts = snap.facts();
+    assert_eq!(facts.unfiled_mobiles, 0);
+    assert_eq!(facts.unfiled_items, 0);
+    assert_eq!(snap.orphan_room_count(), 0);
+
+    // An unrelated prefix still names no area.
+    let mut stray = ironmud::types::MobileData::new("gull".to_string());
+    stray.is_prototype = true;
+    stray.vnum = "nowhere:gull".to_string();
+    db.save_mobile_data(stray).expect("save mobile");
+    let snap = WorldSnapshot::load(&db).expect("snapshot");
+    assert_eq!(snap.facts().unfiled_mobiles, 1);
+    assert_eq!(snap.area_contents(area.id).mobiles.len(), 1);
+}
+
+#[test]
+fn the_backfill_files_unstamped_content_and_leaves_the_ambiguous_alone() {
+    // The auditor reads membership by vnum, but `area_id` is what the edit
+    // permission gate and the per-area quotas read, so the stored field has to
+    // catch up with what the vnums have been saying.
+    let (db, _t) = fresh_db();
+    for (name, prefix) in [("Islands", "islands"), ("Twin A", "twin"), ("Twin B", "twin")] {
+        let area: ironmud::types::AreaData =
+            serde_json::from_value(json!({"id": Uuid::new_v4(), "name": name, "prefix": prefix}))
+                .expect("area fixture");
+        db.save_area_data(area).expect("save area");
+    }
+    let islands = db
+        .list_all_areas()
+        .expect("areas")
+        .into_iter()
+        .find(|a| a.prefix == "islands")
+        .expect("islands");
+
+    let mut beach = room(json!({"title": "Sandy Beach", "vnum": "islands:sandy_beach_3"}));
+    beach.area_id = None;
+    let beach_id = beach.id;
+    db.save_room_data(beach).expect("save room");
+
+    let mut sow = ironmud::types::MobileData::new("sow".to_string());
+    sow.is_prototype = true;
+    sow.vnum = "islands:sow".to_string();
+    let sow_id = sow.id;
+    db.save_mobile_data(sow).expect("save mobile");
+
+    // A live instance is not authored content — it inherits at spawn.
+    let mut piglet = ironmud::types::MobileData::new("piglet".to_string());
+    piglet.is_prototype = false;
+    piglet.vnum = "islands:piglet".to_string();
+    let piglet_id = piglet.id;
+    db.save_mobile_data(piglet).expect("save mobile");
+
+    // A prefix two areas answer to names neither of them.
+    let mut ghost = ironmud::types::MobileData::new("ghost".to_string());
+    ghost.is_prototype = true;
+    ghost.vnum = "twin:ghost".to_string();
+    let ghost_id = ghost.id;
+    db.save_mobile_data(ghost).expect("save mobile");
+
+    db.migrate_prototypes_to_vnum_areas().expect("backfill");
+
+    assert_eq!(
+        db.get_room_data(&beach_id).expect("read").expect("room").area_id,
+        Some(islands.id)
+    );
+    assert_eq!(
+        db.get_mobile_data(&sow_id).expect("read").expect("mob").area_id,
+        Some(islands.id)
+    );
+    assert_eq!(
+        db.get_mobile_data(&piglet_id).expect("read").expect("mob").area_id,
+        None,
+        "instances are spawned content, not authored content"
+    );
+    assert_eq!(
+        db.get_mobile_data(&ghost_id).expect("read").expect("mob").area_id,
+        None,
+        "an ambiguous prefix is skipped rather than guessed at"
+    );
+
+    // One-shot, and it never overwrites a stamp: re-running changes nothing.
+    let mut moved = db.get_mobile_data(&sow_id).expect("read").expect("mob");
+    moved.area_id = None;
+    db.save_mobile_data(moved).expect("save mobile");
+    db.migrate_prototypes_to_vnum_areas().expect("backfill");
+    assert_eq!(
+        db.get_mobile_data(&sow_id).expect("read").expect("mob").area_id,
+        None,
+        "the guard key should have made the second run a no-op"
+    );
+}
+
+#[test]
 fn the_area_header_splits_its_tally_between_itself_and_its_contents() {
     // The complaint this answers: a header reading "3 blocker" over a list in
     // which only two rows were blockers, because the third belonged to the area
@@ -889,4 +1026,58 @@ fn the_area_header_splits_its_tally_between_itself_and_its_contents() {
         out.contains("on the area,") || out.contains("clean"),
         "the split tally is missing:\n{out}"
     );
+}
+
+#[test]
+fn prose_with_curly_quotes_and_dashes_grades_instead_of_panicking() {
+    // Reported from a live server: `build audit code area` dropped the
+    // connection. The keyword lint walked the display string a byte at a
+    // time, and a UTF-8 continuation byte read as a latin-1 character can be
+    // alphabetic — so the word boundary landed mid-character and slicing it
+    // panicked. Builder prose is full of curly apostrophes and em dashes.
+    let (db, _t) = seeded_db();
+    let area: ironmud::types::AreaData =
+        serde_json::from_value(json!({"id": Uuid::new_v4(), "name": "Islands", "prefix": "islands"}))
+            .expect("area fixture");
+    db.save_area_data(area.clone()).expect("save area");
+
+    let mut beach = room(json!({"title": "Sandy Beach", "vnum": "islands:beach"}));
+    beach.area_id = Some(area.id);
+    beach.description = "Powdery sand — pale as bone — runs down to the water\u{2019}s edge.".to_string();
+    db.save_room_data(beach).expect("save room");
+
+    for short_desc in [
+        "a sow\u{2019}s piglet snuffles here.",
+        "a piglet — small and pink — stands here.",
+        "un cochon rôti repose ici.",
+        "\u{4e00}\u{5934}\u{732a}",
+    ] {
+        let mut m = ironmud::types::MobileData::new("piglet".to_string());
+        m.is_prototype = true;
+        m.vnum = format!("islands:{}", Uuid::new_v4());
+        m.short_desc = short_desc.to_string();
+        m.area_id = Some(area.id);
+        // Every one of these grades. The assertion that matters is that the
+        // call returns at all.
+        let grade = ironmud::audit::audit_mobile(&m);
+        assert!((0..=100).contains(&grade.score), "{short_desc}");
+        db.save_mobile_data(m).expect("save mobile");
+    }
+
+    let mut shell = ItemData::new(
+        "shell".to_string(),
+        "a conch shell — pink-throated — lies here.".to_string(),
+        "A conch shell, its throat scoured pale by the surf.".to_string(),
+    );
+    shell.item_type = ItemType::Misc;
+    shell.is_prototype = true;
+    shell.area_id = Some(area.id);
+    shell.vnum = Some("islands:shell".into());
+    db.save_item_data(shell).expect("save item");
+
+    // The command that fell over: it walks every entity in the world.
+    let out = run_build_command(&db, "audit code mobile.keywords_miss_nouns");
+    assert!(!out.is_empty());
+    let out = run_build_command(&db, "audit area islands");
+    assert!(out.contains("Islands"), "unexpected output:\n{out}");
 }
