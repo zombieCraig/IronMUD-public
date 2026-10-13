@@ -7,29 +7,29 @@ use tokio::time::{Duration, interval};
 use tracing::{debug, error};
 
 use ironmud::{
-    CharacterPosition, DoorState, MobileTrigger, MobileTriggerType, SharedConnections, TriggerType, db,
-    script::execute_room_template, session::broadcast_to_builders,
+    CharacterPosition, DoorState, MobileData, MobileTrigger, MobileTriggerType, SharedConnections, SharedState,
+    TriggerType, db, script::execute_room_template, session::broadcast_to_builders,
 };
 
 /// Periodic trigger tick interval in seconds (more frequent than spawn tick)
 pub const PERIODIC_TRIGGER_INTERVAL_SECS: u64 = 10;
 
 /// Background task that processes periodic room triggers
-pub async fn run_periodic_trigger_tick(db: db::Db, connections: SharedConnections) {
+pub async fn run_periodic_trigger_tick(db: db::Db, connections: SharedConnections, state: SharedState) {
     let mut ticker = interval(Duration::from_secs(PERIODIC_TRIGGER_INTERVAL_SECS));
 
     loop {
         ticker.tick().await;
         crate::ticks::heartbeat::beat("periodic_triggers");
 
-        if let Err(e) = process_periodic_triggers(&db, &connections) {
+        if let Err(e) = process_periodic_triggers(&db, &connections, &state) {
             error!("Periodic trigger tick error: {}", e);
         }
     }
 }
 
 /// Process all periodic room triggers
-fn process_periodic_triggers(db: &db::Db, connections: &SharedConnections) -> Result<()> {
+fn process_periodic_triggers(db: &db::Db, connections: &SharedConnections, state: &SharedState) -> Result<()> {
     use rand::Rng;
 
     let now = std::time::SystemTime::now()
@@ -42,6 +42,8 @@ fn process_periodic_triggers(db: &db::Db, connections: &SharedConnections) -> Re
     for mut room in rooms {
         let mut fired_triggers: Vec<(usize, i64)> = Vec::new();
         let room_id = room.id;
+        // DG triggers need the whole room while `room.triggers` is mutably borrowed.
+        let room_snapshot = room.clone();
 
         for (idx, trigger) in room.triggers.iter_mut().enumerate() {
             // Only process periodic triggers
@@ -86,6 +88,25 @@ fn process_periodic_triggers(db: &db::Db, connections: &SharedConnections) -> Re
 
             if players_in_room.is_empty() {
                 // No awake players in room, skip trigger execution but don't update timestamp
+                continue;
+            }
+
+            // DG Scripts body (imported from .trg, or attached via dg_proto).
+            // Periodic room triggers have no actor.
+            if let Some(body) = trigger.dg_body.as_deref() {
+                ironmud::script::dg::fire_room_dg(
+                    body,
+                    &room_snapshot,
+                    "",
+                    std::sync::Arc::new(db.clone()),
+                    connections.clone(),
+                    state.clone(),
+                    trigger.authored_by.clone(),
+                    trigger.elevated,
+                    std::collections::HashMap::new(),
+                );
+                trigger.last_fired = now;
+                fired_triggers.push((idx, now));
                 continue;
             }
 
@@ -217,10 +238,10 @@ fn process_periodic_triggers(db: &db::Db, connections: &SharedConnections) -> Re
     }
 
     // Process mobile idle triggers (only when players present)
-    process_mobile_idle_triggers(db, connections, now)?;
+    process_mobile_idle_triggers(db, connections, state, now)?;
 
     // Process mobile always triggers (regardless of player presence)
-    process_mobile_always_triggers(db, connections, now)?;
+    process_mobile_always_triggers(db, connections, state, now)?;
 
     // Process fishing bite notifications
     process_fishing_bites(connections, now);
@@ -229,7 +250,12 @@ fn process_periodic_triggers(db: &db::Db, connections: &SharedConnections) -> Re
 }
 
 /// Process idle triggers for mobiles in rooms with players
-fn process_mobile_idle_triggers(db: &db::Db, connections: &SharedConnections, now: i64) -> Result<()> {
+fn process_mobile_idle_triggers(
+    db: &db::Db,
+    connections: &SharedConnections,
+    state: &SharedState,
+    now: i64,
+) -> Result<()> {
     use rand::Rng;
 
     // Build a map of room_id -> list of awake players for rooms with logged-in characters
@@ -269,6 +295,8 @@ fn process_mobile_idle_triggers(db: &db::Db, connections: &SharedConnections, no
             let mobile_name = mobile.name.clone();
             let mobile_id = mobile.id;
             let mobile_room_id = mobile.current_room_id;
+            // DG triggers need the whole mobile while `mobile.triggers` is mutably borrowed.
+            let mobile_snapshot = mobile.clone();
             let mut fired: Vec<(usize, String, i64)> = Vec::new();
 
             for (idx, trigger) in mobile.triggers.iter_mut().enumerate() {
@@ -303,9 +331,11 @@ fn process_mobile_idle_triggers(db: &db::Db, connections: &SharedConnections, no
                     mobile_id,
                     mobile_room_id,
                     trigger,
+                    &mobile_snapshot,
                     players,
                     db,
                     connections,
+                    state,
                 );
 
                 trigger.last_fired = now;
@@ -331,7 +361,12 @@ fn process_mobile_idle_triggers(db: &db::Db, connections: &SharedConnections, no
 }
 
 /// Process always triggers for all mobiles regardless of player presence
-fn process_mobile_always_triggers(db: &db::Db, connections: &SharedConnections, now: i64) -> Result<()> {
+fn process_mobile_always_triggers(
+    db: &db::Db,
+    connections: &SharedConnections,
+    state: &SharedState,
+    now: i64,
+) -> Result<()> {
     use rand::Rng;
 
     let all_mobiles = db.list_all_mobiles()?;
@@ -374,6 +409,8 @@ fn process_mobile_always_triggers(db: &db::Db, connections: &SharedConnections, 
 
         let mobile_name = mobile.name.clone();
         let mobile_id = mobile.id;
+        // DG triggers need the whole mobile while `mobile.triggers` is mutably borrowed.
+        let mobile_snapshot = mobile.clone();
         let mut mobile_modified = false;
         let mut fired: Vec<(usize, String, i64)> = Vec::new();
         let empty_players = Vec::new();
@@ -409,9 +446,11 @@ fn process_mobile_always_triggers(db: &db::Db, connections: &SharedConnections, 
                 mobile_id,
                 Some(mobile_room_id),
                 trigger,
+                &mobile_snapshot,
                 players,
                 db,
                 connections,
+                state,
             );
 
             trigger.last_fired = now;
@@ -441,11 +480,30 @@ fn execute_mobile_idle_trigger(
     mobile_id: uuid::Uuid,
     mobile_room_id: Option<uuid::Uuid>,
     trigger: &MobileTrigger,
+    mobile: &MobileData,
     players: &[(uuid::Uuid, tokio::sync::mpsc::UnboundedSender<String>)],
     db: &db::Db,
     connections: &SharedConnections,
+    state: &SharedState,
 ) {
     use rand::Rng;
+
+    // DG Scripts body (imported MTRIG_RANDOM, or attached via dg_proto). These
+    // carry no script_name; the body is the whole trigger. No actor.
+    if let Some(body) = trigger.dg_body.as_deref() {
+        ironmud::script::dg::fire_mobile_dg(
+            body,
+            mobile,
+            "",
+            std::sync::Arc::new(db.clone()),
+            connections.clone(),
+            state.clone(),
+            trigger.authored_by.clone(),
+            trigger.elevated,
+            std::collections::HashMap::new(),
+        );
+        return;
+    }
 
     // Handle built-in templates (script_name starts with @)
     if trigger.script_name.starts_with('@') {
@@ -708,5 +766,80 @@ fn process_fishing_bites(connections: &SharedConnections, now: i64) {
                 .sender
                 .send("\nYou waited too long and the fish got away!\n".to_string());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A mob with a DG-bodied OnIdle trigger (no script_name) and a player
+    /// in its room. Returns the db, the player's output receiver, and state.
+    fn setup(
+        trigger_type: MobileTriggerType,
+    ) -> (
+        db::Db,
+        tempfile::TempDir,
+        SharedConnections,
+        SharedState,
+        tokio::sync::mpsc::UnboundedReceiver<String>,
+    ) {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let db = db::Db::open(temp.path()).expect("open db");
+        let room = uuid::Uuid::new_v4();
+
+        let mut mob = MobileData::new("a goblin guard".into());
+        mob.is_prototype = false;
+        mob.current_room_id = Some(room);
+        mob.triggers.push(MobileTrigger {
+            trigger_type,
+            script_name: String::new(),
+            interval_secs: 30,
+            chance: 100,
+            dg_body: Some("mecho %self.name% scratches an ear.".into()),
+            ..Default::default()
+        });
+        db.save_mobile_data(mob).expect("save mob");
+
+        let ch: ironmud::CharacterData = serde_json::from_value(serde_json::json!({
+            "name": "Tester",
+            "password_hash": "",
+            "current_room_id": room,
+        }))
+        .expect("build character");
+        let (tx_client, rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let (tx_input, rx_input) = tokio::sync::mpsc::channel::<ironmud::InputEvent>(1);
+        std::mem::forget(rx_input);
+        let mut session = ironmud::PlayerSession::new_for_test(tx_client, tx_input);
+        session.character = Some(ch);
+        let conns: SharedConnections = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+        conns.lock().unwrap().insert(uuid::Uuid::new_v4(), session);
+        let state = ironmud::World::minimal_shared(db.clone(), conns.clone());
+        (db, temp, conns, state, rx)
+    }
+
+    fn drain(rx: &mut tokio::sync::mpsc::UnboundedReceiver<String>) -> String {
+        let mut out = String::new();
+        while let Ok(m) = rx.try_recv() {
+            out.push_str(&m);
+        }
+        out
+    }
+
+    /// Imported MTRIG_RANDOM / dg_proto-attached idle triggers carry their
+    /// body in `dg_body` with an empty script_name. The tick used to look for
+    /// `scripts/triggers/.rhai`, warn, and never run the body.
+    #[test]
+    fn dg_bodied_idle_trigger_runs() {
+        let (db, _temp, conns, state, mut rx) = setup(MobileTriggerType::OnIdle);
+        process_mobile_idle_triggers(&db, &conns, &state, 1_000_000).expect("tick");
+        assert!(drain(&mut rx).contains("scratches an ear"));
+    }
+
+    #[test]
+    fn dg_bodied_always_trigger_runs() {
+        let (db, _temp, conns, state, mut rx) = setup(MobileTriggerType::OnAlways);
+        process_mobile_always_triggers(&db, &conns, &state, 1_000_000).expect("tick");
+        assert!(drain(&mut rx).contains("scratches an ear"));
     }
 }

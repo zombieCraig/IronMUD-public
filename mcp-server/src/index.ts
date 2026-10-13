@@ -1813,6 +1813,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case "list_player_sessions": {
+        const sessions = await api.listPlayerSessions(
+          args?.name as string | undefined,
+          args?.limit as number | undefined
+        );
+        return {
+          content: [{ type: "text", text: JSON.stringify(sessions, null, 2) }],
+        };
+      }
+
+      case "get_player_log": {
+        const entries = await api.getPlayerLog(args?.name as string, {
+          session: args?.session as number | undefined,
+          since: args?.since as number | undefined,
+          limit: args?.limit as number | undefined,
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(entries, null, 2) }],
+        };
+      }
+
       default:
         throw new Error(`Unknown tool: ${name}`);
     }

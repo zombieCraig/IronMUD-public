@@ -272,8 +272,9 @@ async fn main() -> Result<()> {
 
     // Start background periodic trigger tick
     let tick_connections = connections.clone();
+    let trigger_state = state.clone();
     tokio::spawn(async move {
-        run_periodic_trigger_tick(tick_db2, tick_connections).await;
+        run_periodic_trigger_tick(tick_db2, tick_connections, trigger_state).await;
     });
 
     // Start background time tick (game time advancement)

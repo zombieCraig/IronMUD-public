@@ -470,6 +470,32 @@ export class IronMUDApiClient {
     async getBuildTracks() {
         return this.listRequest("/audit/tracks");
     }
+    // === Audit waivers ===
+    //
+    // A waiver silences exactly one finding on exactly one entity, and lapses if
+    // the text it was a judgement about changes. Writing one is a write, so it
+    // needs a key with write permission — and a blocker needs an admin key.
+    async auditFindingsByCode(code, area) {
+        const query = area ? `?area=${encodeURIComponent(area)}` : "";
+        return this.listRequest(`/audit/code/${encodeURIComponent(code)}${query}`);
+    }
+    async listAuditWaivers(area) {
+        const query = area ? `?area=${encodeURIComponent(area)}` : "";
+        return this.listRequest(`/audit/waivers${query}`);
+    }
+    async waiveFinding(code, target, reason) {
+        return this.request("post", "/audit/waivers", {
+            code,
+            target,
+            reason,
+        });
+    }
+    async removeAuditWaiver(code, target) {
+        return this.request("post", "/audit/waivers/delete", {
+            code,
+            target,
+        });
+    }
     async postBounty(body) {
         return this.request("post", "/bounties", body);
     }
@@ -543,6 +569,26 @@ export class IronMUDApiClient {
             params.set("limit", limit.toString());
         const query = params.toString();
         return await this.request("get", `/logs/builder-debug${query ? `?${query}` : ""}`);
+    }
+    async listPlayerSessions(name, limit) {
+        const params = new URLSearchParams();
+        if (name)
+            params.set("name", name);
+        if (limit !== undefined)
+            params.set("limit", limit.toString());
+        const query = params.toString();
+        return await this.request("get", `/logs/players${query ? `?${query}` : ""}`);
+    }
+    async getPlayerLog(name, opts = {}) {
+        const params = new URLSearchParams();
+        if (opts.session !== undefined)
+            params.set("session", opts.session.toString());
+        if (opts.since !== undefined)
+            params.set("since", opts.since.toString());
+        if (opts.limit !== undefined)
+            params.set("limit", opts.limit.toString());
+        const query = params.toString();
+        return await this.request("get", `/logs/players/${encodeURIComponent(name)}${query ? `?${query}` : ""}`);
     }
     // Helper methods for description context gathering
     /**

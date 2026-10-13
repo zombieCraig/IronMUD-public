@@ -1528,6 +1528,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     content: [{ type: "text", text: JSON.stringify(report, null, 2) }],
                 };
             }
+            case "audit_findings_by_code": {
+                const hits = await api.auditFindingsByCode(args?.code, args?.area);
+                return {
+                    content: [{ type: "text", text: JSON.stringify(hits, null, 2) }],
+                };
+            }
+            case "waive_finding": {
+                const waiver = await api.waiveFinding(args?.code, args?.target, args?.reason);
+                return {
+                    content: [{ type: "text", text: JSON.stringify(waiver, null, 2) }],
+                };
+            }
+            case "list_audit_waivers": {
+                const waivers = await api.listAuditWaivers(args?.area);
+                return {
+                    content: [{ type: "text", text: JSON.stringify(waivers, null, 2) }],
+                };
+            }
+            case "remove_audit_waiver": {
+                const outcome = await api.removeAuditWaiver(args?.code, args?.target);
+                return {
+                    content: [{ type: "text", text: JSON.stringify(outcome, null, 2) }],
+                };
+            }
             case "get_world_report": {
                 const report = await api.getWorldReport();
                 return {
@@ -1747,6 +1771,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 const lines = await api.getBuilderDebug(limit);
                 return {
                     content: [{ type: "text", text: lines.join("\n") }],
+                };
+            }
+            case "list_player_sessions": {
+                const sessions = await api.listPlayerSessions(args?.name, args?.limit);
+                return {
+                    content: [{ type: "text", text: JSON.stringify(sessions, null, 2) }],
+                };
+            }
+            case "get_player_log": {
+                const entries = await api.getPlayerLog(args?.name, {
+                    session: args?.session,
+                    since: args?.since,
+                    limit: args?.limit,
+                });
+                return {
+                    content: [{ type: "text", text: JSON.stringify(entries, null, 2) }],
                 };
             }
             default:

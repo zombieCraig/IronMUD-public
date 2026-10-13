@@ -969,6 +969,10 @@
     "access": "admin",
     "description": "Manage bug reports"
   },
+  "playlog": {
+    "access": "admin",
+    "description": "Review what players typed during their sessions"
+  },
   "summon": {
     "access": "admin",
     "description": "Summon a mobile or player to your location or a room"

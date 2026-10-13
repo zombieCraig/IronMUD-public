@@ -45,6 +45,7 @@ mod medical;
 pub mod mobile_presets;
 mod mobiles;
 pub mod mutant;
+pub mod player_log;
 mod property;
 mod quests;
 mod races;
@@ -2248,6 +2249,7 @@ pub fn register_rhai_functions(engine: &mut Engine, db: Arc<Db>, connections: Sh
     lookup::register(engine, db.clone(), state.clone());
     stealth::register(engine, db.clone(), connections.clone());
     bugs::register(engine, db.clone(), connections.clone());
+    player_log::register(engine, db.clone());
     simulation::register(engine, db.clone());
     social::register(engine, db.clone());
     clan::register(engine, db.clone(), connections.clone());

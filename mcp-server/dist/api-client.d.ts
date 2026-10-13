@@ -192,6 +192,10 @@ export declare class IronMUDApiClient {
     auditWorld(): Promise<Record<string, unknown>>;
     getWorldReport(): Promise<Record<string, unknown>>;
     getBuildTracks(): Promise<Record<string, unknown>[]>;
+    auditFindingsByCode(code: string, area?: string): Promise<Record<string, unknown>[]>;
+    listAuditWaivers(area?: string): Promise<Record<string, unknown>[]>;
+    waiveFinding(code: string, target: string, reason: string): Promise<Record<string, unknown>>;
+    removeAuditWaiver(code: string, target: string): Promise<Record<string, unknown>>;
     postBounty(body: Record<string, unknown>): Promise<BuildRequest>;
     claimBounty(ticket: number): Promise<{
         success: boolean;
@@ -226,6 +230,12 @@ export declare class IronMUDApiClient {
     }>;
     deleteDgProto(vnum: string): Promise<void>;
     getBuilderDebug(limit?: number): Promise<string[]>;
+    listPlayerSessions(name?: string, limit?: number): Promise<unknown[]>;
+    getPlayerLog(name: string, opts?: {
+        session?: number;
+        since?: number;
+        limit?: number;
+    }): Promise<unknown[]>;
     /**
      * Get all rooms connected to a room via exits
      */

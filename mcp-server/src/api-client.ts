@@ -1083,6 +1083,29 @@ export class IronMUDApiClient {
     );
   }
 
+  async listPlayerSessions(name?: string, limit?: number): Promise<unknown[]> {
+    const params = new URLSearchParams();
+    if (name) params.set("name", name);
+    if (limit !== undefined) params.set("limit", limit.toString());
+    const query = params.toString();
+    return await this.request<unknown[]>("get", `/logs/players${query ? `?${query}` : ""}`);
+  }
+
+  async getPlayerLog(
+    name: string,
+    opts: { session?: number; since?: number; limit?: number } = {}
+  ): Promise<unknown[]> {
+    const params = new URLSearchParams();
+    if (opts.session !== undefined) params.set("session", opts.session.toString());
+    if (opts.since !== undefined) params.set("since", opts.since.toString());
+    if (opts.limit !== undefined) params.set("limit", opts.limit.toString());
+    const query = params.toString();
+    return await this.request<unknown[]>(
+      "get",
+      `/logs/players/${encodeURIComponent(name)}${query ? `?${query}` : ""}`
+    );
+  }
+
   // Helper methods for description context gathering
 
   /**

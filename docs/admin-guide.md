@@ -44,6 +44,38 @@ Bans are honored everywhere: account bans gate `login.rhai`, site bans gate
 the TCP accept loop. Both expire lazily — the next read after `expires_at`
 silently lifts the ban.
 
+### Player Activity Log
+
+Every logged-in player's typed commands are recorded so you can see how people
+actually play — where they wander, what they try, and where they get stuck.
+
+| Command | Description |
+|---------|-------------|
+| `playlog` | Recent finished sessions for all players (start, duration, command count, unknown-command count, end reason, IP, client) |
+| `playlog <name>` | That player's recent sessions |
+| `playlog <name> session [k]` | Full transcript of the k-th most recent session (0 = latest, including one still live) |
+| `playlog <name> tail [n]` | Last n entries across sessions (default 50) |
+
+Each command entry stores the time, room vnum, the line as typed, and an
+outcome: `ok`, `unknown` (no such command — the best signal of player
+confusion), `denied`, `unconscious`, `script_error`, `social`, or
+`dg_suppressed`. Login and logout markers bracket each session; logout notes
+the reason (`quit`, `logout`, `linkdead`, `switch`).
+
+What is **not** recorded: anything typed before login, input during character
+creation / editors / mail compose, server output, and the arguments of
+`password`, `email`, `login`, `create`, and `forgot`. Tells and says are stored
+as typed, so treat the log as private.
+
+Retention: 5000 entries per character, and entries older than 90 days are
+dropped at that character's next login. The last 2000 session summaries are
+kept. Logins and logouts also emit `Login:` / `Logout:` lines to the server log
+so `journalctl` output can be matched to character names.
+
+Over the API (admin key only): `GET /api/v1/logs/players?name=&limit=` and
+`GET /api/v1/logs/players/<name>?session=&since=&limit=`; MCP tools
+`list_player_sessions` and `get_player_log`.
+
 ### Builder Mode Setting
 
 The `builder_mode` setting controls how the `setbuilder` command works:
@@ -680,7 +712,7 @@ ironmud-admin api-key revoke <key-id>
 |------------|-------------|
 | `read` | Can read areas, rooms, items, mobiles |
 | `write` | Can create and modify content |
-| `admin` | Bypasses area permission checks |
+| `admin` | Bypasses area permission checks; required for player activity logs |
 
 By default, write operations respect IronMUD's area permission system—the API key's linked character must have appropriate builder permissions for the target area.
 

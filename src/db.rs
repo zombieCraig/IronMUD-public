@@ -4,6 +4,9 @@ use sled::{Db as SledDb, Tree};
 use std::path::Path;
 use std::sync::Arc; // Import Arc
 
+use crate::player_log::{
+    PLAYER_LOG_MAX_AGE_SECS, PLAYER_LOG_MAX_PER_CHAR, PLAYER_SESSION_RING_SIZE, PlayerLogEntry, PlayerSessionSummary,
+};
 use crate::{
     AchievementDef, ApiKey, AreaData, BoardPost, CharacterData, ConsignmentListing, CustomSkillDefinition, EscrowData,
     ItemData, ItemLocation, ItemType, LeaseData, MailMessage, MobileData, PlantInstance, PlantPrototype,
@@ -106,6 +109,13 @@ pub struct Db {
     // `admin loadout race`. Overlays JSON-loaded RaceDefinition fields at
     // startup; stacks with the class kit at character creation.
     race_loadouts: Arc<Tree>,
+    // Per-character activity log (see `crate::player_log`). Key =
+    // `<lowercase name>\0<u64 big-endian id>` so a prefix scan yields one
+    // player's history oldest → newest. Capped per character.
+    player_log: Arc<Tree>,
+    // Ring of finished-session summaries, newest last. Key = u64 big-endian
+    // id, value = JSON `PlayerSessionSummary`.
+    player_sessions: Arc<Tree>,
 }
 
 /// Maximum entries retained in the email-audit ring. One row per send
@@ -183,6 +193,8 @@ impl Db {
         let email_audit = db.open_tree("email_audit")?;
         let class_loadouts = db.open_tree("class_loadouts")?;
         let race_loadouts = db.open_tree("race_loadouts")?;
+        let player_log = db.open_tree("player_log")?;
+        let player_sessions = db.open_tree("player_sessions")?;
         let me = Self {
             db: Arc::new(db),                 // Wrap in Arc
             characters: Arc::new(characters), // Wrap in Arc
@@ -222,6 +234,8 @@ impl Db {
             email_audit: Arc::new(email_audit),
             class_loadouts: Arc::new(class_loadouts),
             race_loadouts: Arc::new(race_loadouts),
+            player_log: Arc::new(player_log),
+            player_sessions: Arc::new(player_sessions),
         };
         // One-shot migration: synthesize a 1:1 Account for every pre-feature
         // character that doesn't already have one. Idempotent.
@@ -2953,6 +2967,101 @@ impl Db {
         Uuid::parse_str(STARTING_ROOM_ID).expect("valid STARTING_ROOM_ID constant")
     }
 
+    // ========== Player Activity Log ==========
+
+    fn player_log_prefix(char_name: &str) -> Vec<u8> {
+        let mut prefix = char_name.to_lowercase().into_bytes();
+        prefix.push(0);
+        prefix
+    }
+
+    /// Append one entry to a character's activity log. When `trim` is set
+    /// (the caller passes it on login, not per command) the character's log
+    /// is cut back to `PLAYER_LOG_MAX_PER_CHAR` entries and anything older
+    /// than `PLAYER_LOG_MAX_AGE_SECS` is dropped.
+    pub fn record_player_log(&self, char_name: &str, entry: &PlayerLogEntry, trim: bool) -> Result<()> {
+        let prefix = Self::player_log_prefix(char_name);
+        let mut key = prefix.clone();
+        key.extend_from_slice(&self.db.generate_id()?.to_be_bytes());
+        self.player_log.insert(key, serde_json::to_vec(entry)?)?;
+        if trim {
+            self.trim_player_log(&prefix, entry.ts - PLAYER_LOG_MAX_AGE_SECS)?;
+        }
+        Ok(())
+    }
+
+    fn trim_player_log(&self, prefix: &[u8], cutoff_ts: i64) -> Result<()> {
+        let mut len = self.player_log.scan_prefix(prefix).count();
+        for kv in self.player_log.scan_prefix(prefix) {
+            let (k, v) = kv?;
+            let too_old = serde_json::from_slice::<PlayerLogEntry>(&v)
+                .map(|e| e.ts < cutoff_ts)
+                .unwrap_or(true);
+            if len <= PLAYER_LOG_MAX_PER_CHAR && !too_old {
+                break;
+            }
+            self.player_log.remove(k)?;
+            len -= 1;
+        }
+        Ok(())
+    }
+
+    /// The newest `limit` entries for a character with `ts >= since`,
+    /// returned oldest → newest so they read top-down like a transcript.
+    pub fn list_player_log(&self, char_name: &str, since: i64, limit: usize) -> Result<Vec<PlayerLogEntry>> {
+        let prefix = Self::player_log_prefix(char_name);
+        let mut entries = Vec::new();
+        for kv in self.player_log.scan_prefix(&prefix).rev() {
+            if entries.len() >= limit {
+                break;
+            }
+            let (_, v) = kv?;
+            if let Ok(entry) = serde_json::from_slice::<PlayerLogEntry>(&v) {
+                if entry.ts < since {
+                    break;
+                }
+                entries.push(entry);
+            }
+        }
+        entries.reverse();
+        Ok(entries)
+    }
+
+    /// Record a finished session's summary; trims to `PLAYER_SESSION_RING_SIZE`.
+    pub fn record_player_session(&self, summary: &PlayerSessionSummary) -> Result<()> {
+        let key = self.db.generate_id()?.to_be_bytes();
+        self.player_sessions.insert(key, serde_json::to_vec(summary)?)?;
+        let mut len = self.player_sessions.len();
+        while len > PLAYER_SESSION_RING_SIZE {
+            if let Some((k, _)) = self.player_sessions.iter().next().transpose()? {
+                self.player_sessions.remove(k)?;
+                len -= 1;
+            } else {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    /// Most recent finished sessions, newest first, optionally for one
+    /// character (case-insensitive).
+    pub fn list_player_sessions(&self, char_name: Option<&str>, limit: usize) -> Result<Vec<PlayerSessionSummary>> {
+        let wanted = char_name.map(|n| n.to_lowercase());
+        let mut out = Vec::new();
+        for kv in self.player_sessions.iter().rev() {
+            if out.len() >= limit {
+                break;
+            }
+            let (_, v) = kv?;
+            if let Ok(s) = serde_json::from_slice::<PlayerSessionSummary>(&v) {
+                if wanted.as_ref().is_none_or(|w| s.name.to_lowercase() == *w) {
+                    out.push(s);
+                }
+            }
+        }
+        Ok(out)
+    }
+
     // ========== Email Audit Log ==========
 
     /// Append a row to the bounded email-audit ring. Drops the oldest entries
@@ -4602,6 +4711,72 @@ mod tests {
 
         let reloaded = t.db.get_mobile_data(&id).unwrap().unwrap();
         assert_eq!(reloaded.gold, 15);
+    }
+
+    fn log_entry(ts: i64, session: &str, text: &str) -> crate::player_log::PlayerLogEntry {
+        crate::player_log::PlayerLogEntry {
+            ts,
+            session_id: session.into(),
+            kind: crate::player_log::PlayerLogKind::Command,
+            room: Some("town:square".into()),
+            text: text.into(),
+            outcome: Some("ok".into()),
+        }
+    }
+
+    #[test]
+    fn player_log_is_per_character_and_ordered() {
+        let t = open_temp("plog_prefix");
+        t.db.record_player_log("Maya", &log_entry(1, "s1", "look"), false)
+            .unwrap();
+        t.db.record_player_log("mayan", &log_entry(2, "s2", "north"), false)
+            .unwrap();
+        t.db.record_player_log("maya", &log_entry(3, "s1", "score"), false)
+            .unwrap();
+
+        let maya = t.db.list_player_log("MAYA", 0, 100).unwrap();
+        let texts: Vec<_> = maya.iter().map(|e| e.text.as_str()).collect();
+        assert_eq!(texts, vec!["look", "score"], "oldest first, no bleed from 'mayan'");
+
+        let newest = t.db.list_player_log("maya", 0, 1).unwrap();
+        assert_eq!(newest[0].text, "score", "limit keeps the newest entries");
+        assert_eq!(t.db.list_player_log("maya", 2, 100).unwrap().len(), 1, "since filters");
+    }
+
+    #[test]
+    fn player_log_trim_drops_old_and_over_cap() {
+        let t = open_temp("plog_trim");
+        let now = crate::player_log::PLAYER_LOG_MAX_AGE_SECS * 2;
+        t.db.record_player_log("maya", &log_entry(1, "s1", "ancient"), false)
+            .unwrap();
+        t.db.record_player_log("maya", &log_entry(now, "s2", "fresh"), true)
+            .unwrap();
+        let left = t.db.list_player_log("maya", 0, 100).unwrap();
+        assert_eq!(left.len(), 1);
+        assert_eq!(left[0].text, "fresh");
+    }
+
+    #[test]
+    fn player_sessions_filter_by_name_newest_first() {
+        let t = open_temp("plog_sessions");
+        for (i, name) in ["Maya", "Bob", "maya"].iter().enumerate() {
+            t.db.record_player_session(&crate::player_log::PlayerSessionSummary {
+                name: name.to_string(),
+                session_id: format!("s{i}"),
+                ip: "127.0.0.1".into(),
+                client: None,
+                started_at: i as i64,
+                ended_at: i as i64 + 60,
+                end_reason: "quit".into(),
+                commands: 3,
+                unknown_commands: 1,
+            })
+            .unwrap();
+        }
+        let maya = t.db.list_player_sessions(Some("MAYA"), 10).unwrap();
+        assert_eq!(maya.len(), 2);
+        assert_eq!(maya[0].session_id, "s2");
+        assert_eq!(t.db.list_player_sessions(None, 10).unwrap().len(), 3);
     }
 
     #[test]

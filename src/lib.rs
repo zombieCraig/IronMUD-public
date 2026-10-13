@@ -43,6 +43,7 @@ pub mod migration;
 pub mod morality;
 pub mod mutant;
 pub mod necromancy;
+pub mod player_log;
 pub mod progress;
 pub mod prompt;
 pub mod purse;
@@ -2060,6 +2061,12 @@ pub async fn handle_connection(
         world.connections.clone()
     };
 
+    // Activity log for whoever logs in on this connection (see `player_log`).
+    let mut play_log = {
+        let world = state.lock().unwrap();
+        player_log::SessionTracker::new(world.db.clone(), connection_id, addr)
+    };
+
     {
         let mut conns = connections.lock().unwrap();
         conns.insert(
@@ -2156,6 +2163,7 @@ pub async fn handle_connection(
             info!("Connection {} removed by script, terminating handle_connection.", addr);
             break;
         }
+        play_log.sync(&connections);
 
         // Only send prompt in line mode (char mode echoes as you type)
         let is_char_mode = {
@@ -3890,6 +3898,7 @@ pub async fn handle_connection(
                     .map(|s| s.character.is_some())
                     .unwrap_or(false)
             };
+            let log_ctx = play_log.context(&connections);
 
             // Get player permissions for access control
             let (is_builder, is_admin, abbrev_enabled) = {
@@ -3961,6 +3970,7 @@ pub async fn handle_connection(
                     _ if !is_logged_in => "You must log in first. Use 'login' or 'create'.\n".to_string(),
                     _ => format!("You don't have access to command '{}'.\n", resolved_command),
                 };
+                play_log.command(&log_ctx, &resolved_command, single_cmd, player_log::outcome::DENIED);
                 let _ = tx_client.send(msg);
                 continue;
             }
@@ -3976,6 +3986,12 @@ pub async fn handle_connection(
                         .unwrap_or(false)
                 };
                 if is_unconscious && !is_unconscious_allowed(&resolved_command) {
+                    play_log.command(
+                        &log_ctx,
+                        &resolved_command,
+                        single_cmd,
+                        player_log::outcome::UNCONSCIOUS,
+                    );
                     let _ = tx_client.send("You are unconscious and cannot do that.\n".to_string());
                     continue;
                 }
@@ -4000,6 +4016,12 @@ pub async fn handle_connection(
                 ) {
                     // Suppressed: skip rhai dispatch and the prompt redraw
                     // path picks up cleanly on the next iteration.
+                    play_log.command(
+                        &log_ctx,
+                        &resolved_command,
+                        single_cmd,
+                        player_log::outcome::DG_SUPPRESSED,
+                    );
                     let prompt = build_prompt(&connection_id, &connections, &state);
                     let _ = tx_client.send(prompt);
                     continue;
@@ -4019,6 +4041,7 @@ pub async fn handle_connection(
                     &resolved_command,
                     args,
                 ) {
+                    play_log.command(&log_ctx, &resolved_command, single_cmd, player_log::outcome::SOCIAL);
                     let prompt = build_prompt(&connection_id, &connections, &state);
                     let _ = tx_client.send(prompt);
                     continue;
@@ -4037,6 +4060,7 @@ pub async fn handle_connection(
                 (ast, engine_ptr)
             };
 
+            let mut log_outcome = player_log::outcome::OK;
             let result_message = if let Some(ast) = ast_opt {
                 let mut scope = rhai::Scope::new();
                 scope.set_value("args", args.to_string());
@@ -4057,11 +4081,16 @@ pub async fn handle_connection(
                             String::new()
                         }
                     }
-                    Err(e) => format!("Error executing command {}: {}\n", resolved_command, e),
+                    Err(e) => {
+                        log_outcome = player_log::outcome::SCRIPT_ERROR;
+                        format!("Error executing command {}: {}\n", resolved_command, e)
+                    }
                 }
             } else {
+                log_outcome = player_log::outcome::UNKNOWN;
                 format!("Unknown command: {}\n", command_name)
             };
+            play_log.command(&log_ctx, &resolved_command, single_cmd, log_outcome);
 
             if !result_message.is_empty() {
                 if let Err(e) = tx_client.send(result_message) {
@@ -4118,6 +4147,11 @@ pub async fn handle_connection(
         }
     }
     info!("Connection closed: {}", addr);
+
+    // Session gone from the map = the script removed it (quit); still present
+    // with a character = TCP drop, which leaves the character linkdead.
+    let still_present = connections.lock().unwrap().contains_key(&connection_id);
+    play_log.finish(if still_present { "linkdead" } else { "quit" });
 
     // Best-effort save of any in-progress multi-line edit before the session
     // goes linkdead. The buffer lives only in PlayerSession, so without this
